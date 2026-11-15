@@ -321,19 +321,27 @@ describe("parseTerraformStateDocument", () => {
     }
   };
 
+  /** How deep `value` nests, by plain recursion: one stack frame per level. */
+  const recursiveDepth = (value: unknown): number =>
+    value !== null && typeof value === "object"
+      ? 1 + Math.max(0, ...Object.values(value).map(recursiveDepth))
+      : 0;
+
   // The regression, at a depth that genuinely overflows the stack.
   //
-  // `JSON.parse` is iterative in V8, so the document loads fine; `JSON.stringify`
-  // (which is what the old size measurement used) is recursive and throws
-  // `RangeError: Maximum call stack size exceeded` here. That escaped the
-  // parser's own error type and surfaced as an HTTP 500.
+  // `JSON.parse` is iterative in V8, so the document loads fine; the old size
+  // measurement walked it recursively (through `JSON.stringify`, which was
+  // recursive in V8 until 13.8 and throws nothing at this depth since), and
+  // threw `RangeError: Maximum call stack size exceeded` here. That escaped
+  // the parser's own error type and surfaced as an HTTP 500.
   it("rejects stack-overflowing nesting as a controlled error, not a RangeError", () => {
     const document = stateWithAttributeJson(nestObjectsJson(20_000));
     // Size-compliant: this is a shape problem, not a volume problem.
     expect(document.length).toBeLessThan(IAC_STATE_LIMITS.maxDocumentBytes);
-    // The document loads fine: it is the *measurement* that used to blow up.
+    // The document loads fine: it is a recursive *walk* of it that blows up,
+    // whichever engine runs the test.
     const loaded: unknown = JSON.parse(document);
-    expect(() => JSON.stringify(loaded)).toThrow(RangeError);
+    expect(() => recursiveDepth(loaded)).toThrow(RangeError);
 
     const error = parseError(document);
     expect(error).toBeInstanceOf(TerraformStateParseError);

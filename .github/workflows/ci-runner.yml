@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
@@ -70,7 +70,7 @@ jobs:
   # run`. typescript, oxfmt and bash-node need much larger toolchains and
   # are tested by ci-runner-builtins.yml.
   # The `node` feature links V8, so it builds on its own: on ARM64 that is
-  # the vendored bridge's Linux ARM64 V8, its `c_char` and its libatomic,
+  # the ARM64 build of the bridge's V8, its `c_char` and its libatomic,
   # none of which the x86 release would notice breaking.
   node-arm64:
     name: Build with Node on ARM64
@@ -89,6 +89,17 @@ jobs:
         with:
           workspaces: ci-runner
           key: node-arm64
+
+      # The bridge links V8 15.9 built by builtins/v8/build.sh (hours, so not
+      # here), kept in the runner pool's bucket and checked against the
+      # SHA-256 pinned in vendor/wasmer-napi/build.rs.
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
 
       - name: cargo build --features node
         run: |

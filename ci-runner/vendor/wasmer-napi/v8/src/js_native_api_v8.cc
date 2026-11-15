@@ -58,7 +58,7 @@ v8::MaybeLocal<v8::Promise> NapiHostImportModuleDynamically(
     v8::Local<v8::Context> context, v8::Local<v8::Data> /*host_defined_options*/,
     v8::Local<v8::Value> resource_name, v8::Local<v8::String> specifier,
     v8::Local<v8::FixedArray> /*import_attributes*/) {
-  v8::Isolate* isolate = context->GetIsolate();
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
   v8::EscapableHandleScope handle_scope(isolate);
   v8::TryCatch try_catch(isolate);
 
@@ -335,7 +335,7 @@ v8::Local<v8::Object> CreateBufferObject(napi_env env,
     if (buffer_ctor_value.As<v8::Object>()->Get(context, proto_name).ToLocal(&buffer_proto) &&
         buffer_proto->IsObject()) {
       // On failure `view` stays a valid Uint8Array (early-bootstrap fallback).
-      (void)view->SetPrototypeV2(context, buffer_proto);
+      (void)view->SetPrototype(context, buffer_proto);
     }
   }
 
@@ -444,7 +444,8 @@ inline bool GetTypedArrayType(v8::Local<v8::Value> value, napi_typedarray_type* 
 
 void FunctionTrampoline(const v8::FunctionCallbackInfo<v8::Value>& info) {
   auto* payload =
-      static_cast<napi_callback_payload__*>(info.Data().As<v8::External>()->Value());
+      static_cast<napi_callback_payload__*>(
+          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
   if (payload == nullptr || payload->env == nullptr || payload->cb == nullptr) {
     return;
   }
@@ -466,7 +467,8 @@ void GetterTrampoline(v8::Local<v8::Name> property,
                       const v8::PropertyCallbackInfo<v8::Value>& info) {
   (void)property;
   auto* payload =
-      static_cast<napi_accessor_payload__*>(info.Data().As<v8::External>()->Value());
+      static_cast<napi_accessor_payload__*>(
+          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
   if (payload == nullptr || payload->env == nullptr || payload->getter_cb == nullptr) {
     return;
   }
@@ -486,7 +488,8 @@ void SetterTrampoline(v8::Local<v8::Name> property,
                       const v8::PropertyCallbackInfo<void>& info) {
   (void)property;
   auto* payload =
-      static_cast<napi_accessor_payload__*>(info.Data().As<v8::External>()->Value());
+      static_cast<napi_accessor_payload__*>(
+          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
   if (payload == nullptr || payload->env == nullptr || payload->setter_cb == nullptr) {
     return;
   }
@@ -1704,7 +1707,8 @@ napi_status NAPI_CDECL napi_create_function(napi_env env,
   auto* payload = env->allocate<napi_callback_payload__>(env, cb, data);
   if (payload == nullptr) return napi_generic_failure;
 
-  v8::Local<v8::External> payloadValue = v8::External::New(env->isolate, payload);
+  v8::Local<v8::External> payloadValue =
+      v8::External::New(env->isolate, payload, v8::kExternalPointerTypeTagDefault);
   v8::Local<v8::Context> context = env->context();
 
   v8::Local<v8::String> name;
@@ -1765,7 +1769,8 @@ napi_status NAPI_CDECL napi_define_class(napi_env env,
   v8::Local<v8::FunctionTemplate> ctor_template =
       v8::FunctionTemplate::New(env->isolate,
                                 FunctionTrampoline,
-                                v8::External::New(env->isolate, payload));
+                                v8::External::New(env->isolate, payload,
+                                                  v8::kExternalPointerTypeTagDefault));
   ctor_template->SetClassName(name);
   ctor_template->InstanceTemplate()->SetInternalFieldCount(1);
 
@@ -2308,7 +2313,7 @@ napi_status NAPI_CDECL napi_get_prototype(napi_env env,
   if (!CheckValue(env, object) || result == nullptr) return InvalidArg(env);
   v8::Local<v8::Value> target = napi_v8_unwrap_value(object);
   if (!target->IsObject()) return napi_object_expected;
-  v8::Local<v8::Value> proto = target.As<v8::Object>()->GetPrototypeV2();
+  v8::Local<v8::Value> proto = target.As<v8::Object>()->GetPrototype();
   *result = napi_v8_wrap_value(env, proto);
   return (*result == nullptr) ? napi_generic_failure : napi_ok;
 }
@@ -2320,7 +2325,7 @@ napi_status NAPI_CDECL node_api_set_prototype(napi_env env,
   v8::Local<v8::Value> target = napi_v8_unwrap_value(object);
   if (!target->IsObject()) return napi_object_expected;
   if (!target.As<v8::Object>()
-           ->SetPrototypeV2(env->context(), napi_v8_unwrap_value(value))
+           ->SetPrototype(env->context(), napi_v8_unwrap_value(value))
            .FromMaybe(false)) {
     return napi_generic_failure;
   }
@@ -2613,7 +2618,8 @@ napi_status NAPI_CDECL napi_wrap(napi_env env,
   if (!object
            ->SetPrivate(env->context(),
                         wrapKey,
-                        v8::External::New(env->isolate, ref))
+                        v8::External::New(env->isolate, ref,
+                                          v8::kExternalPointerTypeTagDefault))
            .FromMaybe(false)) {
     ref->Destroy();
     return napi_generic_failure;
@@ -2636,7 +2642,8 @@ napi_status NAPI_CDECL napi_unwrap(napi_env env, napi_value js_object, void** re
       !wrapped->IsExternal()) {
     return napi_invalid_arg;
   }
-  auto* ref = static_cast<napi_ref>(wrapped.As<v8::External>()->Value());
+  auto* ref = static_cast<napi_ref>(
+      wrapped.As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
   if (ref == nullptr) return napi_invalid_arg;
   *result = ref->Data();
   return napi_ok;
@@ -2654,7 +2661,8 @@ napi_status NAPI_CDECL napi_remove_wrap(napi_env env, napi_value js_object, void
       !wrapped->IsExternal()) {
     return napi_invalid_arg;
   }
-  auto* ref = static_cast<napi_ref>(wrapped.As<v8::External>()->Value());
+  auto* ref = static_cast<napi_ref>(
+      wrapped.As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
   object->DeletePrivate(env->context(), wrapKey).FromMaybe(false);
   if (ref != nullptr) {
     ref->ResetFinalizer();
@@ -2999,7 +3007,8 @@ napi_status NAPI_CDECL napi_create_buffer(napi_env env,
   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
   buffer_obj
-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
+      ->SetPrivate(env->context(), key,
+                   v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
       .FromJust();
   env->buffer_records.push_back(record);
 
@@ -3061,7 +3070,7 @@ napi_status NAPI_CDECL napi_create_external_buffer(napi_env env,
   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
   buffer_obj
-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
+      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
       .FromJust();
   env->buffer_records.push_back(record);
 
@@ -3112,7 +3121,8 @@ napi_status NAPI_CDECL node_api_create_buffer_from_arraybuffer(
   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
   buffer_obj
-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
+      ->SetPrivate(env->context(), key,
+                   v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
       .FromJust();
   env->buffer_records.push_back(record);
 
@@ -3275,7 +3285,7 @@ node_api_create_object_with_properties(napi_env env,
   if (prototype_or_null != nullptr) {
     v8::Local<v8::Value> proto = napi_v8_unwrap_value(prototype_or_null);
     if (!proto->IsNull() && !proto->IsObject()) return napi_object_expected;
-    if (!obj->SetPrototypeV2(env->context(), proto).FromMaybe(false)) {
+    if (!obj->SetPrototype(env->context(), proto).FromMaybe(false)) {
       return napi_generic_failure;
     }
   }

@@ -21,7 +21,7 @@ void napi_setter_callback_info__::args(napi_value* argv, size_t argc) const {
 }
 
 napi_value napi_setter_callback_info__::this_arg() const {
-  return napi_v8_wrap_value(env_, info_.This());
+  return napi_v8_wrap_value(env_, info_.Holder());
 }
 
 napi_value napi_setter_callback_info__::new_target() const {

@@ -12,31 +12,59 @@
  [dependencies.virtual-fs]
  version = "=0.705.0"
  optional = true
+@@ -118,12 +123,12 @@
+ [build-dependencies.cc]
+ version = "1"
+ 
++[build-dependencies.sha2]
++version = "0.11"
++
+ [build-dependencies.tar]
+ version = "0.4"
+ 
+-[build-dependencies.ureq]
+-version = "2"
+-
+ [build-dependencies.xz]
+ version = "0.1"
+ 
 --- a/build.rs
 +++ b/build.rs
-@@ -5,7 +5,21 @@
+@@ -1,11 +1,31 @@
+ use std::{
+     env,
+-    io::Read,
+     path::{Path, PathBuf},
  };
  
- const PREBUILT_V8_VERSION: &str = "11.9.7";
-+/// The release with Linux ARM64 builds, which 11.9.7 lacks: the same V8
-+/// (13.6.233), built with shared-library-safe TLS on Linux.
-+const PREBUILT_V8_VERSION_LINUX_ARM64: &str = "11.9.9";
+-const PREBUILT_V8_VERSION: &str = "11.9.7";
++use sha2::{Digest, Sha256};
  
-+/// The `wasmerio/v8-custom-builds` release this target's V8 comes from.
-+fn prebuilt_release() -> &'static str {
-+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-+    if target_os == "linux" && target_arch == "aarch64" {
-+        PREBUILT_V8_VERSION_LINUX_ARM64
-+    } else {
-+        PREBUILT_V8_VERSION
++/// The V8 build the bridge links: V8 15.9.111 as wasmerio/v8-custom-builds
++/// builds its release 15.9.111.1, rebuilt by the runner's
++/// `builtins/v8/build.sh` without CREL relocations, against libstdc++, and
++/// with a pointer-compression cage per isolate group.
++/// `builtins/v8/archive.sh fetch` puts the archive where `v8_archive` looks,
++/// or `IWCI_V8_ARCHIVE` names it; either way it must hash to the pin.
++const PREBUILT_V8_VERSION: &str = "15.9.111.1-multicage";
++
++/// The archive for this target and its SHA-256.
++fn prebuilt_pin(platform_name: &str) -> Result<&'static str, String> {
++    match platform_name {
++        "linux-amd64" => Ok("92558be0ec37ff07ffafdf89b55eca4e8bc425ee3958b014efb919ae0ce3846d"),
++        "linux-arm64" => Ok("d4c7d392ff66dbc89dd8fb8053746253f5aee3115423f38df0edf4e1f5d2f315"),
++        other => Err(format!("no pinned V8 build for {other}")),
 +    }
++}
++
++fn prebuilt_release() -> &'static str {
++    PREBUILT_V8_VERSION
 +}
 +
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
  enum V8Method {
      Local,
-@@ -219,6 +233,11 @@
+@@ -219,6 +239,11 @@
          println!("cargo:rustc-link-lib=dylib=m");
          println!("cargo:rustc-link-lib=dylib=pthread");
          println!("cargo:rustc-link-lib=dylib=rt");
@@ -48,16 +76,48 @@
      }
  }
  
-@@ -327,7 +346,7 @@
+@@ -327,18 +352,35 @@
      let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|err| err.to_string())?);
      let cache_dir = out_dir
          .join("v8-prebuilt")
 -        .join(PREBUILT_V8_VERSION)
 +        .join(prebuilt_release())
          .join(platform_name);
-     let archive_path = cache_dir.join(asset_name);
+-    let archive_path = cache_dir.join(asset_name);
  
-@@ -392,6 +411,7 @@
+     std::fs::create_dir_all(&cache_dir)
+         .map_err(|err| format!("failed to create {}: {err}", cache_dir.display()))?;
+ 
+-    if !cache_dir.join("include/v8.h").exists()
++    let pinned = prebuilt_pin(platform_name)?;
++    // Unpacked again whenever the archive is not the one last unpacked here.
++    let stamp = cache_dir.join("sha256");
++    if std::fs::read_to_string(&stamp).ok().as_deref() != Some(pinned)
++        || !cache_dir.join("include/v8.h").exists()
+         || resolve_primary_library(&cache_dir.join("lib")).is_none()
+     {
+-        download_prebuilt_archive(asset_name, &archive_path)?;
+-        unpack_prebuilt_archive(&archive_path, &cache_dir)?;
++        let source = v8_archive(asset_name)?;
++        let bytes = std::fs::read(&source)
++            .map_err(|err| format!("failed to read {}: {err}", source.display()))?;
++        let actual = sha256_hex(&bytes);
++        if actual != pinned {
++            return Err(format!(
++                "{} hashes to {actual}, not the pinned {pinned}",
++                source.display()
++            ));
++        }
++        for dir in ["include", "lib"] {
++            let _ = std::fs::remove_dir_all(cache_dir.join(dir));
++        }
++        unpack_prebuilt_archive(&bytes, &cache_dir)?;
++        std::fs::write(&stamp, pinned)
++            .map_err(|err| format!("failed to write {}: {err}", stamp.display()))?;
+     }
+ 
+     let include_dir = cache_dir.join("include");
+@@ -392,6 +434,7 @@
          ("macos", "x86_64", _) => Ok(("v8-darwin-amd64.tar.xz", "darwin-amd64")),
          ("linux", "x86_64", "gnu") => Ok(("v8-linux-amd64.tar.xz", "linux-amd64")),
          ("linux", "x86_64", "musl") => Ok(("v8-linux-musl-amd64.tar.xz", "linux-musl-amd64")),
@@ -65,16 +125,71 @@
          ("android", "aarch64", _) => Ok(("v8-android-arm64.tar.xz", "android-arm64")),
          ("windows", "x86_64", _) => Ok(("v8-windows-amd64.tar.xz", "windows-amd64")),
          (os, arch, env_kind) => Err(format!(
-@@ -402,7 +422,8 @@
+@@ -400,34 +443,42 @@
+     }
+ }
  
- fn download_prebuilt_archive(asset_name: &str, archive_path: &Path) -> Result<(), String> {
-     let url = format!(
+-fn download_prebuilt_archive(asset_name: &str, archive_path: &Path) -> Result<(), String> {
+-    let url = format!(
 -        "https://github.com/wasmerio/v8-custom-builds/releases/download/{PREBUILT_V8_VERSION}/{asset_name}"
-+        "https://github.com/wasmerio/v8-custom-builds/releases/download/{}/{asset_name}",
-+        prebuilt_release()
-     );
-     let response = ureq::get(&url)
-         .call()
+-    );
+-    let response = ureq::get(&url)
+-        .call()
+-        .map_err(|err| format!("failed to download {url}: {err}"))?;
++/// The archive: `IWCI_V8_ARCHIVE`, or where `builtins/v8/archive.sh fetch`
++/// leaves it, in the runner's `dist/`.
++fn v8_archive(asset_name: &str) -> Result<PathBuf, String> {
++    println!("cargo:rerun-if-env-changed=IWCI_V8_ARCHIVE");
++    let path = match env::var_os("IWCI_V8_ARCHIVE").filter(|value| !value.is_empty()) {
++        Some(path) => PathBuf::from(path),
++        None => PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|err| err.to_string())?)
++            .join("../../dist/v8")
++            .join(prebuilt_release())
++            .join(asset_name),
++    };
++    println!("cargo:rerun-if-changed={}", path.display());
++    if !path.exists() {
++        return Err(format!(
++            "V8 {} is not at {}: run `bash builtins/v8/archive.sh fetch` in ci-runner/ \
++             (it needs the runner pool's bucket), or build it with builtins/v8/build.sh",
++            prebuilt_release(),
++            path.display()
++        ));
++    }
++    Ok(path)
++}
+ 
+-    let mut reader = response.into_reader();
+-    let mut tar_data = Vec::new();
+-    reader
+-        .read_to_end(&mut tar_data)
+-        .map_err(|err| format!("failed to read response body from {url}: {err}"))?;
+-
+-    std::fs::write(archive_path, tar_data)
+-        .map_err(|err| format!("failed to write {}: {err}", archive_path.display()))?;
+-
+-    Ok(())
++fn sha256_hex(bytes: &[u8]) -> String {
++    Sha256::digest(bytes)
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect()
+ }
+ 
+-fn unpack_prebuilt_archive(archive_path: &Path, cache_dir: &Path) -> Result<(), String> {
+-    let tar_data = std::fs::read(archive_path)
+-        .map_err(|err| format!("failed to read {}: {err}", archive_path.display()))?;
+-    let tar = xz::read::XzDecoder::new(tar_data.as_slice());
++fn unpack_prebuilt_archive(tar_data: &[u8], cache_dir: &Path) -> Result<(), String> {
++    let tar = xz::read::XzDecoder::new(tar_data);
+     let mut archive = tar::Archive::new(tar);
+     archive
+         .unpack(cache_dir)
+-        .map_err(|err| format!("failed to unpack {}: {err}", archive_path.display()))
++        .map_err(|err| format!("failed to unpack V8 into {}: {err}", cache_dir.display()))
+ }
+ 
+ fn resolve_primary_library(dir: &Path) -> Option<PathBuf> {
 --- a/src/budget.rs
 +++ b/src/budget.rs
 @@ -33,7 +33,6 @@
@@ -141,13 +256,13 @@
  /// and V8's own malloc'd metadata without sampling.
  pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
  
-+/// iwci patch (#1063): the pointer-compression cage every V8 heap of the
-+/// process lives in. The bridge's V8 compresses pointers into one 4 GiB
-+/// cage per isolate group and is built with a single group
-+/// (`v8::IsolateGroup::CanCreateNewGroups()` is false), so every isolate of
-+/// every app allocates its heap pages from the same 4 GiB, whatever each
-+/// app's own budget says. Past it a page allocation fails, which V8 treats
-+/// as fatal ("young object promotion failed", "CALL_AND_RETRY_LAST").
++/// iwci patch (#1063): the pointer-compression cage of a V8 isolate group,
++/// 4 GiB. With V8 13.6 the bridge had a single group, so every isolate of
++/// every app allocated its heap pages from the same 4 GiB, whatever each
++/// app's own budget said, and past it a page allocation failed, which V8
++/// treats as fatal ("young object promotion failed", "CALL_AND_RETRY_LAST").
++/// The V8 15.9 the runner links has a group, and a cage, per isolate, so
++/// the account below no longer guards a shared cage (#1158).
 +pub const V8_HEAP_CAGE: u64 = 4096 * MIB;
 +/// iwci patch (#1063): what [`HeapSpace`] lets the isolates of the process
 +/// use together: the cage less room for what its account does not see (the
@@ -3202,8 +3317,8 @@
      Ok(())
  }
  
-+/// iwci patch: configures the process's V8 from the embedder, with the
-+/// bridge's defaults and then `engine_flags` (V8's command-line syntax).
++/// iwci patch: configures the process's V8 from the embedder, with
++/// `engine_flags` (V8's command-line syntax).
 +///
 +/// Call it once, after [`set_v8_worker_threads`] and
 +/// [`set_worker_task_hooks`] and before any guest runs. A guest's own
@@ -4918,9 +5033,99 @@
  
    std::unique_ptr<v8::Platform> fallback_;
    std::mutex mutex_;
+--- a/v8/src/internal/napi_external_wrapper.cc
++++ b/v8/src/internal/napi_external_wrapper.cc
+@@ -10,7 +10,7 @@
+   if (wrapper == nullptr) {
+     return v8::Local<v8::External>();
+   }
+-  v8::Local<v8::External> external = v8::External::New(env->isolate, wrapper);
++  v8::Local<v8::External> external = v8::External::New(env->isolate, wrapper, v8::kExternalPointerTypeTagDefault);
+   wrapper->handle_.Reset(env->isolate, external);
+   wrapper->handle_.SetWeak(wrapper, WeakCallback, v8::WeakCallbackType::kParameter);
+   return external;
+@@ -18,7 +18,7 @@
+ 
+ napi_external_wrapper__* napi_external_wrapper__::From(
+     v8::Local<v8::External> external) {
+-  return static_cast<napi_external_wrapper__*>(external->Value());
++  return static_cast<napi_external_wrapper__*>(external->Value(v8::kExternalPointerTypeTagDefault));
+ }
+ 
+ bool napi_external_wrapper__::TypeTag(const napi_type_tag* tag) {
+--- a/v8/src/internal/napi_getter_callback_info.cc
++++ b/v8/src/internal/napi_getter_callback_info.cc
+@@ -18,7 +18,7 @@
+ }
+ 
+ napi_value napi_getter_callback_info__::this_arg() const {
+-  return napi_v8_wrap_value(env_, info_.This());
++  return napi_v8_wrap_value(env_, info_.Holder());
+ }
+ 
+ napi_value napi_getter_callback_info__::new_target() const {
+--- a/v8/src/internal/napi_setter_callback_info.cc
++++ b/v8/src/internal/napi_setter_callback_info.cc
+@@ -21,7 +21,7 @@
+ }
+ 
+ napi_value napi_setter_callback_info__::this_arg() const {
+-  return napi_v8_wrap_value(env_, info_.This());
++  return napi_v8_wrap_value(env_, info_.Holder());
+ }
+ 
+ napi_value napi_setter_callback_info__::new_target() const {
 --- a/v8/src/js_native_api_v8.cc
 +++ b/v8/src/js_native_api_v8.cc
-@@ -821,7 +821,13 @@
+@@ -58,7 +58,7 @@
+     v8::Local<v8::Context> context, v8::Local<v8::Data> /*host_defined_options*/,
+     v8::Local<v8::Value> resource_name, v8::Local<v8::String> specifier,
+     v8::Local<v8::FixedArray> /*import_attributes*/) {
+-  v8::Isolate* isolate = context->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+   v8::EscapableHandleScope handle_scope(isolate);
+   v8::TryCatch try_catch(isolate);
+ 
+@@ -335,7 +335,7 @@
+     if (buffer_ctor_value.As<v8::Object>()->Get(context, proto_name).ToLocal(&buffer_proto) &&
+         buffer_proto->IsObject()) {
+       // On failure `view` stays a valid Uint8Array (early-bootstrap fallback).
+-      (void)view->SetPrototypeV2(context, buffer_proto);
++      (void)view->SetPrototype(context, buffer_proto);
+     }
+   }
+ 
+@@ -444,7 +444,8 @@
+ 
+ void FunctionTrampoline(const v8::FunctionCallbackInfo<v8::Value>& info) {
+   auto* payload =
+-      static_cast<napi_callback_payload__*>(info.Data().As<v8::External>()->Value());
++      static_cast<napi_callback_payload__*>(
++          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+   if (payload == nullptr || payload->env == nullptr || payload->cb == nullptr) {
+     return;
+   }
+@@ -466,7 +467,8 @@
+                       const v8::PropertyCallbackInfo<v8::Value>& info) {
+   (void)property;
+   auto* payload =
+-      static_cast<napi_accessor_payload__*>(info.Data().As<v8::External>()->Value());
++      static_cast<napi_accessor_payload__*>(
++          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+   if (payload == nullptr || payload->env == nullptr || payload->getter_cb == nullptr) {
+     return;
+   }
+@@ -486,7 +488,8 @@
+                       const v8::PropertyCallbackInfo<void>& info) {
+   (void)property;
+   auto* payload =
+-      static_cast<napi_accessor_payload__*>(info.Data().As<v8::External>()->Value());
++      static_cast<napi_accessor_payload__*>(
++          info.DataV2().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+   if (payload == nullptr || payload->env == nullptr || payload->setter_cb == nullptr) {
+     return;
+   }
+@@ -821,7 +824,13 @@
                                                 void** data,
                                                 napi_value* result) {
    if (!CheckEnv(env) || result == nullptr) return napi_invalid_arg;
@@ -4935,7 +5140,75 @@
    if (data != nullptr) *data = ab->Data();
    *result = napi_v8_wrap_value(env, ab);
    return (*result == nullptr) ? napi_generic_failure : napi_ok;
-@@ -2977,7 +2983,10 @@
+@@ -1698,7 +1707,8 @@
+   auto* payload = env->allocate<napi_callback_payload__>(env, cb, data);
+   if (payload == nullptr) return napi_generic_failure;
+ 
+-  v8::Local<v8::External> payloadValue = v8::External::New(env->isolate, payload);
++  v8::Local<v8::External> payloadValue =
++      v8::External::New(env->isolate, payload, v8::kExternalPointerTypeTagDefault);
+   v8::Local<v8::Context> context = env->context();
+ 
+   v8::Local<v8::String> name;
+@@ -1759,7 +1769,8 @@
+   v8::Local<v8::FunctionTemplate> ctor_template =
+       v8::FunctionTemplate::New(env->isolate,
+                                 FunctionTrampoline,
+-                                v8::External::New(env->isolate, payload));
++                                v8::External::New(env->isolate, payload,
++                                                  v8::kExternalPointerTypeTagDefault));
+   ctor_template->SetClassName(name);
+   ctor_template->InstanceTemplate()->SetInternalFieldCount(1);
+ 
+@@ -2302,7 +2313,7 @@
+   if (!CheckValue(env, object) || result == nullptr) return InvalidArg(env);
+   v8::Local<v8::Value> target = napi_v8_unwrap_value(object);
+   if (!target->IsObject()) return napi_object_expected;
+-  v8::Local<v8::Value> proto = target.As<v8::Object>()->GetPrototypeV2();
++  v8::Local<v8::Value> proto = target.As<v8::Object>()->GetPrototype();
+   *result = napi_v8_wrap_value(env, proto);
+   return (*result == nullptr) ? napi_generic_failure : napi_ok;
+ }
+@@ -2314,7 +2325,7 @@
+   v8::Local<v8::Value> target = napi_v8_unwrap_value(object);
+   if (!target->IsObject()) return napi_object_expected;
+   if (!target.As<v8::Object>()
+-           ->SetPrototypeV2(env->context(), napi_v8_unwrap_value(value))
++           ->SetPrototype(env->context(), napi_v8_unwrap_value(value))
+            .FromMaybe(false)) {
+     return napi_generic_failure;
+   }
+@@ -2607,7 +2618,8 @@
+   if (!object
+            ->SetPrivate(env->context(),
+                         wrapKey,
+-                        v8::External::New(env->isolate, ref))
++                        v8::External::New(env->isolate, ref,
++                                          v8::kExternalPointerTypeTagDefault))
+            .FromMaybe(false)) {
+     ref->Destroy();
+     return napi_generic_failure;
+@@ -2630,7 +2642,8 @@
+       !wrapped->IsExternal()) {
+     return napi_invalid_arg;
+   }
+-  auto* ref = static_cast<napi_ref>(wrapped.As<v8::External>()->Value());
++  auto* ref = static_cast<napi_ref>(
++      wrapped.As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+   if (ref == nullptr) return napi_invalid_arg;
+   *result = ref->Data();
+   return napi_ok;
+@@ -2648,7 +2661,8 @@
+       !wrapped->IsExternal()) {
+     return napi_invalid_arg;
+   }
+-  auto* ref = static_cast<napi_ref>(wrapped.As<v8::External>()->Value());
++  auto* ref = static_cast<napi_ref>(
++      wrapped.As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+   object->DeletePrivate(env->context(), wrapKey).FromMaybe(false);
+   if (ref != nullptr) {
+     ref->ResetFinalizer();
+@@ -2977,7 +2991,10 @@
    v8::Local<v8::Context> context = env->context();
    v8::Context::Scope context_scope(context);
  
@@ -4947,9 +5220,47 @@
    if (!backing) return napi_generic_failure;
    *data = backing->Data();
  
+@@ -2990,7 +3007,8 @@
+   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
+   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
+   buffer_obj
+-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
++      ->SetPrivate(env->context(), key,
++                   v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
+       .FromJust();
+   env->buffer_records.push_back(record);
+ 
+@@ -3052,7 +3070,7 @@
+   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
+   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
+   buffer_obj
+-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
++      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
+       .FromJust();
+   env->buffer_records.push_back(record);
+ 
+@@ -3103,7 +3121,8 @@
+   record->holder.SetWeak(record, BufferWeakCallback, v8::WeakCallbackType::kParameter);
+   v8::Local<v8::Private> key = env->buffer_private_key.Get(env->isolate);
+   buffer_obj
+-      ->SetPrivate(env->context(), key, v8::External::New(env->isolate, record))
++      ->SetPrivate(env->context(), key,
++                   v8::External::New(env->isolate, record, v8::kExternalPointerTypeTagDefault))
+       .FromJust();
+   env->buffer_records.push_back(record);
+ 
+@@ -3266,7 +3285,7 @@
+   if (prototype_or_null != nullptr) {
+     v8::Local<v8::Value> proto = napi_v8_unwrap_value(prototype_or_null);
+     if (!proto->IsNull() && !proto->IsObject()) return napi_object_expected;
+-    if (!obj->SetPrototypeV2(env->context(), proto).FromMaybe(false)) {
++    if (!obj->SetPrototype(env->context(), proto).FromMaybe(false)) {
+       return napi_generic_failure;
+     }
+   }
 --- a/v8/src/unofficial_napi.cc
 +++ b/v8/src/unofficial_napi.cc
-@@ -18,6 +18,7 @@
+@@ -18,13 +18,13 @@
  #include <random>
  #include <sstream>
  #include <unordered_map>
@@ -4957,7 +5268,14 @@
  #include <vector>
  
  #include <libplatform/libplatform.h>
-@@ -84,6 +85,23 @@
+ #include <v8.h>
+ #include <v8-profiler.h>
+ 
+-#include "internal/node_v8_default_flags.h"
+ #include "internal/napi_v8_env.h"
+ #include "internal/napi_serdes_context.h"
+ #include "internal/unofficial_napi_bridge.h"
+@@ -84,6 +84,23 @@
  };
  
  std::mutex g_runtime_mu;
@@ -4981,11 +5299,10 @@
  // Deliberately heap-allocated and never freed: process exit (std::process::exit
  // in the wasmer CLI, or exit() in any embedder) runs static destructors on the
  // main thread while env teardown may still be running on another thread.
-@@ -120,6 +138,46 @@
- 
+@@ -121,6 +138,46 @@
  std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>& g_near_heap_limit_callbacks =
      *new std::unordered_map<v8::Isolate*, NearHeapLimitCallbackState>();
-+
+ 
 +// iwci patch (#972): confining V8's fatal out-of-memory to one isolate.
 +//
 +// Every isolate of the process shares it with every CI job, and V8 ends the
@@ -5025,19 +5342,44 @@
 +// disposal), for the same reason.
 +thread_local bool t_in_isolate_lifecycle = false;
 +std::atomic<EdgeV8Platform*> g_oom_platform{nullptr};
- 
++
  struct InterruptRequest {
    napi_env env = nullptr;
-@@ -384,7 +442,7 @@
+   unofficial_napi_interrupt_callback callback = nullptr;
+@@ -366,17 +423,17 @@
+       (context == principal_context || NapiV8IsContextifyContext(env, context));
+ 
+   if (use_principal_callback) {
+-    return state.principal_callback.Get(context->GetIsolate());
++    return state.principal_callback.Get(env->isolate);
+   }
+ 
+   for (const auto& entry : state.context_callbacks) {
+-    v8::Local<v8::Context> candidate = entry.context.Get(context->GetIsolate());
++    v8::Local<v8::Context> candidate = entry.context.Get(env->isolate);
+     if (!candidate.IsEmpty() && candidate == context) {
+-      return entry.callback.Get(context->GetIsolate());
++      return entry.callback.Get(env->isolate);
+     }
+   }
+ 
+-  return state.principal_callback.Get(context->GetIsolate());
++  return state.principal_callback.Get(env->isolate);
+ }
+ 
+ v8::MaybeLocal<v8::Value> NapiPrepareStackTraceCallback(v8::Local<v8::Context> context,
+@@ -384,8 +441,8 @@
                                                          v8::Local<v8::Array> trace) {
    napi_env env = nullptr;
    {
 -    std::lock_guard<std::mutex> lock(g_runtime_mu);
+-    auto env_it = g_env_by_isolate.find(context->GetIsolate());
 +    RuntimeLock lock;
-     auto env_it = g_env_by_isolate.find(context->GetIsolate());
++    auto env_it = g_env_by_isolate.find(v8::Isolate::GetCurrent());
      if (env_it != g_env_by_isolate.end()) {
        env = env_it->second;
-@@ -397,7 +455,7 @@
+     }
+@@ -397,7 +454,7 @@
  
    v8::Local<v8::Function> callback;
    {
@@ -5046,7 +5388,24 @@
      callback = LookupPrepareStackTraceCallback(env, context);
    }
  
-@@ -433,7 +491,7 @@
+@@ -405,14 +462,14 @@
+     return exception->ToString(context);
+   }
+ 
+-  v8::TryCatch try_catch(context->GetIsolate());
++  v8::TryCatch try_catch(v8::Isolate::GetCurrent());
+   v8::Local<v8::Value> argv[3] = {
+       context->Global(),
+       exception,
+       trace,
+   };
+   v8::MaybeLocal<v8::Value> result =
+-      callback->Call(context, v8::Undefined(context->GetIsolate()), 3, argv);
++      callback->Call(context, v8::Undefined(v8::Isolate::GetCurrent()), 3, argv);
+   if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+     try_catch.ReThrow();
+   }
+@@ -433,7 +490,7 @@
    }
    NearHeapLimitCallbackState state;
    {
@@ -5055,12 +5414,10 @@
      auto callback_it = g_near_heap_limit_callbacks.find(isolate);
      if (callback_it != g_near_heap_limit_callbacks.end()) {
        state = callback_it->second;
-@@ -443,6 +501,49 @@
-     return current_heap_limit;
-   }
+@@ -445,6 +502,49 @@
    return state.callback(env, state.data, current_heap_limit, initial_heap_limit);
-+}
-+
+ }
+ 
 +// iwci patch (#1021): an isolate's near-heap-limit callback from its env's
 +// release on: no JavaScript runs any more, so the heap only has to finish
 +// collecting and tear down. Grants room in steps, uncharged, up to the
@@ -5102,10 +5459,12 @@
 +  napi_host_heap_committed(
 +      data, heap.total_heap_size(),
 +      (type & v8::kGCTypeMarkSweepCompact) != 0 ? 1 : 0);
- }
- 
++}
++
  // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
-@@ -462,6 +563,11 @@
+ // context is installed, every V8 backing store is allocated inside the guest's
+ // linear memory so guest and host share buffer bytes directly. `free` returns
+@@ -462,6 +562,11 @@
  }
  extern "C" __attribute__((weak)) void napi_host_guest_heap_release(
      void* /*ctx*/) {}
@@ -5117,7 +5476,7 @@
  
  class TrackingArrayBufferAllocator final : public v8::ArrayBuffer::Allocator {
   public:
-@@ -585,8 +691,28 @@
+@@ -585,8 +690,28 @@
    return v8::IsolateGroup::GetDefault();
  }
  
@@ -5146,7 +5505,7 @@
    v8::Isolate* isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
    if (isolate == nullptr) return nullptr;
    if (platform != nullptr && !platform->RegisterIsolate(isolate)) {
-@@ -594,6 +720,9 @@
+@@ -594,6 +719,9 @@
      return nullptr;
    }
    v8::Isolate::Initialize(isolate, params);
@@ -5156,7 +5515,7 @@
    return isolate;
  }
  
-@@ -628,13 +757,17 @@
+@@ -628,23 +756,21 @@
    if (isolate == nullptr) return;
  
    PlatformShutdownWaiter waiter;
@@ -5181,7 +5540,17 @@
    }
    WaitForPlatformShutdown(&waiter, shutdown_pump_handle);
  }
-@@ -652,7 +785,7 @@
+ 
+-void ApplyDefaultV8Flags() {
+-  v8::V8::SetFlagsFromString(
+-      kNodeDefaultShippingV8Flags,
+-      static_cast<int>(sizeof(kNodeDefaultShippingV8Flags) - 1));
+-}
+-
+ void FatalErrorCallback(const char* location, const char* message) {
+   v8::Isolate* isolate = v8::Isolate::TryGetCurrent();
+   if (isolate == nullptr) return;
+@@ -652,7 +778,7 @@
    unofficial_napi_fatal_error_callback callback = nullptr;
    napi_env env = nullptr;
    {
@@ -5190,7 +5559,7 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.fatal;
-@@ -667,14 +800,97 @@
+@@ -667,14 +793,97 @@
    }
  }
  
@@ -5290,15 +5659,15 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.oom;
-@@ -687,15 +903,108 @@
+@@ -687,15 +896,108 @@
    if (callback != nullptr) {
      callback(env, location, details.is_heap_oom, details.detail);
    }
 +  // Returns only when it cannot confine, and then so does
 +  // `ProcessOOMErrorCallback`, which V8 calls next and which says why.
 +  (void)ConfineOutOfMemory(isolate, location, details);
-+}
-+
+ }
+ 
 +// iwci patch (#972): process-wide, for what V8 reports without an isolate
 +// (V8::FatalProcessOutOfMemory(nullptr, ...) on a worker thread, a zone
 +// allocation for instance). With an isolate, V8 13.6 calls this after the
@@ -5383,8 +5752,8 @@
 +  // Made before ConfigureRuntime returns, so before any env's isolate.
 +  std::unique_lock<std::mutex> lock(started->mutex);
 +  started->cv.wait(lock, [&] { return started->done; });
- }
- 
++}
++
 +// iwci patch: the embedder configures the runtime, with its own engine
 +// flags (snapi_bridge_host_configure_runtime), before any guest runs. A
 +// guest's request goes through ConfigureRuntimeForGuest, which never
@@ -5400,7 +5769,15 @@
    if (g_runtime.platform != nullptr) {
      return g_runtime.engine_flags.size() == engine_flags_length &&
                     (engine_flags_length == 0 ||
-@@ -716,14 +1025,32 @@
+@@ -705,7 +1007,6 @@
+                : napi_invalid_arg;
+   }
+ 
+-  ApplyDefaultV8Flags();
+   if (engine_flags_length > 0) {
+     v8::V8::SetFlagsFromString(engine_flags,
+                                static_cast<int>(engine_flags_length));
+@@ -716,14 +1017,32 @@
    if (g_runtime.platform == nullptr) return napi_generic_failure;
    v8::V8::InitializePlatform(g_runtime.platform.get());
    v8::V8::Initialize();
@@ -5434,7 +5811,7 @@
    if (g_runtime.platform == nullptr) return napi_invalid_arg;
    g_runtime.refcount++;
    *platform_out = g_runtime.platform.get();
-@@ -731,7 +1058,7 @@
+@@ -731,7 +1050,7 @@
  }
  
  void ReleaseRuntime() {
@@ -5443,7 +5820,12 @@
    if (g_runtime.refcount == 0) return;
    g_runtime.refcount--;
    // Keep shared V8 runtime alive for process lifetime in tests to avoid
-@@ -746,7 +1073,7 @@
+@@ -742,11 +1061,11 @@
+   v8::Local<v8::Promise> promise = message.GetPromise();
+   if (promise.IsEmpty()) return;
+ 
+-  v8::Isolate* isolate = promise->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5452,7 +5834,23 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -856,7 +1183,7 @@
+@@ -760,8 +1079,8 @@
+   v8::Local<v8::Value> value;
+   switch (event) {
+     case v8::kPromiseRejectWithNoHandler:
+-    case v8::kPromiseResolveAfterResolved:
+-    case v8::kPromiseRejectAfterResolved:
++    case v8::kDeprecatedPromiseResolveAfterResolved:
++    case v8::kDeprecatedPromiseRejectAfterResolved:
+       value = message.GetValue();
+       if (value.IsEmpty()) value = v8::Undefined(isolate);
+       break;
+@@ -852,11 +1171,11 @@
+ void PromiseHookCallback(v8::PromiseHookType type,
+                          v8::Local<v8::Promise> promise,
+                          v8::Local<v8::Value> parent) {
+-  v8::Isolate* isolate = promise->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
    napi_env env = nullptr;
    v8::Local<v8::Function> callback;
    {
@@ -5461,7 +5859,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -898,7 +1225,7 @@
+@@ -898,7 +1217,7 @@
    std::array<v8::Local<v8::Function>, 4> hooks;
    if (env == nullptr || isolate == nullptr) return hooks;
  
@@ -5470,7 +5868,98 @@
    auto hooks_it = g_promise_hooks.find(isolate);
    if (hooks_it == g_promise_hooks.end()) return hooks;
  
-@@ -1706,6 +2033,27 @@
+@@ -931,7 +1250,7 @@
+                                          v8::Local<v8::ArrayBuffer> array_buffer,
+                                          size_t offset,
+                                          size_t length) {
+-  v8::Isolate* isolate = context->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+   v8::Local<v8::Object> global = context->Global();
+ 
+   v8::Local<v8::Value> buffer_ctor_value;
+@@ -1058,13 +1377,14 @@
+                              "Class constructor Serializer cannot be invoked without 'new'");
+       return;
+     }
+-    if (!args.Data()->IsExternal()) {
++    if (!args.DataV2()->IsValue() || !args.DataV2().As<v8::Value>()->IsExternal()) {
+       isolate->ThrowException(v8::Exception::Error(
+           OneByteString(isolate, "Internal serializer constructor state missing")));
+       return;
+     }
+ 
+-    auto* env = static_cast<napi_env>(v8::Local<v8::External>::Cast(args.Data())->Value());
++    auto* env = static_cast<napi_env>(args.DataV2().As<v8::External>()->Value(
++        v8::kExternalPointerTypeTagDefault));
+     if (env == nullptr) {
+       isolate->ThrowException(v8::Exception::Error(
+           OneByteString(isolate, "Internal serializer environment missing")));
+@@ -1072,7 +1392,7 @@
+     }
+ 
+     auto* ctx = env->allocate<SerializerContext>(env, args.This());
+-    args.This()->SetAlignedPointerInInternalField(0, ctx);
++    args.This()->SetAlignedPointerInInternalField(0, ctx, v8::kEmbedderDataTypeTagDefault);
+ }
+ 
+ void SerializerContext::WriteHeader(const v8::FunctionCallbackInfo<v8::Value>& args) {
+@@ -1188,7 +1508,8 @@
+ SerializerContext* SerializerContext::Unwrap(
+     const v8::FunctionCallbackInfo<v8::Value>& args) {
+     if (args.This().IsEmpty() || args.This()->InternalFieldCount() < 1) return nullptr;
+-    return static_cast<SerializerContext*>(args.This()->GetAlignedPointerFromInternalField(0));
++    return static_cast<SerializerContext*>(args.This()->GetAlignedPointerFromInternalField(
++        0, v8::kEmbedderDataTypeTagDefault));
+ }
+ 
+ void SerializerContext::WeakCallback(const v8::WeakCallbackInfo<SerializerContext>& info) {
+@@ -1258,7 +1579,7 @@
+                              "Class constructor Deserializer cannot be invoked without 'new'");
+       return;
+     }
+-    if (!args.Data()->IsExternal()) {
++    if (!args.DataV2()->IsValue() || !args.DataV2().As<v8::Value>()->IsExternal()) {
+       isolate->ThrowException(v8::Exception::Error(
+           OneByteString(isolate, "Internal deserializer constructor state missing")));
+       return;
+@@ -1271,14 +1592,15 @@
+       return;
+     }
+ 
+-    auto* env = static_cast<napi_env>(v8::Local<v8::External>::Cast(args.Data())->Value());
++    auto* env = static_cast<napi_env>(args.DataV2().As<v8::External>()->Value(
++        v8::kExternalPointerTypeTagDefault));
+     if (env == nullptr) {
+       isolate->ThrowException(v8::Exception::Error(
+           OneByteString(isolate, "Internal deserializer environment missing")));
+       return;
+     }
+     auto* ctx = env->allocate<DeserializerContext>(env, args.This(), args[0]);
+-    args.This()->SetAlignedPointerInInternalField(0, ctx);
++    args.This()->SetAlignedPointerInInternalField(0, ctx, v8::kEmbedderDataTypeTagDefault);
+ }
+ 
+ void DeserializerContext::ReadHeader(const v8::FunctionCallbackInfo<v8::Value>& args) {
+@@ -1399,7 +1721,8 @@
+ DeserializerContext* DeserializerContext::Unwrap(
+     const v8::FunctionCallbackInfo<v8::Value>& args) {
+   if (args.This().IsEmpty() || args.This()->InternalFieldCount() < 1) return nullptr;
+-  return static_cast<DeserializerContext*>(args.This()->GetAlignedPointerFromInternalField(0));
++  return static_cast<DeserializerContext*>(args.This()->GetAlignedPointerFromInternalField(
++      0, v8::kEmbedderDataTypeTagDefault));
+ }
+ 
+ void DeserializerContext::WeakCallback(
+@@ -1442,7 +1765,7 @@
+                             v8::Local<v8::FunctionTemplate> tmpl) {
+   v8::Local<v8::Function> ctor;
+   if (!tmpl->GetFunction(context).ToLocal(&ctor)) return false;
+-  return target->Set(context, OneByteString(context->GetIsolate(), name), ctor).FromMaybe(false);
++  return target->Set(context, OneByteString(v8::Isolate::GetCurrent(), name), ctor).FromMaybe(false);
+ }
+ 
+ class StructuredCloneSerializerDelegate final : public v8::ValueSerializer::Delegate {
+@@ -1706,6 +2029,27 @@
  
  extern "C" {
  
@@ -5498,7 +5987,7 @@
  napi_status NAPI_CDECL unofficial_napi_configure_runtime(
      const unofficial_napi_runtime_options* options) {
    if (options != nullptr &&
-@@ -1713,8 +2061,7 @@
+@@ -1713,8 +2057,7 @@
         options->version != UNOFFICIAL_NAPI_RUNTIME_OPTIONS_VERSION)) {
      return napi_invalid_arg;
    }
@@ -5508,7 +5997,7 @@
  }
  
  napi_status NAPI_CDECL unofficial_napi_create_guest_backed_typedarray(
-@@ -1753,7 +2100,7 @@
+@@ -1753,7 +2096,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5517,7 +6006,7 @@
      if (g_runtime.platform != nullptr &&
          !g_runtime.platform->BindForegroundTaskTarget(
              env->isolate,
-@@ -1776,8 +2123,8 @@
+@@ -1776,8 +2119,8 @@
  
    env->isolate->SetFatalErrorHandler(
        hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
@@ -5528,7 +6017,12 @@
    *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
    return napi_ok;
  }
-@@ -1789,7 +2136,7 @@
+@@ -1785,11 +2128,11 @@
+ napi_status NAPI_CDECL unofficial_napi_create_env_from_context(
+     v8::Local<v8::Context> context, int32_t module_api_version, napi_env* result) {
+   if (result == nullptr || context.IsEmpty()) return napi_invalid_arg;
+-  context->GetIsolate()->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
++  v8::Isolate::GetCurrent()->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
    auto* env = new (std::nothrow) napi_env__(context, module_api_version);
    if (env == nullptr) return napi_generic_failure;
    {
@@ -5537,7 +6031,7 @@
      g_env_by_isolate[env->isolate] = env;
    }
    *result = env;
-@@ -1800,8 +2147,9 @@
+@@ -1800,8 +2143,9 @@
    if (env == nullptr) return napi_invalid_arg;
    ProfilerState profiler_state;
    bool has_profiler_state = false;
@@ -5548,7 +6042,7 @@
      if (g_runtime.platform != nullptr) {
        g_runtime.platform->ClearForegroundTaskTarget(env->isolate, env);
      }
-@@ -1829,7 +2177,8 @@
+@@ -1829,7 +2173,8 @@
      }
      unofficial_napi_internal::ResetErrorFormattingState(env);
      g_fatal_error_callbacks.erase(env->isolate);
@@ -5558,7 +6052,7 @@
      auto profiler_it = g_profiler_states.find(env);
      if (profiler_it != g_profiler_states.end()) {
        profiler_state = std::move(profiler_it->second);
-@@ -1845,7 +2194,25 @@
+@@ -1845,7 +2190,25 @@
      env->isolate->SetPromiseHook(nullptr);
      env->isolate->SetPromiseRejectCallback(nullptr);
      env->isolate->SetFatalErrorHandler(nullptr);
@@ -5585,7 +6079,7 @@
    }
    delete env;
    return napi_ok;
-@@ -1865,28 +2232,42 @@
+@@ -1865,28 +2228,42 @@
    if (callback_or_null != nullptr) {
      bool install_provider_callback = false;
      {
@@ -5630,7 +6124,7 @@
    }
    return napi_ok;
  }
-@@ -1966,7 +2347,7 @@
+@@ -1966,7 +2343,7 @@
      return napi_generic_failure;
    }
    {
@@ -5639,7 +6133,7 @@
      g_hash_seeds[isolate] = GenerateHashSeed();
      g_tracking_allocators[allocator.get()] = allocator;
    }
-@@ -1975,7 +2356,7 @@
+@@ -1975,7 +2352,7 @@
    if (scope == nullptr) {
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5648,7 +6142,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -1990,7 +2371,7 @@
+@@ -1990,7 +2367,7 @@
      delete scope;
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -5657,7 +6151,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -2007,27 +2388,56 @@
+@@ -2007,27 +2384,56 @@
    if (owner == nullptr) return napi_invalid_arg;
    auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
  
@@ -5721,7 +6215,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
    }
-@@ -2063,7 +2473,7 @@
+@@ -2063,7 +2469,7 @@
  
    bool has_prepare_stack_trace_callback = false;
    {
@@ -5730,7 +6224,7 @@
      PrepareStackTraceState& state = g_prepare_stack_trace_callbacks[env];
      v8::Local<v8::Context> principal_context = env->context();
      const bool use_principal_callback =
-@@ -2121,34 +2531,95 @@
+@@ -2121,34 +2527,95 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -5843,7 +6337,7 @@
  }
  
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-@@ -2156,17 +2627,26 @@
+@@ -2156,17 +2623,26 @@
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {
@@ -5875,7 +6369,17 @@
    }
    return napi_ok;
  }
-@@ -2337,7 +2817,7 @@
+@@ -2235,6 +2711,9 @@
+         v8::Local<v8::Context> context = request->env->context();
+         if (context.IsEmpty()) return;
+         v8::Context::Scope context_scope(context);
++        // The N-API interrupt callback may call back into JavaScript, which
++        // V8 15.9 disallows in an interrupt unless it is allowed here.
++        v8::Isolate::AllowJavascriptExecutionScope allow_js(isolate);
+         request->callback(request->env, request->data);
+       },
+       request);
+@@ -2337,7 +2816,7 @@
    v8::Local<v8::Value> raw = napi_v8_unwrap_value(callback);
    if (!raw->IsFunction()) return napi_function_expected;
    {
@@ -5884,7 +6388,7 @@
      g_env_by_isolate[env->isolate] = env;
      auto& slot = g_promise_reject_callbacks[env->isolate];
      slot.Reset();
-@@ -2371,7 +2851,7 @@
+@@ -2371,7 +2850,7 @@
    const bool has_hooks = HasPromiseHooks(persistent_hooks);
  
    {
@@ -5893,7 +6397,7 @@
      g_env_by_isolate[env->isolate] = env;
  
      auto existing = g_promise_hooks.find(env->isolate);
-@@ -2464,7 +2944,7 @@
+@@ -2464,7 +2943,7 @@
  
    v8::Local<v8::Function> callback;
    {
@@ -5902,7 +6406,7 @@
      const auto cb_it = g_promise_reject_callbacks.find(isolate);
      if (cb_it == g_promise_reject_callbacks.end() || cb_it->second.IsEmpty()) {
        return napi_ok;
-@@ -2702,7 +3182,7 @@
+@@ -2702,7 +3181,7 @@
      return napi_invalid_arg;
    }
    {
@@ -5911,7 +6415,7 @@
      auto it = g_hash_seeds.find(env->isolate);
      if (it != g_hash_seeds.end()) {
        *hash_seed_out = it->second;
-@@ -2746,7 +3226,7 @@
+@@ -2746,7 +3225,7 @@
    stats_out->external_memory = stats.external_memory();
    stats_out->array_buffer_memory = 0;
    {
@@ -5920,7 +6424,7 @@
      auto it = g_tracking_allocators.find(env->isolate->GetArrayBufferAllocator());
      if (it != g_tracking_allocators.end() && it->second) {
        stats_out->array_buffer_memory = it->second->total_mem_usage();
-@@ -2820,7 +3300,7 @@
+@@ -2820,7 +3299,7 @@
  
    if (kind == unofficial_napi_profile_heap) {
      {
@@ -5929,7 +6433,7 @@
        auto it = g_profiler_states.find(env);
        if (it != g_profiler_states.end() &&
            std::any_of(it->second.active_profiles.begin(),
-@@ -2844,7 +3324,7 @@
+@@ -2844,7 +3323,7 @@
      }
      profile->kind = kind;
      {
@@ -5938,7 +6442,7 @@
        EnsureProfilerState(env).active_profiles.push_back(profile);
      }
      *profile_out = profile;
-@@ -2853,7 +3333,7 @@
+@@ -2853,7 +3332,7 @@
  
    v8::CpuProfiler* cpu_profiler = nullptr;
    {
@@ -5947,7 +6451,7 @@
      ProfilerState& state = EnsureProfilerState(env);
      if (state.cpu_profiler == nullptr) {
        state.cpu_profiler = v8::CpuProfiler::New(env->isolate);
-@@ -2883,7 +3363,7 @@
+@@ -2883,7 +3362,7 @@
    profile->kind = kind;
    profile->provider_id = static_cast<uint32_t>(result.id);
    {
@@ -5956,7 +6460,7 @@
      auto it = g_profiler_states.find(env);
      if (it != g_profiler_states.end()) {
        it->second.active_profiles.push_back(profile);
-@@ -2908,7 +3388,7 @@
+@@ -2908,7 +3387,7 @@
    unofficial_napi_profile_kind kind = unofficial_napi_profile_cpu;
    uint32_t provider_id = 0;
    {
@@ -5965,9 +6469,64 @@
      auto it = g_profiler_states.find(env);
      if (it == g_profiler_states.end()) return napi_invalid_arg;
      auto active_it = std::find(it->second.active_profiles.begin(),
+@@ -2976,7 +3455,7 @@
+     napi_env env,
+     napi_value* result_out) {
+   if (env == nullptr || env->isolate == nullptr || result_out == nullptr) return napi_invalid_arg;
+-  v8::Local<v8::Value> value = env->isolate->GetContinuationPreservedEmbedderData();
++  v8::Local<v8::Value> value = env->isolate->GetContinuationPreservedEmbedderData().As<v8::Value>();
+   if (value.IsEmpty()) value = v8::Undefined(env->isolate);
+   *result_out = napi_v8_wrap_value(env, value);
+   return *result_out == nullptr ? napi_generic_failure : napi_ok;
+@@ -3015,7 +3494,7 @@
+   v8::Context::Scope context_scope(context);
+ 
+   v8::Local<v8::Object> target = v8::Object::New(isolate);
+-  v8::Local<v8::External> env_data = v8::External::New(isolate, env);
++  v8::Local<v8::External> env_data = v8::External::New(isolate, env, v8::kExternalPointerTypeTagDefault);
+ 
+   v8::Local<v8::FunctionTemplate> serializer_tmpl =
+       v8::FunctionTemplate::New(isolate, SerializerContext::New, env_data);
 --- a/v8/src/unofficial_napi_contextify.cc
 +++ b/v8/src/unofficial_napi_contextify.cc
-@@ -600,11 +600,24 @@
+@@ -19,6 +19,8 @@
+ #include <utility>
+ #include <vector>
+ 
++#include <cppgc/persistent.h>
++
+ #if !defined(_WIN32)
+ #include <pthread.h>
+ #include <semaphore.h>
+@@ -43,7 +45,8 @@
+ struct ContextRecord {
+   napi_ref key_ref = nullptr;
+   v8::Global<v8::Context> context;
+-  std::unique_ptr<v8::MicrotaskQueue> own_microtask_queue;
++  // V8 15.9 collects a microtask queue (cppgc); the record roots it.
++  cppgc::Persistent<v8::MicrotaskQueue> own_microtask_queue;
+ };
+ 
+ std::mutex g_context_mu;
+@@ -198,7 +201,7 @@
+               v8::Local<v8::Object> target,
+               const char* key,
+               v8::Local<v8::Value> value) {
+-  return target->Set(context, OneByteString(context->GetIsolate(), key), value).FromMaybe(false);
++  return target->Set(context, OneByteString(v8::Isolate::GetCurrent(), key), value).FromMaybe(false);
+ }
+ 
+ bool SetSymbol(v8::Local<v8::Context> context,
+@@ -218,7 +221,7 @@
+                    const char* description,
+                    v8::Local<v8::Value> value) {
+   if (target.IsEmpty() || description == nullptr) return false;
+-  return target->SetPrivate(context, ApiPrivate(context->GetIsolate(), description), value).FromMaybe(false);
++  return target->SetPrivate(context, ApiPrivate(v8::Isolate::GetCurrent(), description), value).FromMaybe(false);
+ }
+ 
+ void ResetRef(napi_env env, napi_ref* ref_ptr) {
+@@ -600,11 +603,24 @@
    return nullptr;
  }
  
@@ -5993,12 +6552,10 @@
  void RemoveModuleRecord(napi_env env, ModuleWrapRecord* record) {
    if (env == nullptr || record == nullptr) return;
    auto* state = GetModuleWrapState(env);
-@@ -691,8 +704,44 @@
-   *data_out = static_cast<const uint8_t*>(store->Data()) + view->ByteOffset();
-   *size_out = view->ByteLength();
+@@ -693,6 +709,42 @@
    return true;
-+}
-+
+ }
+ 
 +// iwci patch (#1007): an own data property of `object`, read without running
 +// JavaScript. A getter is not called, and a proxy is not looked into (its
 +// traps are script code): either reads as absent.
@@ -6006,7 +6563,7 @@
 +                     v8::Local<v8::Object> object,
 +                     const char* name,
 +                     v8::Local<v8::Value>* out) {
-+  v8::Isolate* isolate = context->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
 +  if (object->IsProxy()) return false;
 +  v8::Local<v8::Value> descriptor;
 +  if (!object->GetOwnPropertyDescriptor(context, OneByteString(isolate, name)).ToLocal(&descriptor) ||
@@ -6019,8 +6576,8 @@
 +  v8::Local<v8::String> value_key = OneByteString(isolate, "value");
 +  return fields->HasRealNamedProperty(context, value_key).FromMaybe(false) &&
 +         fields->GetRealNamedProperty(context, value_key).ToLocal(out);
- }
- 
++}
++
 +// iwci patch (#1007): the bytes as a Node Buffer in memory of their own, made
 +// without running JavaScript. Calling the global `Buffer.from` from here,
 +// as the provider did, ran script inside a host call that had not lent its
@@ -6038,7 +6595,7 @@
  bool CreateNodeBufferFromBytes(napi_env env, const uint8_t* data, size_t size, napi_value* out) {
    if (out == nullptr) return false;
    *out = nullptr;
-@@ -700,7 +749,10 @@
+@@ -700,7 +752,10 @@
    v8::Isolate* isolate = env->isolate;
    v8::Local<v8::Context> context = env->context();
  
@@ -6050,7 +6607,7 @@
    if (!store) return false;
    if (size > 0 && data != nullptr) {
      std::memcpy(store->Data(), data, size);
-@@ -709,21 +761,15 @@
+@@ -709,21 +764,15 @@
    v8::Local<v8::ArrayBuffer> ab = v8::ArrayBuffer::New(isolate, std::move(store));
    v8::Local<v8::Uint8Array> view = v8::Uint8Array::New(ab, 0, size);
  
@@ -6075,13 +6632,22 @@
 +      buffer_ctor->IsFunction() &&
 +      OwnDataProperty(context, buffer_ctor.As<v8::Object>(), "prototype", &buffer_proto) &&
 +      buffer_proto->IsObject() && !buffer_proto->IsProxy() &&
-+      buffer_proto.As<v8::Object>()->GetPrototypeV2()->StrictEquals(view->GetPrototypeV2())) {
++      buffer_proto.As<v8::Object>()->GetPrototype()->StrictEquals(view->GetPrototype())) {
 +    // On failure `view` stays a valid Uint8Array.
-+    (void)view->SetPrototypeV2(context, buffer_proto);
++    (void)view->SetPrototype(context, buffer_proto);
    }
  
    *out = napi_v8_wrap_value(env, view);
-@@ -838,10 +884,13 @@
+@@ -798,7 +847,7 @@
+       rec.key_ref = nullptr;
+     }
+     rec.context.Reset();
+-    rec.own_microtask_queue.reset();
++    rec.own_microtask_queue.Clear();
+   }
+   g_context_records.erase(it);
+ }
+@@ -838,10 +887,13 @@
  }
  
  void EnsureModuleWrapCleanupHook(napi_env env) {
@@ -6098,9 +6664,172 @@
    }
  }
  
-@@ -1276,12 +1325,17 @@
+@@ -909,15 +961,15 @@
+ }
+ 
+ void ThrowV8CodeError(v8::Local<v8::Context> context, const char* code, const std::string& message) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) {
+-    context->GetIsolate()->ThrowException(v8::Exception::Error(
+-        v8::String::NewFromUtf8(context->GetIsolate(), message.c_str(), v8::NewStringType::kNormal).ToLocalChecked()));
++    v8::Isolate::GetCurrent()->ThrowException(v8::Exception::Error(
++        v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), message.c_str(), v8::NewStringType::kNormal).ToLocalChecked()));
+     return;
+   }
+   napi_value error = nullptr;
+   if (!CreateCodeError(env, code, message, &error) || error == nullptr) return;
+-  context->GetIsolate()->ThrowException(napi_v8_unwrap_value(error));
++  v8::Isolate::GetCurrent()->ThrowException(napi_v8_unwrap_value(error));
+ }
+ 
+ ModuleWrapRecord* FindModuleRecordForModule(napi_env env, v8::Local<v8::Module> module) {
+@@ -1021,7 +1073,7 @@
+   v8::Local<v8::FixedArray> raw_requests = module->GetModuleRequests();
+   record->module_requests.reserve(raw_requests->Length());
+   for (int i = 0; i < raw_requests->Length(); ++i) {
+-    v8::Local<v8::Value> request_value = raw_requests->Get(context, i).As<v8::Value>();
++    v8::Local<v8::Data> request_value = raw_requests->Get(i);
+     if (request_value.IsEmpty() || !request_value->IsModuleRequest()) {
+       return false;
+     }
+@@ -1032,8 +1084,8 @@
+ 
+     v8::Local<v8::FixedArray> raw_attributes = request->GetImportAttributes();
+     for (int j = 0; j < raw_attributes->Length(); j += 3) {
+-      v8::Local<v8::Value> key_value = raw_attributes->Get(context, j).As<v8::Value>();
+-      v8::Local<v8::Value> value_value = raw_attributes->Get(context, j + 1).As<v8::Value>();
++      v8::Local<v8::Value> key_value = raw_attributes->Get(j).As<v8::Value>();
++      v8::Local<v8::Value> value_value = raw_attributes->Get(j + 1).As<v8::Value>();
+       if (key_value.IsEmpty() || value_value.IsEmpty()) {
+         return false;
+       }
+@@ -1054,7 +1106,7 @@
+                                                  v8::Local<v8::String> specifier,
+                                                  v8::Local<v8::FixedArray> import_attributes,
+                                                  v8::Local<v8::Module> referrer) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) return v8::MaybeLocal<v8::Module>();
+   ModuleWrapRecord* dependent = FindModuleRecordForModule(env, referrer);
+   if (dependent == nullptr || dependent->linked_requests.empty()) {
+@@ -1064,8 +1116,8 @@
+ 
+   std::vector<ModuleImportAttributeRecord> attributes;
+   for (int i = 0; i < import_attributes->Length(); i += 3) {
+-    v8::Local<v8::Value> key_value = import_attributes->Get(context, i).As<v8::Value>();
+-    v8::Local<v8::Value> value_value = import_attributes->Get(context, i + 1).As<v8::Value>();
++    v8::Local<v8::Value> key_value = import_attributes->Get(i).As<v8::Value>();
++    v8::Local<v8::Value> value_value = import_attributes->Get(i + 1).As<v8::Value>();
+     if (key_value.IsEmpty() || value_value.IsEmpty()) {
+       return v8::MaybeLocal<v8::Module>();
+     }
+@@ -1079,14 +1131,21 @@
+     ThrowV8CodeError(context, "ERR_VM_MODULE_LINK_FAILURE", "Module request is not cached");
+     return v8::MaybeLocal<v8::Module>();
+   }
+-  return dependent->linked_requests[it->second]->module.Get(env->isolate);
++  v8::Local<v8::Module> requested = dependent->linked_requests[it->second]->module.Get(env->isolate);
++  // A module under evaluation is refused, as wasmerio/napi 710500f does
++  // for V8 15.9.
++  if (requested->GetStatus() == v8::Module::kEvaluating) {
++    ThrowV8CodeError(context, "ERR_VM_MODULE_STATUS", "A module it imports is evaluating");
++    return v8::MaybeLocal<v8::Module>();
++  }
++  return requested;
+ }
+ 
+ v8::MaybeLocal<v8::Object> ModuleResolveSourceCallback(v8::Local<v8::Context> context,
+                                                        v8::Local<v8::String> specifier,
+                                                        v8::Local<v8::FixedArray> import_attributes,
+                                                        v8::Local<v8::Module> referrer) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) return v8::MaybeLocal<v8::Object>();
+   ModuleWrapRecord* dependent = FindModuleRecordForModule(env, referrer);
+   if (dependent == nullptr || dependent->linked_requests.empty()) {
+@@ -1096,8 +1155,8 @@
+ 
+   std::vector<ModuleImportAttributeRecord> attributes;
+   for (int i = 0; i < import_attributes->Length(); i += 3) {
+-    v8::Local<v8::Value> key_value = import_attributes->Get(context, i).As<v8::Value>();
+-    v8::Local<v8::Value> value_value = import_attributes->Get(context, i + 1).As<v8::Value>();
++    v8::Local<v8::Value> key_value = import_attributes->Get(i).As<v8::Value>();
++    v8::Local<v8::Value> value_value = import_attributes->Get(i + 1).As<v8::Value>();
+     if (key_value.IsEmpty() || value_value.IsEmpty()) {
+       return v8::MaybeLocal<v8::Object>();
+     }
+@@ -1133,7 +1192,7 @@
+ 
+ v8::MaybeLocal<v8::Value> SyntheticModuleEvaluationSteps(v8::Local<v8::Context> context,
+                                                          v8::Local<v8::Module> module) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) return v8::MaybeLocal<v8::Value>();
+   ModuleWrapRecord* record = FindModuleRecordForModule(env, module);
+   if (record == nullptr) return v8::MaybeLocal<v8::Value>();
+@@ -1148,7 +1207,7 @@
+     if (napi_is_exception_pending(env, &pending) == napi_ok && pending) {
+       napi_value error = nullptr;
+       if (napi_get_and_clear_last_exception(env, &error) == napi_ok && error != nullptr) {
+-        context->GetIsolate()->ThrowException(napi_v8_unwrap_value(error));
++        v8::Isolate::GetCurrent()->ThrowException(napi_v8_unwrap_value(error));
+       }
+     }
+     return v8::MaybeLocal<v8::Value>();
+@@ -1158,7 +1217,7 @@
+   if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+     return v8::MaybeLocal<v8::Value>();
+   }
+-  if (resolver->Resolve(context, v8::Undefined(context->GetIsolate())).IsNothing()) {
++  if (resolver->Resolve(context, v8::Undefined(v8::Isolate::GetCurrent())).IsNothing()) {
+     return v8::MaybeLocal<v8::Value>();
+   }
+   return resolver->GetPromise();
+@@ -1174,8 +1233,8 @@
+   names.reserve(import_attributes->Length() / 2);
+   values.reserve(import_attributes->Length() / 2);
+   for (int i = 0; i < import_attributes->Length(); i += 2) {
+-    v8::Local<v8::Value> key = import_attributes->Get(context, i).As<v8::Value>();
+-    v8::Local<v8::Value> value = import_attributes->Get(context, i + 1).As<v8::Value>();
++    v8::Local<v8::Value> key = import_attributes->Get(i).As<v8::Value>();
++    v8::Local<v8::Value> value = import_attributes->Get(i + 1).As<v8::Value>();
+     if (key.IsEmpty() || value.IsEmpty() || !key->IsName()) continue;
+     names.push_back(key.As<v8::Name>());
+     values.push_back(value);
+@@ -1190,7 +1249,7 @@
+     v8::Local<v8::String> specifier,
+     v8::ModuleImportPhase phase,
+     v8::Local<v8::FixedArray> import_attributes) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) return v8::MaybeLocal<v8::Promise>();
+ 
+   auto* state = GetModuleWrapState(env);
+@@ -1198,7 +1257,7 @@
+   napi_value callback = GetRefValue(env, state->import_module_dynamically_ref);
+   if (callback == nullptr) return v8::MaybeLocal<v8::Promise>();
+ 
+-  v8::Isolate* isolate = context->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+   v8::EscapableHandleScope handle_scope(isolate);
+   v8::Context::Scope context_scope(context);
+ 
+@@ -1207,7 +1266,7 @@
+   if (!host_defined_options.IsEmpty() && host_defined_options->IsFixedArray()) {
+     v8::Local<v8::FixedArray> options = host_defined_options.As<v8::FixedArray>();
+     if (options->Length() == kHostDefinedOptionsLength) {
+-      id = options->Get(context, kHostDefinedOptionsId).As<v8::Value>();
++      id = options->Get(kHostDefinedOptionsId).As<v8::Value>();
+       have_host_defined_options = true;
+     }
+   }
+@@ -1274,14 +1333,19 @@
+ void HostInitializeImportMetaObject(v8::Local<v8::Context> context,
+                                     v8::Local<v8::Module> module,
                                      v8::Local<v8::Object> meta) {
-   napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
    if (env == nullptr) return;
 -  auto it = g_module_wrap_states.find(env);
 -  if (it == g_module_wrap_states.end()) return;
@@ -6119,7 +6848,68 @@
    napi_value wrapper = GetRefValue(env, record->wrapper_ref);
    napi_value id_value = GetRefValue(env, record->host_defined_option_ref);
    if (callback == nullptr || wrapper == nullptr || id_value == nullptr) return;
-@@ -2465,7 +2519,9 @@
+@@ -1298,23 +1362,23 @@
+                                                       v8::Local<v8::String> specifier,
+                                                       v8::Local<v8::FixedArray> /*import_attributes*/,
+                                                       v8::Local<v8::Module> /*referrer*/) {
+-  napi_env env = GetModuleWrapEnvForIsolate(context->GetIsolate());
++  napi_env env = GetModuleWrapEnvForIsolate(v8::Isolate::GetCurrent());
+   if (env == nullptr) return v8::MaybeLocal<v8::Module>();
+   auto* state = GetModuleWrapState(env);
+   if (state == nullptr || state->temporary_required_module_facade_original == nullptr ||
+       state->temporary_required_module_facade_original->module.IsEmpty()) {
+     return v8::MaybeLocal<v8::Module>();
+   }
+-  if (V8ValueToUtf8(context->GetIsolate(), specifier) != "original") {
++  if (V8ValueToUtf8(v8::Isolate::GetCurrent(), specifier) != "original") {
+     return v8::MaybeLocal<v8::Module>();
+   }
+-  return state->temporary_required_module_facade_original->module.Get(context->GetIsolate());
++  return state->temporary_required_module_facade_original->module.Get(v8::Isolate::GetCurrent());
+ }
+ 
+ bool StoreRecord(napi_env env,
+                  napi_value key,
+                  v8::Local<v8::Context> context,
+-                 std::unique_ptr<v8::MicrotaskQueue> own_microtask_queue) {
++                 cppgc::Persistent<v8::MicrotaskQueue> own_microtask_queue) {
+   EnsureContextCleanupHook(env);
+ 
+   ContextRecord record;
+@@ -1341,7 +1405,7 @@
+   v8::Local<v8::Context> context = rec->context.Get(env->isolate);
+   if (context.IsEmpty()) return false;
+   *context_out = context;
+-  *microtask_queue_out = rec->own_microtask_queue ? rec->own_microtask_queue.get() : nullptr;
++  *microtask_queue_out = rec->own_microtask_queue.Get();
+   return true;
+ }
+ 
+@@ -1419,7 +1483,7 @@
+                                                 v8::Local<v8::String> filename,
+                                                 bool is_cjs_scope,
+                                                 v8::Local<v8::Symbol> host_id_symbol = v8::Local<v8::Symbol>()) {
+-  v8::Isolate* isolate = context->GetIsolate();
++  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+ 
+   v8::ScriptOrigin origin(filename,
+                           0,
+@@ -1698,11 +1762,12 @@
+     }
+   }
+ 
+-  std::unique_ptr<v8::MicrotaskQueue> own_queue;
++  // Rooted from the start: the context made below can collect garbage.
++  cppgc::Persistent<v8::MicrotaskQueue> own_queue;
+   v8::MicrotaskQueue* queue = nullptr;
+   if (own_microtask_queue) {
+     own_queue = v8::MicrotaskQueue::New(isolate, v8::MicrotasksPolicy::kExplicit);
+-    queue = own_queue.get();
++    queue = own_queue.Get();
+   }
+ 
+   std::vector<SavedOwnProperty> saved_properties;
+@@ -2465,7 +2530,9 @@
                                             v8::ScriptCompiler::NoCacheReason::kNoCacheNoReason)
               .ToLocal(&module)) {
        if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
@@ -6130,7 +6920,7 @@
              isolate, context, try_catch.Exception(), try_catch.Message());
          return ThrowTryCatchException(env, try_catch);
        }
-@@ -2505,7 +2561,7 @@
+@@ -2505,7 +2572,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6139,7 +6929,7 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -2564,7 +2620,7 @@
+@@ -2564,7 +2631,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6148,7 +6938,15 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -2732,6 +2788,11 @@
+@@ -2727,11 +2794,19 @@
+   v8::Local<v8::Context> context = record->context.Get(isolate);
+   v8::Context::Scope context_scope(context);
+   v8::Local<v8::Module> module = record->module.Get(isolate);
++  // Already linked while its evaluation runs; V8 15.9's InstantiateModule
++  // rejects this status even for a linked module.
++  if (module->GetStatus() == v8::Module::kEvaluating) return napi_ok;
+ 
+   v8::TryCatch try_catch(isolate);
    auto maybe = module->InstantiateModule(context, ModuleResolveCallback, ModuleResolveSourceCallback);
    if (maybe.IsNothing()) {
      if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
@@ -6160,7 +6958,7 @@
        return ThrowTryCatchException(env, try_catch);
      }
      return napi_generic_failure;
-@@ -2811,7 +2872,9 @@
+@@ -2811,7 +2886,9 @@
    if (module->IsGraphAsync()) {
      auto stalled_messages = std::get<1>(module->GetStalledTopLevelAwaitMessages(isolate));
      for (const auto& message : stalled_messages) {
@@ -6171,7 +6969,7 @@
        std::fprintf(stderr, "Error: unexpected top-level await at %s\n", info.c_str());
      }
      ThrowCodeError(env,
-@@ -2910,7 +2973,9 @@
+@@ -2910,7 +2987,9 @@
    if (!warnings) return napi_ok;
  
    for (const auto& message : stalled_messages) {
@@ -6182,7 +6980,7 @@
      std::fprintf(stderr, "Warning: Detected unsettled top-level await at %s\n", info.c_str());
    }
    return napi_ok;
-@@ -3007,7 +3072,7 @@
+@@ -3007,7 +3086,7 @@
  
    EnsureModuleWrapCleanupHook(env);
    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6191,7 +6989,7 @@
    ResetRef(env, &state->import_module_dynamically_ref);
    ResetRef(env, &state->initialize_import_meta_ref);
    state->import_module_dynamically_ref = import_ref;
-@@ -3048,12 +3113,12 @@
+@@ -3048,12 +3127,12 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);

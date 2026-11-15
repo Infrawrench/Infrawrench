@@ -87,8 +87,8 @@ pub fn set_v8_worker_threads(count: Option<u32>) -> Result<(), WorkerThreadsAlre
     Ok(())
 }
 
-/// iwci patch: configures the process's V8 from the embedder, with the
-/// bridge's defaults and then `engine_flags` (V8's command-line syntax).
+/// iwci patch: configures the process's V8 from the embedder, with
+/// `engine_flags` (V8's command-line syntax).
 ///
 /// Call it once, after [`set_v8_worker_threads`] and
 /// [`set_worker_task_hooks`] and before any guest runs. A guest's own

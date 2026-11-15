@@ -231,8 +231,7 @@ jobs:
 
   bash-node:
     name: bash-node (Edge.js on V8)
-    # wasmer-napi's build script downloads a prebuilt V8, and there is no
-    # Linux arm64 build of it.
+    # Edge.js is built on x86_64 (edgejs/build.sh).
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -247,6 +246,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ci-runner
+
+      # The bridge links V8 15.9 built by builtins/v8/build.sh (hours, so not
+      # here), kept in the runner pool's bucket and checked against the
+      # SHA-256 pinned in vendor/wasmer-napi/build.rs.
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
 
       - name: Build the runner with V8
         run: cargo build -p iwci --features node
@@ -301,7 +311,7 @@ jobs:
   clickhouse:
     name: clickhouse (CloudHouse for WebAssembly)
     # Its environment carries Edge.js, and its jobs run Node (the runner with
-    # V8, which wasmer-napi has no Linux arm64 build of), as bash-node's do.
+    # V8), as bash-node's do.
     runs-on: ubuntu-24.04
     # A build from scratch is about 6,900 objects: two to three hours on
     # this runner's four cores. Pull requests and nightly runs reuse the
@@ -319,6 +329,15 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ci-runner
+
+      # See the bash-node job.
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
 
       - name: Build the runner with V8
         run: cargo build -p iwci --features node
