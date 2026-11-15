@@ -176,8 +176,14 @@ export interface PeriodicPass {
 
 export type Pass = AccountPass | PeriodicPass;
 
-/** How long the CI status loop waits after one pass settles before the next. */
-export const CI_STATUS_LOOP_MS = 5_000;
+/**
+ * How long the CI status loop waits after one pass settles before the next.
+ * A second: a finished run waits about this long to be noticed, which is
+ * time added to every run. An idle pass is one read (`ci/pass.ts`).
+ */
+export const CI_STATUS_LOOP_MS = 1_000;
+/** The same for the gateway's cloud-job pass, which nobody watches by the second. */
+export const CI_CLOUD_LOOP_MS = 10_000;
 
 type Capability =
   "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats" | "idleFindings";
@@ -578,7 +584,7 @@ export const PASSES: readonly Pass[] = [
   },
 
   // CI: dispatch queued runs and follow running ones, which moves every
-  // check on GitHub and the CI tab, on a loop of its own every few seconds;
+  // check on GitHub and the CI tab, on a loop of its own every second;
   // closing unapproved forks' runs and sending usage to the billing meters
   // on the shared tick. Postgres, the CI proxy, GitHub and Stripe only, and
   // every step claims its rows, so the edge.
@@ -605,7 +611,7 @@ export const PASSES: readonly Pass[] = [
     kind: "periodic",
     name: "ci-cloud",
     runtime: "gateway",
-    ownLoopMs: CI_STATUS_LOOP_MS * 2,
+    ownLoopMs: CI_CLOUD_LOOP_MS,
     run: guarded("[ci-cloud] tick failed:", () => runCiCloudPass()),
   },
 

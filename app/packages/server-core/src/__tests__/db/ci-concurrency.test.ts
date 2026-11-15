@@ -371,6 +371,37 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     await expect(runs.cancelRun(orgId, randomUUID())).rejects.toThrow(/No such run/);
   });
 
+  it("dispatches a new run at once, though this process's clock is behind the database's", async () => {
+    const { runs } = await modules();
+    const commit = (++sha).toString(16).padStart(40, "0");
+    let id = "";
+    // A minute behind: a few milliseconds were enough to leave the webhook's
+    // own dispatch empty-handed, and the run waiting for the poller.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() - 60_000 });
+    try {
+      const accepted = await runs.acceptCiEvent({
+        kind: "push",
+        installationId,
+        repoFullName: repo,
+        branch: "skewed",
+        sha: commit,
+        defaultBranch: "main",
+        actorLogin: "octocat",
+      });
+      if (!accepted) throw new Error("not accepted");
+      id = accepted.id;
+      // No `due()`: its `next_attempt_at` is the insert's `now()`.
+      await runs.dispatchRun(accepted.id);
+      expect((await row(accepted.id)).status).toBe("running");
+      expect((await runs.dueQueuedRunIds(20)).includes(accepted.id)).toBe(false);
+      await finishOnRunner(accepted.id, { passed: true, pipelines: [] });
+    } finally {
+      vi.useRealTimers();
+    }
+    await (await modules()).pass.runCiStatusPass();
+    expect((await row(id)).status).toBe("passed");
+  });
+
   it("lets a run whose pipelines name no group go as before", async () => {
     const { runs } = await modules();
     const id = await push("old-runner", "ignored", true);

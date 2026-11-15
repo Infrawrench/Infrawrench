@@ -175,6 +175,40 @@ describe("CI checks on GitHub", () => {
     });
   });
 
+  it("finishes the run's own check before its jobs' checks", async () => {
+    mockProxyJson.mockResolvedValue(
+      finished([
+        { id: "build", status: "passed" },
+        { id: "check", status: "passed" },
+      ]),
+    );
+    const fetch = vi.mocked(githubInstallationFetch);
+    await syncRun({ ...row("push"), jobChecks: {} } as Parameters<typeof syncRun>[0]);
+    // A required check never waits behind a GitHub call per job.
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(mockUpsert.mock.invocationCallOrder[0]).toBeLessThan(fetch.mock.invocationCallOrder[0]!);
+  });
+
+  it("follows a running run without writing its job checks when told not to", async () => {
+    const running = {
+      id: "ci-1.abc",
+      state: "running",
+      progress: {
+        pipelines: [
+          { name: "P", jobs: [{ key: "build" }], states: { build: { status: "running" } } },
+        ],
+      },
+    };
+    mockProxyJson.mockResolvedValue(running);
+    const fetch = vi.mocked(githubInstallationFetch);
+    const going = { ...row("push"), jobChecks: {} } as Parameters<typeof syncRun>[0];
+    await syncRun(going, { jobChecks: false });
+    expect(fetch).not.toHaveBeenCalled();
+    await syncRun(going);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
   it("waits out a 404 just after the run started", async () => {
     mockProxyJson.mockRejectedValue(new CiProxyError("no such run", 404));
     await syncRun(row("pull-request"));

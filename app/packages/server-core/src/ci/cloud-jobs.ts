@@ -41,7 +41,7 @@ import { getInstallationToken } from "../github/app.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { bootstrapScript, jobScript, parseFinishBody } from "./bootstrap.js";
 import { CiProxyError, ciProxyConfigured, proxyJson } from "./proxy.js";
-import { dispatchRun } from "./runs.js";
+import { attemptDue, dispatchRun } from "./runs.js";
 
 type RunRow = typeof ciRuns.$inferSelect;
 type JobRow = typeof ciCloudJobs.$inferSelect;
@@ -949,7 +949,7 @@ export async function runCiCloudPass(): Promise<void> {
     .where(
       and(
         eq(ciRuns.status, "queued"),
-        lte(ciRuns.nextAttemptAt, new Date()),
+        attemptDue(),
         sql`jsonb_array_length(coalesce(${ciRuns.access}, '[]'::jsonb)) > 0`,
       ),
     )

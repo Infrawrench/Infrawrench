@@ -40,7 +40,7 @@ import { accounts, ciAccounts, ciCloudJobs, ciRuns, githubInstallations } from "
 import { planAccess } from "../entitlements.js";
 import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
-import { upsertCheck } from "./checks.js";
+import { type CheckUpdate, upsertCheck } from "./checks.js";
 import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
 import {
   abandonJobChecks,
@@ -77,6 +77,19 @@ const GONE_REASON =
 /** Finished runs whose report the runners keep, with each job's output. */
 const FINISHED_WITH_REPORT: readonly CiRunStatus[] = ["passed", "failed", "cancelled"];
 const CANCELLED_BY_PERSON = "Cancelled from Infrawrench.";
+
+/**
+ * A queued run's `next_attempt_at` has come, by the database's clock. A new
+ * run's is the insert's `now()`, so comparing it with this process's clock
+ * refused the webhook's own dispatch whenever that clock was a few
+ * milliseconds behind the database's, and the run waited for the poller.
+ */
+export function attemptDue() {
+  // Built on call, not on import: a test that stubs the schema loads this module too.
+  return sql`${ciRuns.nextAttemptAt} <= now()`;
+}
+/** "Now" for a `next_attempt_at` that `attemptDue` reads: the database's, as a new row's is. */
+const dbNow = sql<Date>`now()`;
 
 function cancelledCheck(reason: string) {
   return {
@@ -311,7 +324,7 @@ export async function dispatchRun(id: string): Promise<void> {
       nextAttemptAt: new Date(now.getTime() + CLAIM_MS),
       updatedAt: now,
     })
-    .where(and(eq(ciRuns.id, id), eq(ciRuns.status, "queued"), lte(ciRuns.nextAttemptAt, now)))
+    .where(and(eq(ciRuns.id, id), eq(ciRuns.status, "queued"), attemptDue()))
     .returning();
   if (!row) return;
 
@@ -435,7 +448,7 @@ async function deferToGateway(row: CiRunRow): Promise<void> {
     .update(ciRuns)
     .set({
       attempts: sql`greatest(${ciRuns.attempts} - 1, 0)`,
-      nextAttemptAt: new Date(),
+      nextAttemptAt: dbNow,
       statusReason: "Waiting for the gateway to read what its jobs are lent.",
       updatedAt: new Date(),
     })
@@ -617,8 +630,13 @@ export function checkSummary(jobs: CiJobSummary[]): string {
   return ["| | Pipeline | Job | |", "|---|---|---|---|", ...rows].join("\n");
 }
 
-/** Brings a running run up to date from the proxy. */
-export async function syncRun(row: CiRunRow): Promise<void> {
+/**
+ * Brings a running run up to date from the proxy. `jobChecks: false` skips
+ * the job checks of a run that is still going (the pass follows a run more
+ * often than it writes its jobs to GitHub); a finished run's are always
+ * written.
+ */
+export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {}): Promise<void> {
   if (row.status !== "running" || !row.proxyRunId) return;
   await resendCancels(row);
   let run: ProxyRun;
@@ -652,7 +670,9 @@ export async function syncRun(row: CiRunRow): Promise<void> {
   }
   if (run.state === "running") {
     // Each job's own check, as it starts and finishes.
-    if (run.progress) await syncJobChecks(row, groupsFromProgress(run.progress));
+    if (run.progress && opts.jobChecks !== false) {
+      await syncJobChecks(row, groupsFromProgress(run.progress));
+    }
     return;
   }
   if (run.state === "failed") {
@@ -680,29 +700,40 @@ export async function syncRun(row: CiRunRow): Promise<void> {
     vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
     memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
   });
+  // The run's own check first: it is the one a branch protection rule
+  // waits for, and each job check after it is a GitHub call of its own.
+  await upsertCheck(row, finishedCheck(row, jobs, passed, failedCount, cancelReason));
   // Every job's check finished, including any no poll saw running.
   await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
+}
+
+/** What a finished run's own check says. */
+function finishedCheck(
+  row: CiRunRow,
+  jobs: CiJobSummary[],
+  passed: boolean,
+  failedCount: number,
+  cancelReason: string | null,
+): CheckUpdate {
   if (cancelReason !== null) {
-    await upsertCheck(row, {
+    return {
       ...cancelledCheck(cancelReason),
       summary: `${cancelReason}\n\n${checkSummary(jobs)}`,
-    });
-    return;
+    };
   }
-  const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
   // No pipeline matched this event (a push to a branch when `on.push` only
   // names main): skipped, not a green pass for code nothing checked.
   if (passed && jobs.length === 0) {
     const what = row.event === "pull-request" ? "pull request" : "push";
-    await upsertCheck(row, {
+    return {
       status: "completed",
       conclusion: "skipped",
       title: `No pipeline runs on this ${what}`,
       summary: `No pipeline in \`.infrawrench/ci\` runs on this ${what}.`,
-    });
-    return;
+    };
   }
-  await upsertCheck(row, {
+  const cachedCount = jobs.filter((j) => j.reason === CACHED_REASON).length;
+  return {
     status: "completed",
     conclusion: passed ? "success" : "failure",
     title: passed
@@ -711,7 +742,7 @@ export async function syncRun(row: CiRunRow): Promise<void> {
         : `${jobs.length} job(s) passed`
       : `${failedCount} of ${jobs.length} job(s) failed`,
     summary: checkSummary(jobs),
-  });
+  };
 }
 
 /** Approves a fork's commit: it runs, without secrets. */
@@ -726,7 +757,7 @@ export async function approveRun(
       status: "queued",
       decidedByUserId: userId,
       decidedAt: new Date(),
-      nextAttemptAt: new Date(),
+      nextAttemptAt: dbNow,
       updatedAt: new Date(),
     })
     .where(
@@ -1137,10 +1168,23 @@ export async function dueQueuedRunIds(limit: number): Promise<string[]> {
   const rows = await db
     .select({ id: ciRuns.id })
     .from(ciRuns)
-    .where(and(eq(ciRuns.status, "queued"), lte(ciRuns.nextAttemptAt, new Date())))
+    .where(and(eq(ciRuns.status, "queued"), attemptDue()))
     .orderBy(ciRuns.nextAttemptAt)
     .limit(limit);
   return rows.map((r) => r.id);
+}
+
+/**
+ * Whether any run is waiting or going: the one read an idle status pass
+ * makes, so it can come round every second.
+ */
+export async function anyLiveRun(): Promise<boolean> {
+  const [row] = await db
+    .select({ id: ciRuns.id })
+    .from(ciRuns)
+    .where(inArray(ciRuns.status, ["pending", "queued", "running"]))
+    .limit(1);
+  return row !== undefined;
 }
 
 export async function runningRuns(limit: number): Promise<CiRunRow[]> {
