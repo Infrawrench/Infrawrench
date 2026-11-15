@@ -63,11 +63,38 @@ export const SERVER_CORE_PREBUNDLED = [
   "@infrawrench/plugin-base/validation",
 ];
 
-/** The `test.deps` of a Vitest config that prebundles `include`. */
-export function prebundle(include: readonly string[]) {
+/**
+ * For a config on Vite 6, whose optimizer is esbuild: no source maps for the
+ * bundles. Writing them is 3 of the 7.5 s that bundling web's list takes on
+ * Infrawrench CI's runner (esbuild's WebAssembly build, one thread), before
+ * the first test starts. A stack frame inside one of the listed packages
+ * (client-core, plugin-base and the API contract among them) then names the
+ * bundle (`deps_ssr/chunk-L2B632U7.js:6727`) with its function, rather than
+ * the package's own file; frames in the tests and in the source under test
+ * are unchanged, since those never were in a bundle. desktop's config sets
+ * the same.
+ *
+ * Not for a config on Vite 8 (server-core's): its optimizer is Rolldown, which
+ * bundles this list in a second and a half, takes no esbuild options (Vite
+ * warns about them) and always writes its maps `hidden`, so no bundle names
+ * one.
+ */
+export const WITHOUT_SOURCE_MAPS = { esbuildOptions: { sourcemap: false } } as const;
+
+/**
+ * The `test.deps` of a Vitest config that prebundles `include`. `options` are
+ * more of the optimizer's own, such as `WITHOUT_SOURCE_MAPS`.
+ */
+export function prebundle(include: readonly string[], options: object = {}) {
   return {
     optimizer: {
-      ssr: { enabled: true, force: true, include: [...include], exclude: [...builtinModules] },
+      ssr: {
+        enabled: true,
+        force: true,
+        include: [...include],
+        exclude: [...builtinModules],
+        ...options,
+      },
     },
   };
 }

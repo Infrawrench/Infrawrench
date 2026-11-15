@@ -1,6 +1,10 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
-import { prebundle, SERVER_CORE_PREBUNDLED } from "../server-core/vitest.prebundle";
+import {
+  prebundle,
+  SERVER_CORE_PREBUNDLED,
+  WITHOUT_SOURCE_MAPS,
+} from "../server-core/vitest.prebundle";
 
 /*
  * The Turso driver's `@libsql/client` loads a native addon on import, and the addon has no
@@ -30,7 +34,8 @@ const prebundled = [
 export default defineConfig({
   test: {
     environment: "node",
-    deps: prebundle(prebundled),
+    // Web's Vitest runs on Vite 6, so the bundles are esbuild's and can go without source maps.
+    deps: prebundle(prebundled, WITHOUT_SOURCE_MAPS),
     include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     // Route suites cold-import a large Hono app; under parallel turbo load the
     // 5s default flakes even when the same tests pass alone.
