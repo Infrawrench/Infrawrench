@@ -68,6 +68,8 @@ pub struct Timing {
     /// How long a runner may go without a sign of life before the others
     /// count it gone.
     pub lease: Duration,
+    /// Between a helper's looks at a run that has not asked it for help.
+    pub offer: Duration,
 }
 
 impl Default for Timing {
@@ -76,6 +78,7 @@ impl Default for Timing {
             poll: Duration::from_secs(1),
             ask_after: Duration::from_secs(2),
             lease: Duration::from_secs(45),
+            offer: Duration::from_secs(5),
         }
     }
 }
@@ -480,6 +483,15 @@ pub(super) enum Received {
     Unreadable,
 }
 
+/// Whether masking left a job's outputs as the runner that ran it wrote
+/// them.
+fn sharing_outputs_agree(
+    written: &BTreeMap<String, String>,
+    masked: &BTreeMap<String, String>,
+) -> bool {
+    written == masked
+}
+
 fn file_bytes(entries: &[Entry]) -> u64 {
     entries
         .iter()
@@ -713,6 +725,7 @@ impl<'a> Sharing<'a> {
                 }
             }
         }
+        let done_outputs = done.outputs.clone();
         let mut notes = done.notes;
         notes.push(format!("split: ran on `{}`", done.runner));
         let passed = done.result == Status::Passed;
@@ -757,6 +770,21 @@ impl<'a> Sharing<'a> {
             remote: Some(done.runner.clone()),
             elsewhere: false,
         };
+        // A runner that plans from this job's outputs (a matrix another
+        // job sets, an `if:`) has to plan from the same text as the runner
+        // that ran it. A helper could not mask, so where masking changes
+        // an output the two would differ: the primary does not take the
+        // helper's word for the job then and runs it itself, as it would
+        // have without a helper, with the outputs masked.
+        if !sharing_outputs_agree(&done_outputs, &report.outputs) {
+            return Received::Elsewhere(
+                Box::new(report),
+                format!(
+                    "an output it wrote on `{}` holds one of the run's secret values",
+                    done.runner
+                ),
+            );
+        }
         if !passed {
             return Received::Report(Box::new(report));
         }

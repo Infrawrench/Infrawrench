@@ -783,7 +783,7 @@ split:
   a job another runner could run has waited two seconds in its queue. A
   helper does nothing for a run until then: it does not fetch the commit,
   holds none of the runs its runner may help (`--helping`), and looks at
-  the store once every two seconds. Once asked, it joins when it has a
+  the store once every five seconds. Once asked, it joins when it has a
   free slot, none of its own runs' jobs waits for memory, and it helps
   fewer than `--helping` runs.
 - **A helper's own runs come first.** A helper starts a job only with a
@@ -831,7 +831,11 @@ split:
   on its report and its `job-finished` event and a note saying where it
   ran. Its output arrives when it ends, not line by line. The primary
   masks everything in a helper's record with the run's secrets, since the
-  helper had none to mask with.
+  helper had none to mask with. If that changes one of the job's
+  `outputs:`, the primary runs the job itself rather than take the
+  helper's word for it: a matrix or an `if:` that reads the output is then
+  worked out from the masked text, as it is without a helper, and not
+  from one form on one runner and another on the other.
 - **Billing.** The run is billed once, from the primary's result and its
   usage record, for every job that ran: one a helper ran is charged at
   its time there and the `memory:` it reserved, like any other. A helper
@@ -875,7 +879,7 @@ split:
   in the same way.
 - **Cost.** A split pipeline's primary makes two small writes to the store
   for each job it starts and one listing a second; a helper that is never
-  asked makes one listing every two seconds.
+  asked makes one listing every five seconds.
 
 ### What changed from the first sketch
 
@@ -2677,7 +2681,7 @@ it is masked, and an untrusted run is given none of it:
   helps resolved. An offer is not one of the runs a runner helps
   (`--helping`, default 2) until the run asks for help and the runner
   joins it, so offers are not refused for one another: only with `429`
-  when the runner is draining, helps no runs (`--helping 0`), or holds 64
+  when the runner is draining, helps no runs (`--helping 0`), or holds 32
   offers already. Nothing has to follow or cancel it: it ends with the
   run it helps, and with a drain of its runner, which first hands its
   jobs back. It stores no report and no usage record. `/v1/capacity` says
@@ -3122,18 +3126,18 @@ What a split run keeps under `splits/<owner>/<repo-id>/<run-id>/`, `<run-id>`
 being the run's id on the runner that has it, `<pipeline>` a hash of the
 pipeline's file name and `<job>` the job id in hex:
 
-| Key                                        | What                                                                                          |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `state/primary.<n>`                        | The primary is alive; `<n>` moves every ten seconds.                                          |
-| `state/helper/<runner>.<n>`                | The same for a helper.                                                                        |
-| `state/help.<version>`                     | The primary, a runner of that version, has more ready jobs than it can start.                 |
-| `state/end`                                | The run is over.                                                                              |
-| `state/ended/<pipeline>`                   | That pipeline is over, or cancelled.                                                          |
-| `state/done/<pipeline>/<job>`              | How a job went on the runner that ran it: its report, masked. Written once.                   |
-| `state/commit.<sha>`                       | The commit the primary resolved the request to; a helper runs that one.                       |
-| `state/back/<pipeline>/<job>.<runner>.<n>` | That helper gave the job up. Written before it lets go of the claim.                          |
-| `claims/<pipeline>/<job>`                  | The name of the runner that runs the job. Written only if absent.                             |
-| `artifacts/<pipeline>/<job>.<runner>`      | What a job without a task cache entry kept on that runner, when small enough: a zstd archive. |
+| Key                                        | What                                                                                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state/primary.<n>`                        | The primary is alive; `<n>` moves every ten seconds.                                                                                               |
+| `state/helper/<runner>.<n>`                | The same for a helper.                                                                                                                             |
+| `state/help.<version>`                     | The primary, a runner of that version, has more ready jobs than it can start.                                                                      |
+| `state/end`                                | The run is over.                                                                                                                                   |
+| `state/ended/<pipeline>`                   | That pipeline is over, or cancelled.                                                                                                               |
+| `state/done/<pipeline>/<job>`              | How a job went on the runner that ran it: its report. The primary's is masked; a helper's is masked by the primary when it reads it. Written once. |
+| `state/commit.<sha>`                       | The commit the primary resolved the request to; a helper runs that one.                                                                            |
+| `state/back/<pipeline>/<job>.<runner>.<n>` | That helper gave the job up. Written before it lets go of the claim.                                                                               |
+| `claims/<pipeline>/<job>`                  | The name of the runner that runs the job. Written only if absent.                                                                                  |
+| `artifacts/<pipeline>/<job>.<runner>`      | What a job without a task cache entry kept on that runner, when small enough: a zstd archive.                                                      |
 
 A runner follows the others with one listing of `state/`. The primary
 deletes everything but `state/end` when the run ends; every server sweeps

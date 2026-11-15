@@ -596,6 +596,8 @@ impl Runner {
         let sha = match &req.sha {
             Some(sha) => {
                 let sha = sha.to_ascii_lowercase();
+                // The commit as the fetch names it, in full: it is what a
+                // split run's helpers are told to run.
                 remote
                     .fetch_commit(
                         &sha,
@@ -603,8 +605,8 @@ impl Runner {
                         auth.as_ref(),
                         Some(&git_ref),
                     )
-                    .map_err(|e| format!("fetch {sha}: {e}"))?;
-                sha
+                    .map_err(|e| format!("fetch {sha}: {e}"))?
+                    .commit
             }
             None => {
                 remote

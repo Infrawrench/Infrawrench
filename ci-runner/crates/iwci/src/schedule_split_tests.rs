@@ -8,6 +8,7 @@ const FAST: Timing = Timing {
     poll: Duration::from_millis(10),
     ask_after: Duration::from_millis(20),
     lease: Duration::from_millis(200),
+    offer: Duration::from_millis(20),
 };
 
 /// The same, for a test in which a runner that never says it is alive
@@ -1387,4 +1388,77 @@ fn a_runner_joins_only_as_many_runs_as_it_may_help() {
     assert_eq!(helping.runs(), 0);
     helping.limit_runs(0);
     assert!(helping.join().is_none());
+}
+
+#[test]
+fn a_job_whose_outputs_a_helper_could_not_mask_is_run_by_the_primary() {
+    // `detect` sets the matrix of `each`. A helper ran it and, having no
+    // secrets, wrote an entry as the job did: the run's secret value.
+    let p = plan(&format!(
+        "name: x\nsplit: true\njobs:\n  detect:\n    using: builtin:out@1\n    outputs: [list]\n    args: ['list=[\"plain\",\"{SECRET}\"]']\n  each:\n    using: builtin:ok@1\n    needs: [detect]\n    matrix: ${{{{ needs.detect.outputs.list }}}}\n",
+    ));
+    let store = Arc::new(SplitStore::default());
+    store.give("detect", "ci-2");
+    let done = Done {
+        runner: "ci-2".into(),
+        result: Status::Passed,
+        blocks: false,
+        execution: Some(Execution::default()),
+        changes: Vec::new(),
+        commit: None,
+        outputs: BTreeMap::from([("list".to_string(), format!("[\"plain\",\"{SECRET}\"]"))]),
+        caches: Vec::new(),
+        downloads: Vec::new(),
+        notes: Vec::new(),
+        duration_ms: 5,
+        peak_memory_mib: 0,
+        queued_ms: 0,
+        kept: Kept::None,
+    };
+    store
+        .done
+        .lock()
+        .unwrap()
+        .insert("detect".into(), serde_json::to_vec(&done).unwrap());
+    let exec = SplitExec::new();
+    let mut opts = options(Some(primary(&store, PATIENT)), 2);
+    opts.secrets = BTreeMap::from([("TOKEN".to_string(), SECRET.to_string())]);
+    let report = go(&p, &exec, &opts);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    // The primary planned from its own run of `detect`, masked, as it
+    // would have without a helper: the same job ids either way.
+    assert!(exec.ran().contains(&"detect".to_string()));
+    let mut ids: Vec<&str> = report.jobs.iter().map(|j| j.id.as_str()).collect();
+    ids.sort();
+    assert_eq!(ids, ["detect", "each[***]", "each[plain]"]);
+    assert!(!format!("{:?}", report.jobs).contains(SECRET));
+    let detect = report.jobs.iter().find(|j| j.id == "detect").unwrap();
+    assert_eq!(detect.remote, None);
+    assert!(
+        detect.caches.iter().any(|l| l
+            == "split: an output it wrote on `ci-2` holds one of the run's secret values; running it here"),
+        "{:?}",
+        detect.caches
+    );
+}
+
+#[test]
+fn outputs_a_helper_wrote_that_hold_no_secret_plan_the_same_on_both() {
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  detect:\n    using: builtin:out@1\n    outputs: [list]\n    args: ['list=[\"a\",\"b\"]']\n  each:\n    using: builtin:ok@1\n    needs: [detect]\n    matrix: ${{ needs.detect.outputs.list }}\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    store.give("detect", "ci-2");
+    let mut first = options(Some(primary(&store, PATIENT)), 2);
+    first.secrets = BTreeMap::from([("TOKEN".to_string(), SECRET.to_string())]);
+    let (one, two) = both(&p, &first, &options(Some(helper(&store, PATIENT)), 2));
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    let ids =
+        |side: &Side| -> Vec<String> { side.report.jobs.iter().map(|j| j.id.clone()).collect() };
+    assert_eq!(ids(&one), ["detect", "each[a]", "each[b]"]);
+    assert_eq!(ids(&one), ids(&two));
+    assert_eq!(one.job("detect").remote.as_deref(), Some("ci-2"));
+    let mut ran: Vec<String> = one.ran.iter().chain(&two.ran).cloned().collect();
+    ran.sort();
+    assert_eq!(ran, ids(&one), "each job once");
 }
