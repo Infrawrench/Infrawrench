@@ -16,7 +16,10 @@
 #   bundler has no WebAssembly build.
 #
 # Every job is task-cached: one whose files, the shared config and what it
-# is handed have not changed since a passing run is not run again.
+# is handed have not changed since a passing run is not run again. What it
+# is handed has to be everything it reads of the packages it depends on:
+# their dist/ (`^bundle`, `^build`) and a hash of what it reads of them
+# straight from the checkout (`^source`), which `prep` checks every job has.
 #
 # Every `memory:` is sized from what the job was measured to hold (its
 # report's `peak_memory_mib`), with room above it: a job starts only when
@@ -76,10 +79,44 @@ jobs:
     artifacts:
       - app/packages
       - plugin-architecture/packages
+    # First, the check that every task-cached job below is keyed on the
+    # source of the packages it depends on (`source`): it fails here, before
+    # anything that could be wrongly skipped.
     run: |
+      node .infrawrench/ci/source-digest.mjs --check
       cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
+
+  # What each package's dependents read of it apart from its dist/, as one
+  # hash in .source-digest (source-digest.mjs). A package with no build ships
+  # its source: server-core, workflow-runtime and analytics export src/*.ts,
+  # and web's and poller's tests load server-core's files through Vite. No
+  # `bundle` or `build` hands those on, so without this a change to
+  # server-core reran its own tests and replayed web's (#1175). For a library
+  # the hash is the fields of package.json that decide what an import of it
+  # resolves to, and any entry point outside dist/ with what that can reach
+  # (plugin-base's `./test-harness` is src/, so all of it but the tests).
+  #
+  # `^source` on a job hands it the hash of every package its own depends on,
+  # as `^bundle` hands it their dist/, and so puts them in its task cache
+  # key: a server-core change reruns the tests and typechecks of server-core's
+  # dependents and nothing else. Each waits for its dependencies' only to hand
+  # theirs down the chain, so they are left out of its own key. The hash
+  # leaves out test files, which nothing outside their package loads: a
+  # changed test reruns this job, which writes the same hash, and its
+  # dependents stay cached.
+  source:
+    name: Source ${{ package.name }}
+    packages: true
+    needs: ["^source"]
+    using: env:bash-node@24.0.18
+    deps: false
+    run: node /app/.infrawrench/ci/source-digest.mjs
+    artifacts: [.source-digest]
+    task-cache: { root-inputs: [.infrawrench/ci/source-digest.mjs], artifacts: false }
+    memory: 1GiB
+    timeout: 5m
 
   # Each library's JavaScript, as `pnpm build` writes it, for the tests of
   # the packages that use it. Declarations are `build`'s.
@@ -159,7 +196,7 @@ jobs:
     packages:
       scripts: { test: "*vitest run*" }
       only: ["**", "!app/packages/web", "!app/packages/server-core"]
-    needs: &test-needs [prep, bundle, "^bundle"]
+    needs: &test-needs [prep, bundle, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     env: &test-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
@@ -199,7 +236,7 @@ jobs:
   build:
     name: Library ${{ package.name }}
     packages: { scripts: { build: "tsdown*" } }
-    needs: [prep, "^build"]
+    needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args:
       [
@@ -226,7 +263,7 @@ jobs:
     name: Typecheck ${{ package.name }}
     packages:
       scripts: { build: "!tsdown*", typecheck: "tsc --noEmit*" }
-    needs: [prep, "^build"]
+    needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, .]
     task-cache: { root-inputs: [tsconfig.base.json] }
@@ -240,7 +277,7 @@ jobs:
     packages:
       has: [edge]
       scripts: { typecheck: "*tsc --noEmit -p edge*" }
-    needs: [prep, "^build"]
+    needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, edge]
     task-cache: { root-inputs: [tsconfig.base.json] }
@@ -249,17 +286,16 @@ jobs:
     timeout: 30m
 
   # Desktop's typecheck runs ensure-env first (prep does that), then two
-  # projects.
+  # projects. A `packages:` job of one package, so that `^build` and
+  # `^source` follow what desktop depends on (workflow-runtime ships source).
   desktop:
     name: Typecheck desktop (${{ matrix }})
+    packages: { only: [app/packages/desktop] }
     matrix: [tsconfig.node.json, tsconfig.web.json]
-    needs: [prep, build]
+    needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
-    cwd: /app/app/packages/desktop
     args: [--noEmit, -p, "${{ matrix }}"]
-    task-cache:
-      inputs: [app/packages/desktop/**]
-      root-inputs: [tsconfig.base.json]
+    task-cache: { root-inputs: [tsconfig.base.json] }
     # Peak 1.4 GiB.
     memory: 3GiB
     timeout: 30m
@@ -268,15 +304,13 @@ jobs:
   # their own compiler, which is JavaScript, under Node.
   mobile:
     name: Typecheck mobile (TypeScript 6)
-    needs: [prep, build]
+    packages: { only: [app/packages/mobile] }
+    needs: [prep, "^build", "^source"]
     using: env:bash-node@24.0.18
-    cwd: /app/app/packages/mobile
     # The runner's installer writes no node_modules/.bin, so the package's
     # own entry point, as `tsc6` would run it.
     run: node node_modules/typescript/bin/tsc6 --noEmit
-    task-cache:
-      inputs: [app/packages/mobile/**]
-      root-inputs: [tsconfig.base.json]
+    task-cache: { root-inputs: [tsconfig.base.json] }
     # Peak 600 MiB.
     memory: 2GiB
     timeout: 30m
@@ -461,7 +495,7 @@ jobs:
   clickhouse-db:
     name: ClickHouse tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
-    needs: [prep, "^bundle"]
+    needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     services:
       clickhouse:
@@ -501,7 +535,7 @@ jobs:
   postgres-db:
     name: Postgres tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
-    needs: [prep, "^bundle"]
+    needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     services: &postgres-service
       postgres:
@@ -538,7 +572,7 @@ jobs:
   postgres-shadow:
     name: Postgres shadow tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
-    needs: [prep, "^bundle"]
+    needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     services: *postgres-service
     env: *postgres-env
