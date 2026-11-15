@@ -182,7 +182,7 @@ jobs:
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, .]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    # Peak 2.9 GiB (web), 1.5 GiB (server-core), under 1 GiB for the rest.
+    # Peak 2.9 GiB (web), 1.4 GiB (server-core), under 1 GiB for the rest.
     memory: 4GiB
     timeout: 30m
 
@@ -196,7 +196,7 @@ jobs:
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, edge]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    # Peak 2.5 GiB (web).
+    # Peak 2.3 GiB (web).
     memory: 4GiB
     timeout: 30m
 
@@ -212,7 +212,7 @@ jobs:
     task-cache:
       inputs: [app/packages/desktop/**]
       root-inputs: [tsconfig.base.json]
-    # Peak 1.5 GiB.
+    # Peak 1.4 GiB.
     memory: 3GiB
     timeout: 30m
 
@@ -263,7 +263,7 @@ jobs:
     task-cache:
       inputs: [app/packages/website/**, app/packages/analytics/**]
       root-inputs: [.infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
-    # Peak 3.8 GiB.
+    # Peak 3.7 GiB.
     memory: 5GiB
     timeout: 20m
 
@@ -504,6 +504,6 @@ jobs:
       eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
       node -e 'require("tar").c({ gzip: true, sync: true, file: "infrawrench-raycast.tgz", cwd: "dist" }, ["."])'
     downloads: [infrawrench-raycast.tgz]
-    # Peak 1.1 GiB.
+    # Peak 1 GiB.
     memory: 2GiB
     timeout: 20m
