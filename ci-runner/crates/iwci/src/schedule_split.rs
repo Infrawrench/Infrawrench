@@ -155,6 +155,9 @@ pub struct Done {
     pub notes: Vec<String>,
     pub duration_ms: u64,
     pub peak_memory_mib: u64,
+    /// What it held of that runner's memory (`JobReport::held_memory_mib`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub held_memory_mib: u64,
     pub queued_ms: u64,
     pub kept: Kept,
 }
@@ -202,6 +205,7 @@ impl Done {
             notes: report.notes.iter().map(text).collect(),
             duration_ms: report.duration_ms,
             peak_memory_mib: report.peak_memory_mib,
+            held_memory_mib: report.held_memory_mib,
             queued_ms: report.queued_ms,
             kept,
         }
@@ -748,6 +752,7 @@ impl<'a> Sharing<'a> {
             // `memory:`. It is billed with the run, like any of its jobs.
             memory_mib: job.memory_bytes >> 20,
             peak_memory_mib: done.peak_memory_mib,
+            held_memory_mib: done.held_memory_mib,
             queued_ms: done.queued_ms,
             cached: false,
             needs: Vec::new(),
@@ -802,11 +807,17 @@ impl<'a> Sharing<'a> {
         });
         match files {
             Ok(files) => {
-                shared
-                    .measured
-                    .lock()
-                    .unwrap()
-                    .insert(job.id.clone(), report.duration_ms);
+                {
+                    // A job another runner ran counts as one run here: its
+                    // time, and what it held there.
+                    let mut measured = shared.measured.lock().unwrap();
+                    measured
+                        .durations
+                        .insert(job.id.clone(), report.duration_ms);
+                    if report.held_memory_mib != 0 {
+                        measured.held.insert(job.id.clone(), report.held_memory_mib);
+                    }
+                }
                 let count = files
                     .iter()
                     .filter(|e| matches!(e, Entry::File { .. }))
@@ -884,7 +895,7 @@ pub(super) fn spare(
     options: &Options,
     queue: &[(Rank, (&JobTemplate, PlannedJob, Lookup))],
     slot: &mut Option<SlotGuard>,
-) -> Option<(usize, Option<Lease>)> {
+) -> Option<(usize, Option<Arc<Lease>>)> {
     if queue.is_empty() || sharing.unfit.load(Ordering::SeqCst) {
         return None;
     }
@@ -899,7 +910,8 @@ pub(super) fn spare(
         None => (queue.len() - 1, None),
         Some(budget) => {
             let asks = queue.iter().rev().map(|(_, (_, j, l))| Ask {
-                bytes: j.memory_bytes,
+                bytes: l.reserve,
+                limit: j.memory_bytes,
                 expected: l.expected,
             });
             let (nth, lease) = budget.admit_spare(asks)?;
@@ -926,24 +938,25 @@ pub(super) fn reclaim_memory(
     options: &Options,
     queue: &[(Rank, (&JobTemplate, PlannedJob, Lookup))],
 ) {
-    let (Some(helping), Some(budget), Some((_, (_, job, _)))) =
+    let (Some(helping), Some(budget), Some((_, (_, _, lookup)))) =
         (&options.helping, &options.memory, queue.last())
     else {
         return;
     };
+    // What the job reserves: its `memory:`, or its estimate.
     let free = budget.total().saturating_sub(budget.used());
-    if job.memory_bytes > free {
-        helping.want_memory(job.memory_bytes - free);
+    if lookup.reserve > free {
+        helping.want_memory(lookup.reserve - free);
     }
 }
 
 /// A helper job as it starts: on the runner's list of them, with a
 /// cancel of its own that the run's also sets.
-pub(super) fn helped(options: &Options, job: &PlannedJob) -> Option<Helped> {
+pub(super) fn helped(options: &Options, reserved: u64) -> Option<Helped> {
     options
         .helping
         .as_ref()
-        .map(|h| h.start(job.memory_bytes, options.cancel.as_ref()))
+        .map(|h| h.start(reserved, options.cancel.as_ref()))
 }
 
 /// Follows what the other runners of the run write, once every

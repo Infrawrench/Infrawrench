@@ -137,6 +137,7 @@ pub(crate) fn make(
         modes: fs.modes(),
         services: Vec::new(),
         cancel: None,
+        memory_watch: None,
     };
     let started = std::time::Instant::now();
     let why = match run(SCRIPT, inv) {

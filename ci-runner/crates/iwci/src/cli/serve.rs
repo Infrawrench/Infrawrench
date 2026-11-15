@@ -104,6 +104,11 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
             }
         );
     }
+    if limits.admit_by_estimate && limits.memory.is_some() {
+        eprintln!(
+            "iwci serve: jobs reserve what they held before, not their `memory:` (--memory-admission estimate), and none starts while the host is short of memory"
+        );
+    }
     let quota = storage_quota(&mut args)?.unwrap_or(DEFAULT_STORAGE_QUOTA);
     let mut runner = open_runner(&mut args, &limits, true, Some(quota))?;
     // Cloud jobs wait here for the app to claim them.

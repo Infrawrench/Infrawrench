@@ -488,7 +488,7 @@ impl Server {
             .helping
             .as_ref()
             .map_or((0, 0), |h| (h.running(), h.bytes()));
-        json!({
+        let mut capacity = json!({
             "version": lifecycle::VERSION,
             "draining": self.draining.load(Ordering::SeqCst),
             "drain_reason": self.drain_reason.lock().unwrap().clone(),
@@ -544,7 +544,19 @@ impl Server {
                 "tools": w.warmed.len(),
                 "problems": w.problems,
             })),
-        })
+        });
+        // What a job reserves, and whether the host is too short of memory
+        // for another (only asked when admitting by estimate). Added here:
+        // the object above is as deep as `json!` expands.
+        if let Some(memory) = &self.runner.memory {
+            capacity["memory_admission"] = json!(if memory.by_estimate() {
+                "estimate"
+            } else {
+                "limit"
+            });
+            capacity["memory_short"] = json!(memory.short());
+        }
+        capacity
     }
 
     /// Keeps every published builtin and environment downloaded and

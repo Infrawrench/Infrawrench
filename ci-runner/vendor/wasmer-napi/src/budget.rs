@@ -226,6 +226,10 @@ pub struct ResourceUsage {
     pub v8_heap_reserved: u64,
     /// Currently-charged V8 external memory (ArrayBuffer/Buffer) bytes.
     pub v8_external: u64,
+    /// iwci patch: what the budgeted isolates' heaps had committed when each
+    /// last collected garbage: the memory V8 holds for them, not the room
+    /// `v8_heap_reserved` lets them grow to.
+    pub v8_heap_committed: u64,
     /// Number of live V8 isolates (envs) counted against `max_envs`.
     pub live_isolates: usize,
 }
@@ -338,6 +342,8 @@ pub struct ResourceBudget {
     wasm_linear: AtomicU64,
     v8_heap_reserved: AtomicU64,
     v8_external: AtomicU64,
+    /// iwci patch: see [`ResourceUsage::v8_heap_committed`].
+    v8_heap_committed: AtomicU64,
     /// Live V8 isolates (envs), counted against `max_envs`.
     live_isolates: AtomicUsize,
     /// iwci patch (#964, #972): what was refused or stopped for memory.
@@ -391,6 +397,7 @@ impl ResourceBudget {
             wasm_linear: AtomicU64::new(0),
             v8_heap_reserved: AtomicU64::new(0),
             v8_external: AtomicU64::new(0),
+            v8_heap_committed: AtomicU64::new(0),
             live_isolates: AtomicUsize::new(0),
             exhaustion: ExhaustionCounters::default(),
         })
@@ -404,6 +411,7 @@ impl ResourceBudget {
             wasm_linear: AtomicU64::new(0),
             v8_heap_reserved: AtomicU64::new(0),
             v8_external: AtomicU64::new(0),
+            v8_heap_committed: AtomicU64::new(0),
             live_isolates: AtomicUsize::new(0),
             exhaustion: ExhaustionCounters::default(),
         }
@@ -516,6 +524,7 @@ impl ResourceBudget {
             wasm_linear: self.wasm_linear.load(Ordering::Acquire),
             v8_heap_reserved: self.v8_heap_reserved.load(Ordering::Acquire),
             v8_external: self.v8_external.load(Ordering::Acquire),
+            v8_heap_committed: self.v8_heap_committed.load(Ordering::Acquire),
             live_isolates: self.live_isolates.load(Ordering::Acquire),
         }
     }
@@ -760,6 +769,19 @@ pub(crate) struct EnvHeapCharge {
     /// iwci patch (#1158): V8 ran out of memory in this isolate and it was
     /// abandoned with its heap, which is counted in [`lost_heap`].
     pub(crate) lost: AtomicBool,
+    /// iwci patch: what the isolate's heap had committed after its last
+    /// garbage collection, counted in the budget's `v8_heap_committed`.
+    pub(crate) committed: AtomicU64,
+}
+
+/// iwci patch: an isolate that is gone holds no heap.
+impl Drop for EnvHeapCharge {
+    fn drop(&mut self) {
+        let committed = *self.committed.get_mut();
+        self.budget
+            .v8_heap_committed
+            .fetch_sub(committed, Ordering::AcqRel);
+    }
 }
 
 impl EnvHeapCharge {
@@ -780,7 +802,35 @@ impl EnvHeapCharge {
             overdraft: AtomicU64::new(0),
             ceiling,
             lost: AtomicBool::new(false),
+            committed: AtomicU64::new(0),
         }
+    }
+}
+
+/// iwci patch: what a budgeted isolate's heap has committed, told by the
+/// bridge after each of its garbage collections, on the isolate's own
+/// thread (`v8/src/unofficial_napi.cc`). The budget charges an isolate for
+/// the room its heap may grow to, which says nothing of what it holds; an
+/// embedder that wants to know reads [`ResourceUsage::v8_heap_committed`].
+///
+/// # Safety
+/// `data` must be null or the [`EnvHeapCharge`] registered for the isolate as
+/// its near-heap-limit data. The bridge calls this under the lock that env
+/// release takes before the tracker is freed.
+#[unsafe(no_mangle)]
+pub extern "C" fn napi_host_heap_committed(data: *const c_void, bytes: usize) {
+    if data.is_null() {
+        return;
+    }
+    // SAFETY: see the function's safety contract.
+    let tracker = unsafe { &*(data as *const EnvHeapCharge) };
+    let now = u64::try_from(bytes).unwrap_or(u64::MAX);
+    let before = tracker.committed.swap(now, Ordering::AcqRel);
+    let total = &tracker.budget.v8_heap_committed;
+    if now >= before {
+        total.fetch_add(now - before, Ordering::AcqRel);
+    } else {
+        total.fetch_sub(before - now, Ordering::AcqRel);
     }
 }
 

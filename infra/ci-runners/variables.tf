@@ -11,6 +11,12 @@ variable "hosts" {
     - url: how the proxy reaches it (https, through a tunnel or a TLS
       front). Leave `listen` on loopback when a tunnel carries the traffic.
     - cpus / memory: the runner's limits (default: the machine's).
+    - memory_admission: what a job reserves of `memory`: `limit`, its own
+      `memory:` (the default), or `estimate`, what it held the last times
+      it ran, so that more jobs run at once. Set `zram` with `estimate`.
+    - zram: the size of a compressed swap device in RAM, such as `12GiB`
+      (about 4 GiB of RAM when full); none by default. The net under
+      `memory_admission = "estimate"`: see files/install.sh.
     - iwci_binary_path: this host's first binary, when its architecture
       differs from `iwci_binary_path`'s (an ARM64 host beside x86_64 ones).
     - tunnel_token: optional Cloudflare Tunnel token; when set, cloudflared
@@ -27,6 +33,10 @@ variable "hosts" {
     cpus         = optional(number)
     memory       = optional(string)
     tunnel_token = optional(string)
+    # What a job reserves of `memory` (`limit` or `estimate`), and the
+    # compressed swap in RAM that backs `estimate`.
+    memory_admission = optional(string)
+    zram             = optional(string)
     # This host's first binary, when its architecture differs from the
     # default's.
     iwci_binary_path = optional(string)
@@ -36,6 +46,14 @@ variable "hosts" {
   validation {
     condition     = alltrue([for h in var.hosts : can(regex("^[a-z0-9][a-z0-9-]{0,39}$", h.name))])
     error_message = "Runner names are lowercase letters, digits and `-`, up to 40, starting with a letter or digit."
+  }
+  validation {
+    condition     = alltrue([for h in var.hosts : h.memory_admission == null || contains(["limit", "estimate"], coalesce(h.memory_admission, "limit"))])
+    error_message = "memory_admission is `limit` or `estimate`."
+  }
+  validation {
+    condition     = alltrue([for h in var.hosts : h.zram == null || can(regex("^[1-9][0-9]*(MiB|GiB)$", coalesce(h.zram, "1GiB")))])
+    error_message = "zram is a size in MiB or GiB, such as `12GiB`."
   }
   validation {
     condition     = length(distinct([for h in var.hosts : h.name])) == length(var.hosts)

@@ -31,6 +31,7 @@ terraform apply
   the runner's own process, so a fault in one crashes the runner;
   `coredumpctl list iwci` and `coredumpctl gdb iwci` read what it left
   (#947);
+- optionally sets up compressed swap in RAM (`zram` on the host, below);
 - optionally installs `cloudflared` with a tunnel token (Debian or Ubuntu,
   from Cloudflare's signed apt repository), so the runner needs no open port;
 - starts the service, or restarts it without waiting when it was running.
@@ -38,6 +39,44 @@ terraform apply
 A host is re-provisioned when its configuration, the unit, the install
 script or its tunnel token changes. Secrets are hashed into the trigger, so
 the state holds only digests.
+
+## Memory
+
+By default a job reserves its `memory:` out of the runner's budget before it
+starts, so the jobs running can never hold more than the budget. Jobs hold
+a sixth to a quarter of what they reserve, though, and the rest queues work
+behind memory nothing uses. `memory_admission = "estimate"` on a host
+(`IWCI_MEMORY_ADMISSION` in its env file) has jobs reserve what they held
+the last times they ran and half as much again instead; `ci-runner/README.md`
+("Limits") has the rule. An estimate can be wrong, so set `zram` with it:
+
+- `zram = "12GiB"` makes `install.sh` set up one zram swap device of that
+  size (zstd, priority 100) through a unit of its own, `iwci-zram.service`,
+  ordered before `iwci.service`, and sets `vm.swappiness = 150` and
+  `vm.page-cluster = 0` in `/etc/sysctl.d/60-iwci-zram.conf`. The size is
+  what the device takes uncompressed; the runner's memory compresses about
+  3:1, so a full 12 GiB device holds about 4 GiB of RAM. Nothing is written
+  to a disk.
+- On a kernel without the module (Ubuntu's cloud images keep it in
+  `linux-modules-extra-<kernel>`) the script installs that package for the
+  running kernel. A kernel upgrade needs its own: until then the unit fails
+  at boot and the runner runs without swap, which is the state it was in
+  before.
+- A host that already swaps to a disk keeps that swap at its lower
+  priority, used once zram is full. Job memory, secrets included, can then
+  reach the disk, so the script warns; `swapoff` it and take it out of
+  `/etc/fstab` unless you have a reason to keep it.
+- `iwci.service` has no `MemoryMax=`. If you add one, reclaim inside the
+  unit swaps to zram too, but the compressed pages are not charged to the
+  unit: keep `MemoryMax` plus a third of the zram size under the host's
+  memory, and do not set `MemorySwapMax=0`.
+- Changing the size of a device in use takes `systemctl restart iwci-zram`
+  on the host, which swaps everything back in first; the install script
+  does not do that under a running server. Removing `zram` from the host
+  removes the unit and puts the two sysctls back.
+
+Both settings re-provision the host, which restarts `iwci` and therefore
+drains it first, like any other change here.
 
 ## Restarts and updates never kill a job
 

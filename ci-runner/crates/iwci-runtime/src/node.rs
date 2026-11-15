@@ -54,6 +54,16 @@ mod imp {
             usage.v8_heap_reserved.saturating_add(usage.v8_external)
         }
 
+        /// What the job's V8 heaps hold of the host's memory now: what each
+        /// had committed after its last garbage collection, not the room it
+        /// may grow to, and the external memory as above. A heap that has
+        /// not collected yet counts for nothing; it has allocated less than
+        /// a semi-space.
+        pub(crate) fn held_heap_bytes(&self) -> u64 {
+            let usage = self.ctx.budget().snapshot();
+            usage.v8_heap_committed.saturating_add(usage.v8_external)
+        }
+
         /// What the job's V8 heaps were refused or stopped for, against
         /// its `memory:` (#964, #972).
         pub(crate) fn exhaustion(&self) -> super::Exhaustion {
@@ -83,6 +93,10 @@ impl NodeHooks {
     }
 
     pub(crate) fn heap_bytes(&self) -> u64 {
+        match *self {}
+    }
+
+    pub(crate) fn held_heap_bytes(&self) -> u64 {
         match *self {}
     }
 }

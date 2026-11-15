@@ -80,6 +80,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         modes: iwci_vfs::Modes::default(),
         services: Vec::new(),
         cancel: None,
+        memory_watch: None,
     }
 }
 
@@ -1231,11 +1232,21 @@ fn a_job_reports_the_most_memory_it_held() {
             (drop (memory.grow (i32.const 47)))
             (call $exit (i32.const 0))))"#,
     );
-    let outcome = rt
-        .run_command(&module, invocation(job.as_dyn(), &[]))
-        .unwrap();
+    // Whoever watches the job hears of each new most it holds.
+    let watched = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.memory_watch = Some({
+        let watched = watched.clone();
+        Arc::new(move |bytes| watched.lock().unwrap().push(bytes))
+    });
+    let outcome = rt.run_command(&module, inv).unwrap();
     assert_eq!(outcome.exit_code, 0, "{outcome:?}");
     assert_eq!(outcome.peak_memory_bytes, 3 << 20);
+    // No JavaScript heap, so what it held of the host's memory is the same.
+    assert_eq!(outcome.held_memory_bytes, 3 << 20);
+    let watched = watched.lock().unwrap().clone();
+    assert_eq!(watched.last(), Some(&(3 << 20)), "{watched:?}");
+    assert!(watched.is_sorted(), "{watched:?}");
     // Another job's memory is its own.
     let small = wat_module(
         "grow-none",
@@ -1389,7 +1400,7 @@ fn find(dir: &Path, suffix: &str) -> PathBuf {
 #[test]
 fn jobs_get_a_private_loopback_and_nothing_else() {
     let rt = runtime();
-    let (engine, _, _) = wasix::job_engine(&cache::JobModules::new(), 1 << 20, 1 << 20);
+    let (engine, _, _) = wasix::job_engine(&cache::JobModules::new(), 1 << 20, 1 << 20, None);
     let job = wasix::JobRuntime::for_tests(&rt.wasix, engine);
     use wasmer_wasix::Runtime as _;
     let net = job.networking();
@@ -3771,6 +3782,61 @@ http.createServer((req, res) => res.end("hello from " + process.env.WHO))
             "{stderr:?}"
         );
     }
+}
+
+/// A Node job's heaps count against its `memory:` for the room they have
+/// reserved (256 MiB to start with, whatever the script does), and for what
+/// they have committed in what the job is said to hold of the host's memory.
+#[cfg(feature = "node")]
+#[test]
+fn a_node_job_holds_what_its_heaps_committed_not_the_room_they_reserved() {
+    let Some(packages) = node_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let run = |script: &str| {
+        let job = snapshot(&[]).fork();
+        let mut inv = invocation(job.as_dyn(), &[]);
+        inv.limits.memory_bytes = 2 << 30;
+        inv.limits.timeout = Duration::from_secs(120);
+        let outcome = rt.run_script(&packages, "bash", script, inv).unwrap();
+        let stderr = String::from_utf8_lossy(&outcome.stderr);
+        assert_eq!(outcome.exit_code, 0, "{outcome:?} {stderr}");
+        outcome
+    };
+    let mib = |bytes: u64| bytes >> 20;
+    // A script that keeps nothing: its heap reserved its 256 MiB and more,
+    // and committed a fraction of it. Each lives long enough for its heaps
+    // to be read, which happens five times a second.
+    let small = run("node -e 'setTimeout(() => console.log(1), 1500)'");
+    assert!(
+        mib(small.peak_memory_bytes) >= 256,
+        "peak {} MiB",
+        mib(small.peak_memory_bytes)
+    );
+    assert!(
+        small.held_memory_bytes < small.peak_memory_bytes / 2,
+        "held {} MiB of a peak of {} MiB",
+        mib(small.held_memory_bytes),
+        mib(small.peak_memory_bytes)
+    );
+    // One that keeps 150 arrays of 1 MiB on its heap holds that much more,
+    // which is known once the heap has collected (it does, to get there).
+    let large = run(
+        r#"node -e 'const keep = []; for (let i = 0; i < 150; i++) keep.push(new Array(1 << 18).fill(i)); setTimeout(() => console.log(keep.length), 1500)'"#,
+    );
+    assert!(
+        large.held_memory_bytes >= small.held_memory_bytes + (100 << 20),
+        "held {} MiB, the empty script {} MiB",
+        mib(large.held_memory_bytes),
+        mib(small.held_memory_bytes)
+    );
+    assert!(
+        large.held_memory_bytes <= large.peak_memory_bytes,
+        "held {} MiB of a peak of {} MiB",
+        mib(large.held_memory_bytes),
+        mib(large.peak_memory_bytes)
+    );
 }
 
 /// Asks the bridge for a runtime twice, as Edge.js does at every start, with

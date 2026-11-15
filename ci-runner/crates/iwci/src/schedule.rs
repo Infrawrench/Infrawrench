@@ -129,6 +129,10 @@ pub struct Invocation<'a> {
     /// Set when the run is cancelled; the job is then stopped as its
     /// timeout would stop it.
     pub cancel: Option<iwci_runtime::Cancel>,
+    /// Told what the job's programs hold of the runner's memory each time
+    /// that passes the most they have held, when the job's reservation
+    /// follows it ([`MemoryBudget`]); the executor hands it to the runtime.
+    pub memory_watch: Option<iwci_runtime::MemoryWatch>,
 }
 
 /// One of a job's `services:`, its tool resolved and its environment built.
@@ -347,6 +351,12 @@ pub struct Execution {
     /// job's files, as [`JobReport::peak_memory_mib`].
     #[serde(skip)]
     pub peak_memory_bytes: u64,
+    /// The most of the runner's memory its programs held at once, in bytes
+    /// (iwci-runtime's `Outcome::held_memory_bytes`): a V8 heap counts for
+    /// what it committed, not for the room it reserved. The report carries
+    /// it, with the job's files, as [`JobReport::held_memory_mib`].
+    #[serde(skip)]
+    pub held_memory_bytes: u64,
     /// Why the job never started: one of its services exited, or was not
     /// ready in time.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -450,6 +460,14 @@ pub struct JobReport {
     /// 0 for a job that never ran, a task cache hit and a cloud job.
     #[serde(skip_serializing_if = "is_zero")]
     pub peak_memory_mib: u64,
+    /// The most of the runner's memory the job held at once: as
+    /// `peak_memory_mib`, but with each V8 heap at what it had committed
+    /// rather than the room it had reserved, which for a Node job is two
+    /// to five times as much. It is what the runner admits the job by the
+    /// next time, when it admits by estimate ([`MemoryBudget`]); `memory:`
+    /// is still sized from `peak_memory_mib`. 0 as that is.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub held_memory_mib: u64,
     /// How long the job waited to start after it was ready (its `needs`
     /// finished and its task cache missed): for the runner's memory to
     /// have room for its `memory:`, then for a job slot.
@@ -563,9 +581,10 @@ pub struct Options {
     pub cancel: Option<iwci_runtime::Cancel>,
     /// What the app lends the run's jobs, and where cloud jobs go.
     pub access: RunAccess,
-    /// How long the pipeline's jobs took last time, read before the run to
-    /// order it (see [`Rank`]) and written after it; `None` orders by the
-    /// shape of the plan alone.
+    /// How long the pipeline's jobs took last time and what they held,
+    /// read before the run to order it (see [`Rank`]) and to say what each
+    /// job reserves ([`MemoryBudget`]), and written after it; `None` orders
+    /// by the shape of the plan alone and reserves every job's `memory:`.
     pub durations: Option<Arc<dyn Durations>>,
     /// What this run shares with other runners, when it is split across
     /// them; only a pipeline that says `split:` uses it.
@@ -599,15 +618,27 @@ impl Options {
     }
 }
 
-/// How long each job of a pipeline took when it last ran, kept between runs
-/// so that the next one can start the jobs at the head of its longest
-/// chains first. Only ever an ordering hint: a store that cannot be read
-/// orders by the plan's shape, and one that cannot be written is ignored.
+/// What each job of a pipeline did when it last ran, by job id.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct History {
+    /// How long it took, in milliseconds.
+    pub durations: BTreeMap<String, u64>,
+    /// What it held of the runner's memory, in MiB
+    /// ([`JobReport::held_memory_mib`], as [`remembered`] keeps it).
+    pub held: BTreeMap<String, u64>,
+}
+
+/// How long each job of a pipeline took when it last ran and what it held,
+/// kept between runs so that the next one can start the jobs at the head
+/// of its longest chains first and reserve what its jobs are expected to
+/// hold. Only ever a hint: a store that cannot be read orders by the plan's
+/// shape and reserves every job's `memory:`, and one that cannot be written
+/// is ignored.
 pub trait Durations: Send + Sync {
-    /// Job id to milliseconds for the pipeline named `pipeline`, empty
-    /// when nothing is kept.
-    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64>;
-    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>);
+    /// What is kept for the pipeline named `pipeline`, empty when nothing
+    /// is.
+    fn load_history(&self, pipeline: &str) -> History;
+    fn save_history(&self, pipeline: &str, history: &History);
 }
 
 /// The runner's job slots: how many jobs may run at once across every run.
@@ -798,6 +829,35 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
 /// The frozen workspace snapshots are not counted: they are built once
 /// and shared, and their size depends only on the repository.
 ///
+/// # Admitting by estimate
+///
+/// Jobs hold a sixth to a quarter of their `memory:` (a Node job's heaps
+/// are charged for the room they may grow to, and a suite is sized for its
+/// worst file), so a budget that reserves `memory:` queues jobs behind
+/// memory nothing uses. A budget made with
+/// [`MemoryBudget::admitting_by_estimate`] reserves instead what the job
+/// is expected to hold: what it held the last times it ran
+/// ([`JobReport::held_memory_mib`]) and half as much again
+/// ([`estimated_reserve`]), never more than its `memory:`. A job with no
+/// history reserves its `memory:`. Nothing about the job changes: it is
+/// held to its `memory:` as before.
+///
+/// A job that comes to hold more than it reserved has its reservation
+/// raised at once, to what it holds and a quarter more
+/// ([`MemoryBudget::top_up`]), whether or not the budget has it: the job
+/// is not paused. Pausing it would free nothing (it keeps what it holds),
+/// would run its timeout and its stall check down while it did no work,
+/// and has to happen where memory is asked for, inside a program growing
+/// its memory or V8 collecting garbage, where a thread cannot wait; and
+/// jobs that all passed their estimates together would each wait for the
+/// others. So the budget goes over instead, and since it counts what was
+/// taken, no job starts until enough have ended to bring it back under.
+/// How far over it can go is bounded by the running jobs' `memory:`.
+///
+/// What the estimates cannot see is covered from the other side: no job
+/// starts while the host is short of memory ([`Pressure`]), unless nothing
+/// is running at all, so that a run always gets on.
+///
 /// One budget is shared by every run in the process (`iwci serve`), so a
 /// run's queued job may be waiting for memory another run holds. Every run
 /// using the budget is woken whenever any of them gives memory back.
@@ -820,6 +880,45 @@ pub struct MemoryBudget {
     waiters: Mutex<Vec<Weak<Wake>>>,
     /// Why no job gets memory any more, once [`MemoryBudget::hold`] says.
     held: std::sync::OnceLock<String>,
+    /// Set when jobs reserve what they are expected to hold rather than
+    /// their `memory:`: what says the host is short of memory.
+    estimates: Option<Arc<dyn Pressure>>,
+}
+
+/// Whether the host is short of memory, whatever a [`MemoryBudget`] has
+/// lent: its available memory is low, or its programs are stalling on
+/// memory. Read before a job is admitted by estimate.
+pub trait Pressure: Send + Sync + std::fmt::Debug {
+    fn short(&self) -> bool;
+}
+
+/// The least a job admitted by estimate reserves. A job holds more than
+/// its report counts (its threads' stacks, its share of the runner's own
+/// bookkeeping), and a job that held next to nothing last time is the one
+/// whose estimate says least.
+pub const MIN_RESERVE: u64 = 256 << 20;
+
+/// What a job that held `held` bytes the last times it ran reserves when
+/// the budget admits by estimate: half as much again, and at least
+/// [`MIN_RESERVE`]. With every estimate right, jobs then hold two thirds
+/// of what is reserved, which leaves a third of the budget for the ones
+/// that are wrong before the budget has to go over.
+pub fn estimated_reserve(held: u64) -> u64 {
+    held.saturating_add(held / 2).max(MIN_RESERVE)
+}
+
+/// What to remember a job held, in MiB, given what was remembered and what
+/// it held this time: this time's when that is more, and otherwise a
+/// quarter of the way down to it. One light run (a suite that skipped its
+/// slow files, a job that failed early) then does not lower what the next
+/// run reserves by much, and a job that really shrank is believed over a
+/// few runs.
+pub fn remembered(before: u64, now: u64) -> u64 {
+    if now >= before {
+        now
+    } else {
+        before - (before - now) / 4
+    }
 }
 
 impl MemoryBudget {
@@ -831,6 +930,35 @@ impl MemoryBudget {
             waiting: AtomicU64::new(0),
             waiters: Mutex::default(),
             held: std::sync::OnceLock::new(),
+            estimates: None,
+        }
+    }
+
+    /// A budget that admits jobs by what they are expected to hold (see
+    /// the type), and starts none while `pressure` says the host is short
+    /// of memory.
+    pub fn admitting_by_estimate(mut self, pressure: Arc<dyn Pressure>) -> Self {
+        self.estimates = Some(pressure);
+        self
+    }
+
+    /// Whether jobs reserve what they are expected to hold.
+    pub fn by_estimate(&self) -> bool {
+        self.estimates.is_some()
+    }
+
+    /// Whether the host is short of memory, when the budget admits by
+    /// estimate and so asks.
+    pub fn short(&self) -> Option<bool> {
+        self.estimates.as_ref().map(|p| p.short())
+    }
+
+    /// What a job with this `memory:` reserves, given what it is
+    /// remembered to have held (in MiB), if anything is.
+    fn reserve(&self, limit: u64, held_mib: Option<u64>) -> u64 {
+        match held_mib {
+            Some(mib) if self.by_estimate() => estimated_reserve(mib << 20).min(limit),
+            _ => limit,
         }
     }
 
@@ -858,8 +986,9 @@ impl MemoryBudget {
         self.used.load(Ordering::SeqCst)
     }
 
-    /// What the jobs queued in every run sharing the budget ask for: ready
-    /// to start, waiting for memory (or for one of their run's workers).
+    /// What the jobs queued in every run sharing the budget ask for (what
+    /// each would reserve): ready to start, waiting for memory (or for one
+    /// of their run's workers).
     pub fn waiting(&self) -> u64 {
         self.waiting.load(Ordering::SeqCst)
     }
@@ -900,6 +1029,14 @@ impl MemoryBudget {
     /// Memory taken with [`MemoryBudget::try_take`] has no expected end.
     /// When the first job waits on that, nothing here can say when it
     /// fits, and the jobs behind it start as they fit.
+    ///
+    /// A budget that admits by estimate starts nothing while the host is
+    /// short of memory and a job is running: the running jobs hold more
+    /// than was expected of them, or something else on the host does, and
+    /// another job would only add to it. With nothing running the first
+    /// job starts whatever the host says, since no job's end would bring
+    /// the next look. A budget that has gone over (jobs topped up past it)
+    /// starts nothing either, until enough jobs have ended.
     fn admit(&self, asks: impl IntoIterator<Item = Ask>) -> Admission {
         let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
@@ -907,6 +1044,10 @@ impl MemoryBudget {
         let Some((_, first)) = asks.next() else {
             return Admission::Wait { held_back: false };
         };
+        if !leases.running.is_empty() && self.short() == Some(true) {
+            // Nothing wakes a run when the host has memory again.
+            return Admission::Wait { held_back: true };
+        }
         if let Some(lease) = self.lease(&mut leases, first, now, false) {
             return Admission::Start(0, lease);
         }
@@ -928,7 +1069,13 @@ impl MemoryBudget {
         Admission::Wait { held_back }
     }
 
-    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant, spare: bool) -> Option<Lease> {
+    fn lease(
+        &self,
+        leases: &mut Leases,
+        ask: Ask,
+        now: Instant,
+        spare: bool,
+    ) -> Option<Arc<Lease>> {
         if !self.try_take(ask.bytes) {
             return None;
         }
@@ -940,10 +1087,39 @@ impl MemoryBudget {
             expected: ask.expected,
             spare,
         });
-        Some(Lease {
+        Some(Arc::new(Lease {
             id: leases.next,
-            bytes: ask.bytes,
-        })
+            limit: ask.limit.max(ask.bytes),
+            bytes: AtomicU64::new(ask.bytes),
+        }))
+    }
+
+    /// Raises a running job's reservation when it holds `held` bytes and
+    /// that is within an eighth of what it reserved: to what it holds and
+    /// a quarter more, never past its `memory:`. The memory is taken
+    /// whether or not the budget has it (see the type for why the job is
+    /// not made to wait), so the budget may go over; [`MemoryBudget::admit`]
+    /// then starts nothing until it is back under. A job that reserved its
+    /// `memory:` has nothing to raise.
+    fn top_up(&self, lease: &Lease, held: u64) {
+        let near = |reserved: u64| held.saturating_add(held / 8) > reserved;
+        let reserved = lease.bytes.load(Ordering::SeqCst);
+        if reserved >= lease.limit || !near(reserved) {
+            return;
+        }
+        let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+        // Its job may have ended meanwhile, and given back what it had.
+        let Some(running) = leases.running.iter_mut().find(|r| r.id == lease.id) else {
+            return;
+        };
+        let reserved = lease.bytes.load(Ordering::SeqCst);
+        let want = held.saturating_add(held / 4).min(lease.limit);
+        if want <= reserved {
+            return;
+        }
+        lease.bytes.store(want, Ordering::SeqCst);
+        running.bytes = want;
+        self.used.fetch_add(want - reserved, Ordering::SeqCst);
     }
 
     /// Starts one of a helper's ready jobs, given in the order they should
@@ -954,9 +1130,14 @@ impl MemoryBudget {
     /// that is back already: it is given up the moment one of this
     /// runner's own runs wants it (`split::reclaim_memory`), so a run's
     /// first job must not be passed over on the strength of it.
-    fn admit_spare(&self, asks: impl IntoIterator<Item = Ask>) -> Option<(usize, Lease)> {
+    ///
+    /// Nor does it start while the host is short of memory, when the
+    /// budget admits by estimate and so asks: with a job running, as in
+    /// `admit`, and with none as well, since a helper's job is one this
+    /// runner need not run at all.
+    fn admit_spare(&self, asks: impl IntoIterator<Item = Ask>) -> Option<(usize, Arc<Lease>)> {
         let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
-        if self.waiting() > 0 {
+        if self.waiting() > 0 || self.short() == Some(true) {
             return None;
         }
         let now = Instant::now();
@@ -966,13 +1147,14 @@ impl MemoryBudget {
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
-    fn release(&self, lease: Lease) {
-        self.leases
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .running
-            .retain(|r| r.id != lease.id);
-        self.give(lease.bytes);
+    fn release(&self, lease: &Lease) {
+        let bytes = {
+            let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            leases.running.retain(|r| r.id != lease.id);
+            // Read under the lock a top-up holds, so none is lost.
+            lease.bytes.load(Ordering::SeqCst)
+        };
+        self.give(bytes);
     }
 
     /// Gives `bytes` back and wakes every run waiting for memory.
@@ -1007,7 +1189,11 @@ impl MemoryBudget {
 /// A ready job asking [`MemoryBudget::admit`] for its memory.
 #[derive(Debug, Clone, Copy)]
 struct Ask {
+    /// What it reserves: its `memory:`, or less when the budget admits by
+    /// estimate ([`MemoryBudget::reserve`]).
     bytes: u64,
+    /// Its `memory:`, the most its reservation is raised to.
+    limit: u64,
     /// How long it is expected to hold them.
     expected: Duration,
 }
@@ -1016,11 +1202,12 @@ struct Ask {
 #[derive(Debug)]
 enum Admission {
     /// The ask at this position starts, holding the lease until it ends.
-    Start(usize, Lease),
+    Start(usize, Arc<Lease>),
     /// Nothing starts now. `held_back` when a job that fits was kept
     /// waiting for the first one: time alone may let it start (the first
     /// job's moment moves as running jobs outlast what was expected of
-    /// them), so the run looks again without waiting to be woken.
+    /// them), so the run looks again without waiting to be woken. Also
+    /// when the host was short of memory, which ends without a wake.
     Wait { held_back: bool },
 }
 
@@ -1028,7 +1215,43 @@ enum Admission {
 #[derive(Debug)]
 struct Lease {
     id: u64,
-    bytes: u64,
+    /// The job's `memory:`.
+    limit: u64,
+    /// What it has reserved: what it asked for, and whatever
+    /// [`MemoryBudget::top_up`] added since.
+    bytes: AtomicU64,
+}
+
+/// What a running job holds, which its reservation follows when the budget
+/// admitted it by estimate: its programs' memory, as the runtime reports
+/// each new most of it, and its files, as it writes them. Each counts at
+/// its own peak, as in the job's report.
+#[derive(Debug)]
+struct Gauge {
+    budget: Arc<MemoryBudget>,
+    lease: Arc<Lease>,
+    program: AtomicU64,
+    files: AtomicU64,
+}
+
+impl Gauge {
+    fn program(&self, bytes: u64) {
+        self.program.fetch_max(bytes, Ordering::SeqCst);
+        self.settle();
+    }
+
+    fn files(&self, bytes: u64) {
+        self.files.fetch_max(bytes, Ordering::SeqCst);
+        self.settle();
+    }
+
+    fn settle(&self) {
+        let held = self
+            .program
+            .load(Ordering::SeqCst)
+            .saturating_add(self.files.load(Ordering::SeqCst));
+        self.budget.top_up(&self.lease, held);
+    }
 }
 
 #[derive(Debug)]
@@ -1169,6 +1392,9 @@ struct JobBudget {
     /// The most `used` has been, for the job's report.
     peak: AtomicU64,
     refused: AtomicBool,
+    /// Told what the job's files come to, when its reservation follows
+    /// what it holds.
+    gauge: Option<Arc<Gauge>>,
 }
 
 impl WriteBudget for JobBudget {
@@ -1180,6 +1406,9 @@ impl WriteBudget for JobBudget {
             });
         if let Ok(before) = taken {
             self.peak.fetch_max(before + bytes, Ordering::SeqCst);
+            if let Some(gauge) = &self.gauge {
+                gauge.files(before + bytes);
+            }
         }
         let ok = taken.is_ok();
         if !ok {
@@ -1378,6 +1607,8 @@ struct State<'p> {
     ranks: HashMap<String, Place>,
     /// How long each job took the last time the pipeline ran, by job id.
     history: HashMap<String, u64>,
+    /// What each job is remembered to have held, in MiB, by job id.
+    held: HashMap<String, u64>,
     /// Cloud jobs ready to hand over: no slot and no memory.
     external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
@@ -1412,13 +1643,20 @@ impl<'p> State<'p> {
                 .map_or(UNKNOWN_DURATION_MS, |p| p.expected_ms)
         });
         entry.2.expected = Duration::from_millis(expected_ms);
-        self.queued.add(entry.1.memory_bytes);
+        // Its `memory:`, or what it is expected to hold when the budget
+        // admits by that and the job has run before.
+        let limit = entry.1.memory_bytes;
+        entry.2.reserve = match &self.queued.budget {
+            Some(budget) => budget.reserve(limit, self.held.get(&entry.1.id).copied()),
+            None => limit,
+        };
+        self.queued.add(entry.2.reserve);
         enqueue(&mut self.queue, rank, entry);
     }
 
     fn dequeue(&mut self, pos: usize) -> (&'p JobTemplate, PlannedJob, Lookup) {
         let (_, entry) = self.queue.remove(pos);
-        self.queued.remove(entry.1.memory_bytes);
+        self.queued.remove(entry.2.reserve);
         entry
     }
 }
@@ -1480,6 +1718,12 @@ struct Lookup {
     /// Taken back from another runner of a split run: it runs here
     /// whatever its claim says.
     local: bool,
+    /// What the job reserves of the runner's budget, set when it joins
+    /// the queue ([`MemoryBudget::reserve`]).
+    reserve: u64,
+    /// Its reservation once it has one, for its run to keep up to what
+    /// the job holds ([`Gauge`]).
+    lease: Option<Arc<Lease>>,
 }
 
 /// How a task cache lookup went.
@@ -1571,15 +1815,20 @@ pub fn run<T: Tools>(
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
     let checkouts: Vec<OnceLock<Result<Snapshot, String>>> =
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
-    let history = options
+    let before = options
         .durations
         .as_ref()
-        .map(|d| d.load_durations(&plan.name))
+        .map(|d| d.load_history(&plan.name))
         .unwrap_or_default();
     // Shared with other runners, when the run is and the pipeline asks.
     let sharing = split::Sharing::of(plan, options);
     let sharing = sharing.as_ref();
     let helper = sharing.is_some_and(|s| s.helper);
+    let history: HashMap<String, u64> = before
+        .durations
+        .iter()
+        .map(|(id, ms)| (id.clone(), *ms))
+        .collect();
     let state = Mutex::new(State {
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
@@ -1588,6 +1837,11 @@ pub fn run<T: Tools>(
         external: Vec::new(),
         ranks: ranks(plan, &history),
         history,
+        held: before
+            .held
+            .iter()
+            .map(|(id, mib)| (id.clone(), *mib))
+            .collect(),
         open: HashMap::new(),
         running: 0,
         reports: HashMap::new(),
@@ -1625,13 +1879,14 @@ pub fn run<T: Tools>(
             used: AtomicU64::new(0),
             peak: AtomicU64::new(0),
             refused: AtomicBool::new(false),
+            gauge: None,
         }));
     let lent_values = options.access.lent.secret_values();
     let mask = Arc::new(Masker::new(
         options.secrets.values().chain(lent_values.iter()),
     ));
     let artifact_bytes = AtomicU64::new(0);
-    let measured = Mutex::new(BTreeMap::new());
+    let measured = Mutex::new(History::default());
     let shared = RunShared {
         scratch: &scratch,
         mask: &mask,
@@ -1763,7 +2018,7 @@ pub fn run<T: Tools>(
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
-                    let (template, job, lookup, inherited, reserved, rank, slot, handed) = {
+                    let (template, job, mut lookup, inherited, reserved, rank, slot, handed) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // Read before the budget is, so memory given
@@ -1793,7 +2048,8 @@ pub fn run<T: Tools>(
                                     .and_then(|sh| split::spare(sh, options, &s.queue, &mut slot)),
                                 Some(budget) => {
                                     let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
-                                        bytes: j.memory_bytes,
+                                        bytes: l.reserve,
+                                        limit: j.memory_bytes,
                                         expected: l.expected,
                                     });
                                     match budget.admit(asks) {
@@ -1878,7 +2134,7 @@ pub fn run<T: Tools>(
                         }
                     };
                     if let Some(reason) = options.stopped() {
-                        if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                        if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
                             budget.release(lease);
                         }
                         let report = cancelled_report(&job, reason);
@@ -1887,7 +2143,9 @@ pub fn run<T: Tools>(
                     }
                     // A helper's job can be stopped by itself, to give way,
                     // from the moment it holds a slot and memory.
-                    let helped = helper.then(|| split::helped(options, &job)).flatten();
+                    let helped = helper
+                        .then(|| split::helped(options, lookup.reserve))
+                        .flatten();
                     // In a split run, whoever writes the job's claim runs
                     // it. A job another runner has stays in this run's
                     // graph until that runner says how it went.
@@ -1896,7 +2154,7 @@ pub fn run<T: Tools>(
                     {
                         drop(helped);
                         drop(slot);
-                        if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                        if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
                             budget.release(lease);
                         }
                         let mut s = state.lock().unwrap();
@@ -1939,6 +2197,7 @@ pub fn run<T: Tools>(
                     if let Some(sharing) = sharing {
                         sharing.running.fetch_add(1, Ordering::SeqCst);
                     }
+                    lookup.lease = reserved.clone();
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
                         &inherited, lookup, cancel, &mut kept, &mut saved,
@@ -1949,7 +2208,7 @@ pub fn run<T: Tools>(
                     }
                     drop(helped);
                     drop(slot);
-                    if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                    if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
                         budget.release(lease);
                     }
                     if let Some(sharing) = sharing {
@@ -1992,10 +2251,9 @@ pub fn run<T: Tools>(
         .flat_map(|t| state.reports.remove(&t.key).unwrap_or_default())
         .collect();
     if let Some(durations) = &options.durations {
-        let history = std::mem::take(&mut state.history);
-        let kept = merge_durations(plan, &jobs, history, measured.into_inner().unwrap());
+        let kept = merge_history(plan, &jobs, before, measured.into_inner().unwrap());
         if let Some(kept) = kept {
-            durations.save_durations(&plan.name, &kept);
+            durations.save_history(&plan.name, &kept);
         }
     }
     RunReport {
@@ -2007,16 +2265,18 @@ pub fn run<T: Tools>(
     }
 }
 
-/// What to keep for the next run's order: this run's times over the ones
-/// read before it, for the jobs the plan still has. A job that did not run
-/// here (skipped, failed to start) keeps its old time; a renamed or removed
-/// one is dropped. `None` when that is what is kept already.
-fn merge_durations(
+/// What to keep for the next run's order and reservations: this run's
+/// times over the ones read before it, and what its jobs held folded into
+/// what was remembered ([`remembered`]), for the jobs the plan still has.
+/// A job that did not run here (skipped, failed to start) keeps what it
+/// had; a renamed or removed one is dropped. `None` when that is what is
+/// kept already.
+fn merge_history(
     plan: &Plan,
     reports: &[JobReport],
-    history: HashMap<String, u64>,
-    measured: BTreeMap<String, u64>,
-) -> Option<BTreeMap<String, u64>> {
+    before: History,
+    measured: History,
+) -> Option<History> {
     let mut ids: HashSet<&str> = reports.iter().map(|r| r.id.as_str()).collect();
     let mut dynamic = Vec::new();
     for t in &plan.jobs {
@@ -2027,13 +2287,21 @@ fn merge_durations(
         }
     }
     let still = |id: &str| ids.contains(id) || dynamic.iter().any(|p| id.starts_with(p.as_str()));
-    let before: BTreeMap<String, u64> = history.into_iter().collect();
-    let mut kept: BTreeMap<String, u64> = before
-        .iter()
-        .filter(|(id, _)| still(id))
-        .map(|(id, ms)| (id.clone(), *ms))
-        .collect();
-    kept.extend(measured);
+    let keep = |map: &BTreeMap<String, u64>| -> BTreeMap<String, u64> {
+        map.iter()
+            .filter(|(id, _)| still(id))
+            .map(|(id, n)| (id.clone(), *n))
+            .collect()
+    };
+    let mut kept = History {
+        durations: keep(&before.durations),
+        held: keep(&before.held),
+    };
+    kept.durations.extend(measured.durations);
+    for (id, mib) in measured.held {
+        let was = kept.held.get(&id).copied().unwrap_or(0);
+        kept.held.insert(id, remembered(was, mib));
+    }
     (kept != before).then_some(kept)
 }
 
@@ -2319,6 +2587,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         notes: Vec::new(),
         memory_mib: 0,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         duration_ms: 0,
         blocks,
@@ -2338,9 +2607,9 @@ struct RunShared<'a> {
     /// Bytes of artifacts kept so far, held to the run's `scratch:` limit:
     /// both live in memory for the whole run.
     artifact_bytes: &'a AtomicU64,
-    /// How long each job that ran took, by id, for [`Durations`]; a task
-    /// cache hit counts as the run it replays.
-    measured: &'a Mutex<BTreeMap<String, u64>>,
+    /// How long each job that ran took and what it held, by id, for
+    /// [`Durations`]; a task cache hit counts as the run it replays.
+    measured: &'a Mutex<History>,
 }
 
 /// Looks a `task-cache:` job up before it is queued. A job whose inputs
@@ -2376,9 +2645,7 @@ fn look_up<T: Tools>(
             return Looked::Run(Lookup {
                 key: None,
                 lines: vec![format!("task cache: not read, {e}")],
-                queued: None,
-                expected: Duration::ZERO,
-                local: false,
+                ..Lookup::default()
             });
         }
     };
@@ -2404,9 +2671,7 @@ fn look_up<T: Tools>(
         return Looked::Run(Lookup {
             key: Some(key),
             lines: vec![line],
-            queued: None,
-            expected: Duration::ZERO,
-            local: false,
+            ..Lookup::default()
         });
     }
     let mut lines = Vec::new();
@@ -2429,9 +2694,7 @@ fn look_up<T: Tools>(
     Looked::Run(Lookup {
         key: Some(key),
         lines,
-        queued: None,
-        expected: Duration::ZERO,
-        local: false,
+        ..Lookup::default()
     })
 }
 
@@ -2457,8 +2720,20 @@ fn run_job<T: Tools>(
     let Lookup {
         key: task_key,
         lines: task_lines,
+        lease,
         ..
     } = lookup;
+    // What follows the job's memory when it reserved less than its
+    // `memory:` (see [`MemoryBudget`]).
+    let gauge = match (lease, &options.memory) {
+        (Some(lease), Some(budget)) => Some(Arc::new(Gauge {
+            budget: budget.clone(),
+            lease,
+            program: AtomicU64::new(0),
+            files: AtomicU64::new(0),
+        })),
+        _ => None,
+    };
     // What the app lent the job, checked before anything is built: a name
     // it did not supply, or refused, fails the job with the reason.
     let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
@@ -2509,6 +2784,7 @@ fn run_job<T: Tools>(
         used: AtomicU64::new(0),
         peak: AtomicU64::new(0),
         refused: AtomicBool::new(false),
+        gauge: gauge.clone(),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
     if let Err(e) = fs.write(OUTPUT_PATH, b"") {
@@ -2746,6 +3022,10 @@ fn run_job<T: Tools>(
             path: &workspace.path,
             log,
             cancel,
+            memory_watch: gauge.map(|gauge| {
+                let watch: iwci_runtime::MemoryWatch = Arc::new(move |bytes| gauge.program(bytes));
+                watch
+            }),
         },
     );
     if let Some(sink) = &line_sink {
@@ -2988,11 +3268,23 @@ fn run_job<T: Tools>(
     // How long it took, for the next run's order and for the task cache's
     // record, which a hit then counts as: the same number in both.
     let ran_ms = millis(started.elapsed());
-    shared
-        .measured
-        .lock()
-        .unwrap()
-        .insert(job.id.clone(), ran_ms);
+    let files_peak = write_budget.peak.load(Ordering::SeqCst);
+    let peak_memory_mib = execution
+        .peak_memory_bytes
+        .saturating_add(files_peak)
+        .div_ceil(1 << 20);
+    let held_memory_mib = execution
+        .held_memory_bytes
+        .saturating_add(files_peak)
+        .div_ceil(1 << 20);
+    {
+        let mut measured = shared.measured.lock().unwrap();
+        measured.durations.insert(job.id.clone(), ran_ms);
+        // A job that never got to run its program held nothing to go by.
+        if held_memory_mib != 0 && execution.service_failure.is_none() {
+            measured.held.insert(job.id.clone(), held_memory_mib);
+        }
+    }
 
     // Record a pass for the task cache: what it kept, its outputs and its
     // log, under the key of everything it read.
@@ -3005,6 +3297,7 @@ fn run_job<T: Tools>(
             stderr: execution.stderr.clone(),
             outputs: outputs.clone().unwrap_or_default(),
             duration_ms: ran_ms,
+            held_memory_mib: Some(held_memory_mib).filter(|&mib| mib != 0),
         };
         let mut entries = kept.clone();
         let saved: u64 = entries
@@ -3032,10 +3325,6 @@ fn run_job<T: Tools>(
     }
 
     let blocks = !status.is_success();
-    let peak_memory_mib = execution
-        .peak_memory_bytes
-        .saturating_add(write_budget.peak.load(Ordering::SeqCst))
-        .div_ceil(1 << 20);
     JobReport {
         id: job.id.clone(),
         name: job.display_name.clone(),
@@ -3050,6 +3339,7 @@ fn run_job<T: Tools>(
         notes,
         memory_mib: job.memory_bytes >> 20,
         peak_memory_mib,
+        held_memory_mib,
         queued_ms: 0,
         duration_ms: millis(started.elapsed()),
         blocks,
@@ -3371,6 +3661,7 @@ fn run_external(
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         blocks,
         cached: false,
@@ -3430,6 +3721,11 @@ struct TaskRecord {
     stderr: String,
     outputs: BTreeMap<String, String>,
     duration_ms: u64,
+    /// What the run held of the runner's memory
+    /// ([`JobReport::held_memory_mib`]); absent from entries saved before
+    /// the runner measured it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held_memory_mib: Option<u64>,
 }
 
 fn short_key(key: &str) -> &str {
@@ -3635,11 +3931,15 @@ fn replay(
         shared.artifact_bytes.fetch_sub(bytes, Ordering::SeqCst);
         return Err("its artifacts would take the run past its `scratch:` limit".into());
     }
-    shared
-        .measured
-        .lock()
-        .unwrap()
-        .insert(job.id.clone(), record.duration_ms);
+    {
+        let mut measured = shared.measured.lock().unwrap();
+        measured
+            .durations
+            .insert(job.id.clone(), record.duration_ms);
+        if let Some(mib) = record.held_memory_mib {
+            measured.held.insert(job.id.clone(), mib);
+        }
+    }
     let stdout = shared.mask.mask(&record.stdout);
     let stderr = shared.mask.mask(&record.stderr);
     if let Some(logs) = &options.logs {
@@ -3681,6 +3981,7 @@ fn replay(
             stalled_after: None,
             out_of_memory: false,
             peak_memory_bytes: 0,
+            held_memory_bytes: 0,
             service_failure: None,
             cancelled: false,
         }),
@@ -3697,6 +3998,7 @@ fn replay(
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         blocks: false,
         cached: true,
@@ -3849,6 +4151,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         duration_ms: millis(elapsed),
         blocks: true,

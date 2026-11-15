@@ -751,6 +751,14 @@ as it has overrun. A job's expected time is its own last time, a matrix
 entry's included, and for a job with no recorded time the median, as
 above.
 
+On a runner that admits by estimate (`--memory-admission estimate`, see
+[Limits](#limits)) all of this is about what each job reserves, which is
+then what it held the last times it ran rather than its `memory:`. What
+each job held is kept in the same entry as the expected times, with the
+same scopes, and a task cache hit carries what the run it stands for held. A
+helper's jobs ([Split runs](#split-runs)) reserve the same way, and none
+of them starts while the host is short of memory.
+
 ### Split runs
 
 A run belongs to one runner. With `split:` at the top of a pipeline, that
@@ -2260,7 +2268,8 @@ iwci plan .infrawrench/ci/tests.yml [--json]      # the expanded jobs
 iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--repo-id <id>] [--owner <owner>] [--event push|pull-request] [--base <sha>] \
          [--default-branch main] [--pipeline <file>] [--cpus <n>] [--jobs-per-cpu 4] \
-         [--memory <size>] [--storage-quota <size>] [--stall-after 5m] [--json] [--store <dir>] \
+         [--memory <size>] [--memory-admission limit|estimate] [--storage-quota <size>] \
+         [--stall-after 5m] [--json] [--store <dir>] \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
@@ -2364,6 +2373,80 @@ whole pipeline.
   stands for the job's program and its files together. The frozen workspace
   snapshots are not counted: they are built once and shared. Default: no
   budget for `iwci run`; see `--memory-reserve` for `iwci serve`.
+- **`--memory-admission`** (or `IWCI_MEMORY_ADMISSION`; `limit`, the
+  default, or `estimate`) is what a job reserves of `--memory`. With
+  `limit` it is the job's `memory:`, as above. Jobs hold far less than
+  that: measured on this repository's Test pipeline, a Vitest suite held
+  15 to 28% of its `memory:` and `tsc` 35 to 70%, because `memory:` is
+  sized from `peak_memory_mib`, which charges every V8 heap for the room it
+  may grow to, and with room above that for a bad run. So a runner that
+  reserves `memory:` queues jobs behind memory nothing is using. With
+  `estimate`:
+  - **A job reserves what it is expected to hold**: what it held the last
+    times it ran (`held_memory_mib`, below) and half as much again, at
+    least 256 MiB and never more than its `memory:`. The margin means that
+    with every estimate right, the running jobs hold two thirds of what is
+    reserved. What a job held is remembered per job id beside its expected
+    time ([Job order](#job-order)): a run that held more replaces what was
+    remembered at once, and one that held less lowers it by a quarter of
+    the difference, so one light run (a suite that failed early) does not
+    undo it.
+  - **A job with no history reserves its `memory:`**, as does every job
+    when the history cannot be read.
+  - **Nothing about the job changes.** It is held to its `memory:` exactly
+    as before (linear memory, V8 heaps, files), billed for it
+    (`memory_mib`), and refused as before when its `memory:` is more than
+    the whole budget.
+  - **A job that comes to hold more than it reserved is topped up at
+    once**: when what it holds is within an eighth of its reservation, the
+    reservation is raised to what it holds and a quarter more, up to its
+    `memory:`, whether or not the budget has that much. The job is never
+    paused for it. A paused job gives nothing back, its timeout and its
+    stall check go on counting, the places memory is asked for (a program
+    growing its memory, V8 in a garbage collection) are not places a
+    thread can wait, and jobs that passed their estimates together would
+    wait on each other. Instead the budget goes over, by no more than the
+    running jobs' `memory:` allow, and **no job starts until enough have
+    ended to bring it back under**: the queue takes the wait, not the job
+    that was wrong.
+  - **No job starts while the host is short of memory**: less than an
+    eighth of its memory available (`MemAvailable`), or programs stalled
+    on memory for a tenth of the last ten seconds (`some avg10` of
+    `/proc/pressure/memory`, or of the service's own cgroup). It is read
+    at most four times a second, and looked at again every half second
+    while jobs wait on it. The one exception is a runner with no job
+    running at all, which starts the first whatever the host says, so a
+    host kept short by something else still gets through its runs one job
+    at a time.
+  - **It wants swap under it.** The estimate is the bet that jobs go on
+    holding what they held; the budget no longer bounds what they can hold
+    (that is the sum of the running jobs' `memory:`, three to five times
+    the budget on this repository). The guard above stops the runner
+    adding to a host that is short, but cannot take memory back from jobs
+    already running, so the host should have compressed swap in RAM (zram)
+    for the kernel to fall back on: `infra/ci-runners` sets it up with the
+    option (`zram`, with why each setting is what it is). Without swap a
+    host that runs out kills the runner and every run on it.
+  - `iwci serve` says at start that it admits by estimate, and
+    `/v1/capacity` says so too (`memory_admission`, and `memory_short`
+    while the host is short). `memory_used` and `memory_waiting` are then
+    what jobs reserve, which is what the proxy should place by.
+
+  Replayed over this repository's run reports at ci-2's 16 vCPUs and
+  25.7 GiB: a typical pull request's 26 jobs have 91 GiB of `memory:`
+  between them, were measured to hold 21 GiB, and so reserve 32 GiB by
+  estimate; the time they spend queued for memory falls from 750 to 930
+  job-seconds to 30 to 60, and at their peak the running jobs hold 14 GiB
+  where they held 8. How much of the queueing becomes wall time depends on
+  the cores. Those jobs already keep 16 cores busy, so one run alone ends
+  no sooner (the replay says the same time if jobs do not slow each
+  other down, and 113 s against 107 if they share the cores evenly). With two or
+  three runs on the runner at once, the later ones no longer wait for the
+  first one's reservations, which is worth a minute or more to them if
+  the cores were idle and nothing if they were not; the first run gives
+  up its head start either way. `limit` is the default until the pool's
+  own numbers say which it is.
+
 - **`--memory-reserve`** (or `IWCI_MEMORY_RESERVE`, `iwci serve` only,
   default `5GiB`) is what the server keeps for itself outside the job
   budget: the compiled modules it keeps in memory (below; the server says
@@ -2398,7 +2481,10 @@ whole pipeline.
   Since every job reserves its `memory:` out of `--memory` before
   it starts, the heaps of all jobs together stay inside the job budget, and
   so inside the host less `--memory-reserve`: that is what keeps Node jobs
-  from exhausting the host, however many run. The one thing outside it is
+  from exhausting the host, however many run. (With
+  `--memory-admission estimate` jobs reserve less than their `memory:`,
+  and what keeps the host is the top-up, the pressure guard and swap
+  described above.) The one thing outside it is
   the heap of an isolate V8 ran out of memory in (below): it stays mapped
   after its job has given its `memory:` back, in the server's own memory,
   and `iwci serve` restarts before such heaps hold a quarter of
@@ -2484,6 +2570,20 @@ room for its `memory:` and then for a job slot: a pipeline whose jobs
 queue for long while the runner's cores are idle reserves more than it
 uses. Neither is set for a job that did not run here (a task cache hit, a
 skipped job, a cloud job).
+
+`held_memory_mib` is the most of the runner's memory the job held at once:
+the same sum, but with each V8 heap at what it had committed after its last
+garbage collection (V8's `total_heap_size`) rather than the room it had
+reserved. For a job that runs no JavaScript it equals `peak_memory_mib`;
+for a Node job it is a half to a fifth of it, since a `node` reserves
+256 MiB of old generation before it has allocated anything and a suite's
+workers each reserve their own. Linear memories count at the size they
+have grown to, which for the jobs measured is within a few hundred MiB of
+what is resident. Do not size `memory:` from it: a heap is stopped by the
+room it has reserved, which is what `peak_memory_mib` counts.
+`held_memory_mib` is what a runner that admits by estimate reserves from
+(`--memory-admission`, above). Left out, like the others, for a job that
+did not run here.
 
 A Node job's V8 heaps, one per `node` and per worker thread, and the
 `ArrayBuffer` memory they share are held to its `memory:` too. When a heap
@@ -2690,7 +2790,13 @@ it is masked, and an untrusted run is given none of it:
   running jobs have reserved of it. `memory_waiting` is the memory asked
   for by jobs that are ready but not started (waiting for memory, or for
   one of their run's workers), across every run; a job whose `needs` have
-  not finished counts only once it is ready. The proxy places runs by these
+  not finished counts only once it is ready. What a job reserves is its
+  `memory:`, or what it is expected to hold when `memory_admission` is
+  `"estimate"` rather than `"limit"` (`--memory-admission`); `memory_used`
+  can then pass `memory_total` while jobs hold more than was expected of
+  them, and `memory_short` is `true` while the host is too short of memory
+  for another job to start (`null` with `"limit"`, which never asks). A
+  runner from before these two leaves them out. The proxy places runs by these
   three with `cpus` (the cores jobs share), `runs_active` and the slots in
   use (`app/packages/ci-proxy`, "Placement"); a runner
   from before `memory_waiting` leaves it out. Beside them, each `null` where it

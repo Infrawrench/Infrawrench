@@ -350,6 +350,8 @@ impl Executor<String> for FakeExecutor {
             exit_code,
             stdout,
             peak_memory_bytes,
+            // Of its 5 MiB, 3 were room a heap had reserved and not used.
+            held_memory_bytes: peak_memory_bytes.saturating_sub(3 << 20),
             ..Default::default()
         })
     }
@@ -501,6 +503,13 @@ fn a_report_says_the_most_memory_a_job_held() {
     assert_eq!(job("big").memory_mib, 1024);
     let json = serde_json::to_value(job("big")).unwrap();
     assert_eq!(json["peak_memory_mib"], peak);
+    // What it held of the runner's memory is less: the same file, and
+    // only the part of its programs' memory that was in use.
+    let held = job("big").held_memory_mib;
+    assert!((4..=5).contains(&held), "{held}");
+    assert_eq!(json["held_memory_mib"], held);
+    let small = serde_json::to_value(job("small")).unwrap();
+    assert!(small.get("held_memory_mib").is_none(), "{small}");
     // A job that held nothing to speak of leaves the field out.
     assert!(job("small").peak_memory_mib <= 1);
 }
@@ -817,15 +826,29 @@ impl Executor<String> for Gated {
         action: &Action,
         inv: Invocation<'_>,
     ) -> Result<Execution, String> {
-        if tool.contains(":gate@") {
+        // `gate` waits for the gate; `gate-600` comes to hold 600 MiB
+        // first, and says so as the runtime would.
+        if let Some(rest) = tool.split_once(":gate").map(|(_, rest)| rest) {
+            let held = rest
+                .strip_prefix('-')
+                .and_then(|r| r.split('@').next())
+                .and_then(|mib| mib.parse::<u64>().ok())
+                .map_or(0, |mib| mib << 20);
             // Recorded as started before it waits.
             self.inner.order.lock().unwrap().push(inv.job.id.clone());
+            if let (Some(watch), true) = (&inv.memory_watch, held != 0) {
+                watch(held);
+            }
             let mut open = self.open.lock().unwrap();
             while !*open {
                 open = self.opened.wait(open).unwrap();
             }
             drop(open);
-            return Ok(Execution::default());
+            return Ok(Execution {
+                peak_memory_bytes: held,
+                held_memory_bytes: held,
+                ..Default::default()
+            });
         }
         self.inner.execute(tool, path_tools, services, action, inv)
     }
@@ -3381,10 +3404,12 @@ fn a_cloud_job_fails_with_its_executor_is_cancelled_with_its_run_and_never_runs_
 
 // The start order: the longest chain of work first.
 
-/// Durations in memory, per pipeline, and how many times they were saved.
+/// Durations in memory, per pipeline, with what each job held, and how
+/// many times they were saved.
 #[derive(Default)]
 struct MemoryDurations {
     kept: Mutex<HashMap<String, BTreeMap<String, u64>>>,
+    held: Mutex<HashMap<String, BTreeMap<String, u64>>>,
     saves: AtomicUsize,
 }
 
@@ -3398,8 +3423,26 @@ impl MemoryDurations {
         Arc::new(d)
     }
 
+    /// With what each job is remembered to have held, in MiB.
+    fn holding(self: Arc<Self>, pipeline: &str, jobs: &[(&str, u64)]) -> Arc<Self> {
+        self.held.lock().unwrap().insert(
+            pipeline.into(),
+            jobs.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        );
+        self
+    }
+
     fn of(&self, pipeline: &str) -> BTreeMap<String, u64> {
         self.kept
+            .lock()
+            .unwrap()
+            .get(pipeline)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn held_of(&self, pipeline: &str) -> BTreeMap<String, u64> {
+        self.held
             .lock()
             .unwrap()
             .get(pipeline)
@@ -3409,16 +3452,23 @@ impl MemoryDurations {
 }
 
 impl Durations for MemoryDurations {
-    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64> {
-        self.of(pipeline).into_iter().collect()
+    fn load_history(&self, pipeline: &str) -> History {
+        History {
+            durations: self.of(pipeline),
+            held: self.held_of(pipeline),
+        }
     }
 
-    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>) {
+    fn save_history(&self, pipeline: &str, history: &History) {
         self.saves.fetch_add(1, Ordering::SeqCst);
         self.kept
             .lock()
             .unwrap()
-            .insert(pipeline.into(), durations.clone());
+            .insert(pipeline.into(), history.durations.clone());
+        self.held
+            .lock()
+            .unwrap()
+            .insert(pipeline.into(), history.held.clone());
     }
 }
 
@@ -3532,12 +3582,13 @@ const GIB: u64 = 1 << 30;
 fn ask(gib: u64, secs: u64) -> Ask {
     Ask {
         bytes: gib * GIB,
+        limit: gib * GIB,
         expected: Duration::from_secs(secs),
     }
 }
 
 /// The lease of the ask that started, which has to be the `nth`.
-fn started(admission: Admission, nth: usize) -> Lease {
+fn started(admission: Admission, nth: usize) -> Arc<Lease> {
     match admission {
         Admission::Start(pos, lease) if pos == nth => lease,
         other => panic!("expected ask {nth} to start, got {other:?}"),
@@ -3560,7 +3611,7 @@ fn the_first_job_waiting_for_memory_is_not_passed_over_by_jobs_that_would_delay_
     // two minutes would then hold what the first needs: taking the first
     // that fits, as the runner once did, started it and kept the first
     // waiting two minutes instead of one.
-    budget.release(seconds);
+    budget.release(&seconds);
     assert!(matches!(
         budget.admit([ask(6, 60), ask(4, 120)]),
         Admission::Wait { held_back: true }
@@ -3570,26 +3621,26 @@ fn the_first_job_waiting_for_memory_is_not_passed_over_by_jobs_that_would_delay_
     // One expected to be done before the first can start anyway does
     // start, and so does one that fits in what the first leaves over.
     let short = started(budget.admit([ask(6, 60), ask(4, 120), ask(4, 20)]), 2);
-    budget.release(short);
+    budget.release(&short);
     let spare = started(budget.admit([ask(6, 60), ask(4, 120), ask(2, 600)]), 2);
     // What is left over is only left once: 2 of it are taken now.
     assert!(matches!(
         budget.admit([ask(6, 60), ask(2, 600)]),
         Admission::Wait { held_back: true }
     ));
-    budget.release(spare);
+    budget.release(&spare);
 
     // The first starts as soon as it fits, ahead of everything behind it.
-    budget.release(minute);
+    budget.release(&minute);
     let first = started(budget.admit([ask(6, 60), ask(4, 20)]), 0);
-    budget.release(first);
+    budget.release(&first);
     assert_eq!(budget.used(), 0);
 
     // Memory nothing says the end of (taken outside `admit`) is not
     // waited for: the jobs behind start as they fit, as they always did.
     assert!(budget.try_take(4 * GIB));
     let behind = started(budget.admit([ask(6, 60), ask(4, 120)]), 1);
-    budget.release(behind);
+    budget.release(&behind);
     budget.give(4 * GIB);
     assert_eq!(budget.used(), 0);
 }
@@ -3724,4 +3775,335 @@ fn a_job_can_leave_what_it_is_handed_out_of_its_key() {
     let (third, ran) = run_cached(&with("b", true), &store, "a");
     assert!(!cached(&third, "pass-on"), "{ran:?}");
     assert_eq!(stdout_of(&third, "pass-on"), "lib_b_.txt");
+}
+
+// Admitting by what a job is expected to hold (`--memory-admission
+// estimate`).
+
+const MIB: u64 = 1 << 20;
+
+/// Says the host is short of memory when told to.
+#[derive(Debug, Default)]
+struct FakePressure(AtomicBool);
+
+impl Pressure for FakePressure {
+    fn short(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+fn estimating(total: u64) -> (MemoryBudget, Arc<FakePressure>) {
+    let pressure = Arc::new(FakePressure::default());
+    (
+        MemoryBudget::new(total).admitting_by_estimate(pressure.clone()),
+        pressure,
+    )
+}
+
+/// A job with `limit_gib` of `memory:` that reserves `mib`.
+fn estimate(mib: u64, limit_gib: u64, secs: u64) -> Ask {
+    Ask {
+        bytes: mib * MIB,
+        limit: limit_gib * GIB,
+        expected: Duration::from_secs(secs),
+    }
+}
+
+#[test]
+fn a_job_reserves_what_it_held_and_half_as_much_again() {
+    let (budget, _) = estimating(8 * GIB);
+    // 1 GiB held: 1.5 GiB reserved, of a `memory:` of 4.
+    assert_eq!(budget.reserve(4 * GIB, Some(1024)), 1536 * MIB);
+    // Never more than its `memory:`, which is still what it is held to.
+    assert_eq!(budget.reserve(4 * GIB, Some(3500)), 4 * GIB);
+    // Never less than the floor, however little it held.
+    assert_eq!(budget.reserve(4 * GIB, Some(20)), MIN_RESERVE);
+    assert_eq!(budget.reserve(4 * GIB, Some(0)), MIN_RESERVE);
+    // Nor more than a `memory:` under the floor.
+    assert_eq!(budget.reserve(64 * MIB, Some(20)), 64 * MIB);
+    // A job nothing is remembered of reserves its `memory:`.
+    assert_eq!(budget.reserve(4 * GIB, None), 4 * GIB);
+
+    // A budget that does not admit by estimate reserves `memory:`, whatever
+    // is remembered.
+    let plain = MemoryBudget::new(8 * GIB);
+    assert!(!plain.by_estimate());
+    assert_eq!(plain.short(), None);
+    assert_eq!(plain.reserve(4 * GIB, Some(1024)), 4 * GIB);
+    assert_eq!(plain.reserve(4 * GIB, None), 4 * GIB);
+}
+
+#[test]
+fn what_a_job_is_remembered_to_have_held_rises_at_once_and_falls_slowly() {
+    assert_eq!(remembered(0, 800), 800, "nothing remembered");
+    assert_eq!(remembered(800, 1200), 1200, "it held more");
+    assert_eq!(remembered(800, 800), 800);
+    // A quarter of the way down each time.
+    assert_eq!(remembered(1200, 400), 1000);
+    assert_eq!(remembered(1000, 400), 850);
+    let mut kept = 1200;
+    for _ in 0..40 {
+        kept = remembered(kept, 400);
+    }
+    assert!((400..=403).contains(&kept), "{kept}");
+}
+
+#[test]
+fn a_job_that_holds_more_than_it_reserved_is_topped_up_at_once() {
+    let (budget, _) = estimating(4 * GIB);
+    let job = started(budget.admit([estimate(1024, 4, 60)]), 0);
+    assert_eq!(budget.used(), GIB);
+    // Well inside what it reserved: nothing changes.
+    budget.top_up(&job, 512 * MIB);
+    assert_eq!(budget.used(), GIB);
+    // Within an eighth of it: raised to what it holds and a quarter more.
+    budget.top_up(&job, 960 * MIB);
+    assert_eq!(budget.used(), 1200 * MIB);
+    // Less than it has held before lowers nothing.
+    budget.top_up(&job, 100 * MIB);
+    assert_eq!(budget.used(), 1200 * MIB);
+    // Never past its `memory:`, however much it is said to hold.
+    budget.top_up(&job, 3900 * MIB);
+    assert_eq!(budget.used(), 4 * GIB);
+    budget.top_up(&job, 9 * GIB);
+    assert_eq!(budget.used(), 4 * GIB);
+    // All of it comes back, the top-ups included.
+    budget.release(&job);
+    assert_eq!(budget.used(), 0);
+
+    // A top-up for a job that has ended takes nothing.
+    let ended = started(budget.admit([estimate(1024, 4, 60)]), 0);
+    budget.release(&ended);
+    budget.top_up(&ended, 2 * GIB);
+    assert_eq!(budget.used(), 0);
+
+    // A job that reserved its `memory:` has nothing to raise, on either
+    // kind of budget.
+    let plain = MemoryBudget::new(4 * GIB);
+    let whole = started(plain.admit([ask(2, 60)]), 0);
+    plain.top_up(&whole, 3 * GIB);
+    assert_eq!(plain.used(), 2 * GIB);
+    plain.release(&whole);
+    assert_eq!(plain.used(), 0);
+}
+
+#[test]
+fn a_top_up_the_budget_cannot_cover_is_given_and_holds_the_next_jobs_back() {
+    // 4 GiB: two jobs of 3 GiB `memory:` that each reserved 1.5.
+    let (budget, _) = estimating(4 * GIB);
+    let a = started(budget.admit([estimate(1536, 3, 60)]), 0);
+    let b = started(budget.admit([estimate(1536, 3, 600)]), 0);
+    assert_eq!(budget.used(), 3 * GIB);
+    // Both come to hold 2.4 GiB, which their `memory:` allows: each has it
+    // at once, and the budget is over by 2 GiB. Neither waits.
+    budget.top_up(&a, 2458 * MIB);
+    budget.top_up(&b, 2458 * MIB);
+    assert_eq!(budget.used(), 2 * (3 * GIB), "each raised to its `memory:`");
+    // Nothing starts while it is over, however small: the next job waits.
+    assert!(matches!(
+        budget.admit([estimate(256, 1, 5)]),
+        Admission::Wait { .. }
+    ));
+    // One ending leaves 3 of 4 taken: a job that fits the rest starts, and
+    // one that does not goes on waiting.
+    budget.release(&a);
+    assert_eq!(budget.used(), 3 * GIB);
+    assert!(matches!(
+        budget.admit([estimate(1536, 2, 5)]),
+        Admission::Wait { .. }
+    ));
+    let small = started(budget.admit([estimate(256, 1, 5)]), 0);
+    budget.release(&small);
+    budget.release(&b);
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn no_job_starts_while_the_host_is_short_of_memory_unless_nothing_is_running() {
+    let (budget, pressure) = estimating(8 * GIB);
+    pressure.0.store(true, Ordering::SeqCst);
+    // Nothing running: the first job starts whatever the host says, or a
+    // host kept short by something else would never run anything.
+    let first = started(budget.admit([estimate(512, 4, 60)]), 0);
+    // With one running, nothing more starts, though 7.5 GiB are free, and
+    // the run is told to look again, since nothing wakes it.
+    assert!(matches!(
+        budget.admit([estimate(512, 4, 60), estimate(256, 1, 1)]),
+        Admission::Wait { held_back: true }
+    ));
+    assert_eq!(budget.used(), 512 * MIB);
+    // The host has memory again: they start.
+    pressure.0.store(false, Ordering::SeqCst);
+    let second = started(budget.admit([estimate(512, 4, 60)]), 0);
+    budget.release(&first);
+    budget.release(&second);
+
+    // A budget that reserves `memory:` never asks the host.
+    let plain = MemoryBudget::new(8 * GIB);
+    let a = started(plain.admit([ask(4, 60)]), 0);
+    let b = started(plain.admit([ask(4, 60)]), 0);
+    plain.release(&a);
+    plain.release(&b);
+}
+
+#[test]
+fn a_helpers_job_is_admitted_by_estimate_and_still_counts_as_memory_that_is_back() {
+    let (budget, pressure) = estimating(4 * GIB);
+    // A helper's job starts on what it is expected to hold, and is topped
+    // up like any other: 2 GiB held, 2.5 reserved.
+    let (pos, helper) = budget.admit_spare([estimate(1024, 3, 600)]).unwrap();
+    assert_eq!(pos, 0);
+    assert_eq!(budget.used(), GIB);
+    budget.top_up(&helper, 2 * GIB);
+    assert_eq!(budget.used(), 2560 * MIB);
+    // One of this runner's own runs: its first job reserves 3 GiB, which
+    // does not fit. The helper's 2.5 GiB (what it has now, not what it
+    // started with) count as back already, which leaves 1 GiB over once
+    // the first job has them. A job behind it that needs more than that
+    // is held back, though it fits now; one that fits in it starts.
+    assert!(matches!(
+        budget.admit([estimate(3072, 3, 60), estimate(1536, 2, 600)]),
+        Admission::Wait { held_back: true }
+    ));
+    let behind = started(
+        budget.admit([estimate(3072, 3, 60), estimate(1024, 1, 600)]),
+        1,
+    );
+    budget.release(&behind);
+    budget.release(&helper);
+    assert_eq!(budget.used(), 0);
+
+    // No helper job starts while the host is short of memory, even with
+    // nothing running: it is a job this runner need not run.
+    pressure.0.store(true, Ordering::SeqCst);
+    assert!(budget.admit_spare([estimate(256, 1, 1)]).is_none());
+    pressure.0.store(false, Ordering::SeqCst);
+    let (_, again) = budget.admit_spare([estimate(256, 1, 1)]).unwrap();
+    budget.release(&again);
+    assert_eq!(budget.used(), 0);
+}
+
+/// Three jobs with 1 GiB of `memory:` each, which wait at the gate.
+const THREE_GATED: &str = "name: x\njobs:\n  a: { using: builtin:gate@1, memory: 1GiB }\n  b: { using: builtin:gate@1, memory: 1GiB }\n  c: { using: builtin:gate@1, memory: 1GiB }\n";
+
+/// Runs `plan` against `budget` with what its jobs held last time, and
+/// says which jobs had started, and what the budget had lent and was
+/// asked for, once `settled` held and while every job still waited at the
+/// gate.
+fn run_gated(
+    plan: &Plan,
+    budget: &Arc<MemoryBudget>,
+    history: Arc<MemoryDurations>,
+    settled: impl Fn(&Gated) -> bool,
+) -> (Vec<String>, u64, u64, RunReport) {
+    let exec = Gated::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| exec.open());
+        let run = scope.spawn(|| run_sharing_with(plan, &exec, budget, Some(history.clone())));
+        eventually("the jobs that fit to start", || settled(&exec));
+        // Long enough for one that should not have started to have.
+        std::thread::sleep(Duration::from_millis(100));
+        let mut ran = exec.ran();
+        ran.sort();
+        let (used, waiting) = (budget.used(), budget.waiting());
+        exec.open();
+        let report = run.join().unwrap();
+        assert!(report.passed(), "{:#?}", report.jobs);
+        (ran, used, waiting, report)
+    })
+}
+
+#[test]
+fn jobs_admitted_by_estimate_run_beside_each_other_in_memory_their_limits_would_not_share() {
+    let p = plan(THREE_GATED);
+    // Each held 100 MiB last time, so each reserves the floor.
+    let history =
+        || MemoryDurations::with("x", &[]).holding("x", &[("a", 100), ("b", 100), ("c", 100)]);
+    let (estimating, _) = estimating(GIB);
+    let estimating = Arc::new(estimating);
+    let (ran, used, waiting, _) =
+        run_gated(&p, &estimating, history(), |exec| exec.ran().len() == 3);
+    assert_eq!(ran, ["a", "b", "c"], "all three at once in 1 GiB");
+    assert_eq!(used, 3 * MIN_RESERVE);
+    assert_eq!(waiting, 0);
+    assert_eq!(estimating.used(), 0, "every reservation is given back");
+
+    // The same run and history on a budget that reserves `memory:`: one at
+    // a time, the other two waiting for 1 GiB each, as before.
+    let plain = Arc::new(MemoryBudget::new(GIB));
+    let (ran, used, waiting, _) = run_gated(&p, &plain, history(), |exec| exec.ran().len() == 1);
+    assert_eq!(ran.len(), 1, "{ran:?}");
+    assert_eq!(used, GIB);
+    assert_eq!(waiting, 2 * GIB);
+    assert_eq!(plain.used(), 0);
+}
+
+#[test]
+fn a_job_with_no_history_reserves_its_memory_when_others_are_admitted_by_estimate() {
+    let p = plan(THREE_GATED);
+    // `c` has never run: it reserves its 1 GiB, which the others'
+    // reservations leave no room for.
+    let history = MemoryDurations::with("x", &[]).holding("x", &[("a", 100), ("b", 100)]);
+    let (budget, _) = estimating(GIB);
+    let budget = Arc::new(budget);
+    let (ran, used, waiting, _) = run_gated(&p, &budget, history, |exec| exec.ran().len() == 2);
+    assert_eq!(ran, ["a", "b"]);
+    assert_eq!(used, 2 * MIN_RESERVE);
+    assert_eq!(waiting, GIB, "what `c` asks for is its `memory:`");
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn a_running_jobs_reservation_follows_what_it_comes_to_hold() {
+    // `grows` held 100 MiB last time and comes to hold 600 now; `next`
+    // would fit beside what it reserved, not beside what it holds.
+    let p = plan(
+        "name: x\njobs:\n  grows: { using: builtin:gate-600@1, memory: 1GiB }\n  next: { using: builtin:gate@1, memory: 512MiB, needs: [seed] }\n  seed: { using: builtin:ok@1, memory: 16MiB }\n",
+    );
+    let history = MemoryDurations::with("x", &[("grows", 60_000), ("next", 10)])
+        .holding("x", &[("grows", 100), ("next", 400), ("seed", 1)]);
+    let (budget, _) = estimating(GIB);
+    let budget = Arc::new(budget);
+    // Settled once `seed` has ended and `next` is queued behind `grows`.
+    let (ran, used, waiting, report) = run_gated(&p, &budget, history.clone(), |exec| {
+        exec.ran().len() == 2 && budget.waiting() != 0 && budget.used() > 512 * MIB
+    });
+    assert_eq!(ran, ["grows", "seed"], "`next` waits for the memory");
+    assert_eq!(used, 750 * MIB, "600 MiB and a quarter more");
+    assert_eq!(waiting, 512 * MIB, "`next` reserves 400 MiB x 1.5, capped");
+    assert_eq!(budget.used(), 0, "the top-up is given back with the rest");
+    // It is still billed and held to its `memory:`, and the next run
+    // reserves from what it held this time.
+    let grows = report.jobs.iter().find(|j| j.id == "grows").unwrap();
+    assert_eq!(grows.memory_mib, 1024);
+    assert!((600..=601).contains(&grows.held_memory_mib), "{grows:?}");
+    let kept = history.held_of("x");
+    assert_eq!(kept["grows"], grows.held_memory_mib, "{kept:?}");
+    // `next` held next to nothing this time: at most a quarter of the way
+    // down from 400.
+    assert!((300..=400).contains(&kept["next"]), "{kept:?}");
+}
+
+#[test]
+fn what_jobs_held_is_kept_for_the_next_run_and_a_task_cache_hit_carries_it() {
+    let p = plan(
+        "name: x\njobs:\n  big: { using: builtin:peak@1, memory: 1GiB, task-cache: true }\n  gone: { using: builtin:ok@1, if: \"commit.branch == 'nope'\" }\n",
+    );
+    // `gone` does not run and keeps what it had; `removed` left the file.
+    let durations = MemoryDurations::with("x", &[]).holding("x", &[("gone", 9), ("removed", 7)]);
+    let store = Arc::new(MemoryCaches::default());
+    let (first, _) = run_ordered(&p, Some(durations.clone()), Some(store.clone()), None);
+    assert!(first.passed(), "{:#?}", first.jobs);
+    let kept = durations.held_of("x");
+    assert_eq!(kept.keys().collect::<Vec<_>>(), ["big", "gone"], "{kept:?}");
+    // Its programs' 2 MiB in use and the 2 MiB file it wrote.
+    assert!((4..=5).contains(&kept["big"]), "{kept:?}");
+    assert_eq!(kept["gone"], 9);
+
+    // On a branch that has never run it, a hit says what the run it stands
+    // for held, so the job has an estimate the first time it does run.
+    let fresh = MemoryDurations::with("x", &[]);
+    let (second, ran) = run_ordered(&p, Some(fresh.clone()), Some(store), None);
+    assert!(second.passed() && ran.is_empty(), "{ran:?}");
+    assert_eq!(fresh.held_of("x")["big"], kept["big"]);
 }

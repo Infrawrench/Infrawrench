@@ -18,6 +18,7 @@ locals {
     var.release_public_key == "" ? "" : "IWCI_RELEASE_PUBLIC_KEY=\"${var.release_public_key}\"",
     h.cpus == null ? "" : "IWCI_CPUS=\"${h.cpus}\"",
     h.memory == null ? "" : "IWCI_MEMORY=\"${h.memory}\"",
+    h.memory_admission == null ? "" : "IWCI_MEMORY_ADMISSION=\"${h.memory_admission}\"",
   ])) }
 
   unit = { for name, h in local.hosts : name => templatefile("${path.module}/files/iwci.service.tftpl", {
@@ -37,6 +38,7 @@ resource "terraform_data" "host" {
     local.unit[each.key],
     file("${path.module}/files/install.sh"),
     each.value.tunnel_token == null ? "" : sha256(each.value.tunnel_token),
+    each.value.zram == null ? "" : each.value.zram,
   ]))
 
   # How to reach the host. Read through `self` because the destroy
@@ -72,6 +74,10 @@ resource "terraform_data" "host" {
   provisioner "file" {
     content     = each.value.tunnel_token == null ? "" : each.value.tunnel_token
     destination = "/tmp/iwci-tunnel-token"
+  }
+  provisioner "file" {
+    content     = each.value.zram == null ? "" : each.value.zram
+    destination = "/tmp/iwci-zram"
   }
   provisioner "file" {
     source      = "${path.module}/files/install.sh"
