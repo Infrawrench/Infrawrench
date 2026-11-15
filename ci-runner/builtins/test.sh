@@ -15,6 +15,7 @@
 #   builtins/test.sh bash-node-pool  many V8 heaps at once, and large ones
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
+#   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -37,6 +38,14 @@
 # with connections and keys lent the same way, so it needs bash in the
 # same list, ssh-keygen on this machine for the fixture's keys, and the
 # internet to build (OpenSSH, OpenSSL, the toolchains, Go modules).
+#
+# `aws`, `az` and `gcloud` run each cloud CLI's environment against a fake
+# of the calls they make (`environments/cloud-clis/fake-cloud.py`), a
+# service on the job's loopback, in jobs with no network, so no request can
+# reach a provider. Each is lent its connection the way the app lends one
+# (IWCI_LENT_FILE: what the AWS, GCP and Azure plugins' lendCiCredential
+# write), and the lent secrets must come out masked. `az`'s fake serves
+# HTTPS with a certificate made here with openssl.
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
@@ -66,6 +75,13 @@ export IWCI_SECRET_FIXTURE_TOKEN="fixture-secret-value-0451"
 # server wants it, and it must never show up in a report either (the
 # kubectl-passes job prints it).
 KUBE_FIXTURE_TOKEN="fixture-token"
+# What the cloud CLI jobs are lent, which the fake cloud wants and the report
+# must never show (cloud_lent, below). The fake reads them as secrets too.
+export IWCI_SECRET_AWS_FIXTURE_KEY="ASIAFIXTUREKEY0451"
+export IWCI_SECRET_AWS_FIXTURE_TOKEN="fixture-aws-session-0451"
+AWS_FIXTURE_SECRET_KEY="fixture-aws-secret-0451"
+export IWCI_SECRET_GCP_FIXTURE_TOKEN="ya29.fixture-gcp-token-0451"
+export IWCI_SECRET_AZURE_FIXTURE_SECRET="fixture-azure-secret-0451"
 
 # `go` is every Go minor the environments build.
 names=()
@@ -100,11 +116,11 @@ for name in "$@"; do
         dirs+=("$dist"/builtin/"$program"/*)
       done
       ;;
-    bash | bash-node | python | php | go@* | postgres | clickhouse)
+    bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -127,7 +143,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud" >&2
       exit 2
       ;;
   esac
@@ -483,6 +499,15 @@ for version in 1.0.0 2.0.0; do
     >"$repo/npm/packages/hello-cli/$version/package.json"
   printf '#!/usr/bin/env node\nconsole.log("hello %s " + process.argv.slice(2).join(" "));\n' "$version" \
     >"$repo/npm/packages/hello-cli/$version/bin/hello.js"
+done
+# The cloud CLIs' fake cloud, and a certificate for its HTTPS half (the
+# Azure CLI signs in over HTTPS only) that the az jobs trust.
+mkdir -p "$repo/cloud"
+cp "$here/environments/cloud-clis/fake-cloud.py" "$repo/cloud/"
+for name in "$@"; do
+  [[ "$name" == az ]] || continue
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=127.0.0.1 \
+    -addext subjectAltName=IP:127.0.0.1 -keyout "$repo/cloud/key.pem" -out "$repo/cloud/cert.pem" 2>/dev/null
 done
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
@@ -3572,6 +3597,198 @@ jobs:
       python -c 'import subprocess; print(subprocess.run(["git", "-C", "/tmp/r", "status", "--short", "--branch"], check=True, capture_output=True, text=True).stdout)' | grep -q '^## No commits yet on main$'
 YAML
       ;;
+    aws)
+      cat <<'YAML'
+name: aws
+workspace:
+  # The fake cloud (environments/cloud-clis/fake-cloud.py) on the job's
+  # loopback. It wants the lent session, and gets it as secrets.
+  services:
+    cloud:
+      using: env:aws@1.46
+      env:
+        FAKE_AWS_KEY: ${{ secrets.AWS_FIXTURE_KEY }}
+        FAKE_AWS_TOKEN: ${{ secrets.AWS_FIXTURE_TOKEN }}
+      run: exec python3 -u /app/cloud/fake-cloud.py
+      ready: { port: 4566 }
+jobs:
+  version-passes:
+    using: env:aws@1.46
+    services: false
+    run: |
+      aws --version
+      aws --version | grep -q '^aws-cli/1\.46\.3 Python/3\.13\.15 '
+      test -z "$AWS_PAGER"
+      test "$AWS_EC2_METADATA_DISABLED" = true
+      # The CLI's own packages, not the job's: a urllib3 the job installs
+      # does not reach it.
+      if python3 -c 'import awscli' 2>/dev/null; then exit 1; fi
+  # Lent the way the app lends an AWS connection (cloud_lent): the session
+  # as variables and as a profile named after the connection. Every common
+  # path, with no network: the fake cloud is the only thing it can reach.
+  deploy-passes:
+    using: env:aws@1.46
+    connections: [aws fixture]
+    network: false
+    timeout: 15m
+    env: { AWS_ENDPOINT_URL: "http://127.0.0.1:4566" }
+    run: |
+      test "$(aws sts get-caller-identity --query Account --output text)" = 123456789012
+      test "$(aws --profile aws-fixture sts get-caller-identity --query Arn --output text)" = arn:aws:iam::123456789012:user/ci
+      mkdir -p /tmp/site/sub
+      echo hello > /tmp/site/index.html
+      echo x > /tmp/site/sub/a.txt
+      aws s3 cp /tmp/site/index.html s3://assets/index.html
+      aws s3 sync /tmp/site s3://assets/site
+      test "$(aws s3 ls s3://assets/site/ --recursive | wc -l)" = 2
+      test "$(aws s3 cp s3://assets/site/sub/a.txt -)" = x
+      test "$(aws s3api list-buckets --query 'Buckets[].Name' --output text)" = assets
+      test "$(aws s3api head-object --bucket assets --key index.html --query ContentLength)" = 6
+      test "$(aws ecr get-login-password)" = fake-ecr-password
+      printf 'Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n' > /tmp/stack.yml
+      aws cloudformation deploy --template-file /tmp/stack.yml --stack-name web
+      test "$(aws cloudformation describe-stacks --stack-name web --query 'Stacks[0].StackStatus' --output text)" = CREATE_COMPLETE
+      printf 'def handler(event, context):\n    return 1\n' > /tmp/handler.py
+      (cd /tmp && python3 -c 'import zipfile; zipfile.ZipFile("fn.zip", "w").write("handler.py")')
+      test "$(aws lambda update-function-code --function-name web --zip-file fileb:///tmp/fn.zip --query LastUpdateStatus --output text)" = Successful
+      # An exec kubeconfig that runs this `aws` for its token.
+      aws eks update-kubeconfig --name prod --kubeconfig /tmp/kubeconfig
+      grep -q 'command: aws' /tmp/kubeconfig
+      aws eks get-token --cluster-name prod |
+        python3 -c 'import json, sys; t = json.load(sys.stdin)["status"]["token"]; assert t.startswith("k8s-aws-v1."), t'
+      # Masked in the report, like any lent value.
+      echo "session: $AWS_SESSION_TOKEN" >&2
+      grep aws_session_token ~/.aws/credentials
+  # A session the cloud does not know is refused, and the CLI says so.
+  wrong-session-fails:
+    using: env:aws@1.46
+    network: false
+    env:
+      AWS_ENDPOINT_URL: "http://127.0.0.1:4566"
+      AWS_ACCESS_KEY_ID: ASIAWRONG
+      AWS_SECRET_ACCESS_KEY: wrong
+      AWS_SESSION_TOKEN: wrong
+      AWS_DEFAULT_REGION: us-east-1
+    run: aws sts get-caller-identity
+  # With nothing lent the CLI finds no credentials at once: it does not wait
+  # on the instance metadata service, which a job cannot reach.
+  no-credentials-passes:
+    using: env:aws@1.46
+    services: false
+    network: false
+    run: |
+      start=$(date +%s)
+      if aws sts get-caller-identity 2> /tmp/err; then exit 1; fi
+      grep -q 'Unable to locate credentials' /tmp/err
+      test $(( $(date +%s) - start )) -lt 30
+  not-lent-fails:
+    using: env:aws@1.46
+    services: false
+    connections: [staging]
+    run: aws sts get-caller-identity
+YAML
+      ;;
+    gcloud)
+      cat <<'YAML'
+name: gcloud
+workspace:
+  services:
+    cloud:
+      using: env:gcloud@593
+      env: { FAKE_GCP_TOKEN: "${{ secrets.GCP_FIXTURE_TOKEN }}" }
+      run: exec python3 -u /app/cloud/fake-cloud.py
+      ready: { port: 4566 }
+jobs:
+  version-passes:
+    using: env:gcloud@593
+    services: false
+    timeout: 5m
+    run: |
+      gcloud version
+      gcloud version | grep -q '^Google Cloud SDK 593\.0\.0$'
+      # What was left out is not listed as installed.
+      if gcloud version | grep -q -e gsutil -e bundled-python; then exit 1; fi
+      bq version | grep -q '^This is BigQuery CLI'
+      test "$(gcloud config get-value core/disable_prompts 2>/dev/null)" = 1
+  # Lent the way the app lends a Google Cloud connection (cloud_lent): an
+  # access token in a file gcloud reads, and the project.
+  lent-passes:
+    using: env:gcloud@593
+    connections: [gcp fixture]
+    network: false
+    timeout: 10m
+    env:
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_CLOUDRESOURCEMANAGER: "http://127.0.0.1:4566/gcp/"
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_STORAGE: "http://127.0.0.1:4566/gcp/storage/v1/"
+    run: |
+      test "$(gcloud config get-value project)" = acme
+      test "$(gcloud projects describe acme --format='value(projectNumber)')" = 424242424242
+      gcloud storage ls gs://site | grep -qx gs://site/index.html
+      # Masked in the report.
+      gcloud auth print-access-token
+  wrong-token-fails:
+    using: env:gcloud@593
+    network: false
+    timeout: 10m
+    env:
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_CLOUDRESOURCEMANAGER: "http://127.0.0.1:4566/gcp/"
+      CLOUDSDK_CORE_PROJECT: acme
+    run: |
+      printf wrong > /tmp/token
+      CLOUDSDK_AUTH_ACCESS_TOKEN_FILE=/tmp/token gcloud projects describe acme
+YAML
+      ;;
+    az)
+      cat <<'YAML'
+name: az
+workspace:
+  services:
+    cloud:
+      using: env:az@2.92
+      env: { FAKE_AZURE_SECRET: "${{ secrets.AZURE_FIXTURE_SECRET }}" }
+      run: exec python3 -u /app/cloud/fake-cloud.py --cert /app/cloud/cert.pem --key /app/cloud/key.pem
+      ready: { port: 4567 }
+jobs:
+  version-passes:
+    using: env:az@2.92
+    services: false
+    timeout: 5m
+    run: |
+      az version
+      test "$(az version --query '"azure-cli"' -o tsv)" = 2.92.0
+      test "$AZURE_CORE_COLLECT_TELEMETRY" = no
+  # Lent the way the app lends an Azure connection (cloud_lent): the service
+  # principal as variables. The fake is a cloud of its own the CLI is told
+  # about; its first command that needs an account signs in by itself.
+  lent-passes:
+    using: env:az@2.92
+    connections: [azure fixture]
+    network: false
+    timeout: 15m
+    env: { REQUESTS_CA_BUNDLE: /app/cloud/cert.pem, AZURE_CORE_INSTANCE_DISCOVERY: "false" }
+    run: |
+      az cloud register --name Fixture --endpoint-resource-manager https://127.0.0.1:4567/ --output none
+      az cloud set --name Fixture --output none
+      test "$(az group list --query '[].name' -o tsv)" = web
+      test "$(az account show --query id -o tsv)" = "$AZURE_SUBSCRIPTION_ID"
+      test "$(az account show --query user.type -o tsv)" = servicePrincipal
+      # Signed in once: the second command finds the account.
+      az group list --output none
+  wrong-secret-fails:
+    using: env:az@2.92
+    connections: [azure fixture]
+    network: false
+    timeout: 15m
+    env:
+      REQUESTS_CA_BUNDLE: /app/cloud/cert.pem
+      AZURE_CORE_INSTANCE_DISCOVERY: "false"
+      AZURE_CLIENT_SECRET: wrong
+    run: |
+      az cloud register --name Fixture --endpoint-resource-manager https://127.0.0.1:4567/ --output none
+      az cloud set --name Fixture --output none
+      az group list
+YAML
+      ;;
     postgres)
       cat <<'YAML'
 name: postgres
@@ -4122,7 +4339,9 @@ want_reason() {
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
-    openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
+    openssh/not-lent-fails | aws/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
+    aws/wrong-session-fails) echo "exited with 255" ;;
+    gcloud/wrong-token-fails | az/wrong-secret-fails) echo "exited with 1" ;;
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/unsettled-tla-fails) echo "exited with 13" ;;
@@ -4152,6 +4371,10 @@ want_stderr() {
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;
     openssh/refused-fails) echo "ssh: connect to host 127.0.0.1 port 2299: Connection refused" ;;
+    aws/wrong-session-fails) echo "InvalidClientTokenId" ;;
+    aws/deploy-passes) echo "session: \\*\\*\\*" ;;
+    gcloud/wrong-token-fails) echo "Request had invalid authentication credentials" ;;
+    az/wrong-secret-fails) echo "AADSTS7000215: Invalid client secret provided.*could not sign in with the lent service principal" ;;
     postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
@@ -4200,6 +4423,46 @@ openssh_lent() {
     }'
 }
 
+# What the app would lend the cloud CLI pipelines: what the AWS, GCP and
+# Azure plugins' lendCiCredential return (plugin-architecture/packages/
+# {aws,gcp,azure}/src/ci-credential.ts), with fixture values.
+cloud_lent() {
+  case "$1" in
+    aws)
+      jq -n --arg key "$IWCI_SECRET_AWS_FIXTURE_KEY" --arg secret "$AWS_FIXTURE_SECRET_KEY" \
+        --arg token "$IWCI_SECRET_AWS_FIXTURE_TOKEN" '{ connections: {
+          "aws fixture": {
+            env: { AWS_ACCESS_KEY_ID: $key, AWS_SECRET_ACCESS_KEY: $secret, AWS_SESSION_TOKEN: $token,
+                   AWS_REGION: [{ text: "us-east-1" }], AWS_DEFAULT_REGION: [{ text: "us-east-1" }] },
+            files: [
+              { path: "/root/.aws/credentials", mode: "600", content: [
+                { text: "[aws-fixture]\naws_access_key_id = " }, { secret: $key },
+                { text: "\naws_secret_access_key = " }, { secret: $secret },
+                { text: "\naws_session_token = " }, { secret: $token }, { text: "\n" } ] },
+              { path: "/root/.aws/config", mode: "600", content: [{ text: "[profile aws-fixture]\nregion = us-east-1\n" }] } ] },
+          staging: { refused: "staging is not lent to CI for this fixture" } } }' ;;
+    gcloud)
+      jq -n --arg token "$IWCI_SECRET_GCP_FIXTURE_TOKEN" '{ connections: {
+          "gcp fixture": {
+            env: { CLOUDSDK_AUTH_ACCESS_TOKEN_FILE: [{ text: "/root/.config/gcloud/gcp-fixture.token" }],
+                   GOOGLE_OAUTH_ACCESS_TOKEN: $token,
+                   CLOUDSDK_CORE_PROJECT: [{ text: "acme" }], GOOGLE_CLOUD_PROJECT: [{ text: "acme" }] },
+            files: [{ path: "/root/.config/gcloud/gcp-fixture.token", mode: "600", content: $token }] } } }' ;;
+    az)
+      jq -n --arg secret "$IWCI_SECRET_AZURE_FIXTURE_SECRET" '
+        def shown($v): [{ text: $v }];
+        { connections: { "azure fixture": { env: {
+          AZURE_CLIENT_ID: shown("00000000-0000-0000-0000-00000000000b"),
+          AZURE_TENANT_ID: shown("00000000-0000-0000-0000-00000000000a"),
+          AZURE_CLIENT_SECRET: $secret,
+          AZURE_SUBSCRIPTION_ID: shown("00000000-0000-0000-0000-00000000000c"),
+          ARM_CLIENT_ID: shown("00000000-0000-0000-0000-00000000000b"),
+          ARM_TENANT_ID: shown("00000000-0000-0000-0000-00000000000a"),
+          ARM_CLIENT_SECRET: $secret,
+          ARM_SUBSCRIPTION_ID: shown("00000000-0000-0000-0000-00000000000c") } } } }' ;;
+  esac
+}
+
 failed=0
 for name in "$@"; do
   file="$SCRATCH/$name.yml"
@@ -4233,6 +4496,9 @@ JSON
   elif [[ "$name" == openssh ]]; then
     lent="$SCRATCH/openssh-lent.json"
     openssh_lent >"$lent"
+  elif [[ "$name" == aws || "$name" == az || "$name" == gcloud ]]; then
+    lent="$SCRATCH/$name-lent.json"
+    cloud_lent "$name" >"$lent"
   fi
   # iwci's own stderr goes on to ours as it comes, and to a file that is
   # checked below.
@@ -4300,7 +4566,9 @@ JSON
       failed=1
     fi
   done < <(jq -r '.pipelines[0].report.jobs[].id' <<<"$out")
-  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out"; then
+  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out" ||
+    grep -qF -e "$IWCI_SECRET_AWS_FIXTURE_KEY" -e "$IWCI_SECRET_AWS_FIXTURE_TOKEN" -e "$AWS_FIXTURE_SECRET_KEY" \
+      -e "$IWCI_SECRET_GCP_FIXTURE_TOKEN" -e "$IWCI_SECRET_AZURE_FIXTURE_SECRET" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
   fi

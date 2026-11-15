@@ -58,6 +58,9 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
 | `env:postgres@18`              | the same as `env:bash@5`, plus PostgreSQL 18.4, for a job's `services:`          |
+| `env:aws@1.46`                 | the same as `env:python@3.13`, plus the AWS CLI 1.46 (`aws`)                     |
+| `env:az@2.92`                  | the same as `env:python@3.13`, plus the Azure CLI 2.92 (`az`)                    |
+| `env:gcloud@593`               | the same as `env:python@3.13`, plus the Google Cloud CLI 593 (`gcloud`, `bq`)    |
 
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv`, then `.venv/bin/python -m ensurepip --default-pip` for its pip. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
@@ -73,6 +76,20 @@ jobs:
       pip install -r requirements.txt
       pytest
 ```
+
+`env:aws`, `env:az` and `env:gcloud` have a cloud provider's CLI ready to use, apart from whatever the job installs with pip. [Lend the job a connection](#connections) and the CLI is signed in: `aws` reads the lent session, `gcloud` the lent access token, and `az` signs in with the lent service principal on its first command. They run unattended: no pager, no prompts, no update checks, and no waiting on a cloud's instance metadata service, which a job cannot reach.
+
+```yaml
+jobs:
+  deploy:
+    using: env:aws@1.46
+    connections: [Production AWS]
+    run: |
+      aws s3 sync dist/ s3://my-site --delete
+      aws cloudfront create-invalidation --distribution-id E123EXAMPLE --paths '/*'
+```
+
+The AWS CLI is version 1, which AWS keeps in maintenance until July 2027: version 2 needs AWS's C runtime, which has no WebAssembly build yet. Its commands are the same for deploys (`s3`, `s3api`, `ecr get-login-password`, `cloudformation deploy`, `lambda update-function-code`, `eks update-kubeconfig`), but it gets no new services. In `env:gcloud` there is no `gsutil` (use `gcloud storage`) and no components, so `gke-gcloud-auth-plugin` is not available: a kubeconfig for GKE needs a token in it, such as `gcloud auth print-access-token`. A kubeconfig from `aws eks update-kubeconfig` runs `aws eks get-token` for its token, which `env:aws` has.
 
 In `env:go`, `go build`, `go vet`, `go test` and `go run` work, with your module's dependencies installed before the job from `go.sum` (`deps: [go]`). The standard library comes compiled, so a first build compiles only your own packages. Go programs run as WebAssembly here: cgo, the race detector and signals are not available, and a `go.mod` that asks for a newer Go than the environment's fails rather than downloading one, so pick the version your `go` line names or a newer one. Tests can listen on the job's own loopback and reach the internet.
 
