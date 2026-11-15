@@ -22,8 +22,12 @@ const PATIENT: Timing = Timing {
 struct SplitStore {
     claims: Mutex<HashMap<String, String>>,
     done: Mutex<BTreeMap<String, Vec<u8>>>,
-    kept: Mutex<HashMap<String, Vec<Entry>>>,
-    back: Mutex<Vec<(String, u64)>>,
+    /// By job and the runner that kept them.
+    kept: Mutex<HashMap<(String, String), Vec<Entry>>>,
+    /// Writes of a record, and of a hand-back, that fail before one works.
+    failing_finishes: AtomicUsize,
+    failing_hand_backs: AtomicUsize,
+    back: Mutex<Vec<(String, String, u64)>>,
     asked: AtomicBool,
     ended: AtomicBool,
     primary: AtomicU64,
@@ -82,6 +86,13 @@ fn helper(store: &Arc<SplitStore>, timing: Timing) -> Arc<dyn Split> {
     })
 }
 
+/// Fails while `left` counts down to nothing, as a store that does not
+/// answer would.
+fn fails(left: &AtomicUsize) -> Result<(), String> {
+    left.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .map_or(Ok(()), |_| Err("the store did not answer".into()))
+}
+
 impl Split for MemorySplit {
     fn runner(&self) -> &str {
         self.runner
@@ -109,13 +120,19 @@ impl Split for MemorySplit {
         Ok(())
     }
     fn hand_back(&self, job: &str) -> Result<(), String> {
-        self.release(job)?;
+        fails(&self.store.failing_hand_backs)?;
         let mut back = self.store.back.lock().unwrap();
         let n = back.len() as u64;
-        back.push((job.into(), n));
+        back.push((job.into(), self.runner.into(), n));
+        drop(back);
+        let mut claims = self.store.claims.lock().unwrap();
+        if claims.get(job).is_some_and(|holder| holder == self.runner) {
+            claims.remove(job);
+        }
         Ok(())
     }
     fn finish(&self, job: &str, done: &[u8]) -> Result<(), String> {
+        fails(&self.store.failing_finishes)?;
         self.store
             .done
             .lock()
@@ -132,11 +149,12 @@ impl Split for MemorySplit {
             .kept
             .lock()
             .unwrap()
-            .insert(job.into(), entries.to_vec());
+            .insert((job.into(), self.runner.into()), entries.to_vec());
         Ok(())
     }
-    fn kept(&self, job: &str, _max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
-        Ok(self.store.kept.lock().unwrap().get(job).cloned())
+    fn kept(&self, job: &str, runner: &str, _max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
+        let kept = self.store.kept.lock().unwrap();
+        Ok(kept.get(&(job.to_string(), runner.to_string())).cloned())
     }
     fn ask(&self) {
         self.store.asked.store(true, Ordering::SeqCst);
@@ -361,13 +379,28 @@ fn each_job_runs_once_and_what_it_kept_reaches_the_other_runner() {
         for id in &there.ran {
             let job = here.job(id);
             assert_eq!(job.remote.as_deref(), Some(name), "{id}");
-            assert_eq!(job.memory_mib, 0, "{id}");
+            // Billed with the run, at the memory it reserved there.
+            assert_eq!(job.memory_mib, 2048, "{id}");
             assert!(job.notes.contains(&format!("split: ran on `{name}`")));
         }
         for id in &here.ran {
             assert_eq!(here.job(id).remote, None, "{id}");
         }
     }
+    // The run is billed from the primary's report, for every job that
+    // ran, wherever it ran; a helper's own result bills nothing (the
+    // runner zeroes it), so no job is charged twice or not at all.
+    let usage = crate::runner::usage_of(&one.report, 4);
+    assert_eq!(usage.jobs, 15);
+    let seconds: f64 = one
+        .report
+        .jobs
+        .iter()
+        .map(|j| j.duration_ms as f64 / 1000.0)
+        .sum();
+    assert!((usage.wall_seconds - seconds).abs() < 1e-6);
+    assert!((usage.memory_gib_seconds - seconds * 2.0).abs() < 1e-6);
+    assert!((usage.vcpu_seconds - seconds / 4.0).abs() < 1e-6);
     // `raw` crossed through the split, `lib` through the task cache.
     assert_eq!(store.done_of("raw").unwrap().kept, Kept::Split);
     assert!(matches!(
@@ -620,7 +653,10 @@ fn own_run_against_a_helper_job(host: &Host, own: &Plan) -> Duration {
         wait_for("the job to be handed back", || {
             store.back.lock().unwrap().len() == 1
         });
-        assert_eq!(store.back.lock().unwrap()[0].0, "long");
+        assert_eq!(
+            store.back.lock().unwrap()[0],
+            ("long".to_string(), "ci-2".to_string(), 0)
+        );
         assert!(store.done.lock().unwrap().is_empty());
         assert!(store.claims.lock().unwrap().is_empty());
         assert_eq!(host.helping.running(), 0);
@@ -763,8 +799,14 @@ fn artifacts_over_the_cap_stay_and_so_do_the_jobs_that_need_them() {
 
     // Only `small`'s artifacts were sent, and the helper's job got them.
     assert_eq!(
-        store.kept.lock().unwrap().keys().collect::<Vec<_>>(),
-        vec!["small"]
+        store
+            .kept
+            .lock()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![("small".to_string(), "ci-1".to_string())]
     );
     assert_eq!(store.done_of("small").unwrap().kept, Kept::Split);
     assert_eq!(store.done_of("big").unwrap().kept, Kept::Local);
@@ -888,9 +930,33 @@ fn a_secret_is_in_nothing_the_runners_share() {
             PATIENT,
         );
         let mut options = options(Some(run.pipeline("test.yml")), parallelism);
-        options.secrets = BTreeMap::from([("TOKEN".to_string(), SECRET.to_string())]);
+        // A helper is sent no secrets: it only runs jobs given none.
+        if !helper {
+            options.secrets = BTreeMap::from([("TOKEN".to_string(), SECRET.to_string())]);
+        }
         (run, options)
     };
+    // The two jobs whose own pipeline text spells the value out run where
+    // the run is, as `reads` does by rule; a helper could not know to
+    // mask it, which is what the README says of a helper's records.
+    {
+        use crate::schedule::Split as _;
+        let primary = crate::adapters::split::SplitRun::with_timing(
+            objects.clone(),
+            &id("acme"),
+            &id("app"),
+            &id("run1"),
+            "ci-1",
+            false,
+            PATIENT,
+        );
+        for job in ["says", "files"] {
+            assert_eq!(
+                primary.pipeline("test.yml").claim(job).unwrap(),
+                Claim::Ours
+            );
+        }
+    }
     let (first_run, first) = side("ci-1", false, 1);
     let (second_run, second) = side("ci-2", true, 4);
     let (one, two) = both(&p, &first, &second);
@@ -1010,4 +1076,315 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
     assert!(a.out_of_memory && !a.cancelled);
     assert_eq!(back.outputs, done.outputs);
     assert_eq!((back.duration_ms, back.peak_memory_mib), (1234, 77));
+}
+
+#[test]
+fn an_own_runs_first_job_is_not_passed_over_while_a_helper_job_holds_its_memory() {
+    // 4 GiB; the helper's job holds 2 and is expected to run for a minute.
+    let host = Host::new(4, 4 << 30);
+    let helped = plan(
+        "name: helped\nsplit: true\njobs:\n  long:\n    using: builtin:wait@1\n    memory: 2GiB\n",
+    );
+    // The own run: `big` is first in the order and needs 3 GiB, `small`
+    // needs 2 and is expected to be quick. Counting the helper's lease as
+    // held for its minute would let `small` in ahead of `big`.
+    let own = plan(
+        "name: own\njobs:\n  big:\n    using: builtin:ok@1\n    memory: 3GiB\n  small:\n    using: builtin:wait@1\n    memory: 2GiB\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    let mut helping = host.options(Some(helper(&store, PATIENT)));
+    helping.durations = Some(MemoryDurations::with("helped", &[("long", 60_000)]));
+    let mut own_options = host.options(None);
+    own_options.durations = Some(MemoryDurations::with(
+        "own",
+        &[("big", 5_000), ("small", 100)],
+    ));
+    let (helper_exec, own_exec) = (SplitExec::new(), SplitExec::new());
+    std::thread::scope(|scope| {
+        let helper_run = scope.spawn(|| go(&helped, &helper_exec, &helping));
+        wait_for("the helper's job to start", || {
+            helper_exec.waiting.load(Ordering::SeqCst) == 1
+        });
+        let own_run = scope.spawn(|| go(&own, &own_exec, &own_options));
+        wait_for("the own run's first job", || !own_exec.ran().is_empty());
+        let first = own_exec.ran();
+        own_options.cancel.as_ref().unwrap().cancel();
+        own_run.join().unwrap();
+        store.ended.store(true, Ordering::SeqCst);
+        helper_run.join().unwrap();
+        assert_eq!(first.first().map(String::as_str), Some("big"));
+    });
+}
+
+#[test]
+fn a_record_the_store_would_not_take_is_written_once_it_does() {
+    let p = plan("name: x\nsplit: true\njobs:\n  a:\n    using: builtin:ok@1\n");
+    let store = Arc::new(SplitStore::default());
+    store.give("a", "ci-2");
+    // More failures than one write is tried: the record is owed, and
+    // written on a later look.
+    store.failing_finishes.store(7, Ordering::SeqCst);
+    let (one, two) = both(
+        &p,
+        &options(Some(primary(&store, PATIENT)), 2),
+        &options(Some(helper(&store, PATIENT)), 2),
+    );
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert_eq!(two.ran, vec!["a".to_string()]);
+    assert!(one.ran.is_empty(), "the primary waited for the record");
+    assert_eq!(one.job("a").remote.as_deref(), Some("ci-2"));
+    assert_eq!(store.failing_finishes.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_hand_back_the_store_would_not_take_is_written_once_it_does() {
+    // No runner can run `a` (its tool does not resolve). On the helper
+    // that says nothing about the job, so it is handed back; the store
+    // takes the hand-back only at the sixth try.
+    let p = plan("name: x\nsplit: true\njobs:\n  a:\n    using: repo:missing@1\n");
+    let store = Arc::new(SplitStore::default());
+    store.give("a", "ci-2");
+    store.failing_hand_backs.store(5, Ordering::SeqCst);
+    let (one, _two) = both(
+        &p,
+        &options(Some(primary(&store, PATIENT)), 2),
+        &options(Some(helper(&store, PATIENT)), 2),
+    );
+    assert_eq!(store.failing_hand_backs.load(Ordering::SeqCst), 0);
+    assert_eq!(store.back.lock().unwrap().len(), 1);
+    // The primary took it and found out for itself.
+    let a = one.job("a");
+    assert!(matches!(a.status, Status::Error { .. }), "{:?}", a.status);
+    assert_eq!(a.remote, None);
+    assert!(store.done_of("a").is_some_and(|d| d.runner == "ci-1"));
+}
+
+#[test]
+fn a_hand_back_seen_before_the_job_is_known_to_be_the_helpers_still_counts() {
+    let p = plan("name: x\nsplit: true\njobs:\n  a:\n    using: builtin:ok@1\n");
+    let store = Arc::new(SplitStore::default());
+    // The helper claimed `a`, said it gives it up, and died before it
+    // dropped the claim: the marker is there before the primary has even
+    // lost the claim to it.
+    store.give("a", "ci-2");
+    store
+        .back
+        .lock()
+        .unwrap()
+        .push(("a".into(), "ci-2".into(), 7));
+    let exec = SplitExec::new();
+    let report = go(&p, &exec, &options(Some(primary(&store, PATIENT)), 2));
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert_eq!(exec.ran(), vec!["a".to_string()]);
+    assert!(
+        report.jobs[0]
+            .caches
+            .iter()
+            .any(|l| l == "split: `ci-2` handed it back; running it here"),
+        "{:?}",
+        report.jobs[0].caches
+    );
+}
+
+#[test]
+fn what_a_job_that_reads_secrets_left_keeps_the_jobs_after_it_on_the_primary() {
+    // `b` reads no secret, but starts with what `a`, which does, kept;
+    // `c` starts with what `b` kept. Neither may run on a helper, and
+    // neither's artifacts are sent.
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  a:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n  b:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    needs: [a]\n  c:\n    using: builtin:art-read@1\n    needs: [b]\n  free:\n    using: builtin:ok@1\n    matrix: [x, y, z]\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    let (one, two) = both(
+        &p,
+        &options(Some(primary(&store, PATIENT)), 1),
+        &options(Some(helper(&store, PATIENT)), 4),
+    );
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    for id in ["a", "b", "c"] {
+        assert!(one.ran.contains(&id.to_string()), "{id}");
+        assert!(!store.tried_by("ci-2").contains(&id.to_string()), "{id}");
+    }
+    assert!(two.ran.iter().all(|id| id.starts_with("free[")));
+    assert_eq!(store.done_of("b").unwrap().kept, Kept::Local);
+    assert!(store.kept.lock().unwrap().is_empty());
+    assert!(
+        one.job("b")
+            .notes
+            .iter()
+            .any(|n| n.contains("it was handed what a job that reads secrets left")),
+        "{:?}",
+        one.job("b").notes
+    );
+    assert_eq!(one.stdout("c"), "a.txt,b.txt");
+}
+
+#[test]
+fn an_untrusted_run_sends_no_more_than_the_default() {
+    // The pipeline allows 64 MiB; `big` keeps 20.
+    let p = plan(
+        "name: x\nsplit: { artifacts: 64MiB }\njobs:\n  big:\n    using: builtin:art-big@1\n    artifacts: [dist]\n",
+    );
+    for (trusted, kept) in [(true, Kept::Split), (false, Kept::Local)] {
+        let store = Arc::new(SplitStore::default());
+        let mut opts = options(Some(primary(&store, PATIENT)), 1);
+        opts.access.trusted = trusted;
+        let report = go(&p, &SplitExec::new(), &opts);
+        assert!(report.passed());
+        assert_eq!(
+            store.done_of("big").unwrap().kept,
+            kept,
+            "trusted: {trusted}"
+        );
+        assert_eq!(store.kept.lock().unwrap().len(), usize::from(trusted));
+    }
+}
+
+#[test]
+fn everything_in_another_runners_record_is_masked_where_it_is_read() {
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  a:\n    using: builtin:ok@1\n  after:\n    using: builtin:ok@1\n    needs: [a]\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    // A helper is sent no secrets, so nothing it writes was masked.
+    store.give("a", "ci-2");
+    let done = Done {
+        runner: "ci-2".into(),
+        result: Status::Failed {
+            reason: format!("exited with 1 saying {SECRET}"),
+        },
+        blocks: true,
+        execution: Some(Execution {
+            exit_code: 1,
+            stdout: format!("out {SECRET}"),
+            stderr: format!("err {SECRET}"),
+            service_failure: Some(format!("service said {SECRET}")),
+            ..Default::default()
+        }),
+        changes: vec![(format!("src/{SECRET}.ts"), "added".into())],
+        commit: None,
+        outputs: BTreeMap::new(),
+        caches: vec![format!("cache `{SECRET}`: miss")],
+        downloads: Vec::new(),
+        notes: vec![format!("a note with {SECRET}")],
+        duration_ms: 5,
+        peak_memory_mib: 0,
+        queued_ms: 0,
+        kept: Kept::None,
+    };
+    store
+        .done
+        .lock()
+        .unwrap()
+        .insert("a".into(), serde_json::to_vec(&done).unwrap());
+    let mut opts = options(Some(primary(&store, PATIENT)), 2);
+    opts.secrets = BTreeMap::from([("TOKEN".to_string(), SECRET.to_string())]);
+    let events = Arc::new(Mutex::new(Vec::<LogEvent>::new()));
+    let sink = events.clone();
+    opts.logs = Some(Arc::new(move |e| sink.lock().unwrap().push(e)));
+    let report = go(&p, &SplitExec::new(), &opts);
+    let text = format!("{:?} {:?}", report.jobs, events.lock().unwrap());
+    assert!(!text.contains(SECRET), "{text}");
+    let a = report.jobs.iter().find(|j| j.id == "a").unwrap();
+    assert_eq!(
+        a.status,
+        Status::Failed {
+            reason: "exited with 1 saying ***".into()
+        }
+    );
+    assert!(a.notes.contains(&"a note with ***".to_string()));
+    assert_eq!(a.changes[0].path, "src/***.ts");
+}
+
+#[test]
+fn a_run_of_two_pipelines_shares_each_and_keeps_them_apart() {
+    // Both pipelines have a job `j[a]`: a claim or a record of one must
+    // not answer for the other's.
+    let first = plan(
+        "name: first\nsplit: true\njobs:\n  j:\n    using: builtin:art-write@1\n    matrix: [a, b, c, d]\n    artifacts: [dist]\n  check:\n    using: builtin:art-read@1\n    needs: [j]\n",
+    );
+    let second = plan(
+        "name: second\nsplit: true\njobs:\n  j:\n    using: builtin:ok@1\n    matrix: [a, b, c, d, e, f]\n",
+    );
+    let dir = std::env::temp_dir().join(format!("iwci-split-two-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let objects: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let id = |text: &str| iwci_store::RepoId::new(text).unwrap();
+    let side = |runner: &str, helper: bool| {
+        crate::adapters::split::SplitRun::with_timing(
+            objects.clone(),
+            &id("acme"),
+            &id("app"),
+            &id("run2"),
+            runner,
+            helper,
+            PATIENT,
+        )
+    };
+    let (one, two) = (side("ci-1", false), side("ci-2", true));
+    let nap = Duration::from_millis(20);
+    // A run does its pipelines one after the other, on each runner.
+    let run = |split: &Arc<crate::adapters::split::SplitRun>, parallelism: usize| {
+        let mut ran = Vec::new();
+        let mut reports = Vec::new();
+        for (file, plan) in [("first.yml", &first), ("second.yml", &second)] {
+            let exec = SplitExec::napping(nap);
+            let opts = options(Some(split.pipeline(file)), parallelism);
+            reports.push(go(plan, &exec, &opts));
+            ran.push(exec.ran());
+        }
+        (reports, ran)
+    };
+    let ((reports, ran_one), (_, ran_two)) = std::thread::scope(|scope| {
+        let a = scope.spawn(|| run(&one, 1));
+        let b = scope.spawn(|| run(&two, 4));
+        (a.join().unwrap(), b.join().unwrap())
+    });
+    for (n, report) in reports.iter().enumerate() {
+        assert!(report.passed(), "{:#?}", report.jobs);
+        let mut ran: Vec<String> = ran_one[n].iter().chain(&ran_two[n]).cloned().collect();
+        ran.sort();
+        let mut all: Vec<String> = report.jobs.iter().map(|j| j.id.clone()).collect();
+        all.sort();
+        assert_eq!(ran, all, "pipeline {n}: every job once");
+    }
+    assert_eq!(
+        reports[0]
+            .jobs
+            .iter()
+            .find(|j| j.id == "check")
+            .unwrap()
+            .execution
+            .as_ref()
+            .unwrap()
+            .stdout,
+        "j_a_.txt,j_b_.txt,j_c_.txt,j_d_.txt"
+    );
+    assert!(
+        !ran_two[0].is_empty() || !ran_two[1].is_empty(),
+        "the helper took part"
+    );
+    drop((one, two));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_runner_joins_only_as_many_runs_as_it_may_help() {
+    let helping = Arc::new(Helping::default());
+    // No limit until one is set.
+    let free: Vec<_> = (0..5).map(|_| helping.join().unwrap()).collect();
+    assert_eq!(helping.runs(), 5);
+    drop(free);
+    helping.limit_runs(2);
+    let (a, b) = (helping.join().unwrap(), helping.join().unwrap());
+    assert!(helping.join().is_none());
+    assert_eq!(helping.runs(), 2);
+    drop(a);
+    let c = helping.join().unwrap();
+    assert_eq!(helping.runs(), 2);
+    drop((b, c));
+    assert_eq!(helping.runs(), 0);
+    helping.limit_runs(0);
+    assert!(helping.join().is_none());
 }

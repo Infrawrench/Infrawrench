@@ -39,7 +39,7 @@ use serde::Serialize;
 
 #[path = "schedule_split.rs"]
 mod split;
-pub use split::{Claim, Done, Helping, Kept, Seen, Split, Timing};
+pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
 
 /// Where a job writes its outputs, as `$IWCI_OUTPUT` tells it.
 pub const OUTPUT_PATH: &str = "/iwci/output";
@@ -475,7 +475,8 @@ pub struct JobReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudRun>,
     /// The runner that ran it, when another runner of a split run did:
-    /// this report is the one that runner made. Not billed here.
+    /// this report is the one that runner made. The run that has it is
+    /// billed for it like any other of its jobs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<String>,
     /// What it kept is not on this runner (a helper that could not be
@@ -906,7 +907,7 @@ impl MemoryBudget {
         let Some((_, first)) = asks.next() else {
             return Admission::Wait { held_back: false };
         };
-        if let Some(lease) = self.lease(&mut leases, first, now) {
+        if let Some(lease) = self.lease(&mut leases, first, now, false) {
             return Admission::Start(0, lease);
         }
         let free = self.total.saturating_sub(self.used());
@@ -920,14 +921,14 @@ impl MemoryBudget {
                 held_back |= ask.bytes <= free;
                 continue;
             }
-            if let Some(lease) = self.lease(&mut leases, ask, now) {
+            if let Some(lease) = self.lease(&mut leases, ask, now, false) {
                 return Admission::Start(pos, lease);
             }
         }
         Admission::Wait { held_back }
     }
 
-    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant) -> Option<Lease> {
+    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant, spare: bool) -> Option<Lease> {
         if !self.try_take(ask.bytes) {
             return None;
         }
@@ -937,6 +938,7 @@ impl MemoryBudget {
             bytes: ask.bytes,
             taken: now,
             expected: ask.expected,
+            spare,
         });
         Some(Lease {
             id: leases.next,
@@ -948,8 +950,10 @@ impl MemoryBudget {
     /// start in, from memory nothing else wants: the first that fits now,
     /// and none at all while a job of one of this runner's own runs waits.
     /// A helper's job is never owed memory as the first job of a run is
-    /// in [`MemoryBudget::admit`]; it holds a lease like any other, so a
-    /// run's first job knows when that memory is expected back.
+    /// in [`MemoryBudget::admit`], and its lease counts there as memory
+    /// that is back already: it is given up the moment one of this
+    /// runner's own runs wants it (`split::reclaim_memory`), so a run's
+    /// first job must not be passed over on the strength of it.
     fn admit_spare(&self, asks: impl IntoIterator<Item = Ask>) -> Option<(usize, Lease)> {
         let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
         if self.waiting() > 0 {
@@ -958,7 +962,7 @@ impl MemoryBudget {
         let now = Instant::now();
         asks.into_iter()
             .enumerate()
-            .find_map(|(pos, ask)| Some((pos, self.lease(&mut leases, ask, now)?)))
+            .find_map(|(pos, ask)| Some((pos, self.lease(&mut leases, ask, now, true)?)))
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
@@ -1033,6 +1037,9 @@ struct Running {
     bytes: u64,
     taken: Instant,
     expected: Duration,
+    /// A helper's job, which gives its memory up as soon as one of this
+    /// runner's own runs asks: as good as back now.
+    spare: bool,
 }
 
 impl Running {
@@ -1041,6 +1048,9 @@ impl Running {
     /// overrun: its estimate was wrong (a job with no history counts as the
     /// median), and the longer it has been wrong the less it says.
     fn ends(&self, now: Instant) -> Instant {
+        if self.spare {
+            return now;
+        }
         let elapsed = now.saturating_duration_since(self.taken);
         now + self.expected.abs_diff(elapsed)
     }
@@ -1198,6 +1208,10 @@ struct Finished {
     /// Some of what it, or a job it needed, kept is not on this runner
     /// (`split:`), so nothing that needs it can run here.
     elsewhere: bool,
+    /// It, or a job it needed, read a secret or was lent something: what
+    /// it left (artifacts, outputs) may carry that, so a job handed it
+    /// does not run on a helper and sends its own artifacts nowhere.
+    tainted: bool,
 }
 
 /// Which ready job starts first: the one with the most work still ahead of
@@ -1383,6 +1397,8 @@ struct State<'p> {
     /// Remote jobs another runner finished, waiting to be read in; counted
     /// in `running`.
     arrived: Vec<split::RemoteJob<'p>>,
+    /// The keys whose jobs read a secret or are lent something.
+    secretive: HashSet<String>,
 }
 
 impl<'p> State<'p> {
@@ -1584,6 +1600,7 @@ pub fn run<T: Tools>(
         },
         remote: HashMap::new(),
         arrived: Vec::new(),
+        secretive: HashSet::new(),
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -1746,7 +1763,7 @@ pub fn run<T: Tools>(
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
-                    let (template, job, lookup, inherited, reserved, rank, slot) = {
+                    let (template, job, lookup, inherited, reserved, rank, slot, handed) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // Read before the budget is, so memory given
@@ -1797,7 +1814,15 @@ pub fn run<T: Tools>(
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (template, job, lookup, inherited, reserved, rank, slot);
+                                // Whether it starts with what a job that
+                                // read a secret left.
+                                let handed = template
+                                    .needs
+                                    .iter()
+                                    .any(|n| s.finished.get(n).is_some_and(|f| f.tainted));
+                                break (
+                                    template, job, lookup, inherited, reserved, rank, slot, handed,
+                                );
                             }
                             if !cancelled && !helper {
                                 // Memory a helper job holds comes back for
@@ -1931,7 +1956,7 @@ pub fn run<T: Tools>(
                         if sharing.hands_back(&report) {
                             // Stopped, or not run at all: the primary
                             // takes it, and this run waits for its word.
-                            let _ = sharing.split.hand_back(&job.id);
+                            sharing.hand_back(&job.id);
                             let mut s = state.lock().unwrap();
                             s.remote.insert(
                                 job.id.clone(),
@@ -1946,7 +1971,7 @@ pub fn run<T: Tools>(
                             );
                             continue;
                         }
-                        sharing.publish(&job, &mut report, &kept, saved.as_deref(), &mask);
+                        sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
                 }
@@ -2170,6 +2195,9 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 finish(s, template, vec![report], Vec::new());
             }
             Ok(jobs) => {
+                if jobs.iter().any(|j| !split::secret_free(j)) {
+                    s.secretive.insert(template.key.clone());
+                }
                 let order = jobs.iter().map(|j| j.id.clone()).collect();
                 s.open.insert(
                     template.key.clone(),
@@ -2248,6 +2276,11 @@ fn finish(
         .first()
         .map(|r| r.outputs.clone())
         .unwrap_or_default();
+    let tainted = s.secretive.contains(&template.key)
+        || template
+            .needs
+            .iter()
+            .any(|n| s.finished.get(n).is_some_and(|f| f.tainted));
     let elsewhere = reports.iter().any(|r| r.elsewhere)
         || template
             .needs
@@ -2261,6 +2294,7 @@ fn finish(
             outputs,
             artifacts: Arc::new(artifacts),
             elsewhere,
+            tainted,
         },
     );
     s.reports.insert(template.key.clone(), reports);

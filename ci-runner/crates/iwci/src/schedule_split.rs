@@ -46,8 +46,9 @@ pub enum Claim {
 pub struct Seen {
     /// The jobs with a [`Done`], by id.
     pub done: Vec<String>,
-    /// Jobs a helper gave up after claiming them, each time it did.
-    pub back: Vec<(String, u64)>,
+    /// Jobs a helper gave up after claiming them: the job, the helper, and
+    /// a number that tells one time from the next.
+    pub back: Vec<(String, String, u64)>,
     /// The primary is finished with the pipeline, or cancelled it.
     pub ended: bool,
     /// A number the primary changes for as long as it is alive.
@@ -96,16 +97,21 @@ pub trait Split: Send + Sync {
     fn claim(&self, job: &str) -> Result<Claim, String>;
     /// Drops the claim on `job`, whoever holds it.
     fn release(&self, job: &str) -> Result<(), String>;
-    /// Gives up a job this runner claimed, so the primary takes it.
+    /// Gives up a job this runner claimed, so the primary takes it. The
+    /// word that it is given up is written before the claim is dropped,
+    /// so a runner that dies between the two has still said so.
     fn hand_back(&self, job: &str) -> Result<(), String>;
     /// Records how `job` went. The first record stays.
     fn finish(&self, job: &str, done: &[u8]) -> Result<(), String>;
     /// The record of `job`, if it has one.
     fn done(&self, job: &str) -> Result<Option<Vec<u8>>, String>;
-    /// Keeps what `job` kept, for the other runners.
+    /// Keeps what `job` kept on this runner, for the other runners.
     fn keep(&self, job: &str, entries: &[Entry]) -> Result<(), String>;
-    /// What [`Split::keep`] was given for `job`, up to `max_bytes`.
-    fn kept(&self, job: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String>;
+    /// What `runner` gave [`Split::keep`] for `job`, up to `max_bytes`: a
+    /// job's record names the runner whose artifacts go with it, so a job
+    /// that ran twice never pairs one runner's record with another's
+    /// files.
+    fn kept(&self, job: &str, runner: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String>;
     /// The primary has more ready jobs than it can start: helpers may
     /// join.
     fn ask(&self);
@@ -214,6 +220,21 @@ impl Done {
 #[derive(Debug, Default)]
 pub struct Helping {
     state: Mutex<HelpingState>,
+    /// The runs of other runners this one has joined, and the most it may
+    /// (`None` for no limit). A run counts from when it is asked for help
+    /// and this runner has room, not from when it is offered.
+    runs: Mutex<(usize, Option<usize>)>,
+}
+
+/// A run this runner helps, off the count when dropped.
+#[derive(Debug)]
+pub struct Joined(Arc<Helping>);
+
+impl Drop for Joined {
+    fn drop(&mut self) {
+        let mut runs = self.0.runs.lock().unwrap_or_else(|e| e.into_inner());
+        runs.0 = runs.0.saturating_sub(1);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -246,6 +267,26 @@ impl HelpingState {
 impl Helping {
     fn lock(&self) -> MutexGuard<'_, HelpingState> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Helps at most `max` runs at once.
+    pub fn limit_runs(&self, max: usize) {
+        self.runs.lock().unwrap_or_else(|e| e.into_inner()).1 = Some(max);
+    }
+
+    /// The runs this runner helps now.
+    pub fn runs(&self) -> usize {
+        self.runs.lock().unwrap_or_else(|e| e.into_inner()).0
+    }
+
+    /// Joins one more run, if this runner may help another.
+    pub fn join(self: &Arc<Self>) -> Option<Joined> {
+        let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+        if runs.1.is_some_and(|max| runs.0 >= max) {
+            return None;
+        }
+        runs.0 += 1;
+        Some(Joined(self.clone()))
     }
 
     /// Helper jobs running now: the slots they hold.
@@ -369,18 +410,43 @@ pub(super) struct RemoteJob<'p> {
     pub since: Instant,
 }
 
+/// Whether a job is given no secret and lent nothing, its services
+/// included.
+pub(super) fn secret_free(job: &PlannedJob) -> bool {
+    job.secret_env.is_empty()
+        && job.services.iter().all(|s| s.secret_env.is_empty())
+        && job.access.is_empty()
+}
+
 /// Whether a job may run on a helper at all: nothing about it is tied to
 /// the runner that has the run. A cloud job is claimed there by the app,
 /// a commit lands in that runner's git cache, downloads are stored under
-/// its run id, and a job that reads a secret or is lent anything leaves
-/// results that no key or mask vouches for.
+/// its run id, and a job that reads a secret or is lent anything needs
+/// what only the primary is sent. A job that is handed what such a job
+/// left stays too ([`runs_here`]).
 pub(super) fn shareable(job: &PlannedJob) -> bool {
     job.cloud.is_none()
         && !matches!(job.changes, ChangePolicy::Commit { .. })
         && job.downloads.is_none()
-        && job.secret_env.is_empty()
-        && job.services.iter().all(|s| s.secret_env.is_empty())
-        && job.access.is_empty()
+        && secret_free(job)
+}
+
+/// What this runner still owes the others of a split run: something the
+/// store would not take when it was first written.
+enum Owed {
+    Back(String),
+    Done(String, Vec<u8>),
+}
+
+/// Tries `write` a few times, a little apart. `false` when none worked.
+fn retried(mut write: impl FnMut() -> Result<(), String>) -> bool {
+    for wait in [0u64, 50, 200] {
+        std::thread::sleep(Duration::from_millis(wait));
+        if write().is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 /// One pipeline's split, for the run's threads.
@@ -396,6 +462,10 @@ pub(super) struct Sharing<'a> {
     /// would not build, a tool would not resolve): it takes no more, since
     /// the next would go the same way and each costs the primary a second.
     pub unfit: AtomicBool,
+    /// Records and hand-backs the store would not take, tried again every
+    /// time this runner looks at the store, for as long as the run lasts:
+    /// a job whose word is lost is one the primary waits out.
+    owed: Mutex<Vec<Owed>>,
 }
 
 /// What another runner's record of a job comes to here.
@@ -434,13 +504,20 @@ impl<'a> Sharing<'a> {
     /// asks for it.
     pub fn of(plan: &Plan, options: &'a Options) -> Option<Self> {
         let split = options.split.as_deref()?;
+        let mut spec = plan.split?;
+        if !options.access.trusted {
+            // A fork's pull request says how much its jobs may send no
+            // more than a pipeline that says nothing does.
+            spec.artifact_bytes = spec.artifact_bytes.min(iwci_spec::DEFAULT_SPLIT_ARTIFACTS);
+        }
         Some(Sharing {
             split,
-            spec: plan.split?,
+            spec,
             helper: split.helper(),
             settled: Mutex::default(),
             running: AtomicU64::new(0),
             unfit: AtomicBool::new(false),
+            owed: Mutex::default(),
         })
     }
 
@@ -475,14 +552,50 @@ impl<'a> Sharing<'a> {
         )
     }
 
+    /// Gives a job this helper claimed back to the primary. Kept and tried
+    /// again when the store does not take it.
+    pub fn hand_back(&self, job: &str) {
+        if !retried(|| self.split.hand_back(job)) {
+            self.owe(Owed::Back(job.to_string()));
+        }
+    }
+
+    fn owe(&self, owed: Owed) {
+        self.owed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(owed);
+    }
+
+    /// Writes again what the store would not take. `true` when nothing is
+    /// owed any more.
+    pub fn settle(&self) -> bool {
+        let owed = std::mem::take(&mut *self.owed.lock().unwrap_or_else(|e| e.into_inner()));
+        for item in owed {
+            let written = match &item {
+                Owed::Back(job) => self.split.hand_back(job),
+                Owed::Done(job, body) => self.split.finish(job, body),
+            };
+            if written.is_err() {
+                self.owe(item);
+            }
+        }
+        self.owed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty()
+    }
+
     /// Tells the other runners how a job this runner ran went, and puts
-    /// what it kept where they can get it.
+    /// what it kept where they can get it. `handed` when the job started
+    /// with what a job that reads secrets left.
     pub fn publish(
         &self,
         job: &PlannedJob,
         report: &mut JobReport,
         kept: &[Entry],
         saved: Option<&str>,
+        handed: bool,
         mask: &Masker,
     ) {
         self.settled
@@ -500,6 +613,9 @@ impl<'a> Sharing<'a> {
             }
         } else if !shareable(job) {
             stays = Some("a job that reads secrets, commits or keeps downloads sends none".into());
+            Kept::Local
+        } else if handed {
+            stays = Some("it was handed what a job that reads secrets left".into());
             Kept::Local
         } else if bytes > cap {
             stays = Some(format!(
@@ -528,10 +644,8 @@ impl<'a> Sharing<'a> {
         }
         let done = Done::of(self.split.runner(), report, kept_in, mask);
         let body = serde_json::to_vec(&done).expect("serialisable");
-        for _ in 0..3 {
-            if self.split.finish(&job.id, &body).is_ok() {
-                break;
-            }
+        if !retried(|| self.split.finish(&job.id, &body)) {
+            self.owe(Owed::Done(job.id.clone(), body));
         }
     }
 
@@ -551,10 +665,41 @@ impl<'a> Sharing<'a> {
             },
             Ok(None) | Err(_) => return Received::Retry,
         };
+        // The runner that wrote it may not have had the run's secrets (a
+        // helper is sent none), so every piece of text in it is masked
+        // here, as this runner's own report of the job would be.
         let mask = |t: &str| shared.mask.mask(t);
+        let texts = |lines: Vec<String>| -> Vec<String> { lines.iter().map(|l| mask(l)).collect() };
+        let done = Done {
+            result: match done.result {
+                Status::Passed => Status::Passed,
+                Status::Failed { reason } => Status::Failed {
+                    reason: mask(&reason),
+                },
+                Status::Skipped { reason } => Status::Skipped {
+                    reason: mask(&reason),
+                },
+                Status::Error { message } => Status::Error {
+                    message: mask(&message),
+                },
+                Status::Cancelled { reason } => Status::Cancelled {
+                    reason: mask(&reason),
+                },
+            },
+            changes: done
+                .changes
+                .into_iter()
+                .map(|(path, kind)| (mask(&path), kind))
+                .collect(),
+            commit: done.commit.map(|c| mask(&c)),
+            caches: texts(done.caches),
+            notes: texts(done.notes),
+            ..done
+        };
         let execution = done.execution.map(|e| Execution {
             stdout: mask(&e.stdout),
             stderr: mask(&e.stderr),
+            service_failure: e.service_failure.as_deref().map(mask),
             ..e
         });
         if let (Some(logs), Some(e)) = (&options.logs, &execution) {
@@ -599,8 +744,9 @@ impl<'a> Sharing<'a> {
             downloads: done.downloads,
             notes,
             duration_ms: done.duration_ms,
-            // Reserved on the runner that ran it, which bills it.
-            memory_mib: 0,
+            // What it reserved where it ran: the same plan, so the same
+            // `memory:`. It is billed with the run, like any of its jobs.
+            memory_mib: job.memory_bytes >> 20,
             peak_memory_mib: done.peak_memory_mib,
             queued_ms: done.queued_ms,
             cached: false,
@@ -632,7 +778,7 @@ impl<'a> Sharing<'a> {
                     Err(e) => Err(format!("could not read its task cache entry: {e}")),
                 },
             },
-            Kept::Split => match self.split.kept(&job.id, plan.scratch_bytes) {
+            Kept::Split => match self.split.kept(&job.id, &done.runner, plan.scratch_bytes) {
                 Ok(Some(entries)) => Ok(entries),
                 Ok(None) => Err("the artifacts it sent are gone".into()),
                 Err(e) => Err(format!("could not read the artifacts it sent: {e}")),
@@ -701,7 +847,7 @@ pub(super) fn runs_here(
         && template
             .needs
             .iter()
-            .all(|n| finished.get(n).is_none_or(|f| !f.elsewhere))
+            .all(|n| finished.get(n).is_none_or(|f| !f.elsewhere && !f.tainted))
 }
 
 /// Puts a job among those another runner has, or will have. It shows as
@@ -814,7 +960,7 @@ pub(super) fn watch<'p>(
 ) {
     let split = sharing.split;
     let timing = split.timing();
-    let mut back: HashSet<(String, u64)> = HashSet::new();
+    let mut back: HashSet<(String, String, u64)> = HashSet::new();
     // Each runner's last number and when it changed, by this clock: the
     // primary under the empty name.
     let mut beats: HashMap<String, (Option<u64>, Instant)> = HashMap::new();
@@ -917,10 +1063,17 @@ pub(super) fn watch<'p>(
             drop(settled);
             if !sharing.helper {
                 for marker in seen.iter().flat_map(|s| &s.back) {
-                    if back.insert(marker.clone())
-                        && let Some(remote) = s.remote.remove(&marker.0)
+                    // Only once the job is seen here as that helper's: a
+                    // hand-back that arrives while a worker is still
+                    // losing the claim to it is looked at again.
+                    let (job, by, _) = marker;
+                    if !back.contains(marker)
+                        && s.remote
+                            .get(job)
+                            .is_some_and(|r| r.holder.as_ref() == Some(by))
+                        && let Some(remote) = s.remote.remove(job)
                     {
-                        let by = remote.holder.clone().unwrap_or_default();
+                        back.insert(marker.clone());
                         requeue(&mut s, remote, format!("`{by}` handed it back"));
                     }
                 }
@@ -972,6 +1125,7 @@ pub(super) fn watch<'p>(
         if left_behind && let Some(cancel) = &options.cancel {
             cancel.cancel();
         }
+        sharing.settle();
         for id in released {
             let _ = split.release(&id);
         }
@@ -980,6 +1134,14 @@ pub(super) fn watch<'p>(
             split.ask();
         }
         wake.notify_all();
+    }
+    // What is still owed is tried for a little longer: a job handed back
+    // as the run ends is one the primary would otherwise wait out.
+    for _ in 0..20 {
+        if sharing.settle() {
+            break;
+        }
+        std::thread::sleep(timing.poll.min(Duration::from_millis(250)));
     }
     if !ended && !sharing.helper {
         split.end();

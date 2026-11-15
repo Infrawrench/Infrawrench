@@ -68,6 +68,10 @@ pub const USAGE_SCHEMA: u32 = 4;
 /// The most runs of other runners this one helps at once, unless
 /// `--helping` says.
 pub const DEFAULT_HELPING: usize = 2;
+/// The most offers to help a runner holds at once. An offer costs a
+/// thread that looks at the store every two seconds; past this many the
+/// pool has more runs in flight than these runners could help anyway.
+pub const MAX_OFFERS: usize = 64;
 /// How often the server sweeps what split runs left in the store.
 const SWEEP_SPLITS_SECS: u64 = 60 * 60;
 
@@ -90,9 +94,11 @@ pub struct Server {
     controls: Mutex<HashMap<String, Arc<RunControl>>>,
     order: Mutex<Vec<String>>,
     active: AtomicUsize,
-    /// The runs of other runners this one is helping (`split.of`), by id.
-    /// They are not runs this runner has: they count in none of its
-    /// limits, take only what its own runs leave, and end with a drain.
+    /// The offers to help other runners' runs (`split.of`) this one
+    /// holds, by id: those it has joined and those still waiting to be
+    /// asked. They are not runs this runner has: they count in none of
+    /// its limits, take only what its own runs leave, and end with a
+    /// drain. How many it has joined is `Runner::helping`'s to say.
     helping: Mutex<std::collections::HashSet<String>>,
     /// The most of them at once; 0 helps none.
     max_helping: usize,
@@ -156,10 +162,10 @@ fn forget_finished(
 /// `external_seconds` (cloud jobs, which ran on the customer's account and
 /// are not in the runner's numbers), and such a job is `external: true`
 /// with its claimed time as `duration_ms`. 4: a run may be split across
-/// runners, each writing a record of its own for the jobs it ran: a
-/// helper's record has `split_of` (the run it helped), and a job another
-/// runner ran is `remote: true` with no memory, in none of this record's
-/// `usage`. Summing an owner's records is still its bill.
+/// runners. The runner that has the run writes its one record, for every
+/// job: one another runner ran is `remote: true` and is in `usage` like
+/// the rest, at its time there and the memory it reserved. A helper
+/// writes none, so summing an owner's records is still its bill.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
     pub schema: u32,
@@ -177,10 +183,6 @@ pub struct UsageRecord {
     pub jobs_per_cpu: usize,
     pub usage: Usage,
     pub jobs: Vec<JobUsage>,
-    /// On a helper's record: the id of the run it helped, on the runner
-    /// that had it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub split_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +194,7 @@ pub struct JobUsage {
     /// A cloud job: it ran on the customer's account.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external: bool,
-    /// Another runner of a split run ran it, and bills it.
+    /// Another runner of a split run ran it; billed here, with the run.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub remote: bool,
 }
@@ -264,6 +266,9 @@ impl Server {
     /// How many runs of other runners this one helps at once; 0 for none.
     pub fn with_helping(mut self, max: usize) -> Self {
         self.max_helping = max;
+        if let Some(helping) = &self.runner.helping {
+            helping.limit_runs(max);
+        }
         self
     }
 
@@ -495,7 +500,9 @@ impl Server {
             // A run may be shared with this runner (`split` in a run
             // request), and what it does for other runners' runs now.
             "split": true,
-            "runs_helping": self.helping.lock().unwrap().len(),
+            "runs_helping": self.runner.helping.as_ref().map_or(0, |h| h.runs()),
+            // Every offer it holds: those, and the ones not asked yet.
+            "runs_offered": self.helping.lock().unwrap().len(),
             "slots_helping": helper_slots,
             "memory_helping": self.runner.memory.as_ref().map(|_| helper_memory),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
@@ -655,8 +662,12 @@ impl Server {
         // is admitted by a count of its own and takes none of the others.
         let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
         if helper {
+            // An offer holds none of the `--helping` runs until the run
+            // asks for help and this runner joins it: most never ask, and
+            // one that does must not be turned away for those.
             if self.draining.load(Ordering::SeqCst)
-                || self.helping.lock().unwrap().len() >= self.max_helping
+                || self.max_helping == 0
+                || self.helping.lock().unwrap().len() >= MAX_OFFERS
             {
                 return self.full();
             }
@@ -789,7 +800,6 @@ impl Server {
                     jobs_per_cpu: self.runner.jobs_per_cpu,
                     usage: output.usage.clone(),
                     jobs,
-                    split_of: output.split_of.clone(),
                 };
                 (serde_json::to_value(&output).ok(), None, record)
             }
@@ -813,7 +823,6 @@ impl Server {
                     jobs_per_cpu: self.runner.jobs_per_cpu,
                     usage: Usage::default(),
                     jobs: Vec::new(),
-                    split_of: req.split.as_ref().and_then(|s| s.of.clone()),
                 };
                 (None, Some(e), record)
             }
@@ -824,9 +833,9 @@ impl Server {
             "usage/{}/{year:04}/{month:02}/{started_at}-{id}.json",
             owner.as_str()
         );
-        // A helper's run is recorded for what it ran: a usage record when
-        // it ran anything, and no report, since the run it helped has
-        // every job's. One that was never asked leaves nothing.
+        // A helper's run leaves nothing in the store: the run it helped
+        // has every job's report, and its result and usage record bill
+        // every job, the ones this runner ran included.
         let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
         let result = match (helper, result) {
             (true, Some(output)) => Some(json!({
@@ -840,7 +849,7 @@ impl Server {
             (_, result) => result,
         };
         let mut problems = Vec::new();
-        if (!helper || record.usage.jobs > 0)
+        if !helper
             && let Err(e) = store.put(
                 &usage_key,
                 &serde_json::to_vec(&record).unwrap_or_default(),
@@ -1311,6 +1320,145 @@ fn read_request_any(request: &mut Request) -> Result<RunRequest, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A server over a store in a directory of its own, with 4 slots and
+    /// 8 GiB for jobs, that helps at most `helping` runs.
+    fn server(name: &str, helping: usize) -> (Arc<Server>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("iwci-server-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let runner = Runner {
+            runtime: Arc::new(
+                iwci_runtime::Runtime::with_threads(dir.join("modules"), Some(1)).unwrap(),
+            ),
+            store: Arc::new(iwci_store::LocalStore::new(dir.join("store")).unwrap()),
+            git: iwci_git::GitCache::new(dir.join("git")).unwrap(),
+            fetcher: Arc::new(iwci_deps::fetch::HttpFetcher::new()),
+            layers: Arc::new(iwci_deps::cache::LayerCache::new(None)),
+            cpus: 2,
+            jobs_per_cpu: 2,
+            slots: Some(Arc::new(crate::schedule::Slots::new(4))),
+            memory: Some(Arc::new(crate::schedule::MemoryBudget::new(8 << 30))),
+            author: iwci_git::Identity {
+                name: "CI".into(),
+                email: "ci@example.com".into(),
+                time: 0,
+                utc_offset: 0,
+            },
+            default_storage_quota: None,
+            download_limits: Default::default(),
+            external: None,
+            helping: Some(Arc::new(crate::schedule::Helping::default())),
+        };
+        let server = Server::new(runner, "k".repeat(32))
+            .unwrap()
+            .with_helping(helping);
+        (Arc::new(server), dir)
+    }
+
+    /// An offer to help run `of`, which is another runner's.
+    fn offer(of: &str) -> RunRequest {
+        serde_json::from_value(json!({
+            "repo": "/nowhere/this-runner-never-reads-it",
+            "owner": "acme",
+            "repo-id": "app",
+            "branch": "main",
+            "split": { "of": of, "runner": "ci-2" },
+        }))
+        .unwrap()
+    }
+
+    fn wait_for(what: &str, ready: impl Fn() -> bool) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !ready() {
+            assert!(std::time::Instant::now() < until, "waited 20 s for {what}");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
+    #[test]
+    fn an_offer_holds_no_helping_run_until_it_is_asked_and_counts_as_no_load() {
+        let (server, dir) = server("offers", 1);
+        let runs = ["a".repeat(32), "b".repeat(32), "c".repeat(32)];
+        // More offers than runs it may help: none is refused, since most
+        // runs never ask.
+        for run in &runs {
+            let reply = server.start_run(offer(run), false);
+            assert_eq!(reply.status_code().0, 202);
+        }
+        let capacity = server.capacity();
+        assert_eq!(capacity["split"], true);
+        assert_eq!(capacity["runs_offered"], 3);
+        assert_eq!(capacity["runs_helping"], 0);
+        // Nothing of it is load: a run of this runner's own is placed and
+        // admitted as if there were no offers.
+        assert_eq!(capacity["runs_active"], 0);
+        assert_eq!(capacity["slots_free"], 4);
+        assert_eq!(capacity["memory_used"], 0);
+        assert_eq!(capacity["memory_waiting"], 0);
+        assert!(server.admit());
+        server.active.fetch_sub(1, Ordering::SeqCst);
+
+        // The first run asks for help while this runner already helps as
+        // many runs as it may: its offer waits, still holding nothing.
+        let helping = server.runner.helping.clone().unwrap();
+        let held = helping.join().unwrap();
+        let store = &server.runner.store;
+        let state = |run: &str, key: &str| format!("splits/acme/app/{run}/state/{key}");
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        for key in [
+            "primary.1".to_string(),
+            format!("commit.{commit}"),
+            format!("help.{}", lifecycle::VERSION),
+        ] {
+            store
+                .put(&state(&runs[0], &key), b"", "text/plain")
+                .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        assert_eq!(server.capacity()["runs_offered"], 3);
+        assert_eq!(helping.runs(), 1);
+        // Room: it joins, and only then counts. (It then finds it cannot
+        // fetch the commit, which ends it.)
+        drop(held);
+        wait_for("the asked offer to join and end", || {
+            server.capacity()["runs_offered"] == 2
+        });
+        assert_eq!(server.capacity()["runs_helping"], 0);
+        // A run that ends without asking takes its offer with it.
+        store
+            .put(&state(&runs[1], "end"), b"", "text/plain")
+            .unwrap();
+        wait_for("the ended run's offer to go", || {
+            server.capacity()["runs_offered"] == 1
+        });
+
+        // A drain ends the offers it holds, waits for them, and takes no
+        // more.
+        server.begin_drain("a test");
+        wait_for("the drain to end the last offer", || server.busy() == 0);
+        assert_eq!(
+            server.start_run(offer(&runs[2]), false).status_code().0,
+            429
+        );
+        // No helper's run left a report or a usage record.
+        let left = store.list("runs/").unwrap().len() + store.list("usage/").unwrap().len();
+        assert_eq!(left, 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_runner_that_helps_no_run_takes_no_offer() {
+        let (server, dir) = server("no-help", 0);
+        assert_eq!(
+            server
+                .start_run(offer(&"a".repeat(32)), false)
+                .status_code()
+                .0,
+            429
+        );
+        assert_eq!(server.capacity()["runs_offered"], 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn progress_follows_each_pipeline_and_its_jobs() {

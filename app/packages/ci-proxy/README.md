@@ -157,9 +157,13 @@ proxy's part is one extra request when it places a run (`placeRun` in
   at least one other runner that is up and not draining says so too. A
   runner that does not say it is never sent the field: it would refuse the
   request for a key it does not know.
-- Every such other runner, up to three, is then sent the same request,
-  secrets and all, with `"split": { "of": "<the run's id on its runner>",
-"runner": "<its name>" }`. That is an offer, not a run: the runner
+- Every such other runner, up to three, is then sent the same request
+  without its `secrets` and `lent`, and with `"split": { "of": "<the run's
+id on its runner>", "runner": "<its name>" }`. A helper only runs jobs
+  that are given no secret and lent nothing, and an offer sits on a runner
+  for the whole of a run it may never be asked to help, so it is sent
+  neither; the `token` stays, since a helper fetches the commit. That is
+  an offer, not a run: the runner
   answers `202` and does nothing until the run asks for help through the
   store the runners share, and then takes only what its own runs leave
   free. The answer is not waited for (`waitUntil`) and not read; a helper

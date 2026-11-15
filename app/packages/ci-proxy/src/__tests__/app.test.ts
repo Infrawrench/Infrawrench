@@ -756,21 +756,33 @@ describe("split runs", () => {
     return { a, b };
   };
 
-  it("shares a run with the other runners that can help, secrets and all", async () => {
+  it("shares a run with the other runners that can help, keeping its secrets to the runner that has it", async () => {
     const { a, b } = pair();
     const { call } = await setup([a, b]);
     await call("PUT", "/v1/orgs/github.com-acme/secrets/TOKEN", { value: "not-a-real-token" });
-    const res = await call("POST", "/v1/runs", { ...request, trusted: true });
+    const lent = { "ssh-keys": { deploy: { files: [{ path: "/root/.ssh/id", content: "k" }] } } };
+    const res = await call("POST", "/v1/runs", {
+      ...request,
+      trusted: true,
+      token: "not-a-real-git-token",
+      lent,
+    });
     expect(res.status).toBe(202);
     const { id } = (await res.json()) as { id: string };
     // The caller hears of one run, on the runner that has it.
     expect(id).toBe(`1.${b.runs[0]?.id}`);
     expect(b.runs[0]?.body.split).toEqual({ runner: "1" });
     expect(b.helps).toEqual([]);
-    // The other runner gets the same request, naming that run.
+    expect(b.runs[0]?.body.secrets).toEqual({ TOKEN: "not-a-real-token" });
+    expect(b.runs[0]?.body.lent).toEqual(lent);
+    // The other runner gets the same request, naming that run, and with
+    // nothing secret in it but the token it fetches the commit with: a
+    // helper only runs jobs that are given no secret and lent nothing.
     expect(a.runs).toEqual([]);
-    expect(a.helps).toEqual([{ ...b.runs[0]?.body, split: { of: b.runs[0]?.id, runner: "0" } }]);
-    expect(a.helps[0]?.secrets).toEqual({ TOKEN: "not-a-real-token" });
+    const { secrets: _secrets, lent: _lent, ...offered } = b.runs[0]?.body ?? {};
+    expect(a.helps).toEqual([{ ...offered, split: { of: b.runs[0]?.id, runner: "0" } }]);
+    expect(Object.keys(a.helps[0] ?? {}).sort()).toEqual(["branch", "repo", "split", "token"]);
+    expect(JSON.stringify(a.helps)).not.toContain("not-a-real-token");
     const cap = (await (await call("GET", "/v1/capacity")).json()) as {
       runners: Array<{ name: string; split: boolean; runs_helping: number }>;
     };

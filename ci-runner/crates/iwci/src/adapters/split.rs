@@ -12,9 +12,10 @@
 //! | `state/end` | the run is over |
 //! | `state/ended/<pipeline>` | that pipeline is over, or cancelled |
 //! | `state/done/<pipeline>/<job>` | how a job went: a `schedule::Done`, masked |
-//! | `state/back/<pipeline>/<job>.<n>` | a helper gave the job up |
+//! | `state/commit.<sha>` | the commit the primary resolved the request to, which a helper runs and no other |
+//! | `state/back/<pipeline>/<job>.<runner>.<n>` | that helper gave the job up |
 //! | `claims/<pipeline>/<job>` | who runs the job: the runner's name |
-//! | `artifacts/<pipeline>/<job>` | what a job without a task cache entry kept, when small enough |
+//! | `artifacts/<pipeline>/<job>.<runner>` | what a job without a task cache entry kept on that runner, when small enough |
 //!
 //! `<pipeline>` is a hash of the pipeline's file name and `<job>` the job
 //! id in hex, so every key stays inside the store's key grammar. All of
@@ -72,10 +73,11 @@ pub fn runner_name(given: Option<&str>) -> String {
 }
 
 /// How a helper's wait to be asked ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Asked {
-    /// The primary wants help and this runner has room: join.
-    Join,
+    /// The primary wants help and this runner has room: join, and run
+    /// this commit, the one the primary resolved the request to.
+    Join(String),
     /// The run ended, or its primary is gone, before that.
     Over,
 }
@@ -221,9 +223,18 @@ impl SplitRun {
                     beat = (primary, Instant::now());
                 }
                 let help = help_key();
+                // The commit is the primary's to say: a request without one
+                // names a branch, whose head may have moved since the
+                // primary read it. No commit, no joining.
+                let commit = state
+                    .iter()
+                    .filter_map(|k| k.strip_prefix("commit."))
+                    .find(|sha| is_commit(sha));
                 if state.contains(&help) {
-                    if room() {
-                        return Asked::Join;
+                    if let Some(commit) = commit
+                        && room()
+                    {
+                        return Asked::Join(commit.to_string());
                     }
                 } else if state.iter().any(|k| k.starts_with("help.")) {
                     // Asked by a runner of another version, which this one
@@ -235,6 +246,18 @@ impl SplitRun {
                 return Asked::Over;
             }
             std::thread::sleep(DORMANT_POLL);
+        }
+    }
+
+    /// Says which commit the run is of, as the primary resolved it, for
+    /// the helpers to run exactly that.
+    pub fn publish_commit(&self, sha: &str) {
+        if !self.helper && is_commit(sha) {
+            let _ = self.store.put(
+                &format!("{}/state/commit.{sha}", self.root),
+                b"",
+                "text/plain",
+            );
         }
     }
 
@@ -307,6 +330,14 @@ pub fn sweep(store: &dyn ObjectStore, now: u64) -> Result<usize, String> {
     Ok(old.len())
 }
 
+/// A full commit id: 40 or 64 lowercase hex digits.
+fn is_commit(sha: &str) -> bool {
+    matches!(sha.len(), 40 | 64)
+        && sha
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 fn pipeline_segment(file: &str) -> String {
     hex::encode(&sha2::Sha256::digest(file.as_bytes())[..8])
 }
@@ -374,21 +405,30 @@ impl Split for PipelineSplit {
     }
 
     fn hand_back(&self, job: &str) -> Result<(), String> {
-        self.release(job)?;
-        // Unique among the runners of the run without their agreeing on
-        // anything: the time, then a count for two in the same instant.
+        // The time, then a count for two in the same instant.
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos() as u64);
         let n = nanos.wrapping_add(self.back.fetch_add(1, Ordering::SeqCst));
+        // The marker first: once it is written the primary takes the job
+        // (and drops the claim itself) whatever becomes of this runner.
         self.run
             .store
             .put(
-                &format!("{}.{n}", self.key("state/back", job)),
+                &format!("{}.{}.{n}", self.key("state/back", job), self.run.runner),
                 b"",
                 "text/plain",
             )
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        // Only this runner's own claim: the primary may have taken the
+        // job already.
+        let key = self.key("claims", job);
+        if let Ok(Some(holder)) = self.run.store.get(&key)
+            && holder == self.run.runner.as_bytes()
+        {
+            let _ = self.run.store.delete(&key);
+        }
+        Ok(())
     }
 
     fn finish(&self, job: &str, done: &[u8]) -> Result<(), String> {
@@ -413,15 +453,22 @@ impl Split for PipelineSplit {
         let bytes = encoder.finish().map_err(|e| e.to_string())?;
         self.run
             .store
-            .put(&self.key("artifacts", job), &bytes, "application/zstd")
+            .put(
+                &format!("{}.{}", self.key("artifacts", job), self.run.runner),
+                &bytes,
+                "application/zstd",
+            )
             .map_err(|e| e.to_string())
     }
 
-    fn kept(&self, job: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
+    fn kept(&self, job: &str, runner: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
+        if runner_name(Some(runner)) != runner {
+            return Err("the record names no runner".into());
+        }
         let Some(bytes) = self
             .run
             .store
-            .get(&self.key("artifacts", job))
+            .get(&format!("{}.{runner}", self.key("artifacts", job)))
             .map_err(|e| e.to_string())?
         else {
             return Ok(None);
@@ -479,10 +526,11 @@ impl Split for PipelineSplit {
                 }
             } else if let Some(rest) = key.strip_prefix("back/")
                 && let Some(rest) = mine(rest)
-                && let Some((hex_id, n)) = rest.rsplit_once('.')
+                && let Some((rest, n)) = rest.rsplit_once('.')
+                && let Some((hex_id, runner)) = rest.rsplit_once('.')
                 && let (Some(id), Ok(n)) = (job_id(hex_id), n.parse::<u64>())
             {
-                seen.back.push((id, n));
+                seen.back.push((id, runner.to_string(), n));
             }
         }
         seen.helpers = helpers;
@@ -504,6 +552,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         (Arc::new(iwci_store::LocalStore::new(&dir).unwrap()), dir)
     }
+
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
     fn id(text: &str) -> RepoId {
         RepoId::new(text).unwrap()
@@ -541,8 +591,16 @@ mod tests {
         h.hand_back(job).unwrap();
         let seen = p.seen().unwrap();
         assert_eq!(seen.back.len(), 1);
-        assert_eq!(seen.back[0].0, job);
+        assert_eq!(
+            (seen.back[0].0.as_str(), seen.back[0].1.as_str()),
+            (job, "ci-2")
+        );
         assert_eq!(p.claim(job).unwrap(), Claim::Ours);
+        // Handing back a job the primary has since taken says so again,
+        // and leaves the primary's claim where it is.
+        h.hand_back(job).unwrap();
+        assert_eq!(p.seen().unwrap().back.len(), 2);
+        assert_eq!(h.claim(job).unwrap(), Claim::Held("ci-1".into()));
         p.release(job).unwrap();
         assert_eq!(h.claim(job).unwrap(), Claim::Ours);
         let _ = std::fs::remove_dir_all(dir);
@@ -579,9 +637,19 @@ mod tests {
             data: b"built".to_vec().into(),
         }];
         h.keep("build", &entries).unwrap();
-        assert_eq!(p.kept("build", 1 << 20).unwrap().unwrap(), entries);
-        assert!(p.kept("build", 2).is_err());
-        assert_eq!(p.kept("other", 1 << 20).unwrap(), None);
+        assert_eq!(p.kept("build", "ci-2", 1 << 20).unwrap().unwrap(), entries);
+        assert!(p.kept("build", "ci-2", 2).is_err());
+        assert_eq!(p.kept("other", "ci-2", 1 << 20).unwrap(), None);
+        // A job two runners ran keeps each one's files apart, so a record
+        // is never read with the other runner's.
+        let other = vec![Entry::File {
+            path: "/app/dist/a.txt".into(),
+            data: b"built again".to_vec().into(),
+        }];
+        p.keep("build", &other).unwrap();
+        assert_eq!(h.kept("build", "ci-2", 1 << 20).unwrap().unwrap(), entries);
+        assert_eq!(h.kept("build", "ci-1", 1 << 20).unwrap().unwrap(), other);
+        assert!(h.kept("build", "../ci-1", 1 << 20).is_err());
 
         assert!(!helper.ended("test.yml"));
         p.end();
@@ -601,10 +669,23 @@ mod tests {
         let stopped = || polls.fetch_add(1, Ordering::SeqCst) >= 1;
         assert_eq!(helper.wait_to_be_asked(&|| true, &stopped), Asked::Over);
         p.ask();
+        // Asked, but the primary has not said which commit: a request
+        // that names a branch must not be resolved a second time, later.
+        polls.store(0, Ordering::SeqCst);
+        assert_eq!(helper.wait_to_be_asked(&|| true, &stopped), Asked::Over);
+        // Only the primary says, and only a whole commit id.
+        helper.publish_commit(COMMIT);
+        primary.publish_commit("main");
+        polls.store(0, Ordering::SeqCst);
+        assert_eq!(helper.wait_to_be_asked(&|| true, &stopped), Asked::Over);
+        primary.publish_commit(COMMIT);
         // Asked, but no room: still waiting when told to stop.
         polls.store(0, Ordering::SeqCst);
         assert_eq!(helper.wait_to_be_asked(&|| false, &stopped), Asked::Over);
-        assert_eq!(helper.wait_to_be_asked(&|| true, &|| false), Asked::Join);
+        assert_eq!(
+            helper.wait_to_be_asked(&|| true, &|| false),
+            Asked::Join(COMMIT.into())
+        );
         // A runner of another version asking is not for this one.
         let help = format!("splits/acme/app/run1/state/{}", help_key());
         store.delete(&help).unwrap();

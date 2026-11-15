@@ -769,61 +769,97 @@ split:
   see the same `/tmp/workflow`, and nothing in a pipeline says whether its
   jobs use it. Turn `split:` on only for a pipeline whose jobs hand things
   on through `artifacts:` and `outputs:`.
-- **Both runners plan the same run**, from the same request, so they have
-  the same jobs, order and task cache keys. A task cache hit is replayed by
-  each. A job that missed is claimed just before it starts, with a write to
-  the shared store that only one runner can make, and whoever claims it
-  runs it. The other keeps the job in its graph and completes it from the
-  record the first writes when the job ends, so the jobs that need it
-  become ready on both. A job never runs on two runners unless one of them
-  was given up on (below).
+- **Both runners run the same commit and plan the same run.** The primary
+  writes down the commit it resolved the request to, and a helper runs
+  exactly that or does not join: a request that names only a branch (a
+  scheduled run) is never resolved a second time, later, by the helper. So
+  they have the same jobs, order and task cache keys. A task cache hit is
+  replayed by each. A job that missed is claimed just before it starts,
+  with a write to the shared store that only one runner can make, and
+  whoever claims it runs it. The other keeps the job in its graph and
+  completes it from the record the first writes when the job ends, so the
+  jobs that need it become ready on both.
 - **The primary asks, the helper decides.** The primary asks for help once
   a job another runner could run has waited two seconds in its queue. A
   helper does nothing for a run until then: it does not fetch the commit,
-  and looks at the store once every two seconds. Once asked, it joins when
-  it has a free slot and none of its own runs' jobs waits for memory.
+  holds none of the runs its runner may help (`--helping`), and looks at
+  the store once every two seconds. Once asked, it joins when it has a
+  free slot, none of its own runs' jobs waits for memory, and it helps
+  fewer than `--helping` runs.
 - **A helper's own runs come first.** A helper starts a job only with a
   slot that is free and memory that fits at that moment, never waiting for
   either, and never while a job of one of its own runs waits for memory or
   a slot. When one of its own runs then needs a slot or memory that a
   helper job holds, that job is stopped, newest first, and handed back to
-  the primary, which runs it itself. What a helper has queued or running
-  does not count in its `/v1/capacity` as load, so the proxy places runs on
-  it as if it were not helping.
-- **What may run on a helper.** Any job but one that reads `secrets` or is
-  lent a connection, key or resource (its services included), has
-  `changes: commit`, keeps `downloads:`, or is a cloud job: those are tied
-  to the runner that has the run, which runs them. A job larger than the
-  helper's whole memory budget stays with the primary too.
+  the primary, which runs it itself. To the runner's own runs a helper
+  job's memory counts as free already: the first job of a run is never
+  passed over by a later one because a helper job holds what it needs
+  (see [Job order](#job-order)). What a helper has queued or running does
+  not count in its `/v1/capacity` as load, so the proxy places runs on it
+  as if it were not helping. One thing a helper job cannot be stopped in:
+  building its workspace (the clone and the dependency installs, which a
+  helper does once per run and which hold a slot and the job's memory
+  reservation but run no job); it stops when that step is done.
+- **A helper is sent no secrets.** The proxy leaves `secrets` and `lent`
+  out of what it offers, and a runner helping a run uses none even if
+  sent. So a job runs on a helper only if it is given no secret and lent
+  nothing (its services included), has no `changes: commit`, keeps no
+  `downloads:`, is not a cloud job, and needs no job, directly or through
+  others, that reads a secret or is lent something: what such a job hands
+  on (artifacts, outputs) may carry what it read. All of those run on the
+  primary. A job larger than the helper's whole memory budget stays with
+  the primary too.
 - **How artifacts cross.** A task-cached job's artifacts are in the task
   cache entry it saves, which every runner reads. A job without one that
-  passes has its artifacts stored for the run when they come to at most
-  `split.artifacts` in total and no file among them holds one of the run's
-  secret values; they are sent byte for byte or not at all. Artifacts that
+  passes has its artifacts stored for the run, under the name of the
+  runner that ran it, when they come to at most `split.artifacts` in
+  total (never more than the 4 MiB default in an untrusted run, such as a
+  fork's pull request), the job was handed nothing by a job that reads
+  secrets, and no file among them holds one of the run's secret values as
+  it is written; they are sent byte for byte or not at all. Artifacts that
   do not cross stay where the job ran, the job's report says why, and the
   jobs that need them run there: a helper never takes a job whose needs
   left artifacts it does not have, and the primary runs again a job a
   helper ran whose artifacts it cannot get. So a job that is not
   task-cached and keeps more than `split.artifacts` is best not left to a
-  helper: make it task-cached, or raise the limit.
+  helper: make it task-cached, or raise the limit. What a runner takes in
+  from another counts toward the run's `scratch:` like any artifact.
 - **What the run looks like.** The app follows the primary and nothing
-  else: its report, `progress`, log and checks hold every job. A job a
-  helper ran is `running` from the moment the helper has it, then has its
-  real status, `duration_ms` and output, with `"remote": "<runner>"` on
-  its report and its `job-finished` event and a note saying where it ran.
-  Its output arrives when it ends, not line by line.
+  else: its report, `progress`, log, checks and bill hold every job. A job
+  a helper ran is `running` from the moment the helper has it, then has
+  its real status, `duration_ms` and output, with `"remote": "<runner>"`
+  on its report and its `job-finished` event and a note saying where it
+  ran. Its output arrives when it ends, not line by line. The primary
+  masks everything in a helper's record with the run's secrets, since the
+  helper had none to mask with.
+- **Billing.** The run is billed once, from the primary's result and its
+  usage record, for every job that ran: one a helper ran is charged at
+  its time there and the `memory:` it reserved, like any other. A helper
+  writes no report and no usage record.
 - **Failure.** Each runner of a split run says it is alive every ten
   seconds. The primary takes back a job whose helper has been silent for
   45 s, handed it back (it was stopped to give way, its runner is
   draining, or it could not run the job at all, which says nothing about
-  the job), or has held it past the job's `timeout:` without a result. A
-  store that does not answer is a job the primary runs and a helper leaves
-  alone, so a split run never fails because it was split. A helper ends
-  when the pipeline does, when the primary cancels it, and when the
-  primary has been silent for 45 s. If the primary dies the run is lost,
-  as it is without `split:`.
-- **Cancelling** the run, or the pipeline, on the primary stops the
-  helper's jobs within a second or two.
+  the job), or has held it past the job's `timeout:` plus 90 s without a
+  result. A helper writes that it hands a job back before it lets go of
+  the claim, and a hand-back or a record the store would not take is
+  written again every second for as long as the helper's run lasts, so
+  the primary hears as soon as the store answers. A store that does not
+  answer is a job the primary runs and a helper leaves alone, so a split
+  run never fails because it was split. A helper ends when the pipeline
+  does, when the primary cancels it, and when the primary has been silent
+  for 45 s. If the primary dies the run is lost, as it is without
+  `split:`.
+- **A job can run twice, and only then.** A job the primary took back
+  runs on the primary whatever the helper does next. If the helper was
+  alive after all and finishes it too, both ran: the first record written
+  is the one the helpers see, the primary keeps the result of its own
+  copy, and each runner's artifacts are stored under its own name, so a
+  record is never read with the other's files. The same goes for a job
+  the primary runs again because it could not get a helper's artifacts.
+  Jobs that must not run twice are the ones that never leave the primary.
+- **Cancelling** the run, or a pipeline, on the primary stops the helper's
+  jobs within a second or two, whether the pipeline had started or not.
 - **Runners of different versions do not share runs.** They must plan a
   run alike and read each other's records, so a helper only joins a
   primary of its own version. While a release rolls out, runs are not
@@ -2634,18 +2670,22 @@ it is masked, and an untrusted run is given none of it:
   claims and reports, and one is made up when it is left out. The same
   request with `"split": { "of": "<run id>", "runner": "<name>" }`, sent
   to another runner, is an offer to help the run of that id (its id on the
-  runner that has it): it answers `202` with an id of its own, takes no
-  slot, counts in none of `runs_active`, `slots_free`, `memory_used` or
-  `memory_waiting`, and is refused with `429` only when the runner is
-  draining or already helps `--helping` runs (default 2; `0` helps none).
-  Nothing has to follow or cancel it: it ends with the run it helps, and
-  with a drain of its runner, which hands its jobs back. It stores no
-  report, and a usage record only when it ran a job. `/v1/capacity` says
+  runner that has it). It answers `202` with an id of its own, takes no
+  slot, and counts in none of `runs_active`, `slots_free`, `memory_used`
+  or `memory_waiting`. It needs neither `secrets` nor `lent` and uses
+  neither if sent; it needs no `sha`, since it runs the commit the run it
+  helps resolved. An offer is not one of the runs a runner helps
+  (`--helping`, default 2) until the run asks for help and the runner
+  joins it, so offers are not refused for one another: only with `429`
+  when the runner is draining, helps no runs (`--helping 0`), or holds 64
+  offers already. Nothing has to follow or cancel it: it ends with the
+  run it helps, and with a drain of its runner, which first hands its
+  jobs back. It stores no report and no usage record. `/v1/capacity` says
   `"split": true` on a runner that takes the field (a request is refused
-  for a field the runner does not know, so send it to no other), and
-  `runs_helping`, `slots_helping` and `memory_helping` for what it is doing
-  for other runners' runs now. Runners of different versions do not share
-  a run.
+  for a field the runner does not know, so send it to no other),
+  `runs_helping` for the runs it has joined, `runs_offered` for every
+  offer it holds, and `slots_helping` and `memory_helping` for what its
+  helper jobs hold now. Runners of different versions do not share a run.
 - **Memory.** `memory_total` and `memory_used` are the job budget and what
   running jobs have reserved of it. `memory_waiting` is the memory asked
   for by jobs that are ready but not started (waiting for memory, or for
@@ -2709,11 +2749,11 @@ it is masked, and an untrusted run is given none of it:
   that time as `duration_ms`. Failed and errored runs are recorded too,
   with no usage. The record's `schema` is 4: 2 added a job `status` of
   `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`), 3 the
-  external fields, 4 split runs. Each runner of a split run writes a record
-  of its own for the jobs it ran: a helper's has `split_of`, the id of the
-  run it helped, and a job another runner ran is `"remote": true` with no
-  memory, in none of that record's `usage`. Summing an owner's records is
-  still its bill. Storage is read from `GET /v1/storage/{owner}`, for billing by
+  external fields, 4 split runs. The runner that has a split run writes its
+  one record, for every job: a job another runner ran is `"remote": true`
+  and is in `usage` like the rest, at its time there and the memory it
+  reserved. A helper writes none, so summing an owner's records is still
+  its bill. Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
   the same four per repository under `repos`.
@@ -3003,9 +3043,10 @@ make that safe to do while jobs run:
   reads to place work elsewhere) and let the running ones finish; on a
   signal the server then exits 0. A systemd unit's stop timeout therefore
   has to cover the longest job (60 minutes). What the server is doing for
-  other runners' [split runs](#split-runs) ends at once: those jobs are
+  other runners' [split runs](#split-runs) ends first: those jobs are
   stopped and handed back to the runner that has the run, and the drain
-  waits for none of them.
+  waits until they have been before it goes on to wait for the server's
+  own runs.
 - **Updating itself.** With `--update-channel stable`, the server reads
   `releases/iwci/channels/stable.json` every `--update-every` (default 5m).
   It only believes a manifest signed by the release key
@@ -3081,25 +3122,37 @@ What a split run keeps under `splits/<owner>/<repo-id>/<run-id>/`, `<run-id>`
 being the run's id on the runner that has it, `<pipeline>` a hash of the
 pipeline's file name and `<job>` the job id in hex:
 
-| Key                               | What                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------ |
-| `state/primary.<n>`               | The primary is alive; `<n>` moves every ten seconds.                           |
-| `state/helper/<runner>.<n>`       | The same for a helper.                                                         |
-| `state/help.<version>`            | The primary, a runner of that version, has more ready jobs than it can start.  |
-| `state/end`                       | The run is over.                                                               |
-| `state/ended/<pipeline>`          | That pipeline is over, or cancelled.                                           |
-| `state/done/<pipeline>/<job>`     | How a job went on the runner that ran it: its report, masked. Written once.    |
-| `state/back/<pipeline>/<job>.<n>` | A helper gave the job up.                                                      |
-| `claims/<pipeline>/<job>`         | The name of the runner that runs the job. Written only if absent.              |
-| `artifacts/<pipeline>/<job>`      | What a job without a task cache entry kept, when small enough: a zstd archive. |
+| Key                                        | What                                                                                          |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `state/primary.<n>`                        | The primary is alive; `<n>` moves every ten seconds.                                          |
+| `state/helper/<runner>.<n>`                | The same for a helper.                                                                        |
+| `state/help.<version>`                     | The primary, a runner of that version, has more ready jobs than it can start.                 |
+| `state/end`                                | The run is over.                                                                              |
+| `state/ended/<pipeline>`                   | That pipeline is over, or cancelled.                                                          |
+| `state/done/<pipeline>/<job>`              | How a job went on the runner that ran it: its report, masked. Written once.                   |
+| `state/commit.<sha>`                       | The commit the primary resolved the request to; a helper runs that one.                       |
+| `state/back/<pipeline>/<job>.<runner>.<n>` | That helper gave the job up. Written before it lets go of the claim.                          |
+| `claims/<pipeline>/<job>`                  | The name of the runner that runs the job. Written only if absent.                             |
+| `artifacts/<pipeline>/<job>.<runner>`      | What a job without a task cache entry kept on that runner, when small enough: a zstd archive. |
 
 A runner follows the others with one listing of `state/`. The primary
 deletes everything but `state/end` when the run ends; every server sweeps
 what is older than a day under `splits/` once an hour, which is what
 removes the end markers and whatever a primary that died left. None of it
-counts against an owner's storage quota. The run's secrets are in none of
-it: records are built from masked reports, and artifacts with a secret's
-value in them are not stored.
+counts against an owner's storage quota.
+
+What is guaranteed about secrets there: a helper is sent none and runs
+only jobs that are given none and need no job that is; the primary builds
+its records from reports masked as its stored report is; and artifacts
+are not stored when a file among them holds a secret's value exactly as
+it is written, or when the job was handed anything by a job that reads
+secrets. That is not a guarantee that nothing derived from a secret is
+ever there: a value a job encodes or transforms is not recognised, in an
+artifact here or in a log anywhere, and a helper, which has no secrets to
+mask with, writes its records as its jobs printed them (the primary
+masks them when it reads them). A helper's jobs were given no secret, so
+its records hold a secret's value only where the repository or the
+pipeline itself spells it out.
 
 ## Crates
 

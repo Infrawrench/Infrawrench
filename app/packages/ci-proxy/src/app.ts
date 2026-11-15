@@ -118,9 +118,13 @@ const HELP_TIMEOUT_MS = 5000;
  *
  * A runner that says `split` in its capacity can share a run: it gets
  * `"split": { "runner": <its name> }` in the request, and every other such
- * runner (up to `MAX_HELPERS`) is then sent the same request with
- * `"split": { "of": <the run's id there>, "runner": <its name> }`. That
- * is an offer, not a run: the runner that has the run asks for help
+ * runner (up to `MAX_HELPERS`) is then sent the same request, without its
+ * `secrets` and `lent`, with
+ * `"split": { "of": <the run's id there>, "runner": <its name> }`. A
+ * helper only runs jobs that are given no secret and lent nothing, so it
+ * is sent none: an offer sits on a runner for the whole of a run it may
+ * never be asked to help. The `token` stays, since a helper fetches the
+ * commit. That is an offer, not a run: the runner that has the run asks for help
  * through the store they share when its queue backs up, and a helper
  * takes jobs only while it has slots and memory its own runs do not
  * want. So the proxy offers every time and decides nothing: it cannot
@@ -142,6 +146,8 @@ async function placeRun(
   request: Record<string, unknown>,
 ): Promise<Placed | null> {
   const { split: _split, ...rest } = request;
+  // What a helper is sent: nothing secret but the token to fetch with.
+  const { secrets: _secrets, lent: _lent, ...offer } = rest;
   const waits = new URLSearchParams(search).get("wait") === "true";
   const helpers = (runner: Capacity, others: Capacity[]) =>
     waits || !runner.split ? [] : others.filter((o) => o.split).slice(0, MAX_HELPERS);
@@ -163,7 +169,7 @@ async function placeRun(
     offered.map(async (helper) => {
       const response = await deps.pool.call(helper.name, "/v1/runs", {
         method: "POST",
-        body: JSON.stringify({ ...rest, split: { of: id, runner: helper.name } }),
+        body: JSON.stringify({ ...offer, split: { of: id, runner: helper.name } }),
         signal: AbortSignal.timeout(HELP_TIMEOUT_MS),
       });
       await response.body?.cancel();

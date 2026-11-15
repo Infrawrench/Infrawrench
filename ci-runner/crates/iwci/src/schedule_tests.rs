@@ -3598,6 +3598,7 @@ fn the_first_job_waiting_for_memory_is_not_passed_over_by_jobs_that_would_delay_
 fn a_job_that_outlasts_its_expected_time_is_expected_to_go_on_as_long_as_it_overran() {
     let taken = Instant::now();
     let running = Running {
+        spare: false,
         id: 1,
         bytes: GIB,
         taken,
