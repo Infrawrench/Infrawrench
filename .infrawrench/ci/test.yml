@@ -132,17 +132,23 @@ jobs:
   # server-core, workflow-runtime and the ClickHouse plugin run out.
   #
   # Vitest starts a `node` per test file, and most of a large suite's time is
-  # each of them loading its modules (web: 390 s of import in a 250 s run at
-  # two workers), so how many run at once is what sets a large suite's time.
-  # The script takes it from the runner's cores (`nproc`), since a run ends
-  # when its longest job does and that is web's tests: web gets half the
-  # cores, server-core, desktop and ui a quarter each, and every other suite
-  # two workers, which a few test files cannot use more than. Alone on eight
-  # cores web takes 252 s at two workers, 155 s at four and 122 s at six;
-  # server-core 138 s and 85 s at two and four, desktop 108 s and 66 s, ui
-  # 127 s and 70 s. Past the limits below a suite gains little and each
-  # worker is another heap: about 450 MiB in web and server-core, 300 MiB in
-  # desktop and ui.
+  # each of them loading its modules, so how many run at once is what sets a
+  # large suite's time. The script takes it from the runner's cores (`nproc`):
+  # web gets half the cores, server-core, desktop and ui a quarter each, and
+  # every other suite two workers, which a few test files cannot use more
+  # than. Past the limits below a suite gains little and each worker is
+  # another heap: about 450 MiB in web and server-core, 300 MiB in desktop
+  # and ui.
+  #
+  # What each file loads matters as much. web's and server-core's configs
+  # have Vitest bundle the packages nearly every file imports (`effect`,
+  # `drizzle-orm`, client-core, the API contract, plugin-base) once per run
+  # rather than read them module by module in every file's `node`
+  # (server-core/vitest.prebundle.ts). Alone on eight cores that took web
+  # from 252 s, 144 s and 122 s at two, four and six workers to 146 s, 92 s
+  # and 72 to 92 s, and server-core from 85 s at four to 49 s. desktop (108 s
+  # and 66 s at two and four) and ui (127 s and 70 s) load theirs as they
+  # did.
   #
   # `memory:` holds the most workers a suite can get. desktop and ui at four
   # peak at 3.2 and 3.6 GiB and pass at 3 GiB. web at six and server-core at
