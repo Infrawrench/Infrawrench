@@ -225,6 +225,56 @@ export interface CiCredentialRequest {
   pinnedHostKey(host: string, port: number): Promise<string | null>;
 }
 
+/** The package managers a {@link CiToolDeclaration} can name a package for. */
+export type CiPackageManager = "apt" | "apk" | "dnf" | "zypper" | "pacman";
+
+/** The machine architectures (`uname -m`) a {@link CiToolDeclaration} can name a download for. */
+export type CiToolArchitecture = "x86_64" | "aarch64";
+
+/**
+ * A program what a plugin lends is used with (`kubectl` for a kubeconfig,
+ * `ssh` for an SSH config entry), and where a machine that lacks it gets it.
+ *
+ * A job on the runner lists its tools itself (`tools:`). A cloud job runs on
+ * a machine and an image of the pipeline's choosing and cannot, so the host
+ * puts each declared tool there before the job's script runs, when the
+ * machine has no such command: the package, as root on fresh compute with
+ * one of the package managers named, or else the download, into the job's
+ * own directory. A machine that ends up without it still runs the job, with
+ * a line in its log saying so.
+ */
+export interface CiToolDeclaration {
+  /** The command a job runs, e.g. `kubectl`: letters, digits, `.`, `_`, `+` and `-`. */
+  command: string;
+  /**
+   * The package that has it, per package manager. `dnf` also stands for
+   * `microdnf` and `yum`.
+   */
+  packages?: Readonly<Partial<Record<CiPackageManager, string>>>;
+  /**
+   * A static build of it per architecture: an HTTPS URL of the one
+   * executable file, and the SHA-256 it must have (64 hex digits). Pin a
+   * version; the machine refuses a file with any other hash.
+   */
+  downloads?: Readonly<Partial<Record<CiToolArchitecture, { url: string; sha256: string }>>>;
+}
+
+/**
+ * OpenSSH's client, from the distribution's own package: what a lent SSH
+ * key or SSH host entry is used with. There is no static build of it to
+ * download, so an image with none of these package managers has to bring it.
+ */
+export const CI_OPENSSH_CLIENT: CiToolDeclaration = {
+  command: "ssh",
+  packages: {
+    apt: "openssh-client",
+    apk: "openssh-client",
+    dnf: "openssh-clients",
+    zypper: "openssh-clients",
+    pacman: "openssh",
+  },
+};
+
 /** `manifest.ciCredential`: this plugin can lend a connection to a CI job. */
 export interface CiCredentialDeclaration {
   /** What a job gets, e.g. "A kubeconfig for the cluster (`KUBECONFIG`)". */
@@ -233,6 +283,11 @@ export interface CiCredentialDeclaration {
   shortLived: boolean;
   /** `connections: [{ name, namespace }]` means something to this plugin. */
   namespaces?: boolean;
+  /**
+   * The programs what it lends is used with. A cloud job's machine gets the
+   * ones it lacks before the job runs; see {@link CiToolDeclaration}.
+   */
+  tools?: readonly CiToolDeclaration[];
 }
 
 /** `alias` for a name: lowercase letters, digits and `-`, never empty. */
@@ -334,9 +389,14 @@ export function ciShellQuote(value: string): string {
 /**
  * The bootstrap behind a preamble that installs what it needs (`bash`,
  * `curl`, `tar`, `gzip`, `base64`) with the image's package manager (apt,
- * apk, dnf, microdnf or yum) when the image lacks any, and fails naming
- * them when it cannot. For container kinds that run an image the pipeline
- * chose; pass the result to {@link ciContainerCommand}.
+ * apk, dnf, microdnf or yum) when the image lacks any. For container kinds
+ * that run an image the pipeline chose; pass the result to
+ * {@link ciContainerCommand}.
+ *
+ * It never ends the job itself. The host's bootstrap makes the same check
+ * for every kind, and when something is still missing it tells the host
+ * why, so the job fails at once with the reason rather than as a machine
+ * that never called back. A preamble that exited here would hide that.
  */
 export function ciBootstrapWithTools(bootstrap: string): string {
   return [
@@ -356,7 +416,6 @@ export function ciBootstrapWithTools(bootstrap: string): string {
     "  elif command -v yum >/dev/null 2>&1; then",
     "    yum install -y -q bash curl ca-certificates tar gzip coreutils >/dev/null 2>&1",
     "  fi",
-    '  for t in $need; do command -v "$t" >/dev/null 2>&1 || { echo "Infrawrench CI: the image has no $t and it could not be installed" >&2; exit 127; }; done',
     "fi",
     bootstrap.replace(/^#![^\n]*\n/, ""),
   ].join("\n");

@@ -417,9 +417,19 @@ Supported so far:
 
 `cloud.region` is the provider's region (or zone), except on Kubernetes and Nomad, where it names the namespace the job runs in. Without it a job runs in the connection's own region or namespace.
 
-The check beside each kind names what that provider's credential needs, and links to where to grant it. A container or build image needs `bash`, `curl`, `tar`, `gzip` and `base64`; where they are missing, most container kinds install them with the image's package manager first.
+The check beside each kind names what that provider's credential needs, and links to where to grant it. A cloud job's machine needs `bash`, `curl`, `tar`, `gzip` and `base64`. Where one is missing and the job is root on a fresh machine or container, it is installed first with the image's package manager (apt, apk, dnf, yum, zypper or pacman). An image where that cannot be done fails the job at once and its log names what is missing.
 
-An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. Because `ssh` reads its configuration from the user's real home directory, a job on an SSH host that is lent another SSH connection uses it with `ssh -F "$HOME/.ssh/config"`.
+The job starts from the commit as a source archive: the commit's files, without a `.git` directory, history or submodules, and with Git LFS pointers rather than the files they stand for. A job that needs any of those fetches it in its own script.
+
+What a cloud job is lent works the way it does on the runner, on any provider and kind:
+
+- **SSH keys and SSH hosts** are written to `~/.ssh` of the user the job runs as, and host keys are checked against the ones pinned in Infrawrench (this takes OpenSSH 8.5 or later). When the image has no `ssh`, OpenSSH's client is installed from the image's packages.
+- **A cluster** is a kubeconfig with `KUBECONFIG` pointing at it. When the image has no `kubectl`, the job gets Kubernetes' own build of it on its `PATH`, checked against its published checksum. The kubeconfig always carries a token or a client certificate, never a sign-in helper such as `aws eks get-token`, so it works on a machine with no cloud CLI.
+- **Resources** are environment variables, as on the runner.
+
+A job that does not run as root (some images, every Heroku dyno) gets the same: the files go to that user's home directory, and if it cannot write `/app` it runs in a directory of its own with the clone inside (`$PWD` says where). The machine's own network decides what the job reaches, so a host on a private address is reachable without a jump host when the machine sits in the same network.
+
+An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. `ssh` reads its configuration from the user's real home directory, which is not the job's, so a job on an SSH host that is lent another SSH connection has its `ssh`, `scp` and `sftp` pointed at the lent configuration: `ssh web-1` works as written. Nothing is installed on the host: a job that is lent an SSH connection needs the host to have `ssh`.
 
 <insert [A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below] here>
 

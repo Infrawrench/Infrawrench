@@ -28,6 +28,9 @@ describe("lendSshHost", () => {
     expect(keyFile).toEqual({ path: "/root/.ssh/iw_web-1", mode: "600", content: `${key}\n` });
     expect(text(config!.content)).toBe(
       [
+        // Before the option an ssh older than 8.5 does not know.
+        "Host *",
+        "  IgnoreUnknown KnownHostsCommand",
         "Host web-1",
         "  HostName 203.0.113.5",
         "  Port 2222",

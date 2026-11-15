@@ -1,5 +1,14 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,6 +96,68 @@ describe("the scripts", () => {
     const script = jobScript({ ...base, env: { TOKEN: "super-secret-value", "BAD KEY": "x" } });
     expect(script).not.toContain("super-secret-value");
     expect(script).not.toContain("BAD KEY");
+  });
+
+  it("installs only what the machine is missing, and never on a host that outlives the job", () => {
+    const boot = bootstrapScript(base.callbackUrl, TOKEN);
+    expect(boot).toContain("for t in bash curl tar gzip base64");
+    // The whole list would fail beside curl-minimal or coreutils-single.
+    expect(boot).toContain("apt-get install -y -qq --no-install-recommends $pk");
+    expect(boot).not.toMatch(/install[^\n]* bash curl/);
+    const host = bootstrapScript(base.callbackUrl, TOKEN, { install: false });
+    expect(host).not.toMatch(/apt-get|apk add|dnf install/);
+    expect(host).toContain("install them on the host");
+  });
+
+  it("says why it gives up through curl or wget, with the token in a header", () => {
+    const boot = bootstrapScript(base.callbackUrl, TOKEN);
+    expect(boot).toContain('_post "finish?status=error&exit=0&timed_out=0" ""');
+    expect(boot).toMatch(/wget [^\n]*--header "X-Infrawrench-Ci-Job: \$IWCI_TOKEN"/);
+    // Small enough for the strictest user data limit there is, twice over.
+    expect(Buffer.byteLength(boot)).toBeLessThan(4096);
+  });
+
+  it("puts a declared tool in the script only as plain words, an HTTPS URL and a SHA-256", () => {
+    const sha = "a".repeat(64);
+    const script = jobScript({
+      ...base,
+      tools: [
+        { command: "ssh", packages: { apt: "openssh-client", dnf: "openssh-clients" } },
+        {
+          command: "kubectl",
+          downloads: { x86_64: { url: "https://dl.example.test/k", sha256: sha } },
+        },
+        { command: "evil; rm -rf /" },
+        { command: "a", packages: { apt: "x $(id)" } },
+        { command: "b", downloads: { x86_64: { url: "http://dl.example.test/b", sha256: sha } } },
+        {
+          command: "c",
+          downloads: { aarch64: { url: "https://dl.example.test/c", sha256: "nope" } },
+        },
+      ],
+    });
+    expect(script).toContain("apt-get) _pkg 'openssh-client' ;;");
+    expect(script).toContain("dnf|microdnf|yum) _pkg 'openssh-clients' ;;");
+    expect(script).toContain(`x86_64|amd64) _dl 'kubectl' 'https://dl.example.test/k' '${sha}' ;;`);
+    expect(script).not.toContain("evil");
+    expect(script).not.toContain("$(id)");
+    expect(script).not.toContain("http://dl.example.test");
+    expect(script).not.toContain("dl.example.test/c");
+    // A reused host's packages are its owner's: only the download applies.
+    const host = jobScript({
+      ...base,
+      isolate: true,
+      tools: [{ command: "ssh", packages: { apt: "openssh-client" } }],
+    });
+    expect(host).not.toContain("_pkg 'openssh-client'");
+    expect(host).toContain("install it on the host");
+  });
+
+  it("leaves a job that is lent nothing without any of it", () => {
+    const script = jobScript(base);
+    expect(script).not.toContain("_pkg");
+    expect(script).not.toContain("_dl");
+    expect(script).not.toContain("exec %q -F");
   });
 
   it("quotes for the shell", () => {
@@ -281,6 +352,153 @@ describe.each([
         await new Promise((r) => setTimeout(r, 100));
       expect(existsSync(jobRoot)).toBe(false);
       if (work) expect(existsSync(join(workDir, "home"))).toBe(true);
+    }
+  }, 30_000);
+});
+
+/** A callback on the loopback that serves `script` and keeps what the machine sends. */
+async function fakeCallback(script: (port: number) => string, extra: Record<string, string> = {}) {
+  const logs: Array<{ stream: string; text: string }> = [];
+  let finish: (value: URLSearchParams) => void = () => {};
+  const finished = new Promise<URLSearchParams>((resolve) => (finish = resolve));
+  let port = 0;
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://x");
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf8");
+      if (extra[url.pathname] !== undefined) res.end(extra[url.pathname]);
+      else if (req.headers["x-infrawrench-ci-job"] !== TOKEN) res.writeHead(403).end();
+      else if (url.pathname === "/cb/script") res.end(script(port));
+      else if (url.pathname === "/cb/log") {
+        logs.push({ stream: url.searchParams.get("stream") ?? "", text: body });
+        res.writeHead(204).end();
+      } else if (url.pathname === "/cb/finish") {
+        res.writeHead(204).end();
+        finish(url.searchParams);
+      } else res.writeHead(404).end();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = (server.address() as { port: number }).port;
+  const text = (stream: string) =>
+    logs
+      .filter((l) => l.stream === stream)
+      .map((l) => l.text)
+      .join("");
+  return { server, port, finished, text };
+}
+
+describe.skipIf(!realShell)("a machine without what the job script needs", () => {
+  it("tells the callback what is missing and ends the job, rather than never calling", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "iwci-bare-"));
+    const cb = await fakeCallback(() => "exit 0\n");
+    try {
+      // A PATH with everything but gzip.
+      for (const tool of ["bash", "curl", "tar", "base64", "id", "mktemp", "sleep"]) {
+        const real = execFileSync("sh", ["-c", `command -v ${tool}`])
+          .toString()
+          .trim();
+        symlinkSync(real, join(dir, tool));
+      }
+      const child = spawn(
+        "/bin/sh",
+        ["-c", bootstrapScript(`http://127.0.0.1:${cb.port}/cb`, TOKEN, { install: false })],
+        { stdio: "ignore", env: { PATH: dir } },
+      );
+      const result = await cb.finished;
+      child.kill();
+      expect(result.get("status")).toBe("error");
+      expect(cb.text("stderr")).toContain("[infrawrench] This host has no gzip.");
+    } finally {
+      cb.server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe.skipIf(!realShell)("a job that is lent something, on a reused host", () => {
+  it("gets its tools, and an ssh that reads the lent configuration", async () => {
+    const root = mkdtempSync(join(tmpdir(), "iwci-lent-"));
+    const tool = "#!/bin/sh\necho kubectl-fixture-ran\n";
+    const sha = createHash("sha256").update(tool).digest("hex");
+    const cb = await fakeCallback(
+      (port) => {
+        const download = (name: string, sha256: string) => {
+          const d = { url: `https://127.0.0.1:${port}/dl/${name}`, sha256 };
+          return { x86_64: d, aarch64: d };
+        };
+        return (
+          jobScript({
+            ...base,
+            isolate: true,
+            callbackUrl: `http://127.0.0.1:${port}/cb`,
+            proxyUrl: `http://127.0.0.1:${port}/proxy`,
+            cloneInto: null,
+            cwd: "/app",
+            env: { HOME: "/root", KUBECONFIG: "/root/.kube/prod.yaml" },
+            files: [
+              { path: "/root/.kube/prod.yaml", mode: "600", content: "kind: Config\n" },
+              { path: "/root/.ssh/id_deploy", mode: "600", content: "not a real key\n" },
+              {
+                path: "/root/.ssh/config",
+                mode: "600",
+                content: "Host *\n  IdentityFile /root/.ssh/id_deploy\n",
+              },
+            ],
+            tools: [
+              { command: "iwci-fixture-kubectl", downloads: download("good", sha) },
+              { command: "iwci-fixture-tampered", downloads: download("good", "0".repeat(64)) },
+              { command: "iwci-fixture-packaged", packages: { apt: "no-such-package" } },
+            ],
+            script: [
+              "iwci-fixture-kubectl",
+              'command -v iwci-fixture-tampered || echo "tampered-not-used"',
+              'echo "home=$HOME pwd=$PWD kube=$KUBECONFIG"',
+              'echo "modes=$(ls -ld "$HOME/.ssh" | cut -c1-10) $(ls -l "$HOME/.ssh/id_deploy" | cut -c1-10)"',
+              'cat "$HOME/.ssh/config"',
+              'if command -v ssh > /dev/null; then echo "ssh-shim=$(tail -1 "$(command -v ssh)")"; fi',
+            ].join("\n"),
+          })
+            // The fixture has no certificate: the test's downloads are plain HTTP.
+            .replaceAll(`https://127.0.0.1:${port}/dl/`, `http://127.0.0.1:${port}/dl/`)
+        );
+      },
+      { "/dl/good": tool },
+    );
+    try {
+      const child = spawn("sh", ["-c", bootstrapScript(`http://127.0.0.1:${cb.port}/cb`, TOKEN)], {
+        stdio: "ignore",
+        env: { ...process.env, TMPDIR: root },
+      });
+      const result = await cb.finished;
+      child.kill();
+      const out = cb.text("stdout");
+      const err = cb.text("stderr");
+      expect(result.get("status"), `${out}\n${err}`).toBe("passed");
+      // The pinned download ran; the one with another hash was not kept.
+      expect(out).toContain("kubectl-fixture-ran");
+      expect(out).toContain("tampered-not-used");
+      expect(err).toContain(
+        "The download of iwci-fixture-tampered was not the file Infrawrench expects",
+      );
+      // Nothing is installed on a host: a tool only its packages have is a note.
+      expect(err).toContain("This machine has no iwci-fixture-packaged");
+      expect(err).toContain("install it on the host");
+      // Lent files under the job's HOME, with their modes, and paths in them moved too.
+      const [, home, pwd, kube] = /home=(\S+) pwd=(\S+) kube=(\S+)/.exec(out) ?? [];
+      expect(kube).toBe(`${home}/.kube/prod.yaml`);
+      expect(pwd!.endsWith("/app")).toBe(true);
+      expect(out).toContain("modes=drwx------ -rw-------");
+      expect(out).toContain(`IdentityFile ${home}/.ssh/id_deploy`);
+      // OpenSSH reads the user's own home, not HOME: the job's ssh is told where.
+      if (out.includes("ssh-shim=")) {
+        expect(out).toMatch(/ssh-shim=exec \S+ -F \S+\/\.ssh\/config "\$@"/);
+      }
+    } finally {
+      cb.server.close();
+      rmSync(root, { recursive: true, force: true });
     }
   }, 30_000);
 });

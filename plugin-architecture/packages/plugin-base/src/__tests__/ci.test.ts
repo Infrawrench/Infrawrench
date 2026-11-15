@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
+  CI_OPENSSH_CLIENT,
   ciAlias,
   ciBootstrapWithTools,
   ciComputeKey,
@@ -72,6 +73,37 @@ describe("ciCredential", () => {
   });
 });
 
+describe("ciCredential.tools", () => {
+  const withTools = (tools: unknown) =>
+    validate(manifestSchema, {
+      ...baseManifest,
+      ciCredential: { description: "A token", shortLived: true, tools },
+    }).success;
+
+  it("takes a package per package manager and a pinned HTTPS download per architecture", () => {
+    expect(withTools([CI_OPENSSH_CLIENT])).toBe(true);
+    expect(
+      withTools([
+        {
+          command: "kubectl",
+          downloads: {
+            x86_64: { url: "https://dl.example.test/kubectl", sha256: "a".repeat(64) },
+          },
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it("refuses what could not go in a root shell script as one word, or is not pinned", () => {
+    expect(withTools([{ command: "ssh; rm -rf /" }])).toBe(false);
+    expect(withTools([{ command: "ssh", packages: { apt: "openssh-client $(id)" } }])).toBe(false);
+    const download = (d: unknown) => withTools([{ command: "kubectl", downloads: { x86_64: d } }]);
+    expect(download({ url: "http://dl.example.test/kubectl", sha256: "a".repeat(64) })).toBe(false);
+    expect(download({ url: "https://dl.example.test/kubectl", sha256: "latest" })).toBe(false);
+    expect(download({ url: "https://dl.example.test/kubectl" })).toBe(false);
+  });
+});
+
 describe("ciAlias", () => {
   it("keeps names file-safe and never empty", () => {
     expect(ciAlias("Production cluster")).toBe("production-cluster");
@@ -122,6 +154,12 @@ describe("ciBootstrapWithTools", () => {
     expect(script).toContain("apk add");
     expect(script.match(/^#!/gm)).toHaveLength(1);
     expect(script.trimEnd().endsWith("echo 'hi'")).toBe(true);
+  });
+
+  it("leaves a tool it could not install for the bootstrap to report", () => {
+    // The host's bootstrap checks again and tells the host why; an exit here
+    // would leave a job that only ever times out.
+    expect(ciBootstrapWithTools("echo hi")).not.toMatch(/\bexit\b/);
   });
 
   it("quotes any text as one shell word", () => {

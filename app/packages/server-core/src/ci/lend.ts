@@ -468,6 +468,26 @@ async function lendConnections(
   return out;
 }
 
+/**
+ * What a lent SSH key is in a job: the private key in `~/.ssh` and a
+ * catch-all `IdentityFile` for it, so `ssh` offers it to any host.
+ */
+export function sshKeyEntry(alias: string, privateKey: string): LentEntry {
+  // OpenSSH refuses a key file that does not end with a line feed.
+  const key = privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`;
+  const path = `/root/.ssh/id_${alias}`;
+  return {
+    files: [
+      { path, mode: "600", content: key },
+      {
+        path: "/root/.ssh/config",
+        mode: "600",
+        content: [{ text: `Host *\n  IdentityFile ${path}\n` }],
+      },
+    ],
+  };
+}
+
 async function lendSshKeys(
   run: LendingRun,
   names: Set<string>,
@@ -527,20 +547,7 @@ async function lendSshKeys(
         row.privateKeyIv,
         buildAad("sshKey", row.keyId, "privateKey"),
       );
-      // OpenSSH refuses a key file that does not end with a line feed.
-      const key = plain.endsWith("\n") ? plain : `${plain}\n`;
-      const alias = aliases.aliasFor(name);
-      const path = `/root/.ssh/id_${alias}`;
-      out[name] = checked(name, {
-        files: [
-          { path, mode: "600", content: key },
-          {
-            path: "/root/.ssh/config",
-            mode: "600",
-            content: [{ text: `Host *\n  IdentityFile ${path}\n` }],
-          },
-        ],
-      });
+      out[name] = checked(name, sshKeyEntry(aliases.aliasFor(name), plain));
       if ("refused" in out[name]!) continue;
       records.push({
         kind: "ssh-key",

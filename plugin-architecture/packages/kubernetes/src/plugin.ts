@@ -24,6 +24,7 @@ import { ConfigMapResourceType } from "./resources/configmap.js";
 import { SecretResourceType } from "./resources/secret.js";
 import { KUBERNETES_NETWORK_FLOW_CAPABILITY } from "./network-flows.js";
 import { KUBERNETES_JIT_ACCESS } from "./jit-access.js";
+import { KUBECTL } from "./ci-credential.js";
 import { KUBERNETES_CI_EXECUTOR } from "./ci-executor.js";
 
 export const manifest = {
@@ -192,6 +193,7 @@ export const manifest = {
       "A kubeconfig for this cluster in /root/.kube, named after the connection, with KUBECONFIG pointing at it. A service account token is swapped for a short-lived one where the cluster allows it.",
     shortLived: false,
     namespaces: true,
+    tools: [KUBECTL],
   },
 } satisfies PluginManifest;
 

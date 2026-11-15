@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CiLentValue } from "@infrawrench/plugin-base";
 import yaml from "js-yaml";
 
-import { kubeContext, lendKubeconfig, serviceAccountOf } from "../ci-credential.js";
+import { KUBECTL, kubeContext, lendKubeconfig, serviceAccountOf } from "../ci-credential.js";
 
 const jwt = (payload: object) =>
   `e30.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
@@ -144,6 +144,49 @@ describe("lendKubeconfig", () => {
     );
     expect(secrets(lent.files[0]!.content)).toEqual(["k8s-aws-v1.abc"]);
     expect(text(lent.files[0]!.content)).not.toContain("exec");
+  });
+
+  // A cloud job's machine has none of these programs either, and is never
+  // handed the cloud account's credentials they would need: what it gets is
+  // the same self-contained file a runner job gets, whichever managed
+  // Kubernetes the kubeconfig came from.
+  it.each([
+    ["EKS", { exec: { command: "aws", args: ["eks", "get-token", "--cluster-name", "prod"] } }],
+    ["GKE", { exec: { command: "gke-gcloud-auth-plugin", provideClusterInfo: true } }],
+    ["AKS", { exec: { command: "kubelogin", args: ["get-token", "--login", "azurecli"] } }],
+    [
+      "DOKS",
+      {
+        exec: {
+          command: "doctl",
+          args: ["kubernetes", "cluster", "kubeconfig", "exec-credential"],
+        },
+      },
+    ],
+    ["a legacy auth provider", { "auth-provider": { name: "gcp" } }],
+  ])("lends %s a bearer token, never its credential plugin", async (_name, user) => {
+    const lent = await lendKubeconfig(
+      {
+        kubeconfig: kubeconfig(user),
+        driverCredentials: async () => ({ token: "minted-by-the-host" }),
+        mintToken: noMint,
+      },
+      request,
+    );
+    const doc = yaml.load(text(lent.files[0]!.content)) as Record<string, any>;
+    expect(doc["users"]).toHaveLength(1);
+    expect(doc["users"][0].user).toEqual({ token: "minted-by-the-host" });
+    expect(secrets(lent.files[0]!.content)).toEqual(["minted-by-the-host"]);
+  });
+
+  it("names kubectl as a pinned download for both architectures", () => {
+    expect(KUBECTL.command).toBe("kubectl");
+    for (const arch of ["x86_64", "aarch64"] as const) {
+      expect(KUBECTL.downloads?.[arch]?.url).toMatch(
+        /^https:\/\/dl\.k8s\.io\/release\/v\d+\.\d+\.\d+\/bin\/linux\/(amd64|arm64)\/kubectl$/,
+      );
+      expect(KUBECTL.downloads?.[arch]?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 
   it("masks a value YAML would need escaped as a whole, quoted", async () => {
