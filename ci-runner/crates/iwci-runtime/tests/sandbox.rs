@@ -18,6 +18,11 @@
 //!   sandboxes through, as the runner hosts do.
 //!
 //! `IWCI_REQUIRE_FIXTURES` makes a missing input fail instead of skip.
+//! `ci-runner-builtins.yml` runs them in its `bash-node` job, which has
+//! all four: `fixtures.sh` for the first two, the environment it builds and
+//! the runner it builds with V8. Elsewhere, the environment's build
+//! directory is what `builtins/environments/build.sh bash-node` leaves in
+//! `dist/environment/bash-node/<version>`.
 #![cfg(target_os = "linux")]
 
 use std::path::{Path, PathBuf};
