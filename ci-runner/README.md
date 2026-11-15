@@ -2432,20 +2432,21 @@ whole pipeline.
     while the host is short). `memory_used` and `memory_waiting` are then
     what jobs reserve, which is what the proxy should place by.
 
-  Replayed over this repository's run reports at ci-2's 16 vCPUs and
-  25.7 GiB: a typical pull request's 26 jobs have 91 GiB of `memory:`
-  between them, were measured to hold 21 GiB, and so reserve 32 GiB by
-  estimate; the time they spend queued for memory falls from 750 to 930
-  job-seconds to 30 to 60, and at their peak the running jobs hold 14 GiB
-  where they held 8. How much of the queueing becomes wall time depends on
-  the cores. Those jobs already keep 16 cores busy, so one run alone ends
-  no sooner (the replay says the same time if jobs do not slow each
-  other down, and 113 s against 107 if they share the cores evenly). With two or
-  three runs on the runner at once, the later ones no longer wait for the
-  first one's reservations, which is worth a minute or more to them if
-  the cores were idle and nothing if they were not; the first run gives
-  up its head start either way. `limit` is the default until the pool's
-  own numbers say which it is.
+  Measured on ci-2 (16 vCPUs, the live 25.7 GiB budget, zram under it)
+  with one pull request's worth of this repository's Test pipeline: 30
+  jobs with 95 GiB of `memory:` between them, which peaked at 50 GiB as
+  `peak_memory_mib` counts and held 29 GiB as `held_memory_mib` does.
+  By `memory:` the run took 95 to 100 s with 690 to 916 job-seconds queued
+  for memory; by estimate 98 to 103 s with 159 to 165, and the host used
+  22.6 GiB at most where it had used 20. So one run alone ends no sooner:
+  those jobs already keep 16 cores busy, and the six longest suites took
+  414 to 420 s between them side by side where they took 334 to 364 s
+  queued behind each other. `memory:` at 4 to 6 GiB a suite was also what
+  kept the suites from all running at once. The gain is for runs that
+  overlap: two such runs started 5 s apart on one runner (a 22.5 GiB
+  budget) took 132 and 206 s by `memory:` and 127 and 187 s by estimate.
+  Nothing was swapped in any of them. `limit` is the default until the
+  pool has run with it.
 
 - **`--memory-reserve`** (or `IWCI_MEMORY_RESERVE`, `iwci serve` only,
   default `5GiB`) is what the server keeps for itself outside the job
