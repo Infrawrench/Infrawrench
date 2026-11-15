@@ -18,6 +18,13 @@
 # Every job is task-cached: one whose files, the shared config and what it
 # is handed have not changed since a passing run is not run again.
 #
+# Every `memory:` is sized from what the job was measured to hold (its
+# report's `peak_memory_mib`), with room above it: a job starts only when
+# its `memory:` fits what the runner has left, so a job that reserves 6 GiB
+# and holds 1.5 keeps three others waiting. Beside each one is the largest
+# peak seen across the packages it runs for. A job that outgrows its size
+# fails saying it ran out of its memory, and the size goes up here.
+#
 # Every `using:` names an exact version. A range (`env:bash-node@24`) runs
 # whatever was published last, but the task cache keys on the text, so a
 # new environment would only reach the jobs whose key changed for another
@@ -91,7 +98,8 @@ jobs:
     run: node node_modules/tsdown/dist/run.mjs --no-dts
     artifacts: [dist]
     task-cache: { root-inputs: [tsconfig.base.json], artifacts: false }
-    memory: 3GiB
+    # Peak 860 MiB (ui).
+    memory: 2GiB
     timeout: 20m
 
   # Each package's `test` script, with the JavaScript of everything it
@@ -116,6 +124,12 @@ jobs:
   #   addon-free entry in their vitest.config.ts.
   # - Electron, whose install script never runs here: desktop's
   #   vitest.config.ts gives `require("electron")` a path to answer with.
+  #
+  # A `node` reserves its JavaScript heap out of what is left of the job's
+  # `memory:`, so a Vitest job's peak follows its size rather than saying
+  # what it needs: the small suites peak at 3.5 to 4 GiB given 6 GiB and at
+  # 1.8 to 2.8 GiB given 3 GiB. Every suite passes at 3 GiB; at 2 GiB
+  # server-core, workflow-runtime and the ClickHouse plugin run out.
   test:
     name: Test ${{ package.name }}
     packages:
@@ -129,7 +143,7 @@ jobs:
       eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=2}"
     task-cache:
       root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
-    memory: 6GiB
+    memory: 4GiB
     # server-core and ui take five to nine minutes each on a busy runner.
     timeout: 30m
 
@@ -154,7 +168,8 @@ jobs:
       ]
     artifacts: [dist]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    memory: 3GiB
+    # Peak 910 MiB (ui); 190 MiB for a plugin.
+    memory: 2GiB
     timeout: 20m
 
   # Every other package whose typecheck is plain `tsc --noEmit`, against the
@@ -167,7 +182,8 @@ jobs:
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, .]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    memory: 6GiB
+    # Peak 2.9 GiB (web), 1.4 GiB (server-core), under 1 GiB for the rest.
+    memory: 4GiB
     timeout: 30m
 
   # The Worker entry points (`tsc --noEmit -p edge`).
@@ -180,7 +196,8 @@ jobs:
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, edge]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    memory: 6GiB
+    # Peak 2.3 GiB (web).
+    memory: 4GiB
     timeout: 30m
 
   # Desktop's typecheck runs ensure-env first (prep does that), then two
@@ -195,7 +212,8 @@ jobs:
     task-cache:
       inputs: [app/packages/desktop/**]
       root-inputs: [tsconfig.base.json]
-    memory: 6GiB
+    # Peak 1.4 GiB.
+    memory: 3GiB
     timeout: 30m
 
   # The packages that pin TypeScript 6 (mobile, plugingen, website) run
@@ -211,7 +229,8 @@ jobs:
     task-cache:
       inputs: [app/packages/mobile/**]
       root-inputs: [tsconfig.base.json]
-    memory: 6GiB
+    # Peak 600 MiB.
+    memory: 2GiB
     timeout: 30m
 
   plugingen:
@@ -220,7 +239,8 @@ jobs:
     cwd: /app/plugingen
     run: node node_modules/typescript/bin/tsc6 --noEmit
     task-cache: { inputs: [plugingen/**] }
-    memory: 4GiB
+    # Peak 580 MiB.
+    memory: 2GiB
     timeout: 20m
 
   # `astro check`: `astro sync` writes the content collections' types into
@@ -243,7 +263,8 @@ jobs:
     task-cache:
       inputs: [app/packages/website/**, app/packages/analytics/**]
       root-inputs: [.infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
-    memory: 6GiB
+    # Peak 3.7 GiB.
+    memory: 5GiB
     timeout: 20m
 
   # Both are plain Node scripts over the sources and catalogs. They read
@@ -264,7 +285,8 @@ jobs:
         - app/packages/web/**
         - app/packages/desktop/**
         - app/packages/instances/**
-    memory: 4GiB
+    # Peak 560 MiB.
+    memory: 2GiB
     timeout: 20m
 
   translations-status:
@@ -275,7 +297,8 @@ jobs:
     run: node scripts/translation-status.mjs
     # The same packages: their sources, gt.config.json and _gt catalogs.
     task-cache: *translation-inputs
-    memory: 4GiB
+    # Peak 600 MiB.
+    memory: 2GiB
     timeout: 20m
 
   prettier:
@@ -385,7 +408,7 @@ jobs:
       node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
     task-cache:
       root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
-    memory: 6GiB
+    memory: 4GiB
     timeout: 20m
 
   # The Postgres integration suites against `env:postgres` (pglite-server,
@@ -419,7 +442,7 @@ jobs:
         - .infrawrench/ci/stubs/**
         - app/packages/web/drizzle.config.ts
         - app/packages/web/src/db/migrations/**
-    memory: 6GiB
+    memory: 4GiB
     timeout: 30m
 
   # The editor extensions, packaged for people to install by hand or submit
@@ -456,7 +479,8 @@ jobs:
       mkdir vsix
       mv out/*.vsix vsix/
     downloads: [vsix]
-    memory: 3GiB
+    # Peak 1 GiB.
+    memory: 2GiB
     timeout: 20m
 
   # `ray build -e dist` ends by running ./node_modules/.bin/tsc --noEmit,
@@ -480,5 +504,6 @@ jobs:
       eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
       node -e 'require("tar").c({ gzip: true, sync: true, file: "infrawrench-raycast.tgz", cwd: "dist" }, ["."])'
     downloads: [infrawrench-raycast.tgz]
-    memory: 3GiB
+    # Peak 1 GiB.
+    memory: 2GiB
     timeout: 20m
