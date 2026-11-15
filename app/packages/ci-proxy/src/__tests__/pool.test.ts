@@ -32,6 +32,8 @@ function capacity(c: Partial<Capacity> & { name: string }): Capacity {
     memoryWaiting: null,
     v8LostIsolates: null,
     v8LostHeap: null,
+    split: false,
+    runsHelping: 0,
     ...c,
   };
 }

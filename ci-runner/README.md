@@ -93,14 +93,15 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key           | Meaning                                                                                                                                        |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | Required.                                                                                                                                      |
-| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push.                    |
-| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                         |
-| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                               |
-| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency). |
-| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                           |
+| Key           | Meaning                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | Required.                                                                                                                                                                      |
+| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, and `schedule` (below). Omitted: every push.                                                    |
+| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                         |
+| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                               |
+| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                 |
+| `split`       | `true`, or `{ artifacts: 8MiB }`: other runners may take jobs of a run when the runner that has it is short of slots or memory. Off by default. See [Split runs](#split-runs). |
+| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                                                           |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
 in UTC: five fields (minute, hour, day of month, month, day of week) taking
@@ -749,6 +750,96 @@ that has run past its expected time is expected to run on for as long again
 as it has overrun. A job's expected time is its own last time, a matrix
 entry's included, and for a job with no recorded time the median, as
 above.
+
+### Split runs
+
+A run belongs to one runner. With `split:` at the top of a pipeline, that
+runner (the primary) can have another runner (a helper) take some of the
+pipeline's jobs when its own slots or memory are what the jobs wait for:
+
+```yaml
+split: true
+# or, to say how much a job without a task cache entry may send:
+split:
+  artifacts: 8MiB # default 4MiB, at most 256MiB; 0MiB sends none
+```
+
+- **Off by default, because the scratch directory does not cross
+  runners.** Jobs of a split pipeline that run on different runners do not
+  see the same `/tmp/workflow`, and nothing in a pipeline says whether its
+  jobs use it. Turn `split:` on only for a pipeline whose jobs hand things
+  on through `artifacts:` and `outputs:`.
+- **Both runners plan the same run**, from the same request, so they have
+  the same jobs, order and task cache keys. A task cache hit is replayed by
+  each. A job that missed is claimed just before it starts, with a write to
+  the shared store that only one runner can make, and whoever claims it
+  runs it. The other keeps the job in its graph and completes it from the
+  record the first writes when the job ends, so the jobs that need it
+  become ready on both. A job never runs on two runners unless one of them
+  was given up on (below).
+- **The primary asks, the helper decides.** The primary asks for help once
+  a job another runner could run has waited two seconds in its queue. A
+  helper does nothing for a run until then: it does not fetch the commit,
+  and looks at the store once every two seconds. Once asked, it joins when
+  it has a free slot and none of its own runs' jobs waits for memory.
+- **A helper's own runs come first.** A helper starts a job only with a
+  slot that is free and memory that fits at that moment, never waiting for
+  either, and never while a job of one of its own runs waits for memory or
+  a slot. When one of its own runs then needs a slot or memory that a
+  helper job holds, that job is stopped, newest first, and handed back to
+  the primary, which runs it itself. What a helper has queued or running
+  does not count in its `/v1/capacity` as load, so the proxy places runs on
+  it as if it were not helping.
+- **What may run on a helper.** Any job but one that reads `secrets` or is
+  lent a connection, key or resource (its services included), has
+  `changes: commit`, keeps `downloads:`, or is a cloud job: those are tied
+  to the runner that has the run, which runs them. A job larger than the
+  helper's whole memory budget stays with the primary too.
+- **How artifacts cross.** A task-cached job's artifacts are in the task
+  cache entry it saves, which every runner reads. A job without one that
+  passes has its artifacts stored for the run when they come to at most
+  `split.artifacts` in total and no file among them holds one of the run's
+  secret values; they are sent byte for byte or not at all. Artifacts that
+  do not cross stay where the job ran, the job's report says why, and the
+  jobs that need them run there: a helper never takes a job whose needs
+  left artifacts it does not have, and the primary runs again a job a
+  helper ran whose artifacts it cannot get. So a job that is not
+  task-cached and keeps more than `split.artifacts` is best not left to a
+  helper: make it task-cached, or raise the limit.
+- **What the run looks like.** The app follows the primary and nothing
+  else: its report, `progress`, log and checks hold every job. A job a
+  helper ran is `running` from the moment the helper has it, then has its
+  real status, `duration_ms` and output, with `"remote": "<runner>"` on
+  its report and its `job-finished` event and a note saying where it ran.
+  Its output arrives when it ends, not line by line.
+- **Failure.** Each runner of a split run says it is alive every ten
+  seconds. The primary takes back a job whose helper has been silent for
+  45 s, handed it back (it was stopped to give way, its runner is
+  draining, or it could not run the job at all, which says nothing about
+  the job), or has held it past the job's `timeout:` without a result. A
+  store that does not answer is a job the primary runs and a helper leaves
+  alone, so a split run never fails because it was split. A helper ends
+  when the pipeline does, when the primary cancels it, and when the
+  primary has been silent for 45 s. If the primary dies the run is lost,
+  as it is without `split:`.
+- **Cancelling** the run, or the pipeline, on the primary stops the
+  helper's jobs within a second or two.
+- **Runners of different versions do not share runs.** They must plan a
+  run alike and read each other's records, so a helper only joins a
+  primary of its own version. While a release rolls out, runs are not
+  shared.
+- **Architecture.** Runners of different CPU architectures share runs.
+  Jobs run as WebAssembly: dependencies are installed for the platform
+  `wasm32` whatever the host, tools are the same content-addressed blobs,
+  and task cache keys hold nothing of the host. What is tied to the host's
+  architecture never crosses: compiled modules are each runner's own disk
+  cache, and an environment's own caches (a V8 code cache) are keyed by
+  architecture (see [Environment caches](#environment-caches)). The task
+  cache has always been shared between runners of different architectures
+  in the same way.
+- **Cost.** A split pipeline's primary makes two small writes to the store
+  for each job it starts and one listing a second; a helper that is never
+  asked makes one listing every two seconds.
 
 ### What changed from the first sketch
 
@@ -2137,7 +2228,7 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
-IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -2471,7 +2562,8 @@ A request body (for `runs` and `prepare`):
   "vars": { "REGION": "optional: for ${{ vars.<name> }}" },
   "no-task-cache": "optional: true runs every task-cache: job; passes still save",
   "trusted": "optional: false for a pull request from a fork; default false for a pull request, true otherwise",
-  "lent": "optional: connections, SSH keys and resource outputs lent to the jobs, by name (below)"
+  "lent": "optional: connections, SSH keys and resource outputs lent to the jobs, by name (below)",
+  "split": "optional: { \"runner\": \"ci-1\" } shares the run; { \"of\": \"<run id>\", \"runner\": \"ci-2\" } helps another runner's run (below)"
 }
 ```
 
@@ -2536,6 +2628,24 @@ it is masked, and an untrusted run is given none of it:
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
+- **Split runs.** `"split": { "runner": "<name>" }` in a run's request
+  lets its pipelines that say `split:` be shared (see
+  [Split runs](#split-runs)); `runner` is what this runner is called in
+  claims and reports, and one is made up when it is left out. The same
+  request with `"split": { "of": "<run id>", "runner": "<name>" }`, sent
+  to another runner, is an offer to help the run of that id (its id on the
+  runner that has it): it answers `202` with an id of its own, takes no
+  slot, counts in none of `runs_active`, `slots_free`, `memory_used` or
+  `memory_waiting`, and is refused with `429` only when the runner is
+  draining or already helps `--helping` runs (default 2; `0` helps none).
+  Nothing has to follow or cancel it: it ends with the run it helps, and
+  with a drain of its runner, which hands its jobs back. It stores no
+  report, and a usage record only when it ran a job. `/v1/capacity` says
+  `"split": true` on a runner that takes the field (a request is refused
+  for a field the runner does not know, so send it to no other), and
+  `runs_helping`, `slots_helping` and `memory_helping` for what it is doing
+  for other runners' runs now. Runners of different versions do not share
+  a run.
 - **Memory.** `memory_total` and `memory_used` are the job budget and what
   running jobs have reserved of it. `memory_waiting` is the memory asked
   for by jobs that are ready but not started (waiting for memory, or for
@@ -2580,7 +2690,9 @@ it is masked, and an untrusted run is given none of it:
   `needs` and the `ids` their entries report under, or `null` while a matrix
   waits on another job), then `job-started`, `output` (one line, with its
   stream) and `job-finished` events; then `run-finished`. A finished job's
-  report carries its `needs` too. A client that connects late
+  report carries its `needs` too. A job another runner of a split run ran
+  has `remote`, that runner's name, on its `job-finished` event, in
+  `progress` and on its report. A client that connects late
   gets the backlog first. Up to 8 MiB of output is kept per run; past that a
   `truncated` event says so and job events still flow. A finished run's log
   is kept for five minutes after it ends; its report is read from the store
@@ -2595,9 +2707,13 @@ it is masked, and an untrusted run is given none of it:
   is in none of those, but in `external_jobs` and `external_seconds` (from
   its claim to its end), and its line in `jobs` is `"external": true` with
   that time as `duration_ms`. Failed and errored runs are recorded too,
-  with no usage. The record's `schema` is 3: 2 added a job `status` of
+  with no usage. The record's `schema` is 4: 2 added a job `status` of
   `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`), 3 the
-  external fields. Storage is read from `GET /v1/storage/{owner}`, for billing by
+  external fields, 4 split runs. Each runner of a split run writes a record
+  of its own for the jobs it ran: a helper's has `split_of`, the id of the
+  run it helped, and a job another runner ran is `"remote": true` with no
+  memory, in none of that record's `usage`. Summing an owner's records is
+  still its bill. Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
   the same four per repository under `repos`.
@@ -2886,7 +3002,10 @@ make that safe to do while jobs run:
   being admitted (`429`, and `draining` in `/v1/capacity`, which the proxy
   reads to place work elsewhere) and let the running ones finish; on a
   signal the server then exits 0. A systemd unit's stop timeout therefore
-  has to cover the longest job (60 minutes).
+  has to cover the longest job (60 minutes). What the server is doing for
+  other runners' [split runs](#split-runs) ends at once: those jobs are
+  stopped and handed back to the runner that has the run, and the drain
+  waits for none of them.
 - **Updating itself.** With `--update-channel stable`, the server reads
   `releases/iwci/channels/stable.json` every `--update-every` (default 5m).
   It only believes a manifest signed by the release key
@@ -2951,11 +3070,36 @@ will write to. Job caches, and environment caches (keyed
 `caches/<owner>/<repo-id>/<scope>/`,
 downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
 [Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
-`runs/<owner>/`, and releases of `iwci` itself under
+`runs/<owner>/`, what the runners of a [split run](#split-runs) share under
+`splits/<owner>/<repo-id>/<run-id>/` (below), and releases of `iwci` itself under
 `releases/iwci/<version>/<target>` (immutable) with signed channel
 manifests at `releases/iwci/channels/<channel>.json`. CI's builds of
 builtins and packages are under `build-cache/main/` and
 `build-cache/pr/<number>/` (see [The build cache](#the-build-cache)).
+
+What a split run keeps under `splits/<owner>/<repo-id>/<run-id>/`, `<run-id>`
+being the run's id on the runner that has it, `<pipeline>` a hash of the
+pipeline's file name and `<job>` the job id in hex:
+
+| Key                               | What                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `state/primary.<n>`               | The primary is alive; `<n>` moves every ten seconds.                           |
+| `state/helper/<runner>.<n>`       | The same for a helper.                                                         |
+| `state/help.<version>`            | The primary, a runner of that version, has more ready jobs than it can start.  |
+| `state/end`                       | The run is over.                                                               |
+| `state/ended/<pipeline>`          | That pipeline is over, or cancelled.                                           |
+| `state/done/<pipeline>/<job>`     | How a job went on the runner that ran it: its report, masked. Written once.    |
+| `state/back/<pipeline>/<job>.<n>` | A helper gave the job up.                                                      |
+| `claims/<pipeline>/<job>`         | The name of the runner that runs the job. Written only if absent.              |
+| `artifacts/<pipeline>/<job>`      | What a job without a task cache entry kept, when small enough: a zstd archive. |
+
+A runner follows the others with one listing of `state/`. The primary
+deletes everything but `state/end` when the run ends; every server sweeps
+what is older than a day under `splits/` once an hour, which is what
+removes the end markers and whatever a primary that died left. None of it
+counts against an owner's storage quota. The run's secrets are in none of
+it: records are built from masked reports, and artifacts with a secret's
+value in them are not stored.
 
 ## Crates
 

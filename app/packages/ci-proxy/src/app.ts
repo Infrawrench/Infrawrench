@@ -7,7 +7,7 @@
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots and job memory, and the pool's total slots |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner with the most memory to spare per run |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, and offers it to the others as helpers (`placeRun`) |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
@@ -35,6 +35,8 @@ import {
   isRunnerUrl,
   parseRunId,
   runCores,
+  type Capacity,
+  type Placed,
   type Pool,
   type RunnerEntry,
 } from "./pool";
@@ -67,6 +69,11 @@ export interface Deps {
   now: () => number;
   /** The runners' bucket and the key download links are signed with. */
   downloads?: Downloads;
+  /**
+   * Keeps work going after the response is sent (the Worker's
+   * `waitUntil`). Without it that work is awaited.
+   */
+  background?: (work: Promise<unknown>) => void;
 }
 
 /** Bodies are a run request, maybe with a pipeline file: small. */
@@ -99,6 +106,72 @@ function full(): Response {
     { error: "every runner is at capacity; retry later" },
     { "Retry-After": RETRY_AFTER_SECS },
   );
+}
+
+/** The most runners a run is offered to as helpers. */
+export const MAX_HELPERS = 3;
+/** How long a runner gets to answer an offer to help. */
+const HELP_TIMEOUT_MS = 5000;
+
+/**
+ * Places a run and shares it with the other runners.
+ *
+ * A runner that says `split` in its capacity can share a run: it gets
+ * `"split": { "runner": <its name> }` in the request, and every other such
+ * runner (up to `MAX_HELPERS`) is then sent the same request with
+ * `"split": { "of": <the run's id there>, "runner": <its name> }`. That
+ * is an offer, not a run: the runner that has the run asks for help
+ * through the store they share when its queue backs up, and a helper
+ * takes jobs only while it has slots and memory its own runs do not
+ * want. So the proxy offers every time and decides nothing: it cannot
+ * see whether a pipeline says `split:`, how long a run's queue is, or
+ * what a helper will have free a minute from now, and both runners can.
+ * A pipeline that does not say `split:` is not shared whatever is sent.
+ *
+ * Nothing is kept about the run: a helper that refuses, is down or
+ * answers late is one helper fewer, and cancelling, status and logs go to
+ * the runner that has the run, which ends its helpers itself.
+ *
+ * A run a caller waits for (`?wait=true`) is not shared: its id is only
+ * known when it is over. A caller's own `split` is dropped; how a run is
+ * shared is the proxy's to say.
+ */
+async function placeRun(
+  deps: Deps,
+  search: string,
+  request: Record<string, unknown>,
+): Promise<Placed | null> {
+  const { split: _split, ...rest } = request;
+  const waits = new URLSearchParams(search).get("wait") === "true";
+  const helpers = (runner: Capacity, others: Capacity[]) =>
+    waits || !runner.split ? [] : others.filter((o) => o.split).slice(0, MAX_HELPERS);
+  const placed = await deps.pool.place(`/v1/runs${search}`, (runner, others) =>
+    JSON.stringify(
+      helpers(runner, others).length > 0 ? { ...rest, split: { runner: runner.name } } : rest,
+    ),
+  );
+  if (!placed?.response.ok) return placed;
+  const offered = helpers(placed.capacity, placed.others);
+  if (offered.length === 0) return placed;
+  const started = (await placed.response
+    .clone()
+    .json()
+    .catch(() => ({}))) as { id?: unknown };
+  const id = started.id;
+  if (typeof id !== "string" || !/^[0-9a-f]{32}$/.test(id)) return placed;
+  const offers = Promise.allSettled(
+    offered.map(async (helper) => {
+      const response = await deps.pool.call(helper.name, "/v1/runs", {
+        method: "POST",
+        body: JSON.stringify({ ...rest, split: { of: id, runner: helper.name } }),
+        signal: AbortSignal.timeout(HELP_TIMEOUT_MS),
+      });
+      await response.body?.cancel();
+    }),
+  );
+  if (deps.background) deps.background(offers);
+  else await offers;
+  return placed;
 }
 
 /** Reads a JSON object body, refusing anything large or malformed. */
@@ -320,6 +393,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         memory_waiting: r.memoryWaiting,
         v8_lost_isolates: r.v8LostIsolates,
         v8_lost_heap: r.v8LostHeap,
+        // Whether it can share a run or help one, and how many it helps.
+        split: r.split,
+        runs_helping: r.runsHelping,
         // What placement ranks by: the cores a new run could expect here,
         // and how long a typical pull request's run would then take.
         run_cores: r.up ? runCores(r) : null,
@@ -338,7 +414,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     if (path === "/v1/runs") {
       const withValues = await withStoredValues(deps, body.value);
       if (withValues instanceof Response) return withValues;
-      text = JSON.stringify(withValues);
+      const placed = await placeRun(deps, url.search, withValues);
+      if (!placed) return full();
+      return relay(placed.runner, placed.response);
     } else if ("trusted" in body.value || "lent" in body.value) {
       // Preparing runs no job, so it needs neither.
       const { trusted: _, lent: _lent, ...rest } = body.value;
@@ -769,7 +847,7 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
         );
         return;
       }
-      const placed = await deps.pool.place("/v1/runs", JSON.stringify(withValues));
+      const placed = await placeRun(deps, "", withValues);
       if (!placed) {
         result.skipped.push(label);
         await deps.store.settleFire(

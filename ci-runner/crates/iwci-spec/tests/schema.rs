@@ -61,6 +61,7 @@ fn schema_matches_the_structs() {
             "name: x\nconcurrency: { group: g, zzz: 1 }\njobs: {}\n",
             "/$defs/concurrency",
         ),
+        ("name: x\nsplit: { zzz: 1 }\njobs: {}\n", "/$defs/split"),
         (
             "name: x\non:\n  push: { zzz: 1 }\njobs: {}\n",
             "/$defs/triggerFilter",

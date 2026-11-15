@@ -9,6 +9,7 @@
 //!     [--warm-every 10m | --no-warm] [--keep-installs-unpacked 24h]
 //!     [--update-channel stable [--update-every 5m]]
 //!     [--restart-after-lost-isolates 8 | --restart-after-lost-isolates 0]
+//!     [--helping 2]
 //! ```
 //!
 //! SIGTERM and SIGINT drain (no new runs, running ones finish) and then
@@ -107,6 +108,8 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     let mut runner = open_runner(&mut args, &limits, true, Some(quota))?;
     // Cloud jobs wait here for the app to claim them.
     runner.external = Some(Arc::new(crate::external::ExternalJobs::new()));
+    // Jobs taken from other runners' runs give way to this runner's own.
+    runner.helping = Some(Arc::new(crate::schedule::Helping::default()));
     let no_warm = args.flag("--no-warm");
     let warm_every = match args.value("--warm-every")? {
         None => DEFAULT_WARM_EVERY_SECS,
@@ -137,6 +140,12 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
             }
         },
     };
+    let helping = match args.value("--helping")? {
+        None => crate::server::DEFAULT_HELPING,
+        Some(text) => text
+            .parse::<usize>()
+            .map_err(|_| format!("--helping takes a count, or 0 to help no run, not `{text}`"))?,
+    };
     let release_key = match &update_channel {
         Some(_) => Some(crate::server::lifecycle::verifying_key(
             &std::env::var("IWCI_RELEASE_PUBLIC_KEY").map_err(|_| {
@@ -148,7 +157,11 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     if !args.rest().is_empty() {
         return Err("unexpected arguments; see `iwci help`".into());
     }
-    let server = Arc::new(Server::new(runner, key)?.with_memory(host, reserve));
+    let server = Arc::new(
+        Server::new(runner, key)?
+            .with_memory(host, reserve)
+            .with_helping(helping),
+    );
     server.stop_gracefully_on_signals()?;
     if let (Some(channel), Some(key)) = (update_channel, release_key) {
         eprintln!(
@@ -163,6 +176,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     }
     server.keep_installs_compact(std::time::Duration::from_secs(COMPACT_EVERY_SECS));
     server.watch_memory();
+    server.sweep_splits();
     server.serve(&listen)?;
     Ok(ExitCode::SUCCESS)
 }

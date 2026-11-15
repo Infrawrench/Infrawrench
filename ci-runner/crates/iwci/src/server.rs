@@ -64,7 +64,12 @@ const KEEP_FINISHED: usize = 1000;
 /// good (#1066).
 const KEEP_REPORT_SECS: u64 = 5 * 60;
 /// The current [`UsageRecord::schema`].
-pub const USAGE_SCHEMA: u32 = 3;
+pub const USAGE_SCHEMA: u32 = 4;
+/// The most runs of other runners this one helps at once, unless
+/// `--helping` says.
+pub const DEFAULT_HELPING: usize = 2;
+/// How often the server sweeps what split runs left in the store.
+const SWEEP_SPLITS_SECS: u64 = 60 * 60;
 
 pub struct Server {
     runner: Arc<Runner>,
@@ -85,6 +90,12 @@ pub struct Server {
     controls: Mutex<HashMap<String, Arc<RunControl>>>,
     order: Mutex<Vec<String>>,
     active: AtomicUsize,
+    /// The runs of other runners this one is helping (`split.of`), by id.
+    /// They are not runs this runner has: they count in none of its
+    /// limits, take only what its own runs leave, and end with a drain.
+    helping: Mutex<std::collections::HashSet<String>>,
+    /// The most of them at once; 0 helps none.
+    max_helping: usize,
     /// The host's memory and what the runner keeps of it outside the job
     /// budget, for `/v1/capacity` and the memory log (`crate::memory`).
     memory_host: Option<u64>,
@@ -144,7 +155,11 @@ fn forget_finished(
 /// `status` may be `cancelled`. 3: `usage` has `external_jobs` and
 /// `external_seconds` (cloud jobs, which ran on the customer's account and
 /// are not in the runner's numbers), and such a job is `external: true`
-/// with its claimed time as `duration_ms`.
+/// with its claimed time as `duration_ms`. 4: a run may be split across
+/// runners, each writing a record of its own for the jobs it ran: a
+/// helper's record has `split_of` (the run it helped), and a job another
+/// runner ran is `remote: true` with no memory, in none of this record's
+/// `usage`. Summing an owner's records is still its bill.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
     pub schema: u32,
@@ -162,6 +177,10 @@ pub struct UsageRecord {
     pub jobs_per_cpu: usize,
     pub usage: Usage,
     pub jobs: Vec<JobUsage>,
+    /// On a helper's record: the id of the run it helped, on the runner
+    /// that had it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub split_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +192,9 @@ pub struct JobUsage {
     /// A cloud job: it ran on the customer's account.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external: bool,
+    /// Another runner of a split run ran it, and bills it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote: bool,
 }
 
 use crate::runner::random_id;
@@ -232,9 +254,36 @@ impl Server {
             controls: Mutex::default(),
             order: Mutex::default(),
             active: AtomicUsize::new(0),
+            helping: Mutex::default(),
+            max_helping: DEFAULT_HELPING,
             memory_host: None,
             memory_reserve: None,
         })
+    }
+
+    /// How many runs of other runners this one helps at once; 0 for none.
+    pub fn with_helping(mut self, max: usize) -> Self {
+        self.max_helping = max;
+        self
+    }
+
+    /// Sweeps what split runs left in the store a day ago and more, now
+    /// and every hour: a finished run's end marker, and everything of a
+    /// run whose runner died before it could clear it.
+    pub fn sweep_splits(self: &Arc<Self>) {
+        let server = self.clone();
+        let _ = std::thread::Builder::new()
+            .name("iwci-split-sweep".into())
+            .spawn(move || {
+                loop {
+                    if let Err(e) =
+                        crate::adapters::split::sweep(server.runner.store.as_ref(), now_secs())
+                    {
+                        eprintln!("iwci serve: could not sweep split runs: {e}");
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(SWEEP_SPLITS_SECS));
+                }
+            });
     }
 
     /// Says what the host has and what the runner keeps of it, for
@@ -427,6 +476,13 @@ impl Server {
         let process = crate::memory::process_memory();
         let modules = self.runner.runtime.cache_stats();
         let limits = self.runner.runtime.module_limits();
+        // What helper jobs hold comes back the moment one of this runner's
+        // own runs wants it, so it counts as free here.
+        let (helper_slots, helper_memory) = self
+            .runner
+            .helping
+            .as_ref()
+            .map_or((0, 0), |h| (h.running(), h.bytes()));
         json!({
             "version": lifecycle::VERSION,
             "draining": self.draining.load(Ordering::SeqCst),
@@ -434,10 +490,16 @@ impl Server {
             "cpus": self.runner.cpus,
             "jobs_per_cpu": self.runner.jobs_per_cpu,
             "slots_total": slots.total(),
-            "slots_free": slots.free(),
+            "slots_free": (slots.free() + helper_slots).min(slots.total()),
             "runs_active": self.active.load(Ordering::SeqCst),
+            // A run may be shared with this runner (`split` in a run
+            // request), and what it does for other runners' runs now.
+            "split": true,
+            "runs_helping": self.helping.lock().unwrap().len(),
+            "slots_helping": helper_slots,
+            "memory_helping": self.runner.memory.as_ref().map(|_| helper_memory),
             "memory_total": self.runner.memory.as_ref().map(|m| m.total()),
-            "memory_used": self.runner.memory.as_ref().map(|m| m.used()),
+            "memory_used": self.runner.memory.as_ref().map(|m| m.used().saturating_sub(helper_memory)),
             // What queued jobs ask for on top, for the proxy's placement (#1089).
             "memory_waiting": self.runner.memory.as_ref().map(|m| m.waiting()),
             // The process's own memory against that (#1035).
@@ -557,7 +619,9 @@ impl Server {
     /// there are slots (each run needs at least one).
     fn admit(&self) -> bool {
         let slots = self.runner.slots.as_ref().expect("checked in new");
-        if slots.free() == 0 || self.draining.load(Ordering::SeqCst) {
+        // A slot a helper job holds is this runner's own run's to take.
+        let helped = self.runner.helping.as_ref().map_or(0, |h| h.running());
+        if slots.free() + helped == 0 || self.draining.load(Ordering::SeqCst) {
             return false;
         }
         let admitted = self
@@ -587,10 +651,19 @@ impl Server {
         if let Err(e) = req.repo_id() {
             return error(400, e);
         }
-        if !self.admit() {
+        // Helping another runner's run is not a run of this runner's: it
+        // is admitted by a count of its own and takes none of the others.
+        let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
+        if helper {
+            if self.draining.load(Ordering::SeqCst)
+                || self.helping.lock().unwrap().len() >= self.max_helping
+            {
+                return self.full();
+            }
+        } else if !self.admit() {
             return self.full();
         }
-        let (id, done) = self.launch(req, owner);
+        let (id, done) = self.launch(req, owner, helper);
         if wait {
             return match done.recv() {
                 Ok(entry) => json_response(200, &serde_json::to_value(entry).unwrap_or_default()),
@@ -610,8 +683,12 @@ impl Server {
         self: &Arc<Self>,
         req: RunRequest,
         owner: RepoId,
+        helper: bool,
     ) -> (String, std::sync::mpsc::Receiver<RunEntry>) {
         let id = random_id();
+        if helper {
+            self.helping.lock().unwrap().insert(id.clone());
+        }
         let entry = RunEntry {
             id: id.clone(),
             owner: owner.as_str().to_string(),
@@ -639,7 +716,9 @@ impl Server {
         std::thread::spawn(move || {
             let sink = hub.clone();
             let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
-            let outcome = runner.run_with_logs(&req, &id_for_thread, Some(logs), Some(control));
+            // Nobody follows a helper's run: the run it helps has the log.
+            let logs = (!helper).then_some(logs);
+            let outcome = runner.run_with_logs(&req, &id_for_thread, logs, Some(control));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
             if let Some(jobs) = &this.runner.external {
                 jobs.forget_run(&id_for_thread);
@@ -647,7 +726,11 @@ impl Server {
             // Finished and remembered: a cancel from now on answers that.
             this.controls.lock().unwrap().remove(&id_for_thread);
             hub.close(&entry);
-            this.active.fetch_sub(1, Ordering::SeqCst);
+            if helper {
+                this.helping.lock().unwrap().remove(&id_for_thread);
+            } else {
+                this.active.fetch_sub(1, Ordering::SeqCst);
+            }
             let _ = done_tx.send(entry);
         });
         (id, done_rx)
@@ -685,6 +768,7 @@ impl Server {
                                 },
                                 memory_mib: j.memory_mib,
                                 external: j.cloud.is_some(),
+                                remote: j.remote.is_some(),
                             });
                         }
                     }
@@ -705,6 +789,7 @@ impl Server {
                     jobs_per_cpu: self.runner.jobs_per_cpu,
                     usage: output.usage.clone(),
                     jobs,
+                    split_of: output.split_of.clone(),
                 };
                 (serde_json::to_value(&output).ok(), None, record)
             }
@@ -728,6 +813,7 @@ impl Server {
                     jobs_per_cpu: self.runner.jobs_per_cpu,
                     usage: Usage::default(),
                     jobs: Vec::new(),
+                    split_of: req.split.as_ref().and_then(|s| s.of.clone()),
                 };
                 (None, Some(e), record)
             }
@@ -738,12 +824,29 @@ impl Server {
             "usage/{}/{year:04}/{month:02}/{started_at}-{id}.json",
             owner.as_str()
         );
+        // A helper's run is recorded for what it ran: a usage record when
+        // it ran anything, and no report, since the run it helped has
+        // every job's. One that was never asked leaves nothing.
+        let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
+        let result = match (helper, result) {
+            (true, Some(output)) => Some(json!({
+                "run_id": output["run_id"],
+                "split_of": output["split_of"],
+                "commit": output["commit"],
+                "usage": output["usage"],
+                "started_at": output["started_at"],
+                "finished_at": output["finished_at"],
+            })),
+            (_, result) => result,
+        };
         let mut problems = Vec::new();
-        if let Err(e) = store.put(
-            &usage_key,
-            &serde_json::to_vec(&record).unwrap_or_default(),
-            "application/json",
-        ) {
+        if (!helper || record.usage.jobs > 0)
+            && let Err(e) = store.put(
+                &usage_key,
+                &serde_json::to_vec(&record).unwrap_or_default(),
+                "application/json",
+            )
+        {
             problems.push(format!("could not store the usage record: {e}"));
         }
         let mut entry = RunEntry {
@@ -763,13 +866,14 @@ impl Server {
             forgotten: false,
         };
         let report_key = format!("runs/{}/{id}.json", owner.as_str());
-        entry.stored = store
-            .put(
-                &report_key,
-                &serde_json::to_vec(&entry).unwrap_or_default(),
-                "application/json",
-            )
-            .is_ok();
+        entry.stored = !helper
+            && store
+                .put(
+                    &report_key,
+                    &serde_json::to_vec(&entry).unwrap_or_default(),
+                    "application/json",
+                )
+                .is_ok();
         self.remember(entry.clone());
         entry
     }
@@ -989,6 +1093,9 @@ struct JobProgress {
     /// A cloud job's `cloud:`, from when it is handed over.
     #[serde(skip_serializing_if = "Option::is_none")]
     cloud: Option<iwci_spec::CloudSpec>,
+    /// The runner that ran it, when another runner of a split run did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote: Option<String>,
 }
 
 impl Progress {
@@ -1009,6 +1116,7 @@ impl Progress {
                             duration_ms: None,
                             cached: false,
                             cloud: Some(cloud.clone()),
+                            remote: None,
                         },
                     );
                 }
@@ -1023,6 +1131,7 @@ impl Progress {
                             duration_ms: None,
                             cached: false,
                             cloud,
+                            remote: None,
                         },
                     );
                 }
@@ -1032,6 +1141,7 @@ impl Progress {
                 status,
                 duration_ms,
                 cached,
+                remote,
             } => {
                 if let Some(p) = self.pipelines.last_mut() {
                     let cloud = p.states.get(job).and_then(|s| s.cloud.clone());
@@ -1042,6 +1152,7 @@ impl Progress {
                             duration_ms: Some(*duration_ms),
                             cached: *cached,
                             cloud,
+                            remote: remote.clone(),
                         },
                     );
                 }
@@ -1231,6 +1342,7 @@ mod tests {
             status: "passed".into(),
             duration_ms: 12,
             cached: true,
+            remote: None,
         });
         p.apply(&plan("Lint"));
         let value = serde_json::to_value(&p).unwrap();

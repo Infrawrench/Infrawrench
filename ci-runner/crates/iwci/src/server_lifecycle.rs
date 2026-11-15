@@ -211,6 +211,15 @@ impl Server {
             *self.drain_reason.lock().unwrap() = Some(reason.to_string());
             eprintln!("iwci serve: draining: {reason}");
         }
+        // What this runner does for other runners' runs ends now: their
+        // jobs here are handed back, and the drain waits for none of them.
+        let helping = self.helping.lock().unwrap().clone();
+        let controls = self.controls.lock().unwrap();
+        for id in helping {
+            if let Some(control) = controls.get(&id) {
+                control.cancel(None);
+            }
+        }
     }
 
     fn wait_idle(&self) {

@@ -145,6 +145,42 @@ frees up first, but the proxy cannot see what a run's jobs ask for, so it
 would also hold back runs small enough to start at once, and a schedule's
 fire that finds the pool full is skipped, not queued.
 
+## Split runs
+
+A run can be shared between runners (the runner's README, "Split runs"):
+the runner that has it lets another take jobs it cannot start yet. The
+proxy's part is one extra request when it places a run (`placeRun` in
+`src/app.ts`):
+
+- The runner the run lands on gets `"split": { "runner": "<its name>" }`
+  added to the request, when it says `"split": true` in `/v1/capacity` and
+  at least one other runner that is up and not draining says so too. A
+  runner that does not say it is never sent the field: it would refuse the
+  request for a key it does not know.
+- Every such other runner, up to three, is then sent the same request,
+  secrets and all, with `"split": { "of": "<the run's id on its runner>",
+"runner": "<its name>" }`. That is an offer, not a run: the runner
+  answers `202` and does nothing until the run asks for help through the
+  store the runners share, and then takes only what its own runs leave
+  free. The answer is not waited for (`waitUntil`) and not read; a helper
+  that refuses, is down or is slow is one helper fewer.
+- The proxy offers every time and decides nothing. It cannot see whether a
+  pipeline says `split:`, how long the run's queue is or what a helper has
+  free a minute later, and both runners can. A pipeline that does not say
+  `split:` is not shared whatever is sent.
+- Nothing is remembered. The caller hears of one run, on the runner that
+  has it; status, logs and cancelling go there, and that runner ends its
+  helpers itself. A helper's run has an id on its own runner that nobody
+  is given.
+- A run the caller waits for (`?wait=true`) is not shared, since its id is
+  only known when it is over, and a caller's own `split` is dropped.
+- Scheduled runs are shared the same way.
+
+`GET /v1/capacity` passes on each runner's `split` and `runs_helping`.
+What a runner does for other runners' runs is in none of the numbers
+placement reads: it gives a helper job's slot and memory to its own run
+the moment one wants them.
+
 ## Secrets and variables
 
 Set per organisation (`/v1/orgs/{owner}/...`) or per repository

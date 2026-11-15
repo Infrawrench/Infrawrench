@@ -7,6 +7,10 @@
 // ids carry the runner's name (`<name>.<id>`), so status and log requests
 // go straight back to it.
 //
+// A run can be shared: a runner that says `split` in its capacity takes a
+// run request with `split`, and the other such runners are then offered
+// the same request as helpers (`app.ts`, and the README's "Split runs").
+//
 // The list comes from the `runners` table (`PUT /v1/runners`, which the
 // Terraform in `infra/terraform` keeps in step with the hosts it
 // provisions), or from the `RUNNERS` variable when the table is empty:
@@ -46,6 +50,20 @@ export interface Capacity {
    * for itself; it restarts before that is used up. `null` when not reported.
    */
   v8LostHeap: number | null;
+  /** Whether it takes `split` in a run request, to share a run or help one. */
+  split: boolean;
+  /** The runs of other runners it is helping now. */
+  runsHelping: number;
+}
+
+/** A run placed on a runner, and the runners it was not placed on. */
+export interface Placed {
+  runner: string;
+  response: Response;
+  /** The runner it landed on, as it answered `/v1/capacity`. */
+  capacity: Capacity;
+  /** The other runners that were up and not draining, best placed first. */
+  others: Capacity[];
 }
 
 /**
@@ -274,6 +292,8 @@ export class Pool {
           memoryWaiting: null,
           v8LostIsolates: null,
           v8LostHeap: null,
+          split: false,
+          runsHelping: 0,
         };
         try {
           const res = await this.call(name, "/v1/capacity", {
@@ -292,6 +312,8 @@ export class Pool {
             v8_lost_heap?: unknown;
             draining?: boolean;
             version?: string;
+            split?: unknown;
+            runs_helping?: unknown;
           };
           return {
             name,
@@ -308,6 +330,8 @@ export class Pool {
             memoryWaiting: bytes(body.memory_waiting),
             v8LostIsolates: bytes(body.v8_lost_isolates),
             v8LostHeap: bytes(body.v8_lost_heap),
+            split: body.split === true,
+            runsHelping: bytes(body.runs_helping) ?? 0,
           };
         } catch {
           return down;
@@ -319,14 +343,23 @@ export class Pool {
   /**
    * Sends a slot-taking request (a run or a prepare) to the runner best
    * placed to start it (`byPlacement`), then the next if that one refuses.
-   * Returns the runner it landed on, or `null` when none would.
+   * Returns the runner it landed on, or `null` when none would. A body
+   * given as a function is made for each runner tried, from it and the
+   * other runners that could have taken the request.
    */
-  async place(path: string, body: string): Promise<{ runner: string; response: Response } | null> {
+  async place(
+    path: string,
+    body: string | ((runner: Capacity, others: Capacity[]) => string),
+  ): Promise<Placed | null> {
     const order = (await this.capacity()).filter((c) => c.up && !c.draining).sort(byPlacement);
     for (const runner of order) {
+      const others = order.filter((c) => c !== runner);
       let response: Response;
       try {
-        response = await this.call(runner.name, path, { method: "POST", body });
+        response = await this.call(runner.name, path, {
+          method: "POST",
+          body: typeof body === "string" ? body : body(runner, others),
+        });
       } catch {
         continue;
       }
@@ -334,7 +367,7 @@ export class Pool {
         await response.body?.cancel();
         continue;
       }
-      return { runner: runner.name, response };
+      return { runner: runner.name, response, capacity: runner, others };
     }
     return null;
   }

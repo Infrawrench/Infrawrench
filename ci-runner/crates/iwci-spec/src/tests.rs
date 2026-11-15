@@ -983,6 +983,37 @@ fn scratch_has_a_default_and_a_bound() {
 }
 
 #[test]
+fn split_is_off_unless_asked_for_and_bounds_what_it_sends() {
+    let job = "jobs:\n  a:\n    using: builtin:t@1\n";
+    let plan = parse(&format!("name: x\n{job}"), &ctx()).unwrap();
+    assert_eq!(plan.split, None);
+    let plan = parse(&format!("name: x\nsplit: false\n{job}"), &ctx()).unwrap();
+    assert_eq!(plan.split, None);
+    let plan = parse(&format!("name: x\nsplit: true\n{job}"), &ctx()).unwrap();
+    assert_eq!(
+        plan.split,
+        Some(SplitSpec {
+            artifact_bytes: DEFAULT_SPLIT_ARTIFACTS
+        })
+    );
+    let plan = parse(
+        &format!("name: x\nsplit: {{ artifacts: 16MiB }}\n{job}"),
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(plan.split.unwrap().artifact_bytes, 16 << 20);
+    assert_error(
+        &format!("name: x\nsplit: {{ artifacts: 1GiB }}\n{job}"),
+        "at most 256MiB",
+    );
+    assert_error(
+        &format!("name: x\nsplit: {{ artifacts: lots }}\n{job}"),
+        "is not a size",
+    );
+    assert_error(&format!("name: x\nsplit: 3\n{job}"), "`split` is `true`");
+}
+
+#[test]
 fn artifacts_resolve_paths_per_matrix_entry() {
     let plan = parse(
         r#"
