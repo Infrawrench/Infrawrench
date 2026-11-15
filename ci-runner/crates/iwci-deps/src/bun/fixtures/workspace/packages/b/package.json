@@ -1,0 +1,8 @@
+{
+  "name": "@fix/b",
+  "version": "1.0.0",
+  "dependencies": {
+    "@fix/a": "workspace:*",
+    "ms": "2.1.3"
+  }
+}

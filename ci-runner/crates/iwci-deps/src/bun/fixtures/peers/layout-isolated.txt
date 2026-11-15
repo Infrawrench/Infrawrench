@@ -1,0 +1,43 @@
+L node_modules/.bun/is-odd@3.0.1/node_modules/is-number -> ../../is-number@6.0.0/node_modules/is-number
+L node_modules/.bun/loose-envify@1.4.0/node_modules/js-tokens -> ../../js-tokens@4.0.0/node_modules/js-tokens
+L node_modules/.bun/node_modules/is-number -> ../is-number@7.0.0/node_modules/is-number
+L node_modules/.bun/node_modules/is-odd -> ../is-odd@3.0.1/node_modules/is-odd
+L node_modules/.bun/node_modules/js-tokens -> ../js-tokens@4.0.0/node_modules/js-tokens
+L node_modules/.bun/node_modules/loose-envify -> ../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/node_modules/ms -> ../ms@2.1.3/node_modules/ms
+L node_modules/.bun/node_modules/react -> ../react@18.3.1/node_modules/react
+L node_modules/.bun/node_modules/react-dom -> ../react-dom@18.3.1+f4eacebf2041cd4f/node_modules/react-dom
+L node_modules/.bun/node_modules/scheduler -> ../scheduler@0.23.2/node_modules/scheduler
+L node_modules/.bun/node_modules/use-sync-external-store -> ../use-sync-external-store@1.2.0+f4eacebf2041cd4f/node_modules/use-sync-external-store
+L node_modules/.bun/react-dom@18.3.1+5e44392892a7cd3e/node_modules/loose-envify -> ../../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/react-dom@18.3.1+5e44392892a7cd3e/node_modules/react -> ../../react@18.2.0/node_modules/react
+L node_modules/.bun/react-dom@18.3.1+5e44392892a7cd3e/node_modules/scheduler -> ../../scheduler@0.23.2/node_modules/scheduler
+L node_modules/.bun/react-dom@18.3.1+f4eacebf2041cd4f/node_modules/loose-envify -> ../../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/react-dom@18.3.1+f4eacebf2041cd4f/node_modules/react -> ../../react@18.3.1/node_modules/react
+L node_modules/.bun/react-dom@18.3.1+f4eacebf2041cd4f/node_modules/scheduler -> ../../scheduler@0.23.2/node_modules/scheduler
+L node_modules/.bun/react@18.2.0/node_modules/loose-envify -> ../../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/react@18.3.1/node_modules/loose-envify -> ../../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/scheduler@0.23.2/node_modules/loose-envify -> ../../loose-envify@1.4.0/node_modules/loose-envify
+L node_modules/.bun/use-sync-external-store@1.2.0+f4eacebf2041cd4f/node_modules/react -> ../../react@18.3.1/node_modules/react
+L node_modules/is-number -> .bun/is-number@7.0.0/node_modules/is-number
+L node_modules/is-odd -> .bun/is-odd@3.0.1/node_modules/is-odd
+L packages/a/node_modules/is-number -> ../../../node_modules/.bun/is-number@6.0.0/node_modules/is-number
+L packages/a/node_modules/react -> ../../../node_modules/.bun/react@18.3.1/node_modules/react
+L packages/a/node_modules/react-dom -> ../../../node_modules/.bun/react-dom@18.3.1+f4eacebf2041cd4f/node_modules/react-dom
+L packages/a/node_modules/use-sync-external-store -> ../../../node_modules/.bun/use-sync-external-store@1.2.0+f4eacebf2041cd4f/node_modules/use-sync-external-store
+L packages/b/node_modules/a -> ../../a
+L packages/b/node_modules/ms -> ../../../node_modules/.bun/ms@2.1.3/node_modules/ms
+L packages/b/node_modules/react -> ../../../node_modules/.bun/react@18.2.0/node_modules/react
+L packages/b/node_modules/react-dom -> ../../../node_modules/.bun/react-dom@18.3.1+5e44392892a7cd3e/node_modules/react-dom
+P node_modules/.bun/is-number@6.0.0/node_modules/is-number
+P node_modules/.bun/is-number@7.0.0/node_modules/is-number
+P node_modules/.bun/is-odd@3.0.1/node_modules/is-odd
+P node_modules/.bun/js-tokens@4.0.0/node_modules/js-tokens
+P node_modules/.bun/loose-envify@1.4.0/node_modules/loose-envify
+P node_modules/.bun/ms@2.1.3/node_modules/ms
+P node_modules/.bun/react-dom@18.3.1+5e44392892a7cd3e/node_modules/react-dom
+P node_modules/.bun/react-dom@18.3.1+f4eacebf2041cd4f/node_modules/react-dom
+P node_modules/.bun/react@18.2.0/node_modules/react
+P node_modules/.bun/react@18.3.1/node_modules/react
+P node_modules/.bun/scheduler@0.23.2/node_modules/scheduler
+P node_modules/.bun/use-sync-external-store@1.2.0+f4eacebf2041cd4f/node_modules/use-sync-external-store

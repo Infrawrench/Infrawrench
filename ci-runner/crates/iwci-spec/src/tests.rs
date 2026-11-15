@@ -2236,3 +2236,27 @@ fn lent_names_are_checked_where_they_are_written() {
         "the limit is 16",
     );
 }
+
+#[test]
+fn bun_is_an_ecosystem_that_takes_a_directory() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [bun, { bun: { dir: web } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = |dir: &str| DepSpec {
+        ecosystem: Ecosystem::Bun,
+        dir: dir.into(),
+        only: None,
+        file: None,
+    };
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps,
+        vec![dep("/app"), dep("/app/web")]
+    );
+    assert_eq!(Ecosystem::parse("bun").map(Ecosystem::name), Some("bun"));
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ bun: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "only applies to pnpm",
+    );
+}

@@ -1,0 +1,11 @@
+{
+  "name": "peers",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "is-number": "7.0.0",
+    "is-odd": "3.0.1"
+  }
+}

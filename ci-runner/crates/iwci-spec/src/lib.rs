@@ -907,7 +907,7 @@ impl Validator<'_> {
                 self.error(
                     &dep_path,
                     format!(
-                        "unknown ecosystem `{name}`; expected `pnpm`, `go`, `cargo`, `pip` or `composer`"
+                        "unknown ecosystem `{name}`; expected `pnpm`, `bun`, `go`, `cargo`, `pip` or `composer`"
                     ),
                 );
                 continue;

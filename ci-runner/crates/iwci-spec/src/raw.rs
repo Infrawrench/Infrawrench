@@ -216,7 +216,7 @@ pub enum Depth {
 }
 
 /// `pnpm`, or `pnpm: { dir: app }` to point at a lockfile below the root.
-/// The ecosystems are `pnpm`, `go`, `cargo`, `pip` and `composer`.
+/// The ecosystems are `pnpm`, `bun`, `go`, `cargo`, `pip` and `composer`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Dep {

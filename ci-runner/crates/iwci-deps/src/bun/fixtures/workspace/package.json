@@ -1,0 +1,10 @@
+{
+  "name": "ws-root",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "is-number": "7.0.0"
+  }
+}

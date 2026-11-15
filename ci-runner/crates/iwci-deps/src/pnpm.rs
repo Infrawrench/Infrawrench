@@ -54,10 +54,10 @@
 //! integrity, and `nodeLinker: hoisted` or `pnp`.
 
 mod dep_path;
-mod hoist;
+pub(crate) mod hoist;
 mod lockfile;
 mod patch;
-mod tarball;
+pub(crate) mod tarball;
 #[cfg(test)]
 mod tests;
 
@@ -381,7 +381,25 @@ fn read_npmrc(text: &str, raw: &mut RawWorkspace) {
 /// host, after its `effectivePlatform`, which fills platform fields a
 /// registry left out from the package name's tokens.
 pub fn platform_accepts(platform: Option<&Platform>, package: &Package) -> bool {
-    let (os, cpu, libc) = effective_platform(package);
+    platform_accepts_fields(
+        platform,
+        &package.name,
+        &package.os,
+        &package.cpu,
+        &package.libc,
+    )
+}
+
+/// [`platform_accepts`] over a package's name and platform fields, for
+/// lockfiles other than pnpm's.
+pub(crate) fn platform_accepts_fields(
+    platform: Option<&Platform>,
+    name: &str,
+    os: &[String],
+    cpu: &[String],
+    libc: &[String],
+) -> bool {
+    let (os, cpu, libc) = effective_platform(name, os, cpu, libc);
     let libc_ok = match platform {
         // pnpm skips the libc check when the host's C library is unknown.
         Some(Platform { libc: None, .. }) => true,
@@ -404,19 +422,17 @@ pub fn platform_accepts(platform: Option<&Platform>, package: &Package) -> bool 
 /// declares nothing is only treated as a binary when its name has an
 /// operating system and a cpu or libc token, so `@electron/windows-sign`
 /// stays installable.
-fn effective_platform(package: &Package) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let declared = (
-        package.os.clone(),
-        package.cpu.clone(),
-        package.libc.clone(),
-    );
-    if !package.os.is_empty() && !package.cpu.is_empty() && !package.libc.is_empty() {
+fn effective_platform(
+    name: &str,
+    os: &[String],
+    cpu: &[String],
+    libc: &[String],
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let declared = (os.to_vec(), cpu.to_vec(), libc.to_vec());
+    if !os.is_empty() && !cpu.is_empty() && !libc.is_empty() {
         return declared;
     }
-    let name = package
-        .name
-        .split_once('/')
-        .map_or(package.name.as_str(), |(_, rest)| rest);
+    let name = name.split_once('/').map_or(name, |(_, rest)| rest);
     let lowercase = name.to_lowercase();
     let tokens: Vec<&str> = lowercase.split(['-', '_', '.']).collect();
     let pick = |value_for: fn(&str) -> Option<&'static str>| {
@@ -430,7 +446,7 @@ fn effective_platform(package: &Package) -> (Vec<String>, Vec<String>, Vec<Strin
         }
         values
     };
-    let os = pick(|token| match token {
+    let named_os = pick(|token| match token {
         "aix" => Some("aix"),
         "android" => Some("android"),
         "darwin" | "macos" | "osx" => Some("darwin"),
@@ -443,7 +459,7 @@ fn effective_platform(package: &Package) -> (Vec<String>, Vec<String>, Vec<Strin
         "win32" | "windows" => Some("win32"),
         _ => None,
     });
-    let cpu = pick(|token| match token {
+    let named_cpu = pick(|token| match token {
         "arm" | "armv6" | "armv7" => Some("arm"),
         "arm64" | "aarch64" => Some("arm64"),
         "ia32" => Some("ia32"),
@@ -456,13 +472,13 @@ fn effective_platform(package: &Package) -> (Vec<String>, Vec<String>, Vec<Strin
         "wasm32" => Some("wasm32"),
         _ => None,
     });
-    let libc = pick(|token| match token {
+    let named_libc = pick(|token| match token {
         "glibc" | "gnu" | "gnueabihf" => Some("glibc"),
         "musl" | "musleabihf" => Some("musl"),
         _ => None,
     });
-    let declares = !package.os.is_empty() || !package.cpu.is_empty() || !package.libc.is_empty();
-    let names_binary = !os.is_empty() && (!cpu.is_empty() || !libc.is_empty());
+    let declares = !os.is_empty() || !cpu.is_empty() || !libc.is_empty();
+    let names_binary = !named_os.is_empty() && (!named_cpu.is_empty() || !named_libc.is_empty());
     if !declares && !names_binary {
         return declared;
     }
@@ -474,9 +490,9 @@ fn effective_platform(package: &Package) -> (Vec<String>, Vec<String>, Vec<Strin
         }
     };
     (
-        or(declared.0, os),
-        or(declared.1, cpu),
-        or(declared.2, libc),
+        or(declared.0, named_os),
+        or(declared.1, named_cpu),
+        or(declared.2, named_libc),
     )
 }
 
@@ -983,16 +999,14 @@ fn source_of(root: &Path, key: &str, package: &Package, options: &PnpmOptions) -
 /// directory that holds the package shares them. The snapshot is frozen
 /// before any job runs, and a job's writes land in its own overlay layer,
 /// so nothing ever writes to these nodes.
-fn write_tree(
+pub(crate) fn write_tree(
     fs: &mem_fs::FileSystem,
     base: &Path,
     files: &BTreeMap<String, OwnedBuffer>,
-) -> Result<(usize, u64)> {
-    let fs_error = |path: &Path, source: FsError| {
-        PnpmError::Vfs(iwci_vfs::VfsError::Fs {
-            path: path.display().to_string(),
-            source,
-        })
+) -> iwci_vfs::Result<(usize, u64)> {
+    let fs_error = |path: &Path, source: FsError| iwci_vfs::VfsError::Fs {
+        path: path.display().to_string(),
+        source,
     };
     iwci_vfs::create_dir_all(fs, base)?;
     let mut dirs: BTreeSet<&str> = BTreeSet::new();
@@ -1111,7 +1125,7 @@ fn run_job(
 }
 
 /// `to` relative to the directory `from_dir`; both absolute and normalised.
-fn relative(from_dir: &Path, to: &Path) -> PathBuf {
+pub(crate) fn relative(from_dir: &Path, to: &Path) -> PathBuf {
     let from: Vec<Component<'_>> = from_dir.components().collect();
     let to: Vec<Component<'_>> = to.components().collect();
     let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
@@ -1129,7 +1143,7 @@ fn relative(from_dir: &Path, to: &Path) -> PathBuf {
 }
 
 /// `link` from the directory `base`, resolving `..` lexically.
-fn lexical_join(base: &Path, link: &str) -> Option<PathBuf> {
+pub(crate) fn lexical_join(base: &Path, link: &str) -> Option<PathBuf> {
     let mut out = base.to_path_buf();
     for part in link.split('/') {
         match part {
