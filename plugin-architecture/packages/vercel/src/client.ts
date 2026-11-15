@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
+import { lendVercelToken } from "./ci-credential.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { CiCredentialRequest, CiLentMaterial, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   PluginClient,
@@ -194,6 +195,11 @@ export class VercelClient implements PluginClient {
       if (!this.teamId || !hasStatus(err, 403)) throw err;
       return read(this.api);
     }
+  }
+
+  /** `VERCEL_TOKEN` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
+  lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendVercelToken(this.accessToken));
   }
 
   private listRawProjects() {

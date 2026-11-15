@@ -78,6 +78,12 @@ export const manifest = {
   // "Connect with Vercel" installs the Infrawrench integration (server only).
   // Pasted access tokens keep working; see oauth.ts.
   oauth: vercelOAuth,
+  // CI jobs can be lent the access token (ci-credential.ts).
+  ciCredential: {
+    description:
+      "The connection's access token as VERCEL_TOKEN, which the Vercel CLI reads. The job names its project as usual (.vercel/project.json, VERCEL_ORG_ID with VERCEL_PROJECT_ID, or --scope).",
+    shortLived: false,
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

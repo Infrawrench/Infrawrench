@@ -453,6 +453,11 @@ Names are the connections' names in Infrawrench. To lend one, open it under **Ma
 
 - **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
 - **SSH:** an entry in `/root/.ssh/config` named after the connection, with its key, user and port, a check against the host key Infrawrench pinned for it, and the jump host it connects through, which must be lent too. A host with no pinned key is not lent: open a terminal to it from Infrawrench once first.
+- **Vercel:** the connection's access token as `VERCEL_TOKEN`, which the Vercel CLI reads, so `vercel deploy` needs no `--token`. Say which project to deploy as usual: a committed `.vercel/project.json`, `VERCEL_ORG_ID` with `VERCEL_PROJECT_ID`, or `--scope`.
+- **Cloudflare:** the connection's API token as `CLOUDFLARE_API_TOKEN` and its account as `CLOUDFLARE_ACCOUNT_ID`, which Wrangler and Cloudflare's `cf` read. The token has the scopes it was created with, so give the connection the Workers and Pages scopes a deploy needs.
+- **Neon:** the connection's API key as `NEON_API_KEY`, which the Neon CLI reads, for a job that creates a branch per pull request and deletes it after.
+
+These three lend the connection's own token or key, not a short-lived one, and it is masked in the job's log like a secret. A job installs their CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
 
 <insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
 

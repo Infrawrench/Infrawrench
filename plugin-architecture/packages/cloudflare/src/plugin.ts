@@ -113,6 +113,12 @@ export const manifest = {
   preflight: cloudflarePreflight,
   // Retired: only refreshes accounts that already connected; see oauth.ts.
   oauth: cloudflareOAuth,
+  // CI jobs can be lent the token and the account (ci-credential.ts).
+  ciCredential: {
+    description:
+      "The connection's API token as CLOUDFLARE_API_TOKEN and its account as CLOUDFLARE_ACCOUNT_ID, which Wrangler and Cloudflare's CLI read.",
+    shortLived: false,
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;
