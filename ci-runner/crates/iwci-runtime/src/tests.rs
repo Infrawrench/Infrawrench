@@ -4149,6 +4149,6 @@ fn the_young_generation_a_job_is_charged_is_what_the_v8_flags_allow() {
         .unwrap();
     assert_eq!(
         wasmer_napi::budget::DEFAULT_YOUNG_GENERATION,
-        3 * semi_space_mib << 20
+        (3 * semi_space_mib) << 20
     );
 }
