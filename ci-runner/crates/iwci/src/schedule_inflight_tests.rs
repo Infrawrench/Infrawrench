@@ -451,7 +451,7 @@ fn a_run_that_stops_saying_it_is_alive_is_not_waited_for() {
 }
 
 #[test]
-fn a_run_whose_sign_of_life_is_gone_is_not_waited_for_at_all() {
+fn a_run_with_no_sign_of_life_at_all_is_given_up_after_a_lease() {
     let (store, dir) = store("gone");
     let p = plan(LIB);
     let caches = Arc::new(MemoryCaches::default());
@@ -469,7 +469,7 @@ fn a_run_whose_sign_of_life_is_gone_is_not_waited_for_at_all() {
         false,
     );
     let b_in = counted(&store, "run-b", "b-main");
-    let b = std::thread::scope(|scope| {
+    let (b, waited) = std::thread::scope(|scope| {
         let a = scope.spawn(|| go(&p, &a_exec, &caches, &a_in, None, None, 2));
         eventually("the first run to start lib", || a_gates.started("lib"));
         // What a runner that died a day ago leaves once the sweep took its
@@ -477,21 +477,26 @@ fn a_run_whose_sign_of_life_is_gone_is_not_waited_for_at_all() {
         for key in store.list("inflight/acme/app/b-main/runs/").unwrap() {
             store.delete(&key).unwrap();
         }
+        let started = Instant::now();
         let b = go(&p, &b_exec, &caches, &b_in, None, None, 2);
+        let waited = started.elapsed();
         a_gates.open("lib");
         a.join().unwrap();
-        b
+        (b, waited)
     });
     assert!(b.passed());
     let lib = job(&b, "lib");
     assert!(
         lib.caches
             .iter()
-            .any(|l| l.contains("is no longer running")),
+            .any(|l| l.contains("had not said it was alive")),
         "{:?}",
         lib.caches
     );
     assert_eq!(b_exec.ran(), vec!["lib", "check"]);
+    // A listing that shows no sign of life proves nothing on its own (one
+    // can miss a sign of life renamed while it is read): a whole lease.
+    assert!(waited >= FAST.lease, "{waited:?}");
     drop((a_in, b_in));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -977,5 +982,93 @@ fn a_holder_whose_marker_will_not_delete_is_followed_to_the_end_of_its_run() {
     assert_eq!(b_exec.ran(), vec!["check"]);
     assert_eq!(marker_ids(&store, "b-main").len(), 1, "left for the sweep");
     drop(b_in);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A store whose listings miss every sign of life three times in four, as
+/// a listing that reads a renamed object's metadata after the rename can.
+struct MissesSignsOfLife {
+    inner: Arc<dyn ObjectStore>,
+    listings: AtomicUsize,
+}
+
+impl ObjectStore for MissesSignsOfLife {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, iwci_store::StoreError> {
+        self.inner.get(key)
+    }
+    fn head(&self, key: &str) -> Result<Option<iwci_store::ObjectMeta>, iwci_store::StoreError> {
+        self.inner.head(key)
+    }
+    fn put(&self, key: &str, bytes: &[u8], ct: &str) -> Result<(), iwci_store::StoreError> {
+        self.inner.put(key, bytes, ct)
+    }
+    fn put_if_absent(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        ct: &str,
+    ) -> Result<bool, iwci_store::StoreError> {
+        self.inner.put_if_absent(key, bytes, ct)
+    }
+    fn list(&self, prefix: &str) -> Result<Vec<String>, iwci_store::StoreError> {
+        self.inner.list(prefix)
+    }
+    fn list_detailed(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
+        let mut objects = self.inner.list_detailed(prefix)?;
+        if !self
+            .listings
+            .fetch_add(1, Ordering::SeqCst)
+            .is_multiple_of(4)
+        {
+            objects.retain(|o| !o.key.contains("/runs/"));
+        }
+        Ok(objects)
+    }
+    fn delete(&self, key: &str) -> Result<(), iwci_store::StoreError> {
+        self.inner.delete(key)
+    }
+}
+
+#[test]
+fn a_holder_whose_sign_of_life_listings_keep_missing_is_still_waited_for() {
+    let (store, dir) = store("misses");
+    let p = plan(LIB);
+    let caches = Arc::new(MemoryCaches::default());
+    let (a_gates, b_gates) = (Arc::new(Gates::default()), Arc::new(Gates::default()));
+    let (a_exec, b_exec) = (
+        GateExec::new(&a_gates, &["lib"], &[]),
+        GateExec::new(&b_gates, &[], &[]),
+    );
+    let misses: Arc<dyn ObjectStore> = Arc::new(MissesSignsOfLife {
+        inner: store.clone(),
+        listings: AtomicUsize::new(0),
+    });
+    let a_in = counted(&store, "run-a", "b-main");
+    let b_in = counted_on(
+        &misses,
+        "run-b",
+        "ci-2",
+        "b-main",
+        Duration::from_millis(20),
+        false,
+    );
+    let b = std::thread::scope(|scope| {
+        let a = scope.spawn(|| go(&p, &a_exec, &caches, &a_in, None, None, 2));
+        eventually("the first run to start lib", || a_gates.started("lib"));
+        let b = scope.spawn(|| go(&p, &b_exec, &caches, &b_in, None, None, 2));
+        eventually("the second run to wait", || b_in.waits() >= 1);
+        // Many looks, most of them without the holder's sign of life, all
+        // well within a lease.
+        std::thread::sleep(Duration::from_millis(500));
+        a_gates.open("lib");
+        a.join().unwrap();
+        b.join().unwrap()
+    });
+    assert_eq!(job(&b, "lib").waited_for.as_deref(), Some("run-a"));
+    assert_eq!(b_exec.ran(), vec!["check"]);
+    drop((a_in, b_in));
     let _ = std::fs::remove_dir_all(dir);
 }

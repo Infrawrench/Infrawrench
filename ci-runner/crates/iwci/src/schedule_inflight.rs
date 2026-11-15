@@ -453,11 +453,12 @@ pub(super) fn watch<'p>(
     options: &Options,
 ) {
     let timing = inflight.timing();
-    // Each holder's sign of life and when it last changed, by this clock.
+    // Each holder's sign of life and when this run last saw it change, by
+    // this clock. A listing that does not show it at all says nothing: a
+    // listing can miss a sign of life that is renamed while it is read, so
+    // a missing one counts as one that did not move, and only a lease of
+    // that gives a holder up.
     let mut alive: HashMap<String, (String, Instant)> = HashMap::new();
-    // Looks in a row that found no sign of life of a run: one listing can
-    // miss a sign of life that moves while it is read.
-    let mut missing: HashMap<String, u32> = HashMap::new();
     let mut next = Instant::now();
     loop {
         {
@@ -494,9 +495,7 @@ pub(super) fn watch<'p>(
                     alive.insert(run.clone(), (sign.clone(), now));
                 }
             }
-            missing.retain(|run, _| !look.alive.contains_key(run));
         }
-        let mut absent: HashSet<String> = HashSet::new();
         let mut s = state.lock().unwrap();
         let mut back = Vec::new();
         let mut i = 0;
@@ -516,16 +515,12 @@ pub(super) fn watch<'p>(
                     Some(version) => {
                         holder.version.get_or_insert_with(|| version.clone());
                         let run = &holder.run;
-                        if !look.alive.contains_key(run) {
-                            absent.insert(run.clone());
-                        }
-                        let unseen = !look.alive.contains_key(run)
-                            && missing.get(run).copied().unwrap_or(0) >= 1;
-                        if look.gone.contains(run) || unseen {
+                        // Never before this job began to wait, so a holder
+                        // seen long ago, or not at all, has a whole lease.
+                        let moved = alive.get(run).map_or(a.since, |(_, at)| (*at).max(a.since));
+                        if look.gone.contains(run) {
                             Some(Why::Dead("which is no longer running".to_string()))
-                        } else if alive.get(run).is_some_and(|(_, at)| {
-                            now.saturating_duration_since(*at) >= timing.lease
-                        }) {
+                        } else if now.saturating_duration_since(moved) >= timing.lease {
                             Some(Why::Dead(format!(
                                 "which had not said it was alive for {}",
                                 secs(timing.lease)
@@ -550,9 +545,6 @@ pub(super) fn watch<'p>(
                 Some(why) => back.push((s.awaiting.swap_remove(i), why)),
                 None => i += 1,
             }
-        }
-        for run in absent {
-            *missing.entry(run).or_default() += 1;
         }
         for (a, why) in back {
             // Counted again when a lookup thread takes it.

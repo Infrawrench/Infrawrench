@@ -758,9 +758,11 @@ task-cache:
   says why:
   - that run's job did not pass, was stopped, or passed but the store
     would not take its entry (that run says which);
-  - that run's sign of life is gone, older than this run's own by more
-    than 45 s by the store's own clock (a runner that died), or has not
-    moved for 45 s; the dead run's marker is then taken over;
+  - that run's sign of life is older than this run's own by more than
+    45 s by the store's own clock (a runner that died), or this run has
+    not seen it move for 45 s since the job began to wait (a listing that
+    does not show it at all counts as not moving: one can miss an object
+    renamed while it is read); the dead run's marker is then taken over;
   - that run has not finished the job within twice the time it took last
     time plus a minute (with no time recorded, the job's `timeout:` plus
     90 s, which also caps the other).
