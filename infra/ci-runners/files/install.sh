@@ -25,19 +25,22 @@ rm -f /tmp/iwci.env /tmp/iwci.service
 # off unless the host's `native_sandbox` is set. It needs the pinned gVisor
 # release, a cgroup subtree of the runner's own for each sandbox's memory,
 # CPU and process limits (`Delegate=` in the unit, which Terraform writes
-# when the flag is set), and a way to create the sandbox's user namespaces.
-# The runner may not create them: its binary belongs to its user, who
-# could replace it. A root-owned copy of the uploaded binary, the sandbox
-# helper, may (an AppArmor profile for that path only,
-# files/apparmor-iwci); under that name the binary is only the helper,
-# which starts nothing but the root-owned Sentry. It is the upload's copy,
-# never the installed binary's (which its user can change), refreshed on
-# every install; a runner of a newer helper protocol leaves native jobs
-# off until then. Turning it off removes the profile and the helper; the
-# release stays, unused.
+# when the flag is set), and a way to make the sandbox's user namespaces,
+# which Ubuntu keeps from unprivileged programs. The runner does not get
+# that right, and keeps NoNewPrivileges: the sandbox service does
+# (crates/iwci-sandbox-spawn), root, one instance per connection to a
+# socket only the runner's group may use (iwci-sandbox-spawn.socket). It
+# starts nothing but the pinned Sentry (checked by SHA-256 against the
+# release below), as the system user `iwci-sandbox`, straight into the
+# job's cgroup, and becomes that user itself. Its binary is uploaded
+# (`sandbox_service_path`) and installed only if it matches the SHA-256
+# pinned beside it (`sandbox_service_sha256`); a runner of another service
+# protocol leaves native jobs off until then. Turning it off removes the
+# service; the release and the user stay, unused.
 native="$(cat /tmp/iwci-native 2>/dev/null || true)"
 rm -f /tmp/iwci-native
-# Also named in iwci.service.tftpl (IWCI_NATIVE_SANDBOX): bump both.
+# Also named in iwci.service.tftpl (IWCI_NATIVE_SANDBOX) and pinned with its
+# Sentry's SHA-256 in ci-runner/crates/iwci-sandbox-spawn/src/service.rs: bump all.
 gvisor_release=20261109.0
 case "$(uname -m)" in
 x86_64) gvisor_arch=x86_64 gvisor_sha512=1a6b8f74c37b4931ef473f67ec1f601690855bedc52ac709f2fac965c69677aa0426ef44598d8eee1aed72cfdb9df87a2a5f352cb3348880fc61a7732bc10f2a ;;
@@ -62,28 +65,47 @@ if [[ "$native" == "true" ]]; then
     rm -rf "$tmp"
     echo "installed gVisor release-$gvisor_release in $gvisor_dir"
   fi
-  install -o root -g root -m 0755 /tmp/iwci.upload /opt/iwci/lib/iwci-sandbox-spawn
-  # The profile of earlier installs, which named the runner's own binary.
-  if [[ -f /etc/apparmor.d/iwci ]]; then
-    apparmor_parser -R /etc/apparmor.d/iwci || true
-    rm -f /etc/apparmor.d/iwci
+  id iwci-sandbox >/dev/null 2>&1 ||
+    useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin iwci-sandbox
+  # Checked and installed from a copy only root can reach, so what is
+  # installed is what was checked.
+  pin="$(cat /tmp/iwci-sandbox-spawn.sha256)"
+  staged="$(mktemp -d)"
+  install -o root -g root -m 0600 /tmp/iwci-sandbox-spawn.upload "$staged/iwci-sandbox-spawn"
+  if [[ ! "$pin" =~ ^[0-9a-f]{64}$ ]] || ! echo "$pin  $staged/iwci-sandbox-spawn" | sha256sum -c --quiet; then
+    rm -rf "$staged"
+    echo "error: the sandbox service upload is not the build its pinned SHA-256 names" >&2
+    exit 1
   fi
-  install -o root -g root -m 0644 /tmp/apparmor-iwci /etc/apparmor.d/iwci-sandbox-spawn
-  apparmor_parser -r /etc/apparmor.d/iwci-sandbox-spawn
+  install -d -o root -g root -m 0755 /opt/iwci/lib/sandbox
+  install -o root -g root -m 0755 "$staged/iwci-sandbox-spawn" /opt/iwci/lib/sandbox/iwci-sandbox-spawn
+  rm -rf "$staged"
+  install -o root -g root -m 0644 /tmp/iwci-sandbox-spawn.socket /etc/systemd/system/iwci-sandbox-spawn.socket
+  install -o root -g root -m 0644 "/tmp/iwci-sandbox-spawn@.service" "/etc/systemd/system/iwci-sandbox-spawn@.service"
+  systemctl daemon-reload
+  systemctl enable --now iwci-sandbox-spawn.socket
   # gVisor runs on its systrap platform, which needs no device; KVM (a
   # host with /dev/kvm and `iwci` in group `kvm`) is not used.
-  echo "native sandbox enabled: helper and its AppArmor profile installed, gVisor in $gvisor_dir"
+  echo "native sandbox enabled: sandbox service on /run/iwci-sandbox-spawn.sock, gVisor in $gvisor_dir"
 else
-  for profile in iwci iwci-sandbox-spawn; do
-    if [[ -f "/etc/apparmor.d/$profile" ]]; then
-      apparmor_parser -R "/etc/apparmor.d/$profile" || true
-      rm -f "/etc/apparmor.d/$profile"
-      echo "native sandbox disabled: AppArmor profile $profile removed"
-    fi
-  done
-  rm -f /opt/iwci/lib/iwci-sandbox-spawn
+  if [[ -f /etc/systemd/system/iwci-sandbox-spawn.socket ]]; then
+    systemctl disable --now iwci-sandbox-spawn.socket || true
+    rm -f /etc/systemd/system/iwci-sandbox-spawn.socket "/etc/systemd/system/iwci-sandbox-spawn@.service"
+    systemctl daemon-reload
+    echo "native sandbox disabled: sandbox service removed"
+  fi
+  rm -rf /opt/iwci/lib/sandbox
 fi
-rm -f /tmp/apparmor-iwci /tmp/iwci.upload
+# The AppArmor profiles of earlier designs, which let a program make user
+# namespaces: none is used now.
+for profile in iwci iwci-sandbox-spawn; do
+  if [[ -f "/etc/apparmor.d/$profile" ]]; then
+    apparmor_parser -R "/etc/apparmor.d/$profile" || true
+    rm -f "/etc/apparmor.d/$profile"
+    echo "removed AppArmor profile $profile"
+  fi
+done
+rm -f /opt/iwci/lib/iwci-sandbox-spawn /tmp/iwci-sandbox-spawn.upload /tmp/iwci-sandbox-spawn.sha256 /tmp/iwci-sandbox-spawn.socket "/tmp/iwci-sandbox-spawn@.service" /tmp/iwci.upload
 
 # Core dumps, so a crash of the runner leaves a backtrace (#947): the unit
 # raises its core limit, systemd-coredump keeps each core compressed in

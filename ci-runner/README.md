@@ -1676,9 +1676,9 @@ job runs them, beside the native program:
   the runner (lisafs), so the native program and the WASIX commands see
   and change the same files, held to the same write budget, and what they
   write becomes the job's changes, caches and artifacts as for any job.
-  Each file, directory and link it creates is charged to that budget too,
-  128 bytes and its name, given back when it is removed, and a path longer
-  than 4096 bytes is refused (`ENAMETOOLONG`). Modes are real: `chmod` from either side is what the other `stat`s. The
+  Each file it creates is charged for its entry as in a WASIX job, and
+  each directory and link 128 bytes and its name, all given back when it
+  is removed; a path longer than 4096 bytes is refused (`ENAMETOOLONG`). Modes are real: `chmod` from either side is what the other `stat`s. The
   native program, its C library, the environment's packages and their
   compiled modules come in read only, beside it. A native program also
   finds `/etc/passwd`, `/etc/group`, `/etc/hosts` (with the job's services
@@ -1701,10 +1701,11 @@ job runs them, beside the native program:
   environment), about 170 to 200 MiB with `env:bash-node`, is measured
   before the script starts, and the job may then use its whole `memory:`
   on top of it; past that the sandbox is stopped and the job fails as out
-  of memory, with a note. A sandbox that sits at its limit reclaiming,
-  every process in it stalled on memory, for ten seconds counts as out of
-  memory too: gVisor keeps some memory the kernel can always reclaim a
-  little of, so it may never be killed for it. `peak_memory_mib` and `held_memory_mib` are the
+  of memory, with a note. A sandbox that sits at its limit for ten
+  seconds, meeting it again and again and spending CPU time on it, counts
+  as out of memory too: gVisor keeps some memory the kernel can always
+  reclaim a little of, so it may never be killed for it.
+  `peak_memory_mib` and `held_memory_mib` are the
   job's share, as for a WASIX job, which does not count the runner's own
   memory either; the report's `execution.sandbox` says what the sandbox
   itself took (`overhead_mib`), what was reserved for it (`reserved_mib`,
@@ -1715,23 +1716,30 @@ job runs them, beside the native program:
   stall check reads the sandbox's CPU time. How the job ended (its exit
   status, a timeout, running out of memory) is what the runner saw of the
   sandbox, not what the runner inside reports.
-- **CPU.** A sandbox may use the runner's `--cpus` worth of CPU time
-  (`cpu.max`), gVisor's kernel's included, and is told it has that many
-  CPUs, as a WASIX job's threads share the runner's.
+- **CPU.** The runner's sandboxes together may use its `--cpus` worth of
+  CPU time (`cpu.max` on their common cgroup), gVisor's kernel's
+  included, shared by equal weight; each is told it has that many CPUs,
+  as a WASIX job's threads share the runner's.
 - **Billing.** The job is charged its wall time as any job, and the memory
   it reserved: its `memory:` and the sandbox's 384 MiB.
+- **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
+  the like) does not run beside a native one yet: such a job fails to
+  start, saying so. Use it in a job of its own.
 - **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
   release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
   another fails it, saying so. The runner starts each sandbox in new user,
   mount, PID, IPC, UTS and network namespaces. On a host that keeps user
   namespaces from unprivileged programs (Ubuntu's AppArmor), it does so
-  through `--sandbox-helper <path>` (or `IWCI_SANDBOX_HELPER`): a
-  root-owned copy of its own binary, which under the name
-  `iwci-sandbox-spawn` only starts gVisor's kernel, root-owned too, as
-  `boot --setup-root` (`crates/iwci-sandbox/src/helper.rs`), so an AppArmor
-  profile can let that path, and not the runner, create them
-  (`infra/ci-runners` installs both). A helper of another protocol leaves
-  native jobs off, saying why. `/v1/capacity` says `native_sandbox` and
+  through `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`):
+  `iwci-sandbox-spawn` (`crates/iwci-sandbox-spawn`), a small root service
+  that systemd starts once per connection to a socket only the runner may
+  use. It takes a few checked values and the sandbox's descriptors, never
+  a command line or an environment, starts only the Sentry at its pinned
+  path once that and gVisor's unmounter match the SHA-256 pins compiled
+  into it, always as `boot --setup-root`, as the system user
+  `iwci-sandbox` and straight into the job's cgroup, and kills it when the
+  runner asks or goes away (`infra/ci-runners` installs it). A service of
+  another protocol leaves native jobs off, saying why. `/v1/capacity` says `native_sandbox` and
   `sandbox_overhead`. In a split run the job stays on the runner that has
   the run. The task cache keys it like any job: the native tool's manifest
   is pinned by digest.

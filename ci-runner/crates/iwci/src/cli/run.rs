@@ -252,20 +252,20 @@ pub(super) fn open_runner(
 /// cgroup subtree (`Delegate=` in its unit) to hold each sandbox to its
 /// memory, and refuses to start without one.
 ///
-/// `--sandbox-helper <path>` (or `IWCI_SANDBOX_HELPER`): the helper that
-/// creates each sandbox's namespaces (`iwci_sandbox::helper`), on a host
-/// that keeps them from the runner itself. A helper of another protocol
-/// (left from an older release) leaves native jobs off, saying why, rather
-/// than stopping the runner.
+/// `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`): the service
+/// that creates each sandbox's namespaces (`iwci_sandbox::service`), on a
+/// host that keeps them from the runner itself. A service of another
+/// protocol (left from an older release), or none answering, leaves native
+/// jobs off, saying why, rather than stopping the runner.
 #[cfg(target_os = "linux")]
 fn native_sandbox(
     args: &mut Args,
     cache: &std::path::Path,
     cpus: usize,
 ) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
-    let helper = match args.value("--sandbox-helper")? {
+    let service = match args.value("--sandbox-service")? {
         Some(path) => Some(path),
-        None => std::env::var("IWCI_SANDBOX_HELPER")
+        None => std::env::var("IWCI_SANDBOX_SERVICE")
             .ok()
             .filter(|p| !p.is_empty()),
     };
@@ -284,27 +284,22 @@ fn native_sandbox(
         true,
     )
     .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
-    .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX));
-    let host = match helper {
+    .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX))
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    let host = match service {
         None => host,
-        Some(helper) => {
-            use iwci_runtime::sandbox::helper::PROTOCOL;
-            let speaks = std::process::Command::new(&helper)
-                .arg("protocol")
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-            match speaks {
-                Ok(p) if p == PROTOCOL => host.with_helper(helper.into()),
+        Some(socket) => {
+            use iwci_runtime::sandbox::service::{PROTOCOL, protocol};
+            match protocol(std::path::Path::new(&socket)) {
+                Ok(p) if p == PROTOCOL => host.with_service(socket.into()),
                 Ok(p) => {
                     eprintln!(
-                        "iwci: native jobs are off: the sandbox helper {helper} speaks protocol {p:?}, this runner {PROTOCOL:?}; reinstall it from this binary"
+                        "iwci: native jobs are off: the sandbox service at {socket} speaks protocol {p:?}, this runner {PROTOCOL:?}; install the service of this release (`iwci-sandbox-spawn`)"
                     );
                     return Ok(None);
                 }
                 Err(e) => {
-                    eprintln!("iwci: native jobs are off: the sandbox helper {helper}: {e}");
+                    eprintln!("iwci: native jobs are off: the sandbox service at {socket}: {e}");
                     return Ok(None);
                 }
             }

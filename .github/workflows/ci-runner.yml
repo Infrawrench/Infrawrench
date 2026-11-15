@@ -61,16 +61,17 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
 
   # The lisafs server (crates/iwci-sandbox) under gVisor's real kernel, on
   # both architectures the runners are: a busybox shell and Bun run in a
   # sandbox whose only file system is a job's, and the test checks what
   # they saw and what they changed. Root, because the sandbox is started
   # in new user namespaces, which Ubuntu's AppArmor keeps from other users
-  # (the runner hosts get a profile for the sandbox helper instead, which
-  # these tests go through too). gVisor and Bun are
-  # pinned by hash in tests/fixtures.sh.
+  # (the runner hosts use the root sandbox service instead, which these
+  # tests go through too, started per connection by systemd-socket-activate
+  # as systemd starts it). gVisor and Bun are pinned by hash in
+  # tests/fixtures.sh, the same release whose SHA-256 the service pins.
   sandbox:
     name: Sandbox under gVisor (${{ matrix.arch }})
     strategy:
@@ -99,6 +100,15 @@ jobs:
 
       - name: busybox
         run: sudo apt-get install -y --no-install-recommends busybox-static
+
+      # The sandbox service builds the same on any x86_64 Linux machine (a
+      # build on another architecture names its toolchain's host in the
+      # symbols), and the runner hosts install only the builds pinned in
+      # git: a change to it changes the pins in the same commit
+      # (crates/iwci-sandbox-spawn/build.sh).
+      - name: The sandbox service's pinned builds
+        if: matrix.arch == 'x86_64'
+        run: bash crates/iwci-sandbox-spawn/build.sh --check
 
       - name: gVisor and Bun, pinned
         run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"

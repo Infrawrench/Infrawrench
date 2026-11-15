@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+iwci-sandbox-spawn.workspace = true
 iwci-vfs.workspace = true
 virtual-fs.workspace = true
 futures.workspace = true
@@ -20,12 +21,10 @@ libc = "0.2"
 # virtual-net; only IP-medium IPv4 and IPv6 TCP and UDP sockets are used.
 smoltcp = { version = "0.14", default-features = false, features = ["std", "alloc", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }
 
-# The helper that starts a sandbox's Sentry in its namespaces (`helper`):
-# the tests run sandboxes through it. On the runner hosts it is a
-# root-owned copy of the runner's own binary instead, which acts as the
-# helper under this name.
+# The sandbox service (`iwci-sandbox-spawn`), built here as well so that
+# this crate's gVisor tests start every sandbox through it.
 [[bin]]
-name = "iwci-sandbox-spawn"
-path = "src/bin/iwci-sandbox-spawn.rs"
+name = "iwci-sandbox-service-for-tests"
+path = "src/bin/service-for-tests.rs"
 test = false
 doc = false

@@ -6,10 +6,12 @@
 //! (`runsc/sandbox/sandbox.go`, `createSandboxProcess`), handing it the
 //! runner's end of a lisafs connection (`--io-fds`) instead of a gofer's:
 //!
-//! - in new user, mount, PID, IPC, UTS and network namespaces, as
-//!   `nobody` mapped to the runner's user, with only the capabilities it
-//!   needs to build its empty root (`CAP_SYS_ADMIN`, `CAP_SYS_CHROOT`,
-//!   `CAP_SETPCAP`); `boot --setup-root` pivots into an empty read-only
+//! - in new user, mount, PID, IPC, UTS and network namespaces
+//!   (`iwci_sandbox_spawn`), as `nobody` mapped to the runner's user or,
+//!   through the sandbox service, to the host user `iwci-sandbox`, with
+//!   only the capabilities it needs to build its empty root
+//!   (`CAP_SYS_ADMIN`, `CAP_SYS_CHROOT`, `CAP_SETPCAP`);
+//!   `boot --setup-root` pivots into an empty read-only
 //!   tmpfs and re-executes itself with no capabilities at all, then
 //!   installs its seccomp filter before running anything of the job's;
 //! - with the OCI spec, the control socket and the job's stdio passed as
@@ -20,26 +22,27 @@
 //! These are internal interfaces of the pinned gVisor release: a different
 //! release must be checked against them before it is pinned.
 
-use std::ffi::{CString, c_char, c_int, c_void};
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
+use iwci_sandbox_spawn::boot::Boot;
+use iwci_sandbox_spawn::client::{self, Remote};
+use iwci_sandbox_spawn::spawn::{Namespaces, spawn};
 use serde_json::{Value, json};
 
 /// gVisor's release, unpacked: `runsc` and `gvisor-bin/`.
 #[derive(Debug, Clone)]
 pub struct Release {
     pub dir: PathBuf,
-    /// The program that starts the Sentry in its namespaces for the runner
-    /// ([`crate::helper`]), when the runner may not create them itself: a
-    /// host that keeps user namespaces from unprivileged programs lets this
-    /// one, root-owned program create them, and nothing else. Without one
-    /// the runner creates them itself.
-    pub helper: Option<PathBuf>,
+    /// The socket of the service that starts the Sentry in its namespaces
+    /// for the runner (`iwci_sandbox_spawn::service`), where the runner may
+    /// not make user namespaces itself; it starts only its own pinned
+    /// Sentry. Without one the runner starts the Sentry itself.
+    pub service: Option<PathBuf>,
 }
 
 impl Release {
@@ -93,16 +96,91 @@ pub struct Mount {
 /// A started (not yet running) sandbox.
 #[derive(Debug)]
 pub struct Sandbox {
-    pid: libc::pid_t,
+    process: Process,
     id: String,
     control: PathBuf,
-    reaped: bool,
     /// The sandbox's end of its network link, handed over at start.
     link: Option<OwnedFd>,
     /// The answer to the one `Wait` call made once the job started, from
     /// the thread that waits for it: one call for the whole job, so waiting
     /// costs the sandbox nothing however long the job runs.
     waiter: Option<std::sync::mpsc::Receiver<io::Result<Value>>>,
+}
+
+/// The Sentry's process: the runner's own child, or one the sandbox service
+/// started and watches.
+#[derive(Debug)]
+enum Process {
+    Child { pid: libc::pid_t, reaped: bool },
+    Service(Remote),
+}
+
+impl Process {
+    fn pid(&self) -> libc::pid_t {
+        match self {
+            Self::Child { pid, .. } => *pid,
+            Self::Service(remote) => remote.pid(),
+        }
+    }
+
+    /// Its wait status, if it has ended (and was not collected before).
+    fn try_wait(&mut self) -> Option<i32> {
+        match self {
+            Self::Child { pid, reaped } => {
+                if *reaped {
+                    return None;
+                }
+                let mut status = 0;
+                // SAFETY: polling our own child.
+                let r = unsafe { libc::waitpid(*pid, &mut status, libc::WNOHANG) };
+                (r == *pid).then(|| {
+                    *reaped = true;
+                    status
+                })
+            }
+            Self::Service(remote) => remote.try_wait().map(|s| s.unwrap_or(-1)),
+        }
+    }
+
+    /// Waits for it: its wait status, if it was ours to collect.
+    fn wait(&mut self) -> Option<i32> {
+        match self {
+            Self::Child { pid, reaped } => {
+                if *reaped {
+                    return None;
+                }
+                let mut status = 0;
+                let r = loop {
+                    // SAFETY: waiting on our own child.
+                    let r = unsafe { libc::waitpid(*pid, &mut status, 0) };
+                    if r >= 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                        break r;
+                    }
+                };
+                *reaped = true;
+                (r == *pid).then_some(status)
+            }
+            Self::Service(remote) => remote.wait(),
+        }
+    }
+
+    /// Stops it at once and collects it.
+    fn kill(&mut self) {
+        match self {
+            Self::Child { pid, reaped } => {
+                if !*reaped {
+                    // SAFETY: signalling our own child, which has not been
+                    // reaped, so the pid is still its.
+                    unsafe { libc::kill(*pid, libc::SIGKILL) };
+                }
+            }
+            Self::Service(remote) => {
+                remote.kill();
+                return;
+            }
+        }
+        self.wait();
+    }
 }
 
 /// How long starting a sandbox may take before the runner gives up on it.
@@ -239,114 +317,85 @@ pub fn boot_with(
         .open(release.proc_umounter())?;
     let null = fs::File::open("/dev/null")?;
 
-    // What the Sentry gets, at fixed descriptor numbers from 3 up.
+    // What the Sentry gets, at the numbers `Boot` lays out.
+    let boot = Boot {
+        id: config.id.clone(),
+        state_dir: config.state_dir.clone(),
+        platform: config.platform.clone(),
+        network: link.is_some(),
+        mounts: 1 + mounts.len(),
+        cpus: config.cpus.max(1),
+        memory: config.memory_bytes,
+        flags: config.extra_flags.clone(),
+    };
+    boot.check().map_err(io::Error::other)?;
     let log_copy = dup(&log)?;
     let mut fds: Vec<OwnedFd> = vec![null.into(), dup(&log)?, log];
-    let mut next = 3;
-    let mut give = |fd: OwnedFd, fds: &mut Vec<OwnedFd>| {
-        fds.push(fd);
-        next += 1;
-        next - 1
-    };
-    let spec_fd = give(spec_file.into(), &mut fds);
-    let controller_fd = give(listener.into(), &mut fds);
-    let mut io_fds = vec![give(gofer, &mut fds)];
-    for mount in mounts {
-        io_fds.push(give(mount.gofer, &mut fds));
-    }
-    let umounter_fd = give(umounter.into(), &mut fds);
+    fds.push(spec_file.into());
+    fds.push(listener.into());
+    fds.push(gofer);
+    fds.extend(mounts.into_iter().map(|m| m.gofer));
+    fds.push(umounter.into());
     // The Sentry re-executes itself inside an empty root, where it can
     // open nothing: its logs go to a descriptor.
-    let log_fd = give(log_copy, &mut fds);
-    let [stdin, stdout, stderr] = stdio;
-    let stdio_fds = [
-        give(stdin, &mut fds),
-        give(stdout, &mut fds),
-        give(stderr, &mut fds),
-    ];
+    fds.push(log_copy);
+    fds.extend(stdio);
+    debug_assert_eq!(fds.len(), boot.descriptors());
 
-    let mut args: Vec<String> = vec![
-        "runsc-sandbox".into(),
-        format!("--root={}", config.state_dir.display()),
-        format!("--platform={}", config.platform),
-        // With a link, the sandbox's stack gets an interface on it
-        // (`crate::net`); without one, only its loopback.
-        if link.is_some() {
-            "--network=sandbox".into()
-        } else {
-            "--network=none".into()
-        },
-        "--file-access=exclusive".into(),
-        // The other mounts are the runner's too, and nothing else changes
-        // them while the sandbox runs; without it the Sentry cannot map
-        // their files, so no program could be run from one.
-        "--file-access-mounts=exclusive".into(),
-        // No host file access at all: directfs would have the Sentry open
-        // host files itself, through descriptors a gofer donates.
-        "--directfs=false".into(),
-        format!("--log-fd={log_fd}"),
-        format!("--debug-log-fd={log_fd}"),
-        format!("--panic-log-fd={log_fd}"),
-    ];
-    args.extend(config.extra_flags.iter().cloned());
-    args.extend([
-        "boot".into(),
-        format!("--bundle={}", config.state_dir.display()),
-        format!("--spec-fd={spec_fd}"),
-        format!("--controller-fd={controller_fd}"),
-        format!(
-            "--io-fds={}",
-            io_fds
-                .iter()
-                .map(|fd| fd.to_string())
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        format!(
-            "--gofer-mount-confs={}",
-            vec!["lisafs:none"; io_fds.len()].join(",")
-        ),
-        format!(
-            "--stdio-fds={},{},{}",
-            stdio_fds[0], stdio_fds[1], stdio_fds[2]
-        ),
-        "--setup-root".into(),
-        format!("--proc-umounter-fd={umounter_fd}"),
-        format!("--cpu-num={}", config.cpus.max(1)),
-        format!("--total-memory={}", config.memory_bytes),
-        format!("--total-host-memory={}", host_memory()),
-        "--attached".into(),
-        config.id.clone(),
-    ]);
-    let env = vec!["GODEBUG=".to_string(), "TMPDIR=/tmp".to_string()];
     let sentry = release.sentry();
-    let pid = match &release.helper {
-        None => spawn(
-            &sentry,
-            &args,
-            &env,
-            fds,
-            config.cgroup.as_deref(),
-            Namespaces::New,
-        )?,
-        Some(helper) => {
-            let mut through = crate::helper::args(&sentry, fds.len());
-            through.extend(args);
-            spawn(
-                helper,
-                &through,
-                &env,
-                fds,
-                config.cgroup.as_deref(),
-                Namespaces::Same,
-            )?
+    let process = match &release.service {
+        None => {
+            let procs = match &config.cgroup {
+                Some(dir) => Some(
+                    fs::OpenOptions::new()
+                        .write(true)
+                        .open(dir.join("cgroup.procs"))?,
+                ),
+                None => None,
+            };
+            Process::Child {
+                pid: spawn(
+                    &sentry,
+                    &boot.sentry_args(host_memory()),
+                    &Boot::env(),
+                    fds,
+                    procs.as_ref(),
+                    Namespaces::as_caller(),
+                )?,
+                reaped: false,
+            }
+        }
+        // The service builds the Sentry's command line itself, and starts
+        // only its pinned Sentry; a root runner (the tests) may name this
+        // one, which the pins still hold to.
+        Some(socket) => {
+            // SAFETY: a plain query.
+            let root = unsafe { libc::getuid() } == 0;
+            let cgroup = match &config.cgroup {
+                Some(dir) => Some(
+                    fs::OpenOptions::new()
+                        .read(true)
+                        .custom_flags(libc::O_DIRECTORY)
+                        .open(dir)?,
+                ),
+                None => None,
+            };
+            let raw: Vec<RawFd> = fds.iter().map(|f| f.as_raw_fd()).collect();
+            let remote = client::start(
+                socket,
+                &boot,
+                root.then_some(sentry.as_path()),
+                &raw,
+                cgroup.as_ref().map(|c| c.as_raw_fd()),
+            )?;
+            drop(fds);
+            Process::Service(remote)
         }
     };
     Ok(Sandbox {
-        pid,
+        process,
         id: config.id.clone(),
         control,
-        reaped: false,
         link,
         waiter: None,
     })
@@ -364,10 +413,9 @@ fn host_memory() -> u64 {
 }
 
 impl Sandbox {
-    /// The Sentry's process id, in the runner's PID namespace (the
-    /// helper's, with a [`Release::helper`], whose only child it is).
+    /// The Sentry's process id, in the runner's PID namespace.
     pub fn pid(&self) -> libc::pid_t {
-        self.pid
+        self.process.pid()
     }
 
     /// Configures the sandbox's network (loopback only) and starts the
@@ -400,17 +448,7 @@ impl Sandbox {
 
     /// The sandbox's wait status, if it has exited.
     fn exited(&mut self) -> Option<i32> {
-        if self.reaped {
-            return None;
-        }
-        let mut status = 0;
-        // SAFETY: polling our own child.
-        let r = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
-        if r == self.pid {
-            self.reaped = true;
-            return Some(status);
-        }
-        None
+        self.process.try_wait()
     }
 
     fn configure_and_start(&self) -> io::Result<()> {
@@ -512,30 +550,13 @@ impl Sandbox {
 
     /// Stops the sandbox at once.
     pub fn kill(&mut self) {
-        if !self.reaped {
-            // SAFETY: signalling our own child, which has not been reaped,
-            // so the pid is still its.
-            unsafe { libc::kill(self.pid, libc::SIGKILL) };
-        }
-        self.reap();
+        self.process.kill();
     }
 
     /// Waits for the Sentry's process: its wait status, if it was ours to
     /// collect.
     fn reap(&mut self) -> Option<i32> {
-        if self.reaped {
-            return None;
-        }
-        let mut status = 0;
-        let r = loop {
-            // SAFETY: waiting on our own child.
-            let r = unsafe { libc::waitpid(self.pid, &mut status, 0) };
-            if r >= 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-                break r;
-            }
-        };
-        self.reaped = true;
-        (r == self.pid).then_some(status)
+        self.process.wait()
     }
 
     fn call_full(
@@ -706,314 +727,4 @@ fn read_json(stream: &mut UnixStream) -> io::Result<Value> {
 
 fn dup(fd: &OwnedFd) -> io::Result<OwnedFd> {
     fd.try_clone()
-}
-
-/// What the child needs, prepared before `clone` so that it allocates
-/// nothing (it is a copy of a multi-threaded process).
-struct Child {
-    sync: RawFd,
-    /// The binary, opened `O_PATH` by the runner: the child, once it is
-    /// `nobody`, may not be able to reach it by path.
-    exe: RawFd,
-    argv: *const *const c_char,
-    envp: *const *const c_char,
-    /// (from, to) pairs; every `from` is above every `to`.
-    fds: *const (RawFd, RawFd),
-    nfds: usize,
-    namespaces: Namespaces,
-}
-
-/// Where [`spawn`] starts its program.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Namespaces {
-    /// In new user, mount, PID, IPC, UTS and network namespaces, as the
-    /// mapped `nobody` with [`CAPS`]: the Sentry.
-    New,
-    /// In the runner's own, as the runner: the helper, which makes them.
-    Same,
-}
-
-/// The capabilities the Sentry starts with: what building its empty root
-/// takes. It drops them all before it runs anything of the job's.
-const CAPS: [u32; 3] = [
-    21, // CAP_SYS_ADMIN
-    18, // CAP_SYS_CHROOT
-    8,  // CAP_SETPCAP
-];
-
-/// Starts `exe` with `fds` as its descriptors 0, 1, 2, ..., in
-/// `namespaces`; its pid.
-pub(crate) fn spawn(
-    exe: &Path,
-    args: &[String],
-    env: &[String],
-    fds: Vec<OwnedFd>,
-    cgroup: Option<&Path>,
-    namespaces: Namespaces,
-) -> io::Result<libc::pid_t> {
-    let exe_fd = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_PATH)
-        .open(exe)?;
-    spawn_fd(exe_fd, args, env, fds, cgroup, namespaces)
-}
-
-/// [`spawn`] with the program already open (`O_PATH`).
-pub(crate) fn spawn_fd(
-    exe_fd: fs::File,
-    args: &[String],
-    env: &[String],
-    fds: Vec<OwnedFd>,
-    cgroup: Option<&Path>,
-    namespaces: Namespaces,
-) -> io::Result<libc::pid_t> {
-    let cstr = |s: &[u8]| CString::new(s).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput));
-    let args_c = args
-        .iter()
-        .map(|a| cstr(a.as_bytes()))
-        .collect::<io::Result<Vec<_>>>()?;
-    let env_c = env
-        .iter()
-        .map(|e| cstr(e.as_bytes()))
-        .collect::<io::Result<Vec<_>>>()?;
-    let mut argv: Vec<*const c_char> = args_c.iter().map(|a| a.as_ptr()).collect();
-    argv.push(std::ptr::null());
-    let mut envp: Vec<*const c_char> = env_c.iter().map(|e| e.as_ptr()).collect();
-    envp.push(std::ptr::null());
-
-    // Move every descriptor well above the numbers it is going to, so the
-    // child's dup2s never overwrite one not yet moved, nor the program,
-    // which it runs after them.
-    let raise = |fd: RawFd| -> io::Result<OwnedFd> {
-        // SAFETY: duplicating a descriptor we hold; checked below.
-        let raw = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 512) };
-        if raw < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: just created and ours.
-        Ok(unsafe { OwnedFd::from_raw_fd(raw) })
-    };
-    let high: Vec<OwnedFd> = fds
-        .iter()
-        .map(|fd| raise(fd.as_raw_fd()))
-        .collect::<io::Result<_>>()?;
-    let exe_fd = raise(exe_fd.as_raw_fd())?;
-    drop(fds);
-    let pairs: Vec<(RawFd, RawFd)> = high
-        .iter()
-        .enumerate()
-        .map(|(to, fd)| (fd.as_raw_fd(), to as RawFd))
-        .collect();
-
-    let mut sync = [0 as RawFd; 2];
-    // SAFETY: `sync` has room for both ends.
-    if unsafe { libc::pipe2(sync.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: both were just created and are ours.
-    let (sync_r, sync_w) =
-        unsafe { (OwnedFd::from_raw_fd(sync[0]), OwnedFd::from_raw_fd(sync[1])) };
-
-    let child = Child {
-        sync: sync_r.as_raw_fd(),
-        exe: exe_fd.as_raw_fd(),
-        argv: argv.as_ptr(),
-        envp: envp.as_ptr(),
-        fds: pairs.as_ptr(),
-        nfds: pairs.len(),
-        namespaces,
-    };
-    let flags = match namespaces {
-        Namespaces::New => {
-            libc::CLONE_NEWUSER
-                | libc::CLONE_NEWNS
-                | libc::CLONE_NEWPID
-                | libc::CLONE_NEWIPC
-                | libc::CLONE_NEWUTS
-                | libc::CLONE_NEWNET
-        }
-        Namespaces::Same => 0,
-    };
-    let mut stack = vec![0u8; 256 * 1024];
-    // SAFETY: the stack grows down from its end, aligned to 16; `child`
-    // and everything it points to outlive the call, and the child gets a
-    // copy of this address space, not a share of it.
-    let pid = unsafe {
-        let top = stack.as_mut_ptr().add(stack.len());
-        let top = top.sub(top as usize % 16);
-        libc::clone(
-            run_child,
-            top.cast(),
-            flags | libc::SIGCHLD,
-            (&child as *const Child).cast_mut().cast(),
-        )
-    };
-    if pid < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    drop(sync_r);
-    // Into its cgroup while it still waits for its user to be mapped, so
-    // it has run nothing outside it.
-    let joined = match cgroup {
-        Some(dir) => fs::write(dir.join("cgroup.procs"), pid.to_string()),
-        None => Ok(()),
-    };
-    let mapped = joined
-        .and_then(|()| match namespaces {
-            Namespaces::New => map_user(pid),
-            Namespaces::Same => Ok(()),
-        })
-        .and_then(|()| {
-            let mut w = fs::File::from(sync_w);
-            w.write_all(&[1])
-        });
-    if let Err(e) = mapped {
-        // SAFETY: our own child; reaped right after.
-        unsafe {
-            libc::kill(pid, libc::SIGKILL);
-            libc::waitpid(pid, std::ptr::null_mut(), 0);
-        }
-        return Err(e);
-    }
-    drop(high);
-    drop(exe_fd);
-    Ok(pid)
-}
-
-/// Maps `nobody` in the child's user namespace to the runner's user (or,
-/// when the runner is root, to the host's `nobody`, as `runsc` does).
-fn map_user(pid: libc::pid_t) -> io::Result<()> {
-    const NOBODY: u32 = 65534;
-    // SAFETY: plain queries.
-    let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let (uid, gid) = if uid == 0 {
-        (NOBODY, NOBODY)
-    } else {
-        (uid, gid)
-    };
-    let proc = PathBuf::from(format!("/proc/{pid}"));
-    fs::write(proc.join("setgroups"), "deny")?;
-    fs::write(proc.join("uid_map"), format!("{NOBODY} {uid} 1\n"))?;
-    fs::write(proc.join("gid_map"), format!("{NOBODY} {gid} 1\n"))?;
-    Ok(())
-}
-
-/// The child, between `clone` and `execve`: system calls only.
-extern "C" fn run_child(arg: *mut c_void) -> c_int {
-    // SAFETY: `arg` is the parent's `Child`, at the same address in our
-    // copy of its memory; everything below is a plain system call.
-    unsafe {
-        let child = &*(arg as *const Child);
-        // Wait for the parent to map our user.
-        let mut byte = 0u8;
-        loop {
-            let n = libc::read(child.sync, (&mut byte as *mut u8).cast(), 1);
-            if n == 1 {
-                break;
-            }
-            if n < 0 && *libc::__errno_location() == libc::EINTR {
-                continue;
-            }
-            libc::_exit(120);
-        }
-        if child.namespaces == Namespaces::New {
-            become_nobody();
-        }
-        // Gone with the runner.
-        libc::prctl(
-            libc::PR_SET_PDEATHSIG,
-            libc::SIGKILL as libc::c_ulong,
-            0,
-            0,
-            0,
-        );
-        libc::setsid();
-        // What the runner ignores (a broken pipe) is not ignored here.
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-        let pairs = std::slice::from_raw_parts(child.fds, child.nfds);
-        for &(from, to) in pairs {
-            if libc::dup2(from, to) < 0 {
-                libc::_exit(124);
-            }
-        }
-        libc::syscall(
-            libc::SYS_execveat,
-            child.exe,
-            c"".as_ptr(),
-            child.argv,
-            child.envp,
-            libc::AT_EMPTY_PATH,
-        );
-        libc::_exit(127)
-    }
-}
-
-/// In the new user namespace: becomes the mapped `nobody` (the runner's
-/// own user is mapped to it unless the runner is root), keeping the
-/// capabilities the namespace gave through the change, and makes the
-/// Sentry's [`CAPS`] ambient so they survive `execve`.
-///
-/// # Safety
-///
-/// Only from [`run_child`]: system calls only.
-unsafe fn become_nobody() {
-    // SAFETY: plain system calls, as the caller's.
-    unsafe {
-        const NOBODY: libc::uid_t = 65534;
-        libc::prctl(libc::PR_SET_KEEPCAPS, 1 as libc::c_ulong, 0, 0, 0);
-        // The system calls, not the C library's wrappers, which are not
-        // for a copy of a multi-threaded process.
-        if libc::syscall(libc::SYS_setresgid, NOBODY, NOBODY, NOBODY) < 0
-            || libc::syscall(libc::SYS_setresuid, NOBODY, NOBODY, NOBODY) < 0
-        {
-            libc::_exit(125);
-        }
-        // Keep the capabilities the Sentry needs across execve: they have
-        // to be inheritable to be made ambient.
-        let mut header = CapHeader {
-            version: 0x2008_0522,
-            pid: 0,
-        };
-        let mut data = [CapData::default(); 2];
-        if libc::syscall(libc::SYS_capget, &mut header, data.as_mut_ptr()) < 0 {
-            libc::_exit(121);
-        }
-        for (cap_word, word) in data.iter_mut().enumerate() {
-            word.effective = word.permitted;
-            for cap in CAPS {
-                if (cap / 32) as usize == cap_word {
-                    word.inheritable |= 1 << (cap % 32);
-                }
-            }
-        }
-        if libc::syscall(libc::SYS_capset, &mut header, data.as_ptr()) < 0 {
-            libc::_exit(122);
-        }
-        for cap in CAPS {
-            if libc::prctl(
-                libc::PR_CAP_AMBIENT,
-                libc::PR_CAP_AMBIENT_RAISE,
-                cap as libc::c_ulong,
-                0,
-                0,
-            ) < 0
-            {
-                libc::_exit(123);
-            }
-        }
-    }
-}
-
-#[repr(C)]
-struct CapHeader {
-    version: u32,
-    pid: c_int,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct CapData {
-    effective: u32,
-    permitted: u32,
-    inheritable: u32,
 }

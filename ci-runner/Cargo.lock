@@ -2982,11 +2982,20 @@ name = "iwci-sandbox"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "iwci-sandbox-spawn",
  "iwci-vfs",
  "libc",
  "serde_json",
  "smoltcp",
  "virtual-fs",
+]
+
+[[package]]
+name = "iwci-sandbox-spawn"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "sha2",
 ]
 
 [[package]]

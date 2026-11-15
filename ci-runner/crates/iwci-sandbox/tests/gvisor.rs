@@ -13,11 +13,11 @@
 //! `IWCI_REQUIRE_FIXTURES` makes a missing input fail instead of skip.
 #![cfg(target_os = "linux")]
 
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use iwci_sandbox::cgroup::{Jobs, Limits, Usage};
+use iwci_sandbox::cgroup::{Jobs, Limits, Reclaiming, Usage};
 use iwci_sandbox::lisafs::{Export, serve, socket_pair};
 use iwci_sandbox::net::{Gateway, Network, Outside};
 use iwci_sandbox::runsc::{Config, Release, boot};
@@ -96,6 +96,11 @@ struct Ran {
     /// The Sentry's open files after its first poll and before its last,
     /// when polled (`Opts::poll`).
     sentry_fds: Option<(usize, usize)>,
+    /// The Sentry's environment, command line and `Uid:`, `Gid:` and
+    /// `Groups:` lines, at its first poll, when polled.
+    sentry_seen: Option<(Vec<String>, Vec<String>, Vec<String>)>,
+    /// Stopped by `Reclaiming`, at its memory limit and stuck there.
+    stuck_reclaiming: bool,
 }
 
 /// Runs `args` in a sandbox over `job`'s file system, with no network
@@ -127,6 +132,9 @@ struct Opts {
     timeout: Option<Duration>,
     /// Waited for in steps this long, as the runner polls a sandbox.
     poll: Option<Duration>,
+    /// Every sandbox held together to this many CPUs' time while it runs
+    /// (`Jobs::hold_cpus`).
+    cpus: Option<u32>,
 }
 
 fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
@@ -137,7 +145,9 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
             std::process::id(),
             N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         );
-        Jobs::delegated().unwrap().create(&name, limits).unwrap()
+        let jobs = Jobs::delegated().unwrap();
+        jobs.hold_cpus(opts.cpus).unwrap();
+        jobs.create(&name, limits).unwrap()
     });
     let (gateway, link) = match opts.network {
         Some(n) => {
@@ -198,19 +208,22 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
         let tail: Vec<&str> = tail.into_iter().rev().collect();
         panic!("starting the sandbox: {e}\n{}", tail.join("\n"));
     }
-    // The Sentry: the helper's only child.
-    let fds = |pid: libc::pid_t| {
-        let sentry = std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children"))
-            .ok()
-            .and_then(|c| c.split_whitespace().next().map(str::to_string))
-            .unwrap_or_else(|| pid.to_string());
-        std::fs::read_dir(format!("/proc/{sentry}/fd")).map_or(0, |d| d.count())
-    };
+    // The Sentry, which the service reports.
+    let fds =
+        |pid: libc::pid_t| std::fs::read_dir(format!("/proc/{pid}/fd")).map_or(0, |d| d.count());
     let mut sentry_fds = None;
-    let status = if let Some(step) = opts.poll {
+    let mut sentry_seen = None;
+    let mut stuck_reclaiming = false;
+    // With a cgroup, polled as the runner polls, watching for a sandbox
+    // stuck reclaiming at its limit (`Reclaiming`).
+    let poll = opts
+        .poll
+        .or_else(|| cgroup.is_some().then_some(Duration::from_millis(250)));
+    let status = if let Some(step) = poll {
         let until = Instant::now() + opts.timeout.unwrap_or(Duration::from_secs(60));
         let mut first = None;
         let mut last = 0;
+        let mut reclaiming = Reclaiming::default();
         let status = loop {
             match sandbox.wait_for(Some(step)).unwrap() {
                 Some(status) => break status,
@@ -219,8 +232,37 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
                     break -1;
                 }
                 None => {
-                    last = fds(sandbox.pid());
-                    first.get_or_insert(last);
+                    if opts.poll.is_some() {
+                        last = fds(sandbox.pid());
+                        first.get_or_insert(last);
+                        if sentry_seen.is_none() {
+                            let pid = sandbox.pid();
+                            let nul = |file: &str| -> Vec<String> {
+                                std::fs::read(format!("/proc/{pid}/{file}"))
+                                    .unwrap_or_default()
+                                    .split(|&b| b == 0)
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| String::from_utf8_lossy(s).into_owned())
+                                    .collect()
+                            };
+                            let ids = std::fs::read_to_string(format!("/proc/{pid}/status"))
+                                .unwrap_or_default()
+                                .lines()
+                                .filter(|l| {
+                                    ["Uid:", "Gid:", "Groups:"].iter().any(|k| l.starts_with(k))
+                                })
+                                .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+                                .collect();
+                            sentry_seen = Some((nul("environ"), nul("cmdline"), ids));
+                        }
+                    }
+                    if let (Some(c), Some(limits)) = (&cgroup, opts.limits)
+                        && reclaiming.stuck(Instant::now(), &c.usage().unwrap(), limits.memory)
+                    {
+                        stuck_reclaiming = true;
+                        sandbox.kill();
+                        break -1;
+                    }
                 }
             }
         };
@@ -257,6 +299,8 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
         usage,
         left_behind,
         sentry_fds,
+        sentry_seen,
+        stuck_reclaiming,
     };
     if ran.status != 0 {
         let log = std::fs::read_to_string(dir.join("sentry.log")).unwrap_or_default();
@@ -266,13 +310,81 @@ fn run_opts(release: &Release, job: &JobFs, args: &[&str], opts: Opts) -> Ran {
     ran
 }
 
-/// The release, started through the helper the runner hosts use
-/// (`iwci_sandbox::helper`), so every test here goes through it.
+/// The release, started through the sandbox service the runner hosts use
+/// (`iwci_sandbox::service`), so every test here goes through it: the one
+/// at `IWCI_TEST_SPAWN_SOCKET` (systemd's, on a host set up for it), or
+/// else this crate's build of it, started per connection by
+/// `systemd-socket-activate` as systemd would, for this user, running
+/// Sentries as `IWCI_TEST_SANDBOX_USER` (`nobody` by default).
 fn release(dir: PathBuf) -> Release {
     Release {
         dir,
-        helper: Some(env!("CARGO_BIN_EXE_iwci-sandbox-spawn").into()),
+        service: Some(service_socket()),
     }
+}
+
+fn service_socket() -> PathBuf {
+    static SOCKET: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    SOCKET
+        .get_or_init(|| {
+            if let Some(socket) = std::env::var_os("IWCI_TEST_SPAWN_SOCKET") {
+                return socket.into();
+            }
+            let dir = tempdir();
+            let socket = dir.join("spawn.sock");
+            let user = std::env::var("IWCI_TEST_SANDBOX_USER").unwrap_or_else(|_| "nobody".into());
+            // SAFETY: a plain query.
+            let me = unsafe { libc::geteuid() }.to_string();
+            let listen = format!("--listen={}", socket.display());
+            // On a thread that lives as long as the tests, so that the
+            // parent-death signal comes when they end, not when a test does.
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                use std::os::unix::process::CommandExt;
+                let mut command = std::process::Command::new("systemd-socket-activate");
+                command
+                    .args(["--seqpacket", "--accept", &listen])
+                    // Given to the service, never to a Sentry.
+                    .arg("--setenv=IWCI_TEST_CANARY=1")
+                    .arg(env!("CARGO_BIN_EXE_iwci-sandbox-service-for-tests"))
+                    .args(["serve", "--peer", &me, "--sandbox-user", &user]);
+                // SAFETY: one system call between fork and exec.
+                unsafe {
+                    command.pre_exec(|| {
+                        libc::prctl(
+                            libc::PR_SET_PDEATHSIG,
+                            libc::SIGTERM as libc::c_ulong,
+                            0,
+                            0,
+                            0,
+                        );
+                        Ok(())
+                    });
+                }
+                let child = command.spawn();
+                let ok = child.is_ok();
+                tx.send(child.map(|_| ()).map_err(|e| e.to_string()))
+                    .unwrap();
+                if ok {
+                    loop {
+                        std::thread::park();
+                    }
+                }
+            });
+            rx.recv()
+                .unwrap()
+                .expect("systemd-socket-activate, to run the sandbox service");
+            let until = Instant::now() + Duration::from_secs(10);
+            while !socket.exists() {
+                assert!(
+                    Instant::now() < until,
+                    "the service's socket never appeared"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            socket
+        })
+        .clone()
 }
 
 fn tempdir() -> PathBuf {
@@ -679,7 +791,6 @@ fn a_sandbox_past_its_memory_is_killed_not_swapped() {
     let limits = Limits {
         memory: 256 * MIB,
         pids: 4096,
-        cpus: None,
     };
     // A shell variable of 600 MiB: the Sentry's memory, counted.
     let script = "a=$(dd if=/dev/zero bs=1048576 count=600 2>/dev/null | tr '\\0' x); echo ${#a}";
@@ -694,8 +805,16 @@ fn a_sandbox_past_its_memory_is_killed_not_swapped() {
         },
     );
     let usage = ran.usage.unwrap();
-    eprintln!("{usage:?}, status {}", ran.status);
-    assert!(usage.out_of_memory, "killed for memory: {usage:?}");
+    eprintln!(
+        "{usage:?}, status {}, stuck {}",
+        ran.status, ran.stuck_reclaiming
+    );
+    // Killed by the kernel, or, when gVisor's own memory lets the kernel
+    // go on reclaiming instead, stopped by the runner's watch for that.
+    assert!(
+        usage.out_of_memory || ran.stuck_reclaiming,
+        "killed for memory: {usage:?}"
+    );
     // The kernel charges a little past `memory.max` before it reclaims or
     // kills; with swap at 0 that is all it gets.
     assert!(usage.memory_peak <= limits.memory + MIB, "{usage:?}");
@@ -728,9 +847,9 @@ fn a_sandboxs_cpu_time_and_memory_are_counted() {
             limits: Some(Limits {
                 memory: 1024 * MIB,
                 pids: 4096,
-                // One CPU's time at most, gVisor's kernel's included.
-                cpus: Some(1),
             }),
+            // One CPU's time at most, gVisor's kernel's included.
+            cpus: Some(1),
             timeout: Some(Duration::from_secs(120)),
             ..Opts::default()
         },
@@ -775,7 +894,6 @@ fn a_sandbox_past_its_time_is_stopped_whole() {
             limits: Some(Limits {
                 memory: 512 * MIB,
                 pids: 4096,
-                cpus: None,
             }),
             timeout: Some(Duration::from_secs(2)),
             ..Opts::default()
@@ -817,4 +935,84 @@ fn waiting_on_a_sandbox_costs_its_sentry_nothing() {
         last <= first + 4,
         "the Sentry went from {first} to {last} open files"
     );
+    // What the Sentry was started with is the service's, not the
+    // caller's: no variable of this test's (nor the canary the service was
+    // given), the command line it builds, and its own user with no group.
+    let (env, cmdline, ids) = ran.sentry_seen.expect("seen");
+    assert!(
+        env.iter().all(|v| !v.starts_with("IWCI_")),
+        "the Sentry's environment: {env:?}"
+    );
+    // Seen after the Sentry set up its root and re-executed itself, which
+    // it says with `--setup-root=false`.
+    assert_eq!(cmdline.first().map(String::as_str), Some("runsc-sandbox"));
+    assert!(
+        cmdline.iter().any(|a| a.starts_with("--setup-root")),
+        "{cmdline:?}"
+    );
+    assert!(
+        cmdline.iter().any(|a| a == "--directfs=false"),
+        "{cmdline:?}"
+    );
+    let user = std::env::var("IWCI_TEST_SANDBOX_USER").unwrap_or_else(|_| "nobody".into());
+    let uid = std::fs::read_to_string("/etc/passwd")
+        .unwrap()
+        .lines()
+        .find_map(|l| {
+            let f: Vec<&str> = l.split(':').collect();
+            (f.first() == Some(&user.as_str())).then(|| f[2].to_string())
+        })
+        .unwrap();
+    assert_eq!(ids[0], format!("Uid: {uid} {uid} {uid} {uid}"), "{ids:?}");
+    assert_eq!(ids[2], "Groups:", "{ids:?}");
+}
+
+/// The service starts a Sentry only into one of the runner's job cgroups:
+/// never the runner's own leaf, nor `jobs/` itself.
+#[test]
+#[ignore = "needs gVisor and a delegated cgroup; see the module docs"]
+fn the_service_takes_only_a_jobs_cgroup() {
+    let (Some(gvisor), Some(_)) = (input("IWCI_TEST_GVISOR"), input("IWCI_TEST_BUSYBOX")) else {
+        return;
+    };
+    if !cgroups() {
+        return;
+    }
+    let release = release(gvisor);
+    let jobs = Jobs::delegated().unwrap();
+    let own = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let own = PathBuf::from("/sys/fs/cgroup").join(own.trim().trim_start_matches("0::/"));
+    assert!(own.ends_with("runner"), "{}", own.display());
+    let boot = iwci_sandbox_spawn::boot::Boot {
+        id: "iwci-cgroup-test".into(),
+        state_dir: "/tmp/iwci-cgroup-test".into(),
+        platform: "systrap".into(),
+        network: false,
+        mounts: 1,
+        cpus: 1,
+        memory: 1 << 28,
+        flags: Vec::new(),
+    };
+    let nulls: Vec<std::fs::File> = (0..boot.descriptors())
+        .map(|_| std::fs::File::open("/dev/null").unwrap())
+        .collect();
+    let fds: Vec<std::os::fd::RawFd> = nulls.iter().map(|f| f.as_raw_fd()).collect();
+    for dir in [own.clone(), own.parent().unwrap().join("jobs")] {
+        let cgroup = std::fs::File::open(&dir).unwrap();
+        let e = iwci_sandbox_spawn::client::start(
+            release.service.as_ref().unwrap(),
+            &boot,
+            None,
+            &fds,
+            Some(cgroup.as_raw_fd()),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("not one of the peer's jobs"),
+            "{}: {e}",
+            dir.display()
+        );
+    }
+    drop(jobs);
 }

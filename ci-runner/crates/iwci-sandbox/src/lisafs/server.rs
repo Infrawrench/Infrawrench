@@ -92,8 +92,9 @@ const MAX_PATH: usize = 4096;
 /// names are forgotten, and then a new FD is refused (ENFILE).
 const MAX_STATE_BYTES: usize = 64 << 20;
 
-/// What a new file, directory or symlink is charged to the job's budget
-/// beside its name: what the job's file system keeps for an entry.
+/// What a new directory or symlink is charged to the job's budget beside
+/// its name: what the job's file system keeps for an entry. (A new file's
+/// entry the job's file system charges itself, `iwci_vfs::ENTRY_COST`.)
 const ENTRY_COST: u64 = 128;
 
 // statx(2) mask bits.
@@ -231,6 +232,8 @@ struct State {
     next_fd: u64,
     /// Inode numbers of the files this connection has reported, by path.
     inos: BTreeMap<PathBuf, Numbered>,
+    /// The numbers in `inos`, which no other file may be given.
+    live: HashSet<u64>,
     next_ino: u64,
     /// What the paths in `fds` and `inos` take of the runner's memory,
     /// roughly, held under [`MAX_STATE_BYTES`].
@@ -259,6 +262,7 @@ impl Conn {
                 // FD id 0 is "invalid" in lisafs.
                 next_fd: 1,
                 inos: BTreeMap::new(),
+                live: HashSet::new(),
                 next_ino: 1,
                 bytes: 0,
                 created: HashSet::new(),
@@ -310,6 +314,7 @@ impl Conn {
         let mut state = self.state();
         state.fds = HashMap::new();
         state.inos = BTreeMap::new();
+        state.live = HashSet::new();
         state.created = HashSet::new();
         state.bytes = 0;
     }
@@ -919,9 +924,10 @@ impl Conn {
             let read = access != libc::O_WRONLY as u32;
             let write = access != libc::O_RDONLY as u32;
             // Opened for writing whatever was asked: creating is a write.
-            // The open FD keeps to what was asked.
-            self.charge(&mut state, &path)?;
-            let file = match self
+            // The open FD keeps to what was asked. A new file's entry is the
+            // job's file system's to charge, as for a WASIX job
+            // (`iwci_vfs::ENTRY_COST`), not this server's.
+            let file = self
                 .export
                 .fs
                 .new_open_options()
@@ -929,13 +935,7 @@ impl Conn {
                 .write(true)
                 .create_new(true)
                 .open(&path)
-            {
-                Ok(file) => file,
-                Err(e) => {
-                    self.uncharge(&mut state, &path);
-                    return Err(fs_errno(e));
-                }
-            };
+                .map_err(fs_errno)?;
             self.created_with(&path, mode, DEFAULT_FILE_MODE);
             let (control, stat) = self.new_control(&mut state, path)?;
             let node = state.control(control)?.clone();
@@ -1162,18 +1162,14 @@ impl Conn {
             if mode & S_IFMT != S_IFREG && mode & S_IFMT != 0 {
                 return Err(libc::EPERM);
             }
-            self.charge(&mut state, &path)?;
-            if let Err(e) = self
-                .export
+            // The job's file system charges the new file's entry.
+            self.export
                 .fs
                 .new_open_options()
                 .write(true)
                 .create_new(true)
                 .open(&path)
-            {
-                self.uncharge(&mut state, &path);
-                return Err(fs_errno(e));
-            }
+                .map_err(fs_errno)?;
             self.created_with(&path, mode, DEFAULT_FILE_MODE);
             let (fd, stat) = self.new_control(&mut state, path)?;
             let mut w = Writer::default();
@@ -1383,8 +1379,8 @@ impl State {
         {
             n.refs = n.refs.saturating_sub(1);
             if n.refs == 0 {
-                self.inos.remove(&c.path);
-                self.bytes = self.bytes.saturating_sub(path_cost(&c.path));
+                let path = c.path.clone();
+                self.forget(&path);
             }
         }
     }
@@ -1404,15 +1400,38 @@ impl State {
     /// Forgets every inode number no FD names.
     fn sweep(&mut self) {
         let mut freed = 0;
+        let live = &mut self.live;
         self.inos.retain(|path, n| {
             if n.refs == 0 {
                 freed += path_cost(path);
+                live.remove(&n.ino);
                 false
             } else {
                 true
             }
         });
         self.bytes = self.bytes.saturating_sub(freed);
+    }
+
+    /// Forgets the inode number of `path`, if it has one.
+    fn forget(&mut self, path: &Path) {
+        if let Some(n) = self.inos.remove(path) {
+            self.live.remove(&n.ino);
+            self.bytes = self.bytes.saturating_sub(path_cost(path));
+        }
+    }
+
+    /// The number a file at `path` with none is given: the same one each
+    /// time (so a listing, a later `stat` and a `stat` after its number
+    /// was forgotten agree), unless another file holds it now, as after
+    /// `mv a b; touch a`, when it gets one of its own.
+    fn number_for(&mut self, path: &Path) -> u64 {
+        let wanted = path_number(path);
+        if !self.live.contains(&wanted) {
+            return wanted;
+        }
+        self.next_ino += 1;
+        self.next_ino - 1
     }
 
     fn control(&self, id: u64) -> Result<&Control, Errno> {
@@ -1438,24 +1457,22 @@ impl State {
         }
         let cost = path_cost(path);
         self.room(cost)?;
-        let ino = self.next_ino;
-        self.next_ino += 1;
+        let ino = self.number_for(path);
         self.inos
             .insert(path.to_path_buf(), Numbered { ino, refs: 0 });
+        self.live.insert(ino);
         self.bytes += cost;
         Ok(ino)
     }
 
     /// The inode number a directory listing gives `path`: its own when it
-    /// has one, else a fresh one, not kept (a listing names every entry of
-    /// a directory, and keeping them all would grow without end).
+    /// has one, else the one it would be given, not kept (a listing names
+    /// every entry of a directory, and keeping them all would grow without
+    /// end).
     fn listed_ino(&mut self, path: &Path) -> u64 {
         match self.inos.get(path) {
             Some(n) => n.ino,
-            None => {
-                self.next_ino += 1;
-                self.next_ino - 1
-            }
+            None => self.number_for(path),
         }
     }
 
@@ -1475,8 +1492,7 @@ impl State {
             .map(|(p, _)| p.clone())
             .collect();
         for p in under {
-            self.inos.remove(&p);
-            self.bytes = self.bytes.saturating_sub(path_cost(&p));
+            self.forget(&p);
         }
     }
 
@@ -1531,6 +1547,12 @@ fn path_cost(path: &Path) -> usize {
 /// job's file system keeps for it.
 fn entry_cost(path: &Path) -> u64 {
     ENTRY_COST + path.file_name().map_or(0, |n| n.len() as u64)
+}
+
+/// The inode number a path's file is given when nothing else holds it:
+/// from a hash of the path, kept to 48 bits and above the counter's.
+fn path_number(path: &Path) -> u64 {
+    (path_hash(path) & ((1 << 47) - 1)) | (1 << 47)
 }
 
 fn path_hash(path: &Path) -> u64 {

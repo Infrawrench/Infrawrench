@@ -13,8 +13,13 @@
 
 #[cfg(target_os = "linux")]
 pub mod cgroup;
+/// The runner's end of [`service`].
 #[cfg(target_os = "linux")]
-pub mod helper;
+pub use iwci_sandbox_spawn::client as service_client;
+/// The service that starts a Sentry for a runner that may not make user
+/// namespaces itself.
+#[cfg(target_os = "linux")]
+pub use iwci_sandbox_spawn::service;
 #[cfg(target_os = "linux")]
 pub mod lisafs;
 #[cfg(target_os = "linux")]

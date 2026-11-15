@@ -41,9 +41,12 @@ use iwci_sandbox::lisafs::{self, Export, Serving};
 use iwci_sandbox::net::{Gateway, Network};
 use iwci_sandbox::runsc::{self, Mount, Release};
 
-/// The helper that starts a sandbox for a runner that may not create its
-/// namespaces itself (`iwci_sandbox::helper`).
-pub use iwci_sandbox::helper;
+/// The service that starts a sandbox for a runner that may not create its
+/// namespaces itself (`iwci_sandbox::service`), and its protocol check.
+pub mod service {
+    pub use iwci_sandbox::service::PROTOCOL;
+    pub use iwci_sandbox::service_client::protocol;
+}
 use iwci_vfs::{DynFs, Modes};
 use shared_buffer::OwnedBuffer;
 use virtual_fs::{FileSystem, TmpFileSystem};
@@ -141,8 +144,11 @@ impl SandboxHost {
     ) -> io::Result<Self> {
         let runner = OwnedBuffer::from_file(&std::fs::File::open(runner)?)
             .map_err(|e| io::Error::other(format!("{}: {e}", runner.display())))?;
+        let cpus = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
         let jobs = if cgroups {
-            Some(Jobs::delegated()?)
+            let jobs = Jobs::delegated()?;
+            jobs.hold_cpus(Some(cpus))?;
+            Some(jobs)
         } else {
             None
         };
@@ -150,7 +156,7 @@ impl SandboxHost {
         Ok(Self {
             release: Release {
                 dir: release,
-                helper: None,
+                service: None,
             },
             jobs,
             state_root,
@@ -158,7 +164,7 @@ impl SandboxHost {
             system,
             platform: "systrap".into(),
             overhead: DEFAULT_OVERHEAD,
-            cpus: std::thread::available_parallelism().map_or(1, |n| n.get() as u32),
+            cpus,
         })
     }
 
@@ -168,18 +174,23 @@ impl SandboxHost {
         self.overhead
     }
 
-    /// Starts each sandbox through `helper` (`iwci_sandbox::helper`), which
-    /// may create the namespaces the runner may not.
-    pub fn with_helper(mut self, helper: PathBuf) -> Self {
-        self.release.helper = Some(helper);
+    /// Starts each sandbox through the service at `socket`
+    /// (`iwci_sandbox::service`), which may create the namespaces the runner
+    /// may not.
+    pub fn with_service(mut self, socket: PathBuf) -> Self {
+        self.release.service = Some(socket);
         self
     }
 
-    /// Holds each sandbox to `cpus` CPUs' time (`cpu.max`), which is also
-    /// how many it is told it has: the runner's `--cpus`.
-    pub fn with_cpus(mut self, cpus: u32) -> Self {
+    /// Holds every sandbox together to `cpus` CPUs' time (`cpu.max` on the
+    /// runner's `jobs/` cgroup, shared by equal weight), which is also how
+    /// many each is told it has: the runner's `--cpus`.
+    pub fn with_cpus(mut self, cpus: u32) -> io::Result<Self> {
         self.cpus = cpus.max(1);
-        self
+        if let Some(jobs) = &self.jobs {
+            jobs.hold_cpus(Some(self.cpus))?;
+        }
+        Ok(self)
     }
 
     pub fn with_overhead(mut self, bytes: u64) -> Self {
@@ -694,7 +705,6 @@ impl Runtime {
                     Limits {
                         memory: inv.limits.memory_bytes.saturating_add(host.overhead),
                         pids: PIDS,
-                        cpus: Some(host.cpus),
                     },
                 )
                 .map_err(setup)?,
@@ -848,7 +858,11 @@ impl Runtime {
         // What the runner saw for itself decides how the job ended: the
         // sandbox's own exit status, its cgroup and its clock. The runner
         // inside only adds what only it can know (a refused allocation, a
-        // trap, a service that failed), which is the job's to say anyway.
+        // trap, a service that failed). Those come from a file the sandbox
+        // writes, so the job could write them itself; that is fine, as each
+        // can only mark this job failed or out of memory (its exit code,
+        // timeout and billing never come from the file), which is the job's
+        // to say anyway.
         let killed_for_memory = used.out_of_memory || stopped == Some(Stop::OutOfMemory);
         let exit_code = match status {
             _ if stopped == Some(Stop::OutOfMemory) => 137,

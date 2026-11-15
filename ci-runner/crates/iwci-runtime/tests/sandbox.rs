@@ -13,7 +13,9 @@
 //! - `IWCI_TEST_IWCI`: the runner binary that runs inside, built with
 //!   `--features node`;
 //! - `IWCI_TEST_CGROUP` (optional): a delegated cgroup subtree is there;
-//! - `IWCI_TEST_CACHE` (optional): where compiled modules are kept.
+//! - `IWCI_TEST_CACHE` (optional): where compiled modules are kept;
+//! - `IWCI_TEST_SPAWN_SOCKET` (optional): the sandbox service to start
+//!   sandboxes through, as the runner hosts do.
 //!
 //! `IWCI_REQUIRE_FIXTURES` makes a missing input fail instead of skip.
 #![cfg(target_os = "linux")]
@@ -147,6 +149,12 @@ fn fixture() -> Option<Fixture> {
         std::env::var_os("IWCI_TEST_CGROUP").is_some(),
     )
     .unwrap();
+    // Through the sandbox service, as on the runner hosts, when one is
+    // given.
+    let host = match std::env::var_os("IWCI_TEST_SPAWN_SOCKET") {
+        Some(socket) => host.with_service(socket.into()),
+        None => host,
+    };
     Some(Fixture {
         runtime,
         host,
