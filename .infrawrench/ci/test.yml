@@ -65,6 +65,11 @@ on:
 # Every package's declarations are kept for the run.
 scratch: 2GiB
 
+# Another runner may take jobs this run's runner has no slot or memory for
+# (ci-runner/README.md, "Split runs"). Safe here: no job uses the shared
+# /tmp/workflow; everything is handed on through artifacts and outputs.
+split: true
+
 workspace:
   deps:
     - pnpm
