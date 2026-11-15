@@ -25,10 +25,11 @@ const libsqlWithoutAddon =
  * Packages the node-environment test files load, bundled once per run into a few files each
  * (Vite's dependency optimizer) instead of being read module by module in every test file's
  * process. Vitest starts a `node` per test file, and on Infrawrench CI's runner each module read
- * costs about a millisecond: of the 245 s the 106 files spent importing and in setup, `effect`
- * was 63 s, `@kubernetes/client-node` 50 s (some 970 files, in the 38 test files that reach
- * electron/drivers.ts through the CLI or the plugin host), `gt-react` 22 s (vitest.setup.ts, so
- * every file), `mssql` 14 s, client-core's dist 10 s, the API contract 5 s and `kafkajs` 5 s.
+ * costs about a millisecond. Alone at two workers, with per-module timing on, the 106 files
+ * spent 245 s importing and in setup: `effect` 63 s, `@kubernetes/client-node` 50 s (some 970
+ * files, in the 38 test files that reach electron/drivers.ts through the CLI or the plugin
+ * host), `gt-react` 22 s (vitest.setup.ts, so every file), `mssql` 14 s, client-core's dist
+ * 10 s, the API contract 5 s and `kafkajs` 5 s.
  *
  * server-core/vitest.prebundle.ts has the rules a list like this follows (every entry point the
  * code imports, so no module exists twice; no CommonJS package a test mocks; Node's built-ins
@@ -47,6 +48,12 @@ const libsqlWithoutAddon =
  *   are 1 to 3 s of a run each. `@infrawrench/ui` is left out because eight files mock it and
  *   only four load its barrel.
  * - `a > b` names `b` by way of `a`, for a driver's client this package does not list itself.
+ * - No source maps for the bundles (`sourcemap: false`). Writing them was 6 of the 13 s the
+ *   bundling took on the runner (esbuild's WebAssembly build, one thread), and the test
+ *   processes read them too: the suite alone at two workers took 87 s with them and 72 s
+ *   without. A stack frame inside one of these packages then names the bundle
+ *   (`deps_ssr/effect.js`) with its function, rather than the package's own file; frames in
+ *   this package's code are unchanged.
  *
  * A `vi.mock` of `@infrawrench/plugin-base` or client-core no longer reaches another listed
  * package's own imports of it (client-core's of plugin-base, the API contract's of client-core),
@@ -108,7 +115,7 @@ export default defineConfig({
           force: true,
           include: prebundled,
           exclude: [...builtinModules],
-          esbuildOptions: { plugins: [npmPackagesNamedLikeBuiltins] },
+          esbuildOptions: { plugins: [npmPackagesNamedLikeBuiltins], sourcemap: false },
         },
       },
     },
