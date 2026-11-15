@@ -285,9 +285,10 @@ jobs:
       - name: Publish and run it through iwci
         run: SKIP_BUILD=1 bash builtins/test.sh bash-node
 
-      # One `node` that needs most of the V8 heap space after two dozen
-      # others ended, in a runner of its own (#1134).
-      - name: V8 heap room after other nodes end
+      # Two dozen `node`s at once, one that needs 3 GB after they ended,
+      # and two jobs holding 2.4 GB of heap each at the same time, in a
+      # runner of its own (#1134, #1158).
+      - name: Many V8 heaps at once, and large ones
         run: SKIP_BUILD=1 bash builtins/test.sh bash-node-pool
 
       # A Node server as a service (`services:`), V8's engine flags being

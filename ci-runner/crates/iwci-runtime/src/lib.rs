@@ -90,14 +90,17 @@ pub fn set_node_worker_threads(cpus: usize) {
 ///   again as soon as a major GC ends while the old generation has less
 ///   room under its limit than the young generation's capacity, and caps
 ///   that limit halfway between the heap's size and its maximum. With the
-///   64 MiB semi-spaces the bridge gives a budgeted isolate by default
-///   (`DEFAULT_YOUNG_GENERATION`), a heap past half of its 256 MiB maximum
+///   64 MiB semi-spaces the bridge gave a budgeted isolate by default
+///   then, a heap past half of its 256 MiB maximum
 ///   stayed in that state for good, below the 80% at which V8 asks the
 ///   near-heap-limit callback for more: one Vitest process ran 12,600
 ///   mark-compacts in 100 seconds, each freeing nothing, and major GC took
 ///   60% of the job's CPU. At 16 MiB the state starts past 80%, where the
-///   callback grows the heap. The flag caps every isolate's semi-space,
-///   whatever its constraints ask.
+///   callback grows the heap. The flag sets every isolate's largest
+///   semi-space, whatever its constraints ask, so a young generation is
+///   at most three of them, 48 MiB, which is what the bridge charges a
+///   job's `memory:` for one (`DEFAULT_YOUNG_GENERATION`, #1158; a test
+///   below holds the two together).
 #[cfg(feature = "node")]
 const V8_FLAGS: &str = "--js-source-phase-imports --harmony-import-attributes \
                         --no-memory-protection-keys --no-global-heap-limit-counts-external-memory \
@@ -142,8 +145,11 @@ pub struct V8Losses {
     /// `--cpus` ([`set_node_worker_threads`]), so each one leaves every
     /// later Node job's garbage collection and compilation fewer threads.
     pub parked_worker_threads: u64,
-    /// Bytes of the V8 heap space ([`V8HeapSpace`]) the abandoned isolates
-    /// hold, which no later job can have (#1063).
+    /// The most the abandoned isolates' heaps hold, in bytes: what each
+    /// one's job was charged for it, of its `memory:`, when it was lost.
+    /// The heaps stay mapped after their jobs end and give their `memory:`
+    /// back, so from then on this is the server's own memory, outside the
+    /// job budget (#1158).
     pub lost_heap: u64,
 }
 
@@ -156,50 +162,11 @@ pub fn v8_losses() -> V8Losses {
             lost_isolates: losses.lost_isolates,
             parked_threads: losses.parked_threads,
             parked_worker_threads: losses.parked_worker_threads,
-            lost_heap: wasmer_napi::heap_space().lost,
+            lost_heap: wasmer_napi::lost_heap(),
         }
     }
     #[cfg(not(feature = "node"))]
     V8Losses::default()
-}
-
-/// The V8 heap space every Node job of the process shares (#1063): the
-/// bridge's V8 puts every isolate's heap in one 4 GiB pointer-compression
-/// cage, so the heaps of all jobs together are held to an account of it as
-/// well as each job's to its `memory:`. A heap that does not fit waits for
-/// others, the largest heap first, and is refused or stopped only after two
-/// minutes in which no heap gave room back, or at once, if it is the
-/// smallest, when every live heap waits to grow.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct V8HeapSpace {
-    /// What the isolates of the process may use together; 0 without the
-    /// `node` feature.
-    pub total: u64,
-    /// What they use now, as the account has it: each heap's committed
-    /// memory as it last reported and the growth it was last promised, and
-    /// the heaps of isolates lost to an out-of-memory, which stay until the
-    /// process ends.
-    pub used: u64,
-    /// Times an isolate waited for room, and of those, times it waited in
-    /// vain and its job was refused a `node` or stopped.
-    pub waits: u64,
-    pub refusals: u64,
-}
-
-/// See [`V8HeapSpace`].
-pub fn v8_heap_space() -> V8HeapSpace {
-    #[cfg(feature = "node")]
-    {
-        let space = wasmer_napi::heap_space();
-        V8HeapSpace {
-            total: space.capacity,
-            used: space.charged,
-            waits: space.waits,
-            refusals: space.refusals,
-        }
-    }
-    #[cfg(not(feature = "node"))]
-    V8HeapSpace::default()
 }
 
 /// What each of stdout and stderr keeps before truncating.

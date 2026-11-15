@@ -144,13 +144,16 @@ const RESTART_GRACE: Duration = Duration::from_secs(10 * 60);
 
 /// Why a server whose V8 has lost `losses` should restart, if it should:
 /// any V8 worker thread lost, `restart_after` isolates (`None`: never), or
-/// lost isolates holding a quarter of the V8 heap space every Node job
-/// shares, `heap_space` bytes (#1063): past that, the jobs' heaps wait on
-/// room that never comes back.
+/// lost isolates whose heaps hold a quarter of `reserve`, the memory the
+/// server keeps outside the job budget (`--memory-reserve`; `None` when it
+/// has none to measure against). A lost heap stays mapped after its job
+/// has given its `memory:` back, so it is the server's own memory from then
+/// on, and the reserve is all the host has for that (#1158). With no
+/// reserve at all, the first lost heap is already more than it has.
 fn restart_reason(
     losses: &iwci_runtime::V8Losses,
     restart_after: Option<u64>,
-    heap_space: u64,
+    reserve: Option<u64>,
 ) -> Option<String> {
     let after = restart_after?;
     if losses.parked_worker_threads != 0 {
@@ -159,12 +162,15 @@ fn restart_reason(
             count(losses.parked_worker_threads, "V8 worker thread")
         ));
     }
-    if heap_space != 0 && losses.lost_heap.saturating_mul(4) >= heap_space {
+    if let Some(reserve) = reserve
+        && losses.lost_heap != 0
+        && losses.lost_heap.saturating_mul(4) >= reserve
+    {
         return Some(format!(
-            "out-of-memory lost {} holding {} MiB of the {} MiB V8 heap space every Node job shares",
+            "out-of-memory lost {} whose heaps hold up to {} MiB, of the {} MiB the runner keeps outside the job budget (--memory-reserve)",
             count(losses.lost_isolates, "V8 isolate"),
             losses.lost_heap >> 20,
-            heap_space >> 20
+            reserve >> 20
         ));
     }
     (losses.lost_isolates >= after).then(|| {
@@ -312,7 +318,8 @@ impl Server {
     /// it parks a thread for good and abandons the isolate, so with
     /// `restart_after` set the server drains and `exec`s itself, as an update
     /// does, once that has cost one of V8's worker threads (the pool every
-    /// Node job shares) or `restart_after` isolates.
+    /// Node job shares), `restart_after` isolates, or heaps holding a
+    /// quarter of the memory reserve ([`restart_reason`]).
     pub fn watch_v8_losses(self: &Arc<Self>, restart_after: Option<u64>) {
         let server = self.clone();
         std::thread::Builder::new()
@@ -327,13 +334,15 @@ impl Server {
                     }
                     seen = losses;
                     eprintln!(
-                        "iwci serve: V8 ran out of memory where it cannot recover, kept to its jobs; since this process started that has cost {} and {} parked for good ({} of them V8 worker threads)",
+                        "iwci serve: V8 ran out of memory where it cannot recover, kept to its jobs; since this process started that has cost {} holding up to {} MiB and {} parked for good ({} of them V8 worker threads)",
                         count(losses.lost_isolates, "isolate"),
+                        losses.lost_heap >> 20,
                         count(losses.parked_threads, "thread"),
                         losses.parked_worker_threads
                     );
-                    let heap_space = iwci_runtime::v8_heap_space().total;
-                    if let Some(reason) = restart_reason(&losses, restart_after, heap_space) {
+                    if let Some(reason) =
+                        restart_reason(&losses, restart_after, server.memory_reserve)
+                    {
                         server.drain_to_restart(&reason, RESTART_GRACE);
                         let exe = std::env::current_exe().map_err(|e| e.to_string());
                         eprintln!("iwci serve: restarting: {reason}");
@@ -506,33 +515,44 @@ mod tests {
             parked_worker_threads,
             lost_heap: lost_isolates * (100 << 20),
         };
-        const SPACE: u64 = 3584 << 20;
-        assert_eq!(restart_reason(&losses(0, 0), Some(8), SPACE), None);
+        // `--memory-reserve`'s default.
+        const RESERVE: Option<u64> = Some(5 << 30);
+        assert_eq!(restart_reason(&losses(0, 0), Some(8), RESERVE), None);
         // A job's own thread, parked: one isolate, below the threshold.
-        assert_eq!(restart_reason(&losses(7, 0), Some(8), SPACE), None);
+        assert_eq!(restart_reason(&losses(7, 0), Some(8), RESERVE), None);
         assert_eq!(
-            restart_reason(&losses(8, 0), Some(8), SPACE).as_deref(),
+            restart_reason(&losses(8, 0), Some(8), RESERVE).as_deref(),
             Some("out-of-memory lost 8 V8 isolates (--restart-after-lost-isolates 8)")
         );
         // One of V8's worker threads is gone for every job: at once.
         assert_eq!(
-            restart_reason(&losses(1, 1), Some(8), SPACE).as_deref(),
+            restart_reason(&losses(1, 1), Some(8), RESERVE).as_deref(),
             Some("out-of-memory parked 1 V8 worker thread, from the pool every job shares")
         );
-        // Fewer isolates, but holding a quarter of the shared heap (#1063).
+        // Fewer isolates, but their heaps hold a quarter of the memory the
+        // server keeps outside the job budget (#1158).
         let big = iwci_runtime::V8Losses {
-            lost_heap: 900 << 20,
+            lost_heap: 1280 << 20,
             ..losses(2, 0)
         };
         assert_eq!(
-            restart_reason(&big, Some(8), SPACE).as_deref(),
+            restart_reason(&big, Some(8), RESERVE).as_deref(),
             Some(
-                "out-of-memory lost 2 V8 isolates holding 900 MiB of the 3584 MiB V8 heap space every Node job shares"
+                "out-of-memory lost 2 V8 isolates whose heaps hold up to 1280 MiB, of the 5120 MiB the runner keeps outside the job budget (--memory-reserve)"
             )
         );
+        let under = iwci_runtime::V8Losses {
+            lost_heap: 1279 << 20,
+            ..losses(2, 0)
+        };
+        assert_eq!(restart_reason(&under, Some(8), RESERVE), None);
+        // No reserve to hold them in: the first lost heap. A server that
+        // was told none (`iwci run` never watches) goes by the count.
+        assert!(restart_reason(&losses(1, 0), Some(8), Some(0)).is_some());
+        assert_eq!(restart_reason(&losses(7, 0), Some(8), None), None);
         // `--restart-after-lost-isolates 0`: never.
-        assert_eq!(restart_reason(&losses(100, 3), None, SPACE), None);
-        assert_eq!(restart_reason(&big, None, SPACE), None);
+        assert_eq!(restart_reason(&losses(100, 3), None, RESERVE), None);
+        assert_eq!(restart_reason(&big, None, RESERVE), None);
     }
 
     #[test]
