@@ -2296,7 +2296,7 @@ pub fn run<T: Tools>(
                     // job waits for its entry instead, giving back the
                     // memory (and a helper's slot) it was about to start
                     // with. Otherwise this run's marker says it computes it.
-                    let marker = match inflight::begin(options, &lookup) {
+                    let marker = match inflight::begin(options, &mut lookup) {
                         inflight::Begun::Run(marker) => marker,
                         inflight::Begun::Wait(holder) => {
                             drop(slot);

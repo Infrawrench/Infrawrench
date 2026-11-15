@@ -230,7 +230,7 @@ pub(super) enum Begun<'a> {
 /// another run does already and the job may wait for it. A job that has
 /// waited once, or whose run skips the task cache, runs whatever; a store
 /// that does not answer is a job that runs without a marker.
-pub(super) fn begin<'a>(options: &'a Options, lookup: &Lookup) -> Begun<'a> {
+pub(super) fn begin<'a>(options: &'a Options, lookup: &mut Lookup) -> Begun<'a> {
     let (Some(inflight), Some(key)) = (options.inflight.as_deref(), lookup.key.as_deref()) else {
         return Begun::Run(None);
     };
@@ -241,7 +241,15 @@ pub(super) fn begin<'a>(options: &'a Options, lookup: &Lookup) -> Begun<'a> {
             left: false,
         })),
         Ok(Some(holder)) if !options.skip_task_cache && !lookup.waited => Begun::Wait(holder),
-        Ok(Some(_)) | Err(_) => Begun::Run(None),
+        Ok(Some(_)) => Begun::Run(None),
+        Err(e) => {
+            let line = format!(
+                "task cache `{}`: could not say it runs here ({e}); no other run waits for it",
+                short_key(key)
+            );
+            lookup.lines.push(line);
+            Begun::Run(None)
+        }
     }
 }
 
