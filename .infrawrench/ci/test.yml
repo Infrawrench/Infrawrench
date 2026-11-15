@@ -636,7 +636,10 @@ jobs:
   # workers, 35 s at four, 32 s at six, all within this `memory:`. Migrating
   # takes 2 s. The server is still one session, which every worker's
   # connection shares, so helpers/fake-postgres.ts names each file's
-  # statements apart.
+  # statements apart. Its config bundles what the files import, with the list
+  # server-core's own tests use (vitest.prebundle.ts): in a run of everything
+  # a plugin change reaches, 142 s became 86 s on ci-1 and 42 s became 29 s
+  # on ci-2. The ClickHouse shadow run does the same.
   postgres-shadow:
     name: Postgres shadow tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }

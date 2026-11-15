@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "vitest/config";
+import { prebundle, SERVER_CORE_PREBUNDLED } from "./vitest.prebundle";
 
 /*
  * Shadow run of the existing mocked ClickHouse suites (`pnpm
@@ -12,6 +13,10 @@ import { defineConfig } from "vitest/config";
  *
  * Serial and with long limits for the same reason as vitest.db.config.ts: every
  * statement now includes a server round trip.
+ *
+ * The packages nearly every file imports are bundled once per run, with the
+ * list vitest.config.ts uses (vitest.prebundle.ts), as in the Postgres shadow
+ * run: these are that config's files, run a second time.
  */
 const testsDir = "src/__tests__";
 const include = readdirSync(testsDir)
@@ -22,6 +27,7 @@ const include = readdirSync(testsDir)
 export default defineConfig({
   test: {
     environment: "node",
+    deps: prebundle([...SERVER_CORE_PREBUNDLED, "@infrawrench/plugin-base > effect"]),
     include,
     env: { INFRAWRENCH_SHADOW_CLICKHOUSE: "1" },
     globalSetup: ["src/__tests__/helpers/shadow-clickhouse-setup.ts"],

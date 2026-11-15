@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "vitest/config";
+import { prebundle, SERVER_CORE_PREBUNDLED } from "./vitest.prebundle";
 
 /*
  * Shadow run of the mocked Postgres suites (`pnpm test:postgres:shadow`): the
@@ -14,6 +15,11 @@ import { defineConfig } from "vitest/config";
  * Files run in parallel: nothing is executed, so they share no rows, and the
  * helper names each file's statements apart for a server whose connections
  * share one session (Infrawrench CI's pglite-server).
+ *
+ * The packages nearly every file imports are bundled once per run, with the
+ * list vitest.config.ts uses (vitest.prebundle.ts): these are that config's
+ * files, run a second time, and most of this run was each file's process
+ * loading the same modules again.
  */
 const testsDir = "src/__tests__";
 const include = readdirSync(testsDir)
@@ -33,6 +39,7 @@ export default defineConfig({
   resolve: { alias: libsqlWithoutAddon },
   test: {
     environment: "node",
+    deps: prebundle([...SERVER_CORE_PREBUNDLED, "@infrawrench/plugin-base > effect"]),
     include,
     env: { INFRAWRENCH_SHADOW_POSTGRES: "1" },
     globalSetup: ["src/__tests__/helpers/shadow-postgres-setup.ts"],
