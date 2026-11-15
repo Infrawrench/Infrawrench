@@ -530,10 +530,43 @@ Names are the connections' names in Infrawrench. To lend one, open it under **Ma
 - **Vercel:** the connection's access token as `VERCEL_TOKEN`, which the Vercel CLI reads, so `vercel deploy` needs no `--token`. Say which project to deploy as usual: a committed `.vercel/project.json`, `VERCEL_ORG_ID` with `VERCEL_PROJECT_ID`, or `--scope`.
 - **Cloudflare:** the connection's API token as `CLOUDFLARE_API_TOKEN` and its account as `CLOUDFLARE_ACCOUNT_ID`, which Wrangler and Cloudflare's `cf` read. The token has the scopes it was created with, so give the connection the Workers and Pages scopes a deploy needs.
 - **Neon:** the connection's API key as `NEON_API_KEY`, which the Neon CLI reads, for a job that creates a branch per pull request and deletes it after.
+- **PostgreSQL:** the connection string as `DATABASE_URL`, its parts as `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` and `PGSSLMODE`, so `psql` connects with no arguments, and a section named after the connection in `~/.pg_service.conf`, so a job lent two picks one with `psql service=<name>`. A CA certificate the connection holds is written beside it and named by `PGSSLROOTCERT`.
+- **MySQL:** the connection string as `DATABASE_URL`, and an option group named after the connection in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects, so `mysql` connects with no arguments (`mysql --defaults-group-suffix=_<name>` picks another when a job is lent two).
+- **Redis:** the URL as `REDIS_URL` (`redis-cli -u "$REDIS_URL"`) and its password as `REDISCLI_AUTH`, which `redis-cli` reads.
+- **MongoDB:** the connection string as `MONGODB_URI` (`mongosh "$MONGODB_URI"`).
 
-These three lend the connection's own token or key, not a short-lived one, and it is masked in the job's log like a secret. A job installs their CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
+Two databases lent to one job share the plain variable names (`DATABASE_URL`, `PGHOST`, ...), and the one named last wins; the per-connection files above tell them apart.
+
+Vercel, Cloudflare and Neon lend the connection's own token or key, not a short-lived one, and the databases lend the password their connection string holds; each is masked in the job's log like a secret. A job installs the CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
 
 <insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
+
+#### A cluster or database in a cloud account
+
+A managed cluster (GKE, EKS, AKS and the other providers' Kubernetes services) or a managed database (Cloud SQL, RDS, DigitalOcean's databases and so on) can be lent as if it were a Kubernetes, PostgreSQL, MySQL, Redis or MongoDB connection of its own, without connecting it separately. Grant it under **Resources jobs may read** and choose **As a Kubernetes connection** (or the database's engine) in **Lend it as a connection**; the choices are the same as the resource's own tabs in Infrawrench, so a Cloud SQL instance running MySQL is offered as MySQL only. Jobs then name it in `connections:` by its name in pipelines, exactly like a connection:
+
+```yaml
+jobs:
+  deploy:
+    tools: [builtin:kubectl@1.37]
+    connections: [{ name: gke-prod, namespace: web }, orders-db]
+    run: |
+      kubectl rollout status deploy/web
+      psql -c 'select 1'
+```
+
+It is lent what the matching connection would be, for the repositories and branches the grant names, read fresh for every run through the cloud connection that holds it. A cluster's kubeconfig carries the token the cloud gives for it, never a credential plugin: a Google access token for the cloud connection's service account (it lasts up to an hour, and reaches whatever that account may do in Google Cloud), an EKS token presigned from the AWS connection (EKS accepts it for 15 minutes from when the run starts, so a job that waits longer behind others gets a refused token), or for AKS the cluster's user credential, which is long-lived unless the cluster signs in through Entra ID, when it is an Entra token for the connection's service principal. A name in pipelines that is also a connection's name is refused rather than guessed: rename one.
+
+To run cloud jobs on a granted cluster as well, tick **Kubernetes Job** under **Run cloud jobs on it**. Saving checks, through the cluster, that it can, and refuses the grant with what is missing when it cannot. A job then names it as its connection:
+
+```yaml
+jobs:
+  migrate:
+    cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }
+    run: ./migrate.sh
+```
+
+<insert [The grant form for the GKE cluster "prod-cluster": no outputs ticked, Lend it as a connection set to "As a Kubernetes connection" with its kubeconfig description and "connections: [prod-cluster]", Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, and the branch pattern "main"] here>
 
 ### SSH keys
 
@@ -560,7 +593,7 @@ jobs:
 
 ### When a job is refused
 
-A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
+A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
 
 ## Caches
 

@@ -153,6 +153,33 @@ export interface CiConnectionAccess {
   updatedAt: string | null;
 }
 
+/**
+ * What a granted resource is lent as: a connection of a plugin its type has a
+ * peer integration with (a managed cluster as `kubernetes`, a managed
+ * database as `postgres`). A pipeline names it in `connections:` by the
+ * grant's CI name, and `cloud:` jobs of the chosen kinds may run on it.
+ */
+export interface CiResourceGrantPeer {
+  pluginId: string;
+  pluginName: string;
+  /** Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it; empty for none. */
+  jobKinds: CiExecutorKindId[];
+  maxConcurrentJobs: number;
+  maxJobMinutes: number;
+  /** The last permission check per kind, made when the kind was turned on. */
+  preflight: Record<string, CiPreflightRecord>;
+}
+
+/** A peer a grant's lending can be set to, as `CiResourceGrantPeer` without what the peer offers. */
+export interface CiResourceGrantPeerInput {
+  pluginId: string;
+  jobKinds: CiExecutorKindId[];
+  maxConcurrentJobs: number;
+  maxJobMinutes: number;
+}
+
+export const CI_DEFAULT_PEER_LIMITS = { maxConcurrentJobs: 2, maxJobMinutes: 60 } as const;
+
 /** One resource granted to CI. */
 export interface CiResourceGrant {
   id: string;
@@ -168,7 +195,24 @@ export interface CiResourceGrant {
   secretVersion: string | null;
   repos: string[] | null;
   branchPattern: string | null;
+  /** Null when the grant lends only its outputs. Absent from servers before peers could be lent. */
+  peer?: CiResourceGrantPeer | null;
   createdAt: string;
+}
+
+/** A plugin a resource can be lent to CI as, through its type's peer integration. */
+export interface CiPeerOption {
+  pluginId: string;
+  pluginName: string;
+  /** What a job is lent; null when the plugin cannot lend (it may still run jobs). */
+  credential: { description: string; shortLived: boolean; namespaces: boolean } | null;
+  /** The cloud jobs it can run; null when it runs none. */
+  executor: {
+    kinds: CiExecutorKindInfo[];
+    helpLink: { label: string; url: string } | null;
+  } | null;
+  /** Why it cannot be reached from outside its network, when its provider says so. */
+  unreachable: string | null;
 }
 
 /** What a resource can be granted: its outputs and, for a secret, its versions. */
@@ -176,6 +220,8 @@ export interface CiResourceOutputs {
   outputs: Array<{ key: string; label: string; sensitive: boolean }>;
   /** Null when the resource is not a secret with versions. */
   secretVersions: Array<{ id: string; state: string; createdAt: string | null }> | null;
+  /** What it can be lent as. Absent from servers before peers could be lent. */
+  peers?: CiPeerOption[];
 }
 
 /** An SSH key lent to CI by its owner. */

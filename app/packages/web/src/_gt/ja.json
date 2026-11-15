@@ -23523,5 +23523,22 @@
   "1cc14327ae561b9e": "{branch} で手動で開始",
   "c460701f385ec012": "すべての入力を既定値のまま開始しました。",
   "6dd181bf9d85c222": "{who} が開始",
-  "29eed7cb23c6bdc3": "トリガー: {branch} での手動実行"
+  "29eed7cb23c6bdc3": "トリガー: {branch} での手動実行",
+  "9dfc05fdb1254ad6": "接続として貸し出す",
+  "ef7fabd5638c12cf": "接続として貸し出さない",
+  "f14f1f0ee97992db": "{plugin} 接続として",
+  "ca9d89b426cc2926": "{plugin} の接続はジョブに貸し出せませんが、ジョブを実行することはできます。",
+  "913da04659125cb5": "クラウドジョブを実行する",
+  "5c7caa2b980e6acb": "各種類は保存時にこれを通して確認されます。",
+  "2a653ef1e338003a": "{plugin} として貸し出し中",
+  "1f8ff7f76e3c9a8f": "接続のサービスアカウントのアクセストークン（キーではありません）: gcloud が読み取り（CLOUDSDK_AUTH_ACCESS_TOKEN_FILE）、Terraform も読み取ります（GOOGLE_OAUTH_ACCESS_TOKEN）。CLOUDSDK_CORE_PROJECT と GOOGLE_CLOUD_PROJECT がプロジェクトを指定します。実行がディスパッチされてから 1 時間、または組織がより長いトークンを許可している場合は実行が許される時間だけ有効です。",
+  "15f581a2bf88f22f": "接続の IAM ユーザーの STS セッション認証情報。実行ごとに発行され、実行とともに失効します: AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY、AWS_SESSION_TOKEN、AWS_REGION と、~/.aws 内の接続名のプロファイル。セッションは IAM を呼び出せず、STS も AssumeRole と GetCallerIdentity 以外は呼び出せません。",
+  "5231a304c775dace": "接続文字列を DATABASE_URL として、また ~/.my.cnf に接続名のオプショングループを書き込み、MYSQL_GROUP_SUFFIX がそれを選択するので、mysql は引数なしで接続できます。",
+  "96de985555a0dd91": "接続文字列を DATABASE_URL として、その各部分を psql 用に PGHOST、PGPORT、PGDATABASE、PGUSER、PGPASSWORD として、さらに ~/.pg_service.conf に接続名のセクションを書き込みます。psql は service= オプションでそれを選択します。",
+  "aedb1a6c3aafb052": "接続文字列を MONGODB_URI として渡します（mongosh \"$MONGODB_URI\"）。",
+  "622280e64eeaf0c6": "接続 URL を REDIS_URL として（redis-cli -u \"$REDIS_URL\"）、そのパスワードを redis-cli が読み取る REDISCLI_AUTH として渡します。",
+  "83f3d0021cf2b4bd": "接続のアクセストークンを Vercel CLI が読み取る VERCEL_TOKEN として渡します。ジョブはいつもどおりプロジェクトを指定します（.vercel/project.json、VERCEL_ORG_ID と VERCEL_PROJECT_ID、または --scope）。",
+  "ed3c1f1c1955e73a": "接続の API キーを Neon CLI が読み取る NEON_API_KEY として渡し、ジョブのためにブランチを作成・削除できるようにします。",
+  "cd0e869c8f3ad1cf": "接続の API トークンを CLOUDFLARE_API_TOKEN として、アカウントを CLOUDFLARE_ACCOUNT_ID として渡します。Wrangler と Cloudflare の CLI がこれらを読み取ります。",
+  "03f9ee3453772ecd": "接続のサービスプリンシパル: Azure SDK が読み取る AZURE_CLIENT_ID、AZURE_TENANT_ID、AZURE_CLIENT_SECRET、AZURE_SUBSCRIPTION_ID と、Terraform 用の同じ値の ARM_*。これは保存されているクライアントシークレットで、短期間のものではありません。"
 }

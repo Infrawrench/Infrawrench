@@ -31,6 +31,7 @@ mongodb://user:password@host:27017/dbname
 
 ## Tips and limits
 
+- **CI jobs:** an admin can lend the connection to [Infrawrench CI](../features/ci.md#connections) jobs as `MONGODB_URI`. A managed MongoDB in a cloud account can be lent the same way without connecting it here.
 - For an Atlas organization, add the [MongoDB Atlas](./mongodb-atlas.md) plugin instead. It lists every cluster, tracks Atlas spend, and opens each cluster's data here from its **MongoDB** tab, so you don't have to paste a connection string.
 - Aggregation pipelines aren't in the UI yet. Use the shell or Compass.
 - Atlas SRV URLs need DNS, which some firewalled desktop setups block. If so, use the non-SRV host list instead.

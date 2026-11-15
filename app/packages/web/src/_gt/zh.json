@@ -23528,5 +23528,22 @@
   "1cc14327ae561b9e": "在 {branch} 上手动启动",
   "c460701f385ec012": "所有输入均使用默认值启动。",
   "6dd181bf9d85c222": "由 {who} 启动",
-  "29eed7cb23c6bdc3": "触发：在 {branch} 上手动运行"
+  "29eed7cb23c6bdc3": "触发：在 {branch} 上手动运行",
+  "9dfc05fdb1254ad6": "作为连接借出",
+  "ef7fabd5638c12cf": "不作为连接借出",
+  "f14f1f0ee97992db": "作为 {plugin} 连接",
+  "ca9d89b426cc2926": "{plugin} 连接无法借给作业，但作业可以在其上运行。",
+  "913da04659125cb5": "在其上运行云作业",
+  "5c7caa2b980e6acb": "保存时会通过它检查每种类型。",
+  "2a653ef1e338003a": "作为 {plugin} 借出",
+  "1f8ff7f76e3c9a8f": "连接的服务账号的访问令牌，绝不是其密钥：gcloud 会读取它（CLOUDSDK_AUTH_ACCESS_TOKEN_FILE），Terraform 也会（GOOGLE_OAUTH_ACCESS_TOKEN），CLOUDSDK_CORE_PROJECT 和 GOOGLE_CLOUD_PROJECT 指定项目。它从运行被分派起有效一小时；在组织允许更长令牌的情况下，有效期为运行可持续的时长。",
+  "15f581a2bf88f22f": "连接的 IAM 用户的 STS 会话凭证，为每次运行签发并随运行过期：AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY、AWS_SESSION_TOKEN 和 AWS_REGION，以及 ~/.aws 中以连接命名的配置文件。会话不能调用 IAM，对 STS 也只能调用 AssumeRole 和 GetCallerIdentity。",
+  "5231a304c775dace": "连接字符串作为 DATABASE_URL，并在 ~/.my.cnf 中写入以它命名的选项组，由 MYSQL_GROUP_SUFFIX 选择，因此 mysql 无需参数即可连接。",
+  "96de985555a0dd91": "连接字符串作为 DATABASE_URL，其各部分作为供 psql 使用的 PGHOST、PGPORT、PGDATABASE、PGUSER 和 PGPASSWORD，并在 ~/.pg_service.conf 中写入以它命名的段落，psql 可通过 service= 选项选择。",
+  "aedb1a6c3aafb052": "连接字符串作为 MONGODB_URI（mongosh \"$MONGODB_URI\"）。",
+  "622280e64eeaf0c6": "连接 URL 作为 REDIS_URL（redis-cli -u \"$REDIS_URL\"），其密码作为 redis-cli 读取的 REDISCLI_AUTH。",
+  "83f3d0021cf2b4bd": "连接的访问令牌作为 Vercel CLI 读取的 VERCEL_TOKEN。作业照常指定其项目（.vercel/project.json、VERCEL_ORG_ID 与 VERCEL_PROJECT_ID，或 --scope）。",
+  "ed3c1f1c1955e73a": "连接的 API 密钥作为 Neon CLI 读取的 NEON_API_KEY，用于为作业创建和删除分支。",
+  "cd0e869c8f3ad1cf": "连接的 API 令牌作为 CLOUDFLARE_API_TOKEN，其账户作为 CLOUDFLARE_ACCOUNT_ID，Wrangler 和 Cloudflare 的 CLI 会读取它们。",
+  "03f9ee3453772ecd": "连接的服务主体：Azure SDK 读取的 AZURE_CLIENT_ID、AZURE_TENANT_ID、AZURE_CLIENT_SECRET 和 AZURE_SUBSCRIPTION_ID，以及供 Terraform 使用的相同 ARM_* 值。这是存储的客户端密钥，而不是短期密钥。"
 }

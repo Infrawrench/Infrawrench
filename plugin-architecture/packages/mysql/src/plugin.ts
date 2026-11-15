@@ -1,4 +1,5 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { MYSQL_CI_CREDENTIAL } from "./ci-credential.js";
 import type {
   PluginManifest,
   ResourceTypeDefinition,
@@ -67,6 +68,9 @@ export const manifest = {
     credentialKey: "connectionString",
     caCertKey: "caCert",
   },
+  // Lend the connection to a CI job (`connections:`), or a managed database
+  // granted as this plugin's peer. See `ci-credential.ts`.
+  ciCredential: MYSQL_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

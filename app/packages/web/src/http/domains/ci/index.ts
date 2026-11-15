@@ -11,6 +11,7 @@ import {
   CiAccountSchema,
   CiApi,
   CiConnectionAccessSchema,
+  CiResourceGrantInputSchema,
   CiResourceGrantSchema,
   CiResourceOutputsSchema,
   CiSshKeyLendingSchema,
@@ -34,6 +35,7 @@ import {
   ciAccessOverview,
   createGrant,
   deleteGrant,
+  type GrantInput,
   preflightConnection,
   resourceOutputs,
   revokeSshKeyLending,
@@ -87,14 +89,24 @@ const grantAudit = (grant: {
   secretVersion: string | null;
   repos: readonly string[] | null;
   branchPattern: string | null;
+  peer?: { pluginId: string; jobKinds: readonly string[] } | null;
 }) => ({
   ciName: grant.ciName,
   resourceId: grant.resourceId,
   resourceName: grant.resourceName,
   outputs: grant.outputs,
   secretVersion: grant.secretVersion,
+  peer: grant.peer ? { pluginId: grant.peer.pluginId, jobKinds: grant.peer.jobKinds } : null,
   repos: grant.repos,
   branchPattern: grant.branchPattern,
+});
+
+/** A grant as the form sent it, as `createGrant` and `updateGrant` take it. */
+const grantInput = ({ peer, ...payload }: typeof CiResourceGrantInputSchema.Type): GrantInput => ({
+  ...payload,
+  outputs: [...payload.outputs],
+  repos: payload.repos ? [...payload.repos] : null,
+  ...(peer !== undefined ? { peer: peer ? { ...peer, jobKinds: [...peer.jobKinds] } : null } : {}),
 });
 
 /** A values scope as sent: an installation id, and a repository or none. */
@@ -532,16 +544,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
       Effect.gen(function* () {
         const { organizationId, session } = yield* requireCi;
         const grant = yield* legacyTry(
-          () =>
-            createGrant(
-              organizationId,
-              {
-                ...payload,
-                outputs: [...payload.outputs],
-                repos: payload.repos ? [...payload.repos] : null,
-              },
-              session.userId ?? null,
-            ),
+          () => createGrant(organizationId, grantInput(payload), session.userId ?? null),
           refusal,
         );
         yield* fireAndForget(() =>
@@ -565,11 +568,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
             updateGrant(
               organizationId,
               params.grantId,
-              {
-                ...payload,
-                outputs: [...payload.outputs],
-                repos: payload.repos ? [...payload.repos] : null,
-              },
+              grantInput(payload),
               session.userId ?? null,
             ),
           refusal,

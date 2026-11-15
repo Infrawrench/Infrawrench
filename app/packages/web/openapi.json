@@ -62602,6 +62602,17 @@
             ],
             "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
           },
+          "peer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CiResourceGrantPeer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the resource is lent as, or null when only its outputs are granted."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -62621,6 +62632,104 @@
           "repos",
           "branchPattern",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrantPeer": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string",
+            "description": "The plugin the resource is lent as, one its type has a peer integration with (a managed cluster as `kubernetes`). Pipelines name it in `connections:` by the grant's CI name."
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "jobKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vm",
+                "container",
+                "build",
+                "host",
+                "cluster"
+              ]
+            },
+            "description": "Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it. Empty for none."
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "maxJobMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "preflight": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CiPreflightRecord"
+            }
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "jobKinds",
+          "maxConcurrentJobs",
+          "maxJobMinutes",
+          "preflight"
+        ],
+        "additionalProperties": false
+      },
+      "CiPreflightRecord": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "permission": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "permission",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "region": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ok",
+          "missing",
+          "problems",
+          "checkedAt"
         ],
         "additionalProperties": false
       },
@@ -62675,6 +62784,17 @@
               }
             ],
             "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          },
+          "peer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CiResourceGrantPeerInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lend the resource as a connection of a peer plugin (`connections: [<ciName>]`), and run cloud jobs on it. Null: not lent as a peer. Left out of an update: unchanged."
           }
         },
         "required": [
@@ -62684,6 +62804,45 @@
           "secretVersion",
           "repos",
           "branchPattern"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrantPeerInput": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "jobKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vm",
+                "container",
+                "build",
+                "host",
+                "cluster"
+              ]
+            },
+            "description": "Cloud jobs that may run on it. A kind turned on is checked first, through the peer, and refused when the check fails."
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "maxJobMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "pluginId",
+          "jobKinds",
+          "maxConcurrentJobs",
+          "maxJobMinutes"
         ],
         "additionalProperties": false
       },
@@ -62749,11 +62908,200 @@
                 "type": "null"
               }
             ]
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiPeerOption"
+            },
+            "description": "The plugins it can be lent to CI as, through its type's peer integrations: those that lend a connection or run cloud jobs."
           }
         },
         "required": [
           "outputs",
           "secretVersions"
+        ],
+        "additionalProperties": false
+      },
+      "CiPeerOption": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "shortLived": {
+                    "type": "boolean"
+                  },
+                  "namespaces": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "description",
+                  "shortLived",
+                  "namespaces"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "vm",
+                            "container",
+                            "build",
+                            "host",
+                            "cluster"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "defaults": {
+                          "type": "object",
+                          "properties": {
+                            "machine": {
+                              "type": "string"
+                            },
+                            "image": {
+                              "type": "string"
+                            },
+                            "region": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "typicalStartSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "minimumBillingSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "gpus": {
+                          "type": "boolean"
+                        },
+                        "machineSuggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "regionLabel": {
+                          "type": "string",
+                          "description": "What `cloud.region` means for this kind, when it is not a region."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "label",
+                        "defaults"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "helpLink": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "url"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "helpLink"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unreachable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Why it cannot be reached from outside its network, when its provider says so."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "credential",
+          "executor",
+          "unreachable"
         ],
         "additionalProperties": false
       },
@@ -62955,53 +63303,6 @@
           "settings",
           "preflight",
           "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "CiPreflightRecord": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          },
-          "missing": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "permission": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "permission",
-                "label"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "problems": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "region": {
-            "type": "string"
-          },
-          "checkedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "ok",
-          "missing",
-          "problems",
-          "checkedAt"
         ],
         "additionalProperties": false
       },
@@ -128564,7 +128865,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Its outputs and, for a secret, its versions",
+            "description": "Its outputs, for a secret its versions, and what it can be lent as",
             "content": {
               "application/json": {
                 "schema": {
@@ -128662,7 +128963,7 @@
             }
           }
         },
-        "description": "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. Only for the listed repositories and branches, and never for a fork's pull request.\n\n_Requires permission: `ci-access:write`._",
+        "description": "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. With `peer`, the resource is also lent as a connection of a plugin its type has a peer integration with (a managed cluster as `kubernetes`, a managed database as `postgres`): `connections: [<ciName>]`, and `cloud:` jobs of the chosen kinds. Only for the listed repositories and branches, and never for a fork's pull request.\n\n_Requires permission: `ci-access:write`._",
         "summary": "Grant CI jobs a resource's outputs",
         "requestBody": {
           "content": {
@@ -128748,6 +129049,7 @@
             }
           }
         },
+        "description": "Replaces the grant. `peer` left out keeps what the grant is lent as; a cloud job kind newly turned on is checked through the peer first.\n\n_Requires permission: `ci-access:write`._",
         "summary": "Change a resource grant",
         "requestBody": {
           "content": {
@@ -128760,8 +129062,7 @@
           "required": true
         },
         "x-required-permission": "ci-access:write",
-        "operationId": "putOrgOrgIdCiAccessGrantsGrantId",
-        "description": "_Requires permission: `ci-access:write`._"
+        "operationId": "putOrgOrgIdCiAccessGrantsGrantId"
       },
       "delete": {
         "tags": [

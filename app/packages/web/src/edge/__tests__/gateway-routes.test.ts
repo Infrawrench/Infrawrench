@@ -106,6 +106,9 @@ describe("routeRequest", () => {
       ["POST", "/api/ci-jobs/finish"],
       ["POST", "/api/org/org_1/ci/access/connections/acc_1/preflight"],
       ["GET", "/api/org/org_1/ci/access/resource-outputs"],
+      // Saving a grant may check its peer's permissions to run cloud jobs.
+      ["POST", "/api/org/org_1/ci/access/grants"],
+      ["PUT", "/api/org/org_1/ci/access/grants/grant_1"],
     ] as const) {
       expect(routeRequest(method, path, null)).toMatchObject({ target: "gateway", tier: "node" });
     }

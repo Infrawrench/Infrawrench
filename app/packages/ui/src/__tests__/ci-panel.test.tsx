@@ -413,6 +413,69 @@ describe("CI access", () => {
       }),
     );
   });
+  it("grants a managed cluster as a Kubernetes connection, with cloud jobs on it", async () => {
+    const c = client();
+    c.searchResources.mockImplementation(async () => [
+      {
+        id: "res-gke",
+        pluginId: "gcp",
+        pluginDisplayName: "Google Cloud",
+        pluginLogoSvg: "",
+        resourceTypeId: "gke-cluster",
+        resourceTypeLabel: "GKE cluster",
+        accountId: "acc-gcp",
+        accountName: "Infrawrench GCP",
+        displayName: "prod-cluster",
+      },
+    ]);
+    c.resourceOutputs.mockImplementation(async () => ({
+      outputs: [{ key: "kubeconfig", label: "Kubeconfig", sensitive: true }],
+      secretVersions: null,
+      peers: [
+        {
+          pluginId: "kubernetes",
+          pluginName: "Kubernetes",
+          credential: { description: "A kubeconfig", shortLived: false, namespaces: true },
+          executor: {
+            kinds: [{ kind: "cluster", label: "Kubernetes Job", defaults: {} }],
+            helpLink: null,
+          },
+          unreachable: null,
+        },
+      ],
+    }));
+    c.createGrant.mockImplementation(async () => ({}));
+    renderPanel(c);
+    fireEvent.change(await screen.findByPlaceholderText("Search for resources"), {
+      target: { value: "prod" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /prod-cluster/ }));
+    // Nothing ticked and not lent: nothing to save.
+    const lendAs = await screen.findByLabelText("Lend it as a connection");
+    expect((screen.getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.change(lendAs, { target: { value: "kubernetes" } });
+    expect(screen.getByText("connections: [prod-cluster]", { exact: false })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Kubernetes Job/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant" }));
+    await waitFor(() =>
+      expect(c.createGrant).toHaveBeenCalledWith({
+        resourceId: "res-gke",
+        ciName: "prod-cluster",
+        outputs: [],
+        secretVersion: null,
+        repos: null,
+        branchPattern: null,
+        peer: {
+          pluginId: "kubernetes",
+          jobKinds: ["cluster"],
+          maxConcurrentJobs: 2,
+          maxJobMinutes: 60,
+        },
+      }),
+    );
+  });
 });
 
 /** A ready check, as the server keeps it. */

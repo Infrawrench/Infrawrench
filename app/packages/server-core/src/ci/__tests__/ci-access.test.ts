@@ -20,7 +20,7 @@ const {
 } = await import("../lend");
 const { claimBackoffMs, jobSegment, matchConnections, MAX_CLAIM_ATTEMPTS, orgTag } =
   await import("../cloud-jobs");
-const { cleanPattern, cleanRepos } = await import("../access");
+const { cleanPattern, cleanRepos, peerOptionsOf } = await import("../access");
 
 describe("what jobs name, from the runners' answer", () => {
   const answer = {
@@ -135,7 +135,13 @@ describe("lending", () => {
         },
       ]),
     ).toEqual([
-      { accountId: "a1", displayName: "Production", maxConcurrentJobs: 1, maxJobMinutes: 60 },
+      {
+        accountId: "a1",
+        displayName: "Production",
+        peerResourceId: null,
+        maxConcurrentJobs: 1,
+        maxJobMinutes: 60,
+      },
     ]);
   });
 
@@ -255,8 +261,54 @@ describe("matching a cloud job to a connection", () => {
 
   it("finds an opted-in connection", () => {
     expect(matchConnections(run, spec, [row])).toEqual([
-      { accountId: "a1", displayName: "Production", maxConcurrentJobs: 2, maxJobMinutes: 60 },
+      {
+        accountId: "a1",
+        displayName: "Production",
+        peerResourceId: null,
+        maxConcurrentJobs: 2,
+        maxJobMinutes: 60,
+      },
     ]);
+  });
+
+  it("matches a resource granted as its peer, by the grant's CI name", () => {
+    const peer = {
+      ...row,
+      accountId: "gcp-1",
+      displayName: "gke-prod",
+      pluginId: "kubernetes",
+      peerResourceId: "gcp-1:gke-cluster:prod",
+      jobKinds: ["cluster"],
+    };
+    const cluster = { cloud: { provider: "kubernetes", kind: "cluster" }, timeout_secs: 600 };
+    expect(
+      matchConnections(run, { ...cluster, cloud: { ...cluster.cloud, connection: "gke-prod" } }, [
+        row,
+        peer,
+      ]),
+    ).toEqual([
+      {
+        accountId: "gcp-1",
+        displayName: "gke-prod",
+        peerResourceId: "gcp-1:gke-cluster:prod",
+        maxConcurrentJobs: 2,
+        maxJobMinutes: 60,
+      },
+    ]);
+    // A connection of the same name makes the name mean two things.
+    expect(
+      matchConnections(run, { ...cluster, cloud: { ...cluster.cloud, connection: "gke-prod" } }, [
+        { ...row, pluginId: "kubernetes", displayName: "gke-prod", jobKinds: ["cluster"] },
+        peer,
+      ]),
+    ).toEqual({
+      refuse:
+        "A connection and a resource granted as one are both called `gke-prod`; rename one so a pipeline can tell them apart.",
+    });
+    // Scoped like any connection.
+    expect(matchConnections(run, cluster, [{ ...peer, jobBranchPattern: "release/*" }])).toEqual({
+      refuse: "No `kubernetes` connection runs cloud jobs for acme/web on main.",
+    });
   });
 
   it("names what to opt in when nothing matches", () => {
@@ -320,5 +372,105 @@ describe("helpers", () => {
     expect(() => cleanPattern(",")).toThrow("at least one branch");
     expect(() => cleanPattern(" , ")).toThrow("at least one branch");
     expect(cleanPattern("main, release/*")).toBe("main, release/*");
+  });
+});
+
+describe("what a resource can be lent as", () => {
+  const manifest = (id: string, extra: Record<string, unknown>) =>
+    ({ manifest: { id, displayName: id.toUpperCase(), credentialFields: [], ...extra } }) as never;
+  const plugins = new Map<string, never>([
+    [
+      "gcp",
+      {
+        manifest: { id: "gcp", displayName: "Google Cloud", credentialFields: [] },
+        resourceTypes: [
+          {
+            id: "gke-cluster",
+            peerIntegrations: [
+              {
+                pluginId: "kubernetes",
+                credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+                tabLabel: "Kubernetes",
+              },
+            ],
+          },
+          {
+            id: "cloudsql-instance",
+            peerIntegrations: [
+              {
+                pluginId: "postgres",
+                credentialMappings: [],
+                tabLabel: "PostgreSQL",
+                showWhen: { fieldKey: "databaseVersion", prefix: "POSTGRES_" },
+                unreachableWhen: {
+                  fieldsEmpty: ["publicIp"],
+                  title: "No public IP",
+                  suggestions: [],
+                },
+              },
+              {
+                pluginId: "mysql",
+                credentialMappings: [],
+                tabLabel: "MySQL",
+                showWhen: { fieldKey: "databaseVersion", prefix: "MYSQL_" },
+              },
+              // A peer that can do nothing for CI is not offered.
+              { pluginId: "opensearch", credentialMappings: [], tabLabel: "Search" },
+            ],
+          },
+        ],
+      } as never,
+    ],
+    [
+      "kubernetes",
+      manifest("kubernetes", {
+        ciCredential: { description: "A kubeconfig", shortLived: false, namespaces: true },
+        ciExecutor: { kinds: [{ kind: "cluster", label: "Kubernetes Job", defaults: {} }] },
+      }),
+    ],
+    [
+      "postgres",
+      manifest("postgres", { ciCredential: { description: "DATABASE_URL", shortLived: false } }),
+    ],
+    [
+      "mysql",
+      manifest("mysql", { ciCredential: { description: "DATABASE_URL", shortLived: false } }),
+    ],
+    ["opensearch", manifest("opensearch", {})],
+  ]);
+
+  it("offers a managed cluster as Kubernetes, with its job kinds", () => {
+    const [k8s] = peerOptionsOf(
+      { pluginId: "gcp", resourceTypeId: "gke-cluster", fields: {} },
+      plugins,
+    );
+    expect(k8s).toMatchObject({
+      pluginId: "kubernetes",
+      credential: { description: "A kubeconfig", namespaces: true },
+      executor: { kinds: [{ kind: "cluster" }] },
+      unreachable: null,
+    });
+  });
+
+  it("offers a managed database as the engine it runs, with the same gates as its tabs", () => {
+    const pg = peerOptionsOf(
+      {
+        pluginId: "gcp",
+        resourceTypeId: "cloudsql-instance",
+        fields: { databaseVersion: "POSTGRES_16" },
+      },
+      plugins,
+    );
+    expect(pg.map((o) => o.pluginId)).toEqual(["postgres"]);
+    expect(pg[0]?.unreachable).toBe("No public IP");
+    const my = peerOptionsOf(
+      {
+        pluginId: "gcp",
+        resourceTypeId: "cloudsql-instance",
+        fields: { databaseVersion: "MYSQL_8_0", publicIp: "203.0.113.4" },
+      },
+      plugins,
+    );
+    expect(my.map((o) => [o.pluginId, o.unreachable])).toEqual([["mysql", null]]);
   });
 });
