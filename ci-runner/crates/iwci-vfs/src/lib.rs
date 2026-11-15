@@ -670,6 +670,7 @@ impl Snapshot {
             base: self.fs.clone(),
             budget,
             modes: Modes::over(self.modes.clone()),
+            accounts: Default::default(),
             renames: futures::lock::Mutex::new(()),
         };
         JobFs {
@@ -872,6 +873,9 @@ pub struct JobOverlay {
     base: Arc<ReadOnlyFs>,
     budget: Option<Arc<dyn WriteBudget>>,
     modes: Modes,
+    /// What each file the job may have changed was given without being
+    /// charged (`limit::Account`), by path in the upper layer.
+    accounts: std::sync::Mutex<std::collections::HashMap<PathBuf, Arc<limit::Account>>>,
     /// Held for the whole of a rename (#1092). A rename looks at what is
     /// at both ends, then changes them, in several steps across the two
     /// layers; two renames onto one name at once both saw the old file
@@ -881,11 +885,53 @@ pub struct JobOverlay {
 }
 
 impl JobOverlay {
-    /// The size of `path` in the upper layer, when it is a file there: the
-    /// bytes the job has been charged for it.
+    /// The size of `path` in the upper layer, when it is a file there.
     fn upper_size(&self, path: &Path) -> Option<u64> {
         let meta = self.upper.symlink_metadata(path).ok()?;
         meta.is_file().then_some(meta.len)
+    }
+
+    fn accounts(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<PathBuf, Arc<limit::Account>>> {
+        self.accounts.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The account of the file at `path`; one with nothing given, for a
+    /// file the job made itself, if it has none.
+    fn account(&self, path: &Path) -> Arc<limit::Account> {
+        self.accounts()
+            .entry(path.to_path_buf())
+            .or_default()
+            .clone()
+    }
+
+    /// What the job was charged for the upper file at `path`, which is
+    /// going: it is given back once the caller has removed the file.
+    fn release(&self, path: &Path) -> Option<u64> {
+        let size = self.upper_size(path)?;
+        let account = self.accounts().remove(path);
+        Some(account.map_or(size, |a| a.released(size)))
+    }
+
+    /// Accounts at and under `from` now belong at `to`.
+    fn move_accounts(&self, from: &Path, to: &Path) {
+        let mut accounts = self.accounts();
+        let moving: Vec<PathBuf> = accounts
+            .keys()
+            .filter(|p| p.starts_with(from))
+            .cloned()
+            .collect();
+        for path in moving {
+            if let (Some(account), Ok(rest)) = (accounts.remove(&path), path.strip_prefix(from)) {
+                let target = if rest.as_os_str().is_empty() {
+                    to.to_path_buf()
+                } else {
+                    to.join(rest)
+                };
+                accounts.insert(target, account);
+            }
+        }
     }
 
     fn give(&self, bytes: Option<u64>) {
@@ -896,13 +942,17 @@ impl JobOverlay {
 
     fn limited(
         &self,
+        path: &Path,
         file: Box<dyn virtual_fs::VirtualFile + Send + Sync + 'static>,
         conf: &virtual_fs::OpenOptionsConfig,
     ) -> Box<dyn virtual_fs::VirtualFile + Send + Sync + 'static> {
         match &self.budget {
-            Some(budget) if conf.write || conf.append => {
-                Box::new(limit::LimitedFile::new(file, budget.clone(), conf.append))
-            }
+            Some(budget) if conf.write || conf.append => Box::new(limit::LimitedFile::new(
+                file,
+                budget.clone(),
+                self.account(path),
+                conf.append,
+            )),
             _ => file,
         }
     }
@@ -933,9 +983,9 @@ impl JobOverlay {
                 if is_dir {
                     self.purge_upper(&entry.path)?;
                 } else {
-                    let size = self.upper_size(&entry.path);
+                    let charged = self.release(&entry.path);
                     self.upper.remove_file(&entry.path)?;
-                    self.give(size);
+                    self.give(charged);
                 }
             }
         }
@@ -958,9 +1008,9 @@ impl JobOverlay {
     /// Removes the file or symlink at `path` (whiting out a snapshot one) and
     /// gives back the bytes the job was charged for it.
     fn unlink(&self, path: &Path) -> virtual_fs::Result<()> {
-        let size = self.upper_size(path);
+        let charged = self.release(path);
         self.inner.remove_file(path)?;
-        self.give(size);
+        self.give(charged);
         Ok(())
     }
 
@@ -1039,9 +1089,10 @@ impl JobOverlay {
                     // whatever the upper layer has at `to`, and whites out a
                     // snapshot file at `from`. A snapshot file at `to` is
                     // hidden by the upper one, as a copy-up hides it.
-                    let replaced = self.upper_size(to);
+                    let replaced = self.release(to);
                     self.inner.rename(from, to).await?;
                     self.give(replaced);
+                    self.move_accounts(from, to);
                     return Ok(());
                 }
                 // A snapshot file is copied up to `to`, as a write to it
@@ -1063,13 +1114,17 @@ impl JobOverlay {
                     .open(to)?;
                 dst.write_all(&bytes).await?;
                 dst.flush().await?;
+                self.accounts()
+                    .insert(to.to_path_buf(), limit::Account::new(bytes.len() as u64));
                 self.clear_white_out(to);
                 return self.white_out(from);
             }
             // A directory the snapshot has no part in, at either end, moves
             // as one upper-layer directory.
             if !from_in_base && self.base.symlink_metadata(to).is_err() {
-                return self.inner.rename(from, to).await;
+                self.inner.rename(from, to).await?;
+                self.move_accounts(from, to);
+                return Ok(());
             }
             // Otherwise entry by entry: `to` is made as `create_dir` makes it
             // (a snapshot directory deleted there stays deleted), everything
@@ -1174,6 +1229,7 @@ impl virtual_fs::FileOpener for JobOverlay {
         let lower_only = self.upper.symlink_metadata(path).is_err()
             && self.base.metadata(path).is_ok_and(|m| m.is_file())
             && !whiteout_path(path).is_some_and(|m| self.upper.metadata(&m).is_ok());
+        let writing = conf.write || conf.append;
         if truncating && lower_only {
             if let Some(parent) = path.parent() {
                 create_dir_all(&self.upper, parent).map_err(|_| FsError::IOError)?;
@@ -1184,13 +1240,15 @@ impl virtual_fs::FileOpener for JobOverlay {
                 .options(conf.clone())
                 .create(true)
                 .open(path)?;
-            return Ok(self.limited(file, conf));
+            self.accounts()
+                .insert(path.to_path_buf(), limit::Account::new(0));
+            return Ok(self.limited(path, file, conf));
         }
-        // Truncating a file the job wrote gives its bytes back.
-        let released = if truncating {
-            self.upper_size(path)
-        } else {
-            None
+        // Truncating a file the job wrote gives back what it added.
+        let in_upper = self.upper_size(path);
+        let released = match in_upper {
+            Some(size) if truncating => Some(self.account(path).shrunk(size, 0)),
+            _ => None,
         };
         let file = self
             .inner
@@ -1198,7 +1256,21 @@ impl virtual_fs::FileOpener for JobOverlay {
             .options(conf.clone())
             .open(path)?;
         self.give(released);
-        Ok(self.limited(file, conf))
+        if writing && in_upper.is_none() {
+            // A snapshot file is copied up on its first change, free (its
+            // other open handles share the account); a file that is not
+            // there yet is the job's from its first byte.
+            let mut accounts = self.accounts();
+            if lower_only {
+                let given = self.base.metadata(path).map_or(0, |m| m.len);
+                accounts
+                    .entry(path.to_path_buf())
+                    .or_insert_with(|| limit::Account::new(given));
+            } else {
+                accounts.insert(path.to_path_buf(), limit::Account::new(0));
+            }
+        }
+        Ok(self.limited(path, file, conf))
     }
 }
 
@@ -1691,6 +1763,151 @@ mod tests {
         fn give(&self, n: u64) {
             self.used.fetch_sub(n, std::sync::atomic::Ordering::SeqCst);
         }
+    }
+
+    /// A job forked over `size`-byte snapshot files `/s/0`, `/s/1`, ...,
+    /// with a budget of `max` bytes.
+    fn budgeted(files: usize, size: usize, max: u64) -> (JobFs, Arc<Cap>) {
+        let builder = SnapshotBuilder::new();
+        for i in 0..files {
+            builder.write(format!("/s/{i}"), &vec![7u8; size]).unwrap();
+        }
+        let cap = Arc::new(Cap {
+            max,
+            ..Default::default()
+        });
+        (builder.freeze().fork_limited(cap.clone()), cap)
+    }
+
+    fn used(cap: &Cap) -> u64 {
+        cap.used.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn open_rw(job: &JobFs, path: &str) -> Box<dyn virtual_fs::VirtualFile + Send + Sync> {
+        job.as_dyn()
+            .new_open_options()
+            .read(true)
+            .write(true)
+            .open(Path::new(path))
+            .unwrap()
+    }
+
+    /// Changes one byte of a snapshot file in place: copies it up, free.
+    fn touch(job: &JobFs, path: &str) {
+        let mut f = open_rw(job, path);
+        block_on(f.write_all(b"x")).unwrap();
+    }
+
+    #[test]
+    fn removing_a_copied_up_snapshot_file_gives_back_nothing() {
+        let (job, cap) = budgeted(2, 1 << 20, 1 << 20);
+        // The job holds its whole budget, then deletes snapshot files it
+        // changed: none of that frees room for more of its own bytes.
+        job.write("/own0", &vec![1u8; 1 << 20]).unwrap();
+        for big in ["/s/0", "/s/1"] {
+            touch(&job, big);
+            job.remove_file(big).unwrap();
+            assert_eq!(used(&cap), 1 << 20, "after deleting {big}");
+        }
+        assert!(job.write("/own1", &[1u8; 4096]).is_err(), "still full");
+        // Deleting its own file does give room back.
+        job.remove_file("/own0").unwrap();
+        assert_eq!(used(&cap), 0);
+        job.write("/own1", &[1u8; 4096]).unwrap();
+    }
+
+    #[test]
+    fn renaming_over_a_file_gives_back_only_what_the_job_added_to_it() {
+        let (job, cap) = budgeted(1, 1000, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        assert_eq!(used(&cap), 100);
+        // The job's file over a copied-up snapshot file: the copy goes, and
+        // nothing was charged for it.
+        touch(&job, "/s/0");
+        block_on(job.as_dyn().rename(Path::new("/own"), Path::new("/s/0"))).unwrap();
+        assert_eq!(used(&cap), 100);
+        // A copied-up snapshot file over the job's file: the job's bytes
+        // come back, the moved copy still costs nothing.
+        let (job, cap) = budgeted(1, 1000, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        touch(&job, "/s/0");
+        block_on(job.as_dyn().rename(Path::new("/s/0"), Path::new("/own"))).unwrap();
+        assert_eq!(used(&cap), 0);
+        job.remove_file("/own").unwrap();
+        assert_eq!(used(&cap), 0);
+        // A snapshot file renamed (copied up by the move) and then deleted.
+        let (job, cap) = budgeted(1, 1000, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        block_on(job.as_dyn().rename(Path::new("/s/0"), Path::new("/moved"))).unwrap();
+        job.remove_file("/moved").unwrap();
+        assert_eq!(used(&cap), 100);
+    }
+
+    #[test]
+    fn truncating_a_snapshot_file_gives_back_nothing() {
+        let (job, cap) = budgeted(3, 1000, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        // A truncating open of a copied-up snapshot file.
+        touch(&job, "/s/0");
+        drop(
+            job.as_dyn()
+                .new_open_options()
+                .write(true)
+                .truncate(true)
+                .open(Path::new("/s/0"))
+                .unwrap(),
+        );
+        assert_eq!(job.read("/s/0").unwrap(), b"");
+        assert_eq!(used(&cap), 100);
+        // ftruncate(2) of a snapshot file, copied up or not.
+        open_rw(&job, "/s/1").set_len(10).unwrap();
+        touch(&job, "/s/2");
+        open_rw(&job, "/s/2").set_len(0).unwrap();
+        assert_eq!(used(&cap), 100);
+        // What the job then writes there is its own, and given back.
+        let mut f = open_rw(&job, "/s/1");
+        f.set_len(500).unwrap();
+        assert_eq!(used(&cap), 590);
+        f.set_len(0).unwrap();
+        assert_eq!(used(&cap), 100);
+    }
+
+    #[test]
+    fn a_file_holding_given_and_added_bytes_gives_back_only_the_added_ones() {
+        let (job, cap) = budgeted(1, 100, 1 << 20);
+        // 100 bytes from the snapshot, 50 the job appends.
+        let mut f = job
+            .as_dyn()
+            .new_open_options()
+            .append(true)
+            .open(Path::new("/s/0"))
+            .unwrap();
+        block_on(f.write_all(&[2u8; 50])).unwrap();
+        drop(f);
+        assert_eq!(job.read("/s/0").unwrap().len(), 150);
+        assert_eq!(used(&cap), 50);
+        // Shrinking takes the job's bytes off the end first...
+        let mut f = open_rw(&job, "/s/0");
+        f.set_len(120).unwrap();
+        assert_eq!(used(&cap), 20);
+        // ...then the snapshot's, which give nothing back.
+        f.set_len(60).unwrap();
+        assert_eq!(used(&cap), 0);
+        // Growing it again is charged, and deleting gives that back.
+        f.set_len(80).unwrap();
+        assert_eq!(used(&cap), 20);
+        drop(f);
+        job.remove_file("/s/0").unwrap();
+        assert_eq!(used(&cap), 0);
+        // An open handle on a deleted file gives back nothing more.
+        let (job, cap) = budgeted(0, 0, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        job.write("/keep", &[1u8; 100]).unwrap();
+        let mut f = open_rw(&job, "/own");
+        job.remove_file("/own").unwrap();
+        assert_eq!(used(&cap), 100);
+        f.set_len(0).unwrap();
+        assert_eq!(used(&cap), 100, "`/keep` is still counted");
     }
 
     #[test]
