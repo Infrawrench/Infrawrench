@@ -142,6 +142,8 @@ Watch for storage topology too. With a StorageClass whose `volumeBindingMode` is
 kubectl --context CONTEXT_NAME describe deployment DEPLOYMENT_NAME -n NAMESPACE
 ```
 
+The [exceeded quota guide](/blog/kubernetes-exceeded-quota) covers reading those refusals and fixing quotas and LimitRanges.
+
 ## Step 8: Fix through the spec and verify
 
 Apply the fix where the workload is defined, usually the Deployment manifest or its Helm values. Deleting a Pending pod rarely helps: the controller creates an identical one, and the scheduler rejects it for the same reason. The scheduler keeps retrying unscheduled pods on its own, so once capacity or labels change on the cluster side, the existing pod schedules without being touched.
