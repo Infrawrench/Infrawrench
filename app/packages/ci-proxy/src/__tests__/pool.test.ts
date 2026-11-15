@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handle, type Deps } from "../app";
-import { byPlacement, Pool, type Capacity } from "../pool";
+import { byPlacement, placementShare, Pool, type Capacity } from "../pool";
 import { MemoryRunnerList } from "../runners";
 import { MemoryStore } from "../store";
 import { MemoryValues } from "../values";
@@ -21,9 +21,8 @@ function capacity(c: Partial<Capacity> & { name: string }): Capacity {
     memoryTotal: null,
     memoryUsed: null,
     memoryWaiting: null,
-    v8HeapSpaceTotal: null,
-    v8HeapSpaceUsed: null,
     v8LostIsolates: null,
+    v8LostHeap: null,
     ...c,
   };
 }
@@ -140,31 +139,49 @@ describe("byPlacement", () => {
     ]);
   });
 
-  it("weighs a runner by the V8 heap space its Node jobs share", () => {
+  it("places by job memory alone, whatever a runner says of its V8 heaps (#1158)", () => {
+    // Every V8 heap counts against its own job's memory and nothing is
+    // shared between jobs' heaps, so what a runner has lost to V8 running
+    // out of memory does not move it: it restarts itself when that is too
+    // much, and is draining then.
     const same = { runsActive: 1, memoryTotal: 24 * GiB, memoryUsed: 6 * GiB, memoryWaiting: 0 };
-    const roomy = capacity({
-      name: "roomy",
-      ...same,
-      v8HeapSpaceTotal: 3.5 * GiB,
-      v8HeapSpaceUsed: 0.5 * GiB,
-    });
-    const heapFull = capacity({
-      name: "heap-full",
+    const clean = capacity({ name: "clean", ...same, slotsFree: 20 });
+    const lossy = capacity({
+      name: "lossy",
       ...same,
       slotsTotal: 64,
       slotsFree: 63,
-      v8HeapSpaceTotal: 3.5 * GiB,
-      v8HeapSpaceUsed: 3.5 * GiB,
+      v8LostIsolates: 3,
+      v8LostHeap: 1 * GiB,
     });
-    expect(order([heapFull, roomy])).toEqual(["roomy", "heap-full"]);
-    // At worst it halves a runner's share: with one run instead of three,
-    // the full heap still wins.
-    expect(order([heapFull, { ...roomy, runsActive: 3 }])).toEqual(["heap-full", "roomy"]);
-    // Not reported counts as free.
-    expect(order([heapFull, { ...roomy, v8HeapSpaceTotal: null, v8HeapSpaceUsed: null }])).toEqual([
-      "roomy",
-      "heap-full",
-    ]);
+    // Equal shares and room: the free slots decide, not the losses.
+    expect(placementShare(lossy)).toBe(placementShare(clean));
+    expect(order([clean, lossy])).toEqual(["lossy", "clean"]);
+    // (24 + 18) / 2 / 2 = 10.5 GiB a run, with no V8 factor.
+    expect(placementShare(clean)).toBe(10.5 * GiB);
+  });
+
+  it("ignores the V8 heap space an older runner still reports", async () => {
+    // Runners from before #1158 report `v8_heap_space_*`, an account of one
+    // cage every job's heaps shared. A full one took up to half of a
+    // runner's share; it no longer counts.
+    const older = new Runner(
+      "http://older.test",
+      32,
+      { total: 24 * GiB, used: 6 * GiB, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    older.v8 = { lost: 0, lostHeap: 0 };
+    older.legacyHeapSpace = { total: 3.5 * GiB, used: 3.5 * GiB };
+    const newer = new Runner(
+      "http://newer.test",
+      32,
+      { total: 24 * GiB, used: 7 * GiB, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    // older: (24 + 18) / 2 = 21 GiB for its first run; newer: 20.5.
+    const { run } = proxy({ older, newer });
+    expect(await run()).toBe("older");
   });
 
   it("falls back to slots, then active runs, then the name", () => {
@@ -189,7 +206,9 @@ describe("byPlacement", () => {
 class Runner {
   runs = 0;
   draining = false;
-  v8: { total: number; used: number; lost: number } | null = null;
+  v8: { lost: number; lostHeap: number } | null = null;
+  /** What a runner from before #1158 also reports. */
+  legacyHeapSpace: { total: number; used: number } | null = null;
   constructor(
     readonly url: string,
     readonly slotsTotal: number,
@@ -219,10 +238,12 @@ class Runner {
         ...(this.memory.waiting === undefined ? {} : { memory_waiting: this.memory.waiting }),
         ...(this.v8 === null
           ? {}
+          : { v8_lost_isolates: this.v8.lost, v8_lost_heap: this.v8.lostHeap }),
+        ...(this.legacyHeapSpace === null
+          ? {}
           : {
-              v8_heap_space_total: this.v8.total,
-              v8_heap_space_used: this.v8.used,
-              v8_lost_isolates: this.v8.lost,
+              v8_heap_space_total: this.legacyHeapSpace.total,
+              v8_heap_space_used: this.legacyHeapSpace.used,
             }),
       });
     if (path === "/v1/runs" && init.method === "POST") {
@@ -392,14 +413,14 @@ describe("placement", () => {
     expect(await run()).toBe(429);
   });
 
-  it("shows each runner's job memory and V8 heap space in /v1/capacity", async () => {
+  it("shows each runner's job memory and V8 losses in /v1/capacity", async () => {
     const ci2 = new Runner(
       "http://ci-2.test",
       64,
       { total: 26 * GiB, used: 24 * GiB, waiting: 12 * GiB },
       { used: 0, waiting: 0 },
     );
-    ci2.v8 = { total: 3.5 * GiB, used: 3 * GiB, lost: 3 };
+    ci2.v8 = { lost: 3, lostHeap: 1.5 * GiB };
     const { call } = proxy({
       "ci-1": new Runner(
         "http://ci-1.test",
@@ -418,18 +439,16 @@ describe("placement", () => {
         memory_total: 24 * GiB,
         memory_used: 6 * GiB,
         memory_waiting: null,
-        v8_heap_space_total: null,
-        v8_heap_space_used: null,
         v8_lost_isolates: null,
+        v8_lost_heap: null,
       }),
       expect.objectContaining({
         name: "ci-2",
         memory_total: 26 * GiB,
         memory_used: 24 * GiB,
         memory_waiting: 12 * GiB,
-        v8_heap_space_total: 3.5 * GiB,
-        v8_heap_space_used: 3 * GiB,
         v8_lost_isolates: 3,
+        v8_lost_heap: 1.5 * GiB,
       }),
     ]);
   });

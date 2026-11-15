@@ -4027,3 +4027,23 @@ fn a_cancelled_tsc_is_stopped() {
     assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
     assert!(outcome.duration < Duration::from_secs(5), "{outcome:?}");
 }
+
+/// A job's `memory:` is charged for each isolate's young generation what
+/// V8 can make of it, which the semi-space in `V8_FLAGS` decides: two
+/// semi-spaces and as much again for new large objects (#1158). Changing
+/// one without the other charges every `node` for memory it cannot use, or
+/// lets it use memory it was not charged.
+#[cfg(feature = "node")]
+#[test]
+fn the_young_generation_a_job_is_charged_is_what_the_v8_flags_allow() {
+    let semi_space_mib: u64 = V8_FLAGS
+        .split_whitespace()
+        .find_map(|flag| flag.strip_prefix("--max-semi-space-size="))
+        .expect("V8_FLAGS sets the semi-space")
+        .parse()
+        .unwrap();
+    assert_eq!(
+        wasmer_napi::budget::DEFAULT_YOUNG_GENERATION,
+        3 * semi_space_mib << 20
+    );
+}

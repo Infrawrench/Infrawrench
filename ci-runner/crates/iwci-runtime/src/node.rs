@@ -53,7 +53,7 @@ mod imp {
                 heaps_lost: e.heaps_lost,
                 isolates_refused: e.isolates_refused,
                 buffers_refused: e.buffers_refused,
-                heap_space_full: e.heap_space_full,
+                heaps_at_limit: e.heaps_at_limit,
             }
         }
     }
@@ -73,6 +73,12 @@ impl NodeHooks {
     }
 }
 
+/// The most one V8 heap is grown to, in MiB, for the note below.
+#[cfg(feature = "node")]
+const MAX_HEAP_MIB: u64 = wasmer_napi::budget::MAX_ISOLATE_HEAP >> 20;
+#[cfg(not(feature = "node"))]
+const MAX_HEAP_MIB: u64 = 3584;
+
 /// How a job's Node ran short of its `memory:`, which its own output does
 /// not say: V8 heaps, the isolates of `node`s and worker threads, and the
 /// `ArrayBuffer` memory they share are all held to it.
@@ -89,10 +95,11 @@ pub(crate) struct Exhaustion {
     pub(crate) isolates_refused: u64,
     /// `ArrayBuffer` and `Buffer` allocations refused.
     pub(crate) buffers_refused: u64,
-    /// Of the heaps stopped and `node`s refused, those the job's own
-    /// `memory:` had room for but the V8 heap space every job shares
-    /// (`v8_heap_space`) did not, for as long as they waited (#1063).
-    pub(crate) heap_space_full: u64,
+    /// Of the heaps stopped, those the job's `memory:` had room to grow
+    /// but that had reached the most one V8 heap holds, 3.5 GiB of its
+    /// 4 GiB pointer-compression cage (#1158). More `memory:` does not
+    /// change that; nothing else is shared or capped between heaps.
+    pub(crate) heaps_at_limit: u64,
 }
 
 impl Exhaustion {
@@ -104,10 +111,7 @@ impl Exhaustion {
     }
 
     pub(crate) fn any(&self) -> bool {
-        self.stops_the_job()
-            || self.isolates_refused != 0
-            || self.buffers_refused != 0
-            || self.heap_space_full != 0
+        self.stops_the_job() || self.isolates_refused != 0 || self.buffers_refused != 0
     }
 
     /// The note for the end of the job's stderr, or `None` when memory never
@@ -156,11 +160,11 @@ impl Exhaustion {
                 )
             ));
         }
-        if self.heap_space_full != 0 {
+        if self.heaps_at_limit != 0 {
             what.push(format!(
-                "{} within the job's `memory:`, but not within the {} MiB of V8 heap that every job on this runner shares, which stayed full while it waited; the job may pass when it runs again",
-                n(self.heap_space_full, "one of them was", "of them were"),
-                crate::v8_heap_space().total >> 20,
+                "{} within the job's `memory:`, but had reached the most one JavaScript heap can hold on this runner, {} MiB, which more `memory:` does not raise; split the work across `node`s or worker threads",
+                n(self.heaps_at_limit, "that heap was", "of those heaps were"),
+                MAX_HEAP_MIB,
             ));
         }
         Some(format!(
@@ -179,25 +183,40 @@ mod tests {
     use super::Exhaustion;
 
     #[test]
-    fn a_heap_the_shared_v8_heap_could_not_hold_is_told_apart() {
+    fn a_job_out_of_memory_is_told_what_ran_out_of_its_own_memory() {
+        // Every refusal is the job's `memory:`: nothing is shared between
+        // jobs' heaps to run out of instead (#1158).
+        assert_eq!(Exhaustion::default().note(6 << 30), None);
         let e = Exhaustion {
             heaps_stopped: 1,
-            heap_space_full: 1,
             ..Exhaustion::default()
         };
         assert!(e.stops_the_job());
         let note = e.note(6 << 30).unwrap();
         assert!(note.contains("ran out of its 6144 MiB of memory"), "{note}");
-        assert!(
-            note.contains("one of them was within the job's `memory:`, but not within the"),
-            "{note}"
-        );
+        assert!(note.contains("a JavaScript heap could not grow"), "{note}");
         let e = Exhaustion {
             isolates_refused: 3,
-            heap_space_full: 3,
             ..Exhaustion::default()
         };
         assert!(!e.stops_the_job() && e.any());
-        assert!(e.note(1 << 30).unwrap().contains("3 of them were within"));
+        let note = e.note(1 << 30).unwrap();
+        assert!(
+            note.contains("3 `node`s or worker threads could not start"),
+            "{note}"
+        );
+        assert!(!note.contains("can hold on this runner"), "{note}");
+        // One heap at the most V8 gives a heap is told apart: more
+        // `memory:` would not have helped it.
+        let e = Exhaustion {
+            heaps_stopped: 1,
+            heaps_at_limit: 1,
+            ..Exhaustion::default()
+        };
+        let note = e.note(8 << 30).unwrap();
+        assert!(
+            note.contains("that heap was within the job's `memory:`, but had reached the most one JavaScript heap can hold on this runner, 3584 MiB"),
+            "{note}"
+        );
     }
 }

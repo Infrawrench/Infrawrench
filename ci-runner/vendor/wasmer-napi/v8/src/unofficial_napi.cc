@@ -518,33 +518,6 @@ size_t TeardownNearHeapLimitCallback(void* data,
   return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
 }
 
-// iwci patch (#1063): every isolate of the process allocates its heap from
-// one pointer-compression cage, which the host accounts for: a budgeted
-// isolate reports the heap it has committed after each garbage collection,
-// on its own thread, to the host data its near-heap-limit callback has.
-// Installed and removed with that callback; the data is looked up as that
-// callback does, so a lost isolate's, which the host frees, is never read.
-extern "C" __attribute__((weak)) void napi_host_heap_committed(
-    const void* /*data*/, size_t /*committed*/, int /*full*/) {}
-
-void HeapCommittedCallback(v8::Isolate* isolate,
-                           v8::GCType type,
-                           v8::GCCallbackFlags /*flags*/,
-                           void* /*env*/) {
-  void* data = nullptr;
-  {
-    RuntimeLock lock;
-    auto it = g_near_heap_limit_callbacks.find(isolate);
-    if (it != g_near_heap_limit_callbacks.end()) data = it->second.data;
-  }
-  if (data == nullptr) return;
-  v8::HeapStatistics heap;
-  isolate->GetHeapStatistics(&heap);
-  napi_host_heap_committed(
-      data, heap.total_heap_size(),
-      (type & v8::kGCTypeMarkSweepCompact) != 0 ? 1 : 0);
-}
-
 // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
 // context is installed, every V8 backing store is allocated inside the guest's
 // linear memory so guest and host share buffer bytes directly. `free` returns
@@ -925,68 +898,6 @@ void ProcessOOMErrorCallback(const char* location, const v8::OOMDetails& details
   std::fflush(stderr);
 }
 
-// iwci patch (#1134): the isolate group's main isolate, owned by the bridge.
-//
-// Every isolate of the process is in one isolate group, whose page pool
-// takes a disposed isolate's young-generation pages (V8 13.6
-// `SemiSpace::TearDown`, `PagePool::ReleaseOnTearDown`). They stay reserved
-// in the 4 GiB pointer-compression cage, in no heap, until a task V8 posts
-// 8 s later to the group's main isolate frees them, or a new young
-// generation takes them back. The main isolate is the first one created and
-// stays main until it is disposed. When its thread ran no foreground task
-// (a `node` blocked or busy in one long call, or idle in its event loop,
-// which a delayed task does not wake), the pool was held that long; when it
-// was an isolate abandoned after running out of memory (#972), never
-// disposed, it was main for good and the pool was never freed. The cage
-// then filled while the heap space account (budget.rs) showed room: a
-// heap's next old-generation or large-object page found no address space,
-// V8 failed "CALL_AND_RETRY_LAST" well within the job's memory, and each
-// such isolate was abandoned with its heap, which made the next loss
-// likelier. This isolate is made before any other, so it is main for the
-// life of the process; it runs no JavaScript, and its own thread runs its
-// foreground tasks every `kPoolKeeperPump`, so the pool is freed 8 s after
-// each disposal.
-constexpr auto kPoolKeeperPump = std::chrono::milliseconds(250);
-
-void StartPoolKeeper(EdgeV8Platform* platform) {
-  struct Started {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool done = false;
-  };
-  auto started = std::make_shared<Started>();
-  std::thread([platform, started] {
-    v8::Isolate::CreateParams params;
-    // Never freed, like the isolate.
-    params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-    v8::Isolate* isolate = nullptr;
-    {
-      std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
-      InIsolateLifecycle in_lifecycle;
-      isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
-      if (isolate != nullptr && !platform->RegisterIsolate(isolate)) {
-        isolate->Dispose();
-        isolate = nullptr;
-      }
-      if (isolate != nullptr) v8::Isolate::Initialize(isolate, params);
-    }
-    {
-      std::lock_guard<std::mutex> lock(started->mutex);
-      started->done = true;
-    }
-    started->cv.notify_all();
-    if (isolate == nullptr) return;
-    v8::Isolate::Scope scope(isolate);
-    for (;;) {
-      platform->PumpPendingForegroundTasks(isolate);
-      std::this_thread::sleep_for(kPoolKeeperPump);
-    }
-  }).detach();
-  // Made before ConfigureRuntime returns, so before any env's isolate.
-  std::unique_lock<std::mutex> lock(started->mutex);
-  started->cv.wait(lock, [&] { return started->done; });
-}
-
 // iwci patch: the embedder configures the runtime, with its own engine
 // flags (snapi_bridge_host_configure_runtime), before any guest runs. A
 // guest's request goes through ConfigureRuntimeForGuest, which never
@@ -1020,8 +931,6 @@ napi_status ConfigureRuntime(const char* engine_flags,
   // iwci patch (#972)
   g_oom_platform.store(g_runtime.platform.get(), std::memory_order_release);
   v8::V8::SetFatalMemoryErrorCallback(ProcessOOMErrorCallback);
-  // iwci patch (#1134)
-  StartPoolKeeper(g_runtime.platform.get());
   g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                 engine_flags_length);
   return napi_ok;
@@ -2196,8 +2105,6 @@ static napi_status DestroyEnvInstance(napi_env env) {
     // to be freed.
     if (had_near_heap_limit_callback) {
       env->isolate->RemoveNearHeapLimitCallback(NearHeapLimitCallback, 0);
-      // iwci patch (#1063): installed with it, with this env, freed below.
-      env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
     }
     v8::HeapStatistics heap;
     env->isolate->GetHeapStatistics(&heap);
@@ -2239,9 +2146,6 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
     }
     if (install_provider_callback) {
       env->isolate->AddNearHeapLimitCallback(NearHeapLimitCallback, env);
-      // iwci patch (#1063): and the heap it has committed, after every
-      // collection.
-      env->isolate->AddGCEpilogueCallback(HeapCommittedCallback, env);
     }
     return napi_ok;
   }
@@ -2259,7 +2163,6 @@ napi_status NAPI_CDECL unofficial_napi_configure_near_heap_limit_callback(
   if (remove_provider_callback) {
     env->isolate->RemoveNearHeapLimitCallback(
         NearHeapLimitCallback, restored_heap_limit);
-    env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
   }
   return napi_ok;
 }

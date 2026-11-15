@@ -46,9 +46,14 @@ V8 runs a full mark-compact before each grant, so Prettier over the monorepo
 ran about 4x slower than native Node, and a burst of allocation could outrun
 the grants: V8 died with "Reached heap limit" with most of the budget unused,
 aborting the whole process. `src/budget.rs` now starts at 256 MiB, grows by
-half the current limit per grant (at least 128 MiB), and gives a budget with
-room for it a 192 MiB young generation (64 MiB semi-spaces), all still
-charged against the budget. Revisit if a release makes these settings.
+half the current limit per grant (at least 128 MiB), and charges a budget
+with room for it a young generation of its own, all against the budget.
+That was 192 MiB (64 MiB semi-spaces) until the runner capped every
+semi-space at 16 MiB for V8 15.9 (below), after which V8 could use 48 MiB
+of it; it is 48 MiB now (`DEFAULT_YOUNG_GENERATION`, #1158), so a `node`
+is charged what its heap can hold and a job's `memory:` fits 144 MiB more
+per `node`. A test in `iwci-runtime` holds the constant to the flag.
+Revisit if a release makes these settings.
 
 **And: `g_mu` only where state is shared.** Every per-env bridge call held
 the process-wide `g_mu` for its whole duration, including the calls that run
@@ -124,9 +129,10 @@ of a jsdom Vitest run: 2,075 mark-compacts over 24 of `ui`'s test files.
 `src/env.rs` now tells a process's main isolate from a worker's (the first
 env on a guest process's linear memory is the only session holding its
 guest heap), and `src/budget.rs` gives the former the first isolate's
-256 MiB old generation, still against a quarter of what is left, and a
-64 MiB young generation where the 192 MiB default does not fit: 61
-mark-compacts over the same files. Workers keep the small start.
+256 MiB old generation, still against a quarter of what is left (and, then,
+a 64 MiB young generation where the 192 MiB default did not fit; the
+default is 48 MiB since #1158 and needs no smaller one): 61 mark-compacts
+over the same files. Workers keep the small start.
 
 **And: an env lookup takes no lock (#994).** Every bridge call checks the
 env pointer it is given against the env registry (`LookupEnvState`) before
@@ -378,85 +384,41 @@ absent, and the result is then a plain Uint8Array, which Edge.js turns into
 a Buffer itself). Reported as wasmerio/napi#146; drop the hunk with the
 release that fixes it.
 
-**And: every heap of the process shares one cage, and is held to it
-(#1063).** The bridge's V8 compresses pointers into one 4 GiB cage per
-isolate group and is built with a single group
-(`v8::IsolateGroup::CanCreateNewGroups()` returns false on both
-architectures), so every isolate of every job allocates its heap pages from
-the same 4 GiB, while each job's budget held only its own heaps. A few test
-jobs at once filled it: V8's page allocation failed inside an isolate well
-within its job's budget, which it treats as fatal ("MarkCompactCollector:
-young object promotion failed", "CALL_AND_RETRY_LAST"), so the isolate was
-lost (above) with its heap, which made the next loss likelier.
-`src/budget.rs` now keeps a process-wide account of the cage, `HeapSpace`,
-of 3.5 GiB (`DEFAULT_V8_HEAP_SPACE`: the cage less room for what the
-account does not see, such as the read-only space, pooled pages and growth
-since a heap last reported). Each budgeted isolate is charged there with
-the heap it has committed, which it reports after every garbage collection
-(`v8/src/unofficial_napi.cc` installs a GC epilogue callback with the
-near-heap-limit callback, removes it with that callback, and looks the
-host's data up the same way, so a lost isolate's is never read), plus the
-room each near-heap-limit grant promises until the heap grows into it or a
-full collection with no grant since shows it was not needed. Charging the
-limits instead, which is what would make overflow impossible, held a test
-pipeline to a quarter of the cage: the limits filled the space while the
-heaps used 850 MB of it, and `node`s and workers were refused. A new
-isolate is admitted only while 512 MiB of the space stays free
-(`HEAP_SPACE_GROWTH_ROOM`), and waits for that; a grant the budget has room
-for but the space does not waits too, inside the near-heap-limit callback
-on the isolate's own thread, which holds no lock another isolate takes.
-While the space is three quarters used, a new isolate starts from a 64 MiB
-old generation and V8's own young one, and grants come in the smallest
-step, so what a heap may grow into without asking stays near what it uses.
-Room given back goes to the largest waiting heap whose request fits, so one
-heap grows to where it can finish rather than each by a little. A wait goes
-on while heaps give room back and ends in vain after two minutes in which
-none did, at once for the smallest waiting heap when every live isolate
-waits to grow (each holds its own room, so one must give up for the rest
-to go on), or when the app is stopped. Waiting in vain refuses the isolate
-or stops the heap as the budget does, counted as `heap_space_full` so the
-embedder can say it was the shared space, not the job's memory;
-`set_heap_space_wait_hook` lets the embedder count the wait as the
-runtime's (the runner's stall check calls the job busy meanwhile). A lost
-isolate's heap is never freed, so it stays charged to the space, counted as
-`lost`, on which `iwci serve` restarts once it holds a quarter of the
-space. `heap_space()` reports the space, and `set_heap_space` lowers it for
-an embedder that runs fewer heaps. It is an account, not a guarantee: a
-heap still grows between reports and up to its limit without asking.
-Drop this with a V8 built with multiple cages
-(`v8_enable_pointer_compression_shared_cage=false`, where
-`IsolateGroup::Create` gives each isolate a cage of its own) or without
-pointer compression. The bridge links such a V8 since 15.9 (below), so the
-account no longer guards a shared cage; it still caps the heaps of all
-isolates together at 3.5 GiB until it is replaced (#1158).
-
-**And: the isolate group's main isolate is the bridge's (#1134).** The
-account above counts heaps, and the cage held more than heaps: the isolate
-group's page pool keeps a disposed isolate's young-generation pages
-(`SemiSpace::TearDown` frees them to the pool, V8 13.6), reserved in the
-cage, until a task posted 8 s later to the group's main isolate frees them
-(`PagePool::ReleaseOnTearDown`, `IsolateGroup::FindAnotherIsolateLocked`)
-or a new young generation takes them back. The main isolate is the first
-one created and stays main until it is disposed. A `node` blocked in one
-call or idle in its event loop (a delayed task does not wake it) ran that
-task only when it next pumped its queue, and an isolate abandoned after
-running out of memory (above) is never disposed, so once main it ran it
-never. On ci-2 that filled the cage while the account showed room: a
-heap's next old-generation or large-object page found no address space, V8
-failed "CALL_AND_RETRY_LAST" in heaps of 23 to 568 MB with nothing
-refused, and each lost isolate kept its heap and stayed in the group, 19
-in 75 minutes. With 24 young generations of 128 MiB ended under a
-`node` blocked in `Atomics.wait` (or idle in `setTimeout`), the next
-`node` got 500 (200) MB of heap before it was lost; with no `node` left
-behind it got 3.4 GB. `v8/src/unofficial_napi.cc` now makes an isolate of
-its own when the runtime is configured, before any env's, so it is main
-for the life of the process; it runs no JavaScript and its thread pumps its
-foreground tasks every 250 ms, so the pool is freed 8 s after each
-disposal. The same two runs then got 3.4 GB. `builtins/test.sh
-bash-node-pool` is that run. Drop this with a V8 whose pool does not wait
-on another isolate's thread: 15.9 frees the pool from a worker thread, and
-with a cage per isolate each isolate is its group's only one, so this too
-goes with the account (#1158).
+**And: a lost heap is counted, and nothing else is process-wide (#1158).**
+Until V8 15.9 the bridge's V8 put every isolate of the process in one
+4 GiB pointer-compression cage, so the heaps of all jobs shared 4 GiB of
+address space whatever their budgets said, and this patch carried two
+things for it: a process-wide account of the cage in `src/budget.rs`
+(`HeapSpace`, #1063: 3.5 GiB, charged from a GC epilogue callback with
+each heap's committed size, with waits, refusals and a `heap_space_full`
+count), and an isolate of the bridge's own that stayed the isolate group's
+main one so that the group's page pool was freed (#1134). The V8 linked
+now (below) is built without the shared cage:
+`IsolateGroup::CanCreateNewGroups()` is true and `GetOrCreateIsolateGroup`
+gives every isolate a group and a cage of its own, and 15.9 frees a
+group's pooled pages from a worker thread (`MemoryPool::PostDelayedReleaseTask`)
+or with the group, which ends with its only isolate. Both are gone: no
+account, no wait, no epilogue callback, no extra isolate. A heap is held
+by its app's budget alone (`budget.rs` charges each isolate's ceiling and
+every near-heap-limit grant, as before) and by its own cage: the grants
+stop at `MAX_ISOLATE_HEAP`, 3.5 GiB, since V8 clamps an old generation's
+limit to the 4 GiB cage and a heap that runs into it is lost, not stopped;
+such a stop is counted as `heaps_at_limit`. It is the embedder's to keep
+its budgets within its memory, which the runner does by reserving every
+job's `memory:` out of `--memory`. What stays process-wide is one counter,
+`lost_heap()`: an isolate abandoned after an out-of-memory (above) is never
+disposed, so its heap stays mapped after its app and its budget are gone,
+and `napi_host_isolate_out_of_memory` adds what the budget was charged for
+it (its ceiling and grants, the most it can hold), once per isolate.
+`iwci serve` restarts before those hold a quarter of its memory reserve.
+`builtins/test.sh bash-node-pool` (two dozen heaps at once, then two jobs
+holding 4.8 GB between them, which the account refused) and
+`src/budget.rs`'s tests are the checks. The workspace's `cargo test` does
+not run a vendored crate's tests: `vendor/wasmer-napi/cargo-standalone.sh
+test --lib -- budget` does, from `Cargo.standalone.toml`, which now names
+the two dependencies this patch gave `Cargo.toml` (`tracing`, and `sha2`
+for `build.rs`) and had stopped building without. Drop the counter with
+the out-of-memory confinement it belongs to.
 
 **And: cloning and reading a message lend the store (#1061).** A backing
 store the bridge makes for V8 lives in the guest heap, which can grow the
@@ -583,7 +545,7 @@ and `ci-runner-release-build.yml` runs that build on pull requests that
 touch the bridge or its V8.
 
 Per-isolate cages. The release, like 13.6, puts every isolate of the
-process in one 4 GiB cage, which every job's heaps share (#1063 below). V8
+process in one 4 GiB cage, which every job's heaps share (#1063). V8
 15.9's heaps are larger under the same budget (an allocation-heavy `node`
 commits about 220 MB where 13.6's committed 155 MB, mostly old space), and
 with one cage `builtins/test.sh bash-node-pool`, 24 such `node`s at once,
@@ -603,8 +565,8 @@ that held more than about 128 MB of buffers never left it:
 to leave it out. And 15.9 restarts incremental marking after each
 mark-compact while the old generation has less room under its limit than
 the young generation's capacity, with that limit capped halfway between
-the heap's size and its maximum: with the 192 MiB young generation above
-(64 MiB semi-spaces), a 256 MiB heap past half full stayed in that state,
+the heap's size and its maximum: with the 192 MiB young generation the
+budget gave then (64 MiB semi-spaces), a 256 MiB heap past half full stayed in that state,
 below the 80% at which V8 asks the near-heap-limit callback for more.
 Vitest's main process in `server-core` ran 12,600 mark-compacts in 100 s,
 each freeing nothing, and major GC took 60% of the job's CPU. The runner
@@ -656,7 +618,8 @@ The other hunks, against 15.9:
   lock-free env lookup, the guest heap's memory (#955), the platform's waits
   (#943), ARM64's `c_char` and libatomic, the worker task hooks, the
   out-of-memory confinement and its counts (#972, #990, #1021), the cage
-  account (#1063), the bridge's main isolate (#1134), the store lent in the
+  account (#1063) and the bridge's main isolate (#1134; both dropped since,
+  #1158), the store lent in the
   message imports and the rest of #1090, a guest callback's panic (#1092)
   and the arrow messages (#1143), whose `arrow_tests` pass against 15.9.
 

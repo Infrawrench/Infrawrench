@@ -2225,28 +2225,32 @@ whole pipeline.
   fixes glibc's allocator thresholds (a 2 MiB trim threshold) so that
   includes the top of every thread's arena, which glibc's own adjustment
   stops trimming after the first large block it frees (#1066).
-- **One V8 heap space for every Node job (#1063).** Every `node` of every
-  job is an isolate of the runner's one V8, which compresses pointers into
-  a single 4 GiB cage: the JavaScript heaps of all jobs together have 4 GiB
-  of address space, whatever the job budget is. The bridge keeps an account
-  of 3.5 GiB of it on top of each job's `memory:`, charging each heap what
-  it has committed (reported after every garbage collection) and the room
-  its last growth was promised. A `node` starts only while 512 MiB of the
-  account stays free, and a heap that needs to grow past what is free waits
-  for others; a waiting job is busy, not stalled. While the account is
-  three quarters used, new heaps start small and grow in small steps. Room
-  given back goes to the largest waiting heap first, so one heap gets what
-  it needs to finish rather than each a little. A wait ends in vain after
-  two minutes in which no heap gave any room back, or at once for the
-  smallest heap when every live heap waits to grow (each holds its own, so
-  then one has to give up) or when what it asks for does not fit beside the
-  heaps of lost isolates alone (below; those are never freed), as an
-  out-of-memory note saying the shared heap was full, not the job's
-  `memory:`; such a job may pass when it runs again. Before this, the heaps of a few busy test jobs together filled the
-  cage, and V8 failed inside a job well within its `memory:` ("young object
-  promotion failed", "CALL_AND_RETRY_LAST"), losing the isolate. The log
-  line and `/v1/capacity` say how much of the account is used. More
-  `--memory` does not buy more JavaScript heap.
+- **A Node job's JavaScript heaps count against its own `memory:`, and
+  nothing else (#1158).** Every `node` and worker thread of a job is an
+  isolate of the runner's one V8, with a pointer-compression cage of its
+  own, so no address space is shared between jobs. Each isolate is charged
+  to its job's `memory:` for the most its heap may hold: an old generation
+  that starts at 256 MiB (64 MiB for a worker thread) and grows by half
+  through grants the job's `memory:` has room for, a 48 MiB young
+  generation (all V8 can use of one with the runner's 16 MiB semi-spaces;
+  left uncharged where less than 192 MiB of `memory:` is there to plan
+  with) and 24 MiB of overhead and slack. A heap the job's `memory:` cannot
+  grow is stopped, a `node` it has no room for is refused, and the job is
+  told so. One heap grows to 3.5 GiB at most, whatever `memory:` is left:
+  its cage is 4 GiB, and a job that needs more JavaScript heap than that
+  has to split it across `node`s or worker threads (its note says so).
+  Since every job reserves its `memory:` out of `--memory` before
+  it starts, the heaps of all jobs together stay inside the job budget, and
+  so inside the host less `--memory-reserve`: that is what keeps Node jobs
+  from exhausting the host, however many run. The one thing outside it is
+  the heap of an isolate V8 ran out of memory in (below): it stays mapped
+  after its job has given its `memory:` back, in the server's own memory,
+  and `iwci serve` restarts before such heaps hold a quarter of
+  `--memory-reserve` (see
+  [Deploying, draining and updating](#deploying-draining-and-updating)).
+  Until V8 15.9 every isolate shared one 4 GiB cage, which the runner held
+  to an account of its own with waits and refusals; that is gone, and more
+  `--memory` now does buy more JavaScript heap.
 - **Compiled modules in memory.** A module a job starts that is not in
   memory loads from the disk cache: on ci-1 that adds about 0.5 s to a
   `node` start (Edge.js is a 92 MiB artifact) and tens of milliseconds to a
@@ -2493,8 +2497,8 @@ it is masked, and an untrusted run is given none of it:
   for by jobs that are ready but not started (waiting for memory, or for
   one of their run's workers), across every run; a job whose `needs` have
   not finished counts only once it is ready. The proxy places runs by these
-  three, `runs_active` and the V8 heap space below (`app/packages/ci-proxy`,
-  "Placement"); a runner from before `memory_waiting` leaves it out. Beside them, each `null` where it
+  three and `runs_active` (`app/packages/ci-proxy`, "Placement"); a runner
+  from before `memory_waiting` leaves it out. Beside them, each `null` where it
   cannot be read: `memory_host` (the host's memory, or the service's
   cgroup limit), `memory_reserve` (`--memory-reserve`), `memory_resident`
   and `memory_anonymous` (the process's resident memory and the part of it
@@ -2511,20 +2515,18 @@ it is masked, and an untrusted run is given none of it:
   the most recently used. `modules_loaded_from_memory`,
   `modules_loaded_from_disk` and `modules_evicted` count since the process
   started.
-- **V8 heap space.** `v8_heap_space_total` and `v8_heap_space_used` are
-  what the Node jobs' V8 heaps may use together and what the account says
-  they use now (every heap's committed memory and promised growth, and lost
-  isolates' heaps), in bytes;
-  `v8_heap_space_waits` counts the times a `node` or a growing heap waited
-  for room since the process started, and `v8_heap_space_refusals` the
-  times it waited in vain. See [Limits](#limits).
 - **V8's out-of-memory losses.** `/v1/capacity` also says what V8 running
   out of memory where it cannot recover has cost the process since it
   started: `v8_lost_isolates` (isolates abandoned, with their memory, which
   no job's `memory:` counts any more), `v8_parked_threads` (threads parked
   for good), `v8_parked_worker_threads` (those of them that were V8's
-  worker threads, a pool every Node job shares) and `v8_lost_heap` (bytes
-  of the V8 heap space the abandoned isolates hold). The vendored bridge keeps
+  worker threads, a pool every Node job shares) and `v8_lost_heap` (the
+  most the abandoned isolates' heaps hold, in bytes: what each one's job
+  was charged for it, which the server's own memory carries once the job
+  has ended). `v8_heap_space_total`, `v8_heap_space_used`,
+  `v8_heap_space_waits` and `v8_heap_space_refusals`, which reported the
+  account of the cage every job's heaps shared before V8 15.9, are gone
+  (#1158). The vendored bridge keeps
   each such out-of-memory to its job at that cost
   ([vendor/README.md](vendor/README.md)), and the server logs the counts
   whenever they grow and restarts itself once they are too high (see
@@ -2855,9 +2857,10 @@ make that safe to do while jobs run:
   isolate for good. Once that has cost one of V8's worker threads, whose
   pool is sized to `--cpus` and shared by every Node job,
   `--restart-after-lost-isolates` isolates (default 8; `0` for never), or
-  lost isolates whose heaps hold a quarter of the V8 heap space every Node
-  job shares (see [Limits](#limits); those heaps are never freed, and the
-  space is all the JavaScript heap the process has), the server drains and
+  lost isolates whose heaps hold a quarter of `--memory-reserve` (see
+  [Limits](#limits); those heaps are never freed, their jobs' `memory:` no
+  longer covers them, and the reserve is all the host has outside the job
+  budget), the server drains and
   `exec`s its own binary with the same arguments, the way an update does,
   and starts again with none lost. That drain does not wait for its runs to
   finish (#1135): they start no more jobs, and report each job they had not

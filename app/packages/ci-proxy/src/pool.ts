@@ -1,6 +1,6 @@
 // The runners behind the proxy. A run is placed on the runner with the
-// most job memory for each run it has, weighed by its free V8 heap space
-// (`byPlacement`, and the README's "Placement"); a runner that answers 429,
+// most job memory for each run it has (`byPlacement`, and the README's
+// "Placement"); a runner that answers 429,
 // or that is draining before an update or a stop, is passed over, and the
 // caller only hears 429 when every runner is full, draining or down. Run
 // ids carry the runner's name (`<name>.<id>`), so status and log requests
@@ -36,12 +36,13 @@ export interface Capacity {
    * runner older than the field, which then counts as nothing waiting.
    */
   memoryWaiting: number | null;
-  /** The V8 heap space every Node job on the runner shares, in bytes; `null` when not reported. */
-  v8HeapSpaceTotal: number | null;
-  /** What V8 heaps use of it now, lost isolates' included. */
-  v8HeapSpaceUsed: number | null;
   /** Isolates V8 abandoned after running out of memory since the runner started. */
   v8LostIsolates: number | null;
+  /**
+   * The most their heaps hold, in bytes, out of the memory the runner keeps
+   * for itself; it restarts before that is used up. `null` when not reported.
+   */
+  v8LostHeap: number | null;
 }
 
 /**
@@ -55,37 +56,27 @@ export function memoryRoom(c: Capacity): number | null {
 }
 
 /**
- * How much of a runner's V8 heap space is free, from 1 (all of it, or a
- * runner that does not report it) down to 0. Every Node job on a runner
- * shares that space, whatever its job memory, and lost isolates' heaps
- * count as used.
- */
-export function v8Free(c: Capacity): number {
-  if (c.v8HeapSpaceTotal === null || c.v8HeapSpaceUsed === null || c.v8HeapSpaceTotal === 0)
-    return 1;
-  return Math.max(0, c.v8HeapSpaceTotal - c.v8HeapSpaceUsed) / c.v8HeapSpaceTotal;
-}
-
-/**
  * What a new run could expect of a runner's job memory, in bytes, or
  * `null` when it reports no budget:
  *
- *     (budget + room) / 2 / (runs_active + 1) * (1 + v8 free) / 2
+ *     (budget + room) / 2 / (runs_active + 1)
  *
- * The first half is the budget shared among the runs it would then have,
- * an average of its whole budget (what runs get over their life, as the
+ * That is the budget shared among the runs it would then have, an average
+ * of its whole budget (what runs get over their life, as the
  * jobs that hold memory now finish) and its room now (budget less held and
  * queued, floored at minus the budget). A run lasts tens of minutes and a
  * runner's reservations swing from a quarter to all of its budget in ten,
  * so the number of runs it shares the host with counts as much as what is
- * free at the moment it is placed. The last factor takes up to half of
- * that away as the V8 heap space every Node job shares fills.
+ * free at the moment it is placed. Job memory is all a runner's Node
+ * jobs are held to: each V8 heap counts against its own job's memory, and
+ * nothing is shared between the heaps of different jobs (#1158), so
+ * placement has no V8 term.
  */
 export function placementShare(c: Capacity): number | null {
   const room = memoryRoom(c);
   if (room === null || c.memoryTotal === null) return null;
   const memory = (c.memoryTotal + Math.max(room, -c.memoryTotal)) / 2;
-  return (memory / (c.runsActive + 1)) * ((1 + v8Free(c)) / 2);
+  return memory / (c.runsActive + 1);
 }
 
 /**
@@ -93,7 +84,7 @@ export function placementShare(c: Capacity): number | null {
  *
  * 1. Runners that report a job memory budget, then those that do not.
  * 2. The largest `placementShare`: job memory per run, the new one
- *    included, weighed by how much V8 heap space is free.
+ *    included.
  * 3. The most room (budget less held and queued), so a full pool places a
  *    run where the smallest backlog waits.
  * 4. Then the most free slots, the fewest active runs, and the name, so the
@@ -102,8 +93,8 @@ export function placementShare(c: Capacity): number | null {
  * Slots alone would send every run to the runner with the most of them
  * while its memory is full (#1089). Free memory alone, ranked ahead of run
  * counts, sent every run to a runner with 2 GiB free and four runs over one
- * with none free and two, until its V8 heap space ran out (#1132): a run's
- * jobs wait for memory, and a run cannot move once it starts.
+ * with none free and two (#1132): a run's jobs wait for memory, and a run
+ * cannot move once it starts.
  */
 export function byPlacement(a: Capacity, b: Capacity): number {
   const shareA = placementShare(a);
@@ -205,9 +196,8 @@ export class Pool {
           memoryTotal: null,
           memoryUsed: null,
           memoryWaiting: null,
-          v8HeapSpaceTotal: null,
-          v8HeapSpaceUsed: null,
           v8LostIsolates: null,
+          v8LostHeap: null,
         };
         try {
           const res = await this.call(name, "/v1/capacity", {
@@ -221,9 +211,8 @@ export class Pool {
             memory_total?: unknown;
             memory_used?: unknown;
             memory_waiting?: unknown;
-            v8_heap_space_total?: unknown;
-            v8_heap_space_used?: unknown;
             v8_lost_isolates?: unknown;
+            v8_lost_heap?: unknown;
             draining?: boolean;
             version?: string;
           };
@@ -239,9 +228,8 @@ export class Pool {
             memoryTotal: bytes(body.memory_total),
             memoryUsed: bytes(body.memory_used),
             memoryWaiting: bytes(body.memory_waiting),
-            v8HeapSpaceTotal: bytes(body.v8_heap_space_total),
-            v8HeapSpaceUsed: bytes(body.v8_heap_space_used),
             v8LostIsolates: bytes(body.v8_lost_isolates),
+            v8LostHeap: bytes(body.v8_lost_heap),
           };
         } catch {
           return down;

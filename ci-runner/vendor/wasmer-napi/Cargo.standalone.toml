@@ -30,6 +30,7 @@ cli = [
 ]
 
 [dependencies]
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 anyhow = "1"
 # Standalone builds use one immutable Wasmer source revision. The N-API
 # instantiation hook and shared-memory bridge are developed together on the SDK
@@ -67,6 +68,7 @@ wasmer-wasix = { git = "https://github.com/wasmerio/wasmer.git", rev = "c83ba6d3
 cc = "1"
 tar = "0.4"
 ureq = "2"
+sha2 = "0.11"
 xz = "0.1"
 
 [dev-dependencies]

@@ -24,7 +24,7 @@ token routes needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET /healthz`                                                            | `200 ok`, unauthenticated.                                                         |
 | `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=`     | A job's download, for a link the app signed (below); no bearer key.                |
 | `GET`, `PUT /v1/runners`                                                  | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                        | Each runner's slots, job memory, V8 heap space, whether it answered; pool totals.  |
+| `GET /v1/capacity`                                                        | Each runner's slots, job memory, V8 losses, whether it answered; pool totals.      |
 | `POST /v1/runs[?wait=true]`                                               | A run on the best placed runner (below). `429` only when every runner refuses.     |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                             | From the runner that has the run. Logs stream through as Server-Sent Events.       |
 | `POST /v1/runs/{id}/cancel`                                               | Cancels the run, or the pipelines the body names, on the runner that has it.       |
@@ -69,11 +69,7 @@ run could expect of that budget:
 
 ```
 (memory_total + max(room, -memory_total)) / 2 / (runs_active + 1)
-  * (1 + v8 free) / 2
 ```
-
-where _v8 free_ is the part of `v8_heap_space_total` that
-`v8_heap_space_used` leaves (1 when the runner does not report it).
 
 1. Runners that report a memory budget first, then any that do not.
 2. The largest share.
@@ -88,10 +84,15 @@ tens of minutes and a runner's reservations swing between a quarter and
 all of its budget in ten, so how many runs a runner has counts as much as
 what is free at the instant of placing. Ranking any free memory ahead of
 run counts sent every run of a burst to a runner with 2 GiB free and four
-runs rather than one with none free and two, until the V8 heap space its
-Node jobs share ran out (#1132). The V8 factor takes up to half of a
-runner's share away as that space fills; lost isolates' heaps count as
-used.
+runs rather than one with none free and two (#1132). Job memory is the
+only memory term: a runner's V8 heaps each count against their own job's
+`memory:`, and nothing is shared between the heaps of different jobs since
+every isolate has a cage of its own (#1158). A runner from before that
+still reports `v8_heap_space_total` and `v8_heap_space_used`, which are
+ignored. `v8_lost_isolates` and `v8_lost_heap` (isolates V8 abandoned after
+running out of memory, and the most their heaps hold) are passed through
+in `/v1/capacity` for whoever watches the pool; a runner restarts itself
+before they cost it its memory reserve, and is draining meanwhile.
 
 Draining and unreachable runners are left out, and a runner that answers
 `429` is passed over for the next. Nothing about a runner is remembered

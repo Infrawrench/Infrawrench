@@ -12,7 +12,7 @@
 #   builtins/test.sh go              every Go minor; go@1.25 for one
 #   builtins/test.sh python postgres
 #   builtins/test.sh clickhouse      ClickHouse as a service, from Node
-#   builtins/test.sh bash-node-pool  V8 heap room after other `node`s end
+#   builtins/test.sh bash-node-pool  many V8 heaps at once, and large ones
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #
@@ -23,9 +23,10 @@
 # over its HTTP interface from Node, so it needs an iwci built with
 # `--features node`, like bash-node.
 # `bash-node-pool` runs bash-node's environment in a pipeline of its own,
-# so that its runner's V8 holds only its heaps: one `node` needs most of the
-# V8 heap space after two dozen others ended. It needs an iwci built with
-# `--features node`, about 6 GB of memory and 3 minutes.
+# so that its runner's V8 holds only its heaps: two dozen `node`s at once,
+# one that needs 3 GB after they ended, then two jobs holding 2.4 GB of
+# heap each at the same time. It needs an iwci built with `--features
+# node`, about 6 GB of memory and 4 minutes.
 # `kubectl` runs kubectl from bash scripts against a small API server its
 # build makes (`kubectl/fake-apiserver.go`), on the job's loopback, with a
 # kubeconfig lent the way the app lends a connection (`IWCI_LENT_FILE`), so
@@ -3572,15 +3573,23 @@ jobs:
 YAML
       ;;
     bash-node-pool)
-      # Alone in its runner, so the 4 GiB V8 cage has only its own heaps.
-      # A `node` that outlives other `node`s, here blocked in one call, was
-      # the isolate group's main isolate, and V8 frees a disposed isolate's
-      # young-generation pages only from a task on that isolate's thread.
-      # Until then they stay in the cage, in no heap and in no account
-      # (#1134): 24 young generations of 128 MiB left a later `node` 200 to
-      # 500 MB of heap, where V8 failed "CALL_AND_RETRY_LAST" and the
-      # isolate was lost. The bridge's own isolate is main now and frees
-      # them 8 s after each one goes.
+      # Alone in its runner, so its V8 has only this pipeline's heaps.
+      # Until V8 15.9 every isolate of the runner shared one 4 GiB cage. A
+      # `node` that outlived other `node`s, here blocked in one call, was
+      # the isolate group's main isolate, and V8 freed a disposed isolate's
+      # young-generation pages only from a task on that isolate's thread:
+      # 24 young generations left a later `node` 200 to 500 MB of heap,
+      # where V8 failed "CALL_AND_RETRY_LAST" and the isolate was lost
+      # (#1134). Every isolate has a cage of its own now, so the `node`s
+      # that ended take nothing from the probe.
+      #
+      # And the heaps of different jobs are held by nothing but each job's
+      # `memory:` (#1158): `big-1` and `big-2` hold 2.4 GB of heap each at
+      # the same time, 4.8 GB together. The account of the shared cage
+      # held all heaps of the runner to 3.5 GiB: one of the two waited for
+      # room the other held, and was stopped, "within the job's `memory:`,
+      # but not within the 3584 MiB of V8 heap that every job on this
+      # runner shares".
       cat <<'YAML'
 name: bash-node-pool
 jobs:
@@ -3657,6 +3666,20 @@ jobs:
     run: |
       sleep 12
       node -e 'const a = []; for (let i = 0; i < 30; i++) a.push(new Array(12.5e6).fill(i + 0.5)); console.log(a.length * 100, "MB")'
+  big-1-passes:
+    using: env:bash-node@24
+    needs: [probe-passes]
+    memory: 4GiB
+    timeout: 5m
+    run: |
+      node -e 'const a = []; for (let i = 0; i < 24; i++) a.push(new Array(12.5e6).fill(i + 0.5)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25000); console.log(a.length * 100, "MB held")'
+  big-2-passes:
+    using: env:bash-node@24
+    needs: [probe-passes]
+    memory: 4GiB
+    timeout: 5m
+    run: |
+      node -e 'const a = []; for (let i = 0; i < 24; i++) a.push(new Array(12.5e6).fill(i + 0.5)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25000); console.log(a.length * 100, "MB held")'
 YAML
       ;;
     clickhouse)

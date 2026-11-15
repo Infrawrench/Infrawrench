@@ -1,3 +1,21 @@
+--- a/Cargo.standalone.toml
++++ b/Cargo.standalone.toml
+@@ -30,6 +30,7 @@
+ ]
+ 
+ [dependencies]
++tracing = { version = "0.1", default-features = false, features = ["std"] }
+ anyhow = "1"
+ # Standalone builds use one immutable Wasmer source revision. The N-API
+ # instantiation hook and shared-memory bridge are developed together on the SDK
+@@ -67,6 +68,7 @@
+ cc = "1"
+ tar = "0.4"
+ ureq = "2"
++sha2 = "0.11"
+ xz = "0.1"
+ 
+ [dev-dependencies]
 --- a/Cargo.toml
 +++ b/Cargo.toml
 @@ -84,6 +84,11 @@
@@ -204,15 +222,7 @@
  fn resolve_primary_library(dir: &Path) -> Option<PathBuf> {
 --- a/src/budget.rs
 +++ b/src/budget.rs
-@@ -33,7 +33,6 @@
-     Arc,
-     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
- };
--#[cfg(not(target_arch = "wasm32"))]
- use std::time::Duration;
- 
- #[cfg(not(target_arch = "wasm32"))]
-@@ -53,16 +52,396 @@
+@@ -53,16 +53,89 @@
  const MIB: u64 = 1024 * 1024;
  
  /// Initial `max_old_generation_size` charged per V8 isolate at env creation.
@@ -230,22 +240,22 @@
 +/// patch: 128 MiB, not 32, and grants grow with the heap; see
 +/// [`napi_host_near_heap_limit_grant`]).
 +pub const DEFAULT_HEAP_GROW_STEP: u64 = 128 * MIB;
-+/// iwci patch: the young generation a budgeted isolate gets when the guest
-+/// asks for none: 64 MiB semi-spaces, so allocation-heavy code scavenges a
-+/// third as often as with V8's default. Reserved up front like any explicit
-+/// young-generation request.
-+pub const DEFAULT_YOUNG_GENERATION: u64 = 192 * MIB;
++/// iwci patch: the young generation a budgeted isolate is charged, and
++/// asks V8 for, when the guest asks for none: 16 MiB semi-spaces, of which
++/// V8 keeps two and as much again for new large objects. Reserved up front
++/// like any explicit young-generation request. It is what V8 can use, not
++/// more (#1158): the embedder caps every isolate's semi-space at 16 MiB
++/// (`--max-semi-space-size=16`, which V8 15.9 needs to grow a budgeted heap
++/// at all, #1039), and the 192 MiB reserved here before that (64 MiB
++/// semi-spaces) left 144 MiB of every `node`'s charge that no heap could
++/// use. An embedder that sets another semi-space changes this with it.
++pub const DEFAULT_YOUNG_GENERATION: u64 = 48 * MIB;
 +/// iwci patch: the old generation a `worker_threads` Worker starts with when
 +/// other isolates are already live: the published default, so a pool of
 +/// workers fits in a job's memory; each grows through the near-heap-limit
 +/// grants like the first. A second `node` of the job is not a worker: it
 +/// starts from [`DEFAULT_INITIAL_ISOLATE_HEAP`] (see [`IsolateRole`]).
 +pub const DEFAULT_LATER_ISOLATE_HEAP: u64 = 64 * MIB;
-+/// iwci patch: the young generation a second `node` of a job gets when the
-+/// budget left for it is too small for [`DEFAULT_YOUNG_GENERATION`]: V8's own
-+/// default for a heap that size is a few MiB, which promotes nearly every
-+/// short-lived object into the old generation.
-+pub const DEFAULT_PROCESS_YOUNG_GENERATION: u64 = 64 * MIB;
 +/// iwci patch: the least old generation a clamped default reservation may
 +/// get. Less is refused, so the guest reports a clean "cannot create" error
 +/// instead of an isolate that is terminated by its first allocation.
@@ -268,351 +278,44 @@
  /// and V8's own malloc'd metadata without sampling.
  pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
  
-+/// iwci patch (#1063): the pointer-compression cage of a V8 isolate group,
-+/// 4 GiB. With V8 13.6 the bridge had a single group, so every isolate of
-+/// every app allocated its heap pages from the same 4 GiB, whatever each
-+/// app's own budget said, and past it a page allocation failed, which V8
-+/// treats as fatal ("young object promotion failed", "CALL_AND_RETRY_LAST").
-+/// The V8 15.9 the runner links has a group, and a cage, per isolate, so
-+/// the account below no longer guards a shared cage (#1158).
++/// iwci patch (#1158): the pointer-compression cage of a V8 isolate, 4 GiB.
++/// The V8 the bridge links gives every isolate a cage of its own (15.9,
++/// built without the shared cage), so heaps no longer share one, but each
++/// still has to fit in its own: V8 clamps an old generation's limit to the
++/// cage, and a heap that runs into either fails an allocation, which V8
++/// treats as fatal.
 +pub const V8_HEAP_CAGE: u64 = 4096 * MIB;
-+/// iwci patch (#1063): what [`HeapSpace`] lets the isolates of the process
-+/// use together: the cage less room for what its account does not see (the
-+/// read-only space, pooled pages, growth since an isolate's last garbage
-+/// collection, a stopped isolate's overdraft, pages a large object cannot
-+/// use).
-+pub const DEFAULT_V8_HEAP_SPACE: u64 = V8_HEAP_CAGE - 512 * MIB;
-+/// iwci patch (#1063): a new isolate is admitted only while this much of the
-+/// heap space stays free, for the heaps already running to grow into.
-+pub const HEAP_SPACE_GROWTH_ROOM: u64 = 512 * MIB;
-+/// iwci patch (#1063): what a new isolate is charged to the heap space until
-+/// it reports its own heap, after its first garbage collection.
-+pub const HEAP_SPACE_ADMIT_CHARGE: u64 = 32 * MIB;
-+/// iwci patch (#1063): how long a new isolate waits for room in the heap
-+/// space, with no heap giving any back meanwhile, before it is refused.
-+/// While other heaps keep ending or giving room back it waits on.
-+pub const HEAP_SPACE_ADMIT_WAIT: Duration = Duration::from_secs(120);
-+/// iwci patch (#1063): how long a heap that needs to grow waits for room in
-+/// the heap space, with no heap giving any back meanwhile, before its
-+/// isolate is stopped. Every waiting heap holds its own, so when all of
-+/// them wait, one has to give up for the rest to go on.
-+pub const HEAP_SPACE_GROW_WAIT: Duration = Duration::from_secs(120);
++/// iwci patch (#1158): the most the near-heap-limit grants raise one
++/// isolate's old generation to, however much budget is left: the cage less
++/// room for what shares it with the old generation (the young generation,
++/// a stopped isolate's slack and overdraft, the read-only space, pages a
++/// large object cannot use). A heap that needs more is stopped as one the
++/// budget cannot grow is, and counted as `heaps_at_limit`, so that the
++/// embedder can say that more memory would not have helped.
++pub const MAX_ISOLATE_HEAP: u64 = V8_HEAP_CAGE - 512 * MIB;
 +
-+/// iwci patch (#1063): called on a thread as it starts to wait for room in
-+/// the heap space; what it returns is dropped when the wait ends. An
-+/// embedder that tells a stuck program from a busy one counts the wait as
-+/// the runtime's, not the program's.
-+pub type HeapSpaceWaitHook = fn() -> Box<dyn std::any::Any>;
++/// iwci patch (#1158): the heap ceilings of the isolates V8 ran out of
++/// memory in and the bridge abandoned, in bytes, since the process started.
++/// Such an isolate is never disposed, so its heap stays mapped until the
++/// process ends, while its app's budget, which held it until then, ends
++/// with the app. Each is counted with what its budget was charged for it
++/// (its ceiling and every grant), which is the most its heap can hold.
++/// Nothing else is process-wide: every isolate has a pointer-compression
++/// cage of its own (V8 15.9 built without the shared cage), so the heaps of
++/// the process are held only by their apps' budgets, and it is the
++/// embedder's to keep those budgets, and these bytes, within its memory.
++static LOST_HEAP: AtomicU64 = AtomicU64::new(0);
 +
-+static WAIT_HOOK: std::sync::OnceLock<HeapSpaceWaitHook> = std::sync::OnceLock::new();
-+
-+/// iwci patch (#1063): sets the [`HeapSpaceWaitHook`], once per process.
-+pub fn set_heap_space_wait_hook(hook: HeapSpaceWaitHook) {
-+    let _ = WAIT_HOOK.set(hook);
++/// iwci patch (#1158): see [`LOST_HEAP`].
++pub fn lost_heap() -> u64 {
++    LOST_HEAP.load(Ordering::Acquire)
 +}
 +
-+/// iwci patch (#1063): the process-wide account of [`V8_HEAP_CAGE`]. Each
-+/// budgeted isolate is charged here with the heap it has committed, which it
-+/// reports after every garbage collection, plus the room each near-heap-limit
-+/// grant promised it until it uses that room or a full collection shows it
-+/// did not need it. Charging the limits instead (what V8 may grow each heap
-+/// to) held a pipeline of test jobs to a quarter of the cage: their limits
-+/// filled the space while their heaps used 850 MB of it. A new isolate and
-+/// a heap that needs to grow wait while the space is full, so the heaps of
-+/// the process stay inside the cage instead of V8 failing a page allocation
-+/// and the isolate being lost; only a wait in vain refuses or stops it,
-+/// which the embedder reports.
-+pub struct HeapSpace {
-+    capacity: AtomicU64,
-+    charged: AtomicU64,
-+    /// Who waits for room, under the lock the waits sleep on.
-+    lock: std::sync::Mutex<Waiters>,
-+    freed: std::sync::Condvar,
-+    /// How many wait now, read without the lock.
-+    queued: AtomicUsize,
-+    /// Isolates holding room that they can still give back: admitted, and
-+    /// neither released nor lost.
-+    live: AtomicUsize,
-+    waits: AtomicU64,
-+    refusals: AtomicU64,
-+    /// Times room was given back: a waiter that sees it move waits on.
-+    released: AtomicU64,
-+    lost: AtomicU64,
-+}
-+
-+#[derive(Default)]
-+struct Waiters {
-+    list: Vec<Waiter>,
-+    next: u64,
-+}
-+
-+/// One wait for room in a [`HeapSpace`].
-+#[derive(Clone, Copy)]
-+struct Waiter {
-+    id: u64,
-+    /// The heap the room is for, as charged so far; 0 for a new isolate.
-+    heap: u64,
-+    bytes: u64,
-+    keep_free: u64,
-+    /// A live heap's grant, as opposed to a new isolate.
-+    grow: bool,
-+}
-+
-+impl Waiters {
-+    /// Whether `me` may take room now: it fits, and no larger heap's wait
-+    /// that also fits comes first. Room goes to the largest heap, so one
-+    /// heap grows to where it can finish and give everything back, rather
-+    /// than every heap getting a little and none enough.
-+    fn first(&self, me: &Waiter, fits: impl Fn(&Waiter) -> bool) -> bool {
-+        fits(me)
-+            && !self
-+                .list
-+                .iter()
-+                .any(|w| w.id != me.id && (w.heap, w.id) > (me.heap, me.id) && fits(w))
-+    }
-+
-+    /// Whether `me` should give up now because no heap can give room back:
-+    /// every live isolate waits to grow, so none will. The smallest heap
-+    /// gives up, which loses the least work and lets the rest go on.
-+    fn deadlocked(&self, me: &Waiter, live: usize) -> bool {
-+        let growing = self.list.iter().filter(|w| w.grow);
-+        me.grow
-+            && live > 0
-+            && growing.clone().count() >= live
-+            && !growing.clone().any(|w| w.id != me.id && (w.heap, w.id) < (me.heap, me.id))
-+    }
-+}
-+
-+/// What [`heap_space`] reports.
-+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-+pub struct HeapSpaceUsage {
-+    /// Bytes the isolates of the process may use together.
-+    pub capacity: u64,
-+    /// Bytes charged now: each heap's committed memory as it last reported
-+    /// and the growth it was last promised (an admission charge until its
-+    /// first report), and the heaps of isolates lost to V8 running out of
-+    /// memory, which are never freed.
-+    pub charged: u64,
-+    /// Times an isolate waited for room, since the process started.
-+    pub waits: u64,
-+    /// Times it waited in vain and was refused or stopped.
-+    pub refusals: u64,
-+    /// Of `charged`, the heaps of isolates V8 ran out of memory in, which
-+    /// are never freed: only a new process gets that room back.
-+    pub lost: u64,
-+}
-+
-+static HEAP_SPACE: HeapSpace = HeapSpace::new(DEFAULT_V8_HEAP_SPACE);
-+
-+/// The heap space a new budget charges: the process's, or in tests one of
-+/// its own, so tests running at once do not fill each other's.
-+fn process_heap_space() -> &'static HeapSpace {
-+    if cfg!(test) {
-+        Box::leak(Box::new(HeapSpace::new(DEFAULT_V8_HEAP_SPACE)))
-+    } else {
-+        &HEAP_SPACE
-+    }
-+}
-+
-+/// iwci patch (#1063): the process-wide V8 heap space and what is reserved
-+/// of it.
-+pub fn heap_space() -> HeapSpaceUsage {
-+    HEAP_SPACE.usage()
-+}
-+
-+/// iwci patch (#1063): sets what the isolates of the process may use
-+/// together, for an embedder that runs fewer of them than the cage holds
-+/// or tests the waiting. At most [`V8_HEAP_CAGE`].
-+pub fn set_heap_space(capacity: u64) {
-+    HEAP_SPACE
-+        .capacity
-+        .store(capacity.min(V8_HEAP_CAGE), Ordering::Release);
-+    HEAP_SPACE.wake();
-+}
-+
-+impl HeapSpace {
-+    const fn new(capacity: u64) -> Self {
-+        Self {
-+            capacity: AtomicU64::new(capacity),
-+            charged: AtomicU64::new(0),
-+            lock: std::sync::Mutex::new(Waiters {
-+                list: Vec::new(),
-+                next: 0,
-+            }),
-+            freed: std::sync::Condvar::new(),
-+            queued: AtomicUsize::new(0),
-+            live: AtomicUsize::new(0),
-+            waits: AtomicU64::new(0),
-+            refusals: AtomicU64::new(0),
-+            released: AtomicU64::new(0),
-+            lost: AtomicU64::new(0),
-+        }
-+    }
-+
-+    fn usage(&self) -> HeapSpaceUsage {
-+        HeapSpaceUsage {
-+            capacity: self.capacity.load(Ordering::Acquire),
-+            charged: self.charged.load(Ordering::Acquire),
-+            waits: self.waits.load(Ordering::Acquire),
-+            refusals: self.refusals.load(Ordering::Acquire),
-+            lost: self.lost.load(Ordering::Acquire),
-+        }
-+    }
-+
-+    /// Charges `bytes` if that leaves at least `keep_free` of the space.
-+    fn try_charge(&self, bytes: u64, keep_free: u64) -> bool {
-+        let limit = self
-+            .capacity
-+            .load(Ordering::Acquire)
-+            .saturating_sub(keep_free);
-+        self.charged
-+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |charged| {
-+                charged.checked_add(bytes).filter(|next| *next <= limit)
-+            })
-+            .is_ok()
-+    }
-+
-+    /// [`HeapSpace::try_charge`], waiting for room while `stopped` stays
-+    /// false, until `wait` passes with no room given back. `heap` is what
-+    /// the heap the room is for holds already (0 for a new isolate), and
-+    /// `grow` says it is a live heap's grant.
-+    pub(crate) fn charge_waiting(
-+        &self,
-+        bytes: u64,
-+        keep_free: u64,
-+        wait: Duration,
-+        stopped: &AtomicBool,
-+        heap: u64,
-+        grow: bool,
-+    ) -> bool {
-+        // Others waiting come first, as the order below decides.
-+        if self.queued.load(Ordering::Acquire) == 0 && self.try_charge(bytes, keep_free) {
-+            return true;
-+        }
-+        if wait.is_zero() || stopped.load(Ordering::Acquire) || self.never_fits(bytes, keep_free) {
-+            self.refusals.fetch_add(1, Ordering::AcqRel);
-+            return false;
-+        }
-+        self.waits.fetch_add(1, Ordering::AcqRel);
-+        let _hook = WAIT_HOOK.get().map(|hook| hook());
-+        let mut seen = self.released.load(Ordering::Acquire);
-+        let mut deadline = std::time::Instant::now() + wait;
-+        let mut waiters = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-+        let me = Waiter {
-+            id: waiters.next,
-+            heap,
-+            bytes,
-+            keep_free,
-+            grow,
-+        };
-+        waiters.next += 1;
-+        waiters.list.push(me);
-+        self.queued.fetch_add(1, Ordering::AcqRel);
-+        let got = loop {
-+            let capacity = self.capacity.load(Ordering::Acquire);
-+            let charged = self.charged.load(Ordering::Acquire);
-+            let fits =
-+                |w: &Waiter| charged.saturating_add(w.bytes) <= capacity.saturating_sub(w.keep_free);
-+            if waiters.first(&me, fits) && self.try_charge(bytes, keep_free) {
-+                break true;
-+            }
-+            let now = std::time::Instant::now();
-+            let released = self.released.load(Ordering::Acquire);
-+            if released != seen {
-+                seen = released;
-+                deadline = now + wait;
-+            }
-+            if stopped.load(Ordering::Acquire)
-+                || now >= deadline
-+                || waiters.deadlocked(&me, self.live.load(Ordering::Acquire))
-+                || self.never_fits(bytes, keep_free)
-+            {
-+                self.refusals.fetch_add(1, Ordering::AcqRel);
-+                break false;
-+            }
-+            // Bounded, so a stop is seen within a tenth of a second.
-+            let slice = (deadline - now).min(Duration::from_millis(100));
-+            waiters = self
-+                .freed
-+                .wait_timeout(waiters, slice)
-+                .unwrap_or_else(|e| e.into_inner())
-+                .0;
-+        };
-+        waiters.list.retain(|w| w.id != me.id);
-+        self.queued.fetch_sub(1, Ordering::AcqRel);
-+        drop(waiters);
-+        // Whoever came next may go now.
-+        self.freed.notify_all();
-+        got
-+    }
-+
-+    /// iwci patch (#1135): whether `bytes` cannot fit, leaving `keep_free`,
-+    /// beside what lost isolates hold alone. Their heaps are never freed,
-+    /// so a wait for that ends only in vain, after minutes of others giving
-+    /// room back; it is refused at once instead.
-+    fn never_fits(&self, bytes: u64, keep_free: u64) -> bool {
-+        let limit = self
-+            .capacity
-+            .load(Ordering::Acquire)
-+            .saturating_sub(keep_free);
-+        self.lost.load(Ordering::Acquire).saturating_add(bytes) > limit
-+    }
-+
-+    /// An isolate's charge moved from `old` to `new` bytes.
-+    fn adjust(&self, old: u64, new: u64) {
-+        if new > old {
-+            self.charged.fetch_add(new - old, Ordering::AcqRel);
-+        } else {
-+            self.uncharge(old - new);
-+        }
-+    }
-+
-+    /// Whether the space is three quarters used: new heaps then start
-+    /// small and heaps grow in small steps, so what each may use without
-+    /// asking stays near what it uses.
-+    fn crowded(&self) -> bool {
-+        let capacity = self.capacity.load(Ordering::Acquire);
-+        self.charged.load(Ordering::Acquire) >= capacity / 4 * 3
-+    }
-+
-+    /// An isolate was admitted: it holds room it can give back.
-+    fn join(&self) {
-+        self.live.fetch_add(1, Ordering::AcqRel);
-+    }
-+
-+    /// An isolate holds its room no longer, or holds it for good (lost):
-+    /// either way it gives none back from now on.
-+    fn leave(&self) {
-+        self.live.fetch_sub(1, Ordering::AcqRel);
-+        // A waiter may now be the last one that can give up.
-+        self.wake();
-+    }
-+
-+    fn uncharge(&self, bytes: u64) {
-+        if bytes == 0 {
-+            return;
-+        }
-+        self.charged.fetch_sub(bytes, Ordering::AcqRel);
-+        self.released.fetch_add(1, Ordering::AcqRel);
-+        // Every garbage collection that shrinks a heap gets here: the lock
-+        // is taken only when someone waits (a waiter missed between the two
-+        // also looks again within a tenth of a second).
-+        if self.queued.load(Ordering::SeqCst) != 0 {
-+            self.wake();
-+        }
-+    }
-+
-+    fn wake(&self) {
-+        // Taken so a waiter between its check and its wait is not missed.
-+        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-+        self.freed.notify_all();
-+    }
-+}
 +
  /// Estimated host-side bytes held per N-API value handle crossed to the guest:
  /// the `napi_ref` struct, the handle-map node, and a V8 global-handle slot. The
  /// referenced JS value itself lives in the (separately charged) V8 heap. Used
-@@ -157,6 +536,55 @@
+@@ -157,6 +230,52 @@
      pub live_isolates: usize,
  }
  
@@ -634,10 +337,10 @@
 +    /// Growths of the guest heap (`ArrayBuffer` and `Buffer` memory) refused
 +    /// by the budget.
 +    pub buffers_refused: u64,
-+    /// iwci patch (#1063): of the refusals and stops above, those that the
-+    /// app's own budget had room for but the process-wide [`HeapSpace`] did
-+    /// not, after waiting for it.
-+    pub heap_space_full: u64,
++    /// iwci patch (#1158): of `heaps_stopped`, those the budget had room to
++    /// grow but that had reached [`MAX_ISOLATE_HEAP`], the most one V8 heap
++    /// holds whatever the budget.
++    pub heaps_at_limit: u64,
 +}
 +
 +impl MemoryExhaustion {
@@ -649,10 +352,7 @@
 +
 +    /// Anything was refused or stopped.
 +    pub fn any(&self) -> bool {
-+        self.stopped()
-+            || self.isolates_refused != 0
-+            || self.buffers_refused != 0
-+            || self.heap_space_full != 0
++        self.stopped() || self.isolates_refused != 0 || self.buffers_refused != 0
 +    }
 +}
 +
@@ -662,13 +362,13 @@
 +    heaps_lost: AtomicU64,
 +    isolates_refused: AtomicU64,
 +    buffers_refused: AtomicU64,
-+    heap_space_full: AtomicU64,
++    heaps_at_limit: AtomicU64,
 +}
 +
  /// The (possibly clamped) heap constraints a guest requested for a new V8 env.
  /// Fields are bytes; `0` means "unset" (V8 picks its default).
  #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-@@ -166,6 +594,20 @@
+@@ -166,6 +285,20 @@
      pub code_range: u32,
  }
  
@@ -689,60 +389,32 @@
  /// The outcome of reserving budget for a new V8 env: the constraints to forward
  /// to V8 (clamped to fit the budget) and the ceiling charged for them.
  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-@@ -187,6 +629,9 @@
-     TooManyEnvs,
-     /// The minimum viable heap ceiling does not fit the remaining budget.
-     HeapDoesNotFit,
-+    /// iwci patch (#1063): the budget had room, but the process-wide
-+    /// [`HeapSpace`] stayed full for [`HEAP_SPACE_ADMIT_WAIT`].
-+    HeapSpaceFull,
- }
- 
- /// One shared accountant per app, `Arc`-shared into every pool that allocates.
-@@ -207,6 +652,11 @@
+@@ -207,6 +340,8 @@
      v8_external: AtomicU64,
      /// Live V8 isolates (envs), counted against `max_envs`.
      live_isolates: AtomicUsize,
 +    /// iwci patch (#964, #972): what was refused or stopped for memory.
 +    exhaustion: ExhaustionCounters,
-+    /// iwci patch (#1063): the process-wide account every bounded budget's
-+    /// V8 heaps are also charged to.
-+    space: &'static HeapSpace,
  }
  
  impl std::fmt::Debug for ResourceBudget {
-@@ -257,6 +707,8 @@
+@@ -257,6 +392,7 @@
              v8_heap_reserved: AtomicU64::new(0),
              v8_external: AtomicU64::new(0),
              live_isolates: AtomicUsize::new(0),
 +            exhaustion: ExhaustionCounters::default(),
-+            space: process_heap_space(),
          })
      }
  
-@@ -269,9 +721,21 @@
+@@ -269,6 +405,7 @@
              v8_heap_reserved: AtomicU64::new(0),
              v8_external: AtomicU64::new(0),
              live_isolates: AtomicUsize::new(0),
 +            exhaustion: ExhaustionCounters::default(),
-+            space: process_heap_space(),
          }
      }
  
-+    /// A budget whose heaps are charged to `space` instead of the
-+    /// process's, so a test owns the whole space it measures.
-+    #[cfg(test)]
-+    fn with_space(bytes: u64, space: &'static HeapSpace) -> Arc<Self> {
-+        Arc::new(Self {
-+            space,
-+            ..Self::with_total(bytes)
-+        })
-+    }
-+
-     /// Whether this budget enforces a limit.
-     pub fn is_unlimited(&self) -> bool {
-         self.memory_limit() == UNLIMITED
-@@ -380,9 +844,30 @@
+@@ -380,6 +517,27 @@
              v8_heap_reserved: self.v8_heap_reserved.load(Ordering::Acquire),
              v8_external: self.v8_external.load(Ordering::Acquire),
              live_isolates: self.live_isolates.load(Ordering::Acquire),
@@ -757,23 +429,20 @@
 +            heaps_lost: e.heaps_lost.load(Ordering::Acquire),
 +            isolates_refused: e.isolates_refused.load(Ordering::Acquire),
 +            buffers_refused: e.buffers_refused.load(Ordering::Acquire),
-+            heap_space_full: e.heap_space_full.load(Ordering::Acquire),
-         }
-     }
- 
++            heaps_at_limit: e.heaps_at_limit.load(Ordering::Acquire),
++        }
++    }
++
 +    /// A growth of the guest heap was refused by this budget.
 +    pub(crate) fn note_buffer_refused(&self) {
 +        if !self.is_unlimited() {
 +            self.exhaustion
 +                .buffers_refused
 +                .fetch_add(1, Ordering::AcqRel);
-+        }
-+    }
-+
-     /// Number of live V8 isolates counted against `max_envs`.
-     pub fn live_isolates(&self) -> usize {
-         self.live_isolates.load(Ordering::Acquire)
-@@ -411,11 +896,54 @@
+         }
+     }
+ 
+@@ -411,11 +569,27 @@
          req: RequestedHeap,
          max_envs: Option<usize>,
      ) -> Result<HeapReservation, EnvRejected> {
@@ -790,33 +459,6 @@
 +        max_envs: Option<usize>,
 +        role: IsolateRole,
 +    ) -> Result<HeapReservation, EnvRejected> {
-+        self.reserve_env(req, max_envs, role, Duration::ZERO, &AtomicBool::new(false))
-+    }
-+
-+    /// [`try_reserve_env_as`] that waits up to [`HEAP_SPACE_ADMIT_WAIT`] for
-+    /// room in the process-wide [`HeapSpace`], until `stopped` is set (iwci
-+    /// patch, #1063). Runs on the thread creating the isolate, which holds
-+    /// no lock another isolate needs.
-+    ///
-+    /// [`try_reserve_env_as`]: ResourceBudget::try_reserve_env_as
-+    pub fn reserve_env_waiting(
-+        &self,
-+        req: RequestedHeap,
-+        max_envs: Option<usize>,
-+        role: IsolateRole,
-+        stopped: &AtomicBool,
-+    ) -> Result<HeapReservation, EnvRejected> {
-+        self.reserve_env(req, max_envs, role, HEAP_SPACE_ADMIT_WAIT, stopped)
-+    }
-+
-+    fn reserve_env(
-+        &self,
-+        req: RequestedHeap,
-+        max_envs: Option<usize>,
-+        role: IsolateRole,
-+        wait: Duration,
-+        stopped: &AtomicBool,
-+    ) -> Result<HeapReservation, EnvRejected> {
          if !self.try_acquire_isolate(max_envs) {
              return Err(EnvRejected::TooManyEnvs);
          }
@@ -829,7 +471,7 @@
              return Err(EnvRejected::HeapDoesNotFit);
          };
          if self
-@@ -423,8 +951,33 @@
+@@ -423,6 +597,9 @@
              .is_err()
          {
              self.release_isolate();
@@ -838,105 +480,8 @@
 +                .fetch_add(1, Ordering::AcqRel);
              return Err(EnvRejected::HeapDoesNotFit);
          }
-+        // iwci patch (#1063): and room in the process-wide heap space,
-+        // leaving some for the heaps already running to grow.
-+        if !self.is_unlimited()
-+            && !self.space.charge_waiting(
-+                HEAP_SPACE_ADMIT_CHARGE,
-+                HEAP_SPACE_GROWTH_ROOM,
-+                wait,
-+                stopped,
-+                0,
-+                false,
-+            )
-+        {
-+            self.uncharge(Pool::V8HeapReserved, reservation.ceiling_bytes);
-+            self.release_isolate();
-+            let e = &self.exhaustion;
-+            e.isolates_refused.fetch_add(1, Ordering::AcqRel);
-+            e.heap_space_full.fetch_add(1, Ordering::AcqRel);
-+            return Err(EnvRejected::HeapSpaceFull);
-+        }
-+        if !self.is_unlimited() {
-+            self.space.join();
-+        }
          Ok(reservation)
-     }
- 
-@@ -433,10 +986,72 @@
-     ///
-     /// [`try_reserve_env`]: ResourceBudget::try_reserve_env
-     pub fn release_env(&self, ceiling_bytes: u64) {
-+        self.release_env_as(ceiling_bytes, HEAP_SPACE_ADMIT_CHARGE, false);
-+    }
-+
-+    /// iwci patch (#1063): [`release_env`] for an isolate whose charge to the
-+    /// heap space is `space_charge` and that may have been `lost`: a lost
-+    /// isolate (V8 ran out of memory in it and it was abandoned, never
-+    /// disposed) keeps its pages, so its charge stays in the space, and it
-+    /// left the space's live isolates when it was lost.
-+    ///
-+    /// [`release_env`]: ResourceBudget::release_env
-+    pub(crate) fn release_env_as(&self, ceiling_bytes: u64, space_charge: u64, lost: bool) {
-         self.uncharge(Pool::V8HeapReserved, ceiling_bytes);
-+        if !lost && !self.is_unlimited() {
-+            self.space.uncharge(space_charge);
-+            self.space.leave();
-+        }
-         self.release_isolate();
-     }
- 
-+    /// iwci patch (#1063): charge a near-heap-limit grant of the first of
-+    /// `steps` that fits to the budget, and the room it promises to the heap
-+    /// space on `tracker`'s account. When the budget fits one but the space
-+    /// does not, waits for room for the smallest (see
-+    /// [`HEAP_SPACE_GROW_WAIT`]), until the app is stopped. A crowded space
-+    /// offers only the smallest step.
-+    fn grant_heap(&self, steps: &[u64], tracker: &EnvHeapCharge) -> Result<u64, GrantRefused> {
-+        let stopped = &*tracker.host_stopped;
-+        let crowded = !self.is_unlimited() && self.space.crowded();
-+        let steps = if crowded { &steps[steps.len() - 1..] } else { steps };
-+        let mut budget_fits = None;
-+        for &step in steps {
-+            if self.try_charge(Pool::V8HeapReserved, step).is_err() {
-+                continue;
-+            }
-+            if self.is_unlimited()
-+                || (self.space.queued.load(Ordering::Acquire) == 0
-+                    && self.space.try_charge(step, 0))
-+            {
-+                tracker.promise(step, self.is_unlimited());
-+                return Ok(step);
-+            }
-+            self.uncharge(Pool::V8HeapReserved, step);
-+            budget_fits = Some(step);
-+        }
-+        let Some(step) = budget_fits else {
-+            return Err(GrantRefused::Budget);
-+        };
-+        if self.try_charge(Pool::V8HeapReserved, step).is_ok() {
-+            let heap = tracker.space_charge.load(Ordering::Acquire);
-+            if self
-+                .space
-+                .charge_waiting(step, 0, HEAP_SPACE_GROW_WAIT, stopped, heap, true)
-+            {
-+                tracker.promise(step, false);
-+                return Ok(step);
-+            }
-+            self.uncharge(Pool::V8HeapReserved, step);
-+            self.exhaustion
-+                .heap_space_full
-+                .fetch_add(1, Ordering::AcqRel);
-+            return Err(GrantRefused::HeapSpace);
-+        }
-+        // The budget filled up meanwhile.
-+        Err(GrantRefused::Budget)
-+    }
-+
-     /// Atomically claim an isolate slot if under `max_envs` (always succeeds
-     /// when `max_envs` is `None`).
-     fn try_acquire_isolate(&self, max_envs: Option<usize>) -> bool {
-@@ -469,7 +1084,11 @@
+@@ -469,7 +646,11 @@
      /// the default old-generation ceiling and per-isolate overhead. Returns
      /// `None` if not even the minimum viable ceiling fits. Under an unlimited
      /// budget the request passes through unchanged and uncharged.
@@ -949,7 +494,7 @@
          if self.is_unlimited() {
              return Some(HeapReservation {
                  max_young: req.max_young,
-@@ -480,16 +1099,60 @@
+@@ -480,16 +661,52 @@
              });
          }
  
@@ -958,7 +503,7 @@
 +        // from the published 64 MiB old generation and plans against a
 +        // quarter of what is left, not all of it; it grows from there through
 +        // the near-heap-limit grants like any other. Every isolate taking the
-+        // full defaults (472 MiB with the young generation) let a 2 GiB job
++        // full defaults (472 MiB with the young generation it had then) let a 2 GiB job
 +        // start four workers and fail the fifth with "Failed to create
 +        // worker env", most of it never used. The first isolate
 +        // (`try_acquire_isolate` has already counted this one) plans against
@@ -966,8 +511,7 @@
 +        //
 +        // A later isolate that is a process's main one (a `node` another
 +        // `node` of the job spawned: Vitest's forks, a package script) keeps
-+        // the quarter but asks for the first isolate's 256 MiB, and a young
-+        // generation of 64 MiB when the default does not fit. On 64 MiB its
++        // the quarter but asks for the first isolate's 256 MiB. On 64 MiB its
 +        // working set sat between V8's GC trigger, halfway from the live
 +        // size to the limit, and the 80% at which V8 asks the near-heap-limit
 +        // callback for more: it never grew, and ran a full mark-compact every
@@ -986,20 +530,13 @@
 -        let young = u64::from(req.max_young);
 +        // overhead also covers V8's own metadata and any unset code range.
 +        // The default young generation only where it leaves most of the
-+        // budget for the old one; a small budget keeps V8's own default.
-+        // iwci patch (#1063): while the process-wide heap space is crowded,
-+        // a new isolate starts as a worker does, from what it needs rather
-+        // than what lets it grow without asking: until its heap reaches its
-+        // limit it is charged to the space only as it reports its use.
-+        let crowded = self.space.crowded();
++        // budget for the old one: a small budget is charged none, and its
++        // young generation comes out of the fixed overhead and what the old
++        // one leaves unused.
 +        let young = if req.max_young > 0 {
 +            u64::from(req.max_young)
-+        } else if crowded {
-+            0
 +        } else if remaining >= 4 * DEFAULT_YOUNG_GENERATION {
 +            DEFAULT_YOUNG_GENERATION
-+        } else if process && remaining >= 4 * DEFAULT_PROCESS_YOUNG_GENERATION {
-+            DEFAULT_PROCESS_YOUNG_GENERATION
 +        } else {
 +            0
 +        };
@@ -1013,17 +550,19 @@
          if remaining <= fixed {
              return None;
          }
-@@ -497,16 +1160,18 @@
+@@ -497,16 +714,19 @@
          let old_available = remaining - fixed;
          let requested_old = if req.max_old > 0 {
              u64::from(req.max_old)
-+        } else if (later && !process) || crowded {
++        } else if later && !process {
 +            DEFAULT_LATER_ISOLATE_HEAP
          } else {
              DEFAULT_INITIAL_ISOLATE_HEAP
          };
-         let old = requested_old.min(old_available);
+-        let old = requested_old.min(old_available);
 -        if old == 0 {
++        // iwci patch (#1158): nor more than one heap's cage holds.
++        let old = requested_old.min(old_available).min(MAX_ISOLATE_HEAP);
 +        if old == 0 || (old < requested_old && old < MIN_CLAMPED_ISOLATE_HEAP) {
              return None;
          }
@@ -1034,21 +573,7 @@
              max_old: u32::try_from(old).unwrap_or(u32::MAX),
              code_range: req.code_range,
              ceiling_bytes: fixed + old,
-@@ -515,6 +1180,13 @@
-     }
- }
- 
-+/// Why [`ResourceBudget::grant_heap`] gave nothing.
-+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-+enum GrantRefused {
-+    Budget,
-+    HeapSpace,
-+}
-+
- /// Per-V8-env heap-growth tracker shared with the host-owned near-heap-limit
- /// callback.
- ///
-@@ -528,13 +1200,101 @@
+@@ -528,13 +748,48 @@
      pub(crate) unwind_slack_available: AtomicBool,
      /// Bytes granted beyond the initial ceiling by grow-step grants.
      pub(crate) granted: AtomicU64,
@@ -1058,25 +583,22 @@
 +    /// iwci patch (#972): uncharged bytes V8's limit was raised by after the
 +    /// stop, up to [`MAX_STOP_OVERDRAFT`].
 +    pub(crate) overdraft: AtomicU64,
-+    /// iwci patch (#1063): V8 ran out of memory in this isolate and it was
-+    /// abandoned with its heap, which stays in the heap space.
++    /// iwci patch (#1158): the ceiling the budget was charged for this
++    /// isolate when it was made; with `granted`, the most its heap holds.
++    pub(crate) ceiling: u64,
++    /// iwci patch (#1158): V8 ran out of memory in this isolate and it was
++    /// abandoned with its heap, which is counted in [`lost_heap`].
 +    pub(crate) lost: AtomicBool,
-+    /// iwci patch (#1063): what this isolate is charged in the heap space:
-+    /// `committed` plus `promised`, or the admission charge until it first
-+    /// reports. Only the isolate's own thread changes the three, from its
-+    /// near-heap-limit callback and after its garbage collections.
-+    pub(crate) space_charge: AtomicU64,
-+    /// The heap V8 says the isolate has committed, as last reported.
-+    pub(crate) committed: AtomicU64,
-+    /// Room grants promised that the heap has not grown into yet.
-+    pub(crate) promised: AtomicU64,
-+    /// A grant since the last full collection.
-+    pub(crate) granted_since_full: AtomicBool,
-+}
-+
+ }
+ 
 +impl EnvHeapCharge {
-+    /// A tracker for an isolate just admitted to the heap space.
-+    pub(crate) fn new(budget: Arc<ResourceBudget>, env: usize, host_stopped: Arc<AtomicBool>) -> Self {
++    /// A tracker for an isolate the budget was charged `ceiling` for.
++    pub(crate) fn new(
++        budget: Arc<ResourceBudget>,
++        env: usize,
++        host_stopped: Arc<AtomicBool>,
++        ceiling: u64,
++    ) -> Self {
 +        Self {
 +            budget,
 +            env,
@@ -1085,60 +607,10 @@
 +            granted: AtomicU64::new(0),
 +            stopped: AtomicBool::new(false),
 +            overdraft: AtomicU64::new(0),
++            ceiling,
 +            lost: AtomicBool::new(false),
-+            space_charge: AtomicU64::new(HEAP_SPACE_ADMIT_CHARGE),
-+            committed: AtomicU64::new(0),
-+            promised: AtomicU64::new(0),
-+            granted_since_full: AtomicBool::new(false),
 +        }
 +    }
-+
-+    /// A grant of `step`, already charged to the space unless `unlimited`.
-+    fn promise(&self, step: u64, unlimited: bool) {
-+        if unlimited {
-+            return;
-+        }
-+        self.promised.fetch_add(step, Ordering::AcqRel);
-+        self.space_charge.fetch_add(step, Ordering::AcqRel);
-+        self.granted_since_full.store(true, Ordering::Release);
-+    }
-+
-+    /// The isolate reports `committed` after a garbage collection (`full`: a
-+    /// mark-compact). Growth uses up promised room first; a full collection
-+    /// with no grant since the last one shows the heap fits its limit, and
-+    /// what was promised and not used is given back.
-+    fn report(&self, committed: u64, full: bool) {
-+        if self.lost.load(Ordering::Acquire) || self.budget.is_unlimited() {
-+            return;
-+        }
-+        let before = self.committed.swap(committed, Ordering::AcqRel);
-+        let grown = committed.saturating_sub(before);
-+        let mut promised = self.promised.load(Ordering::Acquire).saturating_sub(grown);
-+        if full && !self.granted_since_full.swap(false, Ordering::AcqRel) {
-+            promised = 0;
-+        }
-+        self.promised.store(promised, Ordering::Release);
-+        let charge = committed + promised;
-+        let old = self.space_charge.swap(charge, Ordering::AcqRel);
-+        self.budget.space.adjust(old, charge);
-+    }
- }
- 
-+/// iwci patch (#1063): a budgeted isolate reports the heap it has committed
-+/// after a garbage collection, on its own thread (the bridge's GC epilogue
-+/// callback, installed with the near-heap-limit callback and removed before
-+/// the tracker is freed).
-+///
-+/// # Safety
-+/// `data` must be null or the isolate's [`EnvHeapCharge`].
-+#[unsafe(no_mangle)]
-+pub extern "C" fn napi_host_heap_committed(data: *const c_void, committed: usize, full: i32) {
-+    if data.is_null() {
-+        return;
-+    }
-+    // SAFETY: see the function's safety contract.
-+    let tracker = unsafe { &*(data as *const EnvHeapCharge) };
-+    tracker.report(u64::try_from(committed).unwrap_or(u64::MAX), full != 0);
 +}
 +
  /// Host-owned near-heap-limit callback for a budgeted V8 isolate.
@@ -1152,7 +624,7 @@
  /// isolate termination and expose the pre-reserved unwind slack once. A second
  /// denial leaves the limit unchanged, so the quota cannot be expanded repeatedly. The budget is atomic, so this is safe
  /// to call concurrently with charges on other threads.
-@@ -555,30 +1315,101 @@
+@@ -555,28 +810,107 @@
      }
      // SAFETY: see the function's safety contract.
      let tracker = unsafe { &*(data as *const EnvHeapCharge) };
@@ -1166,25 +638,35 @@
 +    // the whole process, not just the job.
 +    let half = u64::try_from(current_limit / 2).unwrap_or(u64::MAX);
 +    let wanted = half.max(DEFAULT_HEAP_GROW_STEP);
-+    // iwci patch (#1063): charged to the process-wide heap space too, where
-+    // a grant the budget has room for may wait for other heaps to go. This
-+    // runs on the isolate's own thread, inside a collection of its own heap,
-+    // and holds no lock another isolate takes.
-+    let charged = tracker
-+        .budget
-+        .grant_heap(&[wanted, DEFAULT_HEAP_GROW_STEP], tracker);
++    // iwci patch (#1158): and never past what one heap's cage holds. An
++    // unlimited budget leaves V8's own limit alone, as it leaves the rest.
++    let room = if tracker.budget.is_unlimited() {
++        u64::MAX
++    } else {
++        MAX_ISOLATE_HEAP.saturating_sub(u64::try_from(current_limit).unwrap_or(u64::MAX))
++    };
++    let charged = [wanted.min(room), DEFAULT_HEAP_GROW_STEP.min(room)]
++        .into_iter()
++        .find(|step| {
++            *step != 0
++                && tracker
++                    .budget
++                    .try_charge(Pool::V8HeapReserved, *step)
++                    .is_ok()
++        });
 +    match charged {
-+        Ok(step) => {
++        Some(step) => {
              tracker.granted.fetch_add(step, Ordering::AcqRel);
              current_limit.saturating_add(step as usize)
          }
-         Err(_) => {
+-        Err(_) => {
++        None => {
 +            if !tracker.stopped.swap(true, Ordering::AcqRel) {
-+                tracker
-+                    .budget
-+                    .exhaustion
-+                    .heaps_stopped
-+                    .fetch_add(1, Ordering::AcqRel);
++                let e = &tracker.budget.exhaustion;
++                e.heaps_stopped.fetch_add(1, Ordering::AcqRel);
++                if room == 0 {
++                    e.heaps_at_limit.fetch_add(1, Ordering::AcqRel);
++                }
 +            }
              tracker.host_stopped.store(true, Ordering::Release);
              if tracker.env != 0 {
@@ -1219,9 +701,9 @@
 +                .unwrap_or(0);
 +            current_limit.saturating_add(step as usize)
          }
-     }
- }
- 
++    }
++}
++
 +/// iwci patch (#972): V8 ran out of heap in this env's isolate where it
 +/// treats that as fatal to the process (an allocation that failed on a
 +/// background compile thread, or one larger than the stop overdraft). The
@@ -1246,22 +728,19 @@
 +        .exhaustion
 +        .heaps_lost
 +        .fetch_add(1, Ordering::AcqRel);
-+    // iwci patch (#1063): its heap stays charged to the heap space for good;
-+    // counted once, however many of its threads run out.
-+    if !tracker.lost.swap(true, Ordering::AcqRel) && !tracker.budget.is_unlimited() {
-+        let held = tracker.space_charge.load(Ordering::Acquire);
-+        let space = tracker.budget.space;
-+        space.lost.fetch_add(held, Ordering::AcqRel);
-+        // It gives nothing back any more.
-+        space.leave();
-+    }
++    // iwci patch (#1158): its heap stays mapped for good, past the budget
++    // that holds it now; counted once, however many of its threads run out.
++    if !tracker.lost.swap(true, Ordering::AcqRel) {
++        let held = tracker
++            .ceiling
++            .saturating_add(tracker.granted.load(Ordering::Acquire));
++        LOST_HEAP.fetch_add(held, Ordering::AcqRel);
+     }
 +    tracker.host_stopped.store(true, Ordering::Release);
-+}
-+
+ }
+ 
  /// The live charge for one physical wasm-memory allocation.
- ///
- /// Shared (`Arc`) between all [`BudgetedMemory`] handles that refer to the same
-@@ -1041,9 +1872,11 @@
+@@ -1041,9 +1375,11 @@
              .expect("env fits");
          assert!(res.clamped);
          // Default old-gen (64 MiB) fits, plus 8 MiB overhead and 16 MiB unwind slack.
@@ -1276,7 +755,7 @@
          assert_eq!(budget.live_isolates(), 1);
  
          budget.release_env(res.ceiling_bytes);
-@@ -1054,7 +1887,7 @@
+@@ -1054,7 +1390,7 @@
      #[test]
      fn env_reservation_clamps_old_gen_to_fit() {
          // Only 40 MiB: overhead (8) and unwind slack (16) leave 16 MiB for
@@ -1285,17 +764,7 @@
          let budget = ResourceBudget::with_memory_limit(40 * MIB);
          let res = budget
              .try_reserve_env(RequestedHeap::default(), None)
-@@ -1142,19 +1975,19 @@
-         let step = DEFAULT_HEAP_GROW_STEP as usize;
-         // The unwind slack is pre-reserved as part of the env ceiling, with room
-         // for exactly two additional grow-step grants.
--        let budget =
--            ResourceBudget::with_memory_limit(DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP);
-+        let budget = ResourceBudget::with_space(
-+            DEFAULT_UNWIND_SLACK + 2 * DEFAULT_HEAP_GROW_STEP,
-+            private_space(V8_HEAP_CAGE),
-+        );
-         budget
+@@ -1148,13 +1484,12 @@
              .try_charge(Pool::V8HeapReserved, DEFAULT_UNWIND_SLACK)
              .unwrap();
          let host_stopped = Arc::new(AtomicBool::new(false));
@@ -1310,11 +779,12 @@
 +            Arc::clone(&budget),
 +            0,
 +            Arc::clone(&host_stopped),
++            DEFAULT_UNWIND_SLACK,
 +        )));
          let data = ptr as *const c_void;
          let base = 100 * 1024 * 1024usize;
  
-@@ -1174,35 +2007,532 @@
+@@ -1174,24 +1509,34 @@
  
          // Budget exhaustion requests termination and exposes the already-reserved
          // unwind slack exactly once.
@@ -1360,460 +830,99 @@
  
          // The tracker recorded exactly what was granted, and releasing it (as
          // env teardown does) returns the pool to zero.
-         let tracker = unsafe { Box::from_raw(ptr) };
-         let granted = tracker.granted.load(Ordering::Acquire);
+@@ -1200,9 +1545,137 @@
          assert_eq!(granted, 2 * DEFAULT_HEAP_GROW_STEP);
-+        // The grants were promised room in the heap space too.
-+        assert_eq!(budget.space.usage().charged, granted);
-+        assert_eq!(tracker.promised.load(Ordering::Acquire), granted);
-+        budget.space.uncharge(granted);
          budget.uncharge(Pool::V8HeapReserved, granted + DEFAULT_UNWIND_SLACK);
          assert_eq!(budget.snapshot().v8_heap_reserved, 0);
 +    }
 +
-+    /// iwci patch (#1063): a heap space of its own, so parallel tests do not
-+    /// share one.
-+    fn private_space(capacity: u64) -> &'static HeapSpace {
-+        Box::leak(Box::new(HeapSpace::new(capacity)))
-+    }
-+
-+    fn tracker_for(budget: &Arc<ResourceBudget>, stopped: &Arc<AtomicBool>) -> *mut EnvHeapCharge {
-+        Box::into_raw(Box::new(EnvHeapCharge::new(
-+            Arc::clone(budget),
-+            0,
-+            Arc::clone(stopped),
-+        )))
-+    }
-+
-+    // The first isolate of a large budget: 256 MiB old, 192 MiB young, the
++    // The first isolate of a large budget: 256 MiB old, 48 MiB young, the
 +    // overhead and the unwind slack.
-+    const FIRST_CEILING: u64 = 472 * MIB;
-+    // A space with room to admit one isolate.
-+    const ONE_ADMISSION: u64 = HEAP_SPACE_ADMIT_CHARGE + HEAP_SPACE_GROWTH_ROOM;
++    const FIRST_CEILING: u64 = 328 * MIB;
 +
 +    #[test]
-+    fn isolates_of_every_budget_share_one_heap_space() {
-+        // Each job's own budget has room for several isolates, but the
-+        // process-wide space admits one while keeping its growth room.
-+        let space = private_space(ONE_ADMISSION);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let b = ResourceBudget::with_space(4096 * MIB, space);
-+        let first = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        // The job's budget holds the isolate's limits; the space what it
-+        // uses, an admission charge until it reports.
++    fn heaps_are_held_only_by_their_own_budgets() {
++        // iwci patch (#1158): nothing is shared between apps. Each isolate
++        // has a cage of its own, so one app's heaps, however large, take
++        // nothing from another's, and each is refused only by its budget.
++        let a = ResourceBudget::with_memory_limit(8192 * MIB);
++        let b = ResourceBudget::with_memory_limit(FIRST_CEILING);
++        let big = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
++        let stopped = Arc::new(AtomicBool::new(false));
++        let t = Box::into_raw(Box::new(EnvHeapCharge::new(
++            Arc::clone(&a),
++            0,
++            Arc::clone(&stopped),
++            big.ceiling_bytes,
++        )));
++        // It grows to the most one heap's cage holds, which is all one
++        // shared cage had for every app together, and is stopped there with
++        // budget to spare.
++        let mut limit = (256 * MIB) as usize;
++        loop {
++            let next = napi_host_near_heap_limit_grant(t as *const c_void, limit, limit);
++            if stopped.load(Ordering::Acquire) {
++                break;
++            }
++            assert!(next > limit && next as u64 <= MAX_ISOLATE_HEAP, "{next}");
++            limit = next;
++        }
++        assert_eq!(limit as u64, MAX_ISOLATE_HEAP);
++        assert!(a.memory_remaining() > 4096 * MIB);
++        let e = a.exhaustion();
++        assert_eq!((e.heaps_stopped, e.heaps_at_limit), (1, 1));
++        // The other app's isolate starts with its full defaults meanwhile,
++        // and a second one is refused by its own budget.
++        let first = b.try_reserve_env(RequestedHeap::default(), None).unwrap();
 +        assert_eq!(first.ceiling_bytes, FIRST_CEILING);
-+        assert_eq!(space.usage().charged, HEAP_SPACE_ADMIT_CHARGE);
++        assert_eq!(u64::from(first.max_young), DEFAULT_YOUNG_GENERATION);
 +        assert_eq!(
 +            b.try_reserve_env(RequestedHeap::default(), None),
-+            Err(EnvRejected::HeapSpaceFull)
++            Err(EnvRejected::HeapDoesNotFit)
 +        );
-+        let e = b.exhaustion();
-+        assert_eq!((e.isolates_refused, e.heap_space_full), (1, 1));
-+        assert!(e.any() && !e.stopped());
-+        // Refused cleanly: nothing of b's budget is held.
-+        assert_eq!(b.snapshot().v8_heap_reserved, 0);
-+        assert_eq!(b.live_isolates(), 0);
-+        a.release_env(first.ceiling_bytes);
-+        assert_eq!(space.usage().charged, 0);
-+        let second = b.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        b.release_env(second.ceiling_bytes);
-+        assert_eq!(space.usage().charged, 0);
-+        assert_eq!(space.live.load(Ordering::Acquire), 0);
-+    }
-+
-+    #[test]
-+    fn a_new_isolate_waits_for_room_in_the_heap_space() {
-+        let space = private_space(ONE_ADMISSION);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let b = ResourceBudget::with_space(4096 * MIB, space);
-+        let first = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        let waiter = {
-+            let b = Arc::clone(&b);
-+            std::thread::spawn(move || {
-+                let stopped = AtomicBool::new(false);
-+                b.reserve_env_waiting(RequestedHeap::default(), None, IsolateRole::Process, &stopped)
-+            })
-+        };
-+        while space.usage().waits == 0 {
-+            std::thread::sleep(Duration::from_millis(5));
-+        }
-+        a.release_env(first.ceiling_bytes);
-+        let second = waiter.join().unwrap().unwrap();
-+        assert_eq!(second.ceiling_bytes, FIRST_CEILING);
-+        assert_eq!(b.exhaustion(), MemoryExhaustion::default());
-+        b.release_env(second.ceiling_bytes);
-+        let usage = space.usage();
-+        assert_eq!((usage.charged, usage.waits, usage.refusals), (0, 1, 0));
-+    }
-+
-+    #[test]
-+    fn a_stopped_app_stops_waiting_for_the_heap_space() {
-+        let space = private_space(ONE_ADMISSION);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let b = ResourceBudget::with_space(4096 * MIB, space);
-+        let first = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        let stopped = Arc::new(AtomicBool::new(false));
-+        let waiter = {
-+            let (b, stopped) = (Arc::clone(&b), Arc::clone(&stopped));
-+            std::thread::spawn(move || {
-+                b.reserve_env_waiting(RequestedHeap::default(), None, IsolateRole::Process, &stopped)
-+            })
-+        };
-+        while space.usage().waits == 0 {
-+            std::thread::sleep(Duration::from_millis(5));
-+        }
-+        let start = std::time::Instant::now();
-+        stopped.store(true, Ordering::Release);
-+        assert_eq!(waiter.join().unwrap(), Err(EnvRejected::HeapSpaceFull));
-+        assert!(start.elapsed() < Duration::from_secs(5));
-+        assert_eq!(space.usage().refusals, 1);
-+        a.release_env(first.ceiling_bytes);
-+    }
-+
-+    #[test]
-+    fn an_isolate_is_charged_what_it_uses_and_what_grants_promise() {
-+        let space = private_space(V8_HEAP_CAGE);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let r = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        let stopped = Arc::new(AtomicBool::new(false));
-+        let t = tracker_for(&a, &stopped);
-+        let data = t as *const c_void;
-+        let charged = || space.usage().charged;
-+        assert_eq!(charged(), HEAP_SPACE_ADMIT_CHARGE);
-+        // Its first report replaces the admission charge.
-+        napi_host_heap_committed(data, (20 * MIB) as usize, 0);
-+        assert_eq!(charged(), 20 * MIB);
-+        napi_host_heap_committed(data, (200 * MIB) as usize, 0);
-+        assert_eq!(charged(), 200 * MIB);
-+        // A grant at its limit promises room, charged before it is used...
-+        let limit = 256 * MIB as usize;
-+        assert_eq!(
-+            napi_host_near_heap_limit_grant(data, limit, limit),
-+            limit + DEFAULT_HEAP_GROW_STEP as usize
-+        );
-+        assert_eq!(charged(), 200 * MIB + DEFAULT_HEAP_GROW_STEP);
-+        // ...and growth uses it up rather than adding to it.
-+        napi_host_heap_committed(data, (260 * MIB) as usize, 0);
-+        assert_eq!(charged(), 200 * MIB + DEFAULT_HEAP_GROW_STEP);
-+        // A full collection right after the grant keeps the promise; the
-+        // next one, with no grant between, shows it was not needed.
-+        napi_host_heap_committed(data, (250 * MIB) as usize, 1);
-+        assert_eq!(charged(), 250 * MIB + 68 * MIB);
-+        napi_host_heap_committed(data, (240 * MIB) as usize, 1);
-+        assert_eq!(charged(), 240 * MIB);
-+        // Giving back wakes waiters: it counts as room given back.
-+        assert!(space.released.load(Ordering::Acquire) >= 2);
++        assert_eq!(b.exhaustion().isolates_refused, 1);
++        b.release_env(first.ceiling_bytes);
 +        let t = unsafe { Box::from_raw(t) };
-+        a.release_env_as(
-+            r.ceiling_bytes + t.granted.load(Ordering::Acquire),
-+            t.space_charge.load(Ordering::Acquire),
-+            false,
-+        );
-+        assert_eq!(charged(), 0);
++        a.release_env(big.ceiling_bytes + t.granted.load(Ordering::Acquire));
 +        assert_eq!(a.snapshot().v8_heap_reserved, 0);
++        assert_eq!(a.live_isolates(), 0);
 +    }
 +
 +    #[test]
-+    fn a_crowded_space_starts_new_heaps_small_and_grows_them_in_small_steps() {
-+        let space = private_space(DEFAULT_V8_HEAP_SPACE);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let roomy = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        assert_eq!(u64::from(roomy.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
-+        assert_eq!(u64::from(roomy.max_young), DEFAULT_YOUNG_GENERATION);
-+        // Three quarters used, with room left to admit another.
-+        assert!(space.try_charge(2700 * MIB - HEAP_SPACE_ADMIT_CHARGE, 0));
-+        assert!(space.crowded());
-+        let c = ResourceBudget::with_space(4096 * MIB, space);
-+        let small = c.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        // From a 64 MiB old generation and V8's own young one.
-+        assert_eq!(u64::from(small.max_old), DEFAULT_LATER_ISOLATE_HEAP);
-+        assert_eq!(small.max_young, 0);
-+        // And a grant gives the smallest step, not half the limit.
-+        let stopped = Arc::new(AtomicBool::new(false));
-+        let t = tracker_for(&a, &stopped);
-+        let limit = 1024 * MIB as usize;
-+        assert_eq!(
-+            napi_host_near_heap_limit_grant(t as *const c_void, limit, limit),
-+            limit + DEFAULT_HEAP_GROW_STEP as usize
-+        );
-+        drop(unsafe { Box::from_raw(t) });
-+    }
-+
-+    #[test]
-+    fn a_heap_waits_to_grow_until_the_space_has_room() {
-+        // Room for a grant, used by a second budget's: the first heap's
-+        // grant waits until that one is given back.
-+        let space = private_space(512 * MIB + DEFAULT_HEAP_GROW_STEP);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let b = ResourceBudget::with_space(4096 * MIB, space);
-+        // What the two heaps use already.
-+        assert!(space.try_charge(512 * MIB, 0));
-+        let stopped_b = Arc::new(AtomicBool::new(false));
-+        let tb = tracker_for(&b, &stopped_b);
-+        let limit = 256 * MIB as usize;
-+        let step = DEFAULT_HEAP_GROW_STEP as usize;
-+        assert_eq!(
-+            napi_host_near_heap_limit_grant(tb as *const c_void, limit, limit),
-+            limit + step
-+        );
-+        let stopped_a = Arc::new(AtomicBool::new(false));
-+        let ta = tracker_for(&a, &stopped_a) as usize;
-+        let grower = std::thread::spawn(move || {
-+            napi_host_near_heap_limit_grant(ta as *const c_void, limit, limit)
-+        });
-+        while space.usage().waits == 0 {
-+            std::thread::sleep(Duration::from_millis(5));
-+        }
-+        // b's heap has a full collection with no grant since: it did not
-+        // need the room, which goes to a.
-+        napi_host_heap_committed(tb as *const c_void, 0, 1);
-+        napi_host_heap_committed(tb as *const c_void, 0, 1);
-+        assert_eq!(grower.join().unwrap(), limit + step);
-+        let ta = unsafe { Box::from_raw(ta as *mut EnvHeapCharge) };
-+        assert_eq!(ta.promised.load(Ordering::Acquire), DEFAULT_HEAP_GROW_STEP);
-+        assert!(!stopped_a.load(Ordering::Acquire));
-+        assert_eq!(a.exhaustion(), MemoryExhaustion::default());
-+        drop(unsafe { Box::from_raw(tb) });
-+    }
-+
-+    #[test]
-+    fn a_heap_the_space_cannot_grow_is_stopped_and_said_so() {
-+        let space = private_space(FIRST_CEILING);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        assert!(space.try_charge(FIRST_CEILING, 0));
-+        let stopped = Arc::new(AtomicBool::new(false));
-+        let ta = tracker_for(&a, &stopped) as usize;
-+        let limit = 256 * MIB as usize;
-+        let grower = std::thread::spawn(move || {
-+            napi_host_near_heap_limit_grant(ta as *const c_void, limit, limit)
-+        });
-+        while space.usage().waits == 0 {
-+            std::thread::sleep(Duration::from_millis(5));
-+        }
-+        // The job's timeout stops it while it waits: the heap is not grown
-+        // past its slack, and the stop is counted as the heap space's.
-+        stopped.store(true, Ordering::Release);
-+        assert_eq!(
-+            grower.join().unwrap(),
-+            limit + DEFAULT_UNWIND_SLACK as usize
-+        );
-+        let e = a.exhaustion();
-+        assert_eq!((e.heaps_stopped, e.heap_space_full), (1, 1));
-+        assert!(e.stopped());
-+        // Nothing of the refused grant is held, by the job or the space.
-+        assert_eq!(a.snapshot().v8_heap_reserved, 0);
-+        assert_eq!(space.usage().charged, FIRST_CEILING);
-+        drop(unsafe { Box::from_raw(ta as *mut EnvHeapCharge) });
-+    }
-+
-+    #[test]
-+    fn a_wait_goes_on_while_other_heaps_give_room_back() {
-+        let space = private_space(1024 * MIB);
-+        assert!(space.try_charge(1024 * MIB, 0));
-+        let stopped = AtomicBool::new(false);
-+        let start = std::time::Instant::now();
-+        std::thread::scope(|s| {
-+            s.spawn(|| {
-+                // Room comes and goes for a second, three times the wait,
-+                // before it lasts.
-+                for _ in 0..10 {
-+                    std::thread::sleep(Duration::from_millis(100));
-+                    space.uncharge(64 * MIB);
-+                    while !space.try_charge(64 * MIB, 0) {
-+                        std::thread::yield_now();
-+                    }
-+                }
-+                space.uncharge(512 * MIB);
-+            });
-+            // Waits for more than is ever briefly free.
-+            assert!(space.charge_waiting(
-+                256 * MIB,
-+                0,
-+                Duration::from_millis(300),
-+                &stopped,
-+                0,
-+                false
-+            ));
-+        });
-+        assert!(start.elapsed() >= Duration::from_millis(900));
-+        let usage = space.usage();
-+        assert_eq!((usage.charged, usage.refusals), ((512 + 256) * MIB, 0));
-+        // With nothing given back, the same wait ends.
-+        assert!(!space.charge_waiting(
-+            512 * MIB,
-+            0,
-+            Duration::from_millis(300),
-+            &stopped,
-+            0,
-+            false
-+        ));
-+        assert_eq!(space.usage().refusals, 1);
-+    }
-+
-+    #[test]
-+    fn a_lost_heap_stays_in_the_heap_space() {
-+        let space = private_space(V8_HEAP_CAGE);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
++    fn a_lost_heap_is_counted_once_with_what_its_budget_was_charged() {
++        let a = ResourceBudget::with_memory_limit(4096 * MIB);
 +        let r = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
 +        let stopped = Arc::new(AtomicBool::new(false));
-+        let t = tracker_for(&a, &stopped);
-+        napi_host_heap_committed(t as *const c_void, (300 * MIB) as usize, 0);
++        let t = Box::into_raw(Box::new(EnvHeapCharge::new(
++            Arc::clone(&a),
++            0,
++            Arc::clone(&stopped),
++            r.ceiling_bytes,
++        )));
++        let limit = (256 * MIB) as usize;
++        let grown = napi_host_near_heap_limit_grant(t as *const c_void, limit, limit);
++        let granted = (grown - limit) as u64;
++        assert_eq!(granted, DEFAULT_HEAP_GROW_STEP);
++        // Other tests lose heaps in the same process, so the count is only
++        // known to have grown by at least this one's.
++        let held = r.ceiling_bytes + granted;
++        let before = lost_heap();
 +        // V8 runs out of memory in it, on two of its threads: its pages are
 +        // never freed, and are counted once.
 +        napi_host_isolate_out_of_memory(t as *const c_void);
 +        napi_host_isolate_out_of_memory(t as *const c_void);
-+        assert_eq!(space.usage().lost, 300 * MIB);
-+        // A report after the loss changes nothing.
-+        napi_host_heap_committed(t as *const c_void, (10 * MIB) as usize, 1);
++        assert!(lost_heap() >= before + held);
++        assert_eq!(a.exhaustion().heaps_lost, 2);
++        // The app's budget lets go of it when the app ends; the count of
++        // what the process still holds stays.
 +        let t = unsafe { Box::from_raw(t) };
-+        a.release_env_as(
-+            r.ceiling_bytes,
-+            t.space_charge.load(Ordering::Acquire),
-+            t.lost.load(Ordering::Acquire),
-+        );
++        assert!(t.lost.load(Ordering::Acquire));
++        a.release_env(r.ceiling_bytes + t.granted.load(Ordering::Acquire));
 +        assert_eq!(a.snapshot().v8_heap_reserved, 0);
-+        let usage = space.usage();
-+        assert_eq!((usage.charged, usage.lost), (300 * MIB, 300 * MIB));
-+        // It is not one of the heaps that can give room back.
-+        assert_eq!(space.live.load(Ordering::Acquire), 0);
-+    }
-+
-+    #[test]
-+    fn a_wait_the_lost_heaps_leave_no_room_for_is_refused_at_once() {
-+        // Lost isolates hold all but 300 MiB of the space for good (#1135).
-+        let space = private_space(V8_HEAP_CAGE);
-+        let a = ResourceBudget::with_space(4096 * MIB, space);
-+        let lost = a.try_reserve_env(RequestedHeap::default(), None).unwrap();
-+        let stopped = Arc::new(AtomicBool::new(false));
-+        let t = tracker_for(&a, &stopped);
-+        napi_host_heap_committed(t as *const c_void, (V8_HEAP_CAGE - 300 * MIB) as usize, 0);
-+        napi_host_isolate_out_of_memory(t as *const c_void);
-+        let b = ResourceBudget::with_space(4096 * MIB, space);
-+        let never = AtomicBool::new(false);
-+        let start = std::time::Instant::now();
-+        // A new isolate keeps 512 MiB free: never, whatever the live heaps
-+        // give back.
-+        assert_eq!(
-+            b.reserve_env_waiting(RequestedHeap::default(), None, IsolateRole::Process, &never),
-+            Err(EnvRejected::HeapSpaceFull)
-+        );
-+        // A grant that does not fit beside them either.
-+        assert!(!space.charge_waiting(
-+            400 * MIB,
-+            0,
-+            HEAP_SPACE_GROW_WAIT,
-+            &never,
-+            100 * MIB,
-+            true
-+        ));
-+        assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
-+        assert_eq!(space.usage().waits, 0, "neither waited");
-+        // One that fits beside them waits as before, for room a live heap
-+        // gives back.
-+        let held = 250 * MIB;
-+        space.charged.fetch_add(held, Ordering::AcqRel);
-+        std::thread::scope(|s| {
-+            let waiter = s.spawn(|| {
-+                space.charge_waiting(200 * MIB, 0, HEAP_SPACE_ADMIT_WAIT, &never, 0, false)
-+            });
-+            while space.usage().waits == 0 {
-+                std::thread::sleep(Duration::from_millis(2));
-+            }
-+            space.uncharge(held);
-+            assert!(waiter.join().unwrap());
-+        });
-+        let t = unsafe { Box::from_raw(t) };
-+        a.release_env_as(
-+            lost.ceiling_bytes,
-+            t.space_charge.load(Ordering::Acquire),
-+            t.lost.load(Ordering::Acquire),
-+        );
-+    }
-+
-+    /// Waits in a thread of `s` for `bytes` of `space` to grow a heap of
-+    /// `heap` bytes, and says when it is done.
-+    fn grow_in<'s>(
-+        s: &'s std::thread::Scope<'s, '_>,
-+        space: &'static HeapSpace,
-+        heap: u64,
-+        stopped: &'s AtomicBool,
-+    ) -> std::thread::ScopedJoinHandle<'s, bool> {
-+        let queued = space.queued.load(Ordering::Acquire);
-+        let handle = s.spawn(move || {
-+            space.charge_waiting(
-+                DEFAULT_HEAP_GROW_STEP,
-+                0,
-+                HEAP_SPACE_GROW_WAIT,
-+                stopped,
-+                heap,
-+                true,
-+            )
-+        });
-+        while space.queued.load(Ordering::Acquire) == queued && !handle.is_finished() {
-+            std::thread::sleep(Duration::from_millis(2));
-+        }
-+        handle
-+    }
-+
-+    #[test]
-+    fn room_given_back_goes_to_the_largest_heap_first() {
-+        let space = private_space(2048 * MIB);
-+        assert!(space.try_charge(2048 * MIB, 0));
-+        let stopped = AtomicBool::new(false);
-+        std::thread::scope(|s| {
-+            let small = grow_in(s, space, 300 * MIB, &stopped);
-+            let large = grow_in(s, space, 900 * MIB, &stopped);
-+            // Room for one grant: the larger heap's, though it asked last.
-+            space.uncharge(DEFAULT_HEAP_GROW_STEP);
-+            assert!(large.join().unwrap());
-+            std::thread::sleep(Duration::from_millis(250));
-+            assert!(!small.is_finished());
-+            space.uncharge(DEFAULT_HEAP_GROW_STEP);
-+            assert!(small.join().unwrap());
-+        });
-+        assert_eq!(space.usage().refusals, 0);
++        assert!(lost_heap() >= before + held);
      }
  
      #[test]
-+    fn when_every_live_heap_waits_to_grow_the_smallest_gives_up_at_once() {
-+        // Two admitted isolates fill the space and both need to grow: no
-+        // heap can give room back, so waiting two minutes would only stop
-+        // one of them then.
-+        let space = private_space(2048 * MIB);
-+        assert!(space.try_charge(2048 * MIB, 0));
-+        space.join();
-+        space.join();
-+        let stopped = AtomicBool::new(false);
-+        let start = std::time::Instant::now();
-+        std::thread::scope(|s| {
-+            let large = grow_in(s, space, 1200 * MIB, &stopped);
-+            let small = grow_in(s, space, 800 * MIB, &stopped);
-+            assert!(!small.join().unwrap());
-+            assert!(start.elapsed() < Duration::from_secs(5));
-+            assert!(!large.is_finished());
-+            // The smaller one's job ends and gives its heap back.
-+            space.uncharge(800 * MIB);
-+            space.leave();
-+            assert!(large.join().unwrap());
-+        });
-+        let usage = space.usage();
-+        assert_eq!((usage.refusals, usage.waits), (1, 2));
-+        // The one live heap left, waiting for room that only lost or
-+        // unadmitted heaps could free, gives up at once too.
-+        let rest = 2048 * MIB - space.usage().charged;
-+        assert!(space.try_charge(rest, 0));
-+        assert!(!space.charge_waiting(
-+            DEFAULT_HEAP_GROW_STEP,
-+            0,
-+            HEAP_SPACE_GROW_WAIT,
-+            &stopped,
-+            1328 * MIB,
-+            true
-+        ));
-+        assert_eq!(space.usage().refusals, 2);
-+    }
-+
-+    #[test]
 +    fn a_lost_heap_stops_the_app_and_is_counted() {
 +        let budget = ResourceBudget::with_memory_limit(64 * MIB);
 +        let host_stopped = Arc::new(AtomicBool::new(false));
@@ -1821,6 +930,7 @@
 +            Arc::clone(&budget),
 +            0,
 +            Arc::clone(&host_stopped),
++            0,
 +        )));
 +        napi_host_isolate_out_of_memory(std::ptr::null());
 +        assert_eq!(budget.exhaustion(), MemoryExhaustion::default());
@@ -1858,7 +968,7 @@
      fn near_heap_limit_callback_ignores_null_data() {
          assert_eq!(
              napi_host_near_heap_limit_grant(std::ptr::null(), 42, 7),
-@@ -1318,4 +2648,92 @@
+@@ -1318,4 +1791,90 @@
          assert_eq!(accountant.memory_charged(), 40);
          assert_eq!(budget.snapshot().v8_heap_reserved, 0);
      }
@@ -1887,12 +997,12 @@
 +            .try_reserve_env(RequestedHeap::default(), None)
 +            .expect("fits");
 +        assert_eq!(u64::from(first.max_young), DEFAULT_YOUNG_GENERATION);
-+        // 2048 - 472 = 1576 MiB left; a quarter (394) is under four young
-+        // generations, so none, and the smaller later default fits in it.
++        // 2048 - 328 = 1720 MiB left; a quarter (430) holds four young
++        // generations, so it is charged one, with the smaller later default.
 +        let second = budget
 +            .try_reserve_env(RequestedHeap::default(), None)
 +            .expect("fits");
-+        assert_eq!(second.max_young, 0);
++        assert_eq!(u64::from(second.max_young), DEFAULT_YOUNG_GENERATION);
 +        assert_eq!(u64::from(second.max_old), DEFAULT_LATER_ISOLATE_HEAP);
 +        // A pool of workers fits where full defaults stopped at four more,
 +        // and none is created with an old generation it cannot start in.
@@ -1916,7 +1026,7 @@
 +            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
 +            .expect("fits");
 +        assert_eq!(u64::from(first.max_old), DEFAULT_INITIAL_ISOLATE_HEAP);
-+        // 4096 - 472 = 3624 MiB left; a quarter (906) holds the default young
++        // 4096 - 328 = 3768 MiB left; a quarter (942) holds the default young
 +        // generation four times over.
 +        let child = budget
 +            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
@@ -1928,8 +1038,8 @@
 +            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Worker)
 +            .expect("fits");
 +        assert_eq!(u64::from(worker.max_old), DEFAULT_LATER_ISOLATE_HEAP);
-+        // Less left: a quarter under four default young generations still
-+        // gets the smaller one, not V8's few MiB.
++        // Less left: a quarter under four default young generations is
++        // charged none, and keeps the first isolate's old generation.
 +        let mut held = Vec::new();
 +        while budget.memory_remaining() / 4 >= 4 * DEFAULT_YOUNG_GENERATION {
 +            held.push(
@@ -1941,10 +1051,8 @@
 +        let squeezed = budget
 +            .try_reserve_env_as(RequestedHeap::default(), None, IsolateRole::Process)
 +            .expect("fits");
-+        assert_eq!(
-+            u64::from(squeezed.max_young),
-+            DEFAULT_PROCESS_YOUNG_GENERATION
-+        );
++        assert_eq!(squeezed.max_young, 0);
++        assert!(u64::from(squeezed.max_old) >= MIN_CLAMPED_ISOLATE_HEAP);
 +        for res in held.into_iter().chain([squeezed, worker, child, first]) {
 +            budget.release_env(res.ceiling_bytes);
 +        }
@@ -2049,10 +1157,12 @@
  };
  use crate::snapi::{
      SnapiEnv, snapi_bridge_unofficial_release_env,
-@@ -87,6 +88,50 @@
+@@ -85,6 +86,50 @@
+ struct EnvHeapChargeHandle {
+     ceiling: u64,
      tracker: usize,
- }
- 
++}
++
 +/// iwci patch (#994): `napi_envs` is looked up on every N-API import (the
 +/// guest names its env by id), and SipHash was a few percent of a Node
 +/// `statSync` loop. The ids are small integers the host allocates, never
@@ -2095,11 +1205,9 @@
 +    next_native_id: u32,
 +    /// Guest env id to bridge env, for every live env of the application.
 +    pub(crate) envs: HashMap<u32, usize>,
-+}
-+
+ }
+ 
  pub(crate) struct NapiEnv {
-     /// The app's shared accountant. V8 env (isolate) heap ceilings and the
-     /// `max_envs` isolate count are charged against it; workers share the same
 @@ -94,7 +139,7 @@
      pub(crate) budget: Arc<ResourceBudget>,
      /// Per-app cap on live V8 isolates (`None` = unlimited).
@@ -2158,7 +1266,7 @@
              napi_state_to_guest_env: HashMap::new(),
              napi_scopes: HashMap::new(),
              #[cfg(all(target_arch = "wasm32", feature = "js"))]
-@@ -259,7 +311,23 @@
+@@ -259,7 +311,21 @@
          &self,
          requested: RequestedHeap,
      ) -> Result<HeapReservation, EnvRejected> {
@@ -2176,14 +1284,12 @@
 +        };
 +        #[cfg(all(target_arch = "wasm32", feature = "js"))]
 +        let role = IsolateRole::Worker;
-+        // iwci patch (#1063): may wait for room in the process-wide V8 heap
-+        // space, until the app is stopped.
 +        self.budget
-+            .reserve_env_waiting(requested, self.max_envs, role, &self.host_stopped)
++            .try_reserve_env_as(requested, self.max_envs, role)
      }
  
      /// Register a successfully-created env, attach its heap charge, and — under
-@@ -277,7 +345,7 @@
+@@ -277,7 +343,7 @@
                  .env_registry
                  .lock()
                  .expect("poisoned N-API env registry");
@@ -2192,7 +1298,7 @@
  
              // If the host already stopped this app's JS, an isolate created
              // afterwards must not start running either. Checking under the
-@@ -288,19 +356,18 @@
+@@ -288,19 +354,18 @@
              if self.host_stopped.load(Ordering::Acquire) {
                  // SAFETY: `env` is the isolate just created and is still live.
                  unsafe {
@@ -2210,16 +1316,16 @@
 -                unwind_slack_available: std::sync::atomic::AtomicBool::new(true),
 -                granted: AtomicU64::new(0),
 -            }));
-+            // iwci patch (#1063): with its account in the heap space.
 +            let boxed = Box::into_raw(Box::new(EnvHeapCharge::new(
 +                Arc::clone(&self.budget),
 +                env as usize,
 +                Arc::clone(&self.host_stopped),
++                reservation.ceiling_bytes,
 +            )));
              // SAFETY: `env` is the isolate just created; `boxed` outlives the
              // callback (freed only at this env's teardown, below).
              unsafe {
-@@ -388,18 +455,30 @@
+@@ -388,18 +453,30 @@
      }
  
      pub(crate) fn register_napi_env(&mut self, env: SnapiEnv) -> (u32, u32) {
@@ -2258,7 +1364,7 @@
          self.napi_envs.insert(env_id, env as usize);
          self.napi_state_to_guest_env.insert(env as usize, env_id);
          self.napi_scopes.insert(scope_id, env_id);
-@@ -460,7 +539,8 @@
+@@ -460,7 +537,8 @@
          self.env_registry
              .lock()
              .expect("poisoned N-API env registry")
@@ -2268,17 +1374,15 @@
  
          // Leases are environment-owned resources. Explicit release publishes
          // writes; environment teardown only discards snapshots and returns any
-@@ -473,19 +553,26 @@
-         // Release the heap ceiling + any callback-granted growth + isolate slot
+@@ -474,18 +552,18 @@
          // this env reserved.
          if let Some(handle) = self.env_heap_charges.remove(&env_id) {
--            let granted = if handle.tracker != 0 {
+             let granted = if handle.tracker != 0 {
 -                // SAFETY: reclaim the box created in `commit_isolate`. The
 -                // near-heap-limit callback holding this pointer only runs during
 -                // JS execution, and no JS runs between here and the paired env
 -                // release that removes the callback and disposes the isolate, so
 -                // freeing it now is safe.
-+            let (granted, space_charge, lost) = if handle.tracker != 0 {
 +                // SAFETY: reclaim the box created in `commit_isolate`. iwci
 +                // patch (#1021): both callers release the env first, which
 +                // removes the near-heap-limit callback holding this pointer
@@ -2286,27 +1390,17 @@
 +                // run inside garbage collections, the release's included),
 +                // so nothing reads it any more.
                  let boxed = unsafe { Box::from_raw(handle.tracker as *mut EnvHeapCharge) };
--                boxed.granted.load(Ordering::Acquire)
--            } else {
--                0
-+                (
-+                    boxed.granted.load(Ordering::Acquire),
-+                    boxed.space_charge.load(Ordering::Acquire),
-+                    boxed.lost.load(Ordering::Acquire),
-+                )
-+            } else {
-+                (0, crate::budget::HEAP_SPACE_ADMIT_CHARGE, false)
+                 boxed.granted.load(Ordering::Acquire)
+             } else {
+                 0
              };
 -            self.budget.uncharge(Pool::V8HeapReserved, granted);
 -            self.budget.release_env(handle.ceiling);
-+            // iwci patch (#1063): and its charge to the process-wide heap
-+            // space, unless it was lost: a lost isolate's heap is never freed.
-+            self.budget
-+                .release_env_as(handle.ceiling + granted, space_charge, lost);
++            self.budget.release_env(handle.ceiling + granted);
          }
          self.napi_envs.remove(&env_id);
          #[cfg(all(target_arch = "wasm32", feature = "js"))]
-@@ -502,6 +589,28 @@
+@@ -502,6 +580,28 @@
          Some(env)
      }
  
@@ -2335,7 +1429,7 @@
      pub(crate) fn resolve_napi_env(&self, guest_env: i32) -> SnapiEnv {
          let env_id = if guest_env > 0 {
              guest_env as u32
-@@ -519,10 +628,15 @@
+@@ -519,10 +619,15 @@
      fn drop(&mut self) {
          let scope_ids: Vec<u32> = self.napi_scopes.keys().copied().collect();
          for scope_id in scope_ids {
@@ -2352,7 +1446,7 @@
              }
          }
          // Release any external memory the guest declared but did not take back.
-@@ -546,7 +660,7 @@
+@@ -546,7 +651,7 @@
          let mut env = NapiEnv::new(
              Arc::clone(&budget),
              None,
@@ -2361,7 +1455,7 @@
              Arc::new(AtomicBool::new(false)),
          );
  
-@@ -575,7 +689,7 @@
+@@ -575,7 +680,7 @@
              let mut env = NapiEnv::new(
                  Arc::clone(&budget),
                  None,
@@ -2370,7 +1464,7 @@
                  Arc::new(AtomicBool::new(false)),
              );
              assert!(env.charge_declared_external(4 * MIB));
-@@ -593,7 +707,7 @@
+@@ -593,7 +698,7 @@
          let mut env = NapiEnv::new(
              ResourceBudget::unlimited(),
              None,
@@ -3524,7 +2618,7 @@
              delta_bytes
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -20,9 +20,14 @@
+@@ -20,9 +20,11 @@
  #[cfg(not(target_arch = "wasm32"))]
  pub use budget::{BudgetedMemory, BudgetedTunables, budgeted_tunables};
  pub use budget::{
@@ -3533,15 +2627,12 @@
 +    EnvRejected, HeapReservation, IsolateRole, MemoryExhaustion, NapiMemoryAccountant,
 +    OverBudget, Pool, RequestedHeap, ResourceBudget, ResourceUsage,
  };
-+// iwci patch (#1063): the V8 heap space every isolate of the process shares.
-+pub use budget::{
-+    HeapSpaceUsage, HeapSpaceWaitHook, V8_HEAP_CAGE, heap_space, set_heap_space,
-+    set_heap_space_wait_hook,
-+};
++// iwci patch (#1158): what the isolates lost to an out-of-memory hold.
++pub use budget::lost_heap;
  pub use ctx::{
      NapiCtx, NapiCtxBuilder, NapiInstantiationState, NapiLimits, NapiRuntimeControl,
      NapiRuntimeHooks, NapiSession,
-@@ -82,6 +87,111 @@
+@@ -82,6 +84,111 @@
      Ok(())
  }
  
@@ -5677,7 +4768,7 @@
      auto callback_it = g_near_heap_limit_callbacks.find(isolate);
      if (callback_it != g_near_heap_limit_callbacks.end()) {
        state = callback_it->second;
-@@ -445,6 +502,49 @@
+@@ -445,6 +502,22 @@
    return state.callback(env, state.data, current_heap_limit, initial_heap_limit);
  }
  
@@ -5697,37 +4788,10 @@
 +  return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
 +}
 +
-+// iwci patch (#1063): every isolate of the process allocates its heap from
-+// one pointer-compression cage, which the host accounts for: a budgeted
-+// isolate reports the heap it has committed after each garbage collection,
-+// on its own thread, to the host data its near-heap-limit callback has.
-+// Installed and removed with that callback; the data is looked up as that
-+// callback does, so a lost isolate's, which the host frees, is never read.
-+extern "C" __attribute__((weak)) void napi_host_heap_committed(
-+    const void* /*data*/, size_t /*committed*/, int /*full*/) {}
-+
-+void HeapCommittedCallback(v8::Isolate* isolate,
-+                           v8::GCType type,
-+                           v8::GCCallbackFlags /*flags*/,
-+                           void* /*env*/) {
-+  void* data = nullptr;
-+  {
-+    RuntimeLock lock;
-+    auto it = g_near_heap_limit_callbacks.find(isolate);
-+    if (it != g_near_heap_limit_callbacks.end()) data = it->second.data;
-+  }
-+  if (data == nullptr) return;
-+  v8::HeapStatistics heap;
-+  isolate->GetHeapStatistics(&heap);
-+  napi_host_heap_committed(
-+      data, heap.total_heap_size(),
-+      (type & v8::kGCTypeMarkSweepCompact) != 0 ? 1 : 0);
-+}
-+
  // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
  // context is installed, every V8 backing store is allocated inside the guest's
  // linear memory so guest and host share buffer bytes directly. `free` returns
-@@ -462,6 +562,11 @@
+@@ -462,6 +535,11 @@
  }
  extern "C" __attribute__((weak)) void napi_host_guest_heap_release(
      void* /*ctx*/) {}
@@ -5739,7 +4803,7 @@
  
  class TrackingArrayBufferAllocator final : public v8::ArrayBuffer::Allocator {
   public:
-@@ -585,8 +690,28 @@
+@@ -585,8 +663,28 @@
    return v8::IsolateGroup::GetDefault();
  }
  
@@ -5768,7 +4832,7 @@
    v8::Isolate* isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
    if (isolate == nullptr) return nullptr;
    if (platform != nullptr && !platform->RegisterIsolate(isolate)) {
-@@ -594,6 +719,9 @@
+@@ -594,6 +692,9 @@
      return nullptr;
    }
    v8::Isolate::Initialize(isolate, params);
@@ -5778,7 +4842,7 @@
    return isolate;
  }
  
-@@ -628,23 +756,21 @@
+@@ -628,23 +729,21 @@
    if (isolate == nullptr) return;
  
    PlatformShutdownWaiter waiter;
@@ -5813,7 +4877,7 @@
  void FatalErrorCallback(const char* location, const char* message) {
    v8::Isolate* isolate = v8::Isolate::TryGetCurrent();
    if (isolate == nullptr) return;
-@@ -652,7 +778,7 @@
+@@ -652,7 +751,7 @@
    unofficial_napi_fatal_error_callback callback = nullptr;
    napi_env env = nullptr;
    {
@@ -5822,7 +4886,7 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.fatal;
-@@ -667,14 +793,97 @@
+@@ -667,14 +766,97 @@
    }
  }
  
@@ -5922,7 +4986,7 @@
      auto callback_it = g_fatal_error_callbacks.find(isolate);
      if (callback_it != g_fatal_error_callbacks.end()) {
        callback = callback_it->second.oom;
-@@ -687,15 +896,108 @@
+@@ -687,15 +869,46 @@
    if (callback != nullptr) {
      callback(env, location, details.is_heap_oom, details.detail);
    }
@@ -5955,68 +5019,6 @@
 +  std::fflush(stderr);
 +}
 +
-+// iwci patch (#1134): the isolate group's main isolate, owned by the bridge.
-+//
-+// Every isolate of the process is in one isolate group, whose page pool
-+// takes a disposed isolate's young-generation pages (V8 13.6
-+// `SemiSpace::TearDown`, `PagePool::ReleaseOnTearDown`). They stay reserved
-+// in the 4 GiB pointer-compression cage, in no heap, until a task V8 posts
-+// 8 s later to the group's main isolate frees them, or a new young
-+// generation takes them back. The main isolate is the first one created and
-+// stays main until it is disposed. When its thread ran no foreground task
-+// (a `node` blocked or busy in one long call, or idle in its event loop,
-+// which a delayed task does not wake), the pool was held that long; when it
-+// was an isolate abandoned after running out of memory (#972), never
-+// disposed, it was main for good and the pool was never freed. The cage
-+// then filled while the heap space account (budget.rs) showed room: a
-+// heap's next old-generation or large-object page found no address space,
-+// V8 failed "CALL_AND_RETRY_LAST" well within the job's memory, and each
-+// such isolate was abandoned with its heap, which made the next loss
-+// likelier. This isolate is made before any other, so it is main for the
-+// life of the process; it runs no JavaScript, and its own thread runs its
-+// foreground tasks every `kPoolKeeperPump`, so the pool is freed 8 s after
-+// each disposal.
-+constexpr auto kPoolKeeperPump = std::chrono::milliseconds(250);
-+
-+void StartPoolKeeper(EdgeV8Platform* platform) {
-+  struct Started {
-+    std::mutex mutex;
-+    std::condition_variable cv;
-+    bool done = false;
-+  };
-+  auto started = std::make_shared<Started>();
-+  std::thread([platform, started] {
-+    v8::Isolate::CreateParams params;
-+    // Never freed, like the isolate.
-+    params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-+    v8::Isolate* isolate = nullptr;
-+    {
-+      std::lock_guard<std::mutex> lock(g_isolate_lifecycle_mu);
-+      InIsolateLifecycle in_lifecycle;
-+      isolate = v8::Isolate::Allocate(GetOrCreateIsolateGroup());
-+      if (isolate != nullptr && !platform->RegisterIsolate(isolate)) {
-+        isolate->Dispose();
-+        isolate = nullptr;
-+      }
-+      if (isolate != nullptr) v8::Isolate::Initialize(isolate, params);
-+    }
-+    {
-+      std::lock_guard<std::mutex> lock(started->mutex);
-+      started->done = true;
-+    }
-+    started->cv.notify_all();
-+    if (isolate == nullptr) return;
-+    v8::Isolate::Scope scope(isolate);
-+    for (;;) {
-+      platform->PumpPendingForegroundTasks(isolate);
-+      std::this_thread::sleep_for(kPoolKeeperPump);
-+    }
-+  }).detach();
-+  // Made before ConfigureRuntime returns, so before any env's isolate.
-+  std::unique_lock<std::mutex> lock(started->mutex);
-+  started->cv.wait(lock, [&] { return started->done; });
-+}
-+
 +// iwci patch: the embedder configures the runtime, with its own engine
 +// flags (snapi_bridge_host_configure_runtime), before any guest runs. A
 +// guest's request goes through ConfigureRuntimeForGuest, which never
@@ -6032,7 +5034,7 @@
    if (g_runtime.platform != nullptr) {
      return g_runtime.engine_flags.size() == engine_flags_length &&
                     (engine_flags_length == 0 ||
-@@ -705,7 +1007,6 @@
+@@ -705,7 +918,6 @@
                 : napi_invalid_arg;
    }
  
@@ -6040,15 +5042,13 @@
    if (engine_flags_length > 0) {
      v8::V8::SetFlagsFromString(engine_flags,
                                 static_cast<int>(engine_flags_length));
-@@ -716,14 +1017,32 @@
+@@ -716,14 +928,30 @@
    if (g_runtime.platform == nullptr) return napi_generic_failure;
    v8::V8::InitializePlatform(g_runtime.platform.get());
    v8::V8::Initialize();
 +  // iwci patch (#972)
 +  g_oom_platform.store(g_runtime.platform.get(), std::memory_order_release);
 +  v8::V8::SetFatalMemoryErrorCallback(ProcessOOMErrorCallback);
-+  // iwci patch (#1134)
-+  StartPoolKeeper(g_runtime.platform.get());
    g_runtime.engine_flags.assign(engine_flags_length > 0 ? engine_flags : "",
                                  engine_flags_length);
    return napi_ok;
@@ -6074,7 +5074,7 @@
    if (g_runtime.platform == nullptr) return napi_invalid_arg;
    g_runtime.refcount++;
    *platform_out = g_runtime.platform.get();
-@@ -731,7 +1050,7 @@
+@@ -731,7 +959,7 @@
  }
  
  void ReleaseRuntime() {
@@ -6083,7 +5083,7 @@
    if (g_runtime.refcount == 0) return;
    g_runtime.refcount--;
    // Keep shared V8 runtime alive for process lifetime in tests to avoid
-@@ -742,11 +1061,11 @@
+@@ -742,11 +970,11 @@
    v8::Local<v8::Promise> promise = message.GetPromise();
    if (promise.IsEmpty()) return;
  
@@ -6097,7 +5097,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -760,8 +1079,8 @@
+@@ -760,8 +988,8 @@
    v8::Local<v8::Value> value;
    switch (event) {
      case v8::kPromiseRejectWithNoHandler:
@@ -6108,7 +5108,7 @@
        value = message.GetValue();
        if (value.IsEmpty()) value = v8::Undefined(isolate);
        break;
-@@ -782,11 +1101,8 @@
+@@ -782,11 +1010,8 @@
    v8::Context::Scope context_scope(context);
    v8::TryCatch tc(isolate);
    if (debug_promise_reject) {
@@ -6122,7 +5122,7 @@
    }
    v8::Local<v8::Value> args[] = {
        v8::Integer::New(isolate, static_cast<int>(event)),
-@@ -796,14 +1112,13 @@
+@@ -796,14 +1021,13 @@
    if (tc.HasCaught() && !tc.HasTerminated()) {
      // Match Node behavior: V8 expects this callback to return without a pending
      // exception. Print a best-effort diagnostic instead of scheduling it.
@@ -6142,7 +5142,7 @@
    }
  }
  
-@@ -852,11 +1167,11 @@
+@@ -852,11 +1076,11 @@
  void PromiseHookCallback(v8::PromiseHookType type,
                           v8::Local<v8::Promise> promise,
                           v8::Local<v8::Value> parent) {
@@ -6156,7 +5156,7 @@
      const auto env_it = g_env_by_isolate.find(isolate);
      if (env_it == g_env_by_isolate.end() || env_it->second == nullptr) return;
      env = env_it->second;
-@@ -898,7 +1213,7 @@
+@@ -898,7 +1122,7 @@
    std::array<v8::Local<v8::Function>, 4> hooks;
    if (env == nullptr || isolate == nullptr) return hooks;
  
@@ -6165,7 +5165,7 @@
    auto hooks_it = g_promise_hooks.find(isolate);
    if (hooks_it == g_promise_hooks.end()) return hooks;
  
-@@ -931,7 +1246,7 @@
+@@ -931,7 +1155,7 @@
                                           v8::Local<v8::ArrayBuffer> array_buffer,
                                           size_t offset,
                                           size_t length) {
@@ -6174,7 +5174,7 @@
    v8::Local<v8::Object> global = context->Global();
  
    v8::Local<v8::Value> buffer_ctor_value;
-@@ -1058,13 +1373,14 @@
+@@ -1058,13 +1282,14 @@
                               "Class constructor Serializer cannot be invoked without 'new'");
        return;
      }
@@ -6191,7 +5191,7 @@
      if (env == nullptr) {
        isolate->ThrowException(v8::Exception::Error(
            OneByteString(isolate, "Internal serializer environment missing")));
-@@ -1072,7 +1388,7 @@
+@@ -1072,7 +1297,7 @@
      }
  
      auto* ctx = env->allocate<SerializerContext>(env, args.This());
@@ -6200,7 +5200,7 @@
  }
  
  void SerializerContext::WriteHeader(const v8::FunctionCallbackInfo<v8::Value>& args) {
-@@ -1188,7 +1504,8 @@
+@@ -1188,7 +1413,8 @@
  SerializerContext* SerializerContext::Unwrap(
      const v8::FunctionCallbackInfo<v8::Value>& args) {
      if (args.This().IsEmpty() || args.This()->InternalFieldCount() < 1) return nullptr;
@@ -6210,7 +5210,7 @@
  }
  
  void SerializerContext::WeakCallback(const v8::WeakCallbackInfo<SerializerContext>& info) {
-@@ -1258,7 +1575,7 @@
+@@ -1258,7 +1484,7 @@
                               "Class constructor Deserializer cannot be invoked without 'new'");
        return;
      }
@@ -6219,7 +5219,7 @@
        isolate->ThrowException(v8::Exception::Error(
            OneByteString(isolate, "Internal deserializer constructor state missing")));
        return;
-@@ -1271,14 +1588,15 @@
+@@ -1271,14 +1497,15 @@
        return;
      }
  
@@ -6237,7 +5237,7 @@
  }
  
  void DeserializerContext::ReadHeader(const v8::FunctionCallbackInfo<v8::Value>& args) {
-@@ -1399,7 +1717,8 @@
+@@ -1399,7 +1626,8 @@
  DeserializerContext* DeserializerContext::Unwrap(
      const v8::FunctionCallbackInfo<v8::Value>& args) {
    if (args.This().IsEmpty() || args.This()->InternalFieldCount() < 1) return nullptr;
@@ -6247,7 +5247,7 @@
  }
  
  void DeserializerContext::WeakCallback(
-@@ -1442,7 +1761,7 @@
+@@ -1442,7 +1670,7 @@
                              v8::Local<v8::FunctionTemplate> tmpl) {
    v8::Local<v8::Function> ctor;
    if (!tmpl->GetFunction(context).ToLocal(&ctor)) return false;
@@ -6256,7 +5256,7 @@
  }
  
  class StructuredCloneSerializerDelegate final : public v8::ValueSerializer::Delegate {
-@@ -1706,6 +2025,27 @@
+@@ -1706,6 +1934,27 @@
  
  extern "C" {
  
@@ -6284,7 +5284,7 @@
  napi_status NAPI_CDECL unofficial_napi_configure_runtime(
      const unofficial_napi_runtime_options* options) {
    if (options != nullptr &&
-@@ -1713,8 +2053,7 @@
+@@ -1713,8 +1962,7 @@
         options->version != UNOFFICIAL_NAPI_RUNTIME_OPTIONS_VERSION)) {
      return napi_invalid_arg;
    }
@@ -6294,7 +5294,7 @@
  }
  
  napi_status NAPI_CDECL unofficial_napi_create_guest_backed_typedarray(
-@@ -1753,7 +2092,7 @@
+@@ -1753,7 +2001,7 @@
      return napi_invalid_arg;
    }
    {
@@ -6303,7 +5303,7 @@
      if (g_runtime.platform != nullptr &&
          !g_runtime.platform->BindForegroundTaskTarget(
              env->isolate,
-@@ -1776,8 +2115,8 @@
+@@ -1776,8 +2024,8 @@
  
    env->isolate->SetFatalErrorHandler(
        hooks->fatal_error_callback != nullptr ? FatalErrorCallback : nullptr);
@@ -6314,7 +5314,7 @@
    *accepted_hooks_out = unofficial_napi_env_hooks_requested(hooks);
    return napi_ok;
  }
-@@ -1785,11 +2124,11 @@
+@@ -1785,11 +2033,11 @@
  napi_status NAPI_CDECL unofficial_napi_create_env_from_context(
      v8::Local<v8::Context> context, int32_t module_api_version, napi_env* result) {
    if (result == nullptr || context.IsEmpty()) return napi_invalid_arg;
@@ -6328,7 +5328,7 @@
      g_env_by_isolate[env->isolate] = env;
    }
    *result = env;
-@@ -1800,8 +2139,9 @@
+@@ -1800,8 +2048,9 @@
    if (env == nullptr) return napi_invalid_arg;
    ProfilerState profiler_state;
    bool has_profiler_state = false;
@@ -6339,7 +5339,7 @@
      if (g_runtime.platform != nullptr) {
        g_runtime.platform->ClearForegroundTaskTarget(env->isolate, env);
      }
-@@ -1829,7 +2169,8 @@
+@@ -1829,7 +2078,8 @@
      }
      unofficial_napi_internal::ResetErrorFormattingState(env);
      g_fatal_error_callbacks.erase(env->isolate);
@@ -6349,7 +5349,7 @@
      auto profiler_it = g_profiler_states.find(env);
      if (profiler_it != g_profiler_states.end()) {
        profiler_state = std::move(profiler_it->second);
-@@ -1845,7 +2186,25 @@
+@@ -1845,7 +2095,23 @@
      env->isolate->SetPromiseHook(nullptr);
      env->isolate->SetPromiseRejectCallback(nullptr);
      env->isolate->SetFatalErrorHandler(nullptr);
@@ -6364,8 +5364,6 @@
 +    // to be freed.
 +    if (had_near_heap_limit_callback) {
 +      env->isolate->RemoveNearHeapLimitCallback(NearHeapLimitCallback, 0);
-+      // iwci patch (#1063): installed with it, with this env, freed below.
-+      env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
 +    }
 +    v8::HeapStatistics heap;
 +    env->isolate->GetHeapStatistics(&heap);
@@ -6376,7 +5374,7 @@
    }
    delete env;
    return napi_ok;
-@@ -1865,28 +2224,42 @@
+@@ -1865,13 +2131,19 @@
    if (callback_or_null != nullptr) {
      bool install_provider_callback = false;
      {
@@ -6396,12 +5394,8 @@
 +    }
      if (install_provider_callback) {
        env->isolate->AddNearHeapLimitCallback(NearHeapLimitCallback, env);
-+      // iwci patch (#1063): and the heap it has committed, after every
-+      // collection.
-+      env->isolate->AddGCEpilogueCallback(HeapCommittedCallback, env);
      }
-     return napi_ok;
-   }
+@@ -1880,10 +2152,14 @@
  
    bool remove_provider_callback = false;
    {
@@ -6417,11 +5411,7 @@
    if (remove_provider_callback) {
      env->isolate->RemoveNearHeapLimitCallback(
          NearHeapLimitCallback, restored_heap_limit);
-+    env->isolate->RemoveGCEpilogueCallback(HeapCommittedCallback, env);
-   }
-   return napi_ok;
- }
-@@ -1966,7 +2339,7 @@
+@@ -1966,7 +2242,7 @@
      return napi_generic_failure;
    }
    {
@@ -6430,7 +5420,7 @@
      g_hash_seeds[isolate] = GenerateHashSeed();
      g_tracking_allocators[allocator.get()] = allocator;
    }
-@@ -1975,7 +2348,7 @@
+@@ -1975,7 +2251,7 @@
    if (scope == nullptr) {
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -6439,7 +5429,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -1990,7 +2363,7 @@
+@@ -1990,7 +2266,7 @@
      delete scope;
      DisposeIsolateAndWait(platform, isolate);
      {
@@ -6448,7 +5438,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
      ReleaseRuntime();
-@@ -2007,27 +2380,56 @@
+@@ -2007,27 +2283,56 @@
    if (owner == nullptr) return napi_invalid_arg;
    auto* scope = reinterpret_cast<UnofficialEnvScope*>(owner);
  
@@ -6512,7 +5502,7 @@
        g_tracking_allocators.erase(allocator.get());
      }
    }
-@@ -2063,7 +2465,7 @@
+@@ -2063,7 +2368,7 @@
  
    bool has_prepare_stack_trace_callback = false;
    {
@@ -6521,7 +5511,7 @@
      PrepareStackTraceState& state = g_prepare_stack_trace_callbacks[env];
      v8::Local<v8::Context> principal_context = env->context();
      const bool use_principal_callback =
-@@ -2121,52 +2523,122 @@
+@@ -2121,34 +2426,95 @@
  // FinalizationRegistry callbacks never fire. Pump it here, at the same point
  // microtasks are already checkpointed, so this deferred work always gets a
  // chance to run regardless of whether the guest wired up its own hook.
@@ -6578,8 +5568,8 @@
 -  env->DrainFinalizerQueue();
 -  PumpPlatformForegroundTasks(env);
 +  return true;
- }
- 
++}
++
 +// iwci patch (#943): how long a host task turn may wait for the platform's
 +// work. With nothing runnable in the loop (it has only timers or I/O that are
 +// not due yet, or it is empty) the turn waits up to kPlatformWaitLimit;
@@ -6631,10 +5621,10 @@
 +  (void)DrainMicrotasksForEnv(env, &ran);
 +  streak.turns = has_runnable_work && !ran ? streak.turns + 1 : 0;
 +  return true;
-+}
-+
+ }
+ 
  napi_status NAPI_CDECL unofficial_napi_event_loop_checkpoint(
-     napi_env env,
+@@ -2156,17 +2522,26 @@
      unofficial_napi_event_loop_checkpoint_mode mode,
      bool has_runnable_work,
      uint32_t* state_out) {
@@ -6666,7 +5656,7 @@
    }
    return napi_ok;
  }
-@@ -2235,6 +2707,9 @@
+@@ -2235,6 +2610,9 @@
          v8::Local<v8::Context> context = request->env->context();
          if (context.IsEmpty()) return;
          v8::Context::Scope context_scope(context);
@@ -6676,7 +5666,7 @@
          request->callback(request->env, request->data);
        },
        request);
-@@ -2337,7 +2812,7 @@
+@@ -2337,7 +2715,7 @@
    v8::Local<v8::Value> raw = napi_v8_unwrap_value(callback);
    if (!raw->IsFunction()) return napi_function_expected;
    {
@@ -6685,7 +5675,7 @@
      g_env_by_isolate[env->isolate] = env;
      auto& slot = g_promise_reject_callbacks[env->isolate];
      slot.Reset();
-@@ -2371,7 +2846,7 @@
+@@ -2371,7 +2749,7 @@
    const bool has_hooks = HasPromiseHooks(persistent_hooks);
  
    {
@@ -6694,7 +5684,7 @@
      g_env_by_isolate[env->isolate] = env;
  
      auto existing = g_promise_hooks.find(env->isolate);
-@@ -2464,7 +2939,7 @@
+@@ -2464,7 +2842,7 @@
  
    v8::Local<v8::Function> callback;
    {
@@ -6703,7 +5693,7 @@
      const auto cb_it = g_promise_reject_callbacks.find(isolate);
      if (cb_it == g_promise_reject_callbacks.end() || cb_it->second.IsEmpty()) {
        return napi_ok;
-@@ -2702,7 +3177,7 @@
+@@ -2702,7 +3080,7 @@
      return napi_invalid_arg;
    }
    {
@@ -6712,7 +5702,7 @@
      auto it = g_hash_seeds.find(env->isolate);
      if (it != g_hash_seeds.end()) {
        *hash_seed_out = it->second;
-@@ -2746,7 +3221,7 @@
+@@ -2746,7 +3124,7 @@
    stats_out->external_memory = stats.external_memory();
    stats_out->array_buffer_memory = 0;
    {
@@ -6721,7 +5711,7 @@
      auto it = g_tracking_allocators.find(env->isolate->GetArrayBufferAllocator());
      if (it != g_tracking_allocators.end() && it->second) {
        stats_out->array_buffer_memory = it->second->total_mem_usage();
-@@ -2820,7 +3295,7 @@
+@@ -2820,7 +3198,7 @@
  
    if (kind == unofficial_napi_profile_heap) {
      {
@@ -6730,7 +5720,7 @@
        auto it = g_profiler_states.find(env);
        if (it != g_profiler_states.end() &&
            std::any_of(it->second.active_profiles.begin(),
-@@ -2844,7 +3319,7 @@
+@@ -2844,7 +3222,7 @@
      }
      profile->kind = kind;
      {
@@ -6739,7 +5729,7 @@
        EnsureProfilerState(env).active_profiles.push_back(profile);
      }
      *profile_out = profile;
-@@ -2853,7 +3328,7 @@
+@@ -2853,7 +3231,7 @@
  
    v8::CpuProfiler* cpu_profiler = nullptr;
    {
@@ -6748,7 +5738,7 @@
      ProfilerState& state = EnsureProfilerState(env);
      if (state.cpu_profiler == nullptr) {
        state.cpu_profiler = v8::CpuProfiler::New(env->isolate);
-@@ -2883,7 +3358,7 @@
+@@ -2883,7 +3261,7 @@
    profile->kind = kind;
    profile->provider_id = static_cast<uint32_t>(result.id);
    {
@@ -6757,7 +5747,7 @@
      auto it = g_profiler_states.find(env);
      if (it != g_profiler_states.end()) {
        it->second.active_profiles.push_back(profile);
-@@ -2908,7 +3383,7 @@
+@@ -2908,7 +3286,7 @@
    unofficial_napi_profile_kind kind = unofficial_napi_profile_cpu;
    uint32_t provider_id = 0;
    {
@@ -6766,7 +5756,7 @@
      auto it = g_profiler_states.find(env);
      if (it == g_profiler_states.end()) return napi_invalid_arg;
      auto active_it = std::find(it->second.active_profiles.begin(),
-@@ -2976,7 +3451,7 @@
+@@ -2976,7 +3354,7 @@
      napi_env env,
      napi_value* result_out) {
    if (env == nullptr || env->isolate == nullptr || result_out == nullptr) return napi_invalid_arg;
@@ -6775,7 +5765,7 @@
    if (value.IsEmpty()) value = v8::Undefined(env->isolate);
    *result_out = napi_v8_wrap_value(env, value);
    return *result_out == nullptr ? napi_generic_failure : napi_ok;
-@@ -3015,7 +3490,7 @@
+@@ -3015,7 +3393,7 @@
    v8::Context::Scope context_scope(context);
  
    v8::Local<v8::Object> target = v8::Object::New(isolate);
