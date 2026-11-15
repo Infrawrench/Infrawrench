@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { SWITCHABLE_PRODUCTS } from "@infrawrench/client-core";
 
 // The registry import reaches db/client and the WorkOS client, both of which
 // throw at import time without these. No connection is opened.
@@ -20,7 +21,6 @@ vi.mock("@infrawrench/server-core/products/settings", () => ({
 
 const { authorizeToolCall, denyUnlessPermitted, effectiveToolPermissions, toolsOfferedTo } =
   await import("../permissions");
-const { GENERIC_TOOL_PRODUCTS } = await import("../products");
 const { getToolRegistry } = await import("../registry");
 const { needsApproval } = await import("../approval");
 
@@ -183,7 +183,7 @@ describe("the organization's app policy", () => {
     expect(await toolsOfferedTo(tools, "o1")).toHaveLength(tools.length);
   });
 
-  it("tags a tool with its app by factory and by name", async () => {
+  it("tags a tool with its app by factory and on the definition", async () => {
     const tools = await getToolRegistry();
     const product = (name: string) => tools.find((t) => t.name === name)?.product;
     expect(product("query_costs")).toBe("costs");
@@ -191,20 +191,49 @@ describe("the organization's app policy", () => {
     expect(product("write_workflow")).toBe("automation");
     expect(product("plan_deployment")).toBe("delivery");
     expect(product("dismiss_vulnerability")).toBe("security");
+    // `./generic` is mixed: its app tools say so on the definition.
+    expect(product("list_posture_findings")).toBe("security");
+    expect(product("diff_environments")).toBe("delivery");
+    expect(product("list_status_pages")).toBe("incidents");
+    expect(product("get_resource_metrics")).toBe("observability");
     // Infrastructure cannot be turned off, so nothing is tagged with it.
     expect(tools.filter((t) => t.product === "infrastructure")).toEqual([]);
-    for (const name of ["list_resources", "ssh_exec", "list_dns_records", "what_changed"]) {
+    for (const name of [
+      "list_resources",
+      "ssh_exec",
+      "list_dns_records",
+      "what_changed",
+      "get_resource_stats",
+    ]) {
       expect(product(name), name).toBeUndefined();
     }
   });
 
-  it("names only registered tools in the by-name map, and tags each", async () => {
+  // An app with no tagged tool can be turned off without chat or MCP
+  // noticing: Observability was such an app (#977).
+  it("has a tool for every app that can be turned off", async () => {
     const tools = await getToolRegistry();
-    for (const [name, product] of Object.entries(GENERIC_TOOL_PRODUCTS)) {
-      const tool = tools.find((t) => t.name === name);
-      expect(tool, `${name} is not a registered tool`).toBeDefined();
-      expect(tool?.product, name).toBe(product);
+    for (const product of SWITCHABLE_PRODUCTS) {
+      expect(
+        tools.filter((t) => t.product === product).map((t) => t.name),
+        `no tool belongs to ${product}`,
+      ).not.toEqual([]);
     }
+  });
+
+  it("takes resource metrics away with Observability", async () => {
+    grant("*");
+    mockDisabledProducts.mockResolvedValue(["observability"]);
+    const tools = await getToolRegistry();
+    const metrics = tools.find((t) => t.name === "get_resource_metrics")!;
+    const denied = await authorizeToolCall(metrics, auth);
+    expect(denied?.content[0]?.text).toBe(
+      "The Observability app is turned off for this organization",
+    );
+    const offered = (await toolsOfferedTo(tools, "o1")).map((t) => t.name);
+    expect(offered).not.toContain("get_resource_metrics");
+    expect(offered).toContain("get_resource_stats");
+    expect(offered).toContain("list_resources");
   });
 });
 

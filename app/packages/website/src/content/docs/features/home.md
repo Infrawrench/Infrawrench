@@ -139,7 +139,7 @@ Opening a link to the app's page says that your organization has turned the app 
 
 ![The Apps page in Settings with a warning under Costs and Observability that two connections lack permissions for the app](https://agent-assets.infrawrench.com/docs-screenshots/features/home/settings-apps-warning-dark.png)
 
-**Chat and MCP follow.** The [chat](./ai-chat.md) assistant and the [MCP server](./mcp.md) are not offered the tools of an app that is off, and a call to one is refused with a message that names the app. Tools for resources, accounts and domains always stay available.
+**Chat and MCP follow.** The [chat](./ai-chat.md) assistant and the [MCP server](./mcp.md) are not offered the tools of an app that is off, and a call to one is refused with a message that names the app. Tools for resources, accounts and domains always stay available. A resource's metric charts are Observability's: with it off, the assistant can still read a resource and its summary stats, but not its metrics.
 
 **What it does not do.** Turning an app off does not delete anything. Data keeps being collected, alerts and schedules that are already set up keep running, and switching the app back on shows everything as it was. It also does not block the [HTTP API](../team-and-billing/openapi.md): API keys, the CLI and the Terraform provider can still call the routes behind the app, under the permissions they hold. To stop someone using a feature, take the permission away from their role or key.
 
