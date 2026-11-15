@@ -516,3 +516,296 @@ fn a_silent_sandboxed_job_stalls_and_a_cancelled_one_stops() {
     assert!(out.stalled_after.is_none(), "{out:?}");
     assert!(out.sandbox.unwrap().cpu_usec > 8_000_000, "{out:?}");
 }
+
+/// Runs `IWCI_TEST_SCRIPT` in a sandbox and prints what happened: for
+/// looking into one case by hand.
+#[test]
+#[ignore = "runs IWCI_TEST_SCRIPT; needs what the others do"]
+fn a_script_from_the_environment() {
+    let Some(fx) = fixture() else { return };
+    let Ok(script) = std::env::var("IWCI_TEST_SCRIPT") else {
+        return;
+    };
+    let job = job(&[]);
+    let mut inv = invocation(&job);
+    inv.limits.timeout = Duration::from_secs(60);
+    let out = fx.run(inv, &script);
+    println!("SCRIPT exit {} timed out {}", out.exit_code, out.timed_out);
+}
+
+// The conformance suite: the same job, run as a WASIX job and in a sandbox
+// beside Bun, behaves the same. Each case runs both and compares what a
+// job's report and its files say.
+
+/// What a run left that a report or a later job sees.
+#[derive(Debug, PartialEq)]
+struct Seen {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+    changes: Vec<String>,
+    modes: Vec<(PathBuf, u32)>,
+    timed_out: bool,
+    stalled: bool,
+    cancelled: bool,
+    out_of_memory: bool,
+}
+
+fn seen(out: &Outcome, job: &JobFs) -> Seen {
+    let changes = job
+        .changes("/work")
+        .into_iter()
+        .map(|c| match c {
+            iwci_vfs::Change::Added { path, bytes } => {
+                format!("+ {} {}", path.display(), bytes.len())
+            }
+            iwci_vfs::Change::Modified { path, bytes } => {
+                format!("~ {} {}", path.display(), bytes.len())
+            }
+            iwci_vfs::Change::Deleted { path } => format!("- {}", path.display()),
+        })
+        .collect();
+    let mut modes: Vec<(PathBuf, u32)> = job
+        .modes()
+        .recorded()
+        .into_iter()
+        .filter(|(p, _)| p.starts_with("/work"))
+        .collect();
+    modes.sort();
+    Seen {
+        exit_code: out.exit_code,
+        stdout: text(&out.stdout),
+        stderr: text(&out.stderr),
+        changes,
+        modes,
+        timed_out: out.timed_out,
+        stalled: out.stalled_after.is_some(),
+        cancelled: out.cancelled,
+        out_of_memory: out.out_of_memory,
+    }
+}
+
+impl Fixture {
+    /// `script` as a WASIX job and in a sandbox, each over a fresh job made
+    /// by `job`, with `inv` adjusting each invocation.
+    fn both(
+        &self,
+        job: impl Fn() -> JobFs,
+        inv: impl Fn(Invocation) -> Invocation,
+        script: &str,
+    ) -> (Seen, Seen) {
+        let plain = job();
+        let out = self
+            .runtime
+            .run_script(&self.packages, "bash", script, inv(invocation(&plain)))
+            .unwrap();
+        eprintln!(
+            "--- WASIX: exit {}\nstdout:\n{}\nstderr:\n{}",
+            out.exit_code,
+            text(&out.stdout),
+            text(&out.stderr)
+        );
+        let wasix = seen(&out, &plain);
+        let boxed = job();
+        let out = self.run(inv(invocation(&boxed)), script);
+        (wasix, seen(&out, &boxed))
+    }
+}
+
+fn checkout() -> JobFs {
+    let b = SnapshotBuilder::new();
+    b.mkdir_all("/root").unwrap();
+    b.write("/work/README.md", b"# fixture\n").unwrap();
+    b.write("/work/src/main.ts", b"console.log(1)\n").unwrap();
+    b.write("/work/bin/run.sh", b"#!/bin/sh\necho ran\n")
+        .unwrap();
+    b.set_mode("/work/bin/run.sh", 0o755).unwrap();
+    b.symlink("/work/link", "README.md").unwrap();
+    b.write("/work/old.txt", b"old\n").unwrap();
+    b.freeze().fork()
+}
+
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment and the runner; see the module docs"]
+fn conformance_files_listings_writes_and_modes() {
+    let Some(fx) = fixture() else { return };
+    let script = r#"
+        find /work | sort | while read -r p; do stat -c '%n %F %a %s' "$p"; done
+        cat README.md src/main.ts link
+        ./bin/run.sh
+        sha256sum README.md src/main.ts
+        echo new > new.txt
+        mkdir -p made/deep && echo deep > made/deep/f
+        chmod 600 new.txt
+        chmod +x made/deep/f
+        mv old.txt moved.txt
+        ln -s moved.txt l2
+        rm src/main.ts
+        node -e 'const fs = require("fs"); fs.writeFileSync("/work/from-node.txt", "node\n"); fs.chmodSync("/work/from-node.txt", 0o640); console.log((fs.statSync("/work/bin/run.sh").mode & 0o777).toString(8))'
+        stat -c '%a' new.txt made/deep/f from-node.txt
+        find /work -type l | sort
+        readlink l2
+        find /work -newer /work/README.md | sort
+    "#;
+    let (wasix, boxed) = fx.both(checkout, |i| i, script);
+    assert_eq!(wasix, boxed);
+}
+
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment and the runner; see the module docs"]
+fn conformance_the_runs_scratch_directory_and_lent_files() {
+    let Some(fx) = fixture() else { return };
+    let scratch = SnapshotBuilder::new().freeze().fork();
+    let lent = || {
+        let job = checkout();
+        // As the scheduler lends a key: its file, its mode, its directory's.
+        job.write("/root/.ssh/id_test", b"KEY\n").unwrap();
+        job.modes().set(Path::new("/root/.ssh/id_test"), 0o600);
+        job.modes().set(Path::new("/root/.ssh"), 0o700);
+        job
+    };
+    let with_scratch = |mut i: Invocation| {
+        i.scratch = Some(scratch.as_dyn());
+        i
+    };
+    let script = r#"
+        stat -c '%a' /root/.ssh /root/.ssh/id_test
+        cat /root/.ssh/id_test
+        n=$(ls /tmp/workflow | wc -l)
+        echo "step $n" > /tmp/workflow/step-$n
+        ls /tmp/workflow | sort | tr '\n' ' '
+    "#;
+    let (first, second) = fx.both(lent, with_scratch, script);
+    assert_eq!(first.stdout, "700\n600\nKEY\nstep-0 ");
+    assert_eq!(
+        second.stdout, "700\n600\nKEY\nstep-0 step-1 ",
+        "the sandbox saw what the WASIX job left in /tmp/workflow, and added to it"
+    );
+    assert_eq!(scratch.read("/step-1").unwrap(), b"step 1\n");
+    // And Bun sees the lent file's mode.
+    let job = lent();
+    let out = fx.run(
+        invocation(&job),
+        "bun -e 'console.log((require(\"fs\").statSync(\"/root/.ssh/id_test\").mode & 0o777).toString(8))'",
+    );
+    assert_eq!(text(&out.stdout), "600\n");
+}
+
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment and the runner; see the module docs"]
+fn conformance_the_network_refuses_the_same_addresses() {
+    let Some(fx) = fixture() else { return };
+    // Something of the host's listening on its loopback, which no job may
+    // reach.
+    let host = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = host.local_addr().unwrap().port();
+    let script = format!(
+        r#"
+        node -e '
+          const net = require("net");
+          const targets = [["127.0.0.1", {port}], ["10.1.2.3", 80], ["172.16.0.1", 80], ["192.168.1.1", 80],
+                           ["100.64.0.1", 80], ["169.254.169.254", 80], ["fd00::1", 80], ["::ffff:10.0.0.1", 80]];
+          let left = targets.length;
+          for (const [host, port] of targets) {{
+            const s = net.connect({{ host, port }});
+            s.setTimeout(5000, () => {{ console.log(host, "timed out"); s.destroy(); if (!--left) process.exit(0); }});
+            s.on("connect", () => {{ console.log(host, "connected"); s.destroy(); if (!--left) process.exit(0); }});
+            s.on("error", e => {{ console.log(host, "refused", e.code); if (!--left) process.exit(0); }});
+          }}
+        ' | sort
+        node -e 'require("dns").lookup("localhost", (e, a) => console.log("localhost", e ? e.code : a))'
+    "#
+    );
+    for internet in [true, false] {
+        let (wasix, boxed) = fx.both(
+            checkout,
+            |mut i| {
+                i.internet = internet;
+                i
+            },
+            &script,
+        );
+        assert_eq!(wasix, boxed, "internet: {internet}");
+        assert!(!wasix.stdout.contains("connected"), "{}", wasix.stdout);
+    }
+    // Bun's own connections are held to the same addresses by the gateway.
+    let job = checkout();
+    let mut inv = invocation(&job);
+    inv.internet = true;
+    let out = fx.run(
+        inv,
+        &format!(
+            r#"bun -e '
+              for (const url of ["http://127.0.0.1:{port}/", "http://10.1.2.3/", "http://169.254.169.254/", "http://[fd00::1]/"]) {{
+                try {{ await fetch(url, {{ signal: AbortSignal.timeout(5000) }}); console.log(url, "reached"); }}
+                catch (e) {{ console.log(url, "refused"); }}
+              }}'"#
+        ),
+    );
+    assert!(
+        !text(&out.stdout).contains("reached"),
+        "{}",
+        text(&out.stdout)
+    );
+    assert_eq!(text(&out.stdout).matches("refused").count(), 4);
+    drop(host);
+}
+
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment, the runner and a delegated cgroup; see the module docs"]
+fn conformance_memory_time_stall_and_cancel_end_a_job_the_same_way() {
+    let Some(fx) = fixture() else { return };
+    if std::env::var_os("IWCI_TEST_CGROUP").is_none() {
+        return;
+    }
+    let oom = "node -e 'const a = []; for (;;) a.push(Buffer.alloc(1 << 20, 1))'";
+    let (wasix, boxed) = fx.both(
+        checkout,
+        |mut i| {
+            i.limits.memory_bytes = 512 << 20;
+            i
+        },
+        oom,
+    );
+    assert!(
+        wasix.out_of_memory && boxed.out_of_memory,
+        "{wasix:?}\n{boxed:?}"
+    );
+    assert_ne!(wasix.exit_code, 0);
+    assert_ne!(boxed.exit_code, 0);
+    for s in [&wasix, &boxed] {
+        assert!(s.stderr.contains("iwci:"), "a note says why: {s:?}");
+    }
+
+    let (wasix, boxed) = fx.both(
+        checkout,
+        |mut i| {
+            i.limits.timeout = Duration::from_secs(5);
+            i
+        },
+        "echo started; while :; do :; done",
+    );
+    assert_eq!(wasix, boxed);
+    assert!(wasix.timed_out);
+
+    let (wasix, boxed) = fx.both(checkout, |i| i, "echo started; sleep 600");
+    assert_eq!(wasix, boxed);
+    assert!(wasix.stalled);
+
+    let (wasix, boxed) = fx.both(
+        checkout,
+        |mut i| {
+            let cancel = iwci_runtime::Cancel::new();
+            let later = cancel.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                later.cancel();
+            });
+            i.cancel = Some(cancel);
+            i
+        },
+        "echo started; while :; do :; done",
+    );
+    assert_eq!(wasix, boxed);
+    assert!(wasix.cancelled);
+}
