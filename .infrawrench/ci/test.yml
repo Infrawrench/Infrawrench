@@ -45,7 +45,7 @@
 #   ClickHouse suites shadow-run against it.
 # - Postgres database tests: server-core's tests against `env:postgres`
 #   (pglite-server, PostgreSQL 18.4) after migrating it, and the mocked
-#   Postgres suites shadow-run against it.
+#   Postgres suites shadow-run against another.
 # - Editor extensions (once .github/workflows/editor-extensions.yml): the
 #   VS Code extension's .vsix and the Raycast extension's tarball, kept as
 #   the run's downloads.
@@ -130,21 +130,63 @@ jobs:
   # what it needs: the small suites peak at 3.5 to 4 GiB given 6 GiB and at
   # 1.8 to 2.8 GiB given 3 GiB. Every suite passes at 3 GiB; at 2 GiB
   # server-core, workflow-runtime and the ClickHouse plugin run out.
+  #
+  # Vitest starts a `node` per test file, and most of a large suite's time is
+  # each of them loading its modules (web: 390 s of import in a 250 s run at
+  # two workers), so how many run at once is what sets a large suite's time.
+  # The script takes it from the runner's cores (`nproc`), since a run ends
+  # when its longest job does and that is web's tests: web gets half the
+  # cores, server-core, desktop and ui a quarter each, and every other suite
+  # two workers, which a few test files cannot use more than. Alone on eight
+  # cores web takes 252 s at two workers, 155 s at four and 122 s at six;
+  # server-core 138 s and 85 s at two and four, desktop 108 s and 66 s, ui
+  # 127 s and 70 s. Past the limits below a suite gains little and each
+  # worker is another heap: about 450 MiB in web and server-core, 300 MiB in
+  # desktop and ui.
+  #
+  # `memory:` holds the most workers a suite can get. desktop and ui at four
+  # peak at 3.3 and 3.7 GiB and pass at 3 GiB. web at six and server-core at
+  # four pass at 5 GiB, so they are a job of their own (`test-large`) one
+  # step above that, with the same script.
   test:
     name: Test ${{ package.name }}
     packages:
       scripts: { test: "*vitest run*" }
-    needs: [prep, bundle, "^bundle"]
+      only: ["**", "!app/packages/web", "!app/packages/server-core"]
+    needs: &test-needs [prep, bundle, "^bundle"]
     using: env:bash-node@24.0.18
-    env:
+    env: &test-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-    run: |
+    run: &test-run |
+      cores="$(nproc)"
+      case "${{ package.dir }}" in
+        app/packages/web) workers=$((cores / 2)) most=6 ;;
+        app/packages/server-core | app/packages/desktop | app/packages/ui) workers=$((cores / 4)) most=4 ;;
+        *) workers=2 most=2 ;;
+      esac
+      if ((workers < 2)); then workers=2; fi
+      if ((workers > most)); then workers=$most; fi
       script="$(node -p 'require("./package.json").scripts.test')"
-      eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=2}"
-    task-cache:
+      eval "${script//vitest run/node node_modules/vitest/vitest.mjs run --maxWorkers=$workers}"
+    task-cache: &test-cache
       root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
     memory: 4GiB
-    # server-core and ui take five to nine minutes each on a busy runner.
+    timeout: 30m
+
+  # web and server-core, which need more memory than the rest at the workers
+  # they get (above). Peak 5.3 GiB (web at six workers), 4.6 GiB (server-core
+  # at four).
+  test-large:
+    name: Test ${{ package.name }}
+    packages:
+      scripts: { test: "*vitest run*" }
+      only: [app/packages/web, app/packages/server-core]
+    needs: *test-needs
+    using: env:bash-node@24.0.18
+    env: *test-env
+    run: *test-run
+    task-cache: *test-cache
+    memory: 6GiB
     timeout: 30m
 
   # Each library, after the libraries it depends on.
@@ -444,30 +486,51 @@ jobs:
   # and `clickhouse-db` runs them. pglite-server has one backend: transactions
   # run one at a time, row locks never contend, and pgcrypto is partial
   # (README, "PostgreSQL"). A test of real lock contention needs a real server.
+  #
+  # The mocked Postgres suites shadow-run in a job of their own
+  # (`postgres-shadow`) against a server of their own: both configs run their
+  # files one at a time, and one after the other in one job they were the
+  # longest job of a run once web's tests were not (190 s; 80 s and 115 s
+  # apart).
   postgres-db:
     name: Postgres tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
     needs: [prep, "^bundle"]
     using: env:bash-node@24.0.18
-    services:
+    services: &postgres-service
       postgres:
         using: env:postgres@18.4.2
         run: pglite-server
         ready: { port: 5432 }
-    env:
+    env: &postgres-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
     run: |
       (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
       node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts
-      node node_modules/vitest/vitest.mjs run --config vitest.shadow-postgres.config.ts
-    task-cache:
+    task-cache: &postgres-cache
       root-inputs:
         - tsconfig.base.json
         - .infrawrench/ci/node-preload.cjs
         - .infrawrench/ci/stubs/**
         - app/packages/web/drizzle.config.ts
         - app/packages/web/src/db/migrations/**
+    memory: 4GiB
+    timeout: 30m
+
+  # `test:postgres:shadow`: every statement the mocked suites capture,
+  # PREPAREd against the migrated schema and never executed.
+  postgres-shadow:
+    name: Postgres shadow tests ${{ package.name }}
+    packages: { only: [app/packages/server-core] }
+    needs: [prep, "^bundle"]
+    using: env:bash-node@24.0.18
+    services: *postgres-service
+    env: *postgres-env
+    run: |
+      (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
+      node node_modules/vitest/vitest.mjs run --config vitest.shadow-postgres.config.ts
+    task-cache: *postgres-cache
     memory: 4GiB
     timeout: 30m
 
