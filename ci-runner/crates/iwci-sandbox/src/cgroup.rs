@@ -119,6 +119,11 @@ impl Cgroup {
         self.write("cgroup.procs", &pid.to_string())
     }
 
+    /// Changes `memory.max`: what the sandbox may hold from now on.
+    pub fn set_memory_max(&self, bytes: u64) -> io::Result<()> {
+        self.write("memory.max", &bytes.to_string())
+    }
+
     pub fn usage(&self) -> io::Result<Usage> {
         let read = |file: &str| -> io::Result<String> { fs::read_to_string(self.path.join(file)) };
         let number = |file: &str| -> io::Result<u64> {

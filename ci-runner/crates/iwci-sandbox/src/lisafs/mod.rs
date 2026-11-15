@@ -104,7 +104,9 @@ impl Drop for Serving {
     }
 }
 
-pub(crate) use sock::{cmsg_space, fill_rights};
+/// Descriptor passing, shared with the runner's other sockets in the
+/// sandbox (`iwci-runtime`'s shims).
+pub use sock::{cmsg_space, fill_rights, take_rights};
 
 /// A `SOCK_SEQPACKET` socket pair, close-on-exec.
 pub(crate) fn seqpacket_pair() -> io::Result<(OwnedFd, OwnedFd)> {

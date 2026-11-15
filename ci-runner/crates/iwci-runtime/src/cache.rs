@@ -503,6 +503,20 @@ impl ModuleStore {
             .collect()
     }
 
+    /// The directory of this fingerprint's artifacts.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// The artifact and digest files of `key`, when both are on disk: what
+    /// a sandboxed job's runner inside loads them from.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn artifact_files(&self, key: &WasmHash) -> Option<(PathBuf, PathBuf)> {
+        let (artifact, digest) = (self.artifact_path(key), self.digest_path(key));
+        (artifact.is_file() && digest.is_file()).then_some((artifact, digest))
+    }
+
     fn artifact_path(&self, key: &WasmHash) -> PathBuf {
         self.dir.join(format!("{}.wasmu", hex::encode(key)))
     }

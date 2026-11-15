@@ -32,6 +32,9 @@ LimitCORE=infinity
 # unit's subtree: the runner moves itself into runner/ and makes jobs/<id>
 # beside it (crates/iwci-sandbox, cgroup.rs).
 Delegate=memory cpu pids
+# Where gVisor is (install.sh installs this release): the runner offers
+# native tools (`builtin:bun`) only with it.
+Environment=IWCI_NATIVE_SANDBOX=/opt/iwci/lib/gvisor-20261109.0
 %{ endif ~}
 
 [Install]

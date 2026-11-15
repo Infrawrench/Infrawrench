@@ -125,7 +125,10 @@ script then:
   cgroup subtree of its own: it moves itself into `runner/` and gives each
   sandbox `jobs/<id>`, with `memory.max` at the job's `memory:`,
   `memory.swap.max` 0 (gVisor keeps a job's memory in one file the kernel
-  would rather swap than refuse) and `pids.max`.
+  would rather swap than refuse) and `pids.max`;
+- sets `IWCI_NATIVE_SANDBOX` in the unit to that gVisor directory, which
+  is what makes the runner offer native tools (`tools: [builtin:bun@1.4]`;
+  `/v1/capacity` says `native_sandbox: true`).
 
 Turning it off removes the profile and the delegation. To check a host
 after applying: `aa-status | grep iwci` lists the profile; `systemctl show

@@ -72,6 +72,18 @@ pub struct Config {
     pub cgroup: Option<PathBuf>,
 }
 
+/// A file system mounted in the sandbox besides its root: one more lisafs
+/// connection, whose other end the runner serves.
+#[derive(Debug)]
+pub struct Mount {
+    /// Where it appears, an absolute path.
+    pub destination: String,
+    /// The sandbox may not change it (the server refuses too).
+    pub read_only: bool,
+    /// The sandbox's end of the connection.
+    pub gofer: OwnedFd,
+}
+
 /// A started (not yet running) sandbox.
 #[derive(Debug)]
 pub struct Sandbox {
@@ -82,6 +94,9 @@ pub struct Sandbox {
     /// The sandbox's end of its network link, handed over at start.
     link: Option<OwnedFd>,
 }
+
+/// How long starting a sandbox may take before the runner gives up on it.
+const START_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The mount type that keeps gVisor's tmpfs off `/tmp`: see [`spec`].
 const JOB_FS_TYPE: &str = "iwci-job-fs";
@@ -94,6 +109,12 @@ const JOB_FS_TYPE: &str = "iwci-job-fs";
 /// `runsc/boot/vfs.go`), so `/tmp` stays the job's, as under WASIX: what a
 /// job writes there is counted against its memory and can be cached.
 pub fn spec(config: &Config) -> Value {
+    spec_with(config, &[])
+}
+
+/// [`spec`] with `mounts` as bind mounts after the system's, in order: the
+/// Sentry asks for one lisafs connection per bind mount, after the root's.
+fn spec_with(config: &Config, mounts: &[(&str, bool)]) -> Value {
     let caps = [
         "CAP_CHOWN",
         "CAP_DAC_OVERRIDE",
@@ -109,7 +130,7 @@ pub fn spec(config: &Config) -> Value {
         "CAP_AUDIT_WRITE",
         "CAP_SETFCAP",
     ];
-    json!({
+    let mut spec = json!({
         "ociVersion": "1.0.2",
         "process": {
             "terminal": false,
@@ -145,7 +166,18 @@ pub fn spec(config: &Config) -> Value {
                 { "type": "uts" }, { "type": "mount" },
             ],
         },
-    })
+    });
+    if let Some(list) = spec["mounts"].as_array_mut() {
+        for (destination, read_only) in mounts {
+            list.push(json!({
+                "destination": destination,
+                "type": "bind",
+                "source": destination,
+                "options": [if *read_only { "ro" } else { "rw" }, "rbind"],
+            }));
+        }
+    }
+    spec
 }
 
 /// Starts the Sentry for `config` with `gofer` as the root file system's
@@ -162,12 +194,31 @@ pub fn boot(
     log: OwnedFd,
     link: Option<OwnedFd>,
 ) -> io::Result<Sandbox> {
+    boot_with(release, config, gofer, Vec::new(), stdio, log, link)
+}
+
+/// [`boot`] with more file systems than the root, each over a lisafs
+/// connection of its own.
+#[allow(clippy::too_many_arguments)]
+pub fn boot_with(
+    release: &Release,
+    config: &Config,
+    gofer: OwnedFd,
+    mounts: Vec<Mount>,
+    stdio: [OwnedFd; 3],
+    log: OwnedFd,
+    link: Option<OwnedFd>,
+) -> io::Result<Sandbox> {
     fs::DirBuilder::new()
         .mode(0o700)
         .recursive(true)
         .create(&config.state_dir)?;
     let spec_path = config.state_dir.join("config.json");
-    fs::write(&spec_path, serde_json::to_vec(&spec(config))?)?;
+    let listed: Vec<(&str, bool)> = mounts
+        .iter()
+        .map(|m| (m.destination.as_str(), m.read_only))
+        .collect();
+    fs::write(&spec_path, serde_json::to_vec(&spec_with(config, &listed))?)?;
     let spec_file = fs::File::open(&spec_path)?;
     let control = config.state_dir.join("control.sock");
     let _ = fs::remove_file(&control);
@@ -189,7 +240,10 @@ pub fn boot(
     };
     let spec_fd = give(spec_file.into(), &mut fds);
     let controller_fd = give(listener.into(), &mut fds);
-    let io_fd = give(gofer, &mut fds);
+    let mut io_fds = vec![give(gofer, &mut fds)];
+    for mount in mounts {
+        io_fds.push(give(mount.gofer, &mut fds));
+    }
     let umounter_fd = give(umounter.into(), &mut fds);
     // The Sentry re-executes itself inside an empty root, where it can
     // open nothing: its logs go to a descriptor.
@@ -213,6 +267,10 @@ pub fn boot(
             "--network=none".into()
         },
         "--file-access=exclusive".into(),
+        // The other mounts are the runner's too, and nothing else changes
+        // them while the sandbox runs; without it the Sentry cannot map
+        // their files, so no program could be run from one.
+        "--file-access-mounts=exclusive".into(),
         // No host file access at all: directfs would have the Sentry open
         // host files itself, through descriptors a gofer donates.
         "--directfs=false".into(),
@@ -226,8 +284,18 @@ pub fn boot(
         format!("--bundle={}", config.state_dir.display()),
         format!("--spec-fd={spec_fd}"),
         format!("--controller-fd={controller_fd}"),
-        format!("--io-fds={io_fd}"),
-        "--gofer-mount-confs=lisafs:none".into(),
+        format!(
+            "--io-fds={}",
+            io_fds
+                .iter()
+                .map(|fd| fd.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        format!(
+            "--gofer-mount-confs={}",
+            vec!["lisafs:none"; io_fds.len()].join(",")
+        ),
         format!(
             "--stdio-fds={},{},{}",
             stdio_fds[0], stdio_fds[1], stdio_fds[2]
@@ -336,8 +404,18 @@ impl Sandbox {
                 },
             });
         }
-        self.call_with("containerManager.SetNetworkArgs", args, &fds)?;
-        self.call("containerManager.StartRoot", json!(self.id))?;
+        self.call_full(
+            "containerManager.SetNetworkArgs",
+            args,
+            &fds,
+            Some(START_LIMIT),
+        )?;
+        self.call_full(
+            "containerManager.StartRoot",
+            json!(self.id),
+            &[],
+            Some(START_LIMIT),
+        )?;
         Ok(())
     }
 
@@ -410,17 +488,6 @@ impl Sandbox {
         (r == self.pid).then_some(status)
     }
 
-    /// One call to the Sentry's control server: its result.
-    fn call(&self, method: &str, arg: Value) -> io::Result<Value> {
-        self.call_with(method, arg, &[])
-    }
-
-    /// A call with descriptors (urpc's `FilePayload`), which ride the
-    /// first bytes of the request.
-    fn call_with(&self, method: &str, arg: Value, fds: &[RawFd]) -> io::Result<Value> {
-        self.call_full(method, arg, fds, None)
-    }
-
     fn call_timeout(
         &self,
         method: &str,
@@ -430,6 +497,9 @@ impl Sandbox {
         self.call_full(method, arg, &[], limit)
     }
 
+    /// One call to the Sentry's control server: its result. Descriptors
+    /// (urpc's `FilePayload`) ride the first bytes of the request; with a
+    /// `limit`, a call that takes longer fails.
     fn call_full(
         &self,
         method: &str,
@@ -758,8 +828,10 @@ extern "C" fn run_child(arg: *mut c_void) -> c_int {
         // namespace gave us through the change.
         const NOBODY: libc::uid_t = 65534;
         libc::prctl(libc::PR_SET_KEEPCAPS, 1 as libc::c_ulong, 0, 0, 0);
-        if libc::setresgid(NOBODY, NOBODY, NOBODY) < 0
-            || libc::setresuid(NOBODY, NOBODY, NOBODY) < 0
+        // The system calls, not the C library's wrappers, which are not
+        // for a copy of a multi-threaded process.
+        if libc::syscall(libc::SYS_setresgid, NOBODY, NOBODY, NOBODY) < 0
+            || libc::syscall(libc::SYS_setresuid, NOBODY, NOBODY, NOBODY) < 0
         {
             libc::_exit(125);
         }

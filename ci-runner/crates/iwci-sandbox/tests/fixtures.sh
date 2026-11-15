@@ -62,7 +62,9 @@ if [ ! -x "$out/bunroot/usr/local/bin/bun" ]; then
   python3 -I -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$dl/bun.zip" "$dl/bun"
   install -D -m 0755 "$dl/bun/$bun_asset/bun" "$out/bunroot/usr/local/bin/bun"
   install -D -m 0755 "$(readlink -f "$loader")" "$out/bunroot$loader"
-  for lib in libc.so.6 libpthread.so.0 libdl.so.2 libm.so.6; do
+  # The runner's own binary runs inside too (iwci-runtime's
+  # tests/sandbox.rs), and links the C++ runtime as well.
+  for lib in libc.so.6 libpthread.so.0 libdl.so.2 libm.so.6 libstdc++.so.6 libgcc_s.so.1; do
     install -D -m 0644 "$(readlink -f "$libdir/$lib")" "$out/bunroot$libdir/$lib"
   done
 fi

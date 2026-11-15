@@ -37,8 +37,8 @@ pub struct ToolDraft {
     pub version: Version,
     /// Host interface.
     pub abi: Abi,
-    /// The local `.wasm`.
-    pub module: PathBuf,
+    /// The local `.wasm`; none for a native tool.
+    pub module: Option<PathBuf>,
     /// Data files.
     pub files: Vec<FileSource>,
     /// Prefix arguments.
@@ -47,6 +47,19 @@ pub struct ToolDraft {
     pub env: BTreeMap<String, String>,
     /// Free text.
     pub description: Option<String>,
+    /// A native tool's program and files, by target.
+    pub targets: BTreeMap<String, TargetSource>,
+    /// Other names a native tool runs under.
+    pub aliases: Vec<String>,
+}
+
+/// A native tool's program and files for one target.
+#[derive(Debug, Clone)]
+pub struct TargetSource {
+    /// The local program.
+    pub program: PathBuf,
+    /// What it needs beside it.
+    pub files: Vec<FileSource>,
 }
 
 /// A webc package to publish with an environment.
@@ -136,31 +149,54 @@ pub fn publish_tool(
             reason: "tools publish to builtins or a repository, not environments".into(),
         });
     }
-    let module = read_local(&draft.module)?;
-    let mut blobs = vec![module];
-    let mut files = Vec::with_capacity(draft.files.len());
-    for f in &draft.files {
-        let bytes = read_local(&f.source)?;
-        files.push(ToolFile {
-            path: f.guest_path.clone(),
+    let mut blobs = Vec::new();
+    let mut blob_ref = |bytes: Vec<u8>| {
+        let r = BlobRef {
             sha256: sha256_hex(&bytes),
             size: bytes.len() as u64,
-        });
+        };
         blobs.push(bytes);
+        r
+    };
+    let module = match &draft.module {
+        Some(path) => Some(blob_ref(read_local(path)?)),
+        None => None,
+    };
+    let file_refs = |sources: &[FileSource], blob_ref: &mut dyn FnMut(Vec<u8>) -> BlobRef| {
+        sources
+            .iter()
+            .map(|f| {
+                let r = blob_ref(read_local(&f.source)?);
+                Ok(ToolFile {
+                    path: f.guest_path.clone(),
+                    sha256: r.sha256,
+                    size: r.size,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()
+    };
+    let files = file_refs(&draft.files, &mut blob_ref)?;
+    let mut targets = BTreeMap::new();
+    for (target, source) in &draft.targets {
+        let program = blob_ref(read_local(&source.program)?);
+        let files = file_refs(&source.files, &mut blob_ref)?;
+        targets.insert(
+            target.clone(),
+            crate::manifest::NativeTarget { program, files },
+        );
     }
     let manifest = ToolManifest {
         schema: SCHEMA,
         name: draft.name.clone(),
         version: draft.version.clone(),
         abi: draft.abi,
-        module: BlobRef {
-            sha256: sha256_hex(&blobs[0]),
-            size: blobs[0].len() as u64,
-        },
+        module,
         files,
         args: draft.args.clone(),
         env: draft.env.clone(),
         description: draft.description.clone(),
+        targets,
+        aliases: draft.aliases.clone(),
     };
     let key = ns.manifest_key(&manifest.name, &manifest.version)?;
     manifest.validate().map_err(|e| Error::manifest(&key, e))?;

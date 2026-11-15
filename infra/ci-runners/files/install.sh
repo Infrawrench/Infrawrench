@@ -32,6 +32,7 @@ rm -f /tmp/iwci.env /tmp/iwci.service
 # profile; the release stays, unused.
 native="$(cat /tmp/iwci-native 2>/dev/null || true)"
 rm -f /tmp/iwci-native
+# Also named in iwci.service.tftpl (IWCI_NATIVE_SANDBOX): bump both.
 gvisor_release=20261109.0
 case "$(uname -m)" in
 x86_64) gvisor_arch=x86_64 gvisor_sha512=1a6b8f74c37b4931ef473f67ec1f601690855bedc52ac709f2fac965c69677aa0426ef44598d8eee1aed72cfdb9df87a2a5f352cb3348880fc61a7732bc10f2a ;;

@@ -1664,6 +1664,59 @@ public`); `--prebuilt` with existing Build Output should too, but is not
 dev`, a Node tool in `env:bash`, and one run as a job of its own. The
   tokens come from lent connections and must come out masked.
 
+### Native tools in a sandbox
+
+A tool whose manifest says `abi: native-gvisor` is a native Linux program,
+not a module (`builtin:bun`, see [Bun](#bun)). A job that names one in
+`tools:` runs whole in a gVisor sandbox of its own, the runner's own
+binary first, which runs the script and the services exactly as a WASIX
+job runs them, beside the native program:
+
+- **Files.** The sandbox's root is the job's own file system, served from
+  the runner (lisafs), so the native program and the WASIX commands see
+  and change the same files, held to the same write budget, and what they
+  write becomes the job's changes, caches and artifacts as for any job.
+  Modes are real: `chmod` from either side is what the other `stat`s. The
+  native program, its C library, the environment's packages and their
+  compiled modules come in read only, beside it. A native program also
+  finds `/etc/passwd`, `/etc/group`, `/etc/hosts` (with the job's services
+  on the loopback) and `/etc/resolv.conf` in the job's `/etc` where it has
+  none.
+- **Processes.** A script runs the native program by name from `PATH`;
+  the program runs the environment's commands (`bash`, `sh`, `node`,
+  `git`, `#!/usr/bin/env node` scripts) by name from its own, where each
+  is a stand-in that starts the command as a WASIX process of the job,
+  with the caller's arguments, environment, directory and standard
+  streams, and passes signals on.
+- **Network.** One loopback for everything in the job: a `Bun.serve` is
+  reached by a WASIX `curl` or `node` and the other way round, and a
+  service by its name. The way out is the sandbox's only interface, whose
+  other end is the runner, which applies the same policy as for a WASIX
+  job (public addresses only, never the runner's own; names answered only
+  with public addresses); `network: false` leaves only the loopback.
+- **Memory.** The sandbox has a cgroup of its own, with swap off. The
+  sandbox's own memory (gVisor's kernel, the runner inside, the loaded
+  environment), about 170 to 200 MiB with `env:bash-node`, is measured
+  before the script starts, and the job may then use its whole `memory:`
+  on top of it; past that the sandbox is stopped and the job fails as out
+  of memory, with a note. `peak_memory_mib` and `held_memory_mib` are the
+  job's share, as for a WASIX job, which does not count the runner's own
+  memory either; the report's `execution.sandbox` says what the sandbox
+  itself took (`overhead_mib`), what was reserved for it (`reserved_mib`,
+  384 MiB) and its CPU time (`cpu_ms`, gVisor's kernel's included). Such
+  a job reserves `memory:` and the 384 MiB from the runner's `--memory`,
+  in either admission mode.
+- **Time.** The timeout, a cancel and draining stop the whole sandbox; the
+  stall check reads the sandbox's CPU time.
+- **Billing.** The job is charged its wall time as any job, and the memory
+  it reserved: its `memory:` and the sandbox's 384 MiB.
+- **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
+  release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
+  another fails it, saying so. `/v1/capacity` says `native_sandbox` and
+  `sandbox_overhead`. In a split run the job stays on the runner that has
+  the run. The task cache keys it like any job: the native tool's manifest
+  is pinned by digest.
+
 ### kubectl
 
 `tools: [builtin:kubectl@1.37]` puts kubectl on an environment's `PATH`.

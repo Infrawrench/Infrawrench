@@ -2881,6 +2881,7 @@ name = "iwci"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "ed25519-dalek",
  "getrandom 0.3.4",
  "globset",
@@ -2896,6 +2897,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shared-buffer",
  "signal-hook-registry",
  "tar",
  "tiny_http",
@@ -2954,6 +2956,7 @@ dependencies = [
  "iwci-vfs",
  "libc",
  "regex",
+ "serde",
  "serde_json",
  "sha2",
  "shared-buffer",

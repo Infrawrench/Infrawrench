@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use iwci_store::{
-    Abi, EnvCache, EnvDraft, EnvEntry, FileSource, Namespace, PackageSource, ToolDraft, Version,
+    Abi, EnvCache, EnvDraft, EnvEntry, FileSource, Namespace, PackageSource, TargetSource,
+    ToolDraft, Version,
 };
 use serde::Deserialize;
 
@@ -39,6 +40,19 @@ struct Build {
     caches: Vec<EnvCache>,
     #[serde(default)]
     description: Option<String>,
+    /// A native builtin's program and files, by target.
+    #[serde(default)]
+    targets: BTreeMap<String, BuildTarget>,
+    #[serde(default)]
+    aliases: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BuildTarget {
+    program: String,
+    #[serde(default)]
+    files: Vec<BuildFile>,
 }
 
 #[derive(Deserialize, PartialEq)]
@@ -91,26 +105,43 @@ pub fn publish(mut args: Args) -> Result<ExitCode, String> {
             }
             Ok(dir.join(file))
         };
+        let sources = |files: &[BuildFile]| -> Result<Vec<FileSource>, String> {
+            files
+                .iter()
+                .map(|f| {
+                    Ok(FileSource {
+                        guest_path: f.path.clone(),
+                        source: at(&f.file)?,
+                    })
+                })
+                .collect()
+        };
         let report = match build.kind {
             Kind::Builtin => {
                 let draft = ToolDraft {
                     name: build.name.clone(),
                     version,
                     abi: build.abi.ok_or("a builtin needs `abi`")?,
-                    module: at(build.module.as_deref().ok_or("a builtin needs `module`")?)?,
-                    files: build
-                        .files
-                        .iter()
-                        .map(|f| {
-                            Ok(FileSource {
-                                guest_path: f.path.clone(),
-                                source: at(&f.file)?,
-                            })
-                        })
-                        .collect::<Result<_, String>>()?,
+                    // A native builtin has `targets` instead.
+                    module: build.module.as_deref().map(at).transpose()?,
+                    files: sources(&build.files)?,
                     args: build.args,
                     env: build.env,
                     description: build.description,
+                    targets: build
+                        .targets
+                        .iter()
+                        .map(|(target, t)| {
+                            Ok((
+                                target.clone(),
+                                TargetSource {
+                                    program: at(&t.program)?,
+                                    files: sources(&t.files)?,
+                                },
+                            ))
+                        })
+                        .collect::<Result<_, String>>()?,
+                    aliases: build.aliases,
                 };
                 iwci_store::publish_tool(store.as_ref(), &Namespace::Builtin, &draft)
                     .map(|(_, report)| report)

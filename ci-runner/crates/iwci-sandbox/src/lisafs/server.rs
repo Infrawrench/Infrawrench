@@ -1436,22 +1436,8 @@ fn send_fds(sock: &OwnedFd, fds: &[OwnedFd]) -> u8 {
     sent
 }
 
-/// Resizes `file`. A checked-out file is copied up to the job's layer as
-/// it is written; resized before anything else, `virtual_fs`'s overlay
-/// makes the layer's copy at the new size without copying the content
-/// into it, so its first byte is written back first, which copies it up.
+/// Resizes `file`.
 fn set_len(file: &mut File, size: u64) -> Result<(), Errno> {
-    if file.size() > 0 {
-        block_on(async {
-            let mut first = [0u8; 1];
-            file.seek(SeekFrom::Start(0)).await?;
-            let n = file.read(&mut first).await?;
-            file.seek(SeekFrom::Start(0)).await?;
-            file.write_all(&first[..n]).await?;
-            file.flush().await
-        })
-        .map_err(io_errno)?;
-    }
     file.set_len(size).map_err(fs_errno)?;
     block_on(file.flush()).map_err(io_errno)
 }

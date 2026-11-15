@@ -241,7 +241,37 @@ pub(super) fn open_runner(
         download_limits,
         external: None,
         helping: None,
+        #[cfg(target_os = "linux")]
+        sandbox: native_sandbox(args, &cache)?,
     })
+}
+
+/// `--native-sandbox <dir>` (or `IWCI_NATIVE_SANDBOX`): gVisor's release,
+/// unpacked, to run jobs with native tools (`builtin:bun`) in. Off by
+/// default: such a job then fails, saying why. The runner needs a delegated
+/// cgroup subtree (`Delegate=` in its unit) to hold each sandbox to its
+/// memory, and refuses to start without one.
+#[cfg(target_os = "linux")]
+fn native_sandbox(
+    args: &mut Args,
+    cache: &std::path::Path,
+) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
+    let dir = match args.value("--native-sandbox")? {
+        Some(dir) => dir,
+        None => match std::env::var("IWCI_NATIVE_SANDBOX") {
+            Ok(dir) if !dir.is_empty() => dir,
+            _ => return Ok(None),
+        },
+    };
+    let host = iwci_runtime::sandbox::SandboxHost::new(
+        dir.clone().into(),
+        std::path::Path::new("/proc/self/exe"),
+        Vec::new(),
+        cache.join("sandboxes"),
+        true,
+    )
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    Ok(Some(Arc::new(host)))
 }
 
 /// What `downloads:` may keep on this runner.
