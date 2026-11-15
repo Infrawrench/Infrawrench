@@ -536,7 +536,8 @@ class TLSServer(Server):
         sock, address = self.socket.accept()
         try:
             return self.context.wrap_socket(sock, server_side=True), address
-        except OSError:
+        except OSError as err:
+            sys.stderr.write(f"fake-cloud: TLS through memory BIOs (wrap_socket: {err})\n")
             return TLSConnection(sock, self.context), address
 
     def shutdown_request(self, request):
