@@ -230,7 +230,17 @@ napi_status WrapUtf8String(napi_env env,
 
 }  // namespace
 
+// iwci patch (#1150): the embedder's writer for a program's standard error.
+extern "C" __attribute__((weak)) void napi_host_write_guest_stderr(
+    napi_env env, const char* text, size_t len);
+
 namespace unofficial_napi_internal {
+
+void WriteProgramStderr(napi_env env, const std::string& text) {
+  if (env == nullptr || text.empty()) return;
+  if (napi_host_write_guest_stderr == nullptr) return;
+  napi_host_write_guest_stderr(env, text.data(), text.size());
+}
 
 std::string GetErrorSourceLineForStderrImpl(napi_env env,
                                             v8::Local<v8::Message> message) {

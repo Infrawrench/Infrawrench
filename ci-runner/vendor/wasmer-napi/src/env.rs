@@ -164,6 +164,12 @@ pub(crate) struct NapiEnv {
     #[cfg(all(target_arch = "wasm32", feature = "js"))]
     pub(crate) malloc_fn: Option<TypedFunction<i32, i32>>,
     pub(crate) table: Option<Table>,
+    /// iwci patch (#1150): the embedder's WASI `fd_write`, taken from the
+    /// imports this module is instantiated with, so the bridge can write
+    /// what Node prints straight to standard error to the program's own
+    /// descriptor 2 (`guest::callback::write_guest_stderr`). `None` under an
+    /// embedder without WASI, where that text is dropped.
+    pub(crate) fd_write: Option<Function>,
     /// Cache of resolved guest callback functions, keyed by their
     /// `__indirect_function_table` index. `Function::from_vm_funcref` (invoked
     /// by `Table::get`) unconditionally appends a new entry to the store's
@@ -230,6 +236,7 @@ impl NapiEnv {
             #[cfg(all(target_arch = "wasm32", feature = "js"))]
             malloc_fn: None,
             table: None,
+            fd_write: None,
             func_cache: HashMap::new(),
             default_napi_env_id: None,
             #[cfg(all(target_arch = "wasm32", feature = "js"))]

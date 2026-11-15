@@ -430,6 +430,20 @@ impl NapiSession {
             func_env.as_mut(&mut *store).table = Some(table);
         }
 
+        // iwci patch (#1150): the program's own `fd_write`, for what the
+        // bridge writes to its standard error.
+        let fd_write = ["wasix_32v1", "wasi_snapshot_preview1"]
+            .into_iter()
+            .find_map(|namespace| match import_object.get_export(namespace, "fd_write") {
+                Some(Extern::Function(function)) => {
+                    let ty = function.ty(&*store);
+                    (ty.params() == [wasmer::Type::I32; 4] && ty.results() == [wasmer::Type::I32])
+                        .then_some(function)
+                }
+                _ => None,
+            });
+        func_env.as_mut(&mut *store).fd_write = fd_write;
+
         Ok(())
     }
 

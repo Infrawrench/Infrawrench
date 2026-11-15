@@ -213,6 +213,113 @@ pub fn with_callback_state<R>(
     env.as_store_mut().parked(f)
 }
 
+/// iwci patch (#1150): writes `bytes` to the program's standard error, as
+/// its own `write(2, ...)` would: through the embedder's `fd_write`, so a
+/// redirection, a pipe and whatever the embedder does with a program's
+/// output all apply. Node prints a few things there from C++ (an unsettled
+/// top-level await's warning, a fatal error), and the bridge's C++ has only
+/// the embedder's standard error, which is not the program's. No JavaScript
+/// runs. The iovec and the text need guest memory, taken from the guest
+/// heap for the length of the call. Without WASI, or without room, the text
+/// is dropped.
+pub(crate) fn write_guest_stderr(
+    store: &mut StoreMut<'_>,
+    func_env: &FunctionEnv<NapiEnv>,
+    bytes: &[u8],
+) {
+    const STDERR: i32 = 2;
+    // `__wasi_ciovec_t` (buf, buf_len), then the written count, then the text.
+    const HEADER: u32 = 16;
+    let state = func_env.as_ref(store);
+    let (Some(fd_write), Some(memory), Some(heap)) = (
+        state.fd_write.clone(),
+        state.memory.clone(),
+        state.guest_heap.clone(),
+    ) else {
+        return;
+    };
+    let Ok(len) = u32::try_from(bytes.len()) else {
+        return;
+    };
+    if len == 0 {
+        return;
+    }
+    let Some(total) = len.checked_add(HEADER) else {
+        return;
+    };
+    let Some(base) = heap.alloc_with_store(store, total as usize, false) else {
+        return;
+    };
+    let text = base + HEADER;
+    let mut written = 0u32;
+    if memory.view(store).write(u64::from(text), bytes).is_ok() {
+        while written < len {
+            let mut header = [0u8; 12];
+            header[..4].copy_from_slice(&(text + written).to_le_bytes());
+            header[4..8].copy_from_slice(&(len - written).to_le_bytes());
+            if memory.view(store).write(u64::from(base), &header).is_err() {
+                break;
+            }
+            let args = [
+                Value::I32(STDERR),
+                Value::I32(base as i32),
+                Value::I32(1),
+                Value::I32((base + 8) as i32),
+            ];
+            match fd_write.call(store, &args) {
+                Ok(results) if matches!(results.first(), Some(Value::I32(0))) => {
+                    let mut count = [0u8; 4];
+                    if memory
+                        .view(store)
+                        .read(u64::from(base) + 8, &mut count)
+                        .is_err()
+                    {
+                        break;
+                    }
+                    match u32::from_le_bytes(count) {
+                        0 => break,
+                        n => written = written.saturating_add(n),
+                    }
+                }
+                // An errno: the program closed its standard error, say.
+                Ok(_) => break,
+                Err(err) => {
+                    // The write ended the program (a signal it was due).
+                    stash_guest_exit(&err);
+                    break;
+                }
+            }
+        }
+    }
+    heap.free_offset(base);
+}
+
+/// iwci patch (#1150): called from C++ with text for the program's standard
+/// error, inside an import that lent its store (`callback_ctx` is what
+/// [`with_callback_state`] installed). Without a lent store the text is
+/// dropped, never printed here.
+#[unsafe(no_mangle)]
+pub extern "C" fn snapi_host_write_guest_stderr(
+    callback_ctx: *mut c_void,
+    text: *const u8,
+    len: usize,
+) {
+    if callback_ctx.is_null() || text.is_null() || len == 0 {
+        return;
+    }
+    // SAFETY: as in `snapi_host_invoke_wasm_callback`; `text` is `len` bytes
+    // the caller owns for the length of this call.
+    let ctx = unsafe { &*(callback_ctx as *const CallbackInvocationCtx) };
+    let bytes = unsafe { std::slice::from_raw_parts(text, len) };
+    let func_env = ctx.func_env.clone();
+    let _ = Store::with_current(|store| {
+        guarded(|| {
+            write_guest_stderr(store, &func_env, bytes);
+            0
+        })
+    });
+}
+
 /// Rust trampoline called from C++ when a V8 callback fires.
 /// Re-enters the active guest callback scope and dispatches into the WASM guest.
 #[unsafe(no_mangle)]

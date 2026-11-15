@@ -2785,6 +2785,32 @@ extern "C" uint32_t snapi_host_invoke_wasm_callback(void* callback_ctx,
                                                     uint32_t wasm_fn_ptr,
                                                     uint32_t callback_arg);
 
+// iwci patch (#1150): what Node prints straight to standard error is
+// written to the program's own descriptor 2, through the store the import
+// on this thread's stack lent (the Rust side, `guest/callback.rs`). Without
+// one there is no way to the program, and the text is dropped: it is never
+// the embedder's to print.
+extern "C" void snapi_host_write_guest_stderr(void* callback_ctx,
+                                              const char* text,
+                                              size_t len);
+
+extern "C" void napi_host_write_guest_stderr(napi_env env,
+                                             const char* text,
+                                             size_t len) {
+  if (env == nullptr || text == nullptr || len == 0) return;
+  void* callback_ctx = nullptr;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    for (SnapiEnvState* state : g_envs) {
+      if (state->env == env) {
+        callback_ctx = state->active_callback_ctx.load(std::memory_order_acquire);
+        break;
+      }
+    }
+  }
+  if (callback_ctx != nullptr) snapi_host_write_guest_stderr(callback_ctx, text, len);
+}
+
 struct WasmInterruptRequest {
   SnapiEnvState* state;
   uint32_t guest_env;
