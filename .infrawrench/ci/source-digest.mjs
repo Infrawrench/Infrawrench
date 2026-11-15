@@ -21,7 +21,7 @@ import {
   readlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DIGEST_FILE = ".source-digest";
@@ -103,7 +103,7 @@ function walk(root, relative = "") {
  *   the package is covered whole, as if it had no build: wider than an import
  *   graph would be, never narrower.
  */
-function coverage(dir, pkg) {
+export function coverage(dir, pkg) {
   if (!isBuilt(pkg)) return { whole: true, files: walk(dir) };
   const outside = outsideDist(pkg);
   const leaf = (target) => {
@@ -164,7 +164,7 @@ const DEPENDENCY_FIELDS = [
 ];
 
 /** The workspace's packages by directory, from pnpm-workspace.yaml's `packages:` list. */
-function readWorkspace(root) {
+export function readWorkspace(root) {
   const lines = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8").split("\n");
   const start = lines.findIndex((line) => /^packages:\s*$/.test(line));
   if (start < 0) throw new Error("pnpm-workspace.yaml has no `packages:` list");
@@ -194,7 +194,7 @@ function readWorkspace(root) {
 }
 
 /** The directories of every workspace package `dir` depends on, directly or not. */
-function dependencyClosure(packages, dir) {
+export function dependencyClosure(packages, dir) {
   const byName = new Map([...packages].map(([directory, pkg]) => [pkg.name, directory]));
   const seen = new Set();
   const queue = [dir];
@@ -220,7 +220,7 @@ function dependencyClosure(packages, dir) {
  * the aliases jobs share, which is all the check needs, and the check fails
  * on a job it cannot read rather than passing it.
  */
-function readJobs(text) {
+export function readJobs(text) {
   const lines = text.split("\n").filter((line) => !/^\s*#/.test(line));
   const start = lines.findIndex((line) => /^jobs:\s*$/.test(line));
   if (start < 0) throw new Error("no `jobs:` in the pipeline");
@@ -267,7 +267,7 @@ function readJobs(text) {
 }
 
 /** Every item of the lists in a key's text, flow (`[a, b]`) or block (`- a`). */
-function listItems(value = "") {
+export function listItems(value = "") {
   const unquote = (item) =>
     item
       .trim()
@@ -377,23 +377,28 @@ function check(root) {
 
 // ---------------------------------------------------------------------------
 
-const mode = process.argv[2];
-if (mode === "--check") {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-  const { problems, jobs, packages } = check(root);
-  if (problems.length > 0) {
-    console.error(`.infrawrench/ci/test.yml: ${problems.length} problem(s) with source coverage`);
-    for (const problem of problems) console.error(`- ${problem}`);
-    process.exit(1);
+// outside-reads.mjs imports the readers above, so the command runs only when
+// this file is the one `node` was given: by its name, which no symlink in the
+// path to it changes.
+if (basename(process.argv[1] ?? "") === "source-digest.mjs") {
+  const mode = process.argv[2];
+  if (mode === "--check") {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+    const { problems, jobs, packages } = check(root);
+    if (problems.length > 0) {
+      console.error(`.infrawrench/ci/test.yml: ${problems.length} problem(s) with source coverage`);
+      for (const problem of problems) console.error(`- ${problem}`);
+      process.exit(1);
+    }
+    console.log(`source coverage: ${jobs} jobs checked against ${packages} packages`);
+  } else if (mode === "--list") {
+    const { hash, whole, files } = digest(process.cwd());
+    console.log(`${hash} ${whole ? "whole package" : "entry points"}`);
+    for (const file of files) console.log(file);
+  } else if (mode === undefined) {
+    writeFileSync(DIGEST_FILE, `${digest(process.cwd()).hash}\n`);
+  } else {
+    console.error(`unknown argument ${mode}`);
+    process.exit(2);
   }
-  console.log(`source coverage: ${jobs} jobs checked against ${packages} packages`);
-} else if (mode === "--list") {
-  const { hash, whole, files } = digest(process.cwd());
-  console.log(`${hash} ${whole ? "whole package" : "entry points"}`);
-  for (const file of files) console.log(file);
-} else if (mode === undefined) {
-  writeFileSync(DIGEST_FILE, `${digest(process.cwd()).hash}\n`);
-} else {
-  console.error(`unknown argument ${mode}`);
-  process.exit(2);
 }

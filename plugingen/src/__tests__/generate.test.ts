@@ -167,6 +167,7 @@ describe("hostile documents", () => {
   });
 
   it("refuses a $ref that leaves the document, before anything resolves it", async () => {
+    // ci-reads-ignore: a `$ref` the generator must refuse, never resolved
     await expect(generate({ $ref: "../../../../.env" })).rejects.toMatchObject({ kind: "unsafe" });
     await expect(generate({ $ref: "https://evil.test/x.json" })).rejects.toMatchObject({
       kind: "unsafe",

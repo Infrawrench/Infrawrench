@@ -35,6 +35,7 @@ const document = (type: string, route = "/a"): string =>
 let root: string;
 
 function pluginDir(plugin: string): string {
+  // ci-reads-ignore: `root` is a temporary directory the test lays a plugin out in
   return path.join(root, "plugin-architecture/packages", plugin);
 }
 

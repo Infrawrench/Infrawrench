@@ -1,0 +1,9 @@
+{
+  "reads": [
+    {
+      "files": ["plugin-architecture/packages/*/plugingen.json"],
+      "from": ["src/__tests__/config.test.ts"],
+      "why": "Decodes every plugin's checked-in config."
+    }
+  ]
+}

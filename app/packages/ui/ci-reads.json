@@ -1,0 +1,23 @@
+{
+  "reads": [
+    {
+      "files": [
+        "app/packages/web/src/**/*.ts",
+        "app/packages/web/src/**/*.tsx",
+        "app/packages/desktop/src/**/*.ts",
+        "app/packages/desktop/src/**/*.tsx",
+        "!**/__tests__/**"
+      ],
+      "from": ["src/__tests__/theme-contrast.test.ts"],
+      "why": "Scans the components of the two apps that render theme.css for palette classes."
+    },
+    {
+      "files": ["app/packages/server-core/src/plugin-registry-edge.gen.json"],
+      "from": [
+        "src/__tests__/resource-showcase.test.tsx",
+        "src/__tests__/resource-type-icon.test.tsx"
+      ],
+      "why": "Checks every bundled plugin's resource types, which the generated edge registry lists."
+    }
+  ]
+}
