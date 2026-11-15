@@ -69,9 +69,10 @@ pub const USAGE_SCHEMA: u32 = 4;
 /// `--helping` says.
 pub const DEFAULT_HELPING: usize = 2;
 /// The most offers to help a runner holds at once. An offer costs a
-/// thread that looks at the store every two seconds; past this many the
-/// pool has more runs in flight than these runners could help anyway.
-pub const MAX_OFFERS: usize = 64;
+/// thread and one listing of the store every five seconds until its run
+/// asks, so this many are six listings a second at most; past it the pool
+/// has more runs in flight than these runners could help anyway.
+pub const MAX_OFFERS: usize = 32;
 /// How often the server sweeps what split runs left in the store.
 const SWEEP_SPLITS_SECS: u64 = 60 * 60;
 
@@ -700,6 +701,7 @@ impl Server {
         if helper {
             self.helping.lock().unwrap().insert(id.clone());
         }
+        let late_offer = helper;
         let entry = RunEntry {
             id: id.clone(),
             owner: owner.as_str().to_string(),
@@ -720,6 +722,13 @@ impl Server {
             .lock()
             .unwrap()
             .insert(id.clone(), control.clone());
+        // A drain cancels the offers it finds when it starts. One that was
+        // let in just before and has only now something to cancel would
+        // be missed, and the drain would wait for it for as long as its
+        // run lasts: it cancels itself.
+        if late_offer && self.draining.load(Ordering::SeqCst) {
+            control.cancel(None);
+        }
         let runner = self.runner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let id_for_thread = id.clone();
@@ -1414,7 +1423,7 @@ mod tests {
                 .put(&state(&runs[0], &key), b"", "text/plain")
                 .unwrap();
         }
-        std::thread::sleep(std::time::Duration::from_millis(2500));
+        std::thread::sleep(std::time::Duration::from_millis(6000));
         assert_eq!(server.capacity()["runs_offered"], 3);
         assert_eq!(helping.runs(), 1);
         // Room: it joins, and only then counts. (It then finds it cannot
@@ -1443,6 +1452,21 @@ mod tests {
         // No helper's run left a report or a usage record.
         let left = store.list("runs/").unwrap().len() + store.list("usage/").unwrap().len();
         assert_eq!(left, 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_offer_let_in_as_a_drain_starts_does_not_keep_the_drain_waiting() {
+        let (server, dir) = server("late-offer", 2);
+        // The drain's flag is up and its pass over the offers is done by
+        // the time this one, admitted a moment before, is launched.
+        server.begin_drain("a test");
+        let owner = RepoId::new("acme").unwrap();
+        let (_id, done) = server.launch(offer(&"a".repeat(32)), owner, true);
+        assert_eq!(server.busy(), 1);
+        done.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the offer ended by itself");
+        wait_for("the drain to be idle", || server.busy() == 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 

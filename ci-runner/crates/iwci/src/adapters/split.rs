@@ -11,7 +11,7 @@
 //! | `state/help.<version>` | the primary, a runner of that version, has more ready jobs than it can start |
 //! | `state/end` | the run is over |
 //! | `state/ended/<pipeline>` | that pipeline is over, or cancelled |
-//! | `state/done/<pipeline>/<job>` | how a job went: a `schedule::Done`, masked |
+//! | `state/done/<pipeline>/<job>` | how a job went: a `schedule::Done`. The primary's are masked as its report is; a helper has no secrets to mask with, so the primary masks a helper's when it reads it |
 //! | `state/commit.<sha>` | the commit the primary resolved the request to, which a helper runs and no other |
 //! | `state/back/<pipeline>/<job>.<runner>.<n>` | that helper gave the job up |
 //! | `claims/<pipeline>/<job>` | who runs the job: the runner's name |
@@ -20,7 +20,7 @@
 //! `<pipeline>` is a hash of the pipeline's file name and `<job>` the job
 //! id in hex, so every key stays inside the store's key grammar. All of
 //! `state/` is one listing, which is all a runner reads to follow the
-//! others: once a second while it runs a pipeline, every two while a
+//! others: once a second while it runs a pipeline, every five while a
 //! helper waits to be asked.
 //!
 //! The primary deletes everything but `state/end` when the run ends, and
@@ -51,8 +51,6 @@ fn help_key() -> String {
     format!("help.{}", crate::server::lifecycle::VERSION)
 }
 
-/// How often a helper that has not joined yet looks whether it is asked.
-const DORMANT_POLL: Duration = Duration::from_secs(2);
 /// After this long, what a split run left in the store is swept.
 pub const SWEEP_AFTER_SECS: u64 = 24 * 60 * 60;
 /// Objects deleted at once when a run's are cleared.
@@ -203,7 +201,7 @@ impl SplitRun {
 
     /// Waits, as a helper, until the primary asks for help and `room`
     /// says this runner has some, without reading anything of the run but
-    /// one listing every two seconds. Over when the run ends first, its
+    /// one listing every [`Timing::offer`]. Over when the run ends first, its
     /// primary goes quiet, or `stopped` says so.
     pub fn wait_to_be_asked(&self, room: &dyn Fn() -> bool, stopped: &dyn Fn() -> bool) -> Asked {
         let mut beat: (Option<u64>, Instant) = (None, Instant::now());
@@ -245,7 +243,11 @@ impl SplitRun {
             if beat.1.elapsed() >= self.timing.lease {
                 return Asked::Over;
             }
-            std::thread::sleep(DORMANT_POLL);
+            // In short steps, so a drain or a cancel is not kept waiting.
+            let until = Instant::now() + self.timing.offer;
+            while Instant::now() < until && !stopped() {
+                std::thread::sleep(Duration::from_millis(100).min(self.timing.offer));
+            }
         }
     }
 
