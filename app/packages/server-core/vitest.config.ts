@@ -1,4 +1,5 @@
 import { configDefaults, defineConfig } from "vitest/config";
+import { prebundle, SERVER_CORE_PREBUNDLED } from "./vitest.prebundle";
 
 /*
  * The Turso driver's `@libsql/client` loads a native addon on import, and the
@@ -16,6 +17,10 @@ export default defineConfig({
   resolve: { alias: libsqlWithoutAddon },
   test: {
     environment: "node",
+    // Bundled once per run, not loaded module by module in every test file's
+    // process (vitest.prebundle.ts). `effect` is plugin-base's dependency, not
+    // server-core's, hence the path to it.
+    deps: prebundle([...SERVER_CORE_PREBUNDLED, "@infrawrench/plugin-base > effect"]),
     include: ["src/**/*.test.ts"],
     // Real-database integration tests live in src/__tests__/db and run via
     // vitest.db.config.ts (`pnpm test:db`), never in the plain unit run.
