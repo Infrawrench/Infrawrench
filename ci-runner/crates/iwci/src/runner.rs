@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapters::caches::{StoreCaches, owner_from_url};
 use crate::adapters::downloads::{DownloadLimits, StoreDownloads};
+use crate::adapters::split::{Asked, SplitRun, runner_name};
 use crate::adapters::tools::{RuntimeExecutor, StoreTools};
 use crate::adapters::workspace::{GitCommitter, GitWorkspaces};
 use crate::schedule::{self, MemoryBudget, RunReport, Slots, Tools, Workspaces};
@@ -48,6 +49,9 @@ pub struct Runner {
     /// Where cloud jobs wait for their executor (`iwci serve`); `None`
     /// fails them (`iwci run`).
     pub external: Option<Arc<crate::external::ExternalJobs>>,
+    /// The helper jobs running here, which give way to this runner's own
+    /// runs (`iwci serve`); `None` for a single `iwci run`.
+    pub helping: Option<Arc<schedule::Helping>>,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -115,6 +119,27 @@ pub struct RunRequest {
     /// output and reports. See [`crate::lent`].
     #[serde(default)]
     pub lent: crate::lent::Lent,
+    /// Shares the run with other runners: its pipelines that say `split:`
+    /// may have jobs taken by a runner sent the same request with
+    /// `split.of` naming this run. See [`SplitRequest`].
+    #[serde(default)]
+    pub split: Option<SplitRequest>,
+}
+
+/// How a run is shared with other runners (`RunRequest::split`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct SplitRequest {
+    /// The id, on the runner that has it, of the run to help. With it the
+    /// request is not a run of its own: this runner waits until that run
+    /// asks for help and it has room, takes what jobs it can, and ends
+    /// when that run does. Without it this runner has the run.
+    #[serde(default)]
+    pub of: Option<String>,
+    /// What this runner is called, for claims and for the report of a job
+    /// it ran: its name at the proxy.
+    #[serde(default)]
+    pub runner: Option<String>,
 }
 
 /// A run's secrets. Its `Debug` lists names only, so logging a request
@@ -262,6 +287,12 @@ pub enum PipelineOutput {
         file: String,
         name: String,
     },
+    /// On a helper's run: a pipeline it took no part in, because it does
+    /// not say `split:` or the run it helps was done with it already.
+    NotShared {
+        file: String,
+        name: String,
+    },
 }
 
 /// What cancels a run, or some of its pipelines, while it goes: the server
@@ -305,6 +336,11 @@ impl RunControl {
 
     /// The flag for `file`'s pipeline as it starts, already set if it was
     /// cancelled before.
+    /// Whether the whole run was cancelled.
+    pub fn is_stopped(&self) -> bool {
+        self.all.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub(crate) fn start(&self, file: &str) -> iwci_runtime::Cancel {
         let mut current = self.current.lock().unwrap_or_else(|e| e.into_inner());
         let cancel = iwci_runtime::Cancel::new();
@@ -361,6 +397,9 @@ pub struct RunOutput {
     pub usage: Usage,
     pub started_at: u64,
     pub finished_at: u64,
+    /// Set on a helper's run: the run it helped, as `split.of` named it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split_of: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -370,6 +409,29 @@ pub struct PrepareOutput {
     pub installs: Vec<String>,
     pub tools: Vec<String>,
     pub problems: Vec<String>,
+}
+
+/// The request a helper runs: the primary's, at exactly the commit the
+/// primary resolved it to (a request that names only a branch would
+/// otherwise run whatever that branch's head is by the time the helper
+/// joins), and with no secrets and nothing lent, whatever was sent: a
+/// helper only runs jobs that are given neither.
+pub fn helper_request(req: &RunRequest, commit: &str) -> RunRequest {
+    RunRequest {
+        sha: Some(commit.to_string()),
+        secrets: Secrets::default(),
+        lent: Default::default(),
+        ..req.clone()
+    }
+}
+
+/// A run's split, finished when the run is, however it ends.
+struct Finishing(Arc<SplitRun>);
+
+impl Drop for Finishing {
+    fn drop(&mut self) {
+        self.0.finish();
+    }
 }
 
 /// A random id for a run, from the kernel. The runner already only builds
@@ -630,7 +692,77 @@ impl Runner {
     ) -> Result<RunOutput, String> {
         let started_at = now_secs();
         let run = RepoId::new(run_id).map_err(|e| format!("run id: {e}"))?;
+        // A split run's shared state, kept alive from here to the end of
+        // the run. A helper reads nothing of the run, not even its commit,
+        // until the run it helps asks and this runner has room.
+        let split = match &req.split {
+            None => None,
+            Some(split) => {
+                let of = match &split.of {
+                    Some(of) => RepoId::new(of.as_str()).map_err(|e| format!("split.of: {e}"))?,
+                    None => run.clone(),
+                };
+                Some(SplitRun::new(
+                    self.store.clone(),
+                    &req.owner()?,
+                    &req.repo_id()?,
+                    &of,
+                    &runner_name(split.runner.as_deref()),
+                    split.of.is_some(),
+                ))
+            }
+        };
+        let split = split.map(Finishing);
+        let helping = req.split.as_ref().and_then(|s| s.of.clone());
+        // A helper's run counts as one this runner helps from when it
+        // joins, not from when it was offered.
+        let joined: std::sync::Mutex<Option<schedule::Joined>> = Default::default();
+        let mut as_helper = None;
+        if let (Some(split), Some(_)) = (&split, &helping) {
+            let stopped = || control.as_ref().is_some_and(|c| c.is_stopped());
+            let room = || {
+                if !self.has_room() {
+                    return false;
+                }
+                match &self.helping {
+                    None => true,
+                    Some(helping) => match helping.join() {
+                        Some(run) => {
+                            *joined.lock().unwrap_or_else(|e| e.into_inner()) = Some(run);
+                            true
+                        }
+                        None => false,
+                    },
+                }
+            };
+            match split.0.wait_to_be_asked(&room, &stopped) {
+                Asked::Join(commit) => as_helper = Some(helper_request(req, &commit)),
+                Asked::Over => {
+                    return Ok(RunOutput {
+                        run_id: run.as_str().to_string(),
+                        commit: req.sha.clone().unwrap_or_default(),
+                        branch: req.branch.clone().unwrap_or_default(),
+                        owner: req.owner()?.as_str().to_string(),
+                        repo_id: req.repo_id()?.as_str().to_string(),
+                        passed: true,
+                        cancelled: false,
+                        pipelines: Vec::new(),
+                        usage: Usage::default(),
+                        started_at,
+                        finished_at: now_secs(),
+                        split_of: helping,
+                    });
+                }
+            }
+        }
+        // From here a helper runs the primary's commit, with no secrets.
+        let req = as_helper.as_ref().unwrap_or(req);
         let r = self.resolve(req)?;
+        if let (Some(split), None) = (&split, &helping) {
+            // Before any pipeline can ask for help: a helper runs this
+            // commit or none.
+            split.0.publish_commit(&r.sha);
+        }
         let changed_paths = match &req.base {
             Some(base) => {
                 r.remote
@@ -690,6 +822,8 @@ impl Runner {
             slots: self.slots.clone(),
             skip_task_cache: req.no_task_cache,
             cancel: None,
+            split: None,
+            helping: self.helping.clone(),
             access: schedule::RunAccess {
                 // An untrusted run is lent nothing, whatever the request
                 // carries; its jobs that name anything fail.
@@ -744,13 +878,38 @@ impl Runner {
             if control.as_ref().is_some_and(|c| c.is_cancelled(file)) {
                 passed = false;
                 cancelled = true;
+                // A helper is told too, though the pipeline never started.
+                if let (Some(split), None, Some(_)) = (&split, &helping, plan.split) {
+                    schedule::Split::end(&*split.0.pipeline(file));
+                }
                 pipelines.push(PipelineOutput::Cancelled {
                     file: file.clone(),
                     name: plan.name,
                 });
                 continue;
             }
-            options.cancel = control.as_ref().map(|c| c.start(file));
+            // A helper only takes part in a pipeline that is shared and
+            // that the run it helps has not finished with.
+            if let (Some(split), Some(_)) = (&split, &helping)
+                && (plan.split.is_none() || split.0.ended(file))
+            {
+                pipelines.push(PipelineOutput::NotShared {
+                    file: file.clone(),
+                    name: plan.name,
+                });
+                continue;
+            }
+            options.split = split
+                .as_ref()
+                .filter(|_| plan.split.is_some())
+                .map(|split| split.0.pipeline(file) as Arc<dyn schedule::Split>);
+            // A helper is stopped by the run it helps, so it always has
+            // something to stop it with.
+            options.cancel = match (&control, &helping) {
+                (Some(control), _) => Some(control.start(file)),
+                (None, Some(_)) => Some(iwci_runtime::Cancel::new()),
+                (None, None) => None,
+            };
             options.access.external = self.external.as_ref().map(|jobs| {
                 Arc::new(crate::external::RunExternal {
                     jobs: jobs.clone(),
@@ -772,6 +931,15 @@ impl Runner {
                 report,
             });
         }
+        if helping.is_some() {
+            // How the run went is the primary's to say: a helper that was
+            // stopped when that run ended did not fail. So is what it
+            // used: the primary's result bills every job of the run.
+            passed = true;
+            cancelled = false;
+            usage = Usage::default();
+        }
+        drop(joined);
         Ok(RunOutput {
             run_id: run.as_str().to_string(),
             commit: r.sha,
@@ -784,38 +952,56 @@ impl Runner {
             usage,
             started_at,
             finished_at: now_secs(),
+            split_of: helping,
         })
     }
 
-    /// What a report's jobs used. Only jobs that ran are charged: not one
-    /// the task cache stood in for. A cloud job ran on the customer's own
-    /// account: its time is counted apart, as external time, and charges
-    /// no runner CPU or memory.
-    pub fn usage_of(&self, report: &RunReport) -> Usage {
-        let mut usage = Usage::default();
-        let share = self.jobs_per_cpu.max(1) as f64;
-        for job in &report.jobs {
-            if let Some(cloud) = &job.cloud
-                && cloud.claimed_ms > 0
-            {
-                usage.external_jobs += 1;
-                usage.external_seconds += cloud.claimed_ms as f64 / 1000.0;
-            }
-        }
-        for job in report
-            .jobs
-            .iter()
-            .filter(|j| j.execution.is_some() && !j.cached && j.cloud.is_none())
-        {
-            let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
-            usage.jobs += 1;
-            usage.wall_seconds += secs;
-            usage.vcpu_seconds += secs / share;
-            usage.memory_gib_seconds += secs * job.memory_mib as f64 / 1024.0;
-        }
-        usage
+    /// Whether a helper run would find anything to do here now: a free
+    /// slot, and none of this runner's own jobs waiting for memory.
+    fn has_room(&self) -> bool {
+        self.slots.as_ref().is_none_or(|s| s.free() > 0)
+            && self.memory.as_ref().is_none_or(|m| m.waiting() == 0)
     }
 
+    /// What a report's jobs used. Only jobs that ran are charged: not one
+    /// the task cache stood in for. A job another runner of a split run
+    /// ran is charged here like the rest, at its time there and the
+    /// `memory:` it reserved: the run that has it is the one that is
+    /// billed, and the helper records nothing. A cloud job ran on the
+    /// customer's own account: its time is counted apart, as external
+    /// time, and charges no runner CPU or memory.
+    pub fn usage_of(&self, report: &RunReport) -> Usage {
+        usage_of(report, self.jobs_per_cpu)
+    }
+}
+
+/// [`Runner::usage_of`] on a runner where `jobs_per_cpu` jobs share a vCPU.
+pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
+    let mut usage = Usage::default();
+    let share = jobs_per_cpu.max(1) as f64;
+    for job in &report.jobs {
+        if let Some(cloud) = &job.cloud
+            && cloud.claimed_ms > 0
+        {
+            usage.external_jobs += 1;
+            usage.external_seconds += cloud.claimed_ms as f64 / 1000.0;
+        }
+    }
+    for job in report
+        .jobs
+        .iter()
+        .filter(|j| j.execution.is_some() && !j.cached && j.cloud.is_none())
+    {
+        let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
+        usage.jobs += 1;
+        usage.wall_seconds += secs;
+        usage.vcpu_seconds += secs / share;
+        usage.memory_gib_seconds += secs * job.memory_mib as f64 / 1024.0;
+    }
+    usage
+}
+
+impl Runner {
     /// Warms everything a run of this commit would need, without running a
     /// job: the clone, every workspace's dependency installs (into the
     /// install cache), and every tool (fetched and compiled). A run that
@@ -1080,6 +1266,29 @@ mod tests {
                 .storage_quota,
             None
         );
+    }
+
+    #[test]
+    fn a_helper_runs_the_primarys_commit_and_is_given_no_secrets() {
+        // A scheduled run's request names a branch, not a commit, and by
+        // the time a helper joins the branch may have moved on.
+        let mut req: RunRequest = serde_json::from_str(
+            r#"{"repo":"https://github.com/acme/web","branch":"main","event":"schedule",
+                "secrets":{"TOKEN":"not-a-real-token"},
+                "lent":{"ssh-keys":{"deploy":{"files":[{"path":"/root/.ssh/id","content":"k"}]}}},
+                "split":{"of":"0123456789abcdef0123456789abcdef","runner":"ci-2"}}"#,
+        )
+        .unwrap();
+        assert_eq!(req.sha, None);
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let helper = helper_request(&req, commit);
+        assert_eq!(helper.sha.as_deref(), Some(commit));
+        assert!(helper.secrets.0.is_empty());
+        assert!(helper.lent.secret_values().is_empty());
+        assert_eq!(helper.branch.as_deref(), Some("main"));
+        // And of a request that named another commit of its own.
+        req.sha = Some("f".repeat(40));
+        assert_eq!(helper_request(&req, commit).sha.as_deref(), Some(commit));
     }
 
     #[test]

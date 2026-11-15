@@ -23,11 +23,23 @@ pub struct Plan {
     pub jobs: Vec<JobTemplate>,
     /// The most the run's shared `/tmp/workflow` holds (`scratch:`).
     pub scratch_bytes: u64,
+    /// `split:`: other runners may take this pipeline's jobs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split: Option<SplitSpec>,
     /// What every job declares, for expanding deferred jobs later.
     #[serde(skip)]
     pub(crate) decls: HashMap<String, crate::JobDecl>,
     #[serde(skip)]
     pub(crate) ctx: crate::Context,
+}
+
+/// A pipeline's `split:`, checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SplitSpec {
+    /// The most one job's artifacts may be, in bytes of file content, for
+    /// another runner to be sent them when the task cache does not hold
+    /// them; 0 sends none.
+    pub artifact_bytes: u64,
 }
 
 impl Plan {

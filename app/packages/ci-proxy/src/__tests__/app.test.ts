@@ -40,6 +40,12 @@ class FakeRunner {
   resolved: Array<Record<string, unknown>> = [];
   /** Calls to a run's cloud job routes: method, path and body. */
   jobCalls: Array<{ method: string; path: string; body: string }> = [];
+  /** Whether it says it can share a run (a runner from before does not). */
+  split = false;
+  /** The offers to help another runner's run it took. */
+  helps: Array<Record<string, unknown>> = [];
+  /** Answers an offer to help with 429, as a runner helping enough does. */
+  refusesHelp = false;
 
   constructor(
     readonly url: string,
@@ -65,6 +71,7 @@ class FakeRunner {
         slots_total: this.slotsTotal,
         slots_free: this.slotsFree,
         runs_active: this.runs.length,
+        ...(this.split ? { split: true, runs_helping: this.helps.length } : {}),
       });
     }
     const cancel = /^\/v1\/runs\/([0-9a-f]{32})\/cancel$/.exec(path);
@@ -101,6 +108,13 @@ class FakeRunner {
       return json(200, { commit: "c0ffee", pipelines: [] });
     }
     if (path.startsWith("/v1/runs") && init.method === "POST") {
+      const sent = JSON.parse(String(init.body)) as { split?: { of?: string } };
+      if (typeof sent.split?.of === "string") {
+        // Helping takes no slot and is no run of this runner's.
+        if (this.refusesHelp) return json(429, { error: "helping enough" });
+        this.helps.push(sent as Record<string, unknown>);
+        return json(202, { id: "f".repeat(32), state: "running" });
+      }
       if (this.slotsFree === 0) return json(429, { error: "full" });
       const id = (this.runs.length + 1).toString(16).padStart(32, "0");
       this.runs.push({ id, body: JSON.parse(String(init.body)) as Record<string, unknown> });
@@ -728,5 +742,150 @@ describe("cloud jobs", () => {
     expect((await bare("POST", `/v1/runs/${id}/jobs/image/claim?claim=${token}`)).status).toBe(401);
     expect((await bare("PUT", `/v1/runs/${id}/jobs/image/inputs?claim=${token}`)).status).toBe(401);
     expect(runner.jobCalls.length).toBe(2);
+  });
+});
+
+describe("split runs", () => {
+  const request = { repo: "https://github.com/acme/web", branch: "main" };
+  const pair = () => {
+    // `a` has the fewer free slots, so the run goes to `b`.
+    const a = new FakeRunner("http://a.test", 8, 2);
+    const b = new FakeRunner("http://b.test", 8, 6);
+    a.split = true;
+    b.split = true;
+    return { a, b };
+  };
+
+  it("shares a run with the other runners that can help, keeping its secrets to the runner that has it", async () => {
+    const { a, b } = pair();
+    const { call } = await setup([a, b]);
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/TOKEN", { value: "not-a-real-token" });
+    const lent = { "ssh-keys": { deploy: { files: [{ path: "/root/.ssh/id", content: "k" }] } } };
+    const res = await call("POST", "/v1/runs", {
+      ...request,
+      trusted: true,
+      token: "not-a-real-git-token",
+      lent,
+    });
+    expect(res.status).toBe(202);
+    const { id } = (await res.json()) as { id: string };
+    // The caller hears of one run, on the runner that has it.
+    expect(id).toBe(`1.${b.runs[0]?.id}`);
+    expect(b.runs[0]?.body.split).toEqual({ runner: "1" });
+    expect(b.helps).toEqual([]);
+    expect(b.runs[0]?.body.secrets).toEqual({ TOKEN: "not-a-real-token" });
+    expect(b.runs[0]?.body.lent).toEqual(lent);
+    // The other runner gets the same request, naming that run, and with
+    // nothing secret in it but the token it fetches the commit with: a
+    // helper only runs jobs that are given no secret and lent nothing.
+    expect(a.runs).toEqual([]);
+    const { secrets: _secrets, lent: _lent, ...offered } = b.runs[0]?.body ?? {};
+    expect(a.helps).toEqual([{ ...offered, split: { of: b.runs[0]?.id, runner: "0" } }]);
+    expect(Object.keys(a.helps[0] ?? {}).sort()).toEqual(["branch", "repo", "split", "token"]);
+    expect(JSON.stringify(a.helps)).not.toContain("not-a-real-token");
+    const cap = (await (await call("GET", "/v1/capacity")).json()) as {
+      runners: Array<{ name: string; split: boolean; runs_helping: number }>;
+    };
+    expect(cap.runners.map((r) => [r.name, r.split, r.runs_helping])).toEqual([
+      ["0", true, 1],
+      ["1", true, 0],
+    ]);
+  });
+
+  it("sends `split` to no runner that does not say it takes it", async () => {
+    // An older runner refuses a request with a field it does not know.
+    for (const old of ["a", "b"] as const) {
+      const { a, b } = pair();
+      (old === "a" ? a : b).split = false;
+      const { call } = await setup([a, b]);
+      expect((await call("POST", "/v1/runs", request)).status).toBe(202);
+      expect(b.runs[0]?.body).toEqual(request);
+      expect(a.helps).toEqual([]);
+    }
+    // Nor to a runner with nobody to help it.
+    const { b } = pair();
+    const { call } = await setup([b]);
+    expect((await call("POST", "/v1/runs", request)).status).toBe(202);
+    expect(b.runs[0]?.body).toEqual(request);
+  });
+
+  it("offers no help to a draining or unreachable runner, and none for a run that is waited for", async () => {
+    for (const state of ["draining", "down"] as const) {
+      const { a, b } = pair();
+      a[state] = true;
+      const { call } = await setup([a, b]);
+      expect((await call("POST", "/v1/runs", request)).status).toBe(202);
+      expect(b.runs[0]?.body).toEqual(request);
+      expect(a.helps).toEqual([]);
+    }
+    // The id of a run the caller waits for is only known once it is over.
+    const { a, b } = pair();
+    const { call } = await setup([a, b]);
+    expect((await call("POST", "/v1/runs?wait=true", request)).status).toBe(202);
+    expect(b.runs[0]?.body).toEqual(request);
+    expect(a.helps).toEqual([]);
+  });
+
+  it("starts the run whatever a helper answers", async () => {
+    const { a, b } = pair();
+    a.refusesHelp = true;
+    const { call } = await setup([a, b]);
+    const res = await call("POST", "/v1/runs", request);
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { id: string }).id).toBe(`1.${b.runs[0]?.id}`);
+    expect(a.helps).toEqual([]);
+    // A helper that goes away between the capacity probe and the offer.
+    const again = pair();
+    const second = await setup([again.a, again.b]);
+    const handle = again.a.handle.bind(again.a);
+    again.a.handle = async (path, init) => {
+      if (path === "/v1/runs") throw new Error("connection reset");
+      return handle(path, init);
+    };
+    expect((await second.call("POST", "/v1/runs", request)).status).toBe(202);
+    expect(again.b.runs.length).toBe(1);
+  });
+
+  it("drops a caller's own `split`, and moves on with the next runner's name when the first is full", async () => {
+    const { a, b } = pair();
+    const { call } = await setup([a, b]);
+    // `b` is asked first and says it is full after all.
+    const handle = b.handle.bind(b);
+    b.handle = async (path, init) => {
+      if (path === "/v1/runs" && init.method === "POST") {
+        const sent = JSON.parse(String(init.body)) as { split?: { of?: string } };
+        if (sent.split?.of === undefined) {
+          return new Response(JSON.stringify({ error: "full" }), {
+            status: 429,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      return handle(path, init);
+    };
+    const res = await call("POST", "/v1/runs", { ...request, split: { of: "0".repeat(32) } });
+    expect(res.status).toBe(202);
+    expect(a.runs[0]?.body).toEqual({ ...request, split: { runner: "0" } });
+    expect(b.helps).toEqual([{ ...request, split: { of: a.runs[0]?.id, runner: "1" } }]);
+  });
+
+  it("shares a scheduled run too", async () => {
+    const { a, b } = pair();
+    const { call, deps } = await setup([a, b]);
+    const put = await call("PUT", "/v1/schedules", {
+      repo: "https://github.com/acme/web",
+      branch: "main",
+    });
+    expect(put.status).toBe(201);
+    // 03:00 UTC, when the registered pipeline is due.
+    const result = await tick(deps, Date.UTC(2026, 10, 9, 3, 0) / 1000);
+    expect(result.started.length).toBe(1);
+    const [primary, helper] = a.runs.length === 1 ? [a, b] : [b, a];
+    expect(primary.runs[0]?.body.split).toEqual({ runner: primary === a ? "0" : "1" });
+    expect(helper.helps.length).toBe(1);
+    expect(helper.helps[0]?.split).toEqual({
+      of: primary.runs[0]?.id,
+      runner: helper === a ? "0" : "1",
+    });
   });
 });

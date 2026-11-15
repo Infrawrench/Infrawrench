@@ -18,6 +18,10 @@
 //! implements over the real crates and the tests implement with fakes, so
 //! the ordering, skipping, output and change-policy rules are tested on
 //! their own.
+//!
+//! A run may be shared with other runners (`split:`): see [`Split`] and
+//! the `split` module, which holds everything about it but the few places
+//! below where a job is claimed, deferred or reported.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -32,6 +36,10 @@ use iwci_spec::{
 };
 use iwci_vfs::{Change, Entry, JobFs, Snapshot, WriteBudget};
 use serde::Serialize;
+
+#[path = "schedule_split.rs"]
+mod split;
+pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
 
 /// Where a job writes its outputs, as `$IWCI_OUTPUT` tells it.
 pub const OUTPUT_PATH: &str = "/iwci/output";
@@ -170,6 +178,9 @@ pub enum LogEvent {
         /// Replayed from the task cache rather than run.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         cached: bool,
+        /// The runner that ran it, when another one did (`split:`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        remote: Option<String>,
     },
 }
 
@@ -222,6 +233,7 @@ fn emit_finished(options: &Options, report: &JobReport) {
             status: status_word(&report.status).to_string(),
             duration_ms: report.duration_ms,
             cached: report.cached,
+            remote: report.remote.clone(),
         });
     }
 }
@@ -272,6 +284,15 @@ impl Masker {
         }
         out
     }
+
+    /// Whether `data` holds one of the values, for bytes that cannot be
+    /// rewritten: a file that would leave the runner whole or not at all.
+    pub fn finds(&self, data: &[u8]) -> bool {
+        self.values.iter().any(|value| {
+            data.windows(value.len())
+                .any(|window| window == value.as_bytes())
+        })
+    }
 }
 
 impl LineSink {
@@ -309,7 +330,8 @@ impl LineSink {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Execution {
     pub exit_code: i32,
     pub stdout: String,
@@ -354,7 +376,7 @@ pub trait Committer: Send + Sync {
     fn commit(&self, root: &str, changes: &[Change], message: &str) -> Result<String, String>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
 pub enum Status {
     Passed,
@@ -452,6 +474,15 @@ pub struct JobReport {
     /// Set for a cloud job: where it ran and for how long.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudRun>,
+    /// The runner that ran it, when another runner of a split run did:
+    /// this report is the one that runner made. The run that has it is
+    /// billed for it like any other of its jobs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote: Option<String>,
+    /// What it kept is not on this runner (a helper that could not be
+    /// sent it), so the jobs that need it cannot run here.
+    #[serde(skip)]
+    pub elsewhere: bool,
 }
 
 /// Where a cloud job ran, as its report says.
@@ -536,6 +567,12 @@ pub struct Options {
     /// order it (see [`Rank`]) and written after it; `None` orders by the
     /// shape of the plan alone.
     pub durations: Option<Arc<dyn Durations>>,
+    /// What this run shares with other runners, when it is split across
+    /// them; only a pipeline that says `split:` uses it.
+    pub split: Option<Arc<dyn Split>>,
+    /// The helper jobs running on this runner, every run's together, so
+    /// its own runs can have their slots and memory back.
+    pub helping: Option<Arc<Helping>>,
 }
 
 impl Options {
@@ -870,7 +907,7 @@ impl MemoryBudget {
         let Some((_, first)) = asks.next() else {
             return Admission::Wait { held_back: false };
         };
-        if let Some(lease) = self.lease(&mut leases, first, now) {
+        if let Some(lease) = self.lease(&mut leases, first, now, false) {
             return Admission::Start(0, lease);
         }
         let free = self.total.saturating_sub(self.used());
@@ -884,14 +921,14 @@ impl MemoryBudget {
                 held_back |= ask.bytes <= free;
                 continue;
             }
-            if let Some(lease) = self.lease(&mut leases, ask, now) {
+            if let Some(lease) = self.lease(&mut leases, ask, now, false) {
                 return Admission::Start(pos, lease);
             }
         }
         Admission::Wait { held_back }
     }
 
-    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant) -> Option<Lease> {
+    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant, spare: bool) -> Option<Lease> {
         if !self.try_take(ask.bytes) {
             return None;
         }
@@ -901,11 +938,31 @@ impl MemoryBudget {
             bytes: ask.bytes,
             taken: now,
             expected: ask.expected,
+            spare,
         });
         Some(Lease {
             id: leases.next,
             bytes: ask.bytes,
         })
+    }
+
+    /// Starts one of a helper's ready jobs, given in the order they should
+    /// start in, from memory nothing else wants: the first that fits now,
+    /// and none at all while a job of one of this runner's own runs waits.
+    /// A helper's job is never owed memory as the first job of a run is
+    /// in [`MemoryBudget::admit`], and its lease counts there as memory
+    /// that is back already: it is given up the moment one of this
+    /// runner's own runs wants it (`split::reclaim_memory`), so a run's
+    /// first job must not be passed over on the strength of it.
+    fn admit_spare(&self, asks: impl IntoIterator<Item = Ask>) -> Option<(usize, Lease)> {
+        let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+        if self.waiting() > 0 {
+            return None;
+        }
+        let now = Instant::now();
+        asks.into_iter()
+            .enumerate()
+            .find_map(|(pos, ask)| Some((pos, self.lease(&mut leases, ask, now, true)?)))
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
@@ -980,6 +1037,9 @@ struct Running {
     bytes: u64,
     taken: Instant,
     expected: Duration,
+    /// A helper's job, which gives its memory up as soon as one of this
+    /// runner's own runs asks: as good as back now.
+    spare: bool,
 }
 
 impl Running {
@@ -988,6 +1048,9 @@ impl Running {
     /// overrun: its estimate was wrong (a job with no history counts as the
     /// median), and the longer it has been wrong the less it says.
     fn ends(&self, now: Instant) -> Instant {
+        if self.spare {
+            return now;
+        }
         let elapsed = now.saturating_duration_since(self.taken);
         now + self.expected.abs_diff(elapsed)
     }
@@ -1142,6 +1205,13 @@ struct Finished {
     outputs: BTreeMap<String, String>,
     /// What the key's `artifacts:` kept, every matrix entry's together.
     artifacts: Arc<Vec<Entry>>,
+    /// Some of what it, or a job it needed, kept is not on this runner
+    /// (`split:`), so nothing that needs it can run here.
+    elsewhere: bool,
+    /// It, or a job it needed, read a secret or was lent something: what
+    /// it left (artifacts, outputs) may carry that, so a job handed it
+    /// does not run on a helper and sends its own artifacts nowhere.
+    tainted: bool,
 }
 
 /// Which ready job starts first: the one with the most work still ahead of
@@ -1321,6 +1391,14 @@ struct State<'p> {
     done: bool,
     /// What `queue` asks of the runner's budget.
     queued: Queued,
+    /// Jobs of a split run that another runner has, or may have, by id;
+    /// counted in `running` until that runner says how they went.
+    remote: HashMap<String, split::RemoteJob<'p>>,
+    /// Remote jobs another runner finished, waiting to be read in; counted
+    /// in `running`.
+    arrived: Vec<split::RemoteJob<'p>>,
+    /// The keys whose jobs read a secret or are lent something.
+    secretive: HashSet<String>,
 }
 
 impl<'p> State<'p> {
@@ -1399,6 +1477,9 @@ struct Lookup {
     /// How long the job is expected to run, set when it joins the queue,
     /// for [`MemoryBudget::admit`].
     expected: Duration,
+    /// Taken back from another runner of a split run: it runs here
+    /// whatever its claim says.
+    local: bool,
 }
 
 /// How a task cache lookup went.
@@ -1495,6 +1576,10 @@ pub fn run<T: Tools>(
         .as_ref()
         .map(|d| d.load_durations(&plan.name))
         .unwrap_or_default();
+    // Shared with other runners, when the run is and the pipeline asks.
+    let sharing = split::Sharing::of(plan, options);
+    let sharing = sharing.as_ref();
+    let helper = sharing.is_some_and(|s| s.helper);
     let state = Mutex::new(State {
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
@@ -1508,9 +1593,14 @@ pub fn run<T: Tools>(
         reports: HashMap::new(),
         done: false,
         queued: Queued {
-            budget: options.memory.clone(),
+            // What a helper has queued is not work this runner has taken
+            // on: it starts only what its own runs leave room for.
+            budget: options.memory.clone().filter(|_| !helper),
             bytes: 0,
         },
+        remote: HashMap::new(),
+        arrived: Vec::new(),
+        secretive: HashSet::new(),
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -1595,6 +1685,23 @@ pub fn run<T: Tools>(
                     match look_up(
                         &job, plan, &workspace, tools, options, &shared, &inherited, &mut kept,
                     ) {
+                        // A helper that could not even key the job says
+                        // nothing about it: the primary's word is awaited.
+                        Looked::Done(report) if helper && !report.cached => {
+                            let mut s = state.lock().unwrap();
+                            split::defer(
+                                &mut s,
+                                options,
+                                split::RemoteJob {
+                                    template,
+                                    job,
+                                    lookup: Lookup::default(),
+                                    rank,
+                                    holder: None,
+                                    since: Instant::now(),
+                                },
+                            );
+                        }
                         Looked::Done(report) => {
                             complete(&state, &wake, plan, options, template, *report, kept)
                         }
@@ -1608,6 +1715,14 @@ pub fn run<T: Tools>(
                     }
                 }
             });
+        }
+        // A split run: one thread follows what the other runners write,
+        // and a few read in the jobs they finished.
+        if let Some(sharing) = sharing {
+            scope.spawn(|| split::watch(sharing, &state, &wake, plan, options));
+            for _ in 0..split::FETCHERS {
+                scope.spawn(|| split::fetch(sharing, &state, &wake, plan, options, &shared));
+            }
         }
         // Cloud jobs: each waits for its executor on a thread of its own,
         // with no slot and no memory, since nothing runs here.
@@ -1648,7 +1763,7 @@ pub fn run<T: Tools>(
         for _ in 0..options.parallelism.max(1) {
             scope.spawn(|| {
                 loop {
-                    let (template, job, lookup, inherited, reserved) = {
+                    let (template, job, lookup, inherited, reserved, rank, slot, handed) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             // Read before the budget is, so memory given
@@ -1663,8 +1778,20 @@ pub fn run<T: Tools>(
                             // budget is held, are only reported, so they need
                             // no memory.
                             let mut held_back = false;
+                            let cancelled = options.stopped().is_some();
+                            // A helper's slot is taken with its job: it
+                            // never waits for one.
+                            let mut slot = None;
                             let fits = match &options.memory {
-                                Some(budget) if options.stopped().is_none() => {
+                                _ if cancelled => {
+                                    s.queue.len().checked_sub(1).map(|pos| (pos, None))
+                                }
+                                // A helper starts only what this runner's
+                                // own runs leave room for, and is never
+                                // owed memory as the first job of a run is.
+                                _ if helper => sharing
+                                    .and_then(|sh| split::spare(sh, options, &s.queue, &mut slot)),
+                                Some(budget) => {
                                     let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
                                         bytes: j.memory_bytes,
                                         expected: l.expected,
@@ -1679,14 +1806,28 @@ pub fn run<T: Tools>(
                                         }
                                     }
                                 }
-                                _ => s.queue.len().checked_sub(1).map(|pos| (pos, None)),
+                                None => s.queue.len().checked_sub(1).map(|pos| (pos, None)),
                             };
                             if let Some((pos, reserved)) = fits {
+                                let rank = s.queue[pos].0;
                                 let (template, job, lookup) = s.dequeue(pos);
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (template, job, lookup, inherited, reserved);
+                                // Whether it starts with what a job that
+                                // read a secret left.
+                                let handed = template
+                                    .needs
+                                    .iter()
+                                    .any(|n| s.finished.get(n).is_some_and(|f| f.tainted));
+                                break (
+                                    template, job, lookup, inherited, reserved, rank, slot, handed,
+                                );
+                            }
+                            if !cancelled && !helper {
+                                // Memory a helper job holds comes back for
+                                // this runner's own run.
+                                split::reclaim_memory(options, &s.queue);
                             }
                             if s.running == 0
                                 && s.lookups.is_empty()
@@ -1725,8 +1866,14 @@ pub fn run<T: Tools>(
                             // fit was turned away when it was activated.
                             // A job held back for the first in the order may
                             // start with time alone, so that is looked at
-                            // again before long.
-                            let limit = held_back.then_some(HELD_BACK_RECHECK);
+                            // again before long. A helper with jobs queued
+                            // looks again by itself too: room its own runs
+                            // leave wakes nobody.
+                            let limit = if helper && !s.queue.is_empty() {
+                                Some(split::SPARE_RECHECK)
+                            } else {
+                                held_back.then_some(HELD_BACK_RECHECK)
+                            };
                             s = wake.wait_at_most(s, &state, seen, limit);
                         }
                     };
@@ -1738,9 +1885,48 @@ pub fn run<T: Tools>(
                         complete(&state, &wake, plan, options, template, report, Vec::new());
                         continue;
                     }
+                    // A helper's job can be stopped by itself, to give way,
+                    // from the moment it holds a slot and memory.
+                    let helped = helper.then(|| split::helped(options, &job)).flatten();
+                    // In a split run, whoever writes the job's claim runs
+                    // it. A job another runner has stays in this run's
+                    // graph until that runner says how it went.
+                    if let Some(sharing) = sharing
+                        && let Err(holder) = sharing.claim(&job, lookup.local)
+                    {
+                        drop(helped);
+                        drop(slot);
+                        if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                            budget.release(lease);
+                        }
+                        let mut s = state.lock().unwrap();
+                        split::defer(
+                            &mut s,
+                            options,
+                            split::RemoteJob {
+                                template,
+                                job,
+                                lookup,
+                                rank,
+                                holder,
+                                since: Instant::now(),
+                            },
+                        );
+                        continue;
+                    }
                     // A slot shared with every other run on this runner;
-                    // held for the job's workspace build and its run.
-                    let slot = options.slots.as_ref().map(|s| s.acquire());
+                    // held for the job's workspace build and its run. One
+                    // of this runner's own runs gets a helper job's.
+                    let slot = slot.or_else(|| {
+                        options
+                            .slots
+                            .as_ref()
+                            .map(|slots| split::own_slot(options, slots))
+                    });
+                    let cancel = helped
+                        .as_ref()
+                        .map(|h| h.cancel.clone())
+                        .or_else(|| options.cancel.clone());
                     let queued_ms = lookup.queued.map_or(0, |at| millis(at.elapsed()));
                     let workspace = LazyWorkspace {
                         spec: &plan.workspaces[job.workspace],
@@ -1749,14 +1935,43 @@ pub fn run<T: Tools>(
                         checkout: &checkouts[job.workspace],
                     };
                     let mut kept = Vec::new();
+                    let mut saved = None;
+                    if let Some(sharing) = sharing {
+                        sharing.running.fetch_add(1, Ordering::SeqCst);
+                    }
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
-                        &inherited, lookup, &mut kept,
+                        &inherited, lookup, cancel, &mut kept, &mut saved,
                     );
                     report.queued_ms = queued_ms;
+                    if let Some(sharing) = sharing {
+                        sharing.running.fetch_sub(1, Ordering::SeqCst);
+                    }
+                    drop(helped);
                     drop(slot);
                     if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
                         budget.release(lease);
+                    }
+                    if let Some(sharing) = sharing {
+                        if sharing.hands_back(&report) {
+                            // Stopped, or not run at all: the primary
+                            // takes it, and this run waits for its word.
+                            sharing.hand_back(&job.id);
+                            let mut s = state.lock().unwrap();
+                            s.remote.insert(
+                                job.id.clone(),
+                                split::RemoteJob {
+                                    template,
+                                    job,
+                                    lookup: Lookup::default(),
+                                    rank,
+                                    holder: None,
+                                    since: Instant::now(),
+                                },
+                            );
+                            continue;
+                        }
+                        sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
                 }
@@ -1869,6 +2084,8 @@ fn complete<'p>(
 /// straight to finished, when it is skipped or cannot expand). Loops,
 /// because finishing a skipped key can make the next one ready.
 fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
+    let sharing = split::Sharing::of(plan, options);
+    let helper = sharing.as_ref().is_some_and(|s| s.helper);
     loop {
         let Some(pos) = s
             .waiting
@@ -1958,11 +2175,13 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 emit_finished(options, &report);
                 finish(s, template, vec![report], Vec::new());
             }
+            // A helper leaves a job too large for it to the primary.
             Ok(jobs)
-                if options
-                    .memory
-                    .as_ref()
-                    .is_some_and(|b| jobs.iter().any(|j| j.memory_bytes > b.total())) =>
+                if !helper
+                    && options
+                        .memory
+                        .as_ref()
+                        .is_some_and(|b| jobs.iter().any(|j| j.memory_bytes > b.total())) =>
             {
                 let total = options.memory.as_ref().map_or(0, |b| b.total());
                 let asks = jobs.iter().map(|j| j.memory_bytes).max().unwrap_or(0);
@@ -1976,6 +2195,9 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 finish(s, template, vec![report], Vec::new());
             }
             Ok(jobs) => {
+                if jobs.iter().any(|j| !split::secret_free(j)) {
+                    s.secretive.insert(template.key.clone());
+                }
                 let order = jobs.iter().map(|j| j.id.clone()).collect();
                 s.open.insert(
                     template.key.clone(),
@@ -1995,7 +2217,25 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         entry: std::cmp::Reverse(i),
                         ..rank
                     };
-                    if job.cloud.is_some() {
+                    if let Some(sharing) = sharing.as_ref().filter(|_| helper)
+                        && !split::runs_here(sharing, template, &job, &s.finished, options)
+                    {
+                        // Only the primary runs it; this run waits to hear
+                        // how it went.
+                        s.running += 1;
+                        split::defer(
+                            s,
+                            options,
+                            split::RemoteJob {
+                                template,
+                                job,
+                                lookup: Lookup::default(),
+                                rank,
+                                holder: None,
+                                since: Instant::now(),
+                            },
+                        );
+                    } else if job.cloud.is_some() {
                         cloud.push((template, job));
                     } else if job.task_cache.is_some() && options.caches.is_some() {
                         enqueue(&mut s.lookups, rank, (template, job));
@@ -2036,6 +2276,16 @@ fn finish(
         .first()
         .map(|r| r.outputs.clone())
         .unwrap_or_default();
+    let tainted = s.secretive.contains(&template.key)
+        || template
+            .needs
+            .iter()
+            .any(|n| s.finished.get(n).is_some_and(|f| f.tainted));
+    let elsewhere = reports.iter().any(|r| r.elsewhere)
+        || template
+            .needs
+            .iter()
+            .any(|n| s.finished.get(n).is_some_and(|f| f.elsewhere));
     s.finished.insert(
         template.key.clone(),
         Finished {
@@ -2043,6 +2293,8 @@ fn finish(
             blocks,
             outputs,
             artifacts: Arc::new(artifacts),
+            elsewhere,
+            tainted,
         },
     );
     s.reports.insert(template.key.clone(), reports);
@@ -2074,6 +2326,8 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         needs: template.needs.clone(),
         access: template.access.clone(),
         cloud: None,
+        remote: None,
+        elsewhere: false,
     }
 }
 
@@ -2124,6 +2378,7 @@ fn look_up<T: Tools>(
                 lines: vec![format!("task cache: not read, {e}")],
                 queued: None,
                 expected: Duration::ZERO,
+                local: false,
             });
         }
     };
@@ -2151,6 +2406,7 @@ fn look_up<T: Tools>(
             lines: vec![line],
             queued: None,
             expected: Duration::ZERO,
+            local: false,
         });
     }
     let mut lines = Vec::new();
@@ -2175,6 +2431,7 @@ fn look_up<T: Tools>(
         lines,
         queued: None,
         expected: Duration::ZERO,
+        local: false,
     })
 }
 
@@ -2190,7 +2447,9 @@ fn run_job<T: Tools>(
     shared: &RunShared<'_>,
     inherited: &[(String, Arc<Vec<Entry>>)],
     lookup: Lookup,
+    cancel: Option<iwci_runtime::Cancel>,
     kept: &mut Vec<Entry>,
+    saved_key: &mut Option<String>,
 ) -> JobReport {
     let started = Instant::now();
     // The task cache was looked up before the job was queued (`look_up`);
@@ -2486,7 +2745,7 @@ fn run_job<T: Tools>(
             env,
             path: &workspace.path,
             log,
-            cancel: options.cancel.clone(),
+            cancel,
         },
     );
     if let Some(sink) = &line_sink {
@@ -2760,11 +3019,14 @@ fn run_job<T: Tools>(
             data: serde_json::to_vec(&record).expect("serialisable").into(),
         });
         cache_lines.push(match store.save(key, &[], &entries) {
-            Ok(()) => format!(
-                "task cache `{}`: saved {} KiB",
-                short_key(key),
-                saved.div_ceil(1024)
-            ),
+            Ok(()) => {
+                *saved_key = Some(key.clone());
+                format!(
+                    "task cache `{}`: saved {} KiB",
+                    short_key(key),
+                    saved.div_ceil(1024)
+                )
+            }
             Err(e) => format!("task cache `{}`: could not save ({e})", short_key(key)),
         });
     }
@@ -2795,6 +3057,8 @@ fn run_job<T: Tools>(
         needs: Vec::new(),
         access: job.access.clone(),
         cloud: None,
+        remote: None,
+        elsewhere: false,
     }
 }
 
@@ -3117,6 +3381,8 @@ fn run_external(
             executor: outcome.executor.map(|e| mask(&e)),
             claimed_ms: claimed.map_or(0, millis),
         }),
+        remote: None,
+        elsewhere: false,
     }
 }
 
@@ -3437,6 +3703,8 @@ fn replay(
         needs: Vec::new(),
         access: job.access.clone(),
         cloud: None,
+        remote: None,
+        elsewhere: false,
     })
 }
 
@@ -3588,6 +3856,8 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         needs: Vec::new(),
         access: job.access.clone(),
         cloud: None,
+        remote: None,
+        elsewhere: false,
     }
 }
 

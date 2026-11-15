@@ -214,6 +214,7 @@ pub(super) fn open_runner(
         default_storage_quota,
         download_limits,
         external: None,
+        helping: None,
     })
 }
 
@@ -297,6 +298,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             }
             vars
         },
+        split: None,
     };
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());
@@ -339,6 +341,9 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
                 }
                 PipelineOutput::Cancelled { file, name } => {
                     println!("{} {name} ({file}): cancelled", style::dim("cancelled"));
+                }
+                PipelineOutput::NotShared { file, name } => {
+                    println!("{} {name} ({file})", style::dim("not shared:"));
                 }
                 PipelineOutput::Invalid { file, errors } => {
                     println!("{} {file}", style::fail("invalid"));

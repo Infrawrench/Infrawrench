@@ -481,6 +481,21 @@ Everyone who can see runs can see the card; clearing a cache takes `ci:write` an
 
 <insert [The Caches card listing two repositories of the acme account with their entries and sizes, and the "Clear the cache of acme/web?" dialog open over it saying how many entries and how much space it deletes] here>
 
+### Runs shared between runners
+
+A run belongs to one runner. When that runner has more ready jobs than it can start, a pipeline that says `split: true` at its top level lets another runner take some of them:
+
+```yaml
+name: Test
+split: true
+```
+
+Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they are small (4 MiB in total by default, `split: { artifacts: 16MiB }` to change it). Larger ones stay where the job ran, and so do the jobs that need them.
+
+Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads) or run on a cloud account always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
+
+A job another runner ran is billed like any other job of the run.
+
 ## Usage and billing
 
 CI is part of paid plans. The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:

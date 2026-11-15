@@ -211,12 +211,31 @@ impl Server {
             *self.drain_reason.lock().unwrap() = Some(reason.to_string());
             eprintln!("iwci serve: draining: {reason}");
         }
+        // What this runner does for other runners' runs ends now: their
+        // jobs here are stopped and handed back, which the drain waits
+        // for (`wait_idle`), and an offer not yet taken up just ends.
+        let helping = self.helping.lock().unwrap().clone();
+        let controls = self.controls.lock().unwrap();
+        for id in helping {
+            if let Some(control) = controls.get(&id) {
+                control.cancel(None);
+            }
+        }
     }
 
+    /// Waits for this runner's runs to finish, and for what it was doing
+    /// for other runners' runs to be handed back: a drain cancels those
+    /// (`begin_drain`), and each ends once its jobs have stopped and the
+    /// runner that has the run has been told to take them.
     fn wait_idle(&self) {
-        while self.active.load(Ordering::SeqCst) > 0 {
+        while self.busy() > 0 {
             std::thread::sleep(Duration::from_secs(1));
         }
+    }
+
+    /// The runs this runner has, and the offers to help it still holds.
+    pub(crate) fn busy(&self) -> usize {
+        self.active.load(Ordering::SeqCst) + self.helping.lock().unwrap().len()
     }
 
     /// Drains to restart, which this process needs to work well again
@@ -237,7 +256,7 @@ impl Server {
             ));
         }
         wait_or_cancel(
-            || self.active.load(Ordering::SeqCst),
+            || self.busy(),
             || {
                 eprintln!(
                     "iwci serve: restarting: cancelling what is left of the runs after {}s",

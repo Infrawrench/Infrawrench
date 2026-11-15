@@ -3,6 +3,7 @@
 
 import type {
   D1Database,
+  ExecutionContext,
   R2Bucket,
   Request as WorkerRequest,
   ScheduledController,
@@ -30,7 +31,7 @@ export interface Env {
   ARTIFACT_SIGNING_KEY?: string;
 }
 
-async function deps(env: Env): Promise<Deps> {
+async function deps(env: Env, ctx: ExecutionContext): Promise<Deps> {
   const runnerList = new D1RunnerList(env.DB);
   const stored = await runnerList.list();
   const runners = stored.length > 0 ? stored : parseRunnerList(env.RUNNERS);
@@ -42,6 +43,8 @@ async function deps(env: Env): Promise<Deps> {
     secretsKey: await secretsKey(env.SECRETS_KEY),
     proxyKey: env.PROXY_KEY,
     now: () => Math.floor(Date.now() / 1000),
+    // Offers to help a run are answered after the caller is.
+    background: (work) => ctx.waitUntil(work),
     ...(env.ARTIFACTS
       ? {
           downloads: {
@@ -57,12 +60,12 @@ async function deps(env: Env): Promise<Deps> {
 }
 
 export default {
-  async fetch(incoming: WorkerRequest, env: Env): Promise<Response> {
+  async fetch(incoming: WorkerRequest, env: Env, ctx: ExecutionContext): Promise<Response> {
     // The runtime's Request and the global one are the same object; the
     // cast only reconciles the two type libraries (as web/edge/worker.ts).
     const request = incoming as unknown as Request;
     try {
-      return await handle(request, await deps(env));
+      return await handle(request, await deps(env, ctx));
     } catch (e) {
       console.error(
         JSON.stringify({ event: "error", message: e instanceof Error ? e.message : String(e) }),
@@ -74,8 +77,8 @@ export default {
     }
   },
 
-  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    const built = await deps(env);
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const built = await deps(env, ctx);
     const now = Math.floor(controller.scheduledTime / 1000);
     // Schedules first; a sweep that fails never holds them up.
     const result = await tick(built, now);

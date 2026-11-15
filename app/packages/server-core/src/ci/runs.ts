@@ -51,7 +51,7 @@ import {
 import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
-import { CiProxyError, proxyFetch, proxyJson, type ProxyRun } from "./proxy.js";
+import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
 import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
@@ -701,8 +701,7 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
   const cancelReason = cancelled ? cancelledReason(row) : null;
   await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
     jobs,
-    vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
-    memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
+    ...runUsage(run),
   });
   // The run's own check first: it is the one a branch protection rule
   // waits for, and each job check after it is a GitHub call of its own.

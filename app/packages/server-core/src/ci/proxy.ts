@@ -7,6 +7,20 @@
 import type { ProxyDownload } from "./downloads.js";
 import type { ProxyProgress } from "./job-checks.js";
 
+/**
+ * What a finished run is billed: the runner's own totals for the run. They
+ * cover every job that ran, on whichever runner (a run can be split across
+ * runners; the one that has it reports for all of them), so nothing is
+ * added here for a job marked `remote` and nothing is read from anywhere
+ * else.
+ */
+export function runUsage(run: ProxyRun): { vcpuSeconds: number; memoryGibSeconds: number } {
+  return {
+    vcpuSeconds: run.result?.usage?.vcpu_seconds ?? 0,
+    memoryGibSeconds: run.result?.usage?.memory_gib_seconds ?? 0,
+  };
+}
+
 export function ciProxyConfigured(): boolean {
   return Boolean(process.env["CI_PROXY_URL"] && process.env["CI_PROXY_KEY"]);
 }
@@ -71,6 +85,11 @@ export interface ProxyRun {
     passed?: boolean;
     /** Something in it was cancelled (runners from the release with cancelling). */
     cancelled?: boolean;
+    /**
+     * What the run is billed for: every job that ran, the ones another
+     * runner of a split run ran for it included (`remote` below). A
+     * helper's own run reports no usage, so this is the whole bill.
+     */
     usage?: { vcpu_seconds?: number; memory_gib_seconds?: number };
     pipelines?: Array<{
       outcome?: string;
@@ -102,6 +121,13 @@ export interface ProxyRun {
           };
           /** A cloud job's block and what ran it (runners from 0.3.16). */
           cloud?: Record<string, unknown>;
+          /**
+           * The runner that ran it, when the run was split and another
+           * runner took the job. It is in the run's `usage` like the rest.
+           */
+          remote?: string;
+          /** The memory it reserved, in MiB, wherever it ran. */
+          memory_mib?: number;
         }>;
       };
     }>;
