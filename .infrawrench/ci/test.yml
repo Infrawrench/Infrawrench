@@ -46,9 +46,9 @@
 # - ClickHouse database tests: server-core's tests against a real ClickHouse
 #   (`env:clickhouse`, ClickHouse 26.11) as a service, and the mocked
 #   ClickHouse suites shadow-run against it.
-# - Postgres database tests: server-core's tests against `env:postgres`
-#   (pglite-server, PostgreSQL 18.4) after migrating it, and the mocked
-#   Postgres suites shadow-run against another.
+# - Postgres database tests: server-core's tests against three `env:postgres`
+#   servers (pglite-server, PostgreSQL 18.4) after migrating them, and the
+#   mocked Postgres suites shadow-run against another.
 # - Editor extensions (once .github/workflows/editor-extensions.yml): the
 #   VS Code extension's .vsix and the Raycast extension's tarball, kept as
 #   the run's downloads.
@@ -527,26 +527,59 @@ jobs:
   # run one at a time, row locks never contend, and pgcrypto is partial
   # (README, "PostgreSQL"). A test of real lock contention needs a real server.
   #
+  # Three servers, each migrated, and a Vitest worker for each (DATABASE_URLS,
+  # vitest.db.config.ts). A file still has a whole database to itself for as
+  # long as it runs: these suites write rows, and the CI passes they test read
+  # every organization's, so two files on one server would read each other's.
+  # More connections to one server would not help anyway, since its one
+  # backend runs their statements in turn.
+  #
+  # Unlike the shadow run, this job's time is SQL. Alone on ci-1 it took 77 to
+  # 82 s one file at a time: migrating 3 s, the files 76 s, of which 52 s were
+  # the three 70,000-row syncs of one file (sync-scale), which no number of
+  # workers shortens. That file is three now, and they go first, one to a
+  # server. With two servers the job takes 41 to 46 s, with three 32 to 37 s,
+  # with four 33 to 34 s. Each server keeps its tables and write-ahead log in
+  # memory (0.2 to 0.3 GiB after a sync, beside its 128 MiB of buffers) and
+  # each worker is another heap, so the job peaks at 2.8 to 3.1 GiB on one
+  # server, 3.4 to 3.8 on two, 4.0 to 4.3 on three and 4.9 on four.
+  #
   # The mocked Postgres suites shadow-run in a job of their own
   # (`postgres-shadow`) against a server of their own: one after the other in
   # one job they were the longest job of a run once web's tests were not
-  # (190 s; 80 s and 115 s apart). These files run one at a time, since they
-  # write rows the others would read.
+  # (190 s; 80 s and 115 s apart).
   postgres-db:
     name: Postgres tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
     needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
-    services: &postgres-service
-      postgres:
+    services:
+      postgres: &postgres-server
         using: env:postgres@18.4.2
         run: pglite-server
         ready: { port: 5432 }
-    env: &postgres-env
+      postgres-2:
+        using: env:postgres@18.4.2
+        run: pglite-server -port 5433 -backend-port 54330
+        ready: { port: 5433 }
+      postgres-3:
+        using: env:postgres@18.4.2
+        run: pglite-server -port 5434 -backend-port 54331
+        ready: { port: 5434 }
+    env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
+      DATABASE_URLS: >-
+        postgres://infrawrench:infrawrench@postgres:5432/infrawrench,
+        postgres://infrawrench:infrawrench@postgres-2:5433/infrawrench,
+        postgres://infrawrench:infrawrench@postgres-3:5434/infrawrench
     run: |
-      (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
+      IFS=', ' read -ra servers <<< "$DATABASE_URLS"
+      migrations=()
+      for server in "${servers[@]}"; do
+        (cd ../web && DATABASE_URL=$server node node_modules/drizzle-kit/bin.cjs migrate) &
+        migrations+=($!)
+      done
+      for migration in "${migrations[@]}"; do wait "$migration"; done
       node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts
     task-cache: &postgres-cache
       root-inputs:
@@ -555,7 +588,8 @@ jobs:
         - .infrawrench/ci/stubs/**
         - app/packages/web/drizzle.config.ts
         - app/packages/web/src/db/migrations/**
-    memory: 4GiB
+    # Peak 4.3 GiB.
+    memory: 5GiB
     timeout: 30m
 
   # `test:postgres:shadow`: every statement the mocked suites capture,
@@ -574,8 +608,10 @@ jobs:
     packages: { only: [app/packages/server-core] }
     needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
-    services: *postgres-service
-    env: *postgres-env
+    services: { postgres: *postgres-server }
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
     run: |
       (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
       workers=$(($(nproc) / 4))
