@@ -25,6 +25,7 @@ If you already know the status or error you are looking at, jump straight to its
 - RunContainerError, or StartError with exit code 128: [commands that will not start](/blog/kubernetes-runcontainererror)
 - PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
 - StatefulSet pod waiting on the one before it: [StatefulSet pod stuck](/blog/kubernetes-statefulset-pod-stuck)
+- Fewer pods than expected, FailedCreate with exceeded quota or a LimitRange: [pods forbidden by quota](/blog/kubernetes-exceeded-quota)
 
 **Pod starts, then stops or restarts**
 
