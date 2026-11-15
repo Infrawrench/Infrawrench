@@ -20,6 +20,7 @@ import {
   externalIdOf,
   reportUnreadListPart,
   requireListPage,
+  rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
 import type { JfrogContext } from "./api.js";
 import {
@@ -139,6 +140,11 @@ const RUNS_PER_BUILD = 25;
 const MAX_DETAIL_LOOKUPS = 200;
 /** Rolling window: the newest N. Older rows falling off is what this type means. */
 const VIOLATIONS_LIMIT = 100;
+/**
+ * Days of `created_from` window v1 is asked for after its 429 when v2 is off (#849).
+ * The limit counts matching violations, so a narrower filter stays under it.
+ */
+const VIOLATION_WINDOWS_DAYS = [30, 1] as const;
 /** What a create form's picker reads; a picker with part of a very long list still works. */
 const PICKER_PAGES = { maxPages: 20, partial: true };
 
@@ -351,75 +357,99 @@ export class JfrogClient implements PluginClient {
    * property `server.api.v2.violations.enabled`, and answers 404 without it. Asking v1
    * first keeps every Xray that reads today on the exact request it reads with.
    *
-   * A v1 429 that v2 cannot answer still fails the type. JFrog Cloud also throttles with
+   * Where v2 is off (404), v1 is asked again for a recent window by `created_from`:
+   * the limit counts *matching* violations, and the newest hundred are all that is
+   * wanted. A 429 on every window still fails the type. JFrog Cloud also throttles with
    * a 429 and documents no header or body that tells the two apart, so reading it as a
    * refusal would hide a throttle, which must fail the type.
    */
   private violations(filters: Record<string, string> = {}): Promise<XrayViolation[]> {
-    const path = "/xray/api/v1/violations";
     return noneWithoutXray(async () => {
-      let res: { violations?: XrayViolation[] | null } | undefined;
       try {
-        res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
-          method: "POST",
-          body: {
-            filters,
-            pagination: {
-              order_by: "created",
-              direction: "desc",
-              limit: VIOLATIONS_LIMIT,
-              offset: 1,
-            },
-          },
-        });
+        return await this.violationsV1(filters);
       } catch (err) {
         if (statusOf(err) !== 429) throw err;
-        return this.violationsByCursor(filters, err);
+        return this.violationsPastLimit(filters, err);
       }
-      return requireListPage(res?.violations, {
-        vendor: "JFrog Xray",
-        path,
-        key: "violations",
-      });
     });
+  }
+
+  /** The newest page of `POST /xray/api/v1/violations` matching `filters`. */
+  private async violationsV1(filters: Record<string, string>): Promise<XrayViolation[]> {
+    const path = "/xray/api/v1/violations";
+    const res = await jfrogFetch<{ violations?: XrayViolation[] | null }>(this.ctx, path, {
+      method: "POST",
+      body: {
+        filters,
+        pagination: {
+          order_by: "created",
+          direction: "desc",
+          limit: VIOLATIONS_LIMIT,
+          offset: 1,
+        },
+      },
+    });
+    return requireListPage(res?.violations, { vendor: "JFrog Xray", path, key: "violations" });
+  }
+
+  /**
+   * After a v1 429: the cursor route, or, where it is off, v1 over the most recent
+   * {@link VIOLATION_WINDOWS_DAYS} by `created_from`, narrowest last. A window shorter
+   * than the newest hundred lists fewer rows, which is the same rolling window read
+   * short, not a failure. Anything but a 404 from v2 throws v1's 429 as before.
+   */
+  private async violationsPastLimit(
+    filters: Record<string, string>,
+    refused: unknown,
+  ): Promise<XrayViolation[]> {
+    try {
+      return await this.violationsByCursor(filters);
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (statusOf(err) === 404) {
+        for (const days of VIOLATION_WINDOWS_DAYS) {
+          const created_from = new Date(Date.now() - days * 86_400_000).toISOString();
+          try {
+            return await this.violationsV1({ ...filters, created_from });
+          } catch (windowErr) {
+            if (statusOf(windowErr) !== 429) throw windowErr;
+          }
+        }
+      }
+      if (!(refused instanceof JfrogApiError)) throw refused;
+      throw new JfrogApiError(
+        429,
+        `${refused.message}. Past 50,000 matching violations Xray answers this route with a 429` +
+          (statusOf(err) === 404
+            ? `, and it did for the last ${VIOLATION_WINDOWS_DAYS.join(" and the last ")} days too`
+            : "") +
+          "; an Xray 3.152.0 or later with the system property server.api.v2.violations.enabled " +
+          "set is read through the cursor route instead.",
+      );
+    }
   }
 
   /**
    * The first page of `POST /xray/api/v2/violations`, after v1 answered with a
    * 429. `full` details are the ones v1 sends, so `violation_details_url`, which keys each
    * row, is the same. v2 orders by `updated` (`created` is only an alias for it), so the
-   * window is the newest by update rather than by creation. Any failure here throws v1's
-   * 429, which is what the type failed with before.
+   * window is the newest by update rather than by creation. It answers 404 while
+   * `server.api.v2.violations.enabled` is off.
    */
-  private async violationsByCursor(
-    filters: Record<string, string>,
-    refused: unknown,
-  ): Promise<XrayViolation[]> {
+  private async violationsByCursor(filters: Record<string, string>): Promise<XrayViolation[]> {
     const path = "/xray/api/v2/violations";
-    let res: { violations?: XrayViolation[] | null } | undefined;
-    try {
-      res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
-        method: "POST",
-        body: {
-          filters,
-          pagination: {
-            order_by: "updated",
-            direction: "desc",
-            limit: VIOLATIONS_LIMIT,
-            include_details: "full",
-          },
+    const res = await jfrogFetch<{ violations?: XrayViolation[] | null }>(this.ctx, path, {
+      method: "POST",
+      body: {
+        filters,
+        pagination: {
+          order_by: "updated",
+          direction: "desc",
+          limit: VIOLATIONS_LIMIT,
+          include_details: "full",
         },
-      });
-    } catch {
-      throw refused instanceof JfrogApiError
-        ? new JfrogApiError(
-            429,
-            `${refused.message}. Past 50,000 matching violations Xray answers this route with a 429; ` +
-              "an Xray 3.152.0 or later with the system property server.api.v2.violations.enabled " +
-              "set is read through the cursor route instead.",
-          )
-        : refused;
-    }
+      },
+    });
     return requireListPage(res?.violations, { vendor: "JFrog Xray", path, key: "violations" });
   }
 

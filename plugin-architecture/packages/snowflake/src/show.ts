@@ -21,7 +21,10 @@
  *
  * SHOW WAREHOUSES, SHOW PIPES and SHOW RESOURCE MONITORS take no LIMIT and drop what
  * is past 10,000 "even with a filter applied", so a narrower scope cannot prove it is
- * whole either; those still throw at 10,000 (see `SnowflakeClient.rows`).
+ * whole either. Warehouses and resource monitors still throw at 10,000 (see
+ * `SnowflakeClient.rows`); 10,000 of either is not a realistic account. Pipes past
+ * 10,000 are read one schema at a time with nothing pruned (`unpaged` below, #876):
+ * the reference does not say whether the cap applies before or after `IN SCHEMA`.
  */
 
 import {
@@ -150,6 +153,15 @@ export interface ScopedShow {
    * Answers false where the host keeps no track.
    */
   unread: (scope: readonly string[]) => boolean;
+  /**
+   * For a SHOW that takes no LIMIT and silently stops at 10,000 rows in any scope
+   * (PIPES). Past 10,000 in the account it is read one scope at a time, but since
+   * nothing proves a scope's answer whole, `unreadAll` first names every row of the
+   * type unread, so a sync updates and adds what was read and deletes nothing. A
+   * deepest scope that itself stops at 10,000 is named unread and kept as read.
+   * Where `unreadAll` answers false (the host keeps no track) the list throws.
+   */
+  unpaged?: { unreadAll: () => boolean };
 }
 
 /** Spreads the scope reads over the budget, starting somewhere new each minute. */
@@ -174,16 +186,27 @@ export async function showAcrossAccount(exec: ShowExec, show: ScopedShow): Promi
     return exec(statement);
   };
 
-  /** Rows of one scope, or how many it said it holds when it holds too many. */
-  const once = async (statement: string): Promise<Row[] | number> => {
+  /**
+   * Rows of one scope, or how many it said it holds when it holds too many, with
+   * the rows it did answer with when it stopped at the limit rather than refusing.
+   */
+  const once = async (statement: string): Promise<Row[] | { atLeast: number; rows: Row[] }> => {
     try {
       const rows = await counted(statement);
-      return rows.length >= SHOW_RECORD_LIMIT ? rows.length : rows;
+      return rows.length >= SHOW_RECORD_LIMIT ? { atLeast: rows.length, rows } : rows;
     } catch (err) {
-      if (isShowOverflow(err)) return SHOW_RECORD_LIMIT + 1;
+      if (isShowOverflow(err)) return { atLeast: SHOW_RECORD_LIMIT + 1, rows: [] };
       throw err;
     }
   };
+
+  const truncated = (statement: string, items: number) =>
+    new ListTruncatedError({
+      vendor: "Snowflake",
+      path: statement,
+      items,
+      maxItems: SHOW_RECORD_LIMIT,
+    });
 
   const children = async (scope: Scope): Promise<string[]> => {
     if (scope.length === 0) {
@@ -198,9 +221,18 @@ export async function showAcrossAccount(exec: ShowExec, show: ScopedShow): Promi
 
   const read = async (scope: Scope): Promise<Row[]> => {
     const statement = `SHOW ${show.object}${inClause(scope)}`;
-    const answer = await once(statement);
-    if (Array.isArray(answer)) return answer;
-    if (scope.length === show.depth) return pageShow(counted, statement, answer);
+    const result = await once(statement);
+    if (Array.isArray(result)) return result;
+    const answer = result.atLeast;
+    if (show.unpaged && scope.length === 0 && !show.unpaged.unreadAll()) {
+      throw truncated(statement, answer);
+    }
+    if (scope.length === show.depth) {
+      if (!show.unpaged) return pageShow(counted, statement, answer);
+      // Nothing pages it: keep what it answered and leave the rest of the scope stored.
+      if (!show.unread(scope)) throw truncated(statement, answer);
+      return result.rows;
+    }
     const names = await children(scope);
     const { now, later } = rotate(names, MAX_SCOPE_READS - reads);
     // A host that keeps no track answers false, and has no poll to outlast: it reads them all.

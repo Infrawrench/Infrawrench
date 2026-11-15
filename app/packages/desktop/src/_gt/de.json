@@ -15543,7 +15543,7 @@
   "a59974e6b9efb421": "Ein Marker: ein Deploy, eine Feature-Flag-Änderung oder ein anderes Ereignis, das in den Graphen von Honeycomb eingezeichnet wird. Von Hand hinzufügen oder Nachricht, Typ und Link bearbeiten.",
   "3a91e48524b54c6f": "Ein Marketing-Kontakt (die 1.000 neuesten werden aufgelistet). Zu Segmenten hinzufügen, Namen und globale Abmeldung bearbeiten oder löschen.",
   "4fbb5fb55e99a653": "Eine Marketing-E-Mail an ein Segment. Einen Entwurf mit Auswahl für Segment und Topic erstellen, ihn als Entwurf bearbeiten, sofort oder nach Zeitplan senden, einen geplanten Versand abbrechen, duplizieren oder löschen. Gesendete Broadcasts zeigen ihre Zustellbarkeit als Diagramm.",
-  "7a6557b01e555779": "Ein Mitglied eines Better-Stack-Teams, mit seiner Rolle. Hier aus dem Team entfernen.",
+  "a5cabae157c1822c": "Ein Mitglied eines Better-Stack-Teams, mit seiner Rolle, oder eine ausstehende Einladung. Hier ein Mitglied aus dem Team entfernen oder eine Einladung zurückziehen.",
   "c970fc2c6b87291f": "Ein Mitglied einer Organisation: Rolle, Teams und (bei aktivierten Insights) letzte Anmeldung. Die Rolle ändern (owner, editor oder member) oder das Mitglied entfernen.",
   "e7e844c39fc42efb": "Ein Mitglied der Axiom-Organisation, mit seiner Rolle. Von hier aus einen Nutzer entfernen.",
   "ee70d4b79849c6f3": "Ein Mitglied der Capella-Organisation mit Organisations- und Projektrollen",
