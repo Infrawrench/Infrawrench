@@ -6,8 +6,9 @@ import { INPUT, LABEL } from "../settings/styles.js";
 
 /** The pieces the CI access card and its connections dialog share. */
 
+/** A failure's message, or `fallback` when it has none: a failure is never shown as nothing. */
 export function errorText(e: unknown, fallback: string): string {
-  return e instanceof Error ? e.message : fallback;
+  return e instanceof Error && e.message.trim() !== "" ? e.message : fallback;
 }
 
 /**

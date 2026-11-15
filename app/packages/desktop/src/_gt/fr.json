@@ -23293,5 +23293,15 @@
   "769cc15402f536b5": "{repo} sur {branch}",
   "c0635aaba2417a31": "La dernière lecture a échoué : {error}",
   "27835f74fbdd7600": "Pipelines planifiés de {repo}",
-  "c0554b7fe1c99cf0": "Prochaine exécution"
+  "c0554b7fe1c99cf0": "Prochaine exécution",
+  "568cf92071ca48e4": "Choisissez au moins un type de job.",
+  "898e6e43e1915ed3": "Les connexions {plugin} ne peuvent pas exécuter de jobs.",
+  "b550937345bbdfee": "Les connexions {plugin} ne peuvent pas être prêtées aux jobs.",
+  "ad92fdc08320b1cf": "Vérification des autorisations…",
+  "0b0692e73d4ca4b7": "Les connexions {plugin} ne peuvent pas exécuter de jobs. Désactivez l'exécution des jobs.",
+  "8671967effb60926": "Décochez {kinds} : sa vérification des autorisations n'a pas réussi.",
+  "d0ea7213167da242": "Les connexions {plugin} ne peuvent pas être prêtées aux jobs. Désactivez le prêt.",
+  "c5f77207e2bc9852": "Le nombre de jobs simultanés doit être compris entre 1 et 50.",
+  "06b60ad9d0993a71": "Les minutes par job doivent être comprises entre 1 et 1440.",
+  "cde59236f595da74": "Indiquez au moins une branche, ou videz le champ pour toutes les branches."
 }
