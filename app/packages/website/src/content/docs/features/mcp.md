@@ -1,10 +1,10 @@
 ---
 title: MCP server
-description: Use Infrawrench from Claude Desktop, Cursor, or any other Model Context Protocol client.
+description: Use Infrawrench from Claude Code, Claude Desktop, Cursor, or any other Model Context Protocol client.
 sidebar_order: 11
 ---
 
-Infrawrench has a hosted [Model Context Protocol](https://modelcontextprotocol.io/) server at `/api/mcp`. Point an MCP client (Claude Desktop, Cursor, the MCP CLI, your own LLM agent) at it and the model can list, search, inspect, create and edit resources in your organization, using your provider credentials. Every change is recorded in the [audit log](../team-and-billing/audit-log.md).
+Infrawrench has a hosted [Model Context Protocol](https://modelcontextprotocol.io/) server at `/api/mcp`. Point an MCP client (Claude Code, Claude Desktop, Cursor, the MCP CLI, your own LLM agent) at it and the model can list, search, inspect, create and edit resources in your organization, using your provider credentials. Every change is recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## Endpoint
 
@@ -138,6 +138,31 @@ Every tool declares MCP annotations: `readOnlyHint` on tools that only read, `de
 The protocol has no confirmation step for destructive actions. That's up to your client. Claude Desktop and Cursor ask permission before each tool call by default, and we recommend keeping those prompts on, at least for tools that make changes.
 
 `write_workflow_secret` only handles metadata over MCP. It has no value argument, so a password can't leak into model context or client logs. It creates or updates the named secret. Set its value in Infrawrench's workflow editor or the secure in-chat password prompt, then use the returned id with `write_workflow`.
+
+## Connect from Claude Code
+
+Add the server with the `claude` CLI:
+
+```
+claude mcp add --transport http infrawrench https://app.infrawrench.com/api/mcp
+```
+
+That adds it for you on this machine. To share it with everyone working in a repository, add `--scope project` instead. Claude Code then writes it to `.mcp.json` in the project folder, which you can commit:
+
+```json
+{
+  "mcpServers": {
+    "infrawrench": {
+      "type": "http",
+      "url": "https://app.infrawrench.com/api/mcp"
+    }
+  }
+}
+```
+
+Start `claude` in that folder. A server from a project's `.mcp.json` waits for your approval the first time, so approve `infrawrench` when asked. Then run `/mcp`, pick **infrawrench** and choose **Authenticate** to sign in through your browser. No token is stored in the config file.
+
+Once you're signed in, ask something like "list my cloud resources". You need an Infrawrench account with at least one cloud account connected for there to be anything to list. See [Add your first account](../getting-started/add-first-account.md).
 
 ## Connect from Claude Desktop
 
