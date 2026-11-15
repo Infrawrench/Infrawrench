@@ -311,6 +311,9 @@ pub struct Invocation {
     /// Set when the job's run is cancelled: the job is then stopped the way
     /// its timeout would stop it, services and all.
     pub cancel: Option<Cancel>,
+    /// Told what the job holds whenever that is more than it has held
+    /// before (see [`MemoryWatch`]).
+    pub memory_watch: Option<MemoryWatch>,
 }
 
 /// A script's `PATH` when nothing sets one: tools and the runner's own
@@ -415,6 +418,13 @@ pub enum Stream {
     Stderr,
 }
 
+/// Called with the bytes a job holds of the host's memory each time that
+/// passes the most it has held ([`Outcome::held_memory_bytes`], as it
+/// grows), from whichever thread grew it: a program growing its memory,
+/// or the one that reads the job's V8 heaps five times a second. It must
+/// not block.
+pub type MemoryWatch = Arc<dyn Fn(u64) + Send + Sync>;
+
 /// Called with each chunk a program writes, from whichever thread wrote it.
 pub type LogSink = Arc<dyn Fn(Stream, &[u8]) + Send + Sync>;
 
@@ -449,6 +459,13 @@ pub struct Outcome {
     /// heaps had reserved, read five times a second. What `memory:` has
     /// to cover, beside the files the job writes.
     pub peak_memory_bytes: u64,
+    /// The most of the host's memory the job held at once, in bytes: its
+    /// linear memories as above, and what its V8 heaps had committed, not
+    /// the room they had reserved. A Node job reserves two to five times
+    /// what its heaps come to hold, so this is what a runner can plan the
+    /// host's memory by; `peak_memory_bytes` is what the job's own limit
+    /// has to cover. The same number for a job that runs no JavaScript.
+    pub held_memory_bytes: u64,
     /// The trap, when the program crashed rather than exiting.
     pub error: Option<String>,
     /// Why the job never started: a service exited, or was not ready in

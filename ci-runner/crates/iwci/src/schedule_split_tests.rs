@@ -486,6 +486,7 @@ fn the_primary_runs_again_a_job_whose_artifacts_it_cannot_get() {
         notes: Vec::new(),
         duration_ms: 5,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         kept: Kept::TaskCache {
             key: "task/a/0123456789abcdef".into(),
@@ -1036,6 +1037,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
             stalled_after: Some(300),
             out_of_memory: true,
             peak_memory_bytes: 9,
+            held_memory_bytes: 5,
             service_failure: Some("db".into()),
             cancelled: false,
         }),
@@ -1047,6 +1049,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
         notes: vec!["a note".into()],
         duration_ms: 1234,
         peak_memory_mib: 77,
+        held_memory_mib: 41,
         queued_ms: 5,
         kept: Kept::TaskCache {
             key: "task/a/abc".into(),
@@ -1077,6 +1080,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
     assert!(a.out_of_memory && !a.cancelled);
     assert_eq!(back.outputs, done.outputs);
     assert_eq!((back.duration_ms, back.peak_memory_mib), (1234, 77));
+    assert_eq!(back.held_memory_mib, 41);
 }
 
 #[test]
@@ -1270,6 +1274,7 @@ fn everything_in_another_runners_record_is_masked_where_it_is_read() {
         notes: vec![format!("a note with {SECRET}")],
         duration_ms: 5,
         peak_memory_mib: 0,
+        held_memory_mib: 0,
         queued_ms: 0,
         kept: Kept::None,
     };

@@ -45,6 +45,9 @@ pub(super) struct Limits {
     pub cpus: usize,
     pub jobs_per_cpu: usize,
     pub memory: Option<u64>,
+    /// Jobs reserve what they are expected to hold, not their `memory:`
+    /// (`--memory-admission estimate`; `schedule::MemoryBudget`).
+    pub admit_by_estimate: bool,
     /// Stop a job after this long with no output and no CPU use; `None`
     /// leaves hung jobs to their timeout.
     pub stall_after: Option<Duration>,
@@ -95,6 +98,21 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
                 })?,
         ),
         None => None,
+    };
+    // What a job reserves of that budget: its `memory:`, unless told to go
+    // by what it held before.
+    let admit_by_estimate = match args
+        .value("--memory-admission")?
+        .or_else(|| std::env::var("IWCI_MEMORY_ADMISSION").ok())
+        .as_deref()
+    {
+        None | Some("limit") => false,
+        Some("estimate") => true,
+        Some(other) => {
+            return Err(format!(
+                "--memory-admission takes `limit` or `estimate`, not `{other}`"
+            ));
+        }
     };
     // A job that neither prints nor computes for this long is hung (#938);
     // `0` turns the check off.
@@ -148,6 +166,7 @@ pub(super) fn limits(args: &mut Args) -> Result<Limits, String> {
         cpus,
         jobs_per_cpu,
         memory,
+        admit_by_estimate,
         stall_after,
         modules,
     })
@@ -207,9 +226,14 @@ pub(super) fn open_runner(
         cpus: limits.cpus,
         jobs_per_cpu: limits.jobs_per_cpu,
         slots: shared_slots.then(|| Arc::new(schedule::Slots::new(slots))),
-        memory: limits
-            .memory
-            .map(|m| Arc::new(schedule::MemoryBudget::new(m))),
+        memory: limits.memory.map(|m| {
+            let budget = schedule::MemoryBudget::new(m);
+            Arc::new(if limits.admit_by_estimate {
+                budget.admitting_by_estimate(Arc::new(crate::memory::HostPressure::new()))
+            } else {
+                budget
+            })
+        }),
         author,
         default_storage_quota,
         download_limits,

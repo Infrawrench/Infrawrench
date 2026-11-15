@@ -132,7 +132,12 @@ pub(crate) fn run(
         }
     }
     let started = Instant::now();
-    let (engine, hit_memory, meter) = job_engine(job_modules, inv.limits.memory_bytes, TSC_STACK);
+    let (engine, hit_memory, meter) = job_engine(
+        job_modules,
+        inv.limits.memory_bytes,
+        TSC_STACK,
+        inv.memory_watch.clone(),
+    );
     let mut store = Store::new(engine);
     let interrupter = store.interrupter();
 

@@ -119,6 +119,7 @@ impl Executor<Resolved> for RuntimeExecutor {
             modes: inv.fs.modes(),
             services,
             cancel: inv.cancel.clone(),
+            memory_watch: inv.memory_watch.clone(),
         };
 
         let outcome = match (tool, action) {
@@ -163,6 +164,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stalled_after: None,
                             out_of_memory: o.out_of_memory,
                             peak_memory_bytes: o.peak_memory_bytes,
+                            held_memory_bytes: o.peak_memory_bytes,
                             service_failure: None,
                             cancelled: o.cancelled,
                         }
@@ -180,6 +182,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             stalled_after: o.stalled_after.map(|d| d.as_secs()),
                             out_of_memory: o.out_of_memory,
                             peak_memory_bytes: o.peak_memory_bytes,
+                            held_memory_bytes: o.held_memory_bytes,
                             service_failure: o.service_failure,
                             cancelled: o.cancelled,
                         }
@@ -205,6 +208,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                     stalled_after: o.stalled_after.map(|d| d.as_secs()),
                     out_of_memory: o.out_of_memory,
                     peak_memory_bytes: o.peak_memory_bytes,
+                    held_memory_bytes: o.held_memory_bytes,
                     service_failure: o.service_failure,
                     cancelled: o.cancelled,
                 }

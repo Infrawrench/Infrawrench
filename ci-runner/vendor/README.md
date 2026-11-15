@@ -55,6 +55,22 @@ is charged what its heap can hold and a job's `memory:` fits 144 MiB more
 per `node`. A test in `iwci-runtime` holds the constant to the flag.
 Revisit if a release makes these settings.
 
+**And: what a budgeted heap has committed.** The budget charges an isolate
+for the room its heap may grow to, which is what the isolate is refused or
+stopped by and two to five times what it comes to hold. The runner also
+wants what the heap holds, to plan the host's memory by
+(`JobReport::held_memory_mib`). V8's heap statistics are read on the
+isolate's own thread, so the bridge reads them there: a garbage-collection
+epilogue callback, installed with the budget's near-heap-limit callback and
+removed with it, passes `total_heap_size` to `napi_host_heap_committed`
+(`src/budget.rs`), which keeps it per isolate and summed in the budget
+(`ResourceUsage::v8_heap_committed`). The host's data is looked up under
+`g_oom_mu`, as the out-of-memory handler does, so a callback never reads a
+tracker its env's release has freed. An isolate that has not collected yet
+counts for nothing, and one that is gone is taken off the sum when its
+tracker is dropped. Nothing is charged or refused by it. Drop it if a
+release reports committed heap per budget.
+
 **And: `g_mu` only where state is shared.** Every per-env bridge call held
 the process-wide `g_mu` for its whole duration, including the calls that run
 JavaScript (`contextify_run_script`, module evaluation), so Node jobs on one

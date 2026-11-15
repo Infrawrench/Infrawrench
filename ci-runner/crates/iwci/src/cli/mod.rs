@@ -21,6 +21,9 @@ usage:
                                          run a commit's pipelines
                                          [--cpus <n>] [--memory <size>] limit the runner
                                          (also IWCI_CPUS and IWCI_MEMORY)
+                                         [--memory-admission limit|estimate] what a job
+                                         reserves of --memory: its `memory:`, or what it
+                                         held before (also IWCI_MEMORY_ADMISSION)
                                          [--stall-after 5m] stop a job with no output
                                          and no CPU use for that long; 0 for never
                                          (also IWCI_STALL_AFTER)

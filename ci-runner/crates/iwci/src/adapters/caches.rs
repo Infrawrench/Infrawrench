@@ -1,7 +1,7 @@
 //! `cache:` entries in the object store (`iwci-store`'s key table has the
 //! layout). The same store as the tools, so on R2 every runner shares them.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ use iwci_store::{ObjectStore, RepoId};
 use iwci_vfs::{Entry, archive};
 use sha2::Digest;
 
-use crate::schedule::{Caches, Durations, Restored};
+use crate::schedule::{Caches, Durations, History, Restored};
 
 pub struct StoreCaches {
     store: Arc<dyn ObjectStore>,
@@ -487,11 +487,17 @@ const DURATIONS_FILE: &str = "/iwci/durations.json";
 /// More than any pipeline's durations take; a bigger entry is not read.
 const MAX_DURATIONS: u64 = 4 << 20;
 
-/// What the durations entry holds.
+/// What the durations entry holds. A runner from before `held_mib` reads
+/// the entry without it and writes it back without it, which costs the
+/// next run its estimates and nothing else, so the version stays 1.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct DurationsRecord {
     version: u32,
+    /// Milliseconds each job took, by job id.
     jobs: BTreeMap<String, u64>,
+    /// What each job held of the runner's memory, in MiB, by job id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    held_mib: BTreeMap<String, u64>,
 }
 
 /// Job durations kept beside the caches, in the same scopes: a branch reads
@@ -499,9 +505,9 @@ struct DurationsRecord {
 /// the default branch. One small entry per pipeline, counted toward the
 /// owner's quota like any other.
 impl Durations for StoreCaches {
-    fn load_durations(&self, pipeline: &str) -> HashMap<String, u64> {
+    fn load_history(&self, pipeline: &str) -> History {
         let Ok(Some(found)) = self.restore(&durations_key(pipeline), &[], MAX_DURATIONS) else {
-            return HashMap::new();
+            return History::default();
         };
         found
             .entries
@@ -513,14 +519,18 @@ impl Durations for StoreCaches {
                 _ => None,
             })
             .filter(|r| r.version == 1)
-            .map(|r| r.jobs.into_iter().collect())
+            .map(|r| History {
+                durations: r.jobs,
+                held: r.held_mib,
+            })
             .unwrap_or_default()
     }
 
-    fn save_durations(&self, pipeline: &str, durations: &BTreeMap<String, u64>) {
+    fn save_history(&self, pipeline: &str, history: &History) {
         let record = DurationsRecord {
             version: 1,
-            jobs: durations.clone(),
+            jobs: history.durations.clone(),
+            held_mib: history.held.clone(),
         };
         let Ok(data) = serde_json::to_vec(&record) else {
             return;
@@ -529,8 +539,8 @@ impl Durations for StoreCaches {
             path: DURATIONS_FILE.into(),
             data: data.into(),
         };
-        // Only an ordering hint: a store that refuses it costs the next run
-        // its order, nothing else.
+        // Only a hint: a store that refuses it costs the next run its
+        // order and its estimates, nothing else.
         let _ = Caches::save(self, &durations_key(pipeline), &[], &[entry]);
     }
 }
@@ -563,6 +573,18 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_from_before_held_memory_was_kept_still_reads() {
+        let old: DurationsRecord = serde_json::from_str(r#"{"version":1,"jobs":{"a":5}}"#).unwrap();
+        assert_eq!(old.jobs["a"], 5);
+        assert!(old.held_mib.is_empty());
+        // And one that keeps none is written as it always was.
+        assert_eq!(
+            serde_json::to_string(&old).unwrap(),
+            r#"{"version":1,"jobs":{"a":5}}"#
+        );
+    }
+
+    #[test]
     fn durations_follow_the_cache_scopes() {
         let (store, dir) = store();
         let repo = RepoId::new("repo_1").unwrap();
@@ -572,23 +594,28 @@ mod tests {
         };
         let main = at("main", Event::Push);
         let pr = at("feature", Event::PullRequest);
-        assert!(main.load_durations("Test").is_empty());
-        let times: BTreeMap<String, u64> = [("a".to_string(), 5), ("b[x]".to_string(), 7)].into();
-        main.save_durations("Test", &times);
+        assert_eq!(main.load_history("Test"), History::default());
+        let history = History {
+            durations: [("a".to_string(), 5), ("b[x]".to_string(), 7)].into(),
+            held: [("a".to_string(), 300)].into(),
+        };
+        main.save_history("Test", &history);
+        assert_eq!(main.load_history("Test"), history);
         assert_eq!(
-            main.load_durations("Test"),
-            times.clone().into_iter().collect::<HashMap<_, _>>()
-        );
-        assert!(
-            main.load_durations("Lint").is_empty(),
+            main.load_history("Lint"),
+            History::default(),
             "one entry per pipeline"
         );
         // A pull request starts from the default branch's, and what it
         // saves never reaches the default branch.
-        assert_eq!(pr.load_durations("Test")["a"], 5);
-        pr.save_durations("Test", &[("a".to_string(), 1)].into());
-        assert_eq!(pr.load_durations("Test")["a"], 1);
-        assert_eq!(main.load_durations("Test")["a"], 5);
+        assert_eq!(pr.load_history("Test"), history);
+        let own = History {
+            durations: [("a".to_string(), 1)].into(),
+            held: BTreeMap::new(),
+        };
+        pr.save_history("Test", &own);
+        assert_eq!(pr.load_history("Test"), own);
+        assert_eq!(main.load_history("Test"), history);
         let _ = std::fs::remove_dir_all(dir);
     }
 

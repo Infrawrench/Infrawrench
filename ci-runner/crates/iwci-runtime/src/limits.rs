@@ -26,20 +26,54 @@ use crate::cache::JobModules;
 /// of its services has one), plus what its Node reports of its V8 heaps
 /// (`MemoryMeter::set_heaps`). A job's report carries the peak, so a
 /// pipeline can size `memory:` from what its jobs used.
-#[derive(Debug, Default)]
+///
+/// It counts a V8 heap twice over, for two readers. Against `memory:` a
+/// heap counts for the room it has reserved, which is what it is refused
+/// or stopped by (`peak`). What the job holds of the host's memory is what
+/// the heap has committed, a half to a fifth of that room (`held_peak`),
+/// and that is what the runner's budget may admit other jobs beside.
+#[derive(Default)]
 pub(crate) struct MemoryMeter {
     /// Bytes of linear memory alive now.
     linear: AtomicU64,
-    /// What the job's V8 heaps held when last read.
+    /// The room the job's V8 heaps had reserved when last read.
     heaps: AtomicU64,
     /// The most `linear + heaps` has been.
     peak: AtomicU64,
+    /// What the job's V8 heaps had committed when last read.
+    committed: AtomicU64,
+    /// The most `linear + committed` has been.
+    held_peak: AtomicU64,
+    /// Told each new `held_peak`.
+    watch: Option<crate::MemoryWatch>,
+}
+
+impl std::fmt::Debug for MemoryMeter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryMeter")
+            .field("linear", &self.linear)
+            .field("heaps", &self.heaps)
+            .field("peak", &self.peak)
+            .field("committed", &self.committed)
+            .field("held_peak", &self.held_peak)
+            .finish_non_exhaustive()
+    }
 }
 
 impl MemoryMeter {
+    /// A meter that tells `watch` whenever the job holds more than it has
+    /// before.
+    pub(crate) fn watched(watch: Option<crate::MemoryWatch>) -> Self {
+        Self {
+            watch,
+            ..Self::default()
+        }
+    }
+
     fn grew(&self, bytes: u64) {
         let linear = self.linear.fetch_add(bytes, Ordering::AcqRel) + bytes;
         self.note(linear + self.heaps.load(Ordering::Acquire));
+        self.note_held(linear + self.committed.load(Ordering::Acquire));
     }
 
     fn shrank(&self, bytes: u64) {
@@ -50,15 +84,33 @@ impl MemoryMeter {
         self.peak.fetch_max(total, Ordering::AcqRel);
     }
 
-    /// What the job's V8 heaps hold now, read by whoever waits for the job.
-    pub(crate) fn set_heaps(&self, bytes: u64) {
-        self.heaps.store(bytes, Ordering::Release);
-        self.note(self.linear.load(Ordering::Acquire) + bytes);
+    fn note_held(&self, total: u64) {
+        let before = self.held_peak.fetch_max(total, Ordering::AcqRel);
+        if total > before
+            && let Some(watch) = &self.watch
+        {
+            watch(total);
+        }
     }
 
-    /// The most the job held at once, in bytes.
+    /// What the job's V8 heaps hold now, read by whoever waits for the job:
+    /// the room they have `reserved` and what they have `committed`.
+    pub(crate) fn set_heaps(&self, reserved: u64, committed: u64) {
+        self.heaps.store(reserved, Ordering::Release);
+        self.committed.store(committed, Ordering::Release);
+        let linear = self.linear.load(Ordering::Acquire);
+        self.note(linear + reserved);
+        self.note_held(linear + committed);
+    }
+
+    /// The most the job held at once against its `memory:`, in bytes.
     pub(crate) fn peak(&self) -> u64 {
         self.peak.load(Ordering::Acquire)
+    }
+
+    /// The most of the host's memory the job held at once, in bytes.
+    pub(crate) fn held_peak(&self) -> u64 {
+        self.held_peak.load(Ordering::Acquire)
     }
 }
 

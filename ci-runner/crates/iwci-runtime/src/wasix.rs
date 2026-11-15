@@ -878,9 +878,10 @@ pub(crate) fn job_engine(
     job_modules: &JobModules,
     memory_bytes: u64,
     stack_bytes: usize,
+    watch: Option<crate::MemoryWatch>,
 ) -> (Engine, Arc<AtomicBool>, Arc<MemoryMeter>) {
     let hit = Arc::new(AtomicBool::new(false));
-    let meter = Arc::new(MemoryMeter::default());
+    let meter = Arc::new(MemoryMeter::watched(watch));
     let mut engine = job_modules.engine().clone();
     engine.set_tunables(
         LimitingTunables::new(memory_bytes, stack_bytes, hit.clone(), meter.clone())
@@ -1166,7 +1167,12 @@ pub(crate) fn run(
     let started = Instant::now();
     let _enter = tokio.enter();
 
-    let (engine, hit_memory, meter) = job_engine(job_modules, inv.limits.memory_bytes, WASIX_STACK);
+    let (engine, hit_memory, meter) = job_engine(
+        job_modules,
+        inv.limits.memory_bytes,
+        WASIX_STACK,
+        inv.memory_watch.clone(),
+    );
 
     let package_set = match &entry {
         Entry::Module(_) => None,
@@ -1258,6 +1264,7 @@ pub(crate) fn run(
             stalled_after: None,
             out_of_memory: hit_memory.load(Ordering::Acquire),
             peak_memory_bytes: meter.peak(),
+            held_memory_bytes: meter.held_peak(),
             error: None,
             service_failure: (!cancelled).then_some(failure),
         });
@@ -1322,7 +1329,7 @@ pub(crate) fn run(
             }
             services.report_exits(&stderr);
             if let Some(node) = node {
-                meter.set_heaps(node.heap_bytes());
+                meter.set_heaps(node.heap_bytes(), node.held_heap_bytes());
             }
             if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
                 break Stop::OutOfMemory;
@@ -1404,7 +1411,7 @@ pub(crate) fn run(
     let mut err = stderr.take();
     let exhaustion = node.map(|node| node.exhaustion()).unwrap_or_default();
     if let Some(node) = node {
-        meter.set_heaps(node.heap_bytes());
+        meter.set_heaps(node.heap_bytes(), node.held_heap_bytes());
     }
     let failed = stopped.is_some() || exit_code != 0;
     // Memory ran short for the job's Node (#964): a stopped heap ends the
@@ -1460,6 +1467,7 @@ pub(crate) fn run(
         stalled_after: caps.stall_after.filter(|_| stalled),
         out_of_memory,
         peak_memory_bytes: meter.peak(),
+        held_memory_bytes: meter.held_peak(),
         error: if stopped.is_some() { None } else { error },
         service_failure: None,
     })
