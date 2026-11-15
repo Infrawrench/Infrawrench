@@ -89,7 +89,11 @@ function cacheKey(key: ServiceAccountKey): string {
   return `${key.client_email}:${key.private_key_id}`;
 }
 
-async function fetchAccessTokenRaw(
+/**
+ * A fresh token from the key, past the cache: what a CI job is lent wants
+ * its whole hour (`ci-credential.ts`).
+ */
+export async function fetchAccessTokenRaw(
   key: ServiceAccountKey,
   http: HttpHostServices | undefined,
 ): Promise<{ token: string; expiresInSec: number }> {

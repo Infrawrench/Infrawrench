@@ -171,6 +171,10 @@ Opting a connection in checks its permissions and names any that are missing:
 
 The Compute Engine, Cloud Run Admin and Cloud Build APIs must be enabled for the kinds you use.
 
+### Lend it to jobs
+
+With **Lend its credentials to jobs** switched on, a job that names the connection in `connections:` gets an access token for its service account, never the key: `gcloud` reads it through `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE`, Terraform through `GOOGLE_OAUTH_ACCESS_TOKEN`, and `CLOUDSDK_CORE_PROJECT` names the project. A token lasts an hour. For longer runs, allow the account longer tokens with the organization policy `constraints/iam.allowServiceAccountCredentialLifetimeExtension` and give it `roles/iam.serviceAccountTokenCreator` on itself; the token then lasts as long as the run may. See [Connections](../features/ci.md#connections).
+
 ## Tips and limits
 
 - Service account keys never expire on Google's side, but rotating them is good practice. Paste a new key any time.

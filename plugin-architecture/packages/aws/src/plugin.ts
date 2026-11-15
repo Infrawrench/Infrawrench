@@ -16,6 +16,7 @@ import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
 import { awsAiRequestLogCapability } from "./ai-request-logs.js";
 import { AWS_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
+import { AWS_CI_CREDENTIAL } from "./ci-credential.js";
 import { AWS_CI_EXECUTOR } from "./ci-executor.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
@@ -232,6 +233,9 @@ export const manifest = {
   // ec2:CreateTags, ec2:DescribeInstances, ec2:TerminateInstances and
   // ssm:GetParameters for the default image. See `ci-executor.ts`.
   ciExecutor: AWS_CI_EXECUTOR,
+  // STS session credentials for a CI job's `connections:`. GetSessionToken
+  // needs no permission. See `ci-credential.ts`.
+  ciCredential: AWS_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

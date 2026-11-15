@@ -124,6 +124,10 @@ Container and build jobs start in the default VPC and in a cluster and a project
 
 ECS and CodeBuild writes have no dry run, so the check for `container` and `build` uses the IAM policy simulator, which needs `iam:SimulatePrincipalPolicy`. The first ECS cluster in an account also needs `iam:CreateServiceLinkedRole`, once, if the ECS service-linked role doesn't exist yet.
 
+### Lend it to jobs
+
+With **Lend its credentials to jobs** switched on, a job that names the connection in `connections:` gets STS session credentials minted from its access key for that run, never the key: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` and a profile named after the connection in `~/.aws`. They expire after four hours. `sts:GetSessionToken` needs no permission, and the session can do what the IAM user can, except call IAM, or STS beyond `AssumeRole` and `GetCallerIdentity`. See [Connections](../features/ci.md#connections).
+
 ## Tips and limits
 
 - Each AWS account in Infrawrench uses one region for defaults. Add more accounts if you work across regions.

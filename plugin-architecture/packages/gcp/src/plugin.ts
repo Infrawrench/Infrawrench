@@ -7,6 +7,7 @@ import type {
 import { GCP_IDLE_FINDINGS } from "./idle-findings.js";
 import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
+import { GCP_CI_CREDENTIAL } from "./ci-credential.js";
 import { GCP_CI_EXECUTOR } from "./ci-executor.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gcpPriceCatalog } from "./price-catalog.js";
@@ -193,6 +194,9 @@ export const manifest = {
   // `ciPreflight` names, and, for Cloud Run and Cloud Build, actAs on the
   // `infrawrench-ci-runner` service account. See `ci-executor.ts`.
   ciExecutor: GCP_CI_EXECUTOR,
+  // An access token for a CI job's `connections:`, never the key. See
+  // `ci-credential.ts`.
+  ciCredential: GCP_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

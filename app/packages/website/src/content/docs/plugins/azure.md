@@ -142,6 +142,10 @@ Opting a connection in checks the roles assigned to the app registration at the 
 
 The check also names any resource provider the subscription hasn't registered (`Microsoft.Compute`, `Microsoft.Network`, `Microsoft.ContainerInstance` or `Microsoft.ContainerRegistry`).
 
+### Lend it to jobs
+
+With **Lend its credentials to jobs** switched on, a job that names the connection in `connections:` gets its service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` and `AZURE_SUBSCRIPTION_ID` (and as `ARM_*` for Terraform). This is the connection's stored client secret: the Azure CLI takes no short-lived token from outside. A connection whose role assignments are narrower than what jobs need is a good reason to lend a separate one. See [Connections](../features/ci.md#connections).
+
 ## Tips and limits
 
 - One account connects to one subscription. For tenants with several subscriptions, add one Infrawrench account per subscription.

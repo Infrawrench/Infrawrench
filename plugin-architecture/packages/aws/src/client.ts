@@ -63,12 +63,15 @@ import {
 import type { AwsCredentials } from "./auth.js";
 import type {
   CiComputeStatus,
+  CiCredentialRequest,
   CiExecutorKind,
   CiHandle,
+  CiLentMaterial,
   CiPreflightResult,
   CiStartSpec,
   CiTaggedCompute,
 } from "@infrawrench/plugin-base";
+import { lendAwsSession, sessionFromResponse, stsHost } from "./ci-credential.js";
 import {
   awsCiListTagged,
   ciPreflight,
@@ -209,7 +212,7 @@ import {
 import { AWS_NETWORK_FLOW_CAPABILITY, fetchAwsNetworkFlows } from "./network-flows.js";
 import { listCloudWatchSourceOptions, runCloudWatchSource } from "./business-metric-source.js";
 import { callGetMetricStatistics } from "./metrics/cw-helpers.js";
-import { ensureArray } from "./xml.js";
+import { ensureArray, parseXml } from "./xml.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -547,6 +550,35 @@ export class AWSClient implements PluginClient {
   ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
     return attempt(() =>
       awsCiListTagged(this.ciCall, this.ciCalls, this.creds.region, tagKey, regions),
+    );
+  }
+
+  /** STS session credentials for a CI job (`manifest.ciCredential`, `ci-credential.ts`). */
+  lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(() =>
+      lendAwsSession(
+        async (seconds) => {
+          // The home region's endpoint: its sessions work in every region,
+          // opt-in ones included, which the global endpoint's do not by
+          // default.
+          const host = stsHost(this.creds.region);
+          const res = await fetchSigned({
+            method: "POST",
+            url: `https://${host}/`,
+            headers: { Host: host, "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              Action: "GetSessionToken",
+              Version: "2011-06-15",
+              DurationSeconds: String(seconds),
+            }).toString(),
+            service: "sts",
+            credentials: this.creds,
+          });
+          return sessionFromResponse(parseXml(await res.text()));
+        },
+        this.creds.region,
+        request,
+      ),
     );
   }
 
