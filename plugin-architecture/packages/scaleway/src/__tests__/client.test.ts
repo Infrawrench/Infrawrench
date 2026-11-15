@@ -308,6 +308,16 @@ describe("listResources instance", () => {
     await expect(c.listResources("instance", ACCOUNT)).rejects.toThrow("zone down");
   });
 
+  it("reads a zone that answers 501 unknown service as empty", async () => {
+    // What Scaleway's gateway answers for a product it does not run in a zone.
+    const c = makeClient();
+    instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) => {
+      if (zone === "it-mil-3") throw httpFailure(501);
+      return { servers: [] };
+    });
+    expect(await c.listResources("instance", ACCOUNT)).toEqual([]);
+  });
+
   it("reads a zone that refuses as empty", async () => {
     const c = makeClient();
     instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) => {
@@ -1717,8 +1727,8 @@ describe("2025-2026 additions: regions", () => {
   });
 });
 
-// Each product is read in the zones its own SDK API lists: Block Storage's has MIL-2 and
-// MIL-3, the Instance API's does not yet (#771).
+// Milan's MIL-2 and MIL-3 (October 2026): Block Storage's SDK API lists them, and the
+// Instance API serves them although its v1 SDK list does not have them yet (#771).
 describe("Milan zones per product (#771)", () => {
   beforeEach(() => {
     fetchMock.mockImplementation(() => {
@@ -1730,6 +1740,7 @@ describe("Milan zones per product (#771)", () => {
     mock.mock.calls.map((c) => (c[0] as { zone: string }).zone);
   const pickerZones = (cfg: { fields: { key: string; regions?: { id: string }[] }[] }) =>
     cfg.fields.find((f) => f.key === "zone")!.regions!.map((r) => r.id);
+  const MILAN = ["it-mil-1", "it-mil-2", "it-mil-3"];
 
   it("reads block volumes in it-mil-2 and it-mil-3", async () => {
     blockMethods.listVolumes.mockImplementation(async ({ zone }: { zone: string }) => ({
@@ -1739,44 +1750,39 @@ describe("Milan zones per product (#771)", () => {
           : [],
     }));
     const rows = await makeClient().listResources("block-volume", ACCOUNT);
-    expect(zonesOf(blockMethods.listVolumes)).toEqual(
-      expect.arrayContaining(["it-mil-1", "it-mil-2", "it-mil-3"]),
-    );
+    expect(zonesOf(blockMethods.listVolumes)).toEqual(expect.arrayContaining(MILAN));
     expect(rows.map((r) => r.externalId)).toEqual(["it-mil-3/v3"]);
     expect(rows[0]!.fields["zone"]).toBe("it-mil-3");
   });
 
-  it("asks the Instance API only in the zones it lists", async () => {
+  it("reads instances and flexible IPs in it-mil-2 and it-mil-3", async () => {
+    instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) =>
+      zone === "it-mil-2" ? { servers: [{ id: "s-mil2", name: "milan" }] } : { servers: [] },
+    );
     instanceMethods.listIps.mockResolvedValue({ ips: [] });
-    await makeClient().listResources("instance", ACCOUNT);
+    const rows = await makeClient().listResources("instance", ACCOUNT);
     await makeClient().listResources("flexible-ip", ACCOUNT);
     for (const zones of [zonesOf(instanceMethods.listServers), zonesOf(instanceMethods.listIps)]) {
-      expect(zones).toContain("it-mil-1");
-      expect(zones).not.toContain("it-mil-2");
-      expect(zones).not.toContain("it-mil-3");
+      expect(zones).toEqual(expect.arrayContaining(MILAN));
     }
+    expect(rows.map((r) => r.externalId)).toEqual(["it-mil-2/s-mil2"]);
   });
 
-  it("offers it-mil-2 and it-mil-3 when creating a block volume, and not an instance or IP", async () => {
+  it("offers it-mil-2 and it-mil-3 when creating a block volume, an instance or an IP", async () => {
     instanceMethods.listServersTypes.mockRejectedValue(new Error("x"));
     instanceMethods.listImages.mockRejectedValue(new Error("x"));
     const c = makeClient();
-    const block = pickerZones(await c.getCreateConfig("block-volume"));
-    expect(block).toEqual(expect.arrayContaining(["it-mil-1", "it-mil-2", "it-mil-3"]));
-    for (const typeId of ["instance", "flexible-ip"]) {
-      const zones = pickerZones(await c.getCreateConfig(typeId));
-      expect(zones).toContain("it-mil-1");
-      expect(zones).not.toContain("it-mil-2");
+    for (const typeId of ["block-volume", "instance", "flexible-ip"]) {
+      expect(pickerZones(await c.getCreateConfig(typeId))).toEqual(expect.arrayContaining(MILAN));
     }
   });
 
-  it("names the new zones in the block volume type's zone list only", () => {
+  it("names the new zones in each zonal type's zone list", () => {
     const zoneEnum = (typeId: string) =>
       plugin.resourceTypes.find((t) => t.id === typeId)!.fields.find((f) => f.key === "zone")!
         .enumValues;
-    expect(zoneEnum("block-volume")).toEqual(expect.arrayContaining(["it-mil-2", "it-mil-3"]));
-    for (const typeId of ["instance", "flexible-ip", "load-balancer"]) {
-      expect(zoneEnum(typeId)).not.toContain("it-mil-2");
+    for (const typeId of ["block-volume", "instance", "flexible-ip", "load-balancer"]) {
+      expect(zoneEnum(typeId)).toEqual(expect.arrayContaining(MILAN));
     }
   });
 });

@@ -854,6 +854,20 @@ describe("logs", () => {
     );
   });
 
+  it("allows the host of a real build log URL the way a bastion matches it", () => {
+    // The shape of a published `getBuildLogEndpoint` answer (signature cut).
+    const signed =
+      "https://storage.googleapis.com/fireworks-evaluator-build-logs/acct/ev1/build.log?Expires=1791036846&GoogleAccessId=fireworks-control-plane%40fw-ai-cp-prod.iam.gserviceaccount.com&Signature=x";
+    // Exact names, or `*.suffix` for anything under the suffix: the bastion's rule.
+    const allowed = (host: string) =>
+      manifest.egressHosts.some((entry) =>
+        entry.startsWith("*.") ? host.endsWith(entry.slice(1)) : host === entry,
+      );
+    expect(allowed(new URL(signed).host)).toBe(true);
+    expect(allowed("fireworks-evaluator-build-logs.storage.googleapis.com")).toBe(true);
+    expect(allowed("evil.example.com")).toBe(false);
+  });
+
   it("says so when the evaluator has no build log yet", async () => {
     installFetch(() => jsonResponse({}));
     const result = await client().getLogs("evaluator", `${ACCOUNT}:evaluator:ev1`, ACCOUNT, {});

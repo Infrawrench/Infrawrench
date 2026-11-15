@@ -15690,7 +15690,7 @@
   "6d10e7b31ce4b456": "Koyeb Web 服务、worker 或托管 Postgres 数据库",
   "597770962844ac33": "路由到应用的 Koyeb 分配域名或自定义域名",
   "50213c158475ca45": "由 Dynatrace Operator 监控的 Kubernetes 集群。",
-  "4852d0527b6f3633": "Lambda Cloud API 密钥，来自 Lambda Cloud 控制台的 API keys 页面（cloud.lambda.ai/api-keys），点击 Generate API key。密钥对整个团队有效并拥有完全访问权限；Lambda 只显示一次密钥。",
+  "1652ec477c95980d": "Lambda Cloud API 密钥，来自 Lambda Cloud 控制台的 API keys 页面（cloud.lambda.com/api-keys），点击 Generate API key。密钥对整个团队有效并拥有完全访问权限；Lambda 只显示一次密钥。",
   "6e484ccb45936277": "Lambda Cloud 按需 GPU 实例",
   "6d83326ea2177030": "动态密钥（数据库或云凭据等）的租约：签发时间和过期时间。可续期或吊销。列出租约需要具有 sudo 权限的令牌；仅显示前 300 个。",
   "b844464ac9c6b13e": "旧版原生集成（密钥同步的前身）。列出以便观察、重新同步和移除现有集成。",
