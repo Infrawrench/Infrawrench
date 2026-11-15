@@ -2921,7 +2921,7 @@ dependencies = [
  "tar",
  "thiserror",
  "toml",
- "ureq 3.5.1",
+ "ureq",
  "zip",
  "zstd 0.13.4",
 ]
@@ -2999,7 +2999,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
- "ureq 3.5.1",
+ "ureq",
  "zeroize",
 ]
 
@@ -5427,22 +5427,6 @@ checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "ureq"
-version = "2.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
-dependencies = [
- "base64 0.22.1",
- "flate2",
- "log",
- "once_cell",
- "rustls",
- "rustls-pki-types",
- "url",
- "webpki-roots 0.26.11",
-]
-
-[[package]]
-name = "ureq"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7be76686bdf7198002062423ca0d8cf9b75a27c8e1de804513b97e97b555d9d"
@@ -5454,7 +5438,7 @@ dependencies = [
  "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots 1.0.11",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -6001,9 +5985,9 @@ dependencies = [
  "cc",
  "enum-iterator",
  "offset-allocator",
+ "sha2",
  "tar",
  "tracing",
- "ureq 2.12.1",
  "wasmer",
  "wasmer-wasix",
  "xz",
@@ -6307,15 +6291,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e49d0e65abc00c142e8f9428da991da9f1a250c39be97459901eb12b9b49f62a"
 dependencies = [
  "rustls-pki-types",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.26.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
-dependencies = [
- "webpki-roots 1.0.11",
 ]
 
 [[package]]

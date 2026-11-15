@@ -1800,6 +1800,115 @@ jobs:
       for i in $(seq 20); do test "$(node /tmp/compile.js)" = done; done
       test "$(node /tmp/compile.js timer)" = done
 
+  # Isolates on several threads at once calling from WebAssembly into
+  # JavaScript, while V8's WebAssembly code GC frees what they dropped
+  # (#970, #1039): every call goes through a wasm-to-JS wrapper from V8's
+  # process-wide cache and tiers it up, and the modules are made and dropped
+  # again, half their signatures shared between threads, half not. V8 13.6
+  # could free such a wrapper twice and take the runner down, which the
+  # bridge kept from happening by turning the code GC off; V8 13.7 fixed the
+  # lookup. Four Workers beside the main thread, four generations of them.
+  wasm-wrappers-passes:
+    using: env:bash-node@24
+    timeout: 5m
+    run: |
+      cat > /tmp/wrappers.js <<'JS'
+      const { Worker, isMainThread, workerData, parentPort } = require("node:worker_threads");
+
+      const leb = (n) => {
+        const out = [];
+        do {
+          let byte = n & 0x7f;
+          n >>>= 7;
+          if (n) byte |= 0x80;
+          out.push(byte);
+        } while (n);
+        return out;
+      };
+      const section = (id, body) => [id, ...leb(body.length), ...body];
+      const vec = (items) => [...leb(items.length), ...items.flat()];
+      const str = (s) => [...leb(s.length), ...Buffer.from(s)];
+      const CONST = { 0x7f: [0x41, 0], 0x7e: [0x42, 0], 0x7d: [0x43, 0, 0, 0, 0], 0x7c: [0x44, 0, 0, 0, 0, 0, 0, 0, 0] };
+      const TYPES = [0x7f, 0x7e, 0x7d, 0x7c];
+
+      // A module importing one function per signature and exporting a caller for
+      // each: signature k takes params spelled by k's base-4 digits.
+      function module(signatures) {
+        const params = signatures.map((k) => {
+          const p = [];
+          for (let n = k; n > 0; n = Math.floor(n / 4)) p.push(TYPES[n % 4]);
+          return p;
+        });
+        const types = [...params.map((p) => [0x60, ...vec(p.map((t) => [t])), 0]), [0x60, 0, 0]];
+        const caller = types.length - 1;
+        const imports = signatures.map((_, i) => [...str("m"), ...str(`f${i}`), 0, ...leb(i)]);
+        const funcs = signatures.map(() => leb(caller));
+        const exports = signatures.map((_, i) => [...str(`c${i}`), 0, ...leb(signatures.length + i)]);
+        const bodies = params.map((p, i) => {
+          const code = [0, ...p.flatMap((t) => CONST[t]), 0x10, ...leb(i), 0x0b];
+          return [...leb(code.length), ...code];
+        });
+        return new Uint8Array([
+          0, 0x61, 0x73, 0x6d, 1, 0, 0, 0,
+          ...section(1, vec(types)),
+          ...section(2, vec(imports)),
+          ...section(3, vec(funcs)),
+          ...section(7, vec(exports)),
+          ...section(10, vec(bodies)),
+        ]);
+      }
+
+      function churn(seed, rounds) {
+        let calls = 0;
+        for (let round = 0; round < rounds; round++) {
+          // Half the signatures every thread shares, half its own for the round.
+          const signatures = [];
+          for (let k = 0; k < 24; k++) signatures.push(k < 12 ? k + 1 : 64 + ((seed * 997 + round * 31 + k) % 4000));
+          const imports = { m: {} };
+          signatures.forEach((_, i) => (imports.m[`f${i}`] = () => calls++));
+          const instance = new WebAssembly.Instance(new WebAssembly.Module(module(signatures)), imports);
+          const callers = Object.values(instance.exports);
+          for (let i = 0; i < 300; i++) for (const call of callers) call();
+          // Garbage, so the instances and their code die.
+          let junk = [];
+          for (let i = 0; i < 2000; i++) junk.push(new Array(64).fill(i));
+          junk = null;
+        }
+        return calls;
+      }
+
+      if (isMainThread) {
+        const [workers = 4, generations = 4, rounds = 60] = process.argv.slice(2).map(Number);
+        let total = 0;
+        const run = (generation) =>
+          Promise.all(
+            Array.from({ length: workers }, (_, w) =>
+              new Promise((resolve, reject) => {
+                const worker = new Worker(__filename, { workerData: { seed: generation * workers + w, rounds } });
+                worker.on("message", (calls) => (total += calls));
+                worker.on("error", reject);
+                worker.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
+              }),
+            ),
+          );
+        (async () => {
+          for (let generation = 0; generation < generations; generation++) {
+            // The main thread churns too, beside its workers.
+            await Promise.all([run(generation), Promise.resolve().then(() => (total += churn(1000 + generation, rounds / 2)))]);
+          }
+          console.log(`calls: ${total}`);
+        })().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+      } else {
+        parentPort.postMessage(churn(workerData.seed, workerData.rounds));
+      }
+      JS
+      out="$(node /tmp/wrappers.js 4 4 60)"
+      echo "$out"
+      test "$out" = "calls: 7776000"
+
   # Relative paths read from many threads at once (#937): wasix-libc made
   # them absolute in one buffer every thread shares, so a read could open
   # the working directory (EISDIR) or another file. The environment's

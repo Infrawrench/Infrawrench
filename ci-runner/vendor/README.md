@@ -213,56 +213,19 @@ checkpoint runs"), for hosts that can end the guest's sleep themselves; it
 neither keeps a loop alive nor knows the isolate. `builtins/test.sh`'s
 `wasm-compile-passes` is the check.
 
-**And: Linux ARM64.** The crate knows no prebuilt V8 for Linux ARM64, and
-does not build there. `build.rs` maps it to `v8-linux-arm64.tar.xz` from the
-`wasmerio/v8-custom-builds` release 11.9.9 (11.9.7 has none; both carry V8
-13.6.233, and 11.9.8's notes name the ARM64 builds and shared-library-safe
-TLS as the change), while every other target keeps 11.9.7. Two more
-things only ARM64 needs: C strings are `std::ffi::c_char`, which is `u8`
-there, where the crate wrote `i8` (46 uses and two scratch buffers; the
+**And: Linux ARM64.** C strings are `std::ffi::c_char`, which is `u8` on
+ARM64, where the crate wrote `i8` (46 uses and two scratch buffers; the
 same type on x86_64), and V8's ARM64 build calls libatomic for its 16-byte
 atomics, so Linux ARM64 links `atomic`. Built and run on a Graviton5 host
 (`ci-2`), where #922's full Test pipeline (689 jobs) passed cold.
-
-**And: no WebAssembly code GC.** V8 13.6 keeps compiled wasm-to-JS
-wrappers in one cache for the whole process, and a lookup there
-(`WasmImportWrapperCache::MaybeGet`, `FindWrapper`, the re-check before a
-compile) adds the wrapper to the caller's `WasmCodeRefScope` before it
-checks that the wrapper is dying. Once a wasm code GC cycle has freed that
-wrapper on another isolate's thread, the scope frees it a second time on
-its way out, and the runner segfaults in `WasmEngine::FreeDeadCode` with
-every job in it (#970: `~WasmCodeRefScope` under
-`Runtime_TierUpWasmToJSWrapper`). It needs two isolates on two threads,
-which is any two jobs that run WebAssembly in Node (rolldown under tsdown
-or Vitest). V8 fixed the lookup in 9b8ca54d5, "Fix lookup of wrappers
-marked is_dying" (13.7, crbug 409379692); the bridge links a prebuilt
-13.6.233, so the runner configures V8 with `--no-wasm-code-gc`
-(`V8_FLAGS` in `iwci-runtime`): the cycle that frees a dying wrapper never
-runs, so nothing frees one twice.
-
-It is a stopgap, and its cost is memory. Code a module no longer uses
-(Liftoff code replaced by TurboFan's) stays until the module is freed,
-which is when the last job using it ends. A wrapper nobody references any
-more stays for the life of the runner, and the next job to need one
-compiles it again. Measured with the cycle on over 640 jobs that bundle
-with rolldown's wasm build: 11 cycles freed 3,913 module code objects, which
-the flag leaves to their modules, and 58 wrappers, about one for every 11
-jobs, which it leaves for good; a wrapper is a few hundred bytes of code.
-
-Drop the flag when the linked V8 is 13.7 or later. The prebuilt releases
-after 11.9.9 are V8 15.9 (`wasmerio/v8-custom-builds` 15.9.111.0 and
-15.9.111.1, linux amd64 and arm64), but wasmerio/napi's main still pins
-11.9.9: when a wasmer-napi release targets 15.9, drop the flag from
-`V8_FLAGS`.
 
 **And: the runner configures the V8 runtime.** V8's engine flags are the
 whole process's, so the runner sets them from the host, once, at start-up
 and before any job's instance exists: `configure_v8_runtime` (new, in
 `src/lib.rs`, over `snapi_bridge_host_configure_runtime`) applies the
-bridge's defaults and then the runner's `V8_FLAGS`
-(`crates/iwci-runtime/src/lib.rs`):
-`--no-memory-protection-keys` and `--no-wasm-code-gc` (above), which the
-bridge used to set itself, and `--js-source-phase-imports
+runner's `V8_FLAGS` (`crates/iwci-runtime/src/lib.rs`):
+`--no-memory-protection-keys` (above), which the bridge used to set
+itself, and `--js-source-phase-imports
 --harmony-import-attributes`, which Edge.js asks for at every start. Jobs
 can no longer change engine flags: the guest import
 `unofficial_napi_configure_runtime` still reads its options, so a malformed
@@ -461,9 +424,11 @@ space. `heap_space()` reports the space, and `set_heap_space` lowers it for
 an embedder that runs fewer heaps. It is an account, not a guarantee: a
 heap still grows between reports and up to its limit without asking.
 Drop this with a V8 built with multiple cages
-(`v8_enable_pointer_compression_multiple_cages`, where
-`IsolateGroup::Create` gives each job a cage of its own) or without pointer
-compression.
+(`v8_enable_pointer_compression_shared_cage=false`, where
+`IsolateGroup::Create` gives each isolate a cage of its own) or without
+pointer compression. The bridge links such a V8 since 15.9 (below), so the
+account no longer guards a shared cage; it still caps the heaps of all
+isolates together at 3.5 GiB until it is replaced (#1158).
 
 **And: the isolate group's main isolate is the bridge's (#1134).** The
 account above counts heaps, and the cage held more than heaps: the isolate
@@ -489,7 +454,9 @@ for the life of the process; it runs no JavaScript and its thread pumps its
 foreground tasks every 250 ms, so the pool is freed 8 s after each
 disposal. The same two runs then got 3.4 GB. `builtins/test.sh
 bash-node-pool` is that run. Drop this with a V8 whose pool does not wait
-on another isolate's thread.
+on another isolate's thread: 15.9 frees the pool from a worker thread, and
+with a cage per isolate each isolate is its group's only one, so this too
+goes with the account (#1158).
 
 **And: cloning and reading a message lend the store (#1061).** A backing
 store the bridge makes for V8 lives in the guest heap, which can grow the
@@ -577,8 +544,123 @@ isolate; they run with `cargo test --lib arrow_tests` in a copy of the
 directory, and `builtins/test.sh bash-node`'s `error-report-passes` is the
 check through Edge.js.
 
-**Remove it** when a wasmer-napi release after 0.705.0 includes wasmerio/napi
-main's rework of `g_mu` (envs owned per thread, termination outside the
+**And: V8 15.9 (#1039).** The crate links V8 13.6.233 (spring 2025), a
+prebuilt from `wasmerio/v8-custom-builds` release 11.9.7. The patch moves
+the bridge to V8 15.9.111, as wasmerio/napi main did in #147 (7e524870b,
+"port API to new V8", and 710500fac, "Complete the V8 15.9 port", merged as
+23da3dc3 on 2026-11-12), which no crate release carries yet.
+
+The library. `build.rs` links `v8-linux-<arch>.tar.xz` of the build it
+names `15.9.111.1-multicage`, after the `wasmerio/v8-custom-builds` release
+(https://github.com/wasmerio/v8-custom-builds/releases/tag/15.9.111.1) whose
+recipe made it, and refuses an archive whose SHA-256 is not the one pinned
+beside it (`prebuilt_pin`). It downloads nothing (`sha2` replaces `ureq`
+among its build dependencies): `../builtins/v8/archive.sh fetch` takes the
+archive from the runner pool's bucket,
+`v8-prebuilt/15.9.111.1-multicage/<arch>/`, into `../dist/v8/`, checked
+against the same pin, or `IWCI_V8_ARCHIVE` names one.
+The release's own archives do not link here: both are compiled with CREL
+relocations, which GNU ld (2.42 on the hosts and GitHub's runners) cannot
+read, and the ARM64 one against Chromium's libc++ (`std::__Cr`), whose types
+(`shared_ptr<BackingStore>` among them) a bridge compiled with GCC against
+libstdc++ cannot share. `../builtins/v8/build.sh` builds the same V8 commit
+with the release's patches and GN args (from that repository at the tag),
+without CREL, and against a sysroot of Ubuntu 22.04's glibc and GCC 12's
+libstdc++ on both architectures (ARM64 cross-compiled from x86_64), and
+with a pointer-compression cage per isolate group
+(`v8_enable_pointer_compression_shared_cage=false`), which is what the
+bucket holds. A changed build is stored under a new name, never over the
+old one.
+
+Per-isolate cages. The release, like 13.6, puts every isolate of the
+process in one 4 GiB cage, which every job's heaps share (#1063 below). V8
+15.9's heaps are larger under the same budget (an allocation-heavy `node`
+commits about 220 MB where 13.6's committed 155 MB, mostly old space), and
+with one cage `builtins/test.sh bash-node-pool`, 24 such `node`s at once,
+filled it and lost isolates on every run on ci-1 (5 of 5), where 13.6
+passed (2 of 2). Built without the shared cage,
+`IsolateGroup::CanCreateNewGroups()` is true, `GetOrCreateIsolateGroup`
+(already in the crate) gives every isolate a group and a cage of its own,
+and the same test passes (3 of 3). It costs about 95 MB of the runner's
+peak memory in a three-`node` job; start-up time is unchanged.
+
+The GC schedule. Two changes to 15.9's heuristics turned the budget's
+heap sizes into back-to-back mark-compacts, and both are undone from the
+runner, not here. 15.9 counts external memory (array buffers) towards a
+global limit of twice the old generation, so a Worker started at 64 MiB
+that held more than about 128 MB of buffers never left it:
+`../builtins/v8/global-heap-external.patch` adds a flag the runner passes
+to leave it out. And 15.9 restarts incremental marking after each
+mark-compact while the old generation has less room under its limit than
+the young generation's capacity, with that limit capped halfway between
+the heap's size and its maximum: with the 192 MiB young generation above
+(64 MiB semi-spaces), a 256 MiB heap past half full stayed in that state,
+below the 80% at which V8 asks the near-heap-limit callback for more.
+Vitest's main process in `server-core` ran 12,600 mark-compacts in 100 s,
+each freeing nothing, and major GC took 60% of the job's CPU. The runner
+caps every semi-space at 16 MiB (`--max-semi-space-size=16` in
+`iwci-runtime`'s `V8_FLAGS`), which moves that state past 80%: 38 of
+`server-core`'s test files took 97 s with the default, 72 s at 32 MiB,
+26 s at 16 MiB and 25 s at 8 MiB, against 48 s on 13.6.
+
+The C++. Each hunk of #147 that touches code 0.705.0 has is here: an
+`External` and an aligned pointer name their tag; `Context::GetIsolate` and
+`Promise::GetIsolate`, which 15.9 removed, are `Isolate::GetCurrent` (every
+caller runs on the isolate's thread with it entered); `Get`/`SetPrototypeV2`
+are `Get`/`SetPrototype` again; an accessor's receiver is `Holder()`; a vm
+context's own microtask queue, which V8 now collects, is held by a
+`cppgc::Persistent`; an interrupt callback is allowed to run JavaScript; the
+module linker refuses a module under evaluation, and instantiating one under
+evaluation does nothing. Left out of #147: entering the env's isolate
+around every bridge call (`BridgeEnvScope`, `NapiV8DetachEnvOwner`), which
+main needs because its envs no longer keep their isolate entered on the
+thread that made them, where 0.705.0's still do, and the parts for realms
+and `napi_compat`, which 0.705.0 does not have.
+
+The other hunks, against 15.9:
+
+- Dropped: no WebAssembly code GC (#970). `--no-wasm-code-gc`, set by
+  the bridge and then by the runner's `V8_FLAGS` (#1155), turned off V8's
+  wasm code GC because 13.6's wasm-to-JS wrapper cache could free a dying
+  wrapper twice when two isolates on two threads used it, which segfaulted
+  the runner in `WasmEngine::FreeDeadCode`. V8 fixed the lookup in
+  9b8ca54d5 (13.7, crbug 409379692), so the flag and the dead code and
+  wrappers it kept for the life of the runner are gone. The crash was never
+  reproducible on demand (#970); `builtins/test.sh`'s `wasm-wrappers-passes`
+  runs the pattern, isolates on five threads calling from WebAssembly into
+  JavaScript while their modules die, and passes on 15.9 with the code GC
+  on.
+- Dropped: `node_v8_default_flags.h` (`--js-explicit-resource-management
+--js-float16array`), which 15.9 ships; #147 drops it too.
+- Dropped: ARM64's prebuilt from release 11.9.9, which 11.9.7 lacked. Both
+  architectures link the pinned archive now.
+- Reworked: `build.rs`, from a download of the release's archive to the
+  pinned one above, built with a cage per isolate; and #1007's `CreateNodeBufferFromBytes`, whose
+  `Get`/`SetPrototypeV2` are `Get`/`SetPrototype`, with the same behaviour.
+  #147's other changes land in crate code next to our hunks (the external
+  buffer, the vm module callbacks) without changing them.
+- Unchanged, and still needed (main has none of them, or not in this form):
+  the lock-free terminate, no memory protection keys (15.9's `ThreadIsolation`
+  still protects with a key, and PKRU is still per thread), the heap sizes,
+  `g_mu` only where state is shared and the locks of #947, the env ids, the
+  lock-free env lookup, the guest heap's memory (#955), the platform's waits
+  (#943), ARM64's `c_char` and libatomic, the worker task hooks, the
+  out-of-memory confinement and its counts (#972, #990, #1021), the cage
+  account (#1063), the bridge's main isolate (#1134), the store lent in the
+  message imports and the rest of #1090, a guest callback's panic (#1092)
+  and the arrow messages (#1143), whose `arrow_tests` pass against 15.9.
+
+This is a port onto 0.705.0, not a rebase onto wasmerio/napi main
+(23da3dc3), which is 316 commits past 0.705.0 with a reworked guest API
+(realms in place of the contextify imports, 740 more lines of
+`unofficial_napi.h`) on which 180 of this patch's 277 hunks do not apply
+(all 72 in `napi_bridge_init.cc`, 30 of 36 in `guest/napi.rs`). Moving to
+main would take an unreleased guest API with it; the V8 port is the part
+of main this needed.
+
+**Remove it** when a wasmer-napi release after 0.705.0 links V8 15.9 or
+later in a form the runner can link (no CREL, libstdc++ on ARM64), includes
+wasmerio/napi main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
 and #146's fix, lends the store in the imports #1090 names, and either a
 guest's event loop is kept alive and woken

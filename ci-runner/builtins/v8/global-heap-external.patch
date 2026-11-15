@@ -1,0 +1,39 @@
+From: Infrawrench
+Subject: [PATCH] Optionally leave external memory out of the global heap size
+
+V8 15.9 counts external memory (array buffers, embedder-reported bytes)
+towards the global heap size, whose limit is twice the old generation. Under
+the runner's per-isolate budgets (a Worker starts with a 64 MiB old
+generation) an isolate holding more than about 128 MB of buffers stays over
+that limit and runs back-to-back major GCs. The runner charges those bytes to
+the job's memory itself, and passes --no-global-heap-limit-counts-external-memory.
+Applied after no-crel.patch.
+
+diff --git a/src/flags/flag-definitions.h b/src/flags/flag-definitions.h
+index af860eba726..a8c6f1a060c 100644
+--- a/src/flags/flag-definitions.h
++++ b/src/flags/flag-definitions.h
+@@ -2664,6 +2664,9 @@ DEFINE_BOOL(parallel_gc_clearing, true,
+             "use parallel threads to clear weak refs in the atomic pause.")
+ DEFINE_BOOL(detect_ineffective_gcs_near_heap_limit, true,
+             "trigger out-of-memory failure to avoid GC storm near heap limit")
++DEFINE_BOOL(global_heap_limit_counts_external_memory, true,
++            "count external memory (array buffers, embedder-reported bytes) "
++            "towards the global heap size that schedules major GCs")
+ DEFINE_BOOL(
+     enforce_global_heap_limit, false,
+     "Enforce global size by causing an out-of-memory failure above heap limit")
+diff --git a/src/heap/heap.cc b/src/heap/heap.cc
+index a6ec47e5e7e..8c13e35dc37 100644
+--- a/src/heap/heap.cc
++++ b/src/heap/heap.cc
+@@ -5309,7 +5309,8 @@ size_t Heap::EmbedderSizeOfObjects() const {
+ 
+ uint64_t Heap::GlobalSizeOfObjects() const {
+   return OldGenerationSizeOfObjects() + EmbedderSizeOfObjects() +
+-         external_memory();
++         (v8_flags.global_heap_limit_counts_external_memory ? external_memory()
++                                                            : 0);
+ }
+ 
+ size_t Heap::GlobalWastedBytes() const { return OldGenerationWastedBytes(); }

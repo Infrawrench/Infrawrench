@@ -80,17 +80,28 @@ pub fn set_node_worker_threads(cpus: usize) {
 ///   a thread from an older pool (a second job's `node`) faulted reading
 ///   that table in `Isolate::Init` and took the runner down. Without keys,
 ///   V8 protects those pages with mprotect, which every thread sees the same.
-/// - `--no-wasm-code-gc` (#970, #976): V8 13.6 keeps compiled wasm-to-JS
-///   wrappers in one cache for the process, and a lookup there adds a
-///   wrapper to the caller's `WasmCodeRefScope` before it checks that the
-///   wrapper is dying, so once a code GC cycle freed it on another
-///   isolate's thread the scope freed it again. V8 fixed the lookup in 13.7
-///   (9b8ca54d5); until the linked V8 is newer, the cycle never runs. Dead
-///   code then stays until its module goes, and a dead wrapper for the life
-///   of the process. Drop this flag with V8 13.7 or later.
+/// - `--no-global-heap-limit-counts-external-memory` (#1039, our V8 patch
+///   `builtins/v8/global-heap-external.patch`): V8 15.9 counts array buffers
+///   towards a global heap limit of twice the old generation, so a Worker
+///   started at 64 MiB that holds more than about 128 MB of buffers ran
+///   back-to-back major GCs (52,000 in one Vitest run). Those bytes are the
+///   job's memory, which the budget already holds.
+/// - `--max-semi-space-size=16` (#1039): V8 15.9 starts incremental marking
+///   again as soon as a major GC ends while the old generation has less
+///   room under its limit than the young generation's capacity, and caps
+///   that limit halfway between the heap's size and its maximum. With the
+///   64 MiB semi-spaces the bridge gives a budgeted isolate by default
+///   (`DEFAULT_YOUNG_GENERATION`), a heap past half of its 256 MiB maximum
+///   stayed in that state for good, below the 80% at which V8 asks the
+///   near-heap-limit callback for more: one Vitest process ran 12,600
+///   mark-compacts in 100 seconds, each freeing nothing, and major GC took
+///   60% of the job's CPU. At 16 MiB the state starts past 80%, where the
+///   callback grows the heap. The flag caps every isolate's semi-space,
+///   whatever its constraints ask.
 #[cfg(feature = "node")]
 const V8_FLAGS: &str = "--js-source-phase-imports --harmony-import-attributes \
-                        --no-memory-protection-keys --no-wasm-code-gc";
+                        --no-memory-protection-keys --no-global-heap-limit-counts-external-memory \
+                        --max-semi-space-size=16";
 
 /// Configures the V8 that Node jobs run on, once per process, with
 /// `V8_FLAGS`. It runs at start-up, after [`set_node_worker_threads`]

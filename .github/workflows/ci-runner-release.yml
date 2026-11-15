@@ -118,6 +118,17 @@ jobs:
           workspaces: ci-runner
           key: release
 
+      # The bridge links V8 15.9 built by builtins/v8/build.sh (hours, so not
+      # here), kept in the runner pool's bucket and checked against the
+      # SHA-256 pinned in vendor/wasmer-napi/build.rs.
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
+
       - name: Build
         env:
           IWCI_VERSION: ${{ needs.version.outputs.version }}
@@ -189,6 +200,15 @@ jobs:
         with:
           workspaces: ci-runner
           key: release-arm64
+
+      # See the x86_64 job.
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
 
       - name: Build
         env:

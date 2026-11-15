@@ -101,13 +101,13 @@ pub const MAX_STOP_OVERDRAFT: u64 = 128 * MIB;
 /// and V8's own malloc'd metadata without sampling.
 pub const DEFAULT_PER_ISOLATE_OVERHEAD: u64 = 8 * MIB;
 
-/// iwci patch (#1063): the pointer-compression cage every V8 heap of the
-/// process lives in. The bridge's V8 compresses pointers into one 4 GiB
-/// cage per isolate group and is built with a single group
-/// (`v8::IsolateGroup::CanCreateNewGroups()` is false), so every isolate of
-/// every app allocates its heap pages from the same 4 GiB, whatever each
-/// app's own budget says. Past it a page allocation fails, which V8 treats
-/// as fatal ("young object promotion failed", "CALL_AND_RETRY_LAST").
+/// iwci patch (#1063): the pointer-compression cage of a V8 isolate group,
+/// 4 GiB. With V8 13.6 the bridge had a single group, so every isolate of
+/// every app allocated its heap pages from the same 4 GiB, whatever each
+/// app's own budget said, and past it a page allocation failed, which V8
+/// treats as fatal ("young object promotion failed", "CALL_AND_RETRY_LAST").
+/// The V8 15.9 the runner links has a group, and a cage, per isolate, so
+/// the account below no longer guards a shared cage (#1158).
 pub const V8_HEAP_CAGE: u64 = 4096 * MIB;
 /// iwci patch (#1063): what [`HeapSpace`] lets the isolates of the process
 /// use together: the cage less room for what its account does not see (the

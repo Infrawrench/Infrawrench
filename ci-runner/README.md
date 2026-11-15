@@ -858,9 +858,11 @@ process, so a fault in that bridge is a crash of every run on the runner;
 turns). It also means one `node`'s state can reach another's: #955 was a
 `node` that started as another ended being given the dead one's heap of
 `ArrayBuffer` memory, because the bridge found it by the address the two
-memories had in turn, and dying as it started with "Bad system call". On Linux it builds for x86_64 and ARM64: the vendored bridge takes
-ARM64's V8 from a later `wasmerio/v8-custom-builds` release (the same V8)
-and links libatomic there, and the release channel carries both
+memories had in turn, and dying as it started with "Bad system call". On Linux it builds for x86_64 and ARM64: the vendored bridge links V8
+15.9, which `builtins/v8/build.sh` builds for both and `builtins/v8/archive.sh
+fetch` downloads from the runner pool's bucket (so building with
+`--features node` needs that bucket's credentials), and links libatomic on
+ARM64, and the release channel carries both
 (`x86_64-linux` and `aarch64-linux`); a runner installs its own
 architecture's build.
 
@@ -2934,6 +2936,7 @@ bash builtins/test.sh python php             # need the internet (pip, Composer)
 bash builtins/test.sh go                     # every minor; go@1.27 for one
 bash builtins/test.sh bash kubectl           # needs Go's archive and modules
 bash builtins/test.sh bash openssh           # needs ssh-keygen here, and the internet
+bash builtins/v8/archive.sh fetch          # V8 for the bridge; needs the bucket
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
 ```
 

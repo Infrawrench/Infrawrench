@@ -10,7 +10,7 @@ v8::Local<v8::External> napi_external_wrapper__::New(napi_env__* env,
   if (wrapper == nullptr) {
     return v8::Local<v8::External>();
   }
-  v8::Local<v8::External> external = v8::External::New(env->isolate, wrapper);
+  v8::Local<v8::External> external = v8::External::New(env->isolate, wrapper, v8::kExternalPointerTypeTagDefault);
   wrapper->handle_.Reset(env->isolate, external);
   wrapper->handle_.SetWeak(wrapper, WeakCallback, v8::WeakCallbackType::kParameter);
   return external;
@@ -18,7 +18,7 @@ v8::Local<v8::External> napi_external_wrapper__::New(napi_env__* env,
 
 napi_external_wrapper__* napi_external_wrapper__::From(
     v8::Local<v8::External> external) {
-  return static_cast<napi_external_wrapper__*>(external->Value());
+  return static_cast<napi_external_wrapper__*>(external->Value(v8::kExternalPointerTypeTagDefault));
 }
 
 bool napi_external_wrapper__::TypeTag(const napi_type_tag* tag) {

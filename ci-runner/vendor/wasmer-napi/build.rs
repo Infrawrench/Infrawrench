@@ -1,23 +1,29 @@
 use std::{
     env,
-    io::Read,
     path::{Path, PathBuf},
 };
 
-const PREBUILT_V8_VERSION: &str = "11.9.7";
-/// The release with Linux ARM64 builds, which 11.9.7 lacks: the same V8
-/// (13.6.233), built with shared-library-safe TLS on Linux.
-const PREBUILT_V8_VERSION_LINUX_ARM64: &str = "11.9.9";
+use sha2::{Digest, Sha256};
 
-/// The `wasmerio/v8-custom-builds` release this target's V8 comes from.
-fn prebuilt_release() -> &'static str {
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-    if target_os == "linux" && target_arch == "aarch64" {
-        PREBUILT_V8_VERSION_LINUX_ARM64
-    } else {
-        PREBUILT_V8_VERSION
+/// The V8 build the bridge links: V8 15.9.111 as wasmerio/v8-custom-builds
+/// builds its release 15.9.111.1, rebuilt by the runner's
+/// `builtins/v8/build.sh` without CREL relocations, against libstdc++, and
+/// with a pointer-compression cage per isolate group.
+/// `builtins/v8/archive.sh fetch` puts the archive where `v8_archive` looks,
+/// or `IWCI_V8_ARCHIVE` names it; either way it must hash to the pin.
+const PREBUILT_V8_VERSION: &str = "15.9.111.1-multicage";
+
+/// The archive for this target and its SHA-256.
+fn prebuilt_pin(platform_name: &str) -> Result<&'static str, String> {
+    match platform_name {
+        "linux-amd64" => Ok("92558be0ec37ff07ffafdf89b55eca4e8bc425ee3958b014efb919ae0ce3846d"),
+        "linux-arm64" => Ok("d4c7d392ff66dbc89dd8fb8053746253f5aee3115423f38df0edf4e1f5d2f315"),
+        other => Err(format!("no pinned V8 build for {other}")),
     }
+}
+
+fn prebuilt_release() -> &'static str {
+    PREBUILT_V8_VERSION
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,16 +354,33 @@ fn resolve_prebuilt_v8(extra_override: Option<&str>) -> Result<V8Config, String>
         .join("v8-prebuilt")
         .join(prebuilt_release())
         .join(platform_name);
-    let archive_path = cache_dir.join(asset_name);
 
     std::fs::create_dir_all(&cache_dir)
         .map_err(|err| format!("failed to create {}: {err}", cache_dir.display()))?;
 
-    if !cache_dir.join("include/v8.h").exists()
+    let pinned = prebuilt_pin(platform_name)?;
+    // Unpacked again whenever the archive is not the one last unpacked here.
+    let stamp = cache_dir.join("sha256");
+    if std::fs::read_to_string(&stamp).ok().as_deref() != Some(pinned)
+        || !cache_dir.join("include/v8.h").exists()
         || resolve_primary_library(&cache_dir.join("lib")).is_none()
     {
-        download_prebuilt_archive(asset_name, &archive_path)?;
-        unpack_prebuilt_archive(&archive_path, &cache_dir)?;
+        let source = v8_archive(asset_name)?;
+        let bytes = std::fs::read(&source)
+            .map_err(|err| format!("failed to read {}: {err}", source.display()))?;
+        let actual = sha256_hex(&bytes);
+        if actual != pinned {
+            return Err(format!(
+                "{} hashes to {actual}, not the pinned {pinned}",
+                source.display()
+            ));
+        }
+        for dir in ["include", "lib"] {
+            let _ = std::fs::remove_dir_all(cache_dir.join(dir));
+        }
+        unpack_prebuilt_archive(&bytes, &cache_dir)?;
+        std::fs::write(&stamp, pinned)
+            .map_err(|err| format!("failed to write {}: {err}", stamp.display()))?;
     }
 
     let include_dir = cache_dir.join("include");
@@ -420,35 +443,42 @@ fn prebuilt_asset_name() -> Result<(&'static str, &'static str), String> {
     }
 }
 
-fn download_prebuilt_archive(asset_name: &str, archive_path: &Path) -> Result<(), String> {
-    let url = format!(
-        "https://github.com/wasmerio/v8-custom-builds/releases/download/{}/{asset_name}",
-        prebuilt_release()
-    );
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|err| format!("failed to download {url}: {err}"))?;
-
-    let mut reader = response.into_reader();
-    let mut tar_data = Vec::new();
-    reader
-        .read_to_end(&mut tar_data)
-        .map_err(|err| format!("failed to read response body from {url}: {err}"))?;
-
-    std::fs::write(archive_path, tar_data)
-        .map_err(|err| format!("failed to write {}: {err}", archive_path.display()))?;
-
-    Ok(())
+/// The archive: `IWCI_V8_ARCHIVE`, or where `builtins/v8/archive.sh fetch`
+/// leaves it, in the runner's `dist/`.
+fn v8_archive(asset_name: &str) -> Result<PathBuf, String> {
+    println!("cargo:rerun-if-env-changed=IWCI_V8_ARCHIVE");
+    let path = match env::var_os("IWCI_V8_ARCHIVE").filter(|value| !value.is_empty()) {
+        Some(path) => PathBuf::from(path),
+        None => PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|err| err.to_string())?)
+            .join("../../dist/v8")
+            .join(prebuilt_release())
+            .join(asset_name),
+    };
+    println!("cargo:rerun-if-changed={}", path.display());
+    if !path.exists() {
+        return Err(format!(
+            "V8 {} is not at {}: run `bash builtins/v8/archive.sh fetch` in ci-runner/ \
+             (it needs the runner pool's bucket), or build it with builtins/v8/build.sh",
+            prebuilt_release(),
+            path.display()
+        ));
+    }
+    Ok(path)
 }
 
-fn unpack_prebuilt_archive(archive_path: &Path, cache_dir: &Path) -> Result<(), String> {
-    let tar_data = std::fs::read(archive_path)
-        .map_err(|err| format!("failed to read {}: {err}", archive_path.display()))?;
-    let tar = xz::read::XzDecoder::new(tar_data.as_slice());
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn unpack_prebuilt_archive(tar_data: &[u8], cache_dir: &Path) -> Result<(), String> {
+    let tar = xz::read::XzDecoder::new(tar_data);
     let mut archive = tar::Archive::new(tar);
     archive
         .unpack(cache_dir)
-        .map_err(|err| format!("failed to unpack {}: {err}", archive_path.display()))
+        .map_err(|err| format!("failed to unpack V8 into {}: {err}", cache_dir.display()))
 }
 
 fn resolve_primary_library(dir: &Path) -> Option<PathBuf> {

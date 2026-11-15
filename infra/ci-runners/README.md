@@ -73,4 +73,6 @@ proxy's `RUNNERS` variable to `ci-1=https://...,ci-2=https://...`.
 TLS and reachability are yours: a tunnel token, or a TLS front that the
 proxy can reach at `url`. The hosts need outbound HTTPS to R2 and to the git
 hosts they clone from. Building `iwci` with `--features node` (for
-`env:bash-node`) needs x86_64; there is no prebuilt V8 for Linux arm64.
+`env:bash-node`) needs the bridge's V8 archive from the runner pool's bucket
+(`ci-runner/builtins/v8/archive.sh fetch`); the release channel carries
+builds for both x86_64 and arm64.
