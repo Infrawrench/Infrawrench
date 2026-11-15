@@ -1,6 +1,7 @@
-// The runners behind the proxy. A run is placed on the runner with the
-// most job memory for each run it has (`byPlacement`, and the README's
-// "Placement"); a runner that answers 429,
+// The runners behind the proxy. A run is placed on the runner where it
+// is expected to finish soonest: the one with the most cores for each run
+// it has, held to what its job memory lets a run use (`byPlacement`, and
+// the README's "Placement"); a runner that answers 429,
 // or that is draining before an update or a stop, is passed over, and the
 // caller only hears 429 when every runner is full, draining or down. Run
 // ids carry the runner's name (`<name>.<id>`), so status and log requests
@@ -27,6 +28,8 @@ export interface Capacity {
   slotsTotal: number;
   slotsFree: number;
   runsActive: number;
+  /** The cores the runner gives its jobs; `null` when it does not say. */
+  cpus: number | null;
   /** The runner's job memory budget, in bytes; `null` when it has none. */
   memoryTotal: number | null;
   /** What running jobs have reserved of it. */
@@ -80,28 +83,100 @@ export function placementShare(c: Capacity): number | null {
 }
 
 /**
+ * The job memory that keeps one core busy, in bytes. A test job reserves
+ * 4 to 6 GiB and keeps 2.3 threads busy at two Vitest workers; four such
+ * jobs filled ci-2's 25.7 GiB with 9 of its 16 vCPUs busy. One core for
+ * each 2 GiB sits between those, so a runner with less than 2 GiB a core
+ * (ci-2) counts as short of memory before it is short of cores, and one
+ * with more (ci-1, 3 GiB a core) the other way round.
+ */
+export const MEMORY_PER_CORE = 2 * 1024 ** 3;
+
+/**
+ * The CPU work of a typical pull request's run, in core-seconds: 2,000 to
+ * 2,400 measured, one plugin changed against a warm task cache. A cold run
+ * (nothing cached) is about 4,900.
+ */
+export const TYPICAL_RUN_WORK = 2400;
+
+/**
+ * The cores a new run could expect of a runner's CPUs, or `null` when it
+ * does not report them. The same shape as `placementShare`:
+ *
+ *     (cpus + idle) / 2 / (runs_active + 1)
+ *
+ * where `idle` is the cores no job runs on now: `cpus` less the jobs
+ * running (the slots in use), floored at none. A job is at least one
+ * busy thread, so this never counts a busy core as idle; it can count an
+ * idle one as busy only on a runner with more jobs than cores, which has
+ * none to spare anyway. Like memory, what is idle at the moment of placing
+ * is half the answer: a run admitted a second ago has started nothing yet,
+ * and the cores it will take are only visible in `runs_active`.
+ */
+export function coreShare(c: Capacity): number | null {
+  if (c.cpus === null || c.cpus <= 0) return null;
+  const idle = Math.max(0, c.cpus - (c.slotsTotal - c.slotsFree));
+  return (c.cpus + idle) / 2 / (c.runsActive + 1);
+}
+
+/**
+ * The cores a new run could expect to keep busy on a runner: its share of
+ * the CPUs (`coreShare`), held to what its share of the job memory
+ * (`placementShare`) lets it run at once, at `MEMORY_PER_CORE`. A runner
+ * that does not report its CPUs is ranked by memory alone, as every runner
+ * was before; `null` when it reports no memory budget either.
+ */
+export function runCores(c: Capacity): number | null {
+  const cores = coreShare(c);
+  const memory = placementShare(c);
+  if (memory === null) return null;
+  const byMemory = memory / MEMORY_PER_CORE;
+  return cores === null ? byMemory : Math.min(cores, byMemory);
+}
+
+/**
+ * How long a run of `work` core-seconds is expected to take on a runner,
+ * in seconds: the work over `runCores`. `null` when the runner reports no
+ * budget, `Infinity` when its admitted work already wants more than all of
+ * it. Every runner's estimate is the same `work` over its cores, so the
+ * order of runners does not depend on how large the run is, which the
+ * proxy cannot see.
+ */
+export function expectedSeconds(c: Capacity, work: number = TYPICAL_RUN_WORK): number | null {
+  const cores = runCores(c);
+  if (cores === null) return null;
+  return cores <= 0 ? Infinity : work / cores;
+}
+
+/**
  * Orders runners for a new run, best first:
  *
  * 1. Runners that report a job memory budget, then those that do not.
- * 2. The largest `placementShare`: job memory per run, the new one
- *    included.
+ * 2. The most `runCores`, which is the shortest `expectedSeconds`: the
+ *    cores a run can expect, the new one included, held to what its share
+ *    of the job memory lets it use.
  * 3. The most room (budget less held and queued), so a full pool places a
  *    run where the smallest backlog waits.
  * 4. Then the most free slots, the fewest active runs, and the name, so the
  *    order is stable.
  *
- * Slots alone would send every run to the runner with the most of them
- * while its memory is full (#1089). Free memory alone, ranked ahead of run
- * counts, sent every run to a runner with 2 GiB free and four runs over one
- * with none free and two (#1132): a run's jobs wait for memory, and a run
- * cannot move once it starts.
+ * Memory alone sent a run to whichever runner had the most of it for each
+ * run, and the two runners have nearly the same: 24 GiB on 8 cores and
+ * 25.7 GiB on 16. A run's time is its CPU work over the cores it gets, so
+ * the same run takes twice as long on the first. Slots alone would send
+ * every run to the runner with the most of them while its memory is full
+ * (#1089). Free memory alone, ranked ahead of run counts, sent every run
+ * to a runner with 2 GiB free and four runs over one with none free and
+ * two (#1132): a run's jobs wait for memory, and a run cannot move once it
+ * starts. Dividing by the runs a runner would then have is what spreads a
+ * burst: each run placed makes that runner worth less to the next.
  */
 export function byPlacement(a: Capacity, b: Capacity): number {
-  const shareA = placementShare(a);
-  const shareB = placementShare(b);
-  if ((shareA === null) !== (shareB === null)) return shareA === null ? 1 : -1;
-  if (shareA !== null && shareB !== null) {
-    const order = shareB - shareA || (memoryRoom(b) ?? 0) - (memoryRoom(a) ?? 0);
+  const coresA = runCores(a);
+  const coresB = runCores(b);
+  if ((coresA === null) !== (coresB === null)) return coresA === null ? 1 : -1;
+  if (coresA !== null && coresB !== null) {
+    const order = coresB - coresA || (memoryRoom(b) ?? 0) - (memoryRoom(a) ?? 0);
     if (order !== 0) return order;
   }
   return (
@@ -193,6 +268,7 @@ export class Pool {
           slotsTotal: 0,
           slotsFree: 0,
           runsActive: 0,
+          cpus: null,
           memoryTotal: null,
           memoryUsed: null,
           memoryWaiting: null,
@@ -208,6 +284,7 @@ export class Pool {
             slots_total?: number;
             slots_free?: number;
             runs_active?: number;
+            cpus?: unknown;
             memory_total?: unknown;
             memory_used?: unknown;
             memory_waiting?: unknown;
@@ -225,6 +302,7 @@ export class Pool {
             slotsTotal: body.slots_total ?? 0,
             slotsFree: body.slots_free ?? 0,
             runsActive: body.runs_active ?? 0,
+            cpus: bytes(body.cpus),
             memoryTotal: bytes(body.memory_total),
             memoryUsed: bytes(body.memory_used),
             memoryWaiting: bytes(body.memory_waiting),

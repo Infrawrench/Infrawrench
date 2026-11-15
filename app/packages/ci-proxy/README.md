@@ -24,7 +24,7 @@ token routes needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET /healthz`                                                            | `200 ok`, unauthenticated.                                                         |
 | `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=`     | A job's download, for a link the app signed (below); no bearer key.                |
 | `GET`, `PUT /v1/runners`                                                  | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                        | Each runner's slots, job memory, V8 losses, whether it answered; pool totals.      |
+| `GET /v1/capacity`                                                        | Each runner's cores, slots, job memory, V8 losses, whether it answered; totals.    |
 | `POST /v1/runs[?wait=true]`                                               | A run on the best placed runner (below). `429` only when every runner refuses.     |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                             | From the runner that has the run. Logs stream through as Server-Sent Events.       |
 | `POST /v1/runs/{id}/cancel`                                               | Cancels the run, or the pipelines the body names, on the runner that has it.       |
@@ -60,29 +60,65 @@ itself) is never given a run, and its free slots do not count.
 
 ## Placement
 
-A run (or a prepare) goes to the first runner in this order that takes it,
-from each runner's `/v1/capacity` at that moment (`byPlacement` in
-`src/pool.ts`). A runner's _room_ is its job memory budget less what
-running jobs hold and what jobs ready to start ask for:
-`memory_total - memory_used - memory_waiting`. Its _share_ is what a new
-run could expect of that budget:
+A run (or a prepare) goes to the runner where it is expected to finish
+soonest: the first in this order that takes it, from each runner's
+`/v1/capacity` at that moment (`byPlacement` in `src/pool.ts`). A run's
+time is its CPU work over the cores it gets, so runners are ranked by the
+cores a new run could expect to keep busy, `runCores`:
+
+```
+min(core share, memory share / 2 GiB)
+```
+
+The _core share_ is the runner's cores among the runs it would then have:
+
+```
+(cpus + idle) / 2 / (runs_active + 1)
+```
+
+where `idle` is `cpus` less the jobs running now (`slots_total -
+slots_free`), floored at none. The _memory share_ is the same shape over
+job memory, with a runner's _room_ being its budget less what running jobs
+hold and what jobs ready to start ask for (`memory_total - memory_used -
+memory_waiting`):
 
 ```
 (memory_total + max(room, -memory_total)) / 2 / (runs_active + 1)
 ```
 
 1. Runners that report a memory budget first, then any that do not.
-2. The largest share.
+2. The most `runCores`.
 3. The most room, so when every runner is owed more than its budget the
    run goes where the smallest backlog waits.
 4. Then the most free slots, the fewest active runs, and the name.
 
-The share averages the whole budget, which is what runs get over their
-life as the jobs holding memory now finish, with the room at this moment,
-and divides it among the runs that would then share the host. Runs last
-tens of minutes and a runner's reservations swing between a quarter and
-all of its budget in ten, so how many runs a runner has counts as much as
-what is free at the instant of placing. Ranking any free memory ahead of
+Memory holds a run's cores because a job cannot start until its `memory:`
+is free: 2 GiB a core (`MEMORY_PER_CORE`) is what test jobs come to, at 4
+to 6 GiB each for a little over two busy threads. So ci-1 (8 cores, 24
+GiB) is short of cores and ci-2 (16 cores, 25.7 GiB) of memory, and an
+idle ci-2 counts as 12.85 cores for a run against ci-1's 8. Ranking by
+memory alone, as before, saw two nearly equal runners (24 and 25.7 GiB),
+and under load could send a run to ci-1 while ci-2 had cores idle. A
+runner that does not report `cpus` is ranked by its memory share alone.
+
+`GET /v1/capacity` shows the result for each runner: `run_cores`, and
+`expected_seconds`, which is a typical pull request's CPU work (2,400
+core-seconds, `TYPICAL_RUN_WORK`) over it; `null` when a runner is owed
+more than its whole budget. Every runner's estimate is the same work over
+its cores, so the order does not depend on how large the run is, which the
+proxy cannot see: a cold run (about 4,900 core-seconds) takes twice as
+long everywhere.
+
+Both shares average the whole of what the runner has, which is what runs
+get over their life as the jobs running now finish, with what is free at
+this moment, and divide it among the runs that would then share the host.
+A run admitted a second ago has started no job, so only `runs_active`
+shows it, and dividing by it is what spreads a burst: six runs placed at
+once on two idle runners go four to ci-2 and two to ci-1.
+
+Runs last tens of minutes and a runner's reservations swing between a
+quarter and all of its budget in ten, so how many runs a runner has counts
+as much as what is free at the instant of placing. Ranking any free memory ahead of
 run counts sent every run of a burst to a runner with 2 GiB free and four
 runs rather than one with none free and two (#1132). Job memory is the
 only memory term: a runner's V8 heaps each count against their own job's

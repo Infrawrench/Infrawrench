@@ -29,7 +29,15 @@ import { serveDownload, type Downloads } from "./artifacts";
 import { authorised } from "./auth";
 import { ciCronDue } from "@infrawrench/client-core";
 import { identify, isId } from "./identity";
-import { isRunnerName, isRunnerUrl, parseRunId, type Pool, type RunnerEntry } from "./pool";
+import {
+  expectedSeconds,
+  isRunnerName,
+  isRunnerUrl,
+  parseRunId,
+  runCores,
+  type Pool,
+  type RunnerEntry,
+} from "./pool";
 import type { RunnerList } from "./runners";
 import type { ScheduleRow, ScheduledPipeline, ScheduleStore } from "./store";
 import {
@@ -74,6 +82,11 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
     status,
     headers: { "Content-Type": "application/json", ...headers },
   });
+}
+
+/** A number JSON can carry: `null` for none and for `Infinity`. */
+function finite(value: number | null): number | null {
+  return value !== null && Number.isFinite(value) ? Math.round(value) : null;
 }
 
 function error(status: number, message: string): Response {
@@ -301,11 +314,16 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         slots_total: r.slotsTotal,
         slots_free: r.slotsFree,
         runs_active: r.runsActive,
+        cpus: r.cpus,
         memory_total: r.memoryTotal,
         memory_used: r.memoryUsed,
         memory_waiting: r.memoryWaiting,
         v8_lost_isolates: r.v8LostIsolates,
         v8_lost_heap: r.v8LostHeap,
+        // What placement ranks by: the cores a new run could expect here,
+        // and how long a typical pull request's run would then take.
+        run_cores: r.up ? runCores(r) : null,
+        expected_seconds: r.up ? finite(expectedSeconds(r)) : null,
       })),
       slots_total: up.reduce((n, r) => n + r.slotsTotal, 0),
       // A draining runner takes no new runs, so its free slots are not free.
