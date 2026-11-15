@@ -64,7 +64,19 @@
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
  enum V8Method {
      Local,
-@@ -219,6 +239,11 @@
+@@ -90,6 +110,11 @@
+     build
+         .cpp(true)
+         .flag_if_supported("-std=c++20")
++        // V8 15.9's headers are C++23 (v8-wasm.h calls `unique_ptr::get` in
++        // a constexpr function), so the later flag wins where the compiler
++        // has it. That needs GCC 12's libstdc++ or later; GCC 13 lets the
++        // header through as C++20, which is why this did not fail everywhere.
++        .flag_if_supported("-std=c++23")
+         .flag_if_supported("-fno-rtti")
+         .flag_if_supported("-w")
+         .define("NAPI_EXTERN", Some(""))
+@@ -219,6 +244,11 @@
          println!("cargo:rustc-link-lib=dylib=m");
          println!("cargo:rustc-link-lib=dylib=pthread");
          println!("cargo:rustc-link-lib=dylib=rt");
@@ -76,7 +88,7 @@
      }
  }
  
-@@ -327,18 +352,35 @@
+@@ -327,18 +357,35 @@
      let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|err| err.to_string())?);
      let cache_dir = out_dir
          .join("v8-prebuilt")
@@ -117,7 +129,7 @@
      }
  
      let include_dir = cache_dir.join("include");
-@@ -392,6 +434,7 @@
+@@ -392,6 +439,7 @@
          ("macos", "x86_64", _) => Ok(("v8-darwin-amd64.tar.xz", "darwin-amd64")),
          ("linux", "x86_64", "gnu") => Ok(("v8-linux-amd64.tar.xz", "linux-amd64")),
          ("linux", "x86_64", "musl") => Ok(("v8-linux-musl-amd64.tar.xz", "linux-musl-amd64")),
@@ -125,7 +137,7 @@
          ("android", "aarch64", _) => Ok(("v8-android-arm64.tar.xz", "android-arm64")),
          ("windows", "x86_64", _) => Ok(("v8-windows-amd64.tar.xz", "windows-amd64")),
          (os, arch, env_kind) => Err(format!(
-@@ -400,34 +443,42 @@
+@@ -400,34 +448,42 @@
      }
  }
  

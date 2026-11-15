@@ -110,6 +110,11 @@ fn main() {
     build
         .cpp(true)
         .flag_if_supported("-std=c++20")
+        // V8 15.9's headers are C++23 (v8-wasm.h calls `unique_ptr::get` in
+        // a constexpr function), so the later flag wins where the compiler
+        // has it. That needs GCC 12's libstdc++ or later; GCC 13 lets the
+        // header through as C++20, which is why this did not fail everywhere.
+        .flag_if_supported("-std=c++23")
         .flag_if_supported("-fno-rtti")
         .flag_if_supported("-w")
         .define("NAPI_EXTERN", Some(""))

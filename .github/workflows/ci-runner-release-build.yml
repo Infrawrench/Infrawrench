@@ -1,0 +1,83 @@
+name: CI runner release build
+
+# The release's build, without the publishing: ci-runner-release.yml builds
+# `iwci` on Ubuntu 22.04 with ci-runner/release-build.sh, where ci-runner.yml
+# builds on 24.04, so a change the newer compiler and C++ library accept can
+# still break a release (V8 15.9's headers did, #1159). This runs that build
+# on both targets for pull requests that touch what it is sensitive to: the
+# bridge, the V8 it links, the build script or the release workflow.
+#
+# Keep `runs-on` and the steps up to the build the same as the release's.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ci-runner/vendor/wasmer-napi/**"
+      - "ci-runner/vendor/wasmer-napi.patch"
+      - "ci-runner/builtins/v8/**"
+      - "ci-runner/release-build.sh"
+      - "ci-runner/rust-toolchain.toml"
+      - ".github/workflows/ci-runner-release.yml"
+      - ".github/workflows/ci-runner-release-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build iwci as a release does (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux
+            runner: ubuntu-22.04
+          - target: aarch64-linux
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+          key: release-build-${{ matrix.target }}
+
+      - name: V8 for the bridge, from the runner pool's bucket
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/v8/archive.sh fetch
+
+      # The build, and its check that the binary asks for no newer glibc or
+      # libstdc++ than Ubuntu 22.04 has.
+      - name: Build
+        run: |
+          ./release-build.sh
+          test "$(./target/release/iwci version)" = "$(tr -d '[:space:]' < VERSION)"
+
+      # Kept a few days so the binary can be tried on a host before a
+      # release is cut. Never published from here.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: iwci-${{ matrix.target }}
+          path: ci-runner/target/release/iwci
+          retention-days: 3
+          if-no-files-found: error

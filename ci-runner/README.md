@@ -2882,6 +2882,14 @@ runs it per target and publishes only what is missing, so running it
 again finishes a version one of whose targets failed, and tags
 `ci-runner-v<version>` once both are out.
 
+The released binary is built by `release-build.sh` on Ubuntu 22.04, so that
+it runs on any host with glibc 2.35 and GCC 12's libstdc++
+(`GLIBCXX_3.4.30`) or later; the script compiles the Node bridge with GCC 12
+and fails if the binary asks for more.
+`.github/workflows/ci-runner-release-build.yml` runs the same build, without
+publishing, on pull requests that touch the bridge, its V8, the script or
+the release workflow.
+
 ## Storage layout (R2)
 
 The `iwci-store` crate documents the exact key layout and manifest formats;
