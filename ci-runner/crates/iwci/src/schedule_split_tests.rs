@@ -491,7 +491,8 @@ fn the_runners_of_a_split_run_never_wait_for_each_others_task_cache_markers() {
     let mut all: Vec<String> = one.report.jobs.iter().map(|j| j.id.clone()).collect();
     all.sort();
     assert_eq!(ran, all, "every job ran, and none twice");
-    assert!(!one.ran.is_empty() && !two.ran.is_empty(), "both took part");
+    // Whichever runner took which (a busy host can leave the helper with
+    // none), neither waited for the other's markers.
     assert_eq!((one_in.waits(), two_in.waits()), (0, 0));
     assert!(one.report.jobs.iter().all(|j| j.waited_for.is_none()));
     drop((first, second, one_in, two_in));

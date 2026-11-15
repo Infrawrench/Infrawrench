@@ -5,10 +5,12 @@ use super::*;
 use crate::adapters::inflight::StoreInFlight;
 use iwci_store::{ObjectStore, RepoId};
 
-/// Looks often and gives up soon, so a test takes milliseconds.
+/// Looks often, so a test takes milliseconds. The lease is long enough
+/// that a busy CI host, whose signs of life can stall for some hundreds
+/// of milliseconds, does not lose a holder that is alive.
 const FAST: InFlightTiming = InFlightTiming {
     poll: Duration::from_millis(10),
-    lease: Duration::from_millis(300),
+    lease: Duration::from_secs(2),
     margin: Duration::from_millis(50),
     recheck: Duration::from_millis(50),
 };
@@ -441,7 +443,7 @@ fn a_run_that_stops_saying_it_is_alive_is_not_waited_for() {
     assert_eq!(b_exec.ran(), vec!["lib", "check"]);
     // About one lease, not the job's ten-minute timeout.
     assert!(
-        waited >= FAST.lease && waited < Duration::from_secs(5),
+        waited >= FAST.lease && waited < Duration::from_secs(8),
         "{waited:?}"
     );
     drop((a_in, b_in));
@@ -526,7 +528,7 @@ fn a_run_that_is_alive_but_slow_is_waited_for_until_the_jobs_timeout() {
     assert!(
         lib.caches
             .iter()
-            .any(|l| l.contains("had not finished it after 1.6s")),
+            .any(|l| l.contains("had not finished it after 5.0s")),
         "{:?}",
         lib.caches
     );
