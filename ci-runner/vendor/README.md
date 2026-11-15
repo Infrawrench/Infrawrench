@@ -1352,10 +1352,24 @@ than unlinking it first, so the name is never missing in between.
 `iwci-runtime`'s `concurrent_renames_onto_one_name_all_succeed` and
 `builtins/test.sh bash-node`'s `rename-race-passes` are the checks.
 
-**Remove it** when a virtual-fs release after 0.705.0 has #7039 and a
-`create_dir` that looks up under its write lock: delete `vendor/virtual-fs*`
-and its `[patch.crates-io]` entry. A release with only #7039 is still worth
-taking with the `create_dir` hunk kept.
+**Why (#1211).** Resizing a checked-out file before anything else touched
+it (`ftruncate(2)`, Node's `fs.truncateSync`, `truncate -s`) zero-filled it:
+the overlay's `CopyOnWriteFile::set_len` made the upper layer's copy at the
+new size without copying the content into it, and a caller that closed the
+file next kept that. The patch's `overlay_fs.rs` hunk resizes as the write
+it is: it starts the copy as `poll_write` does and drives it once with a
+no-op waker, so an in-memory lower file is copied up and then resized
+before `set_len` returns (a source that is not ready finishes on the next
+poll, as before). Upstream `main` still has the old code (checked November
+2026, at b72787f1be). `iwci-vfs`'s
+`resizing_a_snapshot_file_keeps_its_content` is the check; the crate's own
+tests do not build outside Wasmer's tree (they include its test files).
+
+**Remove it** when a virtual-fs release after 0.705.0 has #7039, a
+`create_dir` that looks up under its write lock and a `set_len` that copies
+up first: delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry. A
+release with only some of them is still worth taking with the other hunks
+kept.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

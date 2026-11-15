@@ -1066,37 +1066,31 @@ where
         }
 
         fn set_len(&mut self, new_size: u64) -> crate::Result<()> {
+            if let CowState::Copied(file) = &mut self.state {
+                self.new_size = None;
+                return file.set_len(new_size);
+            }
+            // Resizing is a write, so the file is copied up first, content
+            // and all, and resized once copied (`SeekingRestore` applies
+            // `new_size`). This is done now rather than on the next poll: a
+            // caller that resizes and closes never polls again, and a copy
+            // made at the new size without the content zero-fills the file.
             self.new_size = Some(new_size);
             replace_with_or_abort(&mut self.state, |state| match state {
-                CowState::Copied(mut file) => {
-                    file.set_len(new_size).ok();
-                    CowState::Copied(file)
-                }
-                state => {
-                    if self.unlinked {
-                        return match state {
-                            CowState::ReadOnly(inner) => CowState::SeekingGet(inner),
-                            state => state,
-                        };
-                    }
-
-                    // in the scenario where the length is set but the file is not
-                    // polled then we need to make sure we create a file properly
-                    if let Some(parent) = self.path.parent() {
-                        ops::create_dir_all(&self.primary, parent).ok();
-                    }
-                    let dst = self
-                        .primary
-                        .new_open_options()
-                        .create(true)
-                        .write(true)
-                        .open(&self.path);
-                    if let Ok(mut file) = dst {
-                        file.set_len(new_size).ok();
-                    }
-                    state
-                }
+                CowState::ReadOnly(inner) => CowState::SeekingGet(inner),
+                state => state,
             });
+            let mut cx = Context::from_waker(std::task::Waker::noop());
+            if let Poll::Ready(Err(err)) = self.poll_copy_progress(&mut cx) {
+                self.new_size = None;
+                return Err(err.into());
+            }
+            // An appending copy ends without passing `SeekingRestore`.
+            if let CowState::Copied(file) = &mut self.state
+                && let Some(new_size) = self.new_size.take()
+            {
+                file.set_len(new_size)?;
+            }
             Ok(())
         }
 
