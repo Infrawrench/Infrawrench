@@ -30,6 +30,10 @@
 # directory, set builtin.json's version, build with NPM_CLI_PIN=1, pin the
 # printed hash, and give the test in test.sh's `npm-cli` pipeline a look.
 #
+# The tree is the same bytes on any machine and with npm 10 or 11 (CI
+# builds it on x86_64 and ARM64 and checks the pins: ci-runner.yml's
+# "npm-cli trees" job).
+#
 # Needs: node and npm 10+, GNU tar, zstd, jq.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
@@ -67,6 +71,10 @@ for tool in "$@"; do
     # the tool's own command is the builtin's, and nothing runs the rest.
     rm -f node_modules/.package-lock.json
     find node_modules -type d -name .bin -prune -exec rm -rf {} +
+    # npm 10 leaves the scope directory of an optional package it left out
+    # (node_modules/@esbuild), npm 11 does not: drop every empty directory
+    # so the tree is the same whichever npm installs it.
+    find node_modules -depth -type d -empty -delete
   )
 
   out="$(out_dir builtin "$name" "$version")"

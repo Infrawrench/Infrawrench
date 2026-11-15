@@ -165,6 +165,33 @@ jobs:
       - name: cargo test --features node
         run: cargo test -p iwci -p iwci-runtime --features iwci/node
 
+  # The deployment CLIs (builtin:vercel, wrangler, cf and neon) are a tar of
+  # what `npm ci` installs, checked against a SHA-256 pinned per tool. A pin
+  # must hold whichever machine, architecture and npm builds it, or a
+  # publish from one would not match a build on another: build every tool
+  # on both architectures with each runner image's own Node and npm, and
+  # let builtins/npm-cli/build.sh check the pins. Nothing here runs them
+  # (ci-runner-builtins.yml does, on Edge.js).
+  npm-cli-trees:
+    name: npm-cli trees (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Build every tool and check its pin
+        run: |
+          node --version
+          npm --version
+          bash builtins/npm-cli/build.sh
+
   builtins:
     name: Builtins (gofmt, bash, tools)
     runs-on: ubuntu-24.04-arm
