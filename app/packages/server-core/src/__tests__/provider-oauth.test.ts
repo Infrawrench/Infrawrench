@@ -112,8 +112,24 @@ describe("sealing", () => {
   it("rejects tampered and malformed values", async () => {
     const sealed = await sealGrant(grant());
     const [iv, ct] = sealed.split(".");
-    const flipped = ct!.slice(0, -2) + (ct!.endsWith("A") ? "BB" : "AA");
-    expect(await unsealGrant(`${iv}.${flipped}`)).toBeNull();
+    // Tampering is done on the decoded bytes. Editing the text can leave the
+    // bytes as they were: the last base64url character of a length that is
+    // not a multiple of three carries bits no byte uses, so two spellings
+    // decode to the same value and the "tampered" one still unseals.
+    const flipBit = (part: string, index: number): string => {
+      const bytes = Buffer.from(part, "base64url");
+      const at = index < 0 ? bytes.length + index : index;
+      bytes[at] = bytes[at]! ^ 1;
+      const flipped = bytes.toString("base64url");
+      expect(Buffer.from(flipped, "base64url").equals(Buffer.from(part, "base64url"))).toBe(false);
+      return flipped;
+    };
+    // The auth tag (the last 16 bytes), the ciphertext before it, and the IV.
+    expect(await unsealGrant(`${iv}.${flipBit(ct!, -1)}`)).toBeNull();
+    expect(await unsealGrant(`${iv}.${flipBit(ct!, 0)}`)).toBeNull();
+    expect(await unsealGrant(`${flipBit(iv!, 0)}.${ct}`)).toBeNull();
+    expect(await unsealGrant(`${iv}.${ct!.slice(0, -4)}`)).toBeNull();
+    expect(await unsealGrant(sealed)).not.toBeNull();
     expect(await unsealGrant("not-sealed")).toBeNull();
     expect(await unsealGrant('{"v":1}')).toBeNull();
     expect(await unsealGrant(await sealValue({ hello: "x" }, "provider-oauth:grant"))).toBeNull();
