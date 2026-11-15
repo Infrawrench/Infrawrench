@@ -10,6 +10,10 @@ import { defineConfig } from "vitest/config";
  * content, not location: any `src/__tests__` suite using the helper is picked
  * up automatically, so migrating a suite off its hand-rolled db stub is what
  * enrols it here.
+ *
+ * Files run in parallel: nothing is executed, so they share no rows, and the
+ * helper names each file's statements apart for a server whose connections
+ * share one session (Infrawrench CI's pglite-server).
  */
 const testsDir = "src/__tests__";
 const include = readdirSync(testsDir)
@@ -32,7 +36,6 @@ export default defineConfig({
     include,
     env: { INFRAWRENCH_SHADOW_POSTGRES: "1" },
     globalSetup: ["src/__tests__/helpers/shadow-postgres-setup.ts"],
-    fileParallelism: false,
     testTimeout: 60_000,
     hookTimeout: 120_000,
   },

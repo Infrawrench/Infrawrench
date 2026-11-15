@@ -45,7 +45,16 @@
  * (vitest.shadow-postgres.config.ts). A `42P18` ("could not determine data
  * type of parameter") is treated as a pass: it is PREPARE's inference limit,
  * not a defect of the query.
+ *
+ * The run's files go in parallel, each in a worker with a connection of its
+ * own, so a statement's name carries a token of its file's. On a real server
+ * that would not matter (a prepared statement belongs to its connection), but
+ * Infrawrench CI's `env:postgres` is pglite-server: one backend whose one
+ * session every connection shares, SQL `PREPARE` names included. Two workers
+ * both preparing `__iw_shadow_1` there fail with `42P05` ("already exists")
+ * whenever one's PREPARE lands between the other's PREPARE and DEALLOCATE.
  */
+import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/pg-proxy";
 import postgres from "postgres";
 import { vi } from "vitest";
@@ -53,6 +62,8 @@ import * as schema from "../../db/schema";
 
 let shadow: postgres.Sql | null = null;
 let prepareSeq = 0;
+// This module instance's (so this test file's) share of every statement name.
+const prepareToken = randomBytes(8).toString("hex");
 
 function shadowConnection(): postgres.Sql | null {
   if (process.env["INFRAWRENCH_SHADOW_POSTGRES"] !== "1") return null;
@@ -77,7 +88,7 @@ async function shadowValidate(statement: string): Promise<void> {
   if (vi.isFakeTimers()) return;
   const sql = shadowConnection();
   if (!sql) return;
-  const name = `__iw_shadow_${++prepareSeq}`;
+  const name = `__iw_shadow_${prepareToken}_${++prepareSeq}`;
   try {
     await sql.unsafe(`PREPARE ${name} AS ${statement}`);
     await sql.unsafe(`DEALLOCATE ${name}`);
