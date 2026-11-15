@@ -159,37 +159,38 @@ everything through.
 
 ### Jobs
 
-| Key           | Meaning                                                                                                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`       | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
-| `cloud`       | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
-| `args`        | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
-| `run`         | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
-| `name`        | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
-| `matrix`      | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
-| `cwd`         | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
-| `env`         | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
-| `clone`       | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
-| `deps`        | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`     | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
-| `needs`       | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
-| `if`          | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
-| `outputs`     | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
-| `paths`       | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
-| `timeout`     | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`      | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
-| `cache`       | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
-| `env-cache`   | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
-| `tools`       | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
-| `network`     | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
-| `artifacts`   | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
-| `downloads`   | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
-| `packages`    | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
-| `task-cache`  | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
-| `services`    | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
-| `connections` | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
-| `ssh-keys`    | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
-| `env-from`    | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
+| Key            | Meaning                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `using`        | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
+| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
+| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
+| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
+| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
+| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
+| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
+| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
+| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
+| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
+| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
+| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
+| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
+| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
+| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
+| `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
+| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
+| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
+| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
+| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
+| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
+| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
+| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
+| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
+| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
+| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
+| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -413,6 +414,67 @@ in a plan or a report.
   (the request's `lent`, below), and `--untrusted` runs as a fork's pull
   request would.
 - A job that is lent anything cannot be task-cached.
+
+### GitHub token
+
+A job that writes back to GitHub (pushes a tag or a branch, opens a pull
+request or an issue, publishes a release) asks for a token for the run's
+own repository, with the permissions it needs:
+
+```yaml
+jobs:
+  release:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write }
+    run: |
+      git tag "v$VERSION" && git push https://github.com/acme/web.git "v$VERSION"
+      gh pr create --head release --base main --title "Release $VERSION" --body ""
+```
+
+| Permission                                                                                                                | Level             |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `actions`, `checks`, `contents`, `deployments`, `discussions`, `issues`, `packages`, `pages`, `pull-requests`, `statuses` | `read` or `write` |
+
+The names are GitHub Actions' (`pull-requests`). Anything else
+(`administration`, `secrets`, `workflows`, an organization's permissions)
+is an error when the file is parsed.
+
+- **Minted for the run, by the app.** When it sends the run, the app
+  mints a GitHub App installation access token from the installation the
+  run came through, for this repository only and with exactly these
+  permissions (`metadata: read` comes with every token). Jobs asking for
+  the same permissions share one; nothing else in the run sees it.
+- **What the job gets.** `GH_TOKEN` and `GITHUB_TOKEN` (gh and most API
+  clients read one of them), `GH_REPO` (`acme/web`, so gh needs no
+  checkout, which has no `.git`), and Git's global configuration
+  (`GIT_CONFIG_GLOBAL=/root/.gitconfig`) with the token as an
+  `Authorization` header for `https://github.com/acme/web` and
+  `https://github.com/acme/web.git`, so `git push`, `git fetch` and
+  `git ls-remote` to the repository work with no credential helper. That
+  file is the job's global configuration, so `git config --global` works
+  too. `GIT_TERMINAL_PROMPT=0` makes a refused token fail Git rather than
+  leave it waiting for a password. Every one of them is masked like a secret, and the Base64 header
+  as well as the token.
+- **An hour.** GitHub's installation tokens last an hour from when the run
+  is sent, and cannot be extended. A job that starts after its token has
+  expired fails before it starts, saying so; one whose timeout ends later
+  (jobs may run for up to 6 hours) runs, and its report says when the
+  token expires. Put the steps that need it early, or in a job of its own.
+- **Only what the installation has.** A permission the Infrawrench GitHub
+  App's installation was not granted fails the job before it starts,
+  naming the permission; an owner of the account grants it in the
+  installation's settings on GitHub. Branch protection and rulesets apply
+  to the token as to the App.
+- **Never for a fork.** A pull request from a fork is never sent one, and a
+  job of it that asks fails as with any other lent name. A scheduled run
+  gets one, as the default branch it runs.
+- **Off unless asked.** A job without `github-token:` has no token, and
+  the token the runner clones with is never handed to a job.
+- A job with `github-token:` cannot be task-cached, and is not shared with
+  another runner in a [split run](#split-runs).
+- `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
+  request's `github-token`, below).
 
 ### Cloud jobs
 
@@ -1938,6 +2000,63 @@ exec` and `LocalCommand`. A jump host must be public, like any host a job
   not lend. The lent key is printed and must come out masked. Remote (`-R`)
   and dynamic (`-D`) forwarding are not tested.
 
+### GitHub CLI
+
+`tools: [builtin:gh@2.104]` puts the GitHub CLI on an environment's
+`PATH`. It is cli/cli's own `gh` (2.104.0, `gh --version` says so), built
+by `builtins/gh/build.sh` with `env:go`'s toolchain, whose WASIX patches
+give it sockets and child processes, and it reads the token a job is lent
+(`GH_TOKEN`, `GH_REPO`; see [GitHub token](#github-token)).
+
+```yaml
+release:
+  using: env:bash@5
+  tools: [builtin:gh@2.104]
+  github-token: { contents: write, pull-requests: write, issues: write }
+  run: |
+    gh release create "v$VERSION" --notes-file CHANGELOG.md dist/*.tgz
+    gh pr create --head bump --base main --title "Bump to $VERSION" --body ""
+    gh issue close 42 --comment "Released in v$VERSION"
+    gh api "repos/$GH_REPO/releases/latest" --jq .tag_name
+```
+
+What to know:
+
+- **It needs no checkout.** The clone has no `.git`, so gh finds the
+  repository in `GH_REPO`, which the lent token sets; `gh pr create`
+  takes `--head` (a branch the job pushed) and `--base`.
+- **No terminal, no prompts.** The package sets `GH_PROMPT_DISABLED`,
+  so a command that would ask fails and says which flag it wants, as gh
+  does in any CI. There is no clipboard (copying fails with a reason) and
+  no browser.
+- **No telemetry and no update checks**: the package sets
+  `GH_TELEMETRY=disabled` and `GH_NO_UPDATE_NOTIFIER`, which a job's
+  `env:` can change.
+- **Certificates** are Mozilla's, in the package (`SSL_CERT_FILE`); Go's
+  `wasip1` port looks in no default place.
+- **Use the lent token.** `gh auth login`'s browser and device flows have
+  nothing to open; `GH_TOKEN` is all gh needs. Two gh processes refreshing
+  its configuration at once are not locked against each other (WASIX has
+  no `flock`). Precompiled extensions are Linux or macOS binaries and do
+  not run; only what the fixture below covers is tested.
+- **Seven packages** (five vendored, two of gh's own) that assume a
+  terminal, signals, a clipboard, file locks or process groups get wasip1
+  files that say there are none (`builtins/gh/shims/`), which is the whole
+  change to gh's source;
+  `build.sh` checks each build line it changes.
+- **It is a 73 MB module.** A runner compiles it once, after which a
+  command starts in a fraction of a second.
+- Tested end to end (`builtins/test.sh bash gh`) against a fake GitHub on
+  the job's own loopback (`builtins/gh/fake-github.go`): an HTTPS proxy
+  that answers for `github.com`, `api.github.com` and `uploads.github.com`
+  with a CA the job trusts, so gh and Git run unchanged against "GitHub":
+  `git push` of a branch and a tag with the lent Git configuration,
+  `gh pr create/list/edit/view`, `gh issue create/edit/close/view`,
+  `gh release create` with an asset, `gh api`, and as failures a token
+  GitHub refuses, a job that asked for none, permissions the app refused,
+  and a token that expired before the job started. The token is printed
+  and must come out masked.
+
 ### Git
 
 Every environment has Git 2.56.1 on `PATH`, built for WASIX from its
@@ -3433,6 +3552,33 @@ it is masked, and an untrusted run is given none of it:
     },
     "r2-assets": { "env": { "AWS_ACCESS_KEY_ID": "<value>", "AWS_SECRET_ACCESS_KEY": "<value>" } },
     "stripe-key": { "refused": "stripe-key is not granted to CI for acme/web" }
+  },
+  "github-token": {
+    "contents=write,pull-requests=write": {
+      "env": {
+        "GH_TOKEN": "<an installation token>",
+        "GITHUB_TOKEN": "<an installation token>",
+        "GH_REPO": [{ "text": "acme/web" }],
+        "GIT_CONFIG_GLOBAL": [{ "text": "/root/.gitconfig" }],
+        "GIT_TERMINAL_PROMPT": [{ "text": "0" }]
+      },
+      "files": [
+        {
+          "path": "/root/.gitconfig",
+          "content": [
+            {
+              "text": "[http \"https://github.com/acme/web\"]\n\textraheader = AUTHORIZATION: basic "
+            },
+            { "secret": "<base64 of x-access-token:the token>" },
+            { "text": "\n" }
+          ]
+        }
+      ],
+      "expires-at": 1794920400
+    },
+    "issues=write": {
+      "refused": "the Infrawrench GitHub App's installation on acme does not have issues: write"
+    }
   }
 }
 ```
@@ -3453,6 +3599,13 @@ it is masked, and an untrusted run is given none of it:
   or `refused-outputs` per output, is what a job that names it fails with.
   A name the job uses that `lent` does not have fails it as "connection
   `X` was not lent to this run".
+- **GitHub tokens** are keyed by the permissions jobs ask for, in order,
+  `name=level` joined by commas (`contents=write,pull-requests=write`);
+  a job is given the entry for exactly its own `github-token:`.
+- **Expiry.** `expires-at` (seconds since the Unix epoch), on any
+  connection, key or token entry: a job that names it and starts less than
+  a minute before then fails with that reason, and one whose timeout ends
+  after it gets a note in its report.
 - Up to 64 entries of each kind; the whole body is at most 1 MiB.
 
 - **Capacity.** A run is admitted when a slot is free and fewer runs are

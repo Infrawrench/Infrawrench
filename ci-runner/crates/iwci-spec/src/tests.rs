@@ -2238,6 +2238,93 @@ fn lent_names_are_checked_where_they_are_written() {
 }
 
 #[test]
+fn a_github_token_is_asked_for_by_permission() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  release:
+    using: env:bash@5
+    github-token: { pull-requests: write, contents: write }
+    run: git push origin v1
+  read:
+    using: env:bash@5
+    github-token:
+      issues: read
+    run: gh issue list
+  none:
+    using: env:bash@5
+    run: x
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let access = |key: &str| plan.template(key).unwrap().access.clone();
+    assert_eq!(
+        access("release").github_token_key().as_deref(),
+        Some("contents=write,pull-requests=write")
+    );
+    assert_eq!(
+        access("read").github_token_key().as_deref(),
+        Some("issues=read")
+    );
+    assert!(access("none").is_empty());
+    assert_eq!(access("none").github_token_key(), None);
+    // What `POST /v1/concurrency` lists for the app.
+    let json = serde_json::to_value(access("release")).unwrap();
+    assert_eq!(
+        json["github-token"],
+        serde_json::json!({ "contents": "write", "pull-requests": "write" })
+    );
+    for (yaml, needle) in [
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: { administration: write } }
+",
+            "jobs.a.github-token: `administration` is not a permission a job's token may have; it may have actions, checks, contents",
+        ),
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: { workflows: write } }
+",
+            "`workflows` is not a permission",
+        ),
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: { pull_requests: write } }
+",
+            "`pull_requests` is not a permission",
+        ),
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: { contents: admin } }
+",
+            "`contents: admin`: a permission is `read` or `write`",
+        ),
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: {} }
+",
+            "jobs.a.github-token: names no permission",
+        ),
+        (
+            "name: x
+jobs:
+  a: { using: env:bash@5, run: x, github-token: { contents: write }, task-cache: true }
+",
+            "a job that is lent a GitHub token cannot be task-cached",
+        ),
+    ] {
+        assert_error(yaml, needle);
+    }
+}
+
+#[test]
 fn bun_is_an_ecosystem_that_takes_a_directory() {
     let plan = parse(
         "name: x\nworkspace:\n  deps: [bun, { bun: { dir: web } }]\njobs:\n  t:\n    using: builtin:t@1\n",

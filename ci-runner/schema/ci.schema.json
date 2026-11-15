@@ -100,6 +100,10 @@
     }
   },
   "$defs": {
+    "githubTokenLevel": {
+      "enum": ["read", "write"],
+      "description": "`read` or `write`."
+    },
     "manual": {
       "type": "object",
       "additionalProperties": false,
@@ -407,6 +411,24 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
           },
           "description": "Resource grants (by their CI name) whose every exported key becomes an environment variable, such as an R2 bucket's S3 endpoint and keys. The job's own `env:` wins. Masked like secrets."
+        },
+        "github-token": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "actions": { "$ref": "#/$defs/githubTokenLevel" },
+            "checks": { "$ref": "#/$defs/githubTokenLevel" },
+            "contents": { "$ref": "#/$defs/githubTokenLevel" },
+            "deployments": { "$ref": "#/$defs/githubTokenLevel" },
+            "discussions": { "$ref": "#/$defs/githubTokenLevel" },
+            "issues": { "$ref": "#/$defs/githubTokenLevel" },
+            "packages": { "$ref": "#/$defs/githubTokenLevel" },
+            "pages": { "$ref": "#/$defs/githubTokenLevel" },
+            "pull-requests": { "$ref": "#/$defs/githubTokenLevel" },
+            "statuses": { "$ref": "#/$defs/githubTokenLevel" }
+          },
+          "description": "A GitHub token for the run's own repository with these permissions (GitHub Actions' names), minted for the run from the Infrawrench GitHub App's installation: `GH_TOKEN` and `GITHUB_TOKEN` for gh and the API, `GH_REPO`, and Git credentials so `git push` to the repository works. Lasts an hour from when the run starts. Masked like secrets. Never for a pull request from a fork."
         },
         "args": {
           "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",

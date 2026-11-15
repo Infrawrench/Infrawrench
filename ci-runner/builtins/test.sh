@@ -17,6 +17,7 @@
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
 #   builtins/test.sh npm-cli         the deployment CLIs against fake APIs
+#   builtins/test.sh bash gh         gh and git push against a fake GitHub
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -39,6 +40,11 @@
 # with connections and keys lent the same way, so it needs bash in the
 # same list, ssh-keygen on this machine for the fixture's keys, and the
 # internet to build (OpenSSH, OpenSSL, the toolchains, Go modules).
+# `gh` runs the GitHub CLI and Git from bash scripts against a fake GitHub
+# its build makes (`gh/fake-github.go`), on the job's loopback, with a
+# token lent the way the app lends one (`github-token:`, `IWCI_LENT_FILE`),
+# so it needs bash in the same list and the internet to build (Go's
+# archive, gh's source and modules).
 #
 # `aws`, `az` and `gcloud` run each cloud CLI's environment against a fake
 # of the calls they make (`environments/cloud-clis/fake-cloud.py`), a
@@ -90,6 +96,11 @@ export IWCI_SECRET_AZURE_FIXTURE_SECRET="fixture-azure-secret-0451"
 VERCEL_FIXTURE_TOKEN="vercelfixturetoken0451"
 CLOUDFLARE_FIXTURE_TOKEN="cloudflare-fixture-token-0451"
 NEON_FIXTURE_KEY="neon-fixture-key-0451"
+# The token the gh jobs are lent, which the fake GitHub wants (in no real
+# token's format), and the Basic credential Git sends with it: neither may
+# show up in a report (gh-passes prints both).
+GH_FIXTURE_TOKEN="fixture-installation-token-0451"
+GH_FIXTURE_BASIC="$(printf 'x-access-token:%s' "$GH_FIXTURE_TOKEN" | base64 | tr -d '\n')"
 
 # `go` is every Go minor the environments build.
 names=()
@@ -116,6 +127,10 @@ for name in "$@"; do
     kubectl)
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/kubectl/build.sh" 1.37
       dirs=("$dist"/builtin/kubectl/*)
+      ;;
+    gh)
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/gh/build.sh" 2.104
+      dirs=("$dist"/builtin/gh/*)
       ;;
     openssh)
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/openssh/build.sh"
@@ -167,7 +182,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh" >&2
       exit 2
       ;;
   esac
@@ -495,6 +510,22 @@ ln -s data.txt "$repo/data-link"
 if [[ -f "$dist/test/kubectl/fake-apiserver.wasm" ]]; then
   mkdir -p "$repo/k8s"
   cp "$dist/test/kubectl/fake-apiserver.wasm" "$repo/k8s/"
+fi
+# The fake GitHub, from gh's build.
+if [[ -f "$dist/test/gh/fake-github.wasm" ]]; then
+  mkdir -p "$repo/gh"
+  cp "$dist/test/gh/fake-github.wasm" "$repo/gh/"
+  # What every gh job does first: the fake on the job's loopback as the
+  # HTTPS proxy, and gh and Git trusting the CA it made. Nothing else
+  # changes, so they reach "github.com" as they would GitHub.
+  cat >"$repo/gh/serve.sh" <<'SH'
+serve_github() {
+  /app/gh/fake-github.wasm "$@" > /tmp/github.log 2>&1 &
+  wait-for-port 8080
+  export HTTPS_PROXY=http://127.0.0.1:8080
+  export SSL_CERT_FILE=/tmp/fake-github-ca.pem GIT_SSL_CAINFO=/tmp/fake-github-ca.pem
+}
+SH
 fi
 # OpenSSH's test server, from its build, and keys made here: host keys of
 # three types for three servers, another the wrong server holds, and the
@@ -1138,6 +1169,93 @@ jobs:
     tools: [builtin:kubectl@1.37]
     connections: [staging]
     run: kubectl get namespaces
+YAML
+      ;;
+    gh)
+      # A token lent as the app lends one (gh_lent, below): GH_TOKEN,
+      # GITHUB_TOKEN, GH_REPO, and Git's global configuration with the
+      # token as a header for the repository. The fake GitHub serves
+      # acme/widgets and wants that token.
+      cat <<'YAML'
+name: gh
+jobs:
+  gh-passes:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write, issues: write }
+    run: |
+      source /app/gh/serve.sh
+      serve_github
+      gh --version | grep -q '^gh version 2.104.0 (2026-11-12)'
+      test "$GH_REPO" = acme/widgets
+      test "$GIT_CONFIG_GLOBAL" = /root/.gitconfig
+      test "$(stat -c %a /root/.gitconfig)" = 600
+      # Masked wherever they are printed.
+      echo "token $GH_TOKEN, $GITHUB_TOKEN"
+      cat /root/.gitconfig
+      # git push with the lent credentials: a branch and a tag.
+      git config --global user.name ci
+      git config --global user.email ci@example.com
+      git init -q -b main /tmp/w && cd /tmp/w
+      echo widget > widget.txt && git add widget.txt && git commit -q -m 'Add a widget'
+      git push https://github.com/acme/widgets.git HEAD:main
+      git push https://github.com/acme/widgets.git HEAD:refs/heads/feature
+      git tag v1.0.0 && git push https://github.com/acme/widgets.git v1.0.0
+      test "$(git ls-remote https://github.com/acme/widgets.git refs/tags/v1.0.0 | cut -f1)" = "$(git rev-parse HEAD)"
+      cd /tmp
+      # Pull requests.
+      test "$(gh pr create --head feature --base main --title 'Add a widget' --body 'From CI.' --label bug)" = https://github.com/acme/widgets/pull/1
+      test "$(gh pr list --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"')" = "1 feature"
+      gh pr edit 1 --title 'Add widgets' --add-label release
+      test "$(gh pr view 1 --json title,labels --jq '.title + " " + ([.labels[].name] | join(","))')" = "Add widgets bug,release"
+      # Issues.
+      test "$(gh issue create --title 'A bug' --body 'Found by CI.' --label bug)" = https://github.com/acme/widgets/issues/2
+      gh issue edit 2 --title 'A real bug' --remove-label bug
+      gh issue close 2
+      test "$(gh issue view 2 --json state,title --jq '.state + " " + .title')" = "CLOSED A real bug"
+      # A release with an asset, and the REST API.
+      echo built > widget.tgz
+      test "$(gh release create v1.0.0 --title v1.0.0 --notes 'First.' ./widget.tgz)" = https://github.com/acme/widgets/releases/tag/v1.0.0
+      test "$(gh api repos/acme/widgets/releases/tags/v1.0.0 --jq '.assets[0].name')" = widget.tgz
+      test "$(gh api repos/acme/widgets --jq .full_name)" = acme/widgets
+      # Everything above reached the fake, as the right calls.
+      for want in 'POST github.com/acme/widgets.git/git-receive-pack' 'POST api.github.com/graphql PullRequestCreate' \
+        'POST api.github.com/graphql PullRequestUpdate' 'POST api.github.com/graphql IssueCreate' \
+        'POST api.github.com/graphql IssueClose' 'POST api.github.com/repos/acme/widgets/releases' \
+        'POST uploads.github.com/repos/acme/widgets/releases/1/assets'; do
+        grep -qF "$want" /tmp/github.log || { echo "the fake saw no $want"; cat /tmp/github.log; exit 1; }
+      done
+      ! grep -q -- '-> 401' /tmp/github.log
+  # GitHub refuses a token it did not issue, and gh and Git fail for it
+  # (Git at once: the lent token sets GIT_TERMINAL_PROMPT=0).
+  bad-token-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write, issues: write }
+    run: |
+      source /app/gh/serve.sh
+      serve_github -token another-token
+      if git ls-remote https://github.com/acme/widgets.git; then exit 2; fi
+      gh api repos/acme/widgets
+  # A job that asks for no token has none: gh says to log in.
+  no-token-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    run: |
+      test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}${GIT_CONFIG_GLOBAL:-}"
+      gh api repos/acme/widgets
+  # Permissions the app would not mint: the job never starts, with its reason.
+  refused-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { issues: write }
+    run: gh issue list
+  # A token that expired before the job started.
+  expired-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { statuses: write }
+    run: gh api repos/acme/widgets
 YAML
       ;;
     openssh)
@@ -4646,6 +4764,10 @@ want_reason() {
     bash/git-fatal-fails | python/git-auth-prompt-fails | python/git-prompt-ends-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
+    gh/bad-token-fails) echo "exited with 1" ;;
+    gh/no-token-fails) echo "exited with 4" ;;
+    gh/refused-fails) echo "the Infrawrench GitHub App's installation on acme does not have issues: write" ;;
+    gh/expired-fails) echo "the GitHub token for \`statuses=write\` expired" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
     openssh/not-lent-fails | aws/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
     aws/wrong-session-fails) echo "exited with 255" ;;
@@ -4680,6 +4802,8 @@ want_stderr() {
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
     python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
     python/git-prompt-ends-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8002'" ;;
+    gh/bad-token-fails) echo "could not read Username for 'https://github.com': terminal prompts disabled.*gh: Bad credentials \(HTTP 401\)" ;;
+    gh/no-token-fails) echo "gh auth login|GH_TOKEN" ;;
     openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;
@@ -4779,6 +4903,30 @@ cloud_lent() {
   esac
 }
 
+# What the app would lend the gh pipeline: a token per set of permissions
+# a job asks for (`ci/github-token.ts`, githubTokenEntry), one GitHub
+# would not mint, and one minted an hour and ten minutes ago.
+gh_lent() {
+  local now
+  now="$(date +%s)"
+  jq -n --arg token "$GH_FIXTURE_TOKEN" --arg basic "$GH_FIXTURE_BASIC" --argjson now "$now" '
+    def config: [
+      { text: "[http \"https://github.com/acme/widgets\"]\n\textraheader = AUTHORIZATION: basic " },
+      { secret: $basic }, { text: "\n" },
+      { text: "[http \"https://github.com/acme/widgets.git\"]\n\textraheader = AUTHORIZATION: basic " },
+      { secret: $basic }, { text: "\n" } ];
+    def token($expires): {
+      env: { GH_TOKEN: $token, GITHUB_TOKEN: $token, GH_REPO: [{ text: "acme/widgets" }],
+             GIT_CONFIG_GLOBAL: [{ text: "/root/.gitconfig" }], GIT_TERMINAL_PROMPT: [{ text: "0" }] },
+      files: [{ path: "/root/.gitconfig", mode: "600", content: config }],
+      "expires-at": $expires };
+    { "github-token": {
+        "contents=write,issues=write,pull-requests=write": token($now + 3600),
+        "issues=write": { refused: "the Infrawrench GitHub App'"'"'s installation on acme does not have issues: write, so it cannot lend a token with it; an owner of acme can grant it from the installation'"'"'s settings on GitHub" },
+        "statuses=write": token($now - 600)
+    } }'
+}
+
 failed=0
 for name in "$@"; do
   file="$SCRATCH/$name.yml"
@@ -4826,6 +4974,9 @@ JSON
         neon: { env: { NEON_API_KEY: [{ secret: $n }] }, files: [] }
       }
     }' >"$lent"
+  elif [[ "$name" == gh ]]; then
+    lent="$SCRATCH/gh-lent.json"
+    gh_lent >"$lent"
   fi
   # iwci's own stderr goes on to ours as it comes, and to a file that is
   # checked below.
@@ -4897,7 +5048,8 @@ JSON
   if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out" ||
     grep -qF -e "$IWCI_SECRET_AWS_FIXTURE_KEY" -e "$IWCI_SECRET_AWS_FIXTURE_TOKEN" -e "$AWS_FIXTURE_SECRET_KEY" \
       -e "$IWCI_SECRET_GCP_FIXTURE_TOKEN" -e "$IWCI_SECRET_AZURE_FIXTURE_SECRET" \
-      -e "$VERCEL_FIXTURE_TOKEN" -e "$CLOUDFLARE_FIXTURE_TOKEN" -e "$NEON_FIXTURE_KEY" <<<"$out"; then
+      -e "$VERCEL_FIXTURE_TOKEN" -e "$CLOUDFLARE_FIXTURE_TOKEN" -e "$NEON_FIXTURE_KEY" \
+      -e "$GH_FIXTURE_TOKEN" -e "$GH_FIXTURE_BASIC" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
   fi

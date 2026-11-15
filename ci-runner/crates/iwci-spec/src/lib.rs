@@ -1449,6 +1449,13 @@ impl Validator<'_> {
                     "a job that is lent connections, SSH keys or resources cannot be task-cached",
                 );
             }
+            if job.github_token.is_some() {
+                // It exists to change something on GitHub.
+                self.error(
+                    &at,
+                    "a job that is lent a GitHub token cannot be task-cached",
+                );
+            }
         }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
@@ -1719,6 +1726,35 @@ impl Validator<'_> {
                 self.error(format!("{path}.env-from"), format!("lists `{name}` twice"));
             } else {
                 access.env_from.push(name.clone());
+            }
+        }
+        if let Some(permissions) = &job.github_token {
+            let at = format!("{path}.github-token");
+            if permissions.is_empty() {
+                self.error(
+                    &at,
+                    "names no permission; write one, such as `contents: write`",
+                );
+            }
+            for (permission, level) in permissions {
+                if !GITHUB_TOKEN_PERMISSIONS.contains(&permission.as_str()) {
+                    self.error(
+                        &at,
+                        format!(
+                            "`{permission}` is not a permission a job's token may have; it may have {}",
+                            GITHUB_TOKEN_PERMISSIONS.join(", ")
+                        ),
+                    );
+                } else if level != "read" && level != "write" {
+                    self.error(
+                        &at,
+                        format!("`{permission}: {level}`: a permission is `read` or `write`"),
+                    );
+                } else {
+                    access
+                        .github_token
+                        .insert(permission.clone(), level.clone());
+                }
             }
         }
         let services = match &job.services {
