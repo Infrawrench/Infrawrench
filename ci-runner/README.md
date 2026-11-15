@@ -724,6 +724,32 @@ with no history at all every job counts alike, so the longest chain is the
 one with the most jobs on it. The order only ever applies within a run: runs
 sharing a runner still share its slots and memory as before.
 
+The order holds when memory is what jobs wait for (`--memory`, see
+[Limits](#limits)). The first job in the order starts as soon as its
+`memory:` fits. While it does not fit, it has a claim on the memory coming
+back: from when each running job is expected to end, the runner works out
+when the first job will fit and how much will be left over once it has
+started. A job behind it starts only if it fits now and either is expected
+to finish by then or fits in what will be left over, so by those expected
+times the first job starts no later than it would have with nothing behind
+it. Without the claim a
+large job waited for as long as smaller ones kept fitting: each time a job
+finished, a smaller job further down the order took the memory it gave back,
+and the large one started only once enough jobs happened to finish together.
+Only the first waiting job has a claim, so the others still use the memory
+it cannot. The claim decides which job waits, not how much waiting there is:
+a pipeline whose jobs reserve more than the runner has still queues (see
+`queued_ms` under [Limits](#limits)), with the jobs at the end of the order
+doing the waiting. Nor does it hold memory for a job that is not ready yet,
+so a job that becomes ready just after others took the memory waits for
+enough of them to end.
+
+Running jobs of other runs count, since the memory is shared. A job
+that has run past its expected time is expected to run on for as long again
+as it has overrun. A job's expected time is its own last time, a matrix
+entry's included, and for a job with no recorded time the median, as
+above.
+
 ### What changed from the first sketch
 
 - `git-clone` and `download-deps-with` moved to a top-level `workspace`
@@ -2204,7 +2230,10 @@ whole pipeline.
 - **`--memory`** is a budget across running jobs. A job reserves its
   `memory:` before it starts and waits until that fits, also when other
   runs hold the memory (any run giving memory back wakes the rest); a job
-  asking for more than the whole budget is an error, not a hang. The reservation
+  asking for more than the whole budget is an error, not a hang. Which
+  of a run's waiting jobs gets memory first is its [job order](#job-order):
+  a job further down starts ahead of the first only when that does not keep
+  the first waiting. The reservation
   stands for the job's program and its files together. The frozen workspace
   snapshots are not counted: they are built once and shared. Default: no
   budget for `iwci run`; see `--memory-reserve` for `iwci serve`.

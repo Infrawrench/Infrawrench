@@ -828,6 +828,16 @@ impl Executor<String> for Gated {
 
 /// One run of `plan` against `budget`, which other runs may share.
 fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunReport {
+    run_sharing_with(plan, exec, budget, None)
+}
+
+/// [`run_sharing`], with how long each job took last time.
+fn run_sharing_with(
+    plan: &Plan,
+    exec: &Gated,
+    budget: &Arc<MemoryBudget>,
+    durations: Option<Arc<MemoryDurations>>,
+) -> RunReport {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -844,7 +854,7 @@ fn run_sharing(plan: &Plan, exec: &Gated, budget: &Arc<MemoryBudget>) -> RunRepo
         slots: None,
         secrets: BTreeMap::new(),
         skip_task_cache: false,
-        durations: None,
+        durations: durations.map(|d| d as Arc<dyn Durations>),
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -3484,6 +3494,153 @@ fn with_a_memory_budget_jobs_still_start_in_rank_order() {
         "`tail` and `small` tie, and `small` comes first in the file"
     );
     assert_eq!(budget.used(), 0);
+}
+
+const GIB: u64 = 1 << 30;
+
+fn ask(gib: u64, secs: u64) -> Ask {
+    Ask {
+        bytes: gib * GIB,
+        expected: Duration::from_secs(secs),
+    }
+}
+
+/// The lease of the ask that started, which has to be the `nth`.
+fn started(admission: Admission, nth: usize) -> Lease {
+    match admission {
+        Admission::Start(pos, lease) if pos == nth => lease,
+        other => panic!("expected ask {nth} to start, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_first_job_waiting_for_memory_is_not_passed_over_by_jobs_that_would_delay_it() {
+    // 8 GiB, two jobs of 4 running: one for a minute, one for ten seconds.
+    let budget = MemoryBudget::new(8 * GIB);
+    let minute = started(budget.admit([ask(4, 60)]), 0);
+    let seconds = started(budget.admit([ask(4, 10)]), 0);
+    assert!(matches!(
+        budget.admit([ask(6, 60), ask(1, 1)]),
+        Admission::Wait { held_back: false }
+    ));
+
+    // The short one ends. A job of 6 is first in the order and fits once
+    // the other ends, in a minute, with 2 left over. A job of 4 that takes
+    // two minutes would then hold what the first needs: taking the first
+    // that fits, as the runner once did, started it and kept the first
+    // waiting two minutes instead of one.
+    budget.release(seconds);
+    assert!(matches!(
+        budget.admit([ask(6, 60), ask(4, 120)]),
+        Admission::Wait { held_back: true }
+    ));
+    assert_eq!(budget.used(), 4 * GIB, "the job held back took nothing");
+
+    // One expected to be done before the first can start anyway does
+    // start, and so does one that fits in what the first leaves over.
+    let short = started(budget.admit([ask(6, 60), ask(4, 120), ask(4, 20)]), 2);
+    budget.release(short);
+    let spare = started(budget.admit([ask(6, 60), ask(4, 120), ask(2, 600)]), 2);
+    // What is left over is only left once: 2 of it are taken now.
+    assert!(matches!(
+        budget.admit([ask(6, 60), ask(2, 600)]),
+        Admission::Wait { held_back: true }
+    ));
+    budget.release(spare);
+
+    // The first starts as soon as it fits, ahead of everything behind it.
+    budget.release(minute);
+    let first = started(budget.admit([ask(6, 60), ask(4, 20)]), 0);
+    budget.release(first);
+    assert_eq!(budget.used(), 0);
+
+    // Memory nothing says the end of (taken outside `admit`) is not
+    // waited for: the jobs behind start as they fit, as they always did.
+    assert!(budget.try_take(4 * GIB));
+    let behind = started(budget.admit([ask(6, 60), ask(4, 120)]), 1);
+    budget.release(behind);
+    budget.give(4 * GIB);
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn a_job_that_outlasts_its_expected_time_is_expected_to_go_on_as_long_as_it_overran() {
+    let taken = Instant::now();
+    let running = Running {
+        id: 1,
+        bytes: GIB,
+        taken,
+        expected: Duration::from_secs(10),
+    };
+    let after = |secs| taken + Duration::from_secs(secs);
+    assert_eq!(running.ends(taken), after(10));
+    assert_eq!(running.ends(after(4)), after(10));
+    // Thirty seconds in, twenty past its time: twenty more.
+    assert_eq!(running.ends(after(30)), after(50));
+}
+
+/// `hold` runs until the gate opens, on half of a 2 GiB budget. `big`
+/// needs all of it and is first in the order; the three `small` jobs fit
+/// beside `hold`.
+const STARVED: &str = "name: x\njobs:\n  seed: { using: builtin:ok@1, memory: 16MiB }\n  hold: { using: builtin:gate@1, memory: 1GiB }\n  big: { using: builtin:ok@1, memory: 2GiB, needs: [seed] }\n  small: { using: builtin:ok@1, memory: 1GiB, needs: [seed], matrix: [a, b, c] }\n";
+
+/// Runs [`STARVED`] with `small` jobs that took `small_ms` last time, and
+/// says what had started while `hold` still ran and what started in all.
+fn run_starved(small_ms: u64) -> (Vec<String>, Vec<String>) {
+    let p = plan(STARVED);
+    let history = MemoryDurations::with(
+        "x",
+        &[
+            ("hold", 3_600_000),
+            ("big", 3 * 3_600_000),
+            ("small[a]", small_ms),
+            ("small[b]", small_ms),
+            ("small[c]", small_ms),
+        ],
+    );
+    let budget = Arc::new(MemoryBudget::new(2 * GIB));
+    let exec = Gated::new();
+    let mut before = Vec::new();
+    std::thread::scope(|scope| {
+        let _unstick = OnPanic(|| exec.open());
+        let run = scope.spawn(|| run_sharing_with(&p, &exec, &budget, Some(history)));
+        eventually("`seed` to finish and `hold` to start", || {
+            exec.ran().len() >= 2 && budget.used() == GIB
+        });
+        // Long enough for a run that held jobs back to have looked again.
+        std::thread::sleep(HELD_BACK_RECHECK * 2);
+        before = exec.ran();
+        exec.open();
+        let report = run.join().unwrap();
+        assert!(report.passed(), "{:#?}", report.jobs);
+    });
+    assert_eq!(budget.used(), 0, "every reservation is given back");
+    assert_eq!(budget.waiting(), 0);
+    before.sort();
+    (before, exec.ran())
+}
+
+#[test]
+fn a_large_job_at_the_head_of_the_order_is_not_starved_by_small_ones_that_fit() {
+    // The small jobs took two hours each last time and `hold` has an hour
+    // to go, so each would still hold its gigabyte when `big` could start:
+    // they wait for `big`, which starts the moment `hold` ends. Started as
+    // they fit, they ran one after another in the gigabyte `hold` left
+    // and `big` waited for all three.
+    let (before, order) = run_starved(2 * 3_600_000);
+    assert_eq!(before, ["hold", "seed"], "nothing passes `big` over");
+    assert_eq!(order[2], "big", "{order:?}");
+    assert_eq!(order.len(), 6);
+
+    // Small jobs that take a second are done long before `hold` is, so
+    // they cost `big` nothing and run in the memory it cannot use yet.
+    let (before, order) = run_starved(1000);
+    assert_eq!(
+        before,
+        ["hold", "seed", "small[a]", "small[b]", "small[c]"],
+        "jobs that do not delay `big` still start"
+    );
+    assert_eq!(order[5], "big", "{order:?}");
 }
 
 #[test]

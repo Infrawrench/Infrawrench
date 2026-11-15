@@ -764,10 +764,17 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
 /// One budget is shared by every run in the process (`iwci serve`), so a
 /// run's queued job may be waiting for memory another run holds. Every run
 /// using the budget is woken whenever any of them gives memory back.
+///
+/// Which of a run's ready jobs gets memory is [`MemoryBudget::admit`]'s to
+/// say: the first in [`Rank`] order, and one behind it only when that does
+/// not keep the first waiting.
 #[derive(Debug)]
 pub struct MemoryBudget {
     total: u64,
     used: AtomicU64,
+    /// What running jobs hold and when each is expected to give it back,
+    /// every run's together.
+    leases: Mutex<Leases>,
     /// The memory asked for by jobs that are ready but not started, for
     /// `/v1/capacity`'s `memory_waiting`: the work a runner has admitted
     /// beyond what it holds.
@@ -783,6 +790,7 @@ impl MemoryBudget {
         Self {
             total,
             used: AtomicU64::new(0),
+            leases: Mutex::default(),
             waiting: AtomicU64::new(0),
             waiters: Mutex::default(),
             held: std::sync::OnceLock::new(),
@@ -819,13 +827,95 @@ impl MemoryBudget {
         self.waiting.load(Ordering::SeqCst)
     }
 
-    /// Takes `bytes` if they fit.
+    /// Takes `bytes` if they fit. Nothing says when they come back, so
+    /// [`MemoryBudget::admit`] never counts on them.
     pub fn try_take(&self, bytes: u64) -> bool {
         self.used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 used.checked_add(bytes).filter(|&next| next <= self.total)
             })
             .is_ok()
+    }
+
+    /// Starts one of a run's ready jobs, given in the order they should
+    /// start in: the first one if its memory fits, and otherwise a later
+    /// one that fits and does not keep the first waiting.
+    ///
+    /// Taking simply the first that fits starves a large job: every time
+    /// a small one finishes, another small one behind it in the order fits
+    /// what came back and the large one does not, so it waits until
+    /// enough jobs happen to finish together, however far ahead in the
+    /// order it is. On a runner with 25 GiB one of the Test pipeline's
+    /// 6 GiB jobs waited 32 to 35 s that way in five runs of eight, and
+    /// when it was web's tests, the longest job, the run took 115 s, not
+    /// 103 to 108.
+    ///
+    /// So the first job that does not fit gets a claim on the memory
+    /// coming back. From when each running job is expected to finish (every
+    /// run's, since they share the budget) there is a moment by which the
+    /// first job fits, and an amount left over once it has started then. A
+    /// job behind it starts only if it is expected to be done by that
+    /// moment, or fits in what is left over: either way the first job
+    /// starts when it would have with nothing behind it. Only the first job
+    /// is protected, as in EASY backfilling, so the rest still fill the
+    /// memory it cannot use.
+    ///
+    /// Memory taken with [`MemoryBudget::try_take`] has no expected end.
+    /// When the first job waits on that, nothing here can say when it
+    /// fits, and the jobs behind it start as they fit.
+    fn admit(&self, asks: impl IntoIterator<Item = Ask>) -> Admission {
+        let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        let mut asks = asks.into_iter().enumerate();
+        let Some((_, first)) = asks.next() else {
+            return Admission::Wait { held_back: false };
+        };
+        if let Some(lease) = self.lease(&mut leases, first, now) {
+            return Admission::Start(0, lease);
+        }
+        let free = self.total.saturating_sub(self.used());
+        let claim = leases.claim(now, free, first.bytes);
+        let mut held_back = false;
+        for (pos, ask) in asks {
+            let allowed = claim.is_none_or(|(by, spare)| {
+                ask.bytes <= spare || now.checked_add(ask.expected).is_some_and(|end| end <= by)
+            });
+            if !allowed {
+                held_back |= ask.bytes <= free;
+                continue;
+            }
+            if let Some(lease) = self.lease(&mut leases, ask, now) {
+                return Admission::Start(pos, lease);
+            }
+        }
+        Admission::Wait { held_back }
+    }
+
+    fn lease(&self, leases: &mut Leases, ask: Ask, now: Instant) -> Option<Lease> {
+        if !self.try_take(ask.bytes) {
+            return None;
+        }
+        leases.next += 1;
+        leases.running.push(Running {
+            id: leases.next,
+            bytes: ask.bytes,
+            taken: now,
+            expected: ask.expected,
+        });
+        Some(Lease {
+            id: leases.next,
+            bytes: ask.bytes,
+        })
+    }
+
+    /// Gives a finished job's memory back and wakes every run waiting.
+    fn release(&self, lease: Lease) {
+        self.leases
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .running
+            .retain(|r| r.id != lease.id);
+        self.give(lease.bytes);
     }
 
     /// Gives `bytes` back and wakes every run waiting for memory.
@@ -856,6 +946,82 @@ impl MemoryBudget {
         waiters.push(Arc::downgrade(wake));
     }
 }
+
+/// A ready job asking [`MemoryBudget::admit`] for its memory.
+#[derive(Debug, Clone, Copy)]
+struct Ask {
+    bytes: u64,
+    /// How long it is expected to hold them.
+    expected: Duration,
+}
+
+/// What [`MemoryBudget::admit`] decided.
+#[derive(Debug)]
+enum Admission {
+    /// The ask at this position starts, holding the lease until it ends.
+    Start(usize, Lease),
+    /// Nothing starts now. `held_back` when a job that fits was kept
+    /// waiting for the first one: time alone may let it start (the first
+    /// job's moment moves as running jobs outlast what was expected of
+    /// them), so the run looks again without waiting to be woken.
+    Wait { held_back: bool },
+}
+
+/// A running job's memory, to give back with [`MemoryBudget::release`].
+#[derive(Debug)]
+struct Lease {
+    id: u64,
+    bytes: u64,
+}
+
+#[derive(Debug)]
+struct Running {
+    id: u64,
+    bytes: u64,
+    taken: Instant,
+    expected: Duration,
+}
+
+impl Running {
+    /// When its memory is expected back. A job that has outlasted what
+    /// was expected of it is expected to go on for as long again as it has
+    /// overrun: its estimate was wrong (a job with no history counts as the
+    /// median), and the longer it has been wrong the less it says.
+    fn ends(&self, now: Instant) -> Instant {
+        let elapsed = now.saturating_duration_since(self.taken);
+        now + self.expected.abs_diff(elapsed)
+    }
+}
+
+#[derive(Debug, Default)]
+struct Leases {
+    next: u64,
+    running: Vec<Running>,
+}
+
+impl Leases {
+    /// When a job asking for `need` is expected to fit, with `free` now
+    /// and the running jobs giving theirs back as they end, and what is
+    /// left over once it has started then. `None` when what is expected
+    /// back never adds up to it.
+    fn claim(&self, now: Instant, free: u64, need: u64) -> Option<(Instant, u64)> {
+        let mut ends: Vec<(Instant, u64)> = self
+            .running
+            .iter()
+            .map(|r| (r.ends(now), r.bytes))
+            .collect();
+        ends.sort_unstable();
+        let mut have = free;
+        ends.into_iter().find_map(|(at, bytes)| {
+            have = have.saturating_add(bytes);
+            (have >= need).then(|| (at, have - need))
+        })
+    }
+}
+
+/// How often a run that held a job back for another looks again (see
+/// [`Admission::Wait`]).
+const HELD_BACK_RECHECK: Duration = Duration::from_millis(500);
 
 /// Wakes a run's threads when what they wait for may have changed: the
 /// run's own state, or memory any run gave back to a shared
@@ -891,10 +1057,35 @@ impl Wake {
         state: &'a Mutex<T>,
         seen: u64,
     ) -> MutexGuard<'a, T> {
+        self.wait_at_most(guard, state, seen, None)
+    }
+
+    /// [`Wake::wait`], giving up after `limit` when there is one.
+    fn wait_at_most<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        state: &'a Mutex<T>,
+        seen: u64,
+        limit: Option<Duration>,
+    ) -> MutexGuard<'a, T> {
         drop(guard);
+        let until = limit.map(|limit| Instant::now() + limit);
         let mut count = self.count.lock().unwrap_or_else(|e| e.into_inner());
         while *count == seen {
-            count = self.changed.wait(count).unwrap_or_else(|e| e.into_inner());
+            match until {
+                None => count = self.changed.wait(count).unwrap_or_else(|e| e.into_inner()),
+                Some(until) => {
+                    let left = until.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        break;
+                    }
+                    count = self
+                        .changed
+                        .wait_timeout(count, left)
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0;
+                }
+            }
         }
         drop(count);
         state.lock().unwrap()
@@ -962,6 +1153,10 @@ struct Finished {
 /// It only orders one run's own jobs. Runs sharing a runner still share
 /// its slots and memory as before: a run with long chains does not take
 /// slots from another.
+///
+/// The order holds when memory is short too: the first job in it that
+/// does not fit the runner's budget is not passed over by jobs that would
+/// keep it waiting ([`MemoryBudget::admit`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Rank {
     /// The job's own estimate plus the longest of its dependents'.
@@ -977,13 +1172,21 @@ struct Rank {
 /// one with the most jobs on it.
 const UNKNOWN_DURATION_MS: u64 = 1000;
 
+/// A key's place in the start order, and how long a job of it is expected
+/// to take when the history has no time for that job itself.
+#[derive(Debug, Clone, Copy)]
+struct Place {
+    rank: Rank,
+    expected_ms: u64,
+}
+
 /// Each key's place in the start order (see [`Rank`]; `entry` is filled in
 /// per matrix entry), from how long each job took last time.
 ///
 /// A job without history is expected to take the median of those with, or
 /// [`UNKNOWN_DURATION_MS`] when there is none. A matrix key is as long as
 /// its longest entry, since its entries run side by side.
-fn ranks(plan: &Plan, history: &HashMap<String, u64>) -> HashMap<String, Rank> {
+fn ranks(plan: &Plan, history: &HashMap<String, u64>) -> HashMap<String, Place> {
     let index: HashMap<&str, usize> = plan
         .jobs
         .iter()
@@ -1069,11 +1272,14 @@ fn ranks(plan: &Plan, history: &HashMap<String, u64>) -> HashMap<String, Rank> {
         }
         out.insert(
             t.key.clone(),
-            Rank {
-                remaining_ms,
-                dependents: count,
-                plan_order: std::cmp::Reverse(i),
-                entry: std::cmp::Reverse(0),
+            Place {
+                rank: Rank {
+                    remaining_ms,
+                    dependents: count,
+                    plan_order: std::cmp::Reverse(i),
+                    entry: std::cmp::Reverse(0),
+                },
+                expected_ms: estimate[i],
             },
         );
     }
@@ -1099,7 +1305,9 @@ struct State<'p> {
     /// [`Rank`] order, the next one last.
     queue: Vec<(Rank, (&'p JobTemplate, PlannedJob, Lookup))>,
     /// Where each key's jobs go in `lookups` and `queue`.
-    ranks: HashMap<String, Rank>,
+    ranks: HashMap<String, Place>,
+    /// How long each job took the last time the pipeline ran, by job id.
+    history: HashMap<String, u64>,
     /// Cloud jobs ready to hand over: no slot and no memory.
     external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
@@ -1118,6 +1326,14 @@ struct State<'p> {
 impl<'p> State<'p> {
     fn enqueue(&mut self, rank: Rank, mut entry: (&'p JobTemplate, PlannedJob, Lookup)) {
         entry.2.queued = Some(Instant::now());
+        // The job's own last time, which a matrix key's rank (its longest
+        // entry) does not say.
+        let expected_ms = self.history.get(&entry.1.id).copied().unwrap_or_else(|| {
+            self.ranks
+                .get(&entry.0.key)
+                .map_or(UNKNOWN_DURATION_MS, |p| p.expected_ms)
+        });
+        entry.2.expected = Duration::from_millis(expected_ms);
         self.queued.add(entry.1.memory_bytes);
         enqueue(&mut self.queue, rank, entry);
     }
@@ -1180,6 +1396,9 @@ struct Lookup {
     lines: Vec<String>,
     /// When the job joined the queue, for [`JobReport::queued_ms`].
     queued: Option<Instant>,
+    /// How long the job is expected to run, set when it joins the queue,
+    /// for [`MemoryBudget::admit`].
+    expected: Duration,
 }
 
 /// How a task cache lookup went.
@@ -1283,6 +1502,7 @@ pub fn run<T: Tools>(
         queue: Vec::new(),
         external: Vec::new(),
         ranks: ranks(plan, &history),
+        history,
         open: HashMap::new(),
         running: 0,
         reports: HashMap::new(),
@@ -1434,27 +1654,38 @@ pub fn run<T: Tools>(
                             // Read before the budget is, so memory given
                             // back after this wakes the wait below.
                             let seen = wake.seen();
-                            // The first job in `Rank` order whose memory fits
-                            // the runner's budget right now; the reservation
-                            // is held until it finishes. Without a budget,
-                            // simply the first. A cancelled run's queued jobs,
-                            // and every run's once the budget is held, are
-                            // only reported, so they need no memory.
-                            let cancelled = options.stopped().is_some();
+                            // The first job in `Rank` order when its memory
+                            // fits the runner's budget, or one behind it that
+                            // does not keep it waiting (`MemoryBudget::admit`);
+                            // the reservation is held until it finishes.
+                            // Without a budget, simply the first. A cancelled
+                            // run's queued jobs, and every run's once the
+                            // budget is held, are only reported, so they need
+                            // no memory.
+                            let mut held_back = false;
                             let fits = match &options.memory {
-                                _ if cancelled => s.queue.len().checked_sub(1),
-                                None => s.queue.len().checked_sub(1),
-                                Some(budget) => s
-                                    .queue
-                                    .iter()
-                                    .rposition(|(_, (_, j, _))| budget.try_take(j.memory_bytes)),
+                                Some(budget) if options.stopped().is_none() => {
+                                    let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
+                                        bytes: j.memory_bytes,
+                                        expected: l.expected,
+                                    });
+                                    match budget.admit(asks) {
+                                        Admission::Start(nth, lease) => {
+                                            Some((s.queue.len() - 1 - nth, Some(lease)))
+                                        }
+                                        Admission::Wait { held_back: held } => {
+                                            held_back = held;
+                                            None
+                                        }
+                                    }
+                                }
+                                _ => s.queue.len().checked_sub(1).map(|pos| (pos, None)),
                             };
-                            if let Some(pos) = fits {
+                            if let Some((pos, reserved)) = fits {
                                 let (template, job, lookup) = s.dequeue(pos);
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                let reserved = !cancelled && options.memory.is_some();
                                 break (template, job, lookup, inherited, reserved);
                             }
                             if s.running == 0
@@ -1492,12 +1723,16 @@ pub fn run<T: Tools>(
                             // and the budget wakes us when any run gives
                             // some back or holds it. A job that can never
                             // fit was turned away when it was activated.
-                            s = wake.wait(s, &state, seen);
+                            // A job held back for the first in the order may
+                            // start with time alone, so that is looked at
+                            // again before long.
+                            let limit = held_back.then_some(HELD_BACK_RECHECK);
+                            s = wake.wait_at_most(s, &state, seen, limit);
                         }
                     };
                     if let Some(reason) = options.stopped() {
-                        if let (true, Some(budget)) = (reserved, &options.memory) {
-                            budget.give(job.memory_bytes);
+                        if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                            budget.release(lease);
                         }
                         let report = cancelled_report(&job, reason);
                         complete(&state, &wake, plan, options, template, report, Vec::new());
@@ -1520,8 +1755,8 @@ pub fn run<T: Tools>(
                     );
                     report.queued_ms = queued_ms;
                     drop(slot);
-                    if let (true, Some(budget)) = (reserved, &options.memory) {
-                        budget.give(job.memory_bytes);
+                    if let (Some(lease), Some(budget)) = (reserved, &options.memory) {
+                        budget.release(lease);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
                 }
@@ -1542,6 +1777,7 @@ pub fn run<T: Tools>(
         .flat_map(|t| state.reports.remove(&t.key).unwrap_or_default())
         .collect();
     if let Some(durations) = &options.durations {
+        let history = std::mem::take(&mut state.history);
         let kept = merge_durations(plan, &jobs, history, measured.into_inner().unwrap());
         if let Some(kept) = kept {
             durations.save_durations(&plan.name, &kept);
@@ -1752,7 +1988,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                 // Entries share their key's rank (`ranks` has every key of
                 // the plan) and start in matrix order. Cloud jobs go to a
                 // stack of their own, pushed in reverse for the same order.
-                let rank = s.ranks[&template.key];
+                let rank = s.ranks[&template.key].rank;
                 let mut cloud = Vec::new();
                 for (i, job) in jobs.into_iter().enumerate() {
                     let rank = Rank {
@@ -1887,6 +2123,7 @@ fn look_up<T: Tools>(
                 key: None,
                 lines: vec![format!("task cache: not read, {e}")],
                 queued: None,
+                expected: Duration::ZERO,
             });
         }
     };
@@ -1913,6 +2150,7 @@ fn look_up<T: Tools>(
             key: Some(key),
             lines: vec![line],
             queued: None,
+            expected: Duration::ZERO,
         });
     }
     let mut lines = Vec::new();
@@ -1936,6 +2174,7 @@ fn look_up<T: Tools>(
         key: Some(key),
         lines,
         queued: None,
+        expected: Duration::ZERO,
     })
 }
 
