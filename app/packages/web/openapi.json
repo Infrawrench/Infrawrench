@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.109.0",
+    "version": "1.110.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1093,8 +1093,6 @@
           "escalation-policy",
           "eval",
           "evaluation",
-          "evaluation-job",
-          "evaluator",
           "event-hook",
           "eventbridge-rule",
           "events2metrics",
@@ -1588,7 +1586,6 @@
           "registry-module",
           "registry-namespace",
           "registry-provider",
-          "reinforcement-fine-tuning-job",
           "release",
           "replication-rule",
           "repo-blocklist",

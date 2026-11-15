@@ -8813,7 +8813,7 @@
   "d87f87ec78d92657": "Malaisie",
   "24abc03826144256": "Gérez ClickHouse Cloud : services, ClickPipes, sauvegardes, Managed Postgres, clés API et membres. Créez, mettez à l'échelle et interrogez vos bases de données ClickHouse.",
   "b0d9fb0274668647": "Gérez les workspaces Databricks : calcul, workflows, SQL, AI/BI, apps, ressources du workspace, model serving, vector search, Lakebase Postgres et Unity Catalog.",
-  "ac2e5abecc2a3896": "Gérez les déploiements Fireworks AI, routeurs, modèles, jeux de données, fine-tuning (SFT, DPO, RFT), évaluateurs et tâches d'évaluation, tâches batch, utilisateurs, clés API, secrets et quotas, avec les coûts d'utilisation.",
+  "d59654160d143fe6": "Gérez les déploiements Fireworks AI, routeurs, modèles, jeux de données, fine-tuning (SFT et DPO), tâches batch, utilisateurs, clés API, secrets et quotas, avec les coûts d'utilisation.",
   "7e0d2b9fd6041893": "Gérez votre tailnet (appareils, utilisateurs, clés, Services, webhooks, DNS et paramètres) et enrôlez des serveurs depuis n'importe quel fournisseur compatible SSH.",
   "5d6ac9a40da8b274": "Géré par Scaleway",
   "7dd18f78720b8985": "Certificats gérés uniquement",

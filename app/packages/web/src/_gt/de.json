@@ -8813,7 +8813,7 @@
   "d87f87ec78d92657": "Malaysia",
   "24abc03826144256": "ClickHouse Cloud verwalten: Dienste, ClickPipes, Backups, Managed Postgres, API-Schlüssel und Mitglieder. Erstellen, skalieren und abfragen Sie Ihre ClickHouse-Datenbanken.",
   "b0d9fb0274668647": "Databricks-Workspaces verwalten: Compute, Workflows, SQL, AI/BI, Apps, Workspace-Assets, Model Serving, Vector Search, Lakebase Postgres und Unity Catalog.",
-  "ac2e5abecc2a3896": "Fireworks-AI-Deployments, Router, Modelle, Datasets, Fine-Tuning (SFT, DPO, RFT), Evaluatoren und Evaluierungsjobs, Batch-Jobs, Benutzer, API-Schlüssel, Secrets und Kontingente verwalten, mit Nutzungskosten.",
+  "d59654160d143fe6": "Fireworks-AI-Deployments, Router, Modelle, Datasets, Fine-Tuning (SFT und DPO), Batch-Jobs, Benutzer, API-Schlüssel, Secrets und Kontingente verwalten, mit Nutzungskosten.",
   "7e0d2b9fd6041893": "Verwalten Sie Ihr Tailnet (Geräte, Benutzer, Schlüssel, Services, Webhooks, DNS und Einstellungen) und registrieren Sie Server von jedem SSH-fähigen Anbieter.",
   "5d6ac9a40da8b274": "Von Scaleway verwaltet",
   "7dd18f78720b8985": "Nur verwaltete Zertifikate",

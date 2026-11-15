@@ -485,4 +485,7 @@
 // (`ci:read`) lists each repository's manual pipelines and their inputs.
 // `CiRun.event` gains `manual` and `CiRun` gains optional `inputs`.
 // Additive (a new enum value, which clients decode leniently).
-export const API_VERSION = "1.109.0";
+// 1.110.0: Fireworks' `reinforcement-fine-tuning-job`, `evaluator` and
+// `evaluation-job` leave the `resourceTypeId` enum: Fireworks removed managed
+// RFT, evaluators and evaluation jobs. Stored rows of those types are kept.
+export const API_VERSION = "1.110.0";

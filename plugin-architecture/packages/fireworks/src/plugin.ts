@@ -17,9 +17,6 @@ import { SecretResourceType } from "./resources/secret.js";
 import { QuotaResourceType } from "./resources/quota.js";
 import { RouterResourceType } from "./resources/router.js";
 import { DpoJobResourceType } from "./resources/dpo-job.js";
-import { ReinforcementFineTuningJobResourceType } from "./resources/reinforcement-fine-tuning-job.js";
-import { EvaluatorResourceType } from "./resources/evaluator.js";
-import { EvaluationJobResourceType } from "./resources/evaluation-job.js";
 import { UserResourceType } from "./resources/user.js";
 
 // Mark taken verbatim from Fireworks AI's own app icon, served at
@@ -34,15 +31,12 @@ import { UserResourceType } from "./resources/user.js";
 // mark and is deliberately not used here.
 export const manifest = {
   id: "fireworks",
-  // Signed log URLs (#555): the document calls them short-lived signed URLs
-  // without naming a host. A published `getBuildLogEndpoint` answer is a
-  // path-style Cloud Storage URL (`https://storage.googleapis.com/<bucket>/...`,
-  // signed by Fireworks' control plane); the wildcard covers a virtual-hosted
-  // bucket URL.
-  egressHosts: ["api.fireworks.ai", "storage.googleapis.com", "*.storage.googleapis.com"],
+  // Cloud Storage went with the evaluator and evaluation job log tabs, whose
+  // signed URLs were the only calls outside the API (#1242).
+  egressHosts: ["api.fireworks.ai"],
   displayName: "Fireworks AI",
   description:
-    "Manage Fireworks AI deployments, routers, models, datasets, fine-tuning (SFT, DPO, RFT), evaluators and evaluation jobs, batch jobs, users, API keys, secrets and quotas, with usage costs.",
+    "Manage Fireworks AI deployments, routers, models, datasets, fine-tuning (SFT and DPO), batch jobs, users, API keys, secrets and quotas, with usage costs.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#6720FF"/>
     <g transform="translate(18 18) scale(2)" fill="#FFFFFF">
@@ -95,9 +89,6 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DatasetResourceType,
   SupervisedFineTuningJobResourceType,
   DpoJobResourceType,
-  ReinforcementFineTuningJobResourceType,
-  EvaluatorResourceType,
-  EvaluationJobResourceType,
   BatchInferenceJobResourceType,
   UserResourceType,
   ApiKeyResourceType,

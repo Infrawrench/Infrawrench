@@ -43,6 +43,47 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("types Fireworks removed (#1242)", () => {
+  // Managed RFT, evaluators and evaluation jobs were removed from the product,
+  // and the REST API no longer serves RFT jobs, though the served document
+  // still lists all three. Stored rows of these types stay where they are,
+  // since a sync only prunes the types it read.
+  const removed = ["reinforcement-fine-tuning-job", "evaluator", "evaluation-job"];
+
+  it("registers none of them", async () => {
+    const { plugin } = await import("../plugin.js");
+    const ids = plugin.resourceTypes.map((type) => type.id);
+    for (const id of removed) expect(ids).not.toContain(id);
+    expect(ids).toEqual(expect.arrayContaining(["supervised-fine-tuning-job", "dpo-job"]));
+  });
+
+  it("sends no request for them", async () => {
+    installFetch(() => jsonResponse({ evaluators: [], evaluationJobs: [] }));
+    for (const id of removed) {
+      await expect(client().listResources(id, ACCOUNT)).rejects.toThrow(/unknown resource type/);
+      await expect(client().getLogs(id, `${ACCOUNT}:${id}:x1`, ACCOUNT, {})).rejects.toThrow(
+        /logs not supported/,
+      );
+      await expect(client().deleteResource(id, `${ACCOUNT}:${id}:x1`, ACCOUNT)).rejects.toThrow(
+        /not supported/,
+      );
+    }
+    await expect(
+      client().invokeAction(
+        "reinforcement-fine-tuning-job",
+        `${ACCOUNT}:reinforcement-fine-tuning-job:r1`,
+        "cancel",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/unknown action/);
+    expect(calls).toEqual([]);
+  });
+
+  it("reaches only the API host, now that no signed log URL is fetched", () => {
+    expect(manifest.egressHosts).toEqual(["api.fireworks.ai"]);
+  });
+});
+
 describe("credentials", () => {
   it("refuses to construct without an account id", () => {
     // Fireworks has no whoami endpoint, so this cannot be discovered.
@@ -682,17 +723,10 @@ describe("training jobs", () => {
     expect(job?.displayName).toBe("accounts/my-team/models/tuned");
   });
 
-  it("cancels and resumes RFT jobs through the colon verbs, and resumes DPO jobs", async () => {
+  it("resumes DPO jobs through the colon verb, and cannot cancel them", async () => {
     installFetch(() => jsonResponse({}));
-    await client().invokeAction(
-      "reinforcement-fine-tuning-job",
-      `${ACCOUNT}:reinforcement-fine-tuning-job:r1`,
-      "cancel",
-      ACCOUNT,
-    );
     await client().invokeAction("dpo-job", `${ACCOUNT}:dpo-job:d1`, "resume", ACCOUNT);
     expect(calls.map((call) => call.url)).toEqual([
-      "https://api.fireworks.ai/v1/accounts/my-team/reinforcementFineTuningJobs/r1:cancel",
       "https://api.fireworks.ai/v1/accounts/my-team/dpoJobs/d1:resume",
     ]);
     await expect(
@@ -701,25 +735,7 @@ describe("training jobs", () => {
   });
 });
 
-describe("evaluators, users, secrets and quotas", () => {
-  it("maps evaluator state and source", async () => {
-    installFetch(() =>
-      jsonResponse({
-        evaluators: [
-          {
-            name: "accounts/my-team/evaluators/e1",
-            displayName: "Math grader",
-            state: "BUILD_FAILED",
-            source: { type: "TYPE_GITHUB", githubRepositoryName: "org/repo" },
-          },
-        ],
-      }),
-    );
-    const [evaluator] = await client().listResources("evaluator", ACCOUNT);
-    expect(evaluator?.fields).toMatchObject({ sourceType: "Github", githubRepository: "org/repo" });
-    expect(client().renderSidebarItem(evaluator!).status?.status).toBe("error");
-  });
-
+describe("users, secrets and quotas", () => {
   it("invites a member with a role", async () => {
     installFetch(() =>
       jsonResponse({ name: "accounts/my-team/users/u1", email: "a@example.com", role: "user" }),
@@ -767,114 +783,6 @@ describe("evaluators, users, secrets and quotas", () => {
 });
 
 describe("logs", () => {
-  it("downloads an evaluation job's execution log from the signed URL without the API key", async () => {
-    installFetch((url) => {
-      if (url.includes(":getExecutionLogEndpoint")) {
-        return jsonResponse({
-          executionLogSignedUri: "https://storage.googleapis.com/fw/log.txt?sig=1",
-          contentType: "text/plain",
-        });
-      }
-      return jsonResponse("line one\nline two\nline three\n");
-    });
-    const result = await client().getLogs(
-      "evaluation-job",
-      `${ACCOUNT}:evaluation-job:ej1`,
-      ACCOUNT,
-      { tailLines: 2 },
-    );
-    expect(calls[0]?.url).toBe(
-      "https://api.fireworks.ai/v1/accounts/my-team/evaluationJobs/ej1:getExecutionLogEndpoint",
-    );
-    const signed = calls[1]?.init?.headers as Record<string, string>;
-    expect(signed["Authorization"]).toBeUndefined();
-    expect(result.text).toBe("line two\nline three\n");
-  });
-
-  it("keeps the API key off a host that only starts with Fireworks' own", async () => {
-    for (const signedUri of [
-      "https://api.fireworks.ai.evil.example/log.txt",
-      "https://api.fireworks.ai@evil.example/log.txt",
-    ]) {
-      calls = [];
-      vi.restoreAllMocks();
-      installFetch((url) =>
-        url.includes(":getExecutionLogEndpoint")
-          ? jsonResponse({ executionLogSignedUri: signedUri })
-          : jsonResponse("line\n"),
-      );
-      await client().getLogs("evaluation-job", `${ACCOUNT}:evaluation-job:ej1`, ACCOUNT, {});
-      const signed = calls[1]?.init?.headers as Record<string, string>;
-      expect(calls[1]?.url).toBe(signedUri);
-      expect(signed["Authorization"]).toBeUndefined();
-    }
-  });
-
-  it("fetches a signed URL through the host, without the account's CA or key", async () => {
-    const fetchStub = installFetch(() => {
-      throw new Error("no direct fetch with a host transport");
-    });
-    const request = vi.fn(
-      async (req: { url: string; headers?: Record<string, string>; caCert?: string }) =>
-        req.url.includes(":getExecutionLogEndpoint")
-          ? {
-              status: 200,
-              body: JSON.stringify({
-                executionLogSignedUri: "https://storage.googleapis.com/fw/log.txt?sig=1",
-              }),
-              headers: {},
-            }
-          : { status: 200, body: "line one\n", headers: {} },
-    );
-    const hosted = hostClient(
-      new FireworksClient(
-        { apiKey: "fw_test", accountId: "my-team", caCert: "CA" },
-        { http: { request } },
-      ),
-    );
-    const result = await hosted.getLogs(
-      "evaluation-job",
-      `${ACCOUNT}:evaluation-job:ej1`,
-      ACCOUNT,
-      {},
-    );
-    expect(result.text).toBe("line one\n");
-    expect(fetchStub).not.toHaveBeenCalled();
-    const signed = request.mock.calls[1]?.[0];
-    expect(signed?.url).toContain("storage.googleapis.com");
-    expect(signed?.caCert).toBeUndefined();
-    expect(Object.keys(signed?.headers ?? {}).map((name) => name.toLowerCase())).not.toContain(
-      "authorization",
-    );
-  });
-
-  it("lets a bastion reach Cloud Storage, where the document puts its signed URLs", () => {
-    expect(manifest.egressHosts).toEqual(
-      expect.arrayContaining(["storage.googleapis.com", "*.storage.googleapis.com"]),
-    );
-  });
-
-  it("allows the host of a real build log URL the way a bastion matches it", () => {
-    // The shape of a published `getBuildLogEndpoint` answer (signature cut).
-    const signed =
-      "https://storage.googleapis.com/fireworks-evaluator-build-logs/acct/ev1/build.log?Expires=1791036846&GoogleAccessId=fireworks-control-plane%40fw-ai-cp-prod.iam.gserviceaccount.com&Signature=x";
-    // Exact names, or `*.suffix` for anything under the suffix: the bastion's rule.
-    const allowed = (host: string) =>
-      manifest.egressHosts.some((entry) =>
-        entry.startsWith("*.") ? host.endsWith(entry.slice(1)) : host === entry,
-      );
-    expect(allowed(new URL(signed).host)).toBe(true);
-    expect(allowed("fireworks-evaluator-build-logs.storage.googleapis.com")).toBe(true);
-    expect(allowed("evil.example.com")).toBe(false);
-  });
-
-  it("says so when the evaluator has no build log yet", async () => {
-    installFetch(() => jsonResponse({}));
-    const result = await client().getLogs("evaluator", `${ACCOUNT}:evaluator:ev1`, ACCOUNT, {});
-    expect(calls[0]?.url).toContain("/evaluators/ev1:getBuildLogEndpoint");
-    expect(result.text).toBe("No build log yet.\n");
-  });
-
   it("filters the audit log to a deployment and prints it oldest first", async () => {
     installFetch(() =>
       jsonResponse({

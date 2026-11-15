@@ -1,6 +1,6 @@
 ---
 title: Fireworks AI
-description: Manage Fireworks deployments, routers, models, datasets, SFT, DPO and RFT jobs, evaluators, batch jobs, users, API keys, secrets and quotas, with real usage costs.
+description: Manage Fireworks deployments, routers, models, datasets, SFT and DPO jobs, batch jobs, users, API keys, secrets and quotas, with real usage costs.
 sidebar_order: 39
 ---
 
@@ -15,9 +15,6 @@ Connect Fireworks AI to manage your serverless and dedicated model deployments, 
 - **Routers**: spread one model string across several deployments, with weighted-random or even-load balancing. Create, edit and delete.
 - **Fine-tuning jobs**: supervised runs, with hyperparameters, progress and estimated cost. Cancel and resume.
 - **DPO jobs**: preference fine-tuning (DPO or ORPO) with the loss method, KL beta and training settings. Resume and delete.
-- **RFT jobs**: reinforcement fine-tuning against an evaluator's reward, with epoch and token progress. Cancel, resume and delete.
-- **Evaluators**: the scoring code behind evaluation jobs and RFT, with build state and source. Edit the name and description.
-- **Evaluation jobs**: an evaluator's run over a dataset, with the metrics it reported.
 - **Batch inference jobs**: progress, success and failure counts, and the output dataset.
 - **Users**: members and service accounts with their roles. Invite, create and change roles.
 - **API keys**: create them, with the plaintext shown once.
@@ -63,9 +60,7 @@ These are Fireworks' current one-minute figures, not history, so they are not ch
 
 ## Logs
 
-- **Evaluation jobs**: the **Logs** tab shows the job's execution log. Before the job starts writing, the tab says so.
-- **Evaluators**: the **Logs** tab shows the build log, which is where a `BUILD_FAILED` evaluator explains itself.
-- **Deployments** and **users**: the **Logs** tab shows the account audit log from the last 30 days, filtered to that deployment or to actions taken by that user's email: time, outcome, who, the API method, the resource and the client IP. Audit logs are only available on Enterprise accounts. Elsewhere the tab tells you that.
+**Deployments** and **users**: the **Logs** tab shows the account audit log from the last 30 days, filtered to that deployment or to actions taken by that user's email: time, outcome, who, the API method, the resource and the client IP. Audit logs are only available on Enterprise accounts. Elsewhere the tab tells you that.
 
 <insert [Fireworks deployment Logs tab showing audit entries for creating and scaling the deployment] here>
 
@@ -73,7 +68,7 @@ These are Fireworks' current one-minute figures, not history, so they are not ch
 
 - **Scale a deployment** by editing its replica count.
 - **Create an API key** for any user or service account in the account. The plaintext value is shown exactly once, as a warning. Fireworks never stores it, so you cannot read it back later. Create a replacement instead.
-- **Cancel or resume a fine-tuning job** from its detail page. RFT jobs offer the same pair. DPO jobs can only be resumed, because Fireworks has no way to cancel them.
+- **Cancel or resume a fine-tuning job** from its detail page. DPO jobs can only be resumed, because Fireworks has no way to cancel them.
 - **Create a router** by ticking deployments in a multi-select, then choosing the strategy (weighted random by replica count, or even load per replica) and whether other accounts may query it. The optional model is offered from the base models those deployments serve. Leave it empty when the deployments span regions, which Fireworks requires. Routers Fireworks generates for a deployment are read-only and are removed with the deployment.
 - **Invite a user** by email, or create a service account, with a role picker (admin, user, contributor, inference user, or custom with a permission preset). Fireworks has no way to delete users through its API, so remove people in the Fireworks dashboard.
 - **Create a secret** from a key name and a value. The value is write-only. The secret id comes from the key name (`WANDB_API_KEY` becomes `wandb-api-key`).
@@ -86,5 +81,6 @@ These are Fireworks' current one-minute figures, not history, so they are not ch
 - **Audio inference is gone.** Fireworks removed transcription and text-to-speech from its public API on 10 June 2026. So there is no [Speech tab](../features/speech-testing.md) for Fireworks, and no way to add one back. Historical audio line items can still appear in billing.
 - **Very large accounts may not show every API key.** Fireworks does not paginate its API key listing.
 - **Secret values are write-only.** Only the key name is ever shown.
-- **Evaluators are created with Fireworks' own tools** (firectl or the Eval Protocol SDK), which package and upload source code. You can list, edit and delete them here, but not create them.
+- **No RFT jobs, evaluators or evaluation jobs.** Fireworks removed managed reinforcement fine-tuning, evaluators and evaluation jobs, and its API no longer serves RFT jobs. Reinforcement learning now runs on Fireworks' Training API. Jobs you already had stay in your Fireworks account, where firectl can still list and delete RFT jobs. Rows Infrawrench synced before the change are kept as they were, and nothing new is read for them.
+- **Datasets are read-only.** Fireworks stopped storing new datasets on 15 November 2026. Existing ones are still listed here and can be deleted.
 - **Quotas can be lowered but not raised.** Set the enforced limit below your approved maximum to cap spend. Going above the maximum needs a usage limit increase request with Fireworks.

@@ -8813,7 +8813,7 @@
   "d87f87ec78d92657": "马来西亚",
   "24abc03826144256": "管理 ClickHouse Cloud：服务、ClickPipes、备份、Managed Postgres、API 密钥和成员。创建、扩缩容并查询你的 ClickHouse 数据库。",
   "b0d9fb0274668647": "管理 Databricks 工作区：计算、工作流、SQL、AI/BI、应用、工作区资产、模型服务、向量搜索、Lakebase Postgres 和 Unity Catalog。",
-  "ac2e5abecc2a3896": "管理 Fireworks AI 部署、路由器、模型、数据集、微调 (SFT、DPO、RFT)、评估器和评估作业、批处理作业、用户、API 密钥、密钥和配额，并提供用量成本。",
+  "d59654160d143fe6": "管理 Fireworks AI 部署、路由器、模型、数据集、微调 (SFT 和 DPO)、批处理作业、用户、API 密钥、密钥和配额，并提供用量成本。",
   "7e0d2b9fd6041893": "管理你的 tailnet（设备、用户、密钥、Services、webhook、DNS 和设置），并从任何支持 SSH 的提供商接入服务器。",
   "5d6ac9a40da8b274": "由 Scaleway 管理",
   "7dd18f78720b8985": "仅限托管证书",
