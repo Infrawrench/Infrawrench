@@ -2120,9 +2120,12 @@ fn writing_files_behaves_the_same_with_a_write_budget() {
             "limited={limited} {stdout:?}"
         );
         if limited {
+            // Every byte written once, and each of the two new files' entry
+            // (`iwci_vfs::ENTRY_COST` and its name).
+            let entries = 2 * (iwci_vfs::ENTRY_COST + "a.bin".len() as u64);
             assert_eq!(
                 budget.0.load(Ordering::SeqCst),
-                4101 + 4096,
+                4101 + 4096 + entries,
                 "every byte written is counted once"
             );
         }
