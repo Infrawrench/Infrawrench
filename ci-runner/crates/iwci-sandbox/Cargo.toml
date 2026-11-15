@@ -1,0 +1,17 @@
+[package]
+name = "iwci-sandbox"
+description = "Runs a job's native programs in a gVisor sandbox over the job's own in-memory file system"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iwci-vfs.workspace = true
+virtual-fs.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+# Shared memory, futexes, descriptor passing and namespaces. Already in the
+# tree.
+libc = "0.2"

@@ -2974,6 +2974,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "iwci-sandbox"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "iwci-vfs",
+ "libc",
+ "serde_json",
+ "virtual-fs",
+]
+
+[[package]]
 name = "iwci-spec"
 version = "0.1.0"
 dependencies = [

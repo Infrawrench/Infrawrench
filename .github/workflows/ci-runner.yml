@@ -61,7 +61,55 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/*
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh
+
+  # The lisafs server (crates/iwci-sandbox) under gVisor's real kernel, on
+  # both architectures the runners are: a busybox shell and Bun run in a
+  # sandbox whose only file system is a job's, and the test checks what
+  # they saw and what they changed. Root, because the sandbox is started
+  # in new user namespaces, which Ubuntu's AppArmor keeps from other users
+  # (the runner hosts get a profile for it instead). gVisor and Bun are
+  # pinned by hash in tests/fixtures.sh.
+  sandbox:
+    name: Sandbox under gVisor (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+          key: sandbox-${{ matrix.arch }}
+
+      - name: busybox
+        run: sudo apt-get install -y --no-install-recommends busybox-static
+
+      - name: gVisor and Bun, pinned
+        run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"
+
+      # Built as the runner's user, run as root.
+      - name: cargo test --test gvisor
+        run: |
+          bin=$(cargo test -p iwci-sandbox --test gvisor --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "gvisor") | .executable')
+          sudo env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_BUSYBOX=/bin/busybox \
+            IWCI_TEST_GVISOR="$IWCI_TEST_GVISOR" IWCI_TEST_BUN_ROOT="$IWCI_TEST_BUN_ROOT" \
+            "$bin" --ignored --test-threads=1 --nocapture
 
   # The builtins that are cheap to build, built from their own scripts and
   # tested twice: the runtime's fixture tests (which skip without fixtures
