@@ -215,7 +215,11 @@ jobs:
   # config has a list of its own (`effect`, gt-react, and the Kubernetes, SQL
   # Server and Kafka clients its drivers load): on that host while it was
   # shared, 118 to 138 s at two workers and 112 s at four became 72 s and
-  # 62 s. ui (127 s and 70 s) loads its modules as it did.
+  # 62 s. ui's files all run in jsdom, so its config has the two things that
+  # cost every one of them: it reads jsdom, 937 modules, from one file written
+  # before the first test, and bundles what its setup file imports (Testing
+  # Library, jest-dom, gt-react). 118 to 155 s at two workers became 69 to
+  # 79 s, and 67 to 74 s at four became 38 s.
   #
   # `memory:` holds the most workers a suite can get. desktop and ui at four
   # peak at 3.6 GiB and pass at 3 GiB. web at six and server-core at
