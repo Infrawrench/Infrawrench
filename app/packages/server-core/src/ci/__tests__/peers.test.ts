@@ -6,6 +6,8 @@ const world = vi.hoisted(() => ({
   accountPluginId: "gcp",
   fields: {} as Record<string, unknown>,
   credentials: {} as Record<string, string>,
+  /** Whether the credential rewriters changed what the peer was built from. */
+  rewritten: false,
   built: [] as Array<{ pluginId: string; outputs: string[] }>,
 }));
 
@@ -72,6 +74,7 @@ vi.mock("../../peer-clients.js", () => ({
       client: {},
       plugin: { manifest: { id: input.integration.pluginId } },
       credentials: world.credentials,
+      rewritten: world.rewritten,
     };
   },
 }));
@@ -87,6 +90,7 @@ describe("the peer client CI uses", () => {
       accountPluginId: "gcp",
       fields: { entraId: true },
       credentials: { token: "opaque-token" },
+      rewritten: false,
       built: [],
     });
   });
@@ -121,24 +125,26 @@ describe("the peer client CI uses", () => {
 
   it("refuses credentials an SSH tunnel rewrote, lends ones it left alone, and tears down through it", async () => {
     world.tunnelled = true;
-    // A bare token is not something the rewriter touches.
-    const token = await ciPeerClient("org", resource, "kubernetes", "lend");
-    expect(token && !("refused" in token)).toBe(true);
-    // A connection string it pointed at the gateway's loopback is refused,
-    // and so is a kubeconfig, which it rewrites too.
+    // The account has a tunnel, but it is for something else: the peer's
+    // kubeconfig names another server, the rewriter left it alone, and it is lent.
+    world.credentials = { kubeconfig: "apiVersion: v1\nkind: Config\n" };
+    const untouched = await ciPeerClient("org", resource, "kubernetes", "lend");
+    expect(untouched && !("refused" in untouched)).toBe(true);
+    // One the rewriter pointed at the gateway's end of the tunnel is refused,
+    // a correctly rewritten kubeconfig as much as a connection string.
     for (const credentials of [
       { connectionString: "postgres://u:pw@127.0.0.1:41234/db" },
-      { kubeconfig: "apiVersion: v1\nkind: Config\n" },
+      {
+        kubeconfig:
+          "clusters:\n- cluster:\n    server: https://127.0.0.1:41234\n    tls-server-name: 10.0.0.1\n",
+      },
     ]) {
       world.credentials = credentials;
+      world.rewritten = true;
       const refused = await ciPeerClient("org", resource, "kubernetes", "lend");
       expect(refused && "refused" in refused && refused.refused).toMatch(/SSH tunnel/);
     }
-    // Without a tunnel the same credentials are lent.
-    world.tunnelled = false;
-    const plain = await ciPeerClient("org", resource, "kubernetes", "lend");
-    expect(plain && !("refused" in plain)).toBe(true);
-    world.tunnelled = true;
+    // Teardown still goes through the peer, rewritten or not.
     world.fields = { entraId: false };
     const teardown = await ciPeerClient("org", resource, "kubernetes", "teardown");
     expect(teardown && !("refused" in teardown)).toBe(true);

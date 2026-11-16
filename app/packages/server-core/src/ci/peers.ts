@@ -9,8 +9,8 @@
  * The peer client is built the way the peer tabs build it
  * (`buildPeerPluginClient`: output mappings, then the credential rewriters),
  * with two refusals of CI's own: credentials the SSH-tunnel rewriter changed
- * (it points a connection string at the gateway's loopback, which a job
- * cannot use, while keeping the real password), and a resource
+ * (it points the address at the tunnel's local end on the gateway, which a job
+ * cannot reach, while keeping the real password or token), and a resource
  * whose declaration's `availableWhen` does not hold.
  */
 import { eq } from "drizzle-orm";
@@ -25,7 +25,6 @@ import type { CiPeerOption } from "@infrawrench/client-core";
 import { db } from "../db/client.js";
 import { sshTunnelConfigs } from "../db/schema.js";
 import { getOrgAccountClient } from "../org-accounts.js";
-import { tunnelRewrites } from "../credential-rewriters/tunnel-form.js";
 import { buildPeerPluginClient, filterVisiblePeerIntegrations } from "../peer-clients.js";
 
 /** What a plugin can run for CI, as the wire carries it. */
@@ -195,27 +194,27 @@ export async function ciPeerClient(
     organizationId,
   });
   if (built && use !== "teardown") {
-    const tunnelled = await tunnelRefusal(resource.accountId, built.credentials);
+    const tunnelled = await tunnelRefusal(resource.accountId, built.rewritten);
     if (tunnelled) return { refused: tunnelled };
   }
   return built;
 }
 
 /**
- * Why credentials resolved for a connection cannot be lent: the connection
- * has an SSH tunnel of its own and the tunnel rewriter changed one of them
- * (a URL or `host:port` now pointing at the gateway's end of the tunnel,
- * still carrying the real password). A credential it leaves alone, such as
- * a kubeconfig, is lent as usual. Null when they can be.
+ * Why credentials resolved for a connection cannot be lent: a credential
+ * rewriter changed them (`rewritten`, from `applyCredentialRewriters`), which
+ * the SSH-tunnel rewriter does to the addresses it points at the tunnel's
+ * local end on the gateway. A job reaches neither that nor, usually, the
+ * private address behind it, so nothing is lent: not the rewritten value, and
+ * not the original either. A credential the rewriter left alone (a peer whose
+ * address is not the tunnel's remote end) is lent as usual. Null when they can be.
  */
 export async function tunnelRefusal(
   accountId: string,
-  credentials: Readonly<Record<string, string>>,
+  rewritten: boolean | undefined,
 ): Promise<string | null> {
-  if (!Object.values(credentials).some((v) => typeof v === "string" && tunnelRewrites(v))) {
-    return null;
-  }
+  if (!rewritten) return null;
   return (await reachedThroughTunnel(accountId))
     ? "Infrawrench reaches its connection through an SSH tunnel of its own, which a job cannot use; lend it to jobs that can reach it directly, or connect it without the tunnel"
-    : null;
+    : "Infrawrench reaches its connection through a local endpoint of its own, which a job cannot use";
 }

@@ -16,6 +16,7 @@ export const manifest = {
     {
       key: "endpoint",
       providerHost: true,
+      tunnel: "address",
       label: "Endpoint",
       description: "Base URL of the OpenSearch cluster, e.g. https://search.example.com:9200",
       placeholder: "https://host:9200",

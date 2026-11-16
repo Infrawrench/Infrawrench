@@ -29,6 +29,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description:
         "PostgreSQL connection URI. You can also link this to a DigitalOcean Managed Database after adding.",

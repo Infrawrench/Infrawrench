@@ -29,6 +29,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "dockerHost",
+      tunnel: "address",
       label: "Docker Host",
       description: "Unix socket or TCP address for the Docker daemon.",
       sensitive: false,

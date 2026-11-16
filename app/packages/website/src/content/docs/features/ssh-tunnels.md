@@ -35,6 +35,15 @@ The tunnel always ends at **`127.0.0.1` on the host you connected through**, so 
 
 There's no local-port field either. Infrawrench picks a local port for you, so you just open the SQL editor on the account and it works.
 
+## How the account uses the tunnel
+
+The account's address (its connection string, server list or API URL) is pointed at the tunnel's local end, and nothing else about it changes:
+
+- Only the host and port are swapped. The user, password, database name and options stay exactly as you wrote them.
+- When the address lists several servers (a MongoDB seed list, a comma-separated server list), only the ones on the tunnel's target are swapped.
+- A Kubernetes kubeconfig keeps its certificates, users and other clusters. Only the `server` of the cluster behind the tunnel changes, and that cluster gets a `tls-server-name`, so its certificate is still checked against the cluster's own name.
+- Tokens, keys and certificates on the account are never touched.
+
 ## Desktop vs web
 
 - **Desktop:** the tunnel runs in the app on your machine, so local tools like `psql` can use it too. Quitting the app closes every tunnel.

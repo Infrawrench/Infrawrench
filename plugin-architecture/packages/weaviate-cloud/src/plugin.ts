@@ -43,6 +43,7 @@ export const manifest = {
     {
       key: "endpoint",
       providerHost: true,
+      tunnel: "address",
       label: "REST Endpoint",
       description:
         "A cluster to connect directly: in the Weaviate Cloud console open the cluster and copy the REST Endpoint from its details panel. For a self-hosted cluster, its base URL. Optional when a sign-in is set.",

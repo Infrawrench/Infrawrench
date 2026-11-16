@@ -356,6 +356,8 @@ type ResolvedClient = {
   client: HostPluginClient;
   plugin: HostPlugin;
   credentials: Record<string, string>;
+  /** A credential rewriter changed the credentials (`applyCredentialRewriters`). */
+  rewritten?: boolean;
 } | null;
 
 /** Seam for tests: how lending reaches an account's plugin. */
@@ -514,7 +516,7 @@ async function lendAccount(
   if (!resolved) throw new Error(`${what} is no longer connected`);
   // A credential the tunnel rewriter changed points at the gateway's end of
   // the tunnel, with the real password: useless to a job, and not to be lent.
-  const tunnelled = await tunnelRefusal(account.id, resolved.credentials);
+  const tunnelled = await tunnelRefusal(account.id, resolved.rewritten);
   if (tunnelled) throw new Error(`${what} cannot be lent: ${tunnelled}`);
   if (!resolved.plugin.manifest.ciCredential || !resolved.client.lendCiCredential) {
     throw new Error(`${resolved.plugin.manifest.displayName} connections cannot be lent to jobs`);
