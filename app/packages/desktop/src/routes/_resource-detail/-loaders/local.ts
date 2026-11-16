@@ -28,10 +28,9 @@ import {
   secretHostServices,
   sqlQuery,
 } from "../../../lib/sql-drivers";
-import { resolveTunneledHost } from "../../../lib/ssh-tunnel";
 import type { SqliteResourceRow } from "../-types";
 import type { LoaderParams } from "./types";
-import { getLocalAccountCredentials } from "../../../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../../../lib/local-credentials";
 
 export async function loadLocalResource(params: LoaderParams): Promise<void> {
   const {
@@ -127,11 +126,15 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!accountRow) throw new Error("Account not found");
   if (!isCancelled()) setters.setAccount(accountRow);
 
-  const credentials = await getLocalAccountCredentials(accountRow.id);
-
   const loaded = await getPlugin(accountRow.plugin_id);
   if (!loaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);
   const { plugin } = loaded;
+  // Through the account's SSH tunnel when it has one, so the SQL editor, the KV
+  // console and Docker reach the remote service, not this computer's own port.
+  const credentials = await getLocalConnectionCredentials(
+    accountRow.id,
+    plugin.manifest.credentialFields,
+  );
   if (!isCancelled()) setters.setLogoSvg(plugin.manifest.logoSvg);
 
   const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
@@ -154,19 +157,15 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         ? credentials[dockerDriverDecl.credentialKey]
         : undefined;
 
-  let effectiveCs = cs ?? "";
-  if (isDocker && cs) {
-    effectiveCs = await resolveTunneledHost(accountId, cs);
-    refs.dockerHost.current = effectiveCs;
-  }
+  if (isDocker && cs) refs.dockerHost.current = cs;
 
   const driverHostServices =
     sqlDriverDecl && cs
       ? buildHostServices(sqlDriverDecl.driver, cs)
       : kvDriverDecl && cs
         ? buildKvHostServices(kvDriverDecl.driver, cs)
-        : dockerDriverDecl && effectiveCs
-          ? buildDockerHostServices(dockerDriverDecl.driver, effectiveCs)
+        : dockerDriverDecl && cs
+          ? buildDockerHostServices(dockerDriverDecl.driver, cs)
           : undefined;
   // Always include the secret host service so plugins can persist/read their
   // own secret-field state (e.g. DigitalOcean minting a managed-DB connection

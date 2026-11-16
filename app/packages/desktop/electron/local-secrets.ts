@@ -112,10 +112,6 @@ export class LocalSecrets extends Context.Service<
       name: string,
       privateKey: string,
     ) => Effect.Effect<void, LocalSecretError>;
-    readonly decryptTunnelConfigKey: (
-      tunnelConfigId: string,
-      value: EncryptedValue,
-    ) => Effect.Effect<string, LocalSecretError>;
     readonly encryptTunnelConfigKey: (
       tunnelConfigId: string,
       privateKey: string,
@@ -139,10 +135,6 @@ export class LocalSecrets extends Context.Service<
         attempt(async () => derivePublicKey(await readSshPrivateKey(keyId, "SSH key not found"))),
       ensureAgentKey: attempt(ensureAgentKey),
       saveSshKey: (keyId, name, privateKey) => attempt(() => insertSshKey(keyId, name, privateKey)),
-      decryptTunnelConfigKey: (tunnelConfigId, { ciphertext, iv }) =>
-        attemptSync(() =>
-          decryptValue(ciphertext, iv, getEncryptionKey(), tunnelConfigAad(tunnelConfigId)),
-        ),
       encryptTunnelConfigKey: (tunnelConfigId, privateKey) =>
         attemptSync(() =>
           encryptValue(privateKey, getEncryptionKey(), tunnelConfigAad(tunnelConfigId)),
