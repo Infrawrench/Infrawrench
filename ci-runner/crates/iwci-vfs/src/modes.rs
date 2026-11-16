@@ -17,11 +17,12 @@
 //! its own files. Modes are kept so that a job can read back what it set and
 //! what the commit says.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use virtual_fs::FileSystem;
+
+use crate::tree::PathTree;
 
 /// The bits a mode keeps: permissions plus setuid, setgid and sticky.
 pub const MODE_BITS: u32 = 0o7777;
@@ -34,19 +35,22 @@ pub const DEFAULT_DIR_MODE: u32 = 0o755;
 pub const EXECUTABLE_MODE: u32 = 0o755;
 
 /// The modes a snapshot was built with, by absolute guest path.
-pub type SnapshotModes = Arc<BTreeMap<PathBuf, u32>>;
+pub type SnapshotModes = Arc<PathTree<u32>>;
 
 /// One job's file modes. Cheap to clone; clones share the record.
 #[derive(Debug, Clone, Default)]
 pub struct Modes(Arc<ModesInner>);
 
+/// Both records are trees of path components (`tree.rs`), not maps of whole
+/// paths: a job that chmods files deep under long directory names would
+/// otherwise keep a copy of each multi-kilobyte path.
 #[derive(Debug, Default)]
 struct ModesInner {
     /// The snapshot's, never written.
     base: SnapshotModes,
     /// What the job set over `base`: `None` hides a `base` entry, for a path
     /// that was removed (or replaced) and is back to the default.
-    own: Mutex<BTreeMap<PathBuf, Option<u32>>>,
+    own: Mutex<PathTree<Option<u32>>>,
     /// Where the modes really are, when the files are in a file system
     /// that has them ([`Modes::real`]).
     real: Option<Arc<dyn RealModes>>,
@@ -89,7 +93,7 @@ impl Modes {
         }))
     }
 
-    fn own(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Option<u32>>> {
+    fn own(&self) -> std::sync::MutexGuard<'_, PathTree<Option<u32>>> {
         self.0.own.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -102,9 +106,7 @@ impl Modes {
         {
             let mut own = self.own();
             match mode {
-                Some(mode) => {
-                    own.insert(path.to_path_buf(), Some(mode));
-                }
+                Some(mode) => own.insert(path, Some(mode)),
                 None => self.forget(&mut own, path),
             }
             return mode;
@@ -118,17 +120,19 @@ impl Modes {
     /// Every path with a mode recorded, and that mode.
     pub fn recorded(&self) -> Vec<(PathBuf, u32)> {
         let own = self.own();
-        let mut out: Vec<(PathBuf, u32)> = self
-            .0
-            .base
-            .iter()
-            .filter(|(path, _)| !own.contains_key(*path))
-            .map(|(path, mode)| (path.clone(), *mode))
-            .collect();
-        out.extend(
-            own.iter()
-                .filter_map(|(path, mode)| mode.map(|mode| (path.clone(), mode))),
-        );
+        let root = Path::new("/");
+        let mut out = Vec::new();
+        self.0.base.for_each_under(root, |rest, mode| {
+            let path = root.join(rest);
+            if own.get(&path).is_none() {
+                out.push((path, *mode));
+            }
+        });
+        own.for_each_under(root, |rest, mode| {
+            if let Some(mode) = mode {
+                out.push((root.join(rest), *mode));
+            }
+        });
         out
     }
 
@@ -137,8 +141,7 @@ impl Modes {
         if let Some(real) = &self.0.real {
             real.set(path, mode & MODE_BITS);
         }
-        self.own()
-            .insert(path.to_path_buf(), Some(mode & MODE_BITS));
+        self.own().insert(path, Some(mode & MODE_BITS));
     }
 
     /// `path` was removed: whatever is created there next has the default.
@@ -147,9 +150,9 @@ impl Modes {
         self.forget(&mut own, path);
     }
 
-    fn forget(&self, own: &mut BTreeMap<PathBuf, Option<u32>>, path: &Path) {
-        if self.0.base.contains_key(path) {
-            own.insert(path.to_path_buf(), None);
+    fn forget(&self, own: &mut PathTree<Option<u32>>, path: &Path) {
+        if self.0.base.get(path).is_some() {
+            own.insert(path, None);
         } else {
             own.remove(path);
         }
@@ -162,40 +165,24 @@ impl Modes {
             return;
         }
         let mut own = self.own();
-        // Every recorded path at or under `from`, with what it ends up as.
-        let mut moving: BTreeMap<PathBuf, Option<u32>> = BTreeMap::new();
-        for (path, mode) in self.0.base.range(from.to_path_buf()..) {
-            if !path.starts_with(from) {
-                break;
-            }
-            moving.insert(path.clone(), Some(*mode));
-        }
-        for (path, mode) in own.range(from.to_path_buf()..) {
-            if !path.starts_with(from) {
-                break;
-            }
-            moving.insert(path.clone(), *mode);
-        }
+        // Every recorded path at or under `from`, by its path from `from`,
+        // with what it ends up as: the job's own record over the snapshot's.
+        let mut moving = own.detach(from).unwrap_or_default();
+        self.0.base.for_each_under(from, |rest, mode| {
+            // The snapshot's mode no longer applies where it was.
+            own.insert(&from.join(rest), None);
+            moving.get_or_insert_with(rest, || Some(*mode));
+        });
         // The target's old entry (a file renamed over) goes; a directory
         // can only be renamed over an empty one, which has nothing under it.
         self.forget(&mut own, to);
-        for (path, mode) in moving {
-            let Ok(rest) = path.strip_prefix(from) else {
-                continue;
-            };
-            let target = if rest.as_os_str().is_empty() {
-                to.to_path_buf()
-            } else {
-                to.join(rest)
-            };
-            self.forget(&mut own, &path);
+        moving.for_each_under(Path::new("/"), |rest, mode| {
+            let target = to.join(rest);
             match mode {
-                Some(mode) => {
-                    own.insert(target, Some(mode));
-                }
+                Some(mode) => own.insert(&target, Some(*mode)),
                 None => self.forget(&mut own, &target),
             }
-        }
+        });
     }
 }
 
@@ -324,9 +311,17 @@ mod tests {
         PathBuf::from(s)
     }
 
+    fn snapshot<const N: usize>(modes: [(&str, u32); N]) -> SnapshotModes {
+        let mut tree = PathTree::default();
+        for (path, mode) in modes {
+            tree.insert(Path::new(path), mode);
+        }
+        Arc::new(tree)
+    }
+
     #[test]
     fn a_job_reads_the_snapshot_modes_and_its_own_over_them() {
-        let base: SnapshotModes = Arc::new(BTreeMap::from([(p("/app/run.sh"), 0o755)]));
+        let base = snapshot([("/app/run.sh", 0o755)]);
         let modes = Modes::over(base.clone());
         assert_eq!(modes.get(&p("/app/run.sh")), Some(0o755));
         assert_eq!(modes.get(&p("/app/other")), None);
@@ -339,7 +334,7 @@ mod tests {
 
     #[test]
     fn a_removed_path_comes_back_with_the_default() {
-        let base: SnapshotModes = Arc::new(BTreeMap::from([(p("/app/run.sh"), 0o755)]));
+        let base = snapshot([("/app/run.sh", 0o755)]);
         let modes = Modes::over(base);
         modes.set(&p("/tmp/key"), 0o600);
         modes.removed(&p("/tmp/key"));
@@ -350,11 +345,11 @@ mod tests {
 
     #[test]
     fn a_rename_moves_modes_and_everything_under_a_directory() {
-        let base: SnapshotModes = Arc::new(BTreeMap::from([
-            (p("/app/bin/a"), 0o755),
-            (p("/app/bin/b"), 0o755),
-            (p("/app/binary"), 0o700),
-        ]));
+        let base = snapshot([
+            ("/app/bin/a", 0o755),
+            ("/app/bin/b", 0o755),
+            ("/app/binary", 0o700),
+        ]);
         let modes = Modes::over(base);
         modes.set(&p("/app/bin/a"), 0o700);
         modes.set(&p("/app/bin"), 0o711);
