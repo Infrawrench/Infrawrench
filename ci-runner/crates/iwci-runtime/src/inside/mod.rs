@@ -70,6 +70,10 @@ pub struct JobSpec {
     pub modes: Vec<(PathBuf, u32)>,
     /// Native programs: command name and path.
     pub natives: Vec<(String, PathBuf)>,
+    /// Node tools' directories (`tools:` with `abi: node`), each mounted
+    /// read only at its `dir` by the runner outside.
+    #[serde(default)]
+    pub trees: Vec<SpecTree>,
     /// Edge.js's built-ins cache for the environment, when it has one.
     pub builtins: Option<PathBuf>,
     /// Where to write the [`JobResult`].
@@ -85,6 +89,16 @@ pub struct SpecPackage {
     pub version: String,
     pub sha256: String,
     pub file: PathBuf,
+}
+
+/// A Node tool's directory ([`crate::PathTree`]): the files are the
+/// sandbox's own at `dir`, a read-only mount, so only the rest travels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecTree {
+    pub name: String,
+    pub dir: String,
+    pub scripts: Vec<(String, Vec<u8>)>,
+    pub needs: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,6 +372,19 @@ fn run(spec_path: &Path) -> Result<i32, String> {
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let trees = spec
+        .trees
+        .iter()
+        .map(|t| {
+            Ok(crate::PathTree {
+                name: t.name.clone(),
+                dir: t.dir.clone(),
+                fs: runtime.sandbox_dir(&t.dir)?,
+                scripts: t.scripts.clone(),
+                needs: t.needs.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let builtins = match &spec.builtins {
         Some(path) => Some(bytes::Bytes::from(
             std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?,
@@ -374,7 +401,7 @@ fn run(spec_path: &Path) -> Result<i32, String> {
 
     let base: iwci_vfs::tree::PathTree<u32> = spec.modes.iter().cloned().collect();
     let modes = iwci_vfs::Modes::real(Arc::new(base), Arc::new(HostModes));
-    let root = runtime.sandbox_root()?;
+    let root = runtime.sandbox_dir("/")?;
     let tracked: iwci_vfs::DynFs = Arc::new(iwci_vfs::TrackModes::new(root, modes.clone(), "/"));
     let fs: iwci_vfs::DynFs = Arc::new(Observed {
         inner: tracked,
@@ -392,7 +419,7 @@ fn run(spec_path: &Path) -> Result<i32, String> {
         log: Some(output_sink()),
         scratch: None,
         commands,
-        trees: Vec::new(),
+        trees,
         internet: spec.internet,
         modes,
         services,

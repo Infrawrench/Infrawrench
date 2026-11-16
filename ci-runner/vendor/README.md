@@ -1130,6 +1130,35 @@ process, as an orphan sees `init` on Linux (in the runner, the job's
 command, pid 1), whose own parent is 0. Upstream main has the same unset
 field and the same `proc_parent` (checked November 2026).
 
+**File locks (#1216).** WASIX has no call for `flock` or `fcntl`'s record
+locks, so a C library has nothing to ask: Wasmer's answers `ENOSYS` for
+`F_GETLK`, `F_SETLK` and `F_SETLKW` and takes every `flock` without asking,
+and Python's `fcntl.flock` and `fcntl.lockf` failed (the Azure CLI's token
+cache, `portalocker`, `filelock`). This adds two calls, in the `wasix_32v1`
+and `wasix_64v1` modules under names of the runner's own so that none can
+meet a later upstream one: `iwci_fd_flock(fd, op)` is `flock(2)`, and
+`iwci_fd_record_lock(fd, cmd, lock)` is `fcntl(2)`'s three record lock
+commands (`cmd` 0, 1 and 2) on a `struct flock` as wasm32 and wasm64 lay it
+out. The locks are kept per control plane (`src/fs/locks.rs`,
+`WasiControlPlane::file_locks`), so they arbitrate between the processes of
+one job's command and nothing else, and a file is known by its path in the
+job's file system. As on Linux, the two kinds are independent: a `flock`
+lock belongs to an open file description (identified by the offset its
+descriptors share, so `dup` and a fork's copies hold it too) and goes when
+it has no descriptor left; a record lock belongs to a process, covers a
+byte range, never conflicts with the same process, and goes when the
+process closes any descriptor of the file (`fd_close`) or exits. A lock
+whose owner is gone is dropped the next time its file's locks are looked
+at, so a blocking lock looks again every 10 ms rather than being woken; a
+signal ends its wait with `EINTR`. No deadlock is detected. A program only
+locks through these if its C library calls them: env:python's CPython is
+rewritten to (`builtins/environments/python/build.sh`). The tests are
+`iwci-runtime`'s `flock_and_record_locks_are_taken_and_released`,
+`record_locks_belong_to_a_process_while_it_runs` and
+`a_flock_is_held_until_its_description_has_no_descriptor`. Upstream has no
+file locking (checked November 2026); a later WASIX defines `flock` and
+`fcntl64` as Linux system calls.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1148,7 +1177,10 @@ spawned child stops counting against `max_threads` once it exits
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
-through a symbolic link, and once the runner finds a
+through a symbolic link, WASIX has file locks a C library calls (and
+`builtins/environments/python/build.sh` is dropped for a CPython built on
+it, since that module imports the two calls above), and once the runner
+finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
@@ -1165,6 +1197,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
+`python/file-locks-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails`,
 `python/tls-server-passes` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
@@ -1350,9 +1383,24 @@ closed port were refused; only the address stayed taken.
 adds `test_loopback_closed_listener_releases_its_port` beside upstream's
 loopback tests.
 
+**Also in the patch: a write after the peer closed (#1245).** A connected
+pair's `SocketBuffer::try_send` (`src/tcp_pair.rs`) refused every write once
+the reading end had closed, the first included. Linux takes that first write
+(the peer answers it with a reset) and fails only the ones after it. The
+difference showed in TLS: a client that reads a response to the end of the
+stream finds no close_notify, and OpenSSL then sends a fatal alert before it
+reports the unexpected end; that write failing made Python raise
+`ConnectionResetError` where Linux gives `SSLEOFError`, which `ssl` turns
+into the end of the stream. The buffer now takes one write after its reader
+closed, without storing it, and refuses the rest as before.
+`a_write_after_the_peer_closed_is_taken_once_as_on_linux` in
+`iwci-runtime/src/network.rs` is the check, and the patch adds
+`the_first_write_after_the_reader_closed_is_taken` to the module's tests.
+
 **Remove it** when a virtual-net release after 0.705.0 releases a closed
-listener's address (wasmerio/wasmer `main` still keeps it as of November
-2026): delete `vendor/virtual-net*` and its `[patch.crates-io]` entry.
+listener's address and takes a write after the peer closed (wasmerio/wasmer
+`main` b72787f1be does neither, November 2026): delete `vendor/virtual-net*`
+and its `[patch.crates-io]` entry.
 
 To regenerate after editing: `diff -u` the changed files against the crate
 from crates.io with `a/` and `b/` labels.

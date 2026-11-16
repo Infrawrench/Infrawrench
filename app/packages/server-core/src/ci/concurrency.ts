@@ -223,6 +223,15 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
         const envFrom = (job["env-from"] as unknown[]).filter(isString);
         if (envFrom.length > 0) entry.envFrom = envFrom;
       }
+      if (typeof job["github-token"] === "object" && job["github-token"] !== null) {
+        const permissions: Record<string, string> = {};
+        for (const [name, level] of Object.entries(
+          job["github-token"] as Record<string, unknown>,
+        )) {
+          if (isString(level)) permissions[name] = level;
+        }
+        if (Object.keys(permissions).length > 0) entry.githubToken = permissions;
+      }
       if (typeof job["cloud"] === "object" && job["cloud"] !== null) {
         const cloud: Record<string, string> = {};
         for (const [k, v] of Object.entries(job["cloud"] as Record<string, unknown>)) {

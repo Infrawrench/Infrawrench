@@ -67,12 +67,35 @@ fn service(peer: u32) -> Option<Service> {
         ])
         .spawn()
         .unwrap();
+    // The socket's file appears when it is bound, before it listens, and a
+    // connection in between is refused: wait until it listens.
     let until = Instant::now() + Duration::from_secs(10);
-    while !socket.exists() {
-        assert!(Instant::now() < until, "the socket never appeared");
+    while !listening(&socket) {
+        assert!(Instant::now() < until, "the socket never listened");
         std::thread::sleep(Duration::from_millis(20));
     }
     Some(Service { child, dir, socket })
+}
+
+/// Whether a Unix socket is bound at `path` and listening, read from
+/// `/proc/net/unix` so that asking starts no service.
+fn listening(path: &Path) -> bool {
+    // `__SO_ACCEPTCON`: the socket is listening.
+    const ACCEPTCON: u32 = 1 << 16;
+    let Some(path) = path.to_str() else {
+        return false;
+    };
+    std::fs::read_to_string("/proc/net/unix").is_ok_and(|table| {
+        table.lines().skip(1).any(|line| {
+            // Num RefCount Protocol Flags Type St Inode Path
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            fields.get(7) == Some(&path)
+                && fields
+                    .get(3)
+                    .and_then(|f| u32::from_str_radix(f, 16).ok())
+                    .is_some_and(|flags| flags & ACCEPTCON != 0)
+        })
+    })
 }
 
 fn me() -> u32 {

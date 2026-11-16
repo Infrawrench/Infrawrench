@@ -138,6 +138,8 @@ export interface PlatformListing {
   summary: string;
   /** What to call the family of names that do not parse (a `msg()` source). */
   otherLabel?: string;
+  /** The page heading, when not "<full label> instance types" (a `msg()` source). */
+  heading?: string;
   instances: number;
   families: Family[];
 }
@@ -153,6 +155,7 @@ export const loadListing = cache(async (platform: string): Promise<PlatformListi
     label: info.label,
     summary: info.summary,
     ...(info.otherLabel ? { otherLabel: info.otherLabel } : {}),
+    ...(info.heading ? { heading: info.heading } : {}),
     instances: names.length,
     families: familiesOf(names),
   };

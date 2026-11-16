@@ -792,6 +792,7 @@ impl<'a> Sharing<'a> {
             access: job.access.clone(),
             cloud: None,
             remote: Some(done.runner.clone()),
+            waited_for: None,
             elsewhere: false,
         };
         // A runner that plans from this job's outputs (a matrix another
@@ -1113,6 +1114,30 @@ pub(super) fn watch<'p>(
                         holder: None,
                         since: now,
                     });
+                } else if let Some(pos) = s.awaiting.iter().position(|a| a.job.id == *id) {
+                    // Finished elsewhere while this runner waited for
+                    // another run's task cache entry: counted in
+                    // `running` already.
+                    let a = s.awaiting.swap_remove(pos);
+                    if let Some(logs) = &options.logs {
+                        logs(LogEvent::JobStarted {
+                            job: a.job.id.clone(),
+                            name: a.job.display_name.clone(),
+                        });
+                    }
+                    s.arrived.push(RemoteJob {
+                        template: a.template,
+                        job: a.job,
+                        lookup: Lookup {
+                            key: Some(a.waiting.key),
+                            lines: a.waiting.lines,
+                            waited: true,
+                            ..Lookup::default()
+                        },
+                        rank: a.rank,
+                        holder: None,
+                        since: now,
+                    });
                 } else {
                     // Not ready here yet, or running here too: looked at
                     // again next time.
@@ -1170,6 +1195,7 @@ pub(super) fn watch<'p>(
                 // was cut short there: so it is here.
                 left_behind = !s.remote.is_empty()
                     || !s.queue.is_empty()
+                    || !s.awaiting.is_empty()
                     || sharing.running.load(Ordering::SeqCst) > 0;
             }
             if !sharing.helper {

@@ -42,6 +42,13 @@ pub fn fd_close(mut ctx: FunctionEnvMut<'_, WasiEnv>, fd: WasiFd) -> Result<Errn
     let env = ctx.data();
     let (_, mut state) = unsafe { env.get_memory_and_wasi_state(&ctx, 0) };
 
+    // iwci patch (#1216): a process's record locks on a file go when it
+    // closes any descriptor of it.
+    let locked_file = state.fs.get_fd(fd).ok().and_then(|fd| match fd.inode.read().deref() {
+        Kind::File { path, .. } | Kind::Dir { path, .. } => Some(path.clone()),
+        _ => None,
+    });
+
     let outcome = state.fs.close_fd_and_capture_flush(fd);
 
     if outcome.skipped_preopen {
@@ -51,6 +58,10 @@ pub fn fd_close(mut ctx: FunctionEnvMut<'_, WasiEnv>, fd: WasiFd) -> Result<Errn
 
     if !outcome.removed {
         return Ok(Errno::Badf);
+    }
+
+    if let (Some(path), Some(plane)) = (locked_file, env.process.compute.upgrade()) {
+        plane.file_locks().release_records(&path, env.process.pid());
     }
 
     flush_captured_handle(env, outcome.flush_target)?;

@@ -75,6 +75,9 @@ struct State {
 
     /// Mutable state.
     mutable: RwLock<MutableState>,
+
+    /// iwci patch (#1216): the advisory file locks its processes hold.
+    file_locks: Arc<crate::fs::FileLocks>,
 }
 
 #[derive(Debug)]
@@ -96,8 +99,16 @@ impl WasiControlPlane {
                     process_seed: 0,
                     processes: Default::default(),
                 }),
+                file_locks: Default::default(),
             }),
         }
+    }
+
+    /// iwci patch (#1216): the advisory file locks (`flock`, `fcntl` record
+    /// locks) of this control plane's processes, which only ever arbitrate
+    /// between them.
+    pub fn file_locks(&self) -> &Arc<crate::fs::FileLocks> {
+        &self.state.file_locks
     }
 
     pub fn handle(&self) -> WasiControlPlaneHandle {

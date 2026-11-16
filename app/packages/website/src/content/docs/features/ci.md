@@ -424,6 +424,29 @@ A pull request from a fork runs code you have not reviewed, so it never runs on 
 
 Pull requests from branches of the repository itself run straight away, with secrets, since only people who can push to the repository can open them. A fork's run that nobody decides on within 14 days is closed.
 
+## Write back to GitHub
+
+A job that pushes a tag or a branch, opens or edits a pull request or an issue, or publishes a release asks for a GitHub token with `github-token:`, naming the permissions it needs:
+
+```yaml
+jobs:
+  release:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write }
+    run: |
+      git tag "v$VERSION" && git push https://github.com/acme/web.git "v$VERSION"
+      gh release create "v$VERSION" --notes-file CHANGELOG.md
+```
+
+- **For this repository only.** The token is minted when the run is sent, from the Infrawrench GitHub App's installation on the account, for the run's own repository and exactly the permissions the job names: `actions`, `checks`, `contents`, `deployments`, `discussions`, `issues`, `packages`, `pages`, `pull-requests` or `statuses`, each `read` or `write`, using GitHub Actions' names.
+- **Ready to use.** The job gets it as `GH_TOKEN` and `GITHUB_TOKEN`, the repository as `GH_REPO` (so `gh` needs no checkout), and Git is set up to send it to the repository, so `git push`, `git fetch` and `git ls-remote` work with no credential helper. It is masked like a secret in every log and output.
+- **An hour.** GitHub's tokens last an hour from when the run is sent. A job that starts after its token has expired fails before it starts; one that may run past it is told so in its report.
+- **Only what the App has.** If the installation was not granted a permission the job asks for, the job fails before it starts and names the permission. An owner of the GitHub account grants it from the installation's settings on GitHub. Branch protection and rulesets apply to the token as they do to the App.
+- **Never for a fork.** A pull request from a fork never gets a token; a job of it that asks for one fails. Jobs that do not ask get nothing.
+
+Each token is recorded in the audit log, with the run, the repository and the permissions. `builtin:gh` is the GitHub CLI, which reads the token on its own.
+
 ## Secrets and variables
 
 Under **Secrets and variables**, choose an account and a scope: **Every repository** for the account, or one repository, whose own values override the account's of the same name. Pipelines read them as:

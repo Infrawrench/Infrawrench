@@ -771,6 +771,35 @@ mod tests {
     }
 
     #[test]
+    fn a_write_after_the_peer_closed_is_taken_once_as_on_linux() {
+        // A TLS client that reads a response to the end of the stream sends
+        // an alert then (#1245). Linux takes that write, as the peer's
+        // reset comes only after it; failing it showed as ECONNRESET.
+        let net = JobNetwork::new(None);
+        let mut listener =
+            block_on(net.listen_tcp(addr("127.0.0.1:7445"), false, false, false)).unwrap();
+        for shut_down_first in [false, true] {
+            let mut client = block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:7445"))).unwrap();
+            let (mut server, _) = listener.try_accept().unwrap();
+            assert_eq!(
+                round_trip(server.as_mut(), client.as_mut(), b"over tls"),
+                b"over tls"
+            );
+            if shut_down_first {
+                server.shutdown(std::net::Shutdown::Write).unwrap();
+            }
+            drop(server);
+            let mut buf = vec![MaybeUninit::<u8>::uninit(); 64];
+            assert_eq!(client.try_recv(&mut buf, false).unwrap(), 0, "the end");
+            assert_eq!(client.try_send(b"alert").unwrap(), 5);
+            assert!(matches!(
+                client.try_send(b"more"),
+                Err(NetworkError::ConnectionReset)
+            ));
+        }
+    }
+
+    #[test]
     fn closed_ports_and_other_addresses_are_refused_not_routed_to_another_listener() {
         let net = JobNetwork::new(None);
         let _listener =

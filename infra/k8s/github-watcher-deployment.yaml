@@ -18,14 +18,12 @@ spec:
       labels:
         app: github-watcher
     spec:
-      # Same GCP identity as web. Deploy-on-push runs hosted Cloud Builds from
-      # THIS pod, and the token comes from the metadata server via workload
-      # identity — without the annotated KSA, every triggered hosted build
-      # fails at auth while the same deploy works fine from the web app.
+      # Same GCP identity as web, so a git-triggered workflow run from this pod
+      # reaches Google APIs exactly as it does from the web app.
       serviceAccountName: web
-      # The Cloud Build token comes from the GKE metadata server via Workload
-      # Identity, keyed off the KSA above — not from the projected token, which
-      # nothing here reads.
+      # Google tokens come from the GKE metadata server via Workload Identity,
+      # keyed off the KSA above, not from the projected token, which nothing
+      # here reads.
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -56,9 +54,7 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
-        # Cloud Build sources go up as in-memory buffers (infrafile/
-        # build-cloud.ts streams the GitHub tarball straight to GCS), so nothing
-        # here stages to disk. The scratch volume is for npm's cache
+        # Nothing here stages to disk. The scratch volume is for npm's cache
         # (NPM_CONFIG_CACHE) and for the plugin file drivers this pod inherits
         # by calling loadPlugins() to service git-triggered workflows.
         #

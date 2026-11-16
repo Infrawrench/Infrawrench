@@ -92,6 +92,60 @@ describe("shared", () => {
     expect(result.problems[0]).toContain("no network named `default`");
     expect(result.region).toBe("europe-west1");
   });
+
+  it("names every switched-off API at once, not only the first", async () => {
+    const off = (api: string) =>
+      Object.assign(status(403, `The ${api} is not enabled for project acme.`), {
+        apiDisabled: true,
+      });
+    const google = (iam: Route) =>
+      fakeGoogle([
+        [
+          "POST cloudresourcemanager.googleapis.com",
+          () => Promise.reject(off("Cloud Resource Manager API")),
+        ],
+        ["GET iam.googleapis.com", iam],
+        ["POST iam.googleapis.com", () => ({ permissions: [] })],
+        ["GET run.googleapis.com", () => Promise.reject(off("Cloud Run Admin API"))],
+        ["GET cloudbuild.googleapis.com", () => Promise.reject(off("Cloud Build API"))],
+        ["GET compute.googleapis.com", () => Promise.reject(off("Compute Engine API"))],
+      ]);
+
+    // The service account is not made yet, so its check also needs Resource Manager: named once.
+    const run = await gcpCiPreflight(
+      google(() => Promise.reject(status(404))).calls,
+      "container",
+      "us-east4",
+    );
+    expect(run.ok).toBe(false);
+    expect(run.problems).toEqual([
+      "The Cloud Resource Manager API is not enabled for project acme.",
+      "The Cloud Run Admin API is not enabled for project acme.",
+    ]);
+
+    const build = await gcpCiPreflight(
+      google(() => Promise.reject(off("Identity and Access Management (IAM) API"))).calls,
+      "build",
+    );
+    expect(build.problems).toEqual([
+      "The Cloud Resource Manager API is not enabled for project acme.",
+      "The Identity and Access Management (IAM) API is not enabled for project acme.",
+      "The Cloud Build API is not enabled for project acme.",
+    ]);
+
+    const vm = await gcpCiPreflight(google(() => ({})).calls, "vm");
+    expect(vm.problems).toEqual([
+      "The Cloud Resource Manager API is not enabled for project acme.",
+      "The Compute Engine API is not enabled for project acme.",
+    ]);
+  });
+
+  it("still fails a preflight on a refusal that is not a switched-off API", async () => {
+    const { calls } = fakeGoogle([
+      ["POST cloudresourcemanager.googleapis.com", () => Promise.reject(status(500))],
+    ]);
+    await expect(gcpCiPreflight(calls, "container", "us-east4")).rejects.toThrow("status 500");
+  });
 });
 
 describe("Compute Engine", () => {

@@ -555,6 +555,9 @@ fn wasix_exports_32(mut store: &mut impl AsStoreMut, env: &FunctionEnv<WasiEnv>)
         "fd_renumber" => Function::new_typed_with_env(&mut store, env, fd_renumber),
         "fd_dup" => Function::new_typed_with_env(&mut store, env, fd_dup::<Memory32>),
         "fd_dup2" => Function::new_typed_with_env(&mut store, env, fd_dup2::<Memory32>),
+        // iwci patch (#1216): file locking (src/syscalls/wasix/iwci_fd_lock.rs).
+        "iwci_fd_flock" => Function::new_typed_with_env(&mut store, env, iwci_fd_flock),
+        "iwci_fd_record_lock" => Function::new_typed_with_env(&mut store, env, iwci_fd_record_lock::<Memory32>),
         "fd_fdflags_get" => Function::new_typed_with_env(&mut store, env, fd_fdflags_get::<Memory32>),
         "fd_fdflags_set" => Function::new_typed_with_env(&mut store, env, fd_fdflags_set),
         "fd_event" => Function::new_typed_with_env(&mut store, env, fd_event::<Memory32>),
@@ -704,6 +707,9 @@ fn wasix_exports_64(mut store: &mut impl AsStoreMut, env: &FunctionEnv<WasiEnv>)
         "fd_renumber" => Function::new_typed_with_env(&mut store, env, fd_renumber),
         "fd_dup" => Function::new_typed_with_env(&mut store, env, fd_dup::<Memory64>),
         "fd_dup2" => Function::new_typed_with_env(&mut store, env, fd_dup2::<Memory64>),
+        // iwci patch (#1216): file locking (src/syscalls/wasix/iwci_fd_lock.rs).
+        "iwci_fd_flock" => Function::new_typed_with_env(&mut store, env, iwci_fd_flock),
+        "iwci_fd_record_lock" => Function::new_typed_with_env(&mut store, env, iwci_fd_record_lock::<Memory64>),
         "fd_fdflags_get" => Function::new_typed_with_env(&mut store, env, fd_fdflags_get::<Memory64>),
         "fd_fdflags_set" => Function::new_typed_with_env(&mut store, env, fd_fdflags_set),
         "fd_event" => Function::new_typed_with_env(&mut store, env, fd_event::<Memory64>),

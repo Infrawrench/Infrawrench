@@ -159,37 +159,38 @@ everything through.
 
 ### Jobs
 
-| Key           | Meaning                                                                                                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`       | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
-| `cloud`       | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
-| `args`        | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
-| `run`         | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
-| `name`        | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
-| `matrix`      | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
-| `cwd`         | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
-| `env`         | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
-| `clone`       | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
-| `deps`        | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`     | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
-| `needs`       | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
-| `if`          | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
-| `outputs`     | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
-| `paths`       | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
-| `timeout`     | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`      | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
-| `cache`       | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
-| `env-cache`   | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
-| `tools`       | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
-| `network`     | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
-| `artifacts`   | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
-| `downloads`   | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
-| `packages`    | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
-| `task-cache`  | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
-| `services`    | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
-| `connections` | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
-| `ssh-keys`    | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
-| `env-from`    | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
+| Key            | Meaning                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `using`        | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
+| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
+| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
+| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
+| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
+| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
+| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
+| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
+| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
+| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
+| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
+| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
+| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
+| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
+| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
+| `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
+| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
+| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
+| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
+| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
+| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
+| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
+| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
+| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
+| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
+| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
+| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -413,6 +414,67 @@ in a plan or a report.
   (the request's `lent`, below), and `--untrusted` runs as a fork's pull
   request would.
 - A job that is lent anything cannot be task-cached.
+
+### GitHub token
+
+A job that writes back to GitHub (pushes a tag or a branch, opens a pull
+request or an issue, publishes a release) asks for a token for the run's
+own repository, with the permissions it needs:
+
+```yaml
+jobs:
+  release:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write }
+    run: |
+      git tag "v$VERSION" && git push https://github.com/acme/web.git "v$VERSION"
+      gh pr create --head release --base main --title "Release $VERSION" --body ""
+```
+
+| Permission                                                                                                                | Level             |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `actions`, `checks`, `contents`, `deployments`, `discussions`, `issues`, `packages`, `pages`, `pull-requests`, `statuses` | `read` or `write` |
+
+The names are GitHub Actions' (`pull-requests`). Anything else
+(`administration`, `secrets`, `workflows`, an organization's permissions)
+is an error when the file is parsed.
+
+- **Minted for the run, by the app.** When it sends the run, the app
+  mints a GitHub App installation access token from the installation the
+  run came through, for this repository only and with exactly these
+  permissions (`metadata: read` comes with every token). Jobs asking for
+  the same permissions share one; nothing else in the run sees it.
+- **What the job gets.** `GH_TOKEN` and `GITHUB_TOKEN` (gh and most API
+  clients read one of them), `GH_REPO` (`acme/web`, so gh needs no
+  checkout, which has no `.git`), and Git's global configuration
+  (`GIT_CONFIG_GLOBAL=/root/.gitconfig`) with the token as an
+  `Authorization` header for `https://github.com/acme/web` and
+  `https://github.com/acme/web.git`, so `git push`, `git fetch` and
+  `git ls-remote` to the repository work with no credential helper. That
+  file is the job's global configuration, so `git config --global` works
+  too. `GIT_TERMINAL_PROMPT=0` makes a refused token fail Git rather than
+  leave it waiting for a password. Every one of them is masked like a secret, and the Base64 header
+  as well as the token.
+- **An hour.** GitHub's installation tokens last an hour from when the run
+  is sent, and cannot be extended. A job that starts after its token has
+  expired fails before it starts, saying so; one whose timeout ends later
+  (jobs may run for up to 6 hours) runs, and its report says when the
+  token expires. Put the steps that need it early, or in a job of its own.
+- **Only what the installation has.** A permission the Infrawrench GitHub
+  App's installation was not granted fails the job before it starts,
+  naming the permission; an owner of the account grants it in the
+  installation's settings on GitHub. Branch protection and rulesets apply
+  to the token as to the App.
+- **Never for a fork.** A pull request from a fork is never sent one, and a
+  job of it that asks fails as with any other lent name. A scheduled run
+  gets one, as the default branch it runs.
+- **Off unless asked.** A job without `github-token:` has no token, and
+  the token the runner clones with is never handed to a job.
+- A job with `github-token:` cannot be task-cached, and is not shared with
+  another runner in a [split run](#split-runs).
+- `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
+  request's `github-token`, below).
 
 ### Cloud jobs
 
@@ -745,6 +807,57 @@ task-cache:
   its `memory:` only then, and after it passes its kept artifacts, outputs
   and log are saved under the key it was looked up by. Its `duration_ms`
   is the run's, without the lookup. Failures are never cached.
+- **Another run computing the same key is waited for, not repeated.** Two
+  pushes a minute apart both miss for every job the first one changed,
+  because the second looks its entries up before the first has saved
+  them. So a job that misses while another run is computing the same key
+  waits for that run's entry and replays it when it lands: its report
+  says `cached`, with `waited_for` naming that run, `queued_ms` the wait
+  and a note saying so, and it is not billed. A waiting job is not queued,
+  holds no slot and no memory, and does not count as work in
+  `/v1/capacity`.
+- **When it runs the job after all**, and does not wait again, its report
+  says why:
+  - that run's job did not pass, was stopped, or passed but the store
+    would not take its entry (that run says which);
+  - that run's sign of life is older than this run's own by more than
+    45 s by the store's own clock (a runner that died), or this run has
+    not seen it move for 45 s since the job began to wait (a listing that
+    does not show it at all counts as not moving: one can miss an object
+    renamed while it is read); the dead run's marker is then taken over;
+  - that run has not finished the job within twice the time it took last
+    time plus a minute (with no time recorded, the job's `timeout:` plus
+    90 s, which also caps the other).
+- **How a run knows.** A job that missed marks its key in the store just
+  before it starts, with a write only one run can make, and the marker
+  goes, in the background, once its entry is saved or the job ends
+  without one. A waiting job follows that run's own marker: one written
+  in another scope, or written again after it went, does not keep it
+  waiting. Markers are scoped as entries are: a run waits only for runs
+  whose entries it would read, so a pull request waits for runs of its
+  own branch and of the default branch, and a push to the default branch
+  never waits for a pull request. The runners of a
+  [split run](#split-runs) count as one run and never wait for each
+  other. Waiting cannot go round in a circle: only a job that has started
+  holds a marker, and a started job waits for nothing, so two runs each
+  waiting on keys the other computes both finish.
+- **A job that queued reads its entry again.** One that missed and then
+  queued for more than five seconds reads its entry again just before it
+  starts, since another run may have started and finished it in between
+  without this run ever seeing its marker. Not in a split run, where the
+  other runner's jobs come in through their claims and are billed as
+  theirs. A run that skips the task cache (below) waits for nobody, but
+  still marks what it computes.
+- **What it costs.** For each job that misses: one conditional write just
+  before it starts and, after it ends, one read and one delete in the
+  background (plus one small write when it saved no entry). A pull
+  request also reads the default branch's marker before that write, when
+  the latest listing shows one. A job that queued for more than five
+  seconds costs one more read of its entry. A run lists its scopes at
+  most twice a second while it looks keys up and once a second while a
+  job of it waits, reads a marker its lookup finds, and writes a sign of
+  life every ten seconds (a write and a delete) from its first marker or
+  wait to its end.
 - Entries are kept with the [job caches](#job-caches), scoped and counted
   the same way: a pull request's entries are never read by a push to the
   default branch.
@@ -1047,7 +1160,7 @@ Environments:
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)) |
 | `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`, and the runner's `npx`)                                                                                                 |
-| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip; see [Python](#python))                                                                                                                                     |
+| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                            |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
@@ -1121,7 +1234,12 @@ Git came into every environment in `bash` 5.1.19, `bash-node` 24.0.9,
 1.23.13, 1.24.14, 1.25.15, 1.26.12 and 1.27.5 (each the same Go as before)
 and `postgres` 18.4.2 (see [Git](#git)). Go's build cache is kept between
 runs from `go` 1.23.14, 1.24.15, 1.25.16, 1.26.13 and 1.27.6, the same Go
-again (see [Environment caches](#environment-caches)).
+again (see [Environment caches](#environment-caches)). Git's prompts read
+`/dev/tty` and end at once from `bash` 5.1.20, `bash-node` 24.0.20,
+`python` 3.13.20, `php` 8.1.38, 8.2.39, 8.3.40, 8.4.31 and 8.5.16, `go`
+1.23.15, 1.24.16, 1.25.17, 1.26.14 and 1.27.7, `postgres` 18.4.3,
+`clickhouse` 26.11.4, `aws` 1.46.1, `az` 2.92.1 and `gcloud` 593.0.1
+(Git 2.56.1-iwci.2, built with `HAVE_DEV_TTY`; see [Git](#git)).
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -1723,8 +1841,10 @@ job runs them, beside the native program:
 - **Billing.** The job is charged its wall time as any job, and the memory
   it reserved: its `memory:` and the sandbox's 384 MiB.
 - **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
-  the like) does not run beside a native one yet: such a job fails to
-  start, saying so. Use it in a job of its own.
+  the like) runs beside a native one: its directory is mounted read only
+  in the sandbox at the same path as in any job, and its command is on
+  the script's `PATH` and on the native program's, which runs it on the
+  environment's `node` (`bun -e 'Bun.spawnSync(["vercel", ...])'`).
 - **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
   release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
   another fails it, saying so. The runner starts each sandbox in new user,
@@ -1880,6 +2000,63 @@ exec` and `LocalCommand`. A jump host must be public, like any host a job
   not lend. The lent key is printed and must come out masked. Remote (`-R`)
   and dynamic (`-D`) forwarding are not tested.
 
+### GitHub CLI
+
+`tools: [builtin:gh@2.104]` puts the GitHub CLI on an environment's
+`PATH`. It is cli/cli's own `gh` (2.104.0, `gh --version` says so), built
+by `builtins/gh/build.sh` with `env:go`'s toolchain, whose WASIX patches
+give it sockets and child processes, and it reads the token a job is lent
+(`GH_TOKEN`, `GH_REPO`; see [GitHub token](#github-token)).
+
+```yaml
+release:
+  using: env:bash@5
+  tools: [builtin:gh@2.104]
+  github-token: { contents: write, pull-requests: write, issues: write }
+  run: |
+    gh release create "v$VERSION" --notes-file CHANGELOG.md dist/*.tgz
+    gh pr create --head bump --base main --title "Bump to $VERSION" --body ""
+    gh issue close 42 --comment "Released in v$VERSION"
+    gh api "repos/$GH_REPO/releases/latest" --jq .tag_name
+```
+
+What to know:
+
+- **It needs no checkout.** The clone has no `.git`, so gh finds the
+  repository in `GH_REPO`, which the lent token sets; `gh pr create`
+  takes `--head` (a branch the job pushed) and `--base`.
+- **No terminal, no prompts.** The package sets `GH_PROMPT_DISABLED`,
+  so a command that would ask fails and says which flag it wants, as gh
+  does in any CI. There is no clipboard (copying fails with a reason) and
+  no browser.
+- **No telemetry and no update checks**: the package sets
+  `GH_TELEMETRY=disabled` and `GH_NO_UPDATE_NOTIFIER`, which a job's
+  `env:` can change.
+- **Certificates** are Mozilla's, in the package (`SSL_CERT_FILE`); Go's
+  `wasip1` port looks in no default place.
+- **Use the lent token.** `gh auth login`'s browser and device flows have
+  nothing to open; `GH_TOKEN` is all gh needs. Two gh processes refreshing
+  its configuration at once are not locked against each other (WASIX has
+  no `flock`). Precompiled extensions are Linux or macOS binaries and do
+  not run; only what the fixture below covers is tested.
+- **Seven packages** (five vendored, two of gh's own) that assume a
+  terminal, signals, a clipboard, file locks or process groups get wasip1
+  files that say there are none (`builtins/gh/shims/`), which is the whole
+  change to gh's source;
+  `build.sh` checks each build line it changes.
+- **It is a 73 MB module.** A runner compiles it once, after which a
+  command starts in a fraction of a second.
+- Tested end to end (`builtins/test.sh bash gh`) against a fake GitHub on
+  the job's own loopback (`builtins/gh/fake-github.go`): an HTTPS proxy
+  that answers for `github.com`, `api.github.com` and `uploads.github.com`
+  with a CA the job trusts, so gh and Git run unchanged against "GitHub":
+  `git push` of a branch and a tag with the lent Git configuration,
+  `gh pr create/list/edit/view`, `gh issue create/edit/close/view`,
+  `gh release create` with an asset, `gh api`, and as failures a token
+  GitHub refuses, a job that asked for none, permissions the app refused,
+  and a token that expired before the job started. The token is printed
+  and must come out masked.
+
 ### Git
 
 Every environment has Git 2.56.1 on `PATH`, built for WASIX from its
@@ -1920,8 +2097,13 @@ What to know:
   password (a private repository without a token, a mistyped URL on a host
   that answers 401) fails Git at once with "could not read Username ...:
   terminal prompts disabled" and status 128, because the runner sets
-  `GIT_TERMINAL_PROMPT=0` for every job. A job has no terminal, and without
-  it Git waited for an answer until the stall check stopped the job.
+  `GIT_TERMINAL_PROMPT=0` for every job. A job that sets it back to `1`
+  fails the same way, without that suffix: Git asks on `/dev/tty`, which a
+  job has with nothing to read, as at a terminal that is closed. In older
+  environments (before `bash` 5.1.20 and the others listed under
+  [Tools and environments](#tools-and-environments)) Git's HTTP helper
+  waited for the answer on the pipe from Git instead, until the job's
+  timeout.
 - **The checkout is not a repository.** The runner writes the commit's
   tree into the job's file system without a `.git`, so `git log` or `git
 describe` in `/app` fails; clone what a job needs to inspect.
@@ -2040,8 +2222,11 @@ is not consulted.
 `env:python@3.13` is CPython 3.13.15 built for WASIX, with pip, beside the
 tools of `env:bash@5`. It is Wasmer's `python/python` 3.13.20 (the package's
 version is Wasmer's own), which loads compiled extension modules at run
-time. `python`, `python3` and `pip` are commands, and the console scripts
-pip installs (`pytest`) are on `PATH`.
+time, with file locks put in (`builtins/environments/python/build.sh`):
+`fcntl.flock` and `fcntl.lockf` lock between a job's processes, as on Linux
+(#1216; before, they failed with "Function not implemented"). `python`,
+`python3` and `pip` are commands, and the console scripts pip installs
+(`pytest`) are on `PATH`.
 
 ```yaml
 test:
@@ -2248,10 +2433,6 @@ storage` does what it did) and so is everything native: the component
   manager cannot install anything here, `gke-gcloud-auth-plugin` included,
   so a kubeconfig from `gcloud container clusters get-credentials` cannot
   log in. Write one with a token instead (`gcloud auth print-access-token`).
-- **The Azure CLI locks its token cache** with `flock`, which fails with
-  `ENOSYS` in a job (#1216), so `az login` failed after getting its token.
-  `env:az`'s `az` goes on without the lock where there is none to take; a
-  job's `az` commands run one after another.
 - **Azure CLI extensions** (`az extension add`) are not tested: pure
   Python ones should install into the job, and ones with compiled code
   need a WASIX build on Wasmer's index, as with pip.
@@ -3370,6 +3551,33 @@ it is masked, and an untrusted run is given none of it:
     },
     "r2-assets": { "env": { "AWS_ACCESS_KEY_ID": "<value>", "AWS_SECRET_ACCESS_KEY": "<value>" } },
     "stripe-key": { "refused": "stripe-key is not granted to CI for acme/web" }
+  },
+  "github-token": {
+    "contents=write,pull-requests=write": {
+      "env": {
+        "GH_TOKEN": "<an installation token>",
+        "GITHUB_TOKEN": "<an installation token>",
+        "GH_REPO": [{ "text": "acme/web" }],
+        "GIT_CONFIG_GLOBAL": [{ "text": "/root/.gitconfig" }],
+        "GIT_TERMINAL_PROMPT": [{ "text": "0" }]
+      },
+      "files": [
+        {
+          "path": "/root/.gitconfig",
+          "content": [
+            {
+              "text": "[http \"https://github.com/acme/web\"]\n\textraheader = AUTHORIZATION: basic "
+            },
+            { "secret": "<base64 of x-access-token:the token>" },
+            { "text": "\n" }
+          ]
+        }
+      ],
+      "expires-at": 1794920400
+    },
+    "issues=write": {
+      "refused": "the Infrawrench GitHub App's installation on acme does not have issues: write"
+    }
   }
 }
 ```
@@ -3390,6 +3598,13 @@ it is masked, and an untrusted run is given none of it:
   or `refused-outputs` per output, is what a job that names it fails with.
   A name the job uses that `lent` does not have fails it as "connection
   `X` was not lent to this run".
+- **GitHub tokens** are keyed by the permissions jobs ask for, in order,
+  `name=level` joined by commas (`contents=write,pull-requests=write`);
+  a job is given the entry for exactly its own `github-token:`.
+- **Expiry.** `expires-at` (seconds since the Unix epoch), on any
+  connection, key or token entry: a job that names it and starts less than
+  a minute before then fails with that reason, and one whose timeout ends
+  after it gets a note in its report.
 - Up to 64 entries of each kind; the whole body is at most 1 MiB.
 
 - **Capacity.** A run is admitted when a slot is free and fewer runs are
@@ -3470,7 +3685,9 @@ it is masked, and an untrusted run is given none of it:
   stream) and `job-finished` events; then `run-finished`. A finished job's
   report carries its `needs` too. A job another runner of a split run ran
   has `remote`, that runner's name, on its `job-finished` event, in
-  `progress` and on its report. A client that connects late
+  `progress` and on its report. A task cache hit that waited for another
+  run computing the same key has `waited_for`, that run's id, on its
+  report (see [The task cache](#the-task-cache)). A client that connects late
   gets the backlog first. Up to 8 MiB of output is kept per run; past that a
   `truncated` event says so and job events still flow. A finished run's log
   is kept for five minutes after it ends; its report is read from the store
@@ -3723,6 +3940,17 @@ the routes; the short version:
 
 ## Known limitations
 
+- **File locks need a C library that asks for them.** The runner keeps
+  `flock` locks (an open file's, released with its last descriptor) and
+  `fcntl` record locks (a process's, released when it closes the file or
+  exits) between the processes a job's script starts, but not with its
+  `services:`. WASIX has no call for either, so the runner adds two of its
+  own (vendor/README.md), and a program only locks if its C library calls
+  them: `env:python`'s CPython does (`fcntl.flock`, `fcntl.lockf`); the C
+  library Wasmer's other packages are built on answers `ENOSYS` for
+  `fcntl`'s locks and takes every `flock` without asking. A blocking lock
+  looks again every 10 ms, and a deadlock between two of them is not
+  detected (no `EDEADLK`).
 - **Pipelines in `env:` scripts.** WASIX bash reports only the last
   command's exit status: `false | cat` succeeds even under `pipefail`, and
   `PIPESTATUS` holds one entry. A plain failing command, or one inside
@@ -3868,7 +4096,9 @@ will write to. Job caches, and environment caches (keyed
 downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
 [Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
 `runs/<owner>/`, what the runners of a [split run](#split-runs) share under
-`splits/<owner>/<repo-id>/<run-id>/` (below), and releases of `iwci` itself under
+`splits/<owner>/<repo-id>/<run-id>/` (below), which task cache keys
+runs are computing now under `inflight/<owner>/<repo-id>/<scope>/` (below),
+and releases of `iwci` itself under
 `releases/iwci/<version>/<target>` (immutable) with signed channel
 manifests at `releases/iwci/channels/<channel>.json`. CI's builds of
 builtins and packages are under `build-cache/main/` and
@@ -3909,6 +4139,25 @@ mask with, writes its records as its jobs printed them (the primary
 masks them when it reads them). A helper's jobs were given no secret, so
 its records hold a secret's value only where the repository or the
 pipeline itself spells it out.
+
+What [the task cache](#the-task-cache) keeps of the keys runs are
+computing, under `inflight/<owner>/<repo-id>/<scope>/`, `<scope>` being the
+scope a run saves its entries in (a run writes only there, and looks in
+every scope it reads entries from), `<run>` a run's id (a split run's
+primary's, for all of its runners):
+
+| Key                       | What                                                                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys/<hash>`             | A run computes the key that hashes to `<hash>`: JSON with the run, its runner and how long the job took last time. Written only if absent.                                                        |
+| `ended/<hash>`            | How the last job that held `<hash>` ended when it saved no entry (failed, stopped, or its entry refused): JSON with the run.                                                                      |
+| `runs/<run>/<runner>.<n>` | That runner of the run is alive; `<n>` moves every ten seconds from its first marker or wait to the end of the run. A reader times it on its own clock, and by the store's against its own run's. |
+
+A marker is deleted in the background when its job ends, and only while
+it still names the run; a run deletes what is left of its markers, and
+its sign of life, in the background when it ends (`iwci run` gives that
+up to ten seconds before it exits). Every server sweeps what is older
+than a day, which is what a runner that died left. They hold no
+job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 

@@ -54,6 +54,10 @@ export interface PlatformInfo {
   defaultRegion?: string;
   /** What the listing calls names that do not parse as family and size (a `msg()` source); "Other" by default. */
   otherLabel?: string;
+  /** The page heading when people don't call these instance types (a `msg()` source); "<full label> instance types" by default. */
+  heading?: string;
+  /** The listing's meta description when the default doesn't fit (a `msg()` source). */
+  description?: string;
 }
 
 export const PLATFORMS: Readonly<Record<string, PlatformInfo>> = {
@@ -214,6 +218,11 @@ export const PLATFORMS: Readonly<Record<string, PlatformInfo>> = {
     slug: "eco",
     label: "Eco Servers",
     summary: msg("Kimsufi, So you Start, Rise and Advance dedicated servers"),
+    // Searched as "ovh eco servers" and "ovh eco dedicated servers", never as instance types.
+    heading: msg("OVHcloud Eco dedicated servers"),
+    description: msg(
+      "Every OVHcloud Eco dedicated server from Kimsufi, So you Start, Rise and Advance: specs and monthly rent in every region, with their full history.",
+    ),
     preferredVariant: {},
     preferredTerm: "Prepaid|All Upfront",
     defaultRegion: "gra",

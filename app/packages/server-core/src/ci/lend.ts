@@ -59,6 +59,7 @@ import { buildAad, decrypt } from "../encryption.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { getClientForResource } from "../peer-clients.js";
 import { ciPeerClient, tunnelRefusal, type CiPeerClient } from "./peers.js";
+import type { GithubTokenEntry } from "./github-token.js";
 
 /** A value as the run request carries it: secret as a whole, or shown and secret parts. */
 export type LentValue = string | Array<{ text: string } | { secret: string }>;
@@ -84,6 +85,8 @@ export interface Lent {
   connections?: Record<string, LentEntry>;
   "ssh-keys"?: Record<string, LentEntry>;
   resources?: Record<string, LentResource>;
+  /** By the permissions jobs ask for (`github-token.ts`). */
+  "github-token"?: Record<string, GithubTokenEntry>;
 }
 
 /** What a run is, as lending checks it. */
@@ -964,13 +967,13 @@ function entrySize(entry: unknown): number {
  */
 export function fitLent(lent: Lent, baseBytes: number): Lent {
   const out: Lent = JSON.parse(JSON.stringify(lent)) as Lent;
-  const maps = [out.connections, out["ssh-keys"], out.resources].filter(
-    (m): m is Record<string, LentEntry | LentResource> => m !== undefined,
+  const maps = [out.connections, out["ssh-keys"], out.resources, out["github-token"]].filter(
+    (m): m is Record<string, LentEntry | LentResource | GithubTokenEntry> => m !== undefined,
   );
   // `,"lent":` and a little room for the rest of the JSON punctuation.
   while (baseBytes + entrySize(out) + 16 > MAX_RUN_BODY_BYTES) {
     let largest: {
-      map: Record<string, LentEntry | LentResource>;
+      map: Record<string, LentEntry | LentResource | GithubTokenEntry>;
       name: string;
       size: number;
     } | null = null;

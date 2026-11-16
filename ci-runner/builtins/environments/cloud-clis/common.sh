@@ -3,7 +3,8 @@
 # on and the Wasmer CLI that unpacks it, each pinned once elsewhere and read
 # from there.
 #
-#   PYTHON_WEBC   env:python's python/python package (environments/build.sh)
+#   PYTHON_WEBC   Wasmer's python/python package, which env:python's is
+#                 built from (python/build.sh)
 #   WASMER        the Wasmer CLI php-cli/build.sh pins, unpacked
 #   PYTHON_TREE   the package unpacked: modules/python and fs/
 #   PYTHON_PREFIX the interpreter's prefix inside fs/ (the Nix store path)
@@ -12,11 +13,16 @@
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 
-# python/python's line in environments/build.sh: name, version, sha256.
-read -r _ PYTHON_PKG_VERSION PYTHON_PKG_SHA _ <<<"$(sed -n 's/^PYTHON_PKG="\(.*\)"$/\1/p' "$here/environments/build.sh")"
+# python/python's line in environments/build.sh: name, version. Its hash
+# is our build's; pip runs on Wasmer's package it is built from, whose
+# hash python/build.sh pins: the Wasmer CLI that runs it has none of the
+# runner's own calls, which ours imports (#1216). It is the same
+# interpreter otherwise.
+read -r _ PYTHON_PKG_VERSION _ <<<"$(sed -n 's/^PYTHON_PKG="\(.*\)"$/\1/p' "$here/environments/build.sh")"
+PYTHON_PKG_SHA="$(sed -n 's/^WEBC_SHA256="\(.*\)"$/\1/p' "$here/environments/python/build.sh")"
 PYTHON_PREFIX_GUEST="$(sed -n 's/^PYTHON_PREFIX="\(.*\)"$/\1/p' "$here/environments/build.sh")"
 if [[ -z "${PYTHON_PKG_SHA:-}" || -z "$PYTHON_PREFIX_GUEST" ]]; then
-  echo "error: environments/build.sh pins no PYTHON_PKG or PYTHON_PREFIX; cloud-clis reads them" >&2
+  echo "error: environments/build.sh or python/build.sh pins no PYTHON_PKG, PYTHON_PREFIX or WEBC_SHA256; cloud-clis reads them" >&2
   exit 1
 fi
 # The Wasmer CLI, as php-cli/build.sh pins it for this host (its `case`

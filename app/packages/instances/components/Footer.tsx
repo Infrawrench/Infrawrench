@@ -11,8 +11,8 @@ import { AnalyticsConsent } from "./AnalyticsConsent";
 /** The bulk instances API: the SDKs and HTTP endpoints this site's data is also available through. */
 const API_DOCS = "https://infrawrench.com/docs/team-and-billing/bulk-instances-api";
 
-/** The Kubernetes troubleshooting guides on infrawrench.com's blog. */
-const GUIDES = "https://infrawrench.com/blog#guides";
+/** The Kubernetes troubleshooting hub on infrawrench.com, which links every guide. */
+const GUIDES = "https://infrawrench.com/blog/kubernetes-troubleshooting-pods-logs-and-events";
 
 /** Chat pages, where the question box floats at the bottom instead of the footer. */
 function isChatPage(pathname: string): boolean {

@@ -41,7 +41,9 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
         ask={listing.label}
       />
       <h1 className="text-3xl font-semibold tracking-[-0.03em]">
-        {gt("{platform} instance types", { platform: fullLabel(listing.platform) })}
+        {listing.heading
+          ? tr(listing.heading)
+          : gt("{platform} instance types", { platform: fullLabel(listing.platform) })}
       </h1>
       <p className="mt-1 text-ink-2">{tr(listing.summary)}</p>
       <p className="mt-0.5 text-sm text-ink-3">

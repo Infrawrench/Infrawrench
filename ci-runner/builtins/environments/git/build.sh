@@ -63,7 +63,7 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Our build of Git 2.56.1. A changed build is a new number after `iwci.`.
-VERSION="2.56.1-iwci.1"
+VERSION="2.56.1-iwci.2"
 # Applied to Git's source in this order (see the top of this file).
 GIT_PATCHES=(git-spawn.patch git-exec-bit.patch git-no-hard-links.patch)
 GIT_URL="https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.1.tar.xz"
@@ -132,8 +132,17 @@ esac
 # library's regex lacks REG_STARTEND, so Git's own. `uname_*` keep
 # config.mak.uname from applying the build host's settings, and
 # CURL_CONFIG=false the build host's curl-config.
+#
+# HAVE_DEV_TTY, as config.mak.uname gives Linux: Git prompts for a user
+# name or password on /dev/tty itself (a job's reads end of file at once,
+# so Git fails with "could not read Username"). Without it Git calls the C
+# library's getpass(), which in wasix-libc reads the process's standard
+# input instead of /dev/tty, and in git-remote-http that is the pipe Git
+# keeps open while it waits for the helper: the prompt waited until the
+# job's timeout (#1264).
 MAKE_ARGS=(
   uname_S=WASIX uname_M=wasm32 uname_O=WASIX uname_R=1 uname_P=wasm32 uname_V=1
+  HAVE_DEV_TTY=YesPlease
   CC=wasixcc AR=wasixar
   prefix=/usr
   NO_PERL=YesPlease NO_PYTHON=YesPlease NO_TCLTK=YesPlease NO_GETTEXT=YesPlease
