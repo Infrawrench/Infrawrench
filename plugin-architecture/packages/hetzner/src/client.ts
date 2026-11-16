@@ -2404,3 +2404,4 @@ type HetznerLoadBalancer = CloudResponse<"list_load_balancers">["load_balancers"
 type HetznerPrimaryIp = CloudResponse<"list_primary_ips">["primary_ips"][number] & LegacyDatacenter;
 
 // bench: typical pull request 1
+// bench: typical pull request 4
