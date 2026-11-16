@@ -6,7 +6,7 @@ import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadListing } from "@/lib/load";
 import { breadcrumbJsonLd } from "@/lib/jsonld";
-import { CLOUDS, fullLabel, platformAt, platformPath } from "@/lib/platforms";
+import { CLOUDS, fullLabel, platformAt, platformInfo, platformPath } from "@/lib/platforms";
 
 /** The sync Action refreshes the data twice an hour. */
 export const revalidate = 1800;
@@ -31,9 +31,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { locale, listing } = await load(params);
   const tr = await getTranslator(locale);
   const platform = fullLabel(listing.platform);
-  const title = tr(msg("{platform} instance types: specs and prices by region"), { platform });
-  const description =
-    listing.cloud === "runpod"
+  const info = platformInfo(listing.platform);
+  const title = info?.heading
+    ? tr(msg("{heading}: specs and prices by region"), { heading: tr(info.heading) })
+    : tr(msg("{platform} instance types: specs and prices by region"), { platform });
+  const description = info?.description
+    ? tr(info.description)
+    : listing.cloud === "runpod"
       ? tr(
           msg(
             "Every {platform} GPU type and CPU pod size: specs and prices, with their full history.",
