@@ -5,7 +5,8 @@
   "args": [],
   "env": {
     "WRANGLER_SEND_METRICS": "false",
-    "DO_NOT_TRACK": "1"
+    "DO_NOT_TRACK": "1",
+    "CHOKIDAR_USEPOLLING": "1"
   },
   "description": "Wrangler 4.163.0, on the environment's node, bundling with esbuild-wasm; workerd is a stand-in that explains itself",
   "tree_sha256": "f32b7b0904828d5cc693e4aeef31079ebd5a7275b47429877c89b56deb5c169f"

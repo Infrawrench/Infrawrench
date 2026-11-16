@@ -1724,6 +1724,13 @@ deploy:
   still asks npm's registry for its newest version (three seconds at most,
   cached for an hour); with `network: false` that fails at once and changes
   nothing.
+- **Files are watched by polling.** `fs.watch` fails with `ENOSYS` in a
+  job (there is no inotify in the isolate), and Wrangler's watcher
+  (chokidar, inside Wrangler and Miniflare) does not recover from that:
+  from 4.163.0 `wrangler dev` waits for the watcher to be ready before it
+  starts, so it ended with status 0 having done nothing (#1279).
+  `builtin:wrangler`'s default environment sets `CHOKIDAR_USEPOLLING=1`,
+  which watches with `fs.watchFile` (a `stat` every 100 ms) instead.
 - **Native programs are left out.** A job is a WebAssembly isolate, so a
   native binary cannot run in it, and npm leaves the per-platform builds out:
   - The Vercel CLI's own native build (`@vercel/vc-native-*`) gives way to
