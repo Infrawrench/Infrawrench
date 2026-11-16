@@ -47,6 +47,23 @@ struct ModesInner {
     /// What the job set over `base`: `None` hides a `base` entry, for a path
     /// that was removed (or replaced) and is back to the default.
     own: Mutex<BTreeMap<PathBuf, Option<u32>>>,
+    /// Where the modes really are, when the files are in a file system
+    /// that has them ([`Modes::real`]).
+    real: Option<Arc<dyn RealModes>>,
+}
+
+/// The modes of files in a file system that keeps them itself: a job's
+/// own files seen from inside its sandbox, where `chmod(2)` and `lstat(2)`
+/// work. Paths are absolute, with no symlinks left to resolve.
+pub trait RealModes: Send + Sync + std::fmt::Debug {
+    /// The mode of `path` when it is not the default for its type: `Ok(None)`
+    /// when it is, `Err(())` when the file system has no such file (it is
+    /// in a mount of its own, which the record answers for).
+    #[allow(clippy::result_unit_err)]
+    fn get(&self, path: &Path) -> Result<Option<u32>, ()>;
+    /// Sets the mode of `path`; `false` when the file system has no such
+    /// file.
+    fn set(&self, path: &Path, mode: u32) -> bool;
 }
 
 impl Modes {
@@ -55,6 +72,20 @@ impl Modes {
         Self(Arc::new(ModesInner {
             base,
             own: Mutex::default(),
+            real: None,
+        }))
+    }
+
+    /// Modes that live in `real`, starting from `base` (the modes the
+    /// files had when the record was made): a read asks `real` and a
+    /// change goes to it, and the record keeps the paths with a mode that
+    /// is not the default, which is all [`Modes::recorded`] lists. A path
+    /// `real` does not have is kept in the record alone.
+    pub fn real(base: SnapshotModes, real: Arc<dyn RealModes>) -> Self {
+        Self(Arc::new(ModesInner {
+            base,
+            own: Mutex::default(),
+            real: Some(real),
         }))
     }
 
@@ -66,6 +97,18 @@ impl Modes {
     /// for what is there. `path` is absolute and has no symlinks left to
     /// resolve (see [`crate::resolve`]).
     pub fn get(&self, path: &Path) -> Option<u32> {
+        if let Some(real) = &self.0.real
+            && let Ok(mode) = real.get(path)
+        {
+            let mut own = self.own();
+            match mode {
+                Some(mode) => {
+                    own.insert(path.to_path_buf(), Some(mode));
+                }
+                None => self.forget(&mut own, path),
+            }
+            return mode;
+        }
         match self.own().get(path) {
             Some(mode) => *mode,
             None => self.0.base.get(path).copied(),
@@ -91,6 +134,9 @@ impl Modes {
 
     /// Records `mode` (its [`MODE_BITS`]) for `path`.
     pub fn set(&self, path: &Path, mode: u32) {
+        if let Some(real) = &self.0.real {
+            real.set(path, mode & MODE_BITS);
+        }
         self.own()
             .insert(path.to_path_buf(), Some(mode & MODE_BITS));
     }

@@ -527,18 +527,19 @@ void HostHeapCommittedCallback(v8::Isolate* isolate,
 
 // iwci patch (#1021): an isolate's near-heap-limit callback from its env's
 // release on: no JavaScript runs any more, so the heap only has to finish
-// collecting and tear down. Grants room in steps, uncharged, up to the
-// limit its data encodes (the heap's at release plus
-// `kTeardownHeapSlackMax`).
-constexpr size_t kTeardownHeapSlackStep = 32u * 1024 * 1024;
+// collecting and tear down. Grants room, uncharged, up to the limit its data
+// encodes (the larger of the heap's limit and its size at release, plus
+// `kTeardownHeapSlackMax`), all of it at once: V8 asks once per limit check
+// (`Heap::CheckHeapLimitReached`) and does not ask again before it gives
+// up, so room handed out in steps could fall short of a heap that was
+// already past its limit when its env was released.
 constexpr size_t kTeardownHeapSlackMax = 128u * 1024 * 1024;
 
 size_t TeardownNearHeapLimitCallback(void* data,
                                      size_t current_heap_limit,
                                      size_t /*initial_heap_limit*/) {
   const size_t cap = static_cast<size_t>(reinterpret_cast<uintptr_t>(data));
-  if (current_heap_limit >= cap) return current_heap_limit;
-  return std::min(cap, current_heap_limit + kTeardownHeapSlackStep);
+  return std::max(cap, current_heap_limit);
 }
 
 // Rust-exported guest-heap hooks (see guest_heap.rs). When a guest-heap
@@ -2135,7 +2136,8 @@ static napi_status DestroyEnvInstance(napi_env env) {
     env->isolate->AddNearHeapLimitCallback(
         TeardownNearHeapLimitCallback,
         reinterpret_cast<void*>(static_cast<uintptr_t>(
-            heap.heap_size_limit() + kTeardownHeapSlackMax)));
+            std::max(heap.heap_size_limit(), heap.total_heap_size()) +
+            kTeardownHeapSlackMax)));
   }
   delete env;
   return napi_ok;

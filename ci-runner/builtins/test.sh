@@ -3814,6 +3814,27 @@ jobs:
     run: |
       git init -q -b main /tmp/r
       python -c 'import subprocess; print(subprocess.run(["git", "-C", "/tmp/r", "status", "--short", "--branch"], check=True, capture_output=True, text=True).stdout)' | grep -q '^## No commits yet on main$'
+  # A remote that wants credentials, as a private repository does, fails
+  # Git at once with its own error (#1231): nobody can answer its prompt,
+  # and it waited for an answer until the stall check stopped the job. The
+  # fake answers every request 401; the timeout is well inside the stall
+  # check, so a prompt that waits ends this job as timed out.
+  git-auth-prompt-fails:
+    using: env:python@3.13
+    timeout: 2m
+    run: |
+      python - > /tmp/auth.log 2>&1 <<'PY' &
+      import http.server
+      class Private(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(401)
+              self.send_header("WWW-Authenticate", 'Basic realm="private"')
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+      http.server.HTTPServer(("127.0.0.1", 8001), Private).serve_forever()
+      PY
+      wait-for-port 8001 --timeout 60s
+      git clone http://127.0.0.1:8001/acme/private.git /tmp/private
 YAML
       ;;
     aws)
@@ -4554,7 +4575,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/git-fatal-fails) echo "exited with 128" ;;
+    bash/git-fatal-fails | python/git-auth-prompt-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
@@ -4589,6 +4610,7 @@ want_stderr() {
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
+    python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
     openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;

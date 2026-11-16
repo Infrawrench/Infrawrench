@@ -43,3 +43,7 @@ zstd = { version = "0.13", default-features = false }
 # A cloud job's artifacts travel to and from its machine as tar archives.
 # Already in the tree through iwci-deps.
 tar = { version = "0.4.46", default-features = false }
+# A native tool's files, handed to its sandbox without a copy. Both are
+# already in the tree.
+bytes = "1.9"
+shared-buffer = "0.1.4"
