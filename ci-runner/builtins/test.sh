@@ -2976,6 +2976,9 @@ jobs:
     needs: [node-passes]
     timeout: 3m
     run: |
+      # A failing step says which it was, and what it got (#1249).
+      trap 'echo "compile-cache-passes: line $LINENO exited $?: $BASH_COMMAND" >&2' ERR
+      same() { [[ "$1" == "$2" ]] || { printf 'got:  %s\nwant: %s\n' "$1" "$2" >&2; return 1; }; }
       mkdir -p /tmp/cc/app && cd /tmp/cc/app
       printf 'module.exports = (a) => a + 1;\n' >dep.js
       printf 'export const twice = (a) => a * 2;\n' >dep.mjs
@@ -2994,9 +2997,12 @@ jobs:
       JS
       # What the engine did with each of this tree's modules, as
       # NODE_DEBUG_NATIVE=COMPILE_CACHE reports it.
+      # `node`'s own errors go to the job's stderr, not into the comparison.
       report() {
-        NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null |
-          sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' |
+        local log
+        log="$(NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null)" ||
+          printf 'node main.js exited %s:\n%s\n' "$?" "$(grep -v '^\[compile cache\]' <<<"$log")" >&2
+        sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' <<<"$log" |
           sort | tr '\n' ';'
       }
       test "$(node -p 'require("node:module").getCompileCacheDir()')" = undefined
@@ -3006,15 +3012,15 @@ jobs:
       test "$(find "$dir" -type f | wc -l)" -ge 4
       # The worker requires dep.js after the main thread has written it.
       hits="CommonJS dep.js accepted;CommonJS dep.js accepted;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "$hits"
       # A changed module is compiled again and its entry replaced.
       printf 'module.exports = (a) => a + 1; // changed\n' >dep.js
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
+      same "$(report)" "$hits"
       # A damaged entry is a miss.
       for f in "$dir"/*; do printf 'garbage' | dd of="$f" bs=1 seek=60 conv=notrunc 2>/dev/null; done
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
+      same "$(report)" "$hits"
       # An entry that cannot be written is no error (each is a directory now).
       for f in "$dir"/*; do rm "$f" && mkdir -p "$f/in-the-way"; done
       test "$(node main.js)" = "$dir"
@@ -3025,10 +3031,10 @@ jobs:
       cat >/tmp/cc/many.js <<'JS'
       const { Worker } = require("node:worker_threads");
       const code = 'let s = 0; for (let i = 1; i <= 300; i++) s += require("/tmp/cc/many/m" + i + ".js"); require("node:worker_threads").parentPort.postMessage(s);';
-      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) process.exit(1); });
+      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) { console.error("worker " + w + " summed " + s); process.exit(1); } });
       JS
       node /tmp/cc/many.js
-      test "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" = 1200
+      same "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" 1200
       # The API.
       unset NODE_COMPILE_CACHE
       node -e '
@@ -3062,7 +3068,7 @@ jobs:
       NODE_COMPILE_CACHE=/tmp/cc/one/.cache NODE_COMPILE_CACHE_PORTABLE=1 node /tmp/cc/one/main.js >/dev/null
       mv /tmp/cc/one /tmp/cc/two
       cd /tmp/cc/two
-      test "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" = "$hits"
+      same "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" "$hits"
   # CPU time is CPU time (#1038): the C library read the monotonic clock
   # (days, and a sleep counted as work), and the host's clocks would be the
   # whole runner's. Now `process.cpuUsage()` starts near zero, grows with

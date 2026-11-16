@@ -47,7 +47,7 @@ export class SshHostKeyRefusedError extends Error {
 /** The fingerprint the organization pinned for a host, or null. */
 export type PinLookup = (host: string, port: number) => Promise<string | null>;
 
-function databasePins(organizationId: string): PinLookup {
+export function databasePins(organizationId: string): PinLookup {
   return async (host, port) => {
     const [row] = await db
       .select({ fingerprint: sshHostKeys.fingerprint })
@@ -64,7 +64,12 @@ function databasePins(organizationId: string): PinLookup {
   };
 }
 
-function pinnedKeyVerifier(
+/**
+ * An ssh2 `hostVerifier` that accepts only the key the organization pinned for
+ * `host:port`, read-only; a refusal is left on `refused.value`. Also used by
+ * `tunnel-resolver.ts` for the tunnels it opens unattended.
+ */
+export function pinnedKeyVerifier(
   pins: PinLookup,
   host: string,
   port: number,

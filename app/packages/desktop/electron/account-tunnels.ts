@@ -26,7 +26,7 @@ import { errorMessage } from "../shared/rpc/errors";
 import { SshError } from "../shared/rpc/groups/ssh-common";
 import { getSqlite } from "./db";
 import { buildAad, decryptValue, getEncryptionKey } from "./main-utils";
-import { findAccountTunnel, openTunnel } from "./ssh-tunnel";
+import { ensureAccountTunnel, findAccountTunnel } from "./ssh-tunnel";
 
 interface TunnelConfigRow {
   id: string;
@@ -64,41 +64,30 @@ async function readTunnelConfig(accountId: string): Promise<TunnelConfigRow | nu
   }
 }
 
-/** One open account tunnel per account at a time, however many clients ask at once. */
-const opening = new Map<string, Promise<number>>();
-
 /**
  * The local port of the account's tunnel: one already open to the same place (this
- * account's, or the one the modal opened when it made the account), or a new one.
+ * account's, or the one the modal opened when it made the account), or the account's
+ * own, which `@infrawrench/ssh-tunnel-core` opens once however many clients ask at
+ * once, and opens again after its SSH connection ends.
  */
 async function ensureTunnel(accountId: string, config: TunnelConfigRow): Promise<number> {
   const open = findAccountTunnel(accountId, config);
   if (open !== null) return open;
-  const pending = opening.get(accountId);
-  if (pending) return pending;
-  const started = (async () => {
-    const privateKey = decryptValue(
+  const { localPort } = await ensureAccountTunnel(accountId, () => ({
+    sshHost: config.sshHost,
+    sshPort: config.sshPort,
+    sshUser: config.sshUser,
+    privateKey: decryptValue(
       config.encryptedPrivateKey,
       config.privateKeyIv,
       getEncryptionKey(),
       // The AAD `LocalSecrets.encryptTunnelConfigKey` stored it under.
       buildAad("sshTunnelConfig", config.id, "privateKey"),
-    );
-    const { localPort } = await openTunnel(
-      {
-        sshHost: config.sshHost,
-        sshPort: config.sshPort,
-        sshUser: config.sshUser,
-        privateKey,
-        remoteHost: config.remoteHost,
-        remotePort: config.remotePort,
-      },
-      { accountId },
-    );
-    return localPort;
-  })().finally(() => opening.delete(accountId));
-  opening.set(accountId, started);
-  return started;
+    ),
+    remoteHost: config.remoteHost,
+    remotePort: config.remotePort,
+  }));
+  return localPort;
 }
 
 /**
