@@ -472,11 +472,18 @@ function RootLayout() {
           null);
       replaceWorkspaceTabs(nextTabs, nextActiveId);
       setTabsValidated(true);
-      // Validation dropped everything (stale ids, a deleted dashboard), which
-      // would leave the window on a route no open tab renders, i.e. blank.
+      if (cancelled) return;
+      // Validation dropped everything (stale ids, a deleted dashboard), or the
+      // tab the window was showing, which would leave it on a route no open
+      // tab renders, i.e. blank. Go Home, or follow the tab that is active
+      // now. Mirrors the web's __root.
       if (nextTabs.length === 0) {
-        if (cancelled) return;
         void navigateToWorkspaceTarget(navigate, homeTabTarget(), { replace: true });
+        return;
+      }
+      const next = nextTabs.find((tab) => tab.id === nextActiveId);
+      if (next && nextActiveId !== currentActiveId) {
+        void navigate(getWorkspaceNavigateArgs(next.target, true));
       }
     }
 

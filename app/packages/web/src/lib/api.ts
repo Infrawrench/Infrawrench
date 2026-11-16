@@ -5,7 +5,7 @@
  * - JSON parsing + error handling
  */
 
-import { takeBootResponse } from "./boot-requests";
+import { discardBootResponses, takeBootResponse } from "./boot-requests";
 import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "./host-key-trust";
 import {
   REAUTHENTICATION_REQUIRED,
@@ -78,6 +78,8 @@ export class ChangeFreezeBlockedClientError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method?.toUpperCase() ?? "GET";
+  if (method !== "GET" && method !== "HEAD") discardBootResponses();
   const res = await (takeBootResponse(path, init) ??
     fetch(path, {
       credentials: "include",

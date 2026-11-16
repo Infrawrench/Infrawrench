@@ -17,6 +17,13 @@
  * the same path, which then treats it exactly like one it sent (the 401
  * redirect included). Each is taken once, and only while fresh, so nothing
  * later is answered from boot.
+ *
+ * "Fresh" also means no write has happened since. The first write sent with
+ * `apiFetch` calls {@link discardBootResponses}, because it may change what an
+ * untaken response answered. Onboarding is the case that needs it: a visitor
+ * with no organization is sent from `/` to `/onboarding` before anything takes
+ * `/api/auth/orgs`, creates one there, and the sidebar that then mounts would
+ * otherwise read the empty list from boot and never find the new org.
  */
 
 interface BootRequests {
@@ -48,4 +55,11 @@ export function takeBootResponse(path: string, init?: RequestInit): Promise<Resp
   if (!boot || !pending) return undefined;
   delete boot.responses[path];
   return Date.now() - boot.at <= MAX_AGE_MS ? pending : undefined;
+}
+
+/** Drops every untaken boot response, so the next GET of each path goes out. */
+export function discardBootResponses(): void {
+  const boot = typeof window === "undefined" ? undefined : window.__IW_BOOT__;
+  if (!boot) return;
+  for (const path of Object.keys(boot.responses)) delete boot.responses[path];
 }

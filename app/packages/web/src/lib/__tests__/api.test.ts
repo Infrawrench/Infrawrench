@@ -179,4 +179,18 @@ describe("responses index.html started at boot", () => {
     expect(await apiFetch("/api/y")).toEqual({ from: "network" });
     expect(fn).toHaveBeenCalledTimes(2);
   });
+
+  // Onboarding: `/api/auth/orgs` started at boot answers [] and is never taken
+  // on the way to `/onboarding`; creating the org must not leave the sidebar
+  // reading that empty list.
+  it("drops untaken boot responses once anything is written", async () => {
+    const fn = mockFetch({ ok: true, status: 200, text: async () => '{"from":"network"}' });
+    bootWindow.__IW_BOOT__ = {
+      at: Date.now(),
+      responses: { "/api/auth/orgs": bootResponse("[]") },
+    };
+    await apiPost("/api/orgs", { displayName: "Acme" });
+    expect(await apiFetch("/api/auth/orgs")).toEqual({ from: "network" });
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
 });

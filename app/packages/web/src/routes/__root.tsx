@@ -30,6 +30,7 @@ import {
   homeTabTarget,
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
   plainRouteDocumentTitle,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
@@ -278,6 +279,16 @@ function AuthenticatedShell() {
         const nextTabs = tabsSnapshot.filter((t) => validSet.has(t.id));
         replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
         setTabsValidatedForOrg(orgId);
+        // The page was showing a tab that is gone (tabs persisted from another
+        // org, a deleted dashboard). Arriving at the org's bare address had
+        // already followed it, so the route renders nothing and, when every
+        // tab went, the strip is empty too. Move to the tab that is active now,
+        // or Home, as the desktop does.
+        if (activeIdSnapshot === null || validSet.has(activeIdSnapshot)) return;
+        const { workspaceTabs: tabs, activeWorkspaceTabId: activeId } = useUIStore.getState();
+        const next = tabs.find((t) => t.id === activeId);
+        if (next) void navigate({ ...getWorkspaceNavigateArgs(next.target), replace: true });
+        else void navigateToWorkspaceTarget(navigate, homeTabTarget(), { replace: true });
       })
       .catch(() => {
         if (!cancelled) setTabsValidatedForOrg(orgId);
