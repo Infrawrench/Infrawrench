@@ -32,9 +32,58 @@ Every job then starts in its own [Wasmer](https://wasmer.io) instance, over a co
 
 ![Clone once, install once, run every job](/blog/infrawrench-ci/04-how.png)
 
-The **task cache** skips a job whose inputs have not changed since it last passed, and hands on that run's log, outputs and artifacts as if it had run again. The key covers the job's definition, its tools, the lockfiles, the files its inputs match and every artifact it is handed. A change at the bottom of a monorepo reruns what depends on it, and nothing else.
-
 With `split: true`, another runner can take some of a run's jobs when the runner that has it is short of slots or memory. The run is still billed once.
+
+## One job per package
+
+Where every job pays for its own machine, clone and install, a monorepo's CI ends up as a few big jobs that each run a slice of everything. Ours did: the GitHub Actions workflow it replaced had six. A failure was somewhere in a long log, and a one-line change reran all of it.
+
+In Infrawrench CI a job costs none of that, so give every package its own. `packages:` turns one job definition into a job per workspace package, and `needs: ["^build"]` makes each one wait for the packages it depends on:
+
+```yaml
+jobs:
+  build:
+    packages: { scripts: { build: "tsdown*" } }
+    needs: ["^build"]
+    artifacts: [dist]
+    task-cache: true
+
+  test:
+    packages: { has-script: [test] }
+    needs: [build]
+    run: pnpm test
+    task-cache: true
+```
+
+- Filter which packages a job runs in by directory or name (`only:`), by the files a package has (`has:`) and by its scripts (`has-script:`, `scripts:`).
+- Each package's job is its own row and log in the run, so a failure points at one package.
+- A package with a long suite can split it further with `matrix:`, without splitting every package's.
+
+Infrawrench's own test pipeline is 897 jobs from 23 definitions in one file.
+
+![Hundreds of small jobs, not a few huge ones](/blog/infrawrench-ci/05-jobs.png)
+
+## The task cache
+
+`task-cache:` skips a job whose inputs have not changed since it last passed, and hands on that run's log, outputs and artifacts as if it had run again. With a job per package, it is what makes a monorepo's CI recheck only what a change can affect, and it is how our 897-job pipeline comes back in 9.1 seconds when nothing changed.
+
+```yaml
+jobs:
+  test:
+    packages: { has-script: [test] }
+    needs: ["^build"]
+    task-cache:
+      inputs: [src/**, "!src/**/*.md"]
+      root-inputs: [tsconfig.base.json]
+```
+
+- **The key** covers the job's definition, the exact version of every tool and environment it uses, the lockfiles, the files its `inputs:` and `root-inputs:` match, and the bytes of every artifact it is handed. A job downstream of a change reruns only when what it is handed actually changed.
+- **A hit costs nothing.** The job doesn't start, wait for a slot or take memory, and it isn't billed. A run where every job hits never installs dependencies.
+- **`artifacts: false`** leaves the artifacts a job is handed out of its key, for a job that only passes them on, so a change at the bottom of the graph doesn't rebuild everything above it.
+- **Pull requests keep their own results.** Nothing a pull request saves is reused on your default branch.
+- **Retry** after a flaky failure reruns only what needs to run.
+
+![Only what a change can affect runs](/blog/infrawrench-ci/06-cache.png)
 
 ## Your languages, already built
 
@@ -45,7 +94,7 @@ Environments and tools are prebuilt for WebAssembly, pinned by version and kept 
 - **Services:** PostgreSQL 18.4 and ClickHouse 26.11.
 - **Tools:** TypeScript 7.1 (tsc-rs), kubectl, OpenSSH, and the AWS, Azure, Google Cloud, Vercel, Wrangler and Neon CLIs.
 
-![Languages and tools](/blog/infrawrench-ci/05-languages.png)
+![Languages and tools](/blog/infrawrench-ci/07-languages.png)
 
 Anything that cannot run in WebAssembly, compiling Rust for example, runs as a cloud job instead.
 
@@ -53,7 +102,7 @@ Anything that cannot run in WebAssembly, compiling Rust for example, runs as a c
 
 `cloud:` runs a job on one of your organisation's connected accounts instead of on our runners. 33 providers can run jobs: AWS, Google Cloud, Azure, Docker, Kubernetes, DigitalOcean, Hetzner, Oracle Cloud and 25 more. A job can be a fresh VM, a one-off container, a managed image build, an existing host over SSH, or a job on an existing cluster.
 
-![33 providers](/blog/infrawrench-ci/06-clouds.png)
+![33 providers](/blog/infrawrench-ci/08-clouds.png)
 
 An admin turns a connection on for CI and chooses the kinds of job it may run, how many at once and for how long. A pipeline then names it:
 
@@ -69,7 +118,7 @@ jobs:
       pnpm test:e2e
 ```
 
-![Start containers in your own cloud](/blog/infrawrench-ci/07-containers.png)
+![Start containers in your own cloud](/blog/infrawrench-ci/09-containers.png)
 
 The job stays in the pipeline graph like any other. It gets the artifacts of the jobs it needs and hands its own on. The machine gets the commit, the job's environment and what it is lent, but never the cloud account's credentials. A fresh machine is torn down when the job ends. Pull requests from forks never run cloud jobs.
 
@@ -93,9 +142,9 @@ jobs:
       ssh web-1 sudo systemctl restart worker
 ```
 
-![Lend an SSH key](/blog/infrawrench-ci/08-ssh.png)
+![Lend an SSH key](/blog/infrawrench-ci/10-ssh.png)
 
-![Lend a cluster](/blog/infrawrench-ci/09-kubernetes.png)
+![Lend a cluster](/blog/infrawrench-ci/11-kubernetes.png)
 
 What is lent is masked in every log line, including the token inside a kubeconfig. A job lent anything is never task-cached, and nothing is ever lent to a pull request from a fork.
 
@@ -114,7 +163,7 @@ jobs:
     outputs: [digest]
 ```
 
-![Build and push images](/blog/infrawrench-ci/10-builds.png)
+![Build and push images](/blog/infrawrench-ci/12-builds.png)
 
 ## Safe by default
 
