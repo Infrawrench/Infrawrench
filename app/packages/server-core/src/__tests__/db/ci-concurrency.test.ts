@@ -86,6 +86,15 @@ const pipelines = (group: string, cancel: boolean) => [
   { file: ".infrawrench/ci/deploy.yml", name: "Deploy", concurrency: null },
 ];
 
+/** A finished run's report with a job that passed: a run with none is `skipped`, not `passed`. */
+const RAN = [
+  {
+    outcome: "ran",
+    file: ".infrawrench/ci/test.yml",
+    report: { pipeline: "Test", jobs: [{ id: "test", name: "Test", status: "passed" }] },
+  },
+];
+
 describe.skipIf(!configured)("CI concurrency groups against a real Postgres", () => {
   let sha = 0;
 
@@ -228,7 +237,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     expect(done.statusReason).toBe("Cancelled by a newer run of its concurrency group `ci-main`.");
     // Its cancel was sent once; the pass does not send it again.
     expect(proxy.calls.filter((c) => c.path.endsWith("/cancel"))).toEqual([]);
-    await finishOnRunner(second, { passed: true, pipelines: [] });
+    await finishOnRunner(second, { passed: true, pipelines: RAN });
     await pass.runCiStatusPass();
     expect((await row(second)).status).toBe("passed");
   });
@@ -254,12 +263,12 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     await pass.runCiStatusPass();
     expect((await row(third)).status).toBe("pending");
 
-    await finishOnRunner(holder, { passed: true, pipelines: [] });
+    await finishOnRunner(holder, { passed: true, pipelines: RAN });
     await pass.runCiStatusPass(); // the holder finishes
     await pass.runCiStatusPass(); // the waiting run goes
     expect((await row(holder)).status).toBe("passed");
     expect((await row(third)).status).toBe("running");
-    await finishOnRunner(third, { passed: true, pipelines: [] });
+    await finishOnRunner(third, { passed: true, pipelines: RAN });
     await pass.runCiStatusPass();
   });
 
@@ -274,14 +283,14 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     expect(statuses.filter((s) => s === "pending").length).toBeLessThanOrEqual(1);
     for (const id of ids) {
       if ((await row(id)).status === "running") {
-        await finishOnRunner(id, { passed: true, pipelines: [] });
+        await finishOnRunner(id, { passed: true, pipelines: RAN });
       }
     }
     await pass.runCiStatusPass();
     await pass.runCiStatusPass();
     for (const id of ids) {
       if ((await row(id)).status === "running") {
-        await finishOnRunner(id, { passed: true, pipelines: [] });
+        await finishOnRunner(id, { passed: true, pipelines: RAN });
       }
     }
     await pass.runCiStatusPass();
@@ -297,8 +306,8 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     await runs.dispatchRun(b);
     expect((await row(a)).status).toBe("running");
     expect((await row(b)).status).toBe("running");
-    await finishOnRunner(a, { passed: true, pipelines: [] });
-    await finishOnRunner(b, { passed: true, pipelines: [] });
+    await finishOnRunner(a, { passed: true, pipelines: RAN });
+    await finishOnRunner(b, { passed: true, pipelines: RAN });
     await (await modules()).pass.runCiStatusPass();
   });
 
@@ -311,7 +320,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     expect((await row(newer)).status).toBe("running");
     expect((await row(older)).status).toBe("cancelled");
     expect((await row(older)).statusReason).toMatch(/A newer run .* went ahead/);
-    await finishOnRunner(newer, { passed: true, pipelines: [] });
+    await finishOnRunner(newer, { passed: true, pipelines: RAN });
     await (await modules()).pass.runCiStatusPass();
   });
 
@@ -334,7 +343,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     expect((await row(retry.id)).status).toBe("running");
     expect((await row(blocker)).concurrency?.[0]?.cancelled).toBe(true);
     await finishOnRunner(blocker, { passed: false, cancelled: true, pipelines: [] });
-    await finishOnRunner(retry.id, { passed: true, pipelines: [] });
+    await finishOnRunner(retry.id, { passed: true, pipelines: RAN });
     await (await modules()).pass.runCiStatusPass();
     expect((await row(blocker)).status).toBe("cancelled");
     expect((await row(retry.id)).status).toBe("passed");
@@ -396,7 +405,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
       await runs.dispatchRun(accepted.id);
       expect((await row(accepted.id)).status).toBe("running");
       expect((await runs.dueQueuedRunIds(20)).includes(accepted.id)).toBe(false);
-      await finishOnRunner(accepted.id, { passed: true, pipelines: [] });
+      await finishOnRunner(accepted.id, { passed: true, pipelines: RAN });
     } finally {
       vi.useRealTimers();
     }
@@ -412,7 +421,7 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     const r = await row(id);
     expect(r.status).toBe("running");
     expect(r.concurrency).toEqual([]);
-    await finishOnRunner(id, { passed: true, pipelines: [] });
+    await finishOnRunner(id, { passed: true, pipelines: RAN });
     await (await modules()).pass.runCiStatusPass();
   });
 });

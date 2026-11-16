@@ -21,7 +21,6 @@
 import { loadAsyncQuickJs } from "@sebastianwessel/quickjs";
 import releaseAsyncVariant from "@jitl/quickjs-ng-wasmfile-release-asyncify";
 
-import { testRegexBounded } from "./bounded-regex.js";
 import { dispatch, type WorkflowHost, type WorkflowRunContext } from "./host.js";
 import type { RunLimits, RunResult } from "./types.js";
 
@@ -82,12 +81,6 @@ export interface RunIsolateOptions {
   limits: RunLimits;
   /** Abort the run (Stop): the interrupt handler ends execution when aborted. */
   signal?: AbortSignal;
-  /**
-   * Host methods excluded from the execution budget *in addition to*
-   * {@link PAUSED_METHODS}, for RPCs a particular program kind blocks on for
-   * minutes at a time (an image build, say) without executing guest code.
-   */
-  extraPausedMethods?: readonly string[];
 }
 
 /**
@@ -104,21 +97,11 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
   if (!opts.dispatcher && !hostForDispatch) {
     throw new Error("runIsolate needs a host or a dispatcher.");
   }
-  // Author-supplied `ask` patterns never run on this (possibly shared) thread.
-  const ctx: WorkflowRunContext = opts.ctx.testPattern
-    ? opts.ctx
-    : {
-        ...opts.ctx,
-        testPattern: async (source, input) => (await testRegexBounded(source, "", [input]))[0]!,
-      };
+  const ctx = opts.ctx;
   const route =
     opts.dispatcher ??
     ((method: string, args: Record<string, unknown>) =>
       dispatch(hostForDispatch!, ctx, method, args));
-  const paused =
-    opts.extraPausedMethods && opts.extraPausedMethods.length > 0
-      ? new Set([...PAUSED_METHODS, ...opts.extraPausedMethods])
-      : PAUSED_METHODS;
 
   // Guest-thrown error, surfaced via the __error sentinel RPC.
   let guestError: RunResult["error"] | undefined;
@@ -158,7 +141,7 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
         guestError = toError(args);
         return "";
       }
-      const pause = paused.has(method);
+      const pause = PAUSED_METHODS.has(method);
       // The interrupt handler below is the isolate's only other exit, and
       // QuickJS consults it on an instruction count: a loop that spends its
       // time *suspended* in host calls executes very few instructions, so it

@@ -89,7 +89,7 @@ function resourceInstance(over: Partial<Record<string, unknown>> = {}) {
 
 function fakePlugin(over: Partial<Record<string, unknown>> = {}) {
   return {
-    manifest: { id: "aws" },
+    manifest: { id: "aws", credentialFields: [{ key: "token", label: "Token", sensitive: true }] },
     resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
     createClient: vi.fn(() => makeClient()),
     ...over,
@@ -173,7 +173,11 @@ describe("syncAccountResourceType", () => {
     expect(updates("resources")).toHaveLength(1);
     expect(updates("resources")[0]!.params).toContain("res-gone");
     expect(updates("resources")[0]!.params).not.toContain("res-1");
-    expect(rewriteCredentialsThroughTunnel).toHaveBeenCalledWith("acc-1", { token: "secret" });
+    expect(rewriteCredentialsThroughTunnel).toHaveBeenCalledWith(
+      "acc-1",
+      [{ key: "token", label: "Token", sensitive: true }],
+      { token: "secret" },
+    );
   });
 
   it("soft-deletes everything stored when nothing is live", async () => {

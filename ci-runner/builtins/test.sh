@@ -16,6 +16,7 @@
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
 #   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
+#   builtins/test.sh npm-cli         the deployment CLIs against fake APIs
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -51,7 +52,8 @@
 # must pass and one ending in `-fails` must fail, for the reason
 # `want_reason` gives (a formatter by changing files, not by exiting with an
 # error). A tool that does not resolve or start is an `error`, not a
-# failure, so it cannot hide behind an expected failure.
+# failure, so it cannot hide behind an expected failure; a job that must
+# not start ends in `-errors`, and its error must contain `want_reason`.
 #
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`, and x86_64 Linux to build its
@@ -82,6 +84,12 @@ export IWCI_SECRET_AWS_FIXTURE_TOKEN="fixture-aws-session-0451"
 AWS_FIXTURE_SECRET_KEY="fixture-aws-secret-0451"
 export IWCI_SECRET_GCP_FIXTURE_TOKEN="ya29.fixture-gcp-token-0451"
 export IWCI_SECRET_AZURE_FIXTURE_SECRET="fixture-azure-secret-0451"
+# The tokens the npm-cli pipeline's connections lend, which its fake APIs
+# want (npm-cli/fake-apis.mjs) and which must never show up in a report.
+# Vercel's CLI takes no `-` in a token.
+VERCEL_FIXTURE_TOKEN="vercelfixturetoken0451"
+CLOUDFLARE_FIXTURE_TOKEN="cloudflare-fixture-token-0451"
+NEON_FIXTURE_KEY="neon-fixture-key-0451"
 
 # `go` is every Go minor the environments build.
 names=()
@@ -135,6 +143,22 @@ for name in "$@"; do
       # Uses what gofmt and bash published.
       continue
       ;;
+    npm-cli)
+      # Node tools: Vercel's, Cloudflare's and Neon's CLIs and Wrangler,
+      # from their lockfiles (npm-cli/build.sh). They run on bash-node's
+      # environment, and one job checks that bash's refuses them, so both
+      # are published here too, built unless they already are.
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/npm-cli/build.sh"
+      for env in bash bash-node; do
+        if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/$env/*" >/dev/null; then
+          bash "$here/environments/build.sh" "$env"
+        fi
+      done
+      dirs=("$dist"/environment/bash/* "$dist"/environment/bash-node/*)
+      for tool in vercel cf neon wrangler; do
+        dirs+=("$dist"/builtin/"$tool"/*)
+      done
+      ;;
     bash-node-pool)
       # Runs on bash-node's environment, built here unless it already is.
       if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/bash-node/*" >/dev/null; then
@@ -143,7 +167,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli" >&2
       exit 2
       ;;
   esac
@@ -495,6 +519,9 @@ serve() {
 }
 SH
 fi
+# The fake APIs the npm CLI builtins deploy to (npm-cli/fake-apis.mjs).
+mkdir -p "$repo/npm-cli"
+cp "$here/npm-cli/fake-apis.mjs" "$repo/npm-cli/"
 # A package registry the Node jobs install from (npm-registry/registry.mjs),
 # with a command-line package in two versions.
 mkdir -p "$repo/npm"
@@ -1253,6 +1280,192 @@ jobs:
     tools: [builtin:ssh@10.6]
     connections: [staging]
     run: ssh staging echo reached
+YAML
+      ;;
+    npm-cli)
+      # The deployment CLIs (npm-cli/build.sh) against fake Vercel,
+      # Cloudflare and Neon APIs on the job's loopback (npm-cli/fake-apis.mjs),
+      # with the network off, so nothing can reach a real one. Each token
+      # comes from a lent connection, as the app lends one (npm_cli_lent,
+      # below), and must come out masked.
+      cat <<'YAML'
+name: npm-cli
+workspace:
+  services:
+    apis:
+      using: env:bash-node@24
+      run: node /app/npm-cli/fake-apis.mjs
+      ready: { port: 4300 }
+jobs:
+  # `vercel deploy` uploads the directory and creates a deployment;
+  # `--prebuilt` sends `vercel build`'s output as it is, to production.
+  vercel-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    connections: [vercel]
+    env: { VERCEL_ORG_ID: team_fixture, VERCEL_PROJECT_ID: prj_fixture }
+    run: |
+      mkdir -p /tmp/site && cd /tmp/site
+      echo '<h1>hello</h1>' >index.html
+      vercel deploy --api http://127.0.0.1:4100 --yes >/tmp/out 2>&1 || { cat /tmp/out; exit 1; }
+      cat /tmp/out
+      grep -q 'https://web-.*\.vercel\.app' /tmp/out
+      echo "token: $VERCEL_TOKEN"
+      node -e '
+      fetch("http://127.0.0.1:4100/_received").then((r) => r.json()).then(([d]) => {
+        if (d.files["index.html"] !== "<h1>hello</h1>\n" || d.target !== null || d.prebuilt) throw new Error(JSON.stringify(d));
+      });'
+  vercel-prebuilt-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    connections: [vercel]
+    run: |
+      mkdir -p /tmp/pb/.vercel/output/static && cd /tmp/pb
+      echo '{"projectId":"prj_fixture","orgId":"team_fixture"}' >.vercel/project.json
+      echo '{"version":3}' >.vercel/output/config.json
+      echo '<h1>prebuilt</h1>' >.vercel/output/static/index.html
+      vercel deploy --prebuilt --prod --api http://127.0.0.1:4100 --yes
+      node -e '
+      fetch("http://127.0.0.1:4100/_received").then((r) => r.json()).then(([d]) => {
+        if (!d.prebuilt || d.target !== "production" || d.files[".vercel/output/static/index.html"] !== "<h1>prebuilt</h1>\n") throw new Error(JSON.stringify(d));
+      });'
+  # A token the API refuses fails the deploy.
+  vercel-bad-token-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    env: { VERCEL_TOKEN: notthetoken, VERCEL_ORG_ID: team_fixture, VERCEL_PROJECT_ID: prj_fixture }
+    run: |
+      mkdir -p /tmp/site && cd /tmp/site && echo hi >index.html
+      vercel deploy --api http://127.0.0.1:4100 --yes
+  # Wrangler bundles with esbuild-wasm (the import is inlined), uploads
+  # the Worker and turns its workers.dev route on.
+  wrangler-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/w/src && cd /tmp/w
+      echo '{"name":"hello","main":"src/index.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      printf 'import { greet } from "./greet.js";\nexport default { fetch() { return new Response(greet("ci")); } };\n' >src/index.js
+      printf 'export const greet = (n) => `hello ${n}`;\n' >src/greet.js
+      started=$(date +%s%N)
+      wrangler deploy
+      echo "deployed in $(( ($(date +%s%N) - started) / 1000000 )) ms"
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        const code = d.modules[d.main_module] ?? "";
+        if (d.worker !== "hello" || !code.includes("hello ${n}") || code.includes("import ")) throw new Error(JSON.stringify(d));
+      });'
+  # Without bundling: a Worker built elsewhere, uploaded as it is.
+  wrangler-no-bundle-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/nb/dist && cd /tmp/nb
+      echo '{"name":"prebundled","main":"dist/worker.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      echo 'export default { fetch() { return new Response("as built"); } };' >dist/worker.js
+      wrangler deploy --no-bundle
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.modules["worker.js"] !== "export default { fetch() { return new Response(\"as built\"); } };\n") throw new Error(JSON.stringify(d));
+      });'
+  wrangler-pages-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/pages/dist && cd /tmp/pages
+      echo '<h1>pages</h1>' >dist/index.html
+      echo 'body {}' >dist/app.css
+      wrangler pages deploy dist --project-name site --branch main
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.pages !== "site" || d.branch !== "main" || d.files.join() !== "/app.css,/index.html") throw new Error(JSON.stringify(d));
+      });'
+  # workerd cannot run in a job: `wrangler dev` says so and fails.
+  wrangler-dev-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/w && cd /tmp/w
+      echo '{"name":"hello","main":"index.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      echo 'export default { fetch() { return new Response("hi"); } };' >index.js
+      wrangler dev
+  # Cloudflare's CLI deploys a directory of static assets as a Worker.
+  cf-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:cf@1.0.0-beta.32]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/site/public && cd /tmp/site
+      echo '<h1>cf</h1>' >public/index.html
+      cf deploy public
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.worker !== "site" || !d.assets) throw new Error(JSON.stringify(d));
+      });'
+  # A branch for a pull request: made, its connection string read, and
+  # deleted, by name.
+  neon-branch-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:neon@9]
+    connections: [neon]
+    env: { NEON_API_HOST: "http://127.0.0.1:4300/api/v2" }
+    run: |
+      p=fixture-project-123456
+      neon branches create --project-id $p --name pr-42 -o json >/tmp/branch.json
+      test "$(node -p 'require("/tmp/branch.json").branch.name')" = pr-42
+      url="$(neon connection-string pr-42 --project-id $p)"
+      echo "$url"
+      [[ "$url" == postgresql://app_owner:*@ep-made-*.fake.neon.test/app?sslmode=require* ]]
+      neon branches delete pr-42 --project-id $p
+      node -e '
+      fetch("http://127.0.0.1:4300/_received").then((r) => r.json()).then((d) => {
+        if (JSON.stringify(d) !== JSON.stringify([{ created: "pr-42" }, { deleted: "pr-42" }])) throw new Error(JSON.stringify(d));
+      });'
+  neon-bad-key-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:neon@9]
+    env: { NEON_API_KEY: not-the-key, NEON_API_HOST: "http://127.0.0.1:4300/api/v2" }
+    run: neon branches list --project-id fixture-project-123456
+  # A Node tool needs `node`: in env:bash it never starts, and saying so.
+  in-bash-errors:
+    using: env:bash@5
+    services: false
+    tools: [builtin:vercel@65]
+    run: vercel --version
+  # And it is not a job of its own.
+  as-a-job-errors:
+    using: builtin:neon@9
+    services: false
+    args: [--version]
 YAML
       ;;
     tools)
@@ -3641,6 +3854,27 @@ jobs:
     run: |
       git init -q -b main /tmp/r
       python -c 'import subprocess; print(subprocess.run(["git", "-C", "/tmp/r", "status", "--short", "--branch"], check=True, capture_output=True, text=True).stdout)' | grep -q '^## No commits yet on main$'
+  # A remote that wants credentials, as a private repository does, fails
+  # Git at once with its own error (#1231): nobody can answer its prompt,
+  # and it waited for an answer until the stall check stopped the job. The
+  # fake answers every request 401; the timeout is well inside the stall
+  # check, so a prompt that waits ends this job as timed out.
+  git-auth-prompt-fails:
+    using: env:python@3.13
+    timeout: 2m
+    run: |
+      python - > /tmp/auth.log 2>&1 <<'PY' &
+      import http.server
+      class Private(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(401)
+              self.send_header("WWW-Authenticate", 'Basic realm="private"')
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+      http.server.HTTPServer(("127.0.0.1", 8001), Private).serve_forever()
+      PY
+      wait-for-port 8001 --timeout 60s
+      git clone http://127.0.0.1:8001/acme/private.git /tmp/private
 YAML
       ;;
     aws)
@@ -4381,7 +4615,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/git-fatal-fails) echo "exited with 128" ;;
+    bash/git-fatal-fails | python/git-auth-prompt-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
@@ -4392,6 +4626,9 @@ want_reason() {
     php/lint-fails) echo "exited with 255" ;;
     bash-node/unsettled-tla-fails) echo "exited with 13" ;;
     bash-node/global-install-missing-fails) echo "exited with 1" ;;
+    npm-cli/vercel-bad-token-fails | npm-cli/wrangler-dev-fails | npm-cli/neon-bad-key-fails) echo "exited with 1" ;;
+    npm-cli/in-bash-errors) echo "runs on \`node\`, which this environment does not have" ;;
+    npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
@@ -4413,6 +4650,7 @@ want_stderr() {
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
+    python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
     openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;
@@ -4428,6 +4666,9 @@ want_stderr() {
     bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
     bash-node/error-report-fails) echo "^/tmp/throw\.cjs:2 throw new Error\(\"boom\"\); \^  Error: boom     at Object\.<anonymous> \(/tmp/throw\.cjs:2:7\)" ;;
     bash-node/unsettled-tla-fails) echo "^Warning: Detected unsettled top-level await at file:///tmp/stall\.mjs:2 await new Promise\(\(\) => \{\}\); \^" ;;
+    npm-cli/wrangler-dev-fails) echo "workerd, Cloudflare's local Workers runtime, cannot run in a CI job here" ;;
+    npm-cli/neon-bad-key-fails) echo "Authentication failed: the Neon API rejected the API key" ;;
+    npm-cli/vercel-bad-token-fails) echo "The token provided via VERCEL_TOKEN environment variable is not valid" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
@@ -4545,6 +4786,17 @@ JSON
   elif [[ "$name" == aws || "$name" == az || "$name" == gcloud ]]; then
     lent="$SCRATCH/$name-lent.json"
     cloud_lent "$name" >"$lent"
+  elif [[ "$name" == npm-cli ]]; then
+    # As the Vercel, Cloudflare and Neon plugins lend a connection: the
+    # token their CLI reads, secret, and Cloudflare's account ID, shown.
+    lent="$SCRATCH/npm-cli-lent.json"
+    jq -n --arg v "$VERCEL_FIXTURE_TOKEN" --arg c "$CLOUDFLARE_FIXTURE_TOKEN" --arg n "$NEON_FIXTURE_KEY" '{
+      connections: {
+        vercel: { env: { VERCEL_TOKEN: [{ secret: $v }] }, files: [] },
+        cloudflare: { env: { CLOUDFLARE_API_TOKEN: [{ secret: $c }], CLOUDFLARE_ACCOUNT_ID: [{ text: "0123456789abcdef0123456789abcdef" }] }, files: [] },
+        neon: { env: { NEON_API_KEY: [{ secret: $n }] }, files: [] }
+      }
+    }' >"$lent"
   fi
   # iwci's own stderr goes on to ours as it comes, and to a file that is
   # checked below.
@@ -4597,7 +4849,8 @@ JSON
     fi
   done < <(jq -r '.pipelines[0].report.jobs[]
       | [.id, .status,
-         (if (.id | endswith("-passes")) then "passed" else "failed" end),
+         (if (.id | endswith("-passes")) then "passed"
+          elif (.id | endswith("-errors")) then "error" else "failed" end),
          (.execution.out_of_memory // false | tostring),
          (.reason // .message // "")]
       | @tsv' <<<"$out")
@@ -4614,7 +4867,8 @@ JSON
   done < <(jq -r '.pipelines[0].report.jobs[].id' <<<"$out")
   if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out" ||
     grep -qF -e "$IWCI_SECRET_AWS_FIXTURE_KEY" -e "$IWCI_SECRET_AWS_FIXTURE_TOKEN" -e "$AWS_FIXTURE_SECRET_KEY" \
-      -e "$IWCI_SECRET_GCP_FIXTURE_TOKEN" -e "$IWCI_SECRET_AZURE_FIXTURE_SECRET" <<<"$out"; then
+      -e "$IWCI_SECRET_GCP_FIXTURE_TOKEN" -e "$IWCI_SECRET_AZURE_FIXTURE_SECRET" \
+      -e "$VERCEL_FIXTURE_TOKEN" -e "$CLOUDFLARE_FIXTURE_TOKEN" -e "$NEON_FIXTURE_KEY" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
   fi

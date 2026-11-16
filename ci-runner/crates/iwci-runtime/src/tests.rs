@@ -76,6 +76,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         log: None,
         scratch: None,
         commands: Vec::new(),
+        trees: Vec::new(),
         internet: false,
         modes: iwci_vfs::Modes::default(),
         services: Vec::new(),
@@ -2120,9 +2121,12 @@ fn writing_files_behaves_the_same_with_a_write_budget() {
             "limited={limited} {stdout:?}"
         );
         if limited {
+            // Every byte written once, and each of the two new files' entry
+            // (`iwci_vfs::ENTRY_COST` and its name).
+            let entries = 2 * (iwci_vfs::ENTRY_COST + "a.bin".len() as u64);
             assert_eq!(
                 budget.0.load(Ordering::SeqCst),
-                4101 + 4096,
+                4101 + 4096 + entries,
                 "every byte written is counted once"
             );
         }

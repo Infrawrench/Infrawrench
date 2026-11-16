@@ -48,18 +48,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "workflows:read",
       "workflows:write",
       "workflows:approve",
-      // Three levels, because previewing and shipping are genuinely different
-      // risks. `read` is the history and the declared environments: inert.
-      // `plan` runs the repo's plan() against the org's host, so it IS code
-      // execution, but it builds nothing and ships nothing; members get it so
-      // they can see what a deploy would do. `write` actually builds and ships,
-      // and stays with admins and owners.
-      //
-      // Splitting them is what makes the middle case expressible at all: a
-      // custom role can now withhold `plan` from members without also taking
-      // away the deploy history.
+      // The DORA metrics (Delivery). Recording a deploy over the API
+      // (`deployments:write`) stays with admins and owners.
       "deployments:read",
-      "deployments:plan",
       "costs:read",
       "budgets:read",
       "metric-alerts:read",

@@ -7,7 +7,6 @@ import { K8sLocalRpcs } from "./k8s-local";
 import { LocalCredentialRpcs } from "./local-credentials";
 import { LocalDatabaseRpcs } from "./local-database";
 import { LocalSecretRpcs } from "./local-secrets";
-import { LocalDeployHistoryRpcs } from "./deploy-history";
 import { LocalDnsRpcs } from "./local-dns";
 import { LocalEnvironmentDiffRpcs } from "./local-environment-diff";
 import { LocalExpiringRpcs } from "./local-expiring";
@@ -36,7 +35,6 @@ export class DesktopRpcs extends ShellCommandRpcs.merge(
   LocalCredentialRpcs,
   LocalDatabaseRpcs,
   LocalSecretRpcs,
-  LocalDeployHistoryRpcs,
   LocalDnsRpcs,
   LocalEnvironmentDiffRpcs,
   LocalExpiringRpcs,

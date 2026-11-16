@@ -23,6 +23,16 @@ describe("WorkspaceTabsViewport", () => {
     expect(inactive.style.display).toBe("none");
   });
 
+  it("contains what a panel positions absolutely", () => {
+    // A panel's `sr-only` captions and labels are absolute: placed against
+    // the window, they made the whole app scroll past its own bottom.
+    render(<WorkspaceTabsViewport renderTabPanel={(tab) => <div>panel-{tab.id}</div>} />);
+    const panel = screen.getByText("panel-t1").parentElement!;
+    expect(panel.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["relative", "overflow-auto", "min-h-0"]),
+    );
+  });
+
   it("hides all panels when showActive is false", () => {
     render(
       <WorkspaceTabsViewport

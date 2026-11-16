@@ -14,7 +14,7 @@ import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-t
  * features (change freezes, alert routing, status pages), so without an org the
  * tab explains rather than fetching.
  *
- * Navigating is what records which incident the tab is on: the Settings/Deploy
+ * Navigating is what records which incident the tab is on: the Settings
  * convention, and what makes reactivating the tab land back on the incident
  * somebody was reading rather than on the list.
  */

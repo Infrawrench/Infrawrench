@@ -83,7 +83,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "delivery",
     name: PRODUCT_NAMES.delivery,
-    tools: ["deploy", "ci", "delivery", "environments", "environment-diff"],
+    tools: ["ci", "delivery", "environments", "environment-diff"],
   },
   {
     id: "automation",
@@ -106,12 +106,11 @@ interface TabTargetLike {
 /**
  * The org tool a tab belongs to, by the tool's `key`, or undefined for a tab
  * that is not a tool (Home, a dashboard, an account, a resource, chat,
- * settings). Tool keys are the tab kinds, except Deploy.
+ * settings). Tool keys are the tab kinds.
  */
 export function toolKeyForTabTarget(target: TabTargetLike | undefined): string | undefined {
   if (!target) return undefined;
-  const key = target.kind === "deployments" ? "deploy" : target.kind;
-  return productForTool(key) ? key : undefined;
+  return productForTool(target.kind) ? target.kind : undefined;
 }
 
 /**

@@ -343,16 +343,14 @@ export const homeApps: HomeApp[] = [
     id: "delivery",
     name: "Delivery",
     points: [
-      "Deploys from your repositories, with history per service",
       "Pipelines on every push and pull request, each job in its own sandbox",
       "Deployment frequency, lead time, failure rate and time to restore",
       "Environments from a template that delete themselves when time runs out",
       "A side by side comparison of two accounts",
     ],
     summary:
-      "From a push to production: pipelines, deploys, short-lived environments and how fast you ship.",
+      "From a push to production: pipelines, short-lived environments and how fast you ship.",
     tools: [
-      { name: "Deploy", body: "Deploy your repositories and see what shipped." },
       { name: "CI", doc: "ci", body: "Pipelines on every push and pull request." },
       {
         name: "Delivery",

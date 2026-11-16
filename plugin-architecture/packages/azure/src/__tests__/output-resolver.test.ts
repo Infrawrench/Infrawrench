@@ -41,6 +41,64 @@ function makeDeps(opts: {
 }
 
 describe("resolveAzureOutput", () => {
+  it("never lends a local account's client certificate to CI, only an Entra token", async () => {
+    const local = [
+      "apiVersion: v1",
+      "clusters:",
+      "- cluster:",
+      "    server: https://k1.hcp.eastus.azmk8s.io:443",
+      "  name: k1",
+      "users:",
+      "- name: clusterUser_rg1_k1",
+      "  user:",
+      "    client-certificate-data: Q0VSVA==",
+      "    client-key-data: S0VZ",
+    ].join("\n");
+    const deps = {
+      ...makeDeps({
+        resource: res({ resourceTypeId: "azure-aks-cluster", externalId: "rg1/k1" }),
+        post: () => ({ kubeconfigs: [{ value: btoa(local) }] }),
+      }),
+      aksAccessToken: vi.fn(async () => "entra-token"),
+    };
+    await expect(
+      resolveAzureOutput(deps, "azure-aks-cluster", "id", "ciKubeconfig", "acct"),
+    ).rejects.toThrow("never lent to CI jobs");
+    // The peer tabs still read it.
+    expect(await resolveAzureOutput(deps, "azure-aks-cluster", "id", "kubeconfig", "acct")).toBe(
+      local,
+    );
+    const entra = [
+      "apiVersion: v1",
+      "clusters:",
+      "- cluster:",
+      "    certificate-authority-data: Q0E=",
+      "    server: https://k1.hcp.eastus.azmk8s.io:443",
+      "  name: k1",
+      "users:",
+      "- name: clusterUser_rg1_k1",
+      "  user:",
+      "    exec:",
+      "      command: kubelogin",
+    ].join("\n");
+    const entraDeps = {
+      ...makeDeps({
+        resource: res({ resourceTypeId: "azure-aks-cluster", externalId: "rg1/k1" }),
+        post: () => ({ kubeconfigs: [{ value: btoa(entra) }] }),
+      }),
+      aksAccessToken: vi.fn(async () => "entra-token"),
+    };
+    const ci = await resolveAzureOutput(
+      entraDeps,
+      "azure-aks-cluster",
+      "id",
+      "ciKubeconfig",
+      "acct",
+    );
+    expect(ci).toContain("token: entra-token");
+    expect(ci).not.toMatch(/exec:|client-certificate/);
+  });
+
   it("AKS kubeconfig decodes the base64 value", async () => {
     const encoded = btoa("kubeconfig-content");
     const deps = makeDeps({

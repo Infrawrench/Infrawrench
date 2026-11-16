@@ -14,7 +14,6 @@ import { AppShellHandlers } from "./handlers/app-shell";
 import { K8sLocalHandlers } from "./handlers/k8s-local";
 import { LocalDatabaseHandlers } from "./handlers/local-database";
 import { LocalCredentialHandlers, LocalSecretHandlers } from "./handlers/local-secrets";
-import { LocalDeployHistoryHandlers } from "./handlers/deploy-history";
 import { LocalDnsHandlers } from "./handlers/local-dns";
 import { LocalEnvironmentDiffHandlers } from "./handlers/local-environment-diff";
 import { LocalExpiringHandlers } from "./handlers/local-expiring";
@@ -43,7 +42,6 @@ const DesktopRpcHandlers = Layer.mergeAll(
   LocalCredentialHandlers,
   LocalDatabaseHandlers,
   LocalSecretHandlers,
-  LocalDeployHistoryHandlers,
   LocalDnsHandlers,
   LocalEnvironmentDiffHandlers,
   LocalExpiringHandlers,

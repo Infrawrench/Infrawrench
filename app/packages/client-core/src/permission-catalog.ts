@@ -32,7 +32,6 @@ export const ALL_PERMISSIONS = [
   "workflows:write",
   "workflows:approve",
   "deployments:read",
-  "deployments:plan",
   "deployments:write",
   "costs:read",
   "costs:write",

@@ -96,3 +96,4 @@ A Snowflake account can be the destination of a [scheduled cost export](../featu
 - Listing users needs ownership of the users or `MANAGE GRANTS`. Without it, the user list is empty.
 - A role only sees the warehouses, databases and monitors it has privileges on.
 - The SQL editor runs one statement at a time.
+- Past 10,000 pipes in an account, pipes are read one schema at a time. Snowflake cannot prove such a read is complete, so in that state a pipe deleted in Snowflake stays listed here rather than risk removing one that still exists.

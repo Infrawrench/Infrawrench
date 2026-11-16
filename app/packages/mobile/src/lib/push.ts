@@ -248,7 +248,7 @@ export function pushDataToPath(data: MobilePushData): string {
       return `/org/${data.orgId}/costs?tab=alerts`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
     // moment view centred on the tap: the anomaly event, plus whatever else
-    // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
+    // (changes, incidents, drift) coincided with it. The Costs tab is one tap
     // away via the anomaly row's deep link.
     case "cost_anomaly":
       return `/org/${data.orgId}/moment`;

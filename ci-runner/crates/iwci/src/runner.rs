@@ -52,6 +52,10 @@ pub struct Runner {
     /// The helper jobs running here, which give way to this runner's own
     /// runs (`iwci serve`); `None` for a single `iwci run`.
     pub helping: Option<Arc<schedule::Helping>>,
+    /// Where jobs with native tools run (`--native-sandbox`); `None`
+    /// refuses them.
+    #[cfg(target_os = "linux")]
+    pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -595,18 +599,29 @@ impl JobNeeds {
     }
 }
 
+/// A pipeline file that does not parse: `pipelines` leaves it out, and a
+/// run of the request reports it.
+#[derive(Debug, Serialize)]
+pub struct InvalidPipeline {
+    pub file: String,
+    pub errors: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ConcurrencyOutput {
     pub commit: String,
     pub pipelines: Vec<PipelineConcurrency>,
+    /// The files that do not parse, so that an empty `pipelines` with an
+    /// empty `invalid` says the run would run nothing at all.
+    pub invalid: Vec<InvalidPipeline>,
 }
 
 impl Runner {
     /// Which pipelines a run of `req` would run, and the concurrency group
     /// of each, without running anything: the commit and its pipeline
     /// files resolved and parsed as the run would (the same `base` for
-    /// `paths:`). Files that do not parse are left out; the run reports
-    /// them.
+    /// `paths:`). Files that do not parse are listed in `invalid` rather
+    /// than `pipelines`; the run reports them.
     pub fn concurrency(&self, req: &RunRequest) -> Result<ConcurrencyOutput, String> {
         let r = self.resolve(req)?;
         let changed_paths = match &req.base {
@@ -624,9 +639,21 @@ impl Runner {
         };
         let ctx = r.context(req);
         let mut pipelines = Vec::new();
+        let mut invalid = Vec::new();
         for (file, text) in &r.pipelines {
-            let Ok(plan) = iwci_spec::parse(text, &ctx) else {
-                continue;
+            let plan = match iwci_spec::parse(text, &ctx) {
+                Ok(plan) => plan,
+                Err(errors) => {
+                    invalid.push(InvalidPipeline {
+                        file: file.clone(),
+                        errors: errors
+                            .0
+                            .iter()
+                            .map(|e| format!("{}: {}", e.path, e.message))
+                            .collect(),
+                    });
+                    continue;
+                }
             };
             if !plan
                 .triggers
@@ -644,6 +671,7 @@ impl Runner {
         Ok(ConcurrencyOutput {
             commit: r.sha,
             pipelines,
+            invalid,
         })
     }
 
@@ -721,9 +749,15 @@ impl Runner {
         let tools = StoreTools {
             catalog: iwci_store::Catalog::new(self.store.clone()),
             repo: r.repo_id.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox_overhead: self.sandbox.as_ref().map_or(0, |s| s.overhead()),
+            #[cfg(not(target_os = "linux"))]
+            sandbox_overhead: 0,
         };
         let executor = RuntimeExecutor {
             runtime: self.runtime.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox: self.sandbox.clone(),
         };
         let workspaces = GitWorkspaces {
             remote: r.remote.clone(),
@@ -883,6 +917,12 @@ impl Runner {
                 // Tools that read `os.homedir()` or `~` fail without one, and
                 // CI systems commonly set it. A job's own `HOME` wins.
                 ("HOME".into(), "/root".into()),
+                // A job has no terminal to answer Git's prompt for a user
+                // name or password, so a remote that asks for them left Git
+                // waiting until the stall check stopped the job (#1231).
+                // This makes it fail at once with its own error, as it does
+                // on a machine without a terminal. A job's own value wins.
+                ("GIT_TERMINAL_PROMPT".into(), "0".into()),
                 ("IWCI_COMMIT".into(), r.sha.clone()),
                 ("IWCI_BRANCH".into(), r.branch.clone()),
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),
@@ -1090,7 +1130,14 @@ pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
         usage.jobs += 1;
         usage.wall_seconds += secs;
         usage.vcpu_seconds += secs / share;
-        usage.memory_gib_seconds += secs * job.memory_mib as f64 / 1024.0;
+        // A job in a sandbox holds what it reserved for the sandbox too.
+        let reserved = job.memory_mib
+            + job
+                .execution
+                .as_ref()
+                .and_then(|e| e.sandbox)
+                .map_or(0, |s| s.reserved_mib);
+        usage.memory_gib_seconds += secs * reserved as f64 / 1024.0;
     }
     usage
 }
@@ -1218,6 +1265,9 @@ impl Runner {
     /// store's disk cache by the time it resolves.
     pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
         match resolved {
+            // A Node tool is files for the environment's `node`, with
+            // nothing to compile.
+            Resolved::Tool { manifest, .. } if manifest.abi == iwci_store::Abi::Node => Ok(()),
             Resolved::Tool {
                 manifest, module, ..
             } => {
@@ -1323,6 +1373,34 @@ fn fetch_ref(requested: Option<&str>, branch: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_concurrency_answer_always_lists_its_invalid_files() {
+        // The app reads an empty `pipelines` beside an empty `invalid` as
+        // "nothing runs", and an absent `invalid` as a runner from before
+        // that cannot say: the key is there even when it is empty.
+        let empty = ConcurrencyOutput {
+            commit: "c".into(),
+            pipelines: vec![],
+            invalid: vec![],
+        };
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap(),
+            serde_json::json!({ "commit": "c", "pipelines": [], "invalid": [] })
+        );
+        let broken = ConcurrencyOutput {
+            commit: "c".into(),
+            pipelines: vec![],
+            invalid: vec![InvalidPipeline {
+                file: ".infrawrench/ci/test.yml".into(),
+                errors: vec!["jobs: required".into()],
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&broken).unwrap()["invalid"],
+            serde_json::json!([{ "file": ".infrawrench/ci/test.yml", "errors": ["jobs: required"] }])
+        );
+    }
 
     #[test]
     fn a_pull_request_is_fetched_from_its_ref_and_a_push_from_its_branch() {

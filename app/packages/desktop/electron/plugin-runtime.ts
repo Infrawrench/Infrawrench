@@ -29,6 +29,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { readOAuthGrantState, SecretReadError } from "@infrawrench/plugin-base";
 import { getPlugin } from "../src/plugins/loader";
+import { tunnelAccountCredentials } from "./account-tunnels";
 import { secretAnchorStatement } from "../src/db/secret-anchor";
 import { mainInstancePricing } from "./instance-pricing-client";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
@@ -337,13 +338,19 @@ export function withOAuthHostService(
   };
 }
 
-/** Load the plugin + decrypted credentials for a local account. */
+/**
+ * Load the plugin + decrypted credentials for a local account, pointed at its SSH
+ * tunnel when it has one.
+ */
 async function createAccountPluginClient(
   account: LocalAccountRow,
 ): Promise<{ plugin: HostPlugin; client: HostPluginClient }> {
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) throw new UserFacingError(`Plugin "${account.pluginId}" is not available.`);
   const credentials = await getAccountCredentials(account.id);
+  // An account reached through an SSH tunnel connects to the tunnel's local end,
+  // as every client the GUI builds does (the renderer's rewriter chain).
+  await tunnelAccountCredentials(account.id, loaded.plugin.manifest.credentialFields, credentials);
   const services = withOAuthHostService(
     buildPluginHostServices(loaded.plugin.manifest, credentials),
     loaded.plugin.manifest,

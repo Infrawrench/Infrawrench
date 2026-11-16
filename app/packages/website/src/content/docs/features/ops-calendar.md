@@ -16,7 +16,7 @@ Open it from the sidebar.
 
 | On the calendar    | Comes from                                                                                                  |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- |
-| **Freezes**        | [Change freezes](../team-and-billing/change-freeze.md): the windows when deploys are blocked                |
+| **Freezes**        | [Change freezes](../team-and-billing/change-freeze.md): the windows when destructive changes are blocked    |
 | **Sleep windows**  | [Sleep schedules](./sleep-schedules.md): when each resource is actually stopped                             |
 | **Deadlines**      | [Expiry radar](./expiry-radar.md): certificates, domains, keys, and [resource leases](./resource-leases.md) |
 | **Commitments**    | [Commitments](./commitments.md): the day a reservation or savings plan's term ends                          |

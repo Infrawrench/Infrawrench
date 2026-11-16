@@ -165,7 +165,7 @@ describe("the organization's app policy", () => {
       const denied = await authorizeToolCall(byName(name), auth);
       expect(denied?.content[0]?.text, name).toContain("turned off");
     }
-    for (const name of ["list_resources", "list_accounts", "list_workflows", "list_deployments"]) {
+    for (const name of ["list_resources", "list_accounts", "list_workflows", "diff_environments"]) {
       expect(await authorizeToolCall(byName(name), auth), name).toBeNull();
     }
   });
@@ -189,7 +189,7 @@ describe("the organization's app policy", () => {
     expect(product("query_costs")).toBe("costs");
     expect(product("list_invoices")).toBe("costs");
     expect(product("write_workflow")).toBe("automation");
-    expect(product("plan_deployment")).toBe("delivery");
+    expect(product("diff_environments")).toBe("delivery");
     expect(product("dismiss_vulnerability")).toBe("security");
     // Infrastructure cannot be turned off, so nothing is tagged with it.
     expect(tools.filter((t) => t.product === "infrastructure")).toEqual([]);

@@ -35,7 +35,7 @@ To make the check required, add **Infrawrench: cost and blast radius** to the br
 
 ## How the numbers are worked out
 
-**Which files.** Terraform files (`.tf`) are compared between the merge base and the head commit, per directory. Moving a block between two files in the same module isn't counted as a change, and a `moved` block reads as a rename, the way Terraform will plan it. Infrafiles and Kubernetes manifests are listed as recognised but not analysed (see [what isn't covered](#what-is-not-covered)).
+**Which files.** Terraform files (`.tf`) are compared between the merge base and the head commit, per directory. Moving a block between two files in the same module isn't counted as a change, and a `moved` block reads as a rename, the way Terraform will plan it. Kubernetes manifests are listed as recognised but not analysed (see [what isn't covered](#what-is-not-covered)), and other files are skipped.
 
 **Which existing resource a block manages.** This comes from the Terraform state you uploaded on the [IaC page](./iac-reconciliation.md). If [GitHub issues](./github-issues.md) maps this repository to one state, that state is used. Otherwise every uploaded state is searched, and an address found in two of them is left unmatched rather than guessed. Without an uploaded state, the check still prices new and removed blocks, but can't tell what an edit touches.
 
@@ -58,7 +58,7 @@ infrawrench pr-check --repo acme/infra --pr 42
 infrawrench pr-check --json                   # the full report, for scripts
 ```
 
-Locally, only the infrastructure files that differ are sent (Terraform, Infrafiles and Kubernetes-looking YAML, at most 50), including uncommitted edits. With `--repo`, or when your `origin` remote is a GitHub repository, that repository's threshold and Terraform state mapping apply.
+Locally, only the infrastructure files that differ are sent (Terraform and Kubernetes-looking YAML, at most 50), including uncommitted edits. With `--repo`, or when your `origin` remote is a GitHub repository, that repository's threshold and Terraform state mapping apply.
 
 ## Manage it from Terraform
 
@@ -71,7 +71,6 @@ Each configured repository is an [`infrawrench_pr_check_repository`](./terraform
 
 ## What is not covered
 
-- **Infrafiles are never run.** A pull request may come from a fork, and running someone else's code with your accounts isn't something a check should do. Run `infrawrench deploy --plan` yourself to see an [Infrafile](./infrafile.md)'s planned changes.
 - **Kubernetes manifests are listed, not priced.** Workload cost is [allocated from the cluster's nodes](./kubernetes-costs.md) after it runs.
 - **Modules aren't expanded.** Resources declared inside a module call aren't covered. The check tells you when a changed file calls modules.
 - **Usage-based charges** (requests, data transfer, storage growth) aren't in the estimate, the same as everywhere else estimates appear.

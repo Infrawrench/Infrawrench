@@ -1,16 +1,20 @@
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
 import type { HostPluginClient } from "@infrawrench/plugin-base";
-import { getLocalAccountCredentials } from "./local-credentials";
+import { applyCredentialRewriters } from "./credential-rewriters";
+import { getLocalConnectionCredentials } from "./local-credentials";
 
 export async function createPluginClient(
   accountId: string,
   pluginId: string,
 ): Promise<HostPluginClient> {
-  const credentials = await getLocalAccountCredentials(accountId);
   const loaded = await getPlugin(pluginId);
   if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
   const { plugin } = loaded;
+  const credentials = await getLocalConnectionCredentials(
+    accountId,
+    plugin.manifest.credentialFields,
+  );
   const services = buildPluginHostServices(plugin.manifest, credentials);
   return plugin.createClient(credentials, services);
 }
@@ -19,11 +23,9 @@ export async function createPluginClient(
  * A client for a *peer* plugin reached through a parent resource: the
  * `kubernetes` plugin inside a managed cluster, `postgres` inside a managed
  * database. Credentials come from the parent's outputs, per the parent resource
- * type's `peerIntegrations`.
- *
- * The cloud equivalent (server-core's `getClientForResource`) additionally runs
- * the credential rewriters; desktop has none to run, since the rewriters exist
- * to put a proxy in front of cloud-only network paths.
+ * type's `peerIntegrations`, and go through the credential rewriters as the
+ * cloud's (server-core's `getClientForResource`) do, so a peer address that
+ * names the account's SSH tunnel goes through it.
  */
 export async function createPeerPluginClient(
   accountId: string,
@@ -63,6 +65,17 @@ export async function createPeerPluginClient(
 
   const peerLoaded = await getPlugin(peerPluginId);
   if (!peerLoaded) throw new Error(`Plugin "${peerPluginId}" not loaded`);
+  await applyCredentialRewriters(
+    {
+      accountId,
+      credentialFields: peerLoaded.plugin.manifest.credentialFields,
+      peerPluginId,
+      resourcePluginId: parentPluginId,
+      resourceTypeId: typeDef.id,
+      resourceId: parentResourceId,
+    },
+    peerCredentials,
+  );
   const services = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
   return peerLoaded.plugin.createClient(peerCredentials, services);
 }

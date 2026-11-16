@@ -41,6 +41,7 @@ import { decodeAsPayload, fieldsOf, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
 import { respond } from "../../response";
+import { deletedAtOnUpsert } from "@infrawrench/server-core/resource-revive";
 
 /**
  * `requireScope(auth, scope)`, answering its refusal as this surface always
@@ -284,7 +285,8 @@ async function writePush(orgId: string, payload: typeof SyncPushRequest.Type): P
           displayName: res.displayName,
           fieldsJson: res.fieldsJson ?? {},
           outputsJson: res.outputsJson ?? {},
-          deletedAt: res.deletedAt ? new Date(res.deletedAt) : null,
+          // A pushed row that comes back from a delete is another incarnation.
+          ...deletedAtOnUpsert(res.deletedAt ? new Date(res.deletedAt) : null),
           syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${orgId}), 0) + 1`,
           updatedAt: new Date(res.updatedAt),
         },

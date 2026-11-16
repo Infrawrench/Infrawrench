@@ -41,10 +41,10 @@ impl Fixture {
             name: name.into(),
             version: version.parse().unwrap(),
             abi: Abi::Wasi,
-            module: self.file(
+            module: Some(self.file(
                 &format!("{name}-{version}.wasm"),
                 format!("\0asm {name} {version}").as_bytes(),
-            ),
+            )),
             files: vec![FileSource {
                 guest_path: "/share/data.txt".into(),
                 source: self.file("data.txt", b"shared data"),
@@ -52,6 +52,8 @@ impl Fixture {
             args: vec!["--check".into()],
             env: BTreeMap::new(),
             description: None,
+            targets: BTreeMap::new(),
+            aliases: Vec::new(),
         }
     }
 
@@ -155,7 +157,7 @@ fn resolve_returns_verified_blobs() {
         panic!("not a tool");
     };
     assert_eq!(&*module.bytes, b"\0asm tsc 7.1.3");
-    assert_eq!(module.sha256, manifest.module.sha256);
+    assert_eq!(module.sha256, manifest.module.as_ref().unwrap().sha256);
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].0, "/share/data.txt");
     assert_eq!(&*files[0].1.bytes, b"shared data");
@@ -279,7 +281,7 @@ fn blob_mismatches_are_refused() {
     let f = fixture();
     let me = repo("r");
     let (m, _) = publish_tool(&*f.store, &Namespace::Builtin, &f.draft("tsc", "1.0.0")).unwrap();
-    let key = keys::blob_key(&m.module.sha256).unwrap();
+    let key = keys::blob_key(&m.module.as_ref().unwrap().sha256).unwrap();
     let good = f.store.get(&key).unwrap().unwrap();
 
     // Same length, different content.
@@ -308,7 +310,7 @@ fn blob_mismatches_are_refused() {
     f.store.put(&key, &good, "").unwrap();
     let mut lying = m.clone();
     lying.version = "1.0.1".parse().unwrap();
-    lying.module.size += 1;
+    lying.module.as_mut().unwrap().size += 1;
     f.store
         .put("builtins/tsc/1.0.1.json", &lying.to_json(), "")
         .unwrap();
@@ -400,7 +402,7 @@ fn publish_is_immutable_and_idempotent() {
     // Different content under the same version is refused, and nothing is
     // uploaded for it.
     let mut changed = draft.clone();
-    changed.module = f.file("changed.wasm", b"\0asm different");
+    changed.module = Some(f.file("changed.wasm", b"\0asm different"));
     let before = f.store.list("blobs/").unwrap();
     assert!(matches!(
         publish_tool(&*f.store, &Namespace::Builtin, &changed),
@@ -614,4 +616,61 @@ fn names_lists_builtins_and_environments_but_not_repository_tools() {
     );
     assert!(catalog.names(ToolKind::Env).unwrap().is_empty());
     assert!(catalog.names(ToolKind::Repo).unwrap().is_empty());
+}
+
+/// A native tool resolves to this runner's target's program and files,
+/// and only those are fetched; its ABI is read from the manifest alone.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_native_tool_resolves_to_this_runners_target() {
+    let f = fixture();
+    let me = repo("r");
+    let target = |name: &str| iwci_store::TargetSource {
+        program: f.file(&format!("bun-{name}"), format!("ELF {name}").as_bytes()),
+        files: vec![FileSource {
+            guest_path: "/lib64/ld.so".into(),
+            source: f.file(&format!("ld-{name}"), format!("ld {name}").as_bytes()),
+        }],
+    };
+    let host = iwci_store::host_target();
+    let other = if host.starts_with("x86_64") {
+        "aarch64-linux"
+    } else {
+        "x86_64-linux"
+    };
+    let draft = ToolDraft {
+        name: "bun".into(),
+        version: "1.4.4".parse().unwrap(),
+        abi: Abi::NativeGvisor,
+        module: None,
+        files: Vec::new(),
+        args: Vec::new(),
+        env: BTreeMap::new(),
+        description: None,
+        targets: [
+            (host.clone(), target("here")),
+            (other.into(), target("there")),
+        ]
+        .into(),
+        aliases: vec!["bunx".into()],
+    };
+    publish_tool(&*f.store, &Namespace::Builtin, &draft).unwrap();
+    let catalog = f.catalog();
+    assert_eq!(
+        catalog.abi(&r("builtin:bun@1.4"), &me).unwrap(),
+        Some(Abi::NativeGvisor)
+    );
+    let Resolved::Tool {
+        manifest,
+        module,
+        files,
+        ..
+    } = catalog.resolve(&r("builtin:bun@1.4"), &me).unwrap()
+    else {
+        panic!("not a tool");
+    };
+    assert_eq!(manifest.aliases, ["bunx"]);
+    assert_eq!(&*module.bytes, b"ELF here");
+    assert_eq!(files.len(), 1);
+    assert_eq!(&*files[0].1.bytes, b"ld here");
 }

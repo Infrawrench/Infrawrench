@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, o, rt, CI_DATABASE_PASSWORD_LENDING } from "@infrawrench/plugin-base";
 
 export const RDSClusterResourceType = rt({
   name: "Aurora Cluster",
@@ -60,6 +60,8 @@ export const RDSClusterResourceType = rt({
       pluginId: "postgres",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "PostgreSQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "aurora-postgresql" },
       unreachableWhen: {
         fieldsEmpty: ["endpoint"],
@@ -75,6 +77,8 @@ export const RDSClusterResourceType = rt({
       pluginId: "mysql",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MySQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "aurora-mysql" },
       unreachableWhen: {
         fieldsEmpty: ["endpoint"],

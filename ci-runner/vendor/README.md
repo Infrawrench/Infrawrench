@@ -357,9 +357,13 @@ usual state of one being torn down after it ran out, met V8's limit
 there: by then the env's near-heap-limit callback found nothing to grant,
 and the isolate was being disposed, where it cannot be confined, so V8
 aborted the process. `v8/src/unofficial_napi.cc` now swaps the budget's
-callback for one that grants up to 128 MiB more, uncharged, in 32 MiB
-steps, when the env is released: no JavaScript runs after that, so the
-heap only has to finish collecting. The budget's callback also no longer
+callback for one that grants up to 128 MiB more than the larger of the
+heap's limit and its size at release, uncharged, when the env is released:
+no JavaScript runs after that, so the heap only has to finish collecting.
+It grants all of that at its first call. It used to grant it in 32 MiB
+steps, but V8 asks once per limit check (`Heap::CheckHeapLimitReached`)
+before giving up, so a heap further past its limit than one step still
+met it there. The budget's callback also no longer
 outlives its data (its data was the env, freed before the disposal), and
 `src/env.rs` frees an env's heap tracker after the bridge releases the env
 when a store is dropped, as the guest's own release already did, so

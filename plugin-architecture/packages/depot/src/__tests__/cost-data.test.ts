@@ -6,13 +6,14 @@ import {
   fetchDepotCostData,
   normalizeUsage,
   priceDay,
+  usedInCycle,
 } from "../cost-data.js";
 import { invoiceLineService, minorUnitsPerMajor, periodDays } from "../invoices.js";
 import { resolveRates } from "../rates.js";
 import type { WireUsage } from "../api.js";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
-const NONE_USED = { builds: 0, actions: 0, ci: 0 };
+const NONE_USED = { builds: 0, actions: 0, compute: 0 };
 
 function response(body: unknown, status = 200): Response {
   const text = JSON.stringify(body);
@@ -244,7 +245,8 @@ describe("priceDay", () => {
     });
     expect(by(SERVICE.macos).amount).toBe(0.8);
     expect(by(SERVICE.cache).amount).toBe(0.2);
-    expect(by(SERVICE.sandboxes).amount).toBe(0.2);
+    // 20 billed minutes at 2 vCPUs: $0.00005 per vCPU-second.
+    expect(by(SERVICE.sandboxes).amount).toBe(0.12);
   });
 
   it("shares the billable part of a day pro rata across its rows", () => {
@@ -368,6 +370,44 @@ describe("Depot CI", () => {
     // 1,050 before, 950 left: 100 of today's 1,050 minutes bill, 200 vCPU-minutes.
     expect(ci("2026-10-02").amount).toBe(0.6);
     expect(rows.some((r) => r.service === SERVICE.plan)).toBe(true);
+  });
+
+  it("draws agent sandboxes on the included sandbox minutes, not at a flat rate (#897)", () => {
+    const { rates } = resolveRates("developer", "");
+    const day = normalizeUsage({
+      agentSandbox: [{ agentType: "claude", sandboxesCount: 2, minutesBilled: 300 }],
+    });
+    // Inside the Developer plan's 2,000 minutes: usage shows, nothing is charged.
+    const inside = priceDay("2026-10-01", day, rates, NONE_USED, 31, new Map());
+    expect(inside).toEqual([
+      {
+        date: "2026-10-01",
+        service: SERVICE.sandboxes,
+        tags: { agentType: "claude" },
+        currency: "USD",
+        amount: 0,
+        usageAmount: 300,
+        usageUnit: "billed minutes",
+      },
+    ]);
+    // 1,900 of the pool used already: 200 of these 300 minutes bill, at 2 vCPUs each.
+    const past = priceDay("2026-10-02", day, rates, { ...NONE_USED, compute: 1900 }, 31, new Map());
+    expect(past[0]!.amount).toBe(1.2);
+  });
+
+  it("shares one pool, and one billable share, between Depot CI and agent sandboxes", () => {
+    const { rates } = resolveRates("developer", "");
+    const day = normalizeUsage({
+      // 200 vCPU-minutes of CI is 100 pool minutes, beside 100 sandbox minutes.
+      depotCi: [{ repo: "acme/api", runner: "depot-ubuntu-24.04-4", vcpuMinutesBilled: 200 }],
+      agentSandbox: [{ agentType: "claude", minutesBilled: 100 }],
+    });
+    expect(usedInCycle(day).compute).toBe(200);
+    // 1,900 used: half of today's 200 pool minutes bill, for each product.
+    const rows = priceDay("2026-10-02", day, rates, { ...NONE_USED, compute: 1900 }, 31, new Map());
+    const by = (service: string) => rows.find((r) => r.service === service)!;
+    expect(by(SERVICE.ci).amount).toBe(0.3);
+    expect(by(SERVICE.sandboxes).amount).toBe(0.3);
   });
 
   it("reads an answer without the Depot CI list as none", () => {

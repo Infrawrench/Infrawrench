@@ -6,7 +6,8 @@
  * - SSH keys (`ssh_keys`): only the private half is stored; the public key
  *   is derived from it on demand.
  * - An SSH tunnel config's private key (`ssh_tunnel_configs`): the renderer
- *   holds the ciphertext, main encrypts and decrypts it.
+ *   stores the ciphertext main encrypts, and only main decrypts it, to open
+ *   the account's tunnel (`electron/account-tunnels.ts`).
  * - Secret resource fields (`secret_field_states`): the same shape, bound to
  *   `(resourceId, fieldKey)`.
  *
@@ -66,11 +67,6 @@ export class LocalSecretRpcs extends RpcGroup.make(
       name: Schema.String.check(Schema.isBetweenLength(1, 256)),
       privateKey: Plaintext,
     },
-    error: LocalSecretError,
-  }),
-  Rpc.make("LocalTunnelConfigKeyDecrypt", {
-    payload: { tunnelConfigId: Id, ciphertext: Ciphertext, iv: Iv },
-    success: Schema.String,
     error: LocalSecretError,
   }),
   Rpc.make("LocalTunnelConfigKeyEncrypt", {

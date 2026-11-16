@@ -9,7 +9,6 @@ import {
   CiIcon,
   ComplianceIcon,
   DeliveryIcon,
-  DeployIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   EnvironmentsIcon,
@@ -53,7 +52,6 @@ import {
   costCanvasesTabTarget,
   costReportsTabTarget,
   costsTabTarget,
-  deploymentsTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
@@ -103,12 +101,9 @@ export function useOrgTools(): SidebarToolDef[] {
 
   const disabledProducts = useDisabledProducts();
 
-  // Deploy is here in both modes: with an org it is the full deploy screen,
-  // and without one it is the history of what `infrawrench deploy` did on this
-  // machine. Costs and Changes have no local half (spend is collected
-  // server-side, change events are recorded by the cloud poller) so the tool
-  // count differs between local and org mode; every surface lists
-  // whatever it gets.
+  // Costs and Changes have no local half (spend is collected server-side,
+  // change events are recorded by the cloud poller) so the tool count differs
+  // between local and org mode; every surface lists whatever it gets.
   const navTools: SidebarToolDef[] = [
     {
       key: "agents",
@@ -123,13 +118,6 @@ export function useOrgTools(): SidebarToolDef[] {
       icon: <WorkflowIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: gt("Workflows") }),
-    },
-    {
-      key: "deploy",
-      label: gt("Deploy"),
-      icon: <DeployIcon />,
-      onClick: () =>
-        void navigateToWorkspaceTarget(navigate, deploymentsTabTarget(), { label: gt("Deploy") }),
     },
     ...(activeCloudOrgId
       ? [

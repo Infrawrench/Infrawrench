@@ -1,0 +1,19 @@
+[package]
+name = "iwci-sandbox-spawn"
+description = "Starts a gVisor sandbox's Sentry in new namespaces: the runner's code for it, and the small root service that does it for a runner that may not"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Only these two: the service runs as root, so it stays small.
+[dependencies]
+libc = "0.2"
+sha2.workspace = true
+
+[[bin]]
+name = "iwci-sandbox-spawn"
+path = "src/bin/iwci-sandbox-spawn.rs"
+test = false
+doc = false

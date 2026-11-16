@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./tunnel-form": {
+      "types": "./dist/tunnel-form.d.ts",
+      "import": "./dist/tunnel-form.js",
+      "require": "./dist/tunnel-form.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -25,7 +30,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@infrawrench/plugin-base": "workspace:*"
+    "@infrawrench/plugin-base": "workspace:*",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "tsdown": "^0.22.14",

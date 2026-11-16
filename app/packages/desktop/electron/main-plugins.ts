@@ -1,0 +1,50 @@
+/**
+ * Plugin loader for the Electron main process (provider OAuth).
+ *
+ * Deliberately lighter than the renderer's `src/plugins/loader.ts`: it skips
+ * manifest validation and the ENABLED_RESOURCE_TYPES filter, and only honours
+ * DISABLED_PLUGINS. The plugin list itself is shared (`src/plugins/modules.ts`)
+ * so the two cannot drift apart.
+ */
+import type { HostPlugin, Plugin } from "@infrawrench/plugin-base" with {
+  "resolution-mode": "import",
+};
+import { hostPlugins } from "@infrawrench/plugin-base/effect";
+
+import { DISABLED_PLUGINS } from "../env";
+import { PLUGIN_MODULES } from "../src/plugins/modules";
+
+export interface LoadedPlugin {
+  /** Contract methods run on call and return Promises; see `hostPlugin`. */
+  plugin: HostPlugin;
+}
+
+let cached: LoadedPlugin[] | null = null;
+
+/** Every enabled plugin, loaded once per process. */
+export async function loadPlugins(): Promise<LoadedPlugin[]> {
+  if (cached) return cached;
+
+  const disabled = new Set<string>(DISABLED_PLUGINS);
+  const loaded: Plugin[] = [];
+
+  for (const load of PLUGIN_MODULES) {
+    try {
+      const mod = await load();
+      // A plugin that fails to import must not take the whole deploy with it:
+      // the one the user actually needs may well have loaded fine.
+      if (!disabled.has(mod.plugin.manifest.id)) loaded.push(mod.plugin);
+    } catch (err) {
+      console.error("[cli] failed to load a plugin module:", err);
+    }
+  }
+
+  cached = hostPlugins(loaded).map((plugin) => ({ plugin }));
+  return cached;
+}
+
+/** One plugin by id, or null when it is absent or disabled. */
+export async function getPlugin(pluginId: string): Promise<LoadedPlugin | null> {
+  const all = await loadPlugins();
+  return all.find((p) => p.plugin.manifest.id === pluginId) ?? null;
+}

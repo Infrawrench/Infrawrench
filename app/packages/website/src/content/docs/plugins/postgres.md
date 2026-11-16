@@ -31,6 +31,7 @@ For a managed database you already have in Infrawrench, don't add an account her
 
 ## Tips & limits
 
+- **CI jobs:** an admin can lend the connection to [Infrawrench CI](../features/ci.md#connections) jobs: `DATABASE_URL`, the `PG*` variables `psql` reads, and a section in `~/.pg_service.conf`. A managed PostgreSQL database in a cloud account can be lent the same way without connecting it here.
 - SSL mode is `require` unless your URL says otherwise. Add `?sslmode=disable` only if you're sure.
 - The results grid stops at 10k rows. Export to CSV or tighten your `LIMIT`.
 - In the cloud app, connection strings that point at certificate files (`sslrootcert`, `sslcert`, `sslkey`) are refused, since those files would be looked for on the Infrawrench server, not your machine. Paste the CA into the **CA Certificate** field instead. Client-certificate (mutual TLS) logins need the desktop app.

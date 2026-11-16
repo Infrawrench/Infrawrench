@@ -3,7 +3,7 @@
  *
  * Read-only merge of every feed the platform already indexes into one
  * chronological window: resource changes, provider status incidents, cost
- * anomalies, workflow runs, deployments, audit entries, change freezes, and
+ * anomalies, workflow runs, audit entries, change freezes, and
  * the drift/expiry alert delivery claims. No new tables, no new writes:
  * each loader reuses the same table + permission the feed's own endpoint
  * reads.
@@ -45,7 +45,6 @@ import {
   auditLogs,
   changeFreezes,
   costAnomalies,
-  deploymentRuns,
   resourceChanges,
   users,
   workflowRuns,
@@ -63,7 +62,6 @@ export const MOMENT_FEED_PERMISSIONS: Record<MomentFeedId, string> = {
   statusIncidents: "resources:read",
   costAnomalies: "costs:read",
   workflowRuns: "workflows:read",
-  deployments: "deployments:read",
   audit: "audit:read",
   freezes: "freezes:read",
   driftAlerts: "resources:read",
@@ -119,7 +117,6 @@ export async function computeMoment(
     statusIncidents: async () => incidentEvents(incidentSpans, from, to),
     costAnomalies: loadCostAnomalies,
     workflowRuns: loadWorkflowRuns,
-    deployments: loadDeployments,
     audit: loadAudit,
     freezes: loadFreezes,
     driftAlerts: loadDriftAlert,
@@ -445,70 +442,6 @@ const loadWorkflowRuns: FeedLoader = async (organizationId, from, to) => {
         title: `Workflow "${name}" ${outcome === "canceled" ? "was canceled" : outcome}`,
         detail: null,
         severity: outcome === "failed" ? "critical" : "info",
-        link,
-      });
-    }
-  }
-  return { events, ...(truncated ? { truncated: true } : {}) };
-};
-
-/** `deployment_runs` whose start or finish falls in the window. */
-const loadDeployments: FeedLoader = async (organizationId, from, to) => {
-  const rows = await db
-    .select({
-      id: deploymentRuns.id,
-      env: deploymentRuns.env,
-      repo: deploymentRuns.repo,
-      gitSha: deploymentRuns.gitSha,
-      status: deploymentRuns.status,
-      origin: deploymentRuns.origin,
-      startedAt: deploymentRuns.startedAt,
-      finishedAt: deploymentRuns.finishedAt,
-    })
-    .from(deploymentRuns)
-    .where(
-      and(
-        eq(deploymentRuns.organizationId, organizationId),
-        or(
-          and(gte(deploymentRuns.startedAt, from), lte(deploymentRuns.startedAt, to)),
-          and(gte(deploymentRuns.finishedAt, from), lte(deploymentRuns.finishedAt, to)),
-        ),
-      ),
-    )
-    .orderBy(desc(deploymentRuns.startedAt))
-    .limit(FEED_ROW_CAP + 1);
-
-  const truncated = rows.length > FEED_ROW_CAP;
-  const events: MomentEvent[] = [];
-  for (const row of rows.slice(0, FEED_ROW_CAP)) {
-    const what = `${row.repo}${row.gitSha ? `@${row.gitSha.slice(0, 7)}` : ""} → ${row.env}`;
-    const link = { kind: "deployment" as const, id: row.id };
-    if (within(row.startedAt, from, to)) {
-      events.push({
-        id: `deployments:${row.id}:started`,
-        feed: "deployments",
-        kind: "deployment.started",
-        timestamp: row.startedAt.toISOString(),
-        title: `Deploy started: ${what}`,
-        detail: `Origin: ${row.origin}`,
-        severity: "info",
-        link,
-      });
-    }
-    if (within(row.finishedAt, from, to) && row.status !== "running" && row.status !== "pending") {
-      const failed = row.status === "failure";
-      events.push({
-        id: `deployments:${row.id}:finished`,
-        feed: "deployments",
-        kind: failed ? "deployment.failed" : "deployment.finished",
-        timestamp: row.finishedAt.toISOString(),
-        title: failed
-          ? `Deploy failed: ${what}`
-          : row.status === "canceled"
-            ? `Deploy canceled: ${what}`
-            : `Deploy succeeded: ${what}`,
-        detail: null,
-        severity: failed ? "critical" : "info",
         link,
       });
     }

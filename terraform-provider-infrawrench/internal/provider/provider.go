@@ -241,7 +241,6 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAPIKeyResource,
 		NewSSHKeyResource,
 		NewSSHSnippetResource,
-		NewDeployTriggerResource,
 		NewWorkflowScheduleResource,
 
 		// Alert delivery.

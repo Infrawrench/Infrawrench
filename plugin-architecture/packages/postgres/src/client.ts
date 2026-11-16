@@ -1,7 +1,10 @@
 import type { Credentials } from "./plugin.js";
+import { lendPostgres } from "./ci-credential.js";
 import { attempt } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiCredentialRequest,
+  CiLentMaterial,
   PluginClient,
   HostServices,
   ResourceInstance,
@@ -59,6 +62,8 @@ function isCatalogRefused(err: unknown): boolean {
 export class PostgresClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
+  /** The CA certificate the connection trusts, when it names one: lent with it. */
+  private readonly caCert: string | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     // Tolerate a missing/empty connectionString: peer-plugin flows resolve
@@ -67,6 +72,12 @@ export class PostgresClient implements PluginClient {
     // actually need the connection surface a friendly error themselves.
     this.connectionString = credentials["connectionString"] ?? "";
     this.services = services;
+    this.caCert = credentials["caCert"] || undefined;
+  }
+
+  /** Lends the connection to a CI job (`connections:`). See `ci-credential.ts`. */
+  lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendPostgres(this.requireConnection(), this.caCert, request));
   }
 
   private requireConnection(): string {

@@ -557,6 +557,14 @@ impl Server {
             });
             capacity["memory_short"] = json!(memory.short());
         }
+        // Whether jobs with native tools (`builtin:bun`) can run here, and
+        // what each reserves for its sandbox beyond its `memory:`.
+        #[cfg(target_os = "linux")]
+        let sandbox = self.runner.sandbox.as_ref().map(|s| s.overhead());
+        #[cfg(not(target_os = "linux"))]
+        let sandbox: Option<u64> = None;
+        capacity["native_sandbox"] = json!(sandbox.is_some());
+        capacity["sandbox_overhead"] = json!(sandbox);
         capacity
     }
 
@@ -804,7 +812,12 @@ impl Server {
                                     None if j.execution.is_some() => j.duration_ms,
                                     None => 0,
                                 },
-                                memory_mib: j.memory_mib,
+                                // Billed as reserved: a sandbox's too.
+                                memory_mib: j.memory_mib
+                                    + j.execution
+                                        .as_ref()
+                                        .and_then(|e| e.sandbox)
+                                        .map_or(0, |s| s.reserved_mib),
                                 external: j.cloud.is_some(),
                                 remote: j.remote.is_some(),
                             });
@@ -1375,6 +1388,8 @@ mod tests {
             download_limits: Default::default(),
             external: None,
             helping: Some(Arc::new(crate::schedule::Helping::default())),
+            #[cfg(target_os = "linux")]
+            sandbox: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()

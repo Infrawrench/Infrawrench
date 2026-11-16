@@ -7,9 +7,34 @@ process.env["ENCRYPTION_MASTER_KEY"] = randomBytes(32).toString("base64");
 
 // Real Drizzle over a recording driver against the real schema: the
 // ssh_tunnel_configs lookup renders its actual SQL (and shadow-validates
-// under test:postgres:shadow). Every test either finds an existing tunnel
-// (no query) or gets the default empty result (no config row).
+// under test:postgres:shadow). A test with a tunnel queues its config row
+// (the remote end the rewriter matches against); the others get the default
+// empty result (no config row).
 const pg = fakePostgres();
+
+/** The account's tunnel config, in the table's column order. */
+function tunnelConfig(remoteHost: string, remotePort: number) {
+  return {
+    id: "t1",
+    accountId: "acct1",
+    organizationId: "org1",
+    sshHost: "bastion.example.com",
+    sshPort: 22,
+    sshUser: "root",
+    remoteHost,
+    remotePort,
+    encryptedPrivateKey: "ENC",
+    privateKeyIv: "IV",
+    createdAt: "2026-11-01 00:00:00.000",
+  };
+}
+
+const field = (key: string, tunnel?: "address" | "kubeconfig") => ({
+  key,
+  label: key,
+  sensitive: false,
+  ...(tunnel ? { tunnel } : {}),
+});
 vi.mock("../db/client", () => ({ db: pg.db }));
 
 // --- mock ssh-tunnel-core (real module pulls in ssh2 which breaks ESM import) ---
@@ -19,6 +44,9 @@ vi.mock("@infrawrench/ssh-tunnel-core", () => ({
   findTunnel: (...a: unknown[]) => findTunnel(...a),
   openTunnel: (...a: unknown[]) => openTunnel(...a),
 }));
+
+// The bastion host check resolves DNS; these tests are about what is rewritten.
+vi.mock("../egress-guard", () => ({ resolveSafeHost: async (host: string) => host }));
 
 let rewriteCredentialsThroughTunnel: typeof import("../tunnel-resolver").rewriteCredentialsThroughTunnel;
 let rewriteConnectionForTunnel: typeof import("../tunnel-resolver").rewriteConnectionForTunnel;
@@ -47,32 +75,66 @@ describe("rewriteConnectionForTunnel", () => {
   });
 
   it("rewrites a URL connection string to 127.0.0.1:<localPort> when an existing tunnel is found", async () => {
+    pg.queueRows([tunnelConfig("db.example.com", 5432)]);
     findTunnel.mockReturnValue({ localPort: 15432, extras: { accountId: "acct1" } });
     const out = await rewriteConnectionForTunnel("acct1", "postgres://u:p@db.example.com:5432/app");
     expect(out).toBe("postgres://u:p@127.0.0.1:15432/app");
+    expect(openTunnel).not.toHaveBeenCalled();
   });
 
   it("rewrites a tcp:// URL to 127.0.0.1:<localPort>", async () => {
+    pg.queueRows([tunnelConfig("db.internal", 5432)]);
     findTunnel.mockReturnValue({ localPort: 16000, extras: { accountId: "acct1" } });
     const out = await rewriteConnectionForTunnel("acct1", "tcp://db.internal:5432");
     expect(out).toBe("tcp://127.0.0.1:16000");
   });
 
-  it("rewrites a bare ip:port string via the regex fallback", async () => {
-    findTunnel.mockReturnValue({ localPort: 16000, extras: { accountId: "acct1" } });
-    // "1.2.3.4:5432" is not a valid WHATWG URL (a scheme can't start with a
-    // digit, so the URL ctor throws) and falls through to the host:port regex.
-    const out = await rewriteConnectionForTunnel("acct1", "1.2.3.4:5432");
-    expect(out).toBe("127.0.0.1:16000");
+  it("rewrites a bare host:port, with a dotted name or an IP", async () => {
+    for (const written of ["1.2.3.4:5432", "db.internal:5432"]) {
+      pg.queueRows([tunnelConfig("10.0.0.5", 5432)]);
+      findTunnel.mockReturnValue({ localPort: 16000, extras: { accountId: "acct1" } });
+      expect(await rewriteConnectionForTunnel("acct1", written)).toBe("127.0.0.1:16000");
+    }
   });
 
-  it("leaves a non-URL, non-host:port string untouched", async () => {
+  it("leaves a value that is no address untouched", async () => {
+    for (const written of ["unix:///var/run/docker.sock", "host=db port=5432", "a b:1"]) {
+      pg.queueRows([tunnelConfig("db.internal", 5432)]);
+      findTunnel.mockReturnValue({ localPort: 16000, extras: { accountId: "acct1" } });
+      expect(await rewriteConnectionForTunnel("acct1", written)).toBe(written);
+    }
+  });
+
+  it("is the same rewritten twice: an address at the local end stays put", async () => {
+    pg.queueRows([tunnelConfig("db.internal", 5432)]);
     findTunnel.mockReturnValue({ localPort: 16000, extras: { accountId: "acct1" } });
-    const out = await rewriteConnectionForTunnel("acct1", "just-a-plain-value");
-    expect(out).toBe("just-a-plain-value");
+    const out = await rewriteConnectionForTunnel("acct1", "redis://127.0.0.1:16000/0");
+    expect(out).toBe("redis://127.0.0.1:16000/0");
+  });
+
+  it("opens the tunnel the config describes when none is open", async () => {
+    const { encrypt, buildAad } = await import("../encryption");
+    const sealed = await encrypt("KEY", buildAad("sshTunnelConfig", "t1", "privateKey"));
+    pg.queueRows([
+      {
+        ...tunnelConfig("10.0.0.5", 6379),
+        encryptedPrivateKey: sealed.ciphertext,
+        privateKeyIv: sealed.iv,
+      },
+    ]);
+    findTunnel.mockReturnValue(null);
+    openTunnel.mockResolvedValue({ tunnelId: "x", localPort: 17000 });
+    const out = await rewriteConnectionForTunnel("acct1", "redis://:pw@10.0.0.5:6379");
+    expect(out).toBe("redis://:pw@127.0.0.1:17000");
+    expect(openTunnel.mock.calls[0]![0]).toMatchObject({
+      privateKey: "KEY",
+      remoteHost: "10.0.0.5",
+      remotePort: 6379,
+    });
   });
 
   it("swallows resolution errors and returns the original string", async () => {
+    pg.queueRows([tunnelConfig("x", 1)]);
     findTunnel.mockImplementation(() => {
       throw new Error("registry exploded");
     });
@@ -84,19 +146,49 @@ describe("rewriteConnectionForTunnel", () => {
 });
 
 describe("rewriteCredentialsThroughTunnel", () => {
+  const fields = [field("url", "address"), field("host", "address"), field("token")];
+
   it("is a no-op when no tunnel is configured", async () => {
     findTunnel.mockReturnValue(null);
     // default empty result: no ssh_tunnel_configs row
     const creds = { url: "redis://host:6379", other: "x:1" };
-    await rewriteCredentialsThroughTunnel("acct1", creds);
+    expect(await rewriteCredentialsThroughTunnel("acct1", fields, creds)).toEqual([]);
     expect(creds).toEqual({ url: "redis://host:6379", other: "x:1" });
   });
 
-  it("rewrites every credential value through the tunnel port", async () => {
+  it("does not even look for a tunnel when the plugin marks no field", async () => {
+    const creds = { token: "10.0.0.5:6379" };
+    expect(await rewriteCredentialsThroughTunnel("acct1", [field("token")], creds)).toEqual([]);
+    expect(pg.queries).toHaveLength(0);
+  });
+
+  it("rewrites the marked fields that name the tunnel's remote end, and nothing else", async () => {
+    pg.queueRows([tunnelConfig("host", 6379)]);
     findTunnel.mockReturnValue({ localPort: 25432, extras: { accountId: "acct1" } });
-    const creds = { url: "redis://host:6379", host: "1.2.3.4:6380" };
-    await rewriteCredentialsThroughTunnel("acct1", creds);
-    expect(creds.url).toBe("redis://127.0.0.1:25432");
-    expect(creds.host).toBe("127.0.0.1:25432");
+    const creds = { url: "redis://host:6379", host: "other.internal:6380", token: "host:6379" };
+    expect(await rewriteCredentialsThroughTunnel("acct1", fields, creds)).toEqual(["url"]);
+    expect(creds).toEqual({
+      url: "redis://127.0.0.1:25432",
+      host: "other.internal:6380",
+      token: "host:6379",
+    });
+  });
+
+  it("falls back to each marked field's first address when none names the remote end", async () => {
+    pg.queueRows([tunnelConfig("10.0.0.5", 6379)]);
+    findTunnel.mockReturnValue({ localPort: 25432, extras: { accountId: "acct1" } });
+    const creds = { url: "redis://cache.internal:6379", host: "1.2.3.4:6380" };
+    await rewriteCredentialsThroughTunnel("acct1", fields, creds);
+    expect(creds).toEqual({ url: "redis://127.0.0.1:25432", host: "127.0.0.1:25432" });
+  });
+
+  it("gives a peer's credentials no fallback", async () => {
+    pg.queueRows([tunnelConfig("10.0.0.5", 6379)]);
+    findTunnel.mockReturnValue({ localPort: 25432, extras: { accountId: "acct1" } });
+    const creds = { url: "redis://cache.internal:6379" };
+    expect(await rewriteCredentialsThroughTunnel("acct1", fields, creds, { peer: true })).toEqual(
+      [],
+    );
+    expect(creds.url).toBe("redis://cache.internal:6379");
   });
 });

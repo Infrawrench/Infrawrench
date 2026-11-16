@@ -1,4 +1,13 @@
 import type { SpeechPanelOption } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.gen.js";
+
+/** A code `language_config.languages[]` takes, from the served OpenAPI document. */
+export type GladiaTranscriptionLanguage = components["schemas"]["TranscriptionLanguageCodeEnum"];
+
+interface GladiaLanguage {
+  code: GladiaTranscriptionLanguage;
+  name: string;
+}
 
 /**
  * Gladia's supported transcription languages, verified 2026-07-28 against
@@ -6,9 +15,15 @@ import type { SpeechPanelOption } from "@infrawrench/plugin-base";
  *
  * Codes are ISO 639-1 two-letter tags, falling back to ISO 639-3 where no
  * two-letter code exists (`haw` for Hawaiian). These are the values that go
- * into `language_config.languages[]`.
+ * into `language_config.languages[]`, so each is typed against the document's
+ * `TranscriptionLanguageCodeEnum`.
+ *
+ * Wolof (`wo`) is left out (#553, checked 2026-11-15): the languages table
+ * marks it for Solaria-1, but the served OpenAPI document, the pre-recorded
+ * init reference, Gladia's JavaScript SDK (`PreRecordedV2TranscriptionLanguageCode`)
+ * and Gladia's CLI (`allInputLanguages`) all list it for translation only.
  */
-export const GLADIA_LANGUAGES: ReadonlyArray<{ code: string; name: string }> = [
+export const GLADIA_LANGUAGES: ReadonlyArray<GladiaLanguage> = [
   { code: "af", name: "Afrikaans" },
   { code: "sq", name: "Albanian" },
   { code: "am", name: "Amharic" },
@@ -106,7 +121,6 @@ export const GLADIA_LANGUAGES: ReadonlyArray<{ code: string; name: string }> = [
   { code: "uz", name: "Uzbek" },
   { code: "vi", name: "Vietnamese" },
   { code: "cy", name: "Welsh" },
-  { code: "wo", name: "Wolof" },
   { code: "yi", name: "Yiddish" },
   { code: "yo", name: "Yoruba" },
 ];
@@ -134,11 +148,13 @@ export const GLADIA_LANGUAGE_OPTIONS: SpeechPanelOption[] = [
 ];
 
 /**
- * The languages Solaria-3 takes, verified 2026-11-08: the Solaria-3 column of
+ * The languages Solaria-3 takes, verified 2026-11-15: the Solaria-3 column of
  * https://docs.gladia.io/chapters/language/supported-languages marks exactly
  * these five, and https://docs.gladia.io/api-reference/v2/pre-recorded/init
  * calls it single language only, with exactly one entry in
- * `language_config.languages`, so auto-detect is not among them.
+ * `language_config.languages`, so auto-detect is not among them. Gladia's own
+ * tools agree on the five: its CLI refuses any other language with Solaria-3,
+ * and its MCP server also refuses Solaria-3 without one named language (#679).
  */
 export const SOLARIA_3_LANGUAGE_IDS: readonly string[] = ["en", "fr", "de", "it", "es"];
 

@@ -31,6 +31,11 @@ interface ResolveOutputDeps {
  * with local accounts get a token or client certificate inline and pass
  * through untouched; anything that cannot be rebuilt is returned as-is.
  */
+/** The kubeconfig signs in through Entra ID: a credential plugin, not a local account. */
+export function isEntraKubeconfig(kubeconfig: string): boolean {
+  return /^\s*(exec|auth-provider):/m.test(kubeconfig);
+}
+
 async function withStaticAksToken(
   kubeconfig: string,
   clusterName: string,
@@ -71,8 +76,13 @@ export async function resolveAzureOutput(
 ): Promise<string> {
   const { ctx, getResource } = deps;
 
-  // For AKS kubeconfig, we need to fetch it via API
-  if (typeId === "azure-aks-cluster" && outputKey === "kubeconfig") {
+  // For AKS kubeconfig, we need to fetch it via API. `ciKubeconfig` is what a
+  // CI job is lent: only ever an Entra token, never a local account's
+  // long-lived client certificate.
+  if (
+    typeId === "azure-aks-cluster" &&
+    (outputKey === "kubeconfig" || outputKey === "ciKubeconfig")
+  ) {
     const resource = await getResource(typeId, resourceId, accountId);
     const [rg, name] = (resource.externalId ?? "").split("/");
     const kubeconfigData = await ctx.post<{ kubeconfigs?: Array<{ value: string }> }>(
@@ -81,6 +91,16 @@ export async function resolveAzureOutput(
     );
     const encoded = kubeconfigData.kubeconfigs?.[0]?.value ?? "";
     const kubeconfig = atob(encoded);
+    if (outputKey === "ciKubeconfig") {
+      // Entra sign-in comes as a credential plugin (`exec`/`auth-provider`),
+      // which is minted into a token; anything else is a local account.
+      if (!isEntraKubeconfig(kubeconfig) || !deps.aksAccessToken) {
+        throw new Error(
+          "This cluster's user credential is a local account's client certificate, which is never lent to CI jobs. Turn on Microsoft Entra ID integration for the cluster.",
+        );
+      }
+      return withStaticAksToken(kubeconfig, name || "aks", deps.aksAccessToken);
+    }
     return deps.aksAccessToken
       ? withStaticAksToken(kubeconfig, name || "aks", deps.aksAccessToken)
       : kubeconfig;

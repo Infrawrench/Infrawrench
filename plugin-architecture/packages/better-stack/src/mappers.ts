@@ -354,11 +354,18 @@ export function mapAlert(accountId: string, x: JsonApiItem<Attrs>): ResourceInst
   });
 }
 
+/** Where a pending invitation's id goes in a member row's id, apart from user ids. */
+export const INVITATION_PREFIX = "invitation:";
+
 /**
  * A team member. `team` is set where the member was read for one named team, because the
  * token covers several (#822): a member's id is their user id, the same in every team,
  * so that row's external id is `<encoded team>/<user id>`. Without it the id is the
  * user id alone, as it has always been for a token with one team.
+ *
+ * The list also carries pending invitations (`type: team_member_invitation`), whose id
+ * is the invitation's, not a user's. They are keyed `invitation:<id>` in the user id's
+ * place, because no route reads an invitation by id and removing one goes by e-mail.
  */
 export function mapMember(
   accountId: string,
@@ -368,16 +375,18 @@ export function mapMember(
   const a = x.attributes ?? {};
   const name =
     [s(a["first_name"]), s(a["last_name"])].filter(Boolean).join(" ") || s(a["email"]) || x.id;
+  const key = x.type === "team_member_invitation" ? `${INVITATION_PREFIX}${x.id}` : x.id;
   return instance(
     accountId,
     "team-member",
-    team === undefined ? x.id : memberExternalId(team, x.id),
+    team === undefined ? key : memberExternalId(team, key),
     name,
     {
       name,
       email: s(a["email"]),
       role: s(a["role"]) ?? s(a["role_name"]),
       team: team ?? s(a["team_name"]),
+      invitedAt: s(a["invited_at"]),
     },
     { resolvedOutputs: s(a["email"]) ? { email: String(a["email"]) } : {} },
   );

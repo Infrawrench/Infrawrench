@@ -1,7 +1,7 @@
 /**
- * Billing for CI through Stripe Billing Meters, the way hosted build time is
- * billed (`billing/build-meter.ts`): usage in its natural unit, the price on
- * the Stripe price object, plain `fetch` (server-core has no Stripe SDK).
+ * Billing for CI through Stripe Billing Meters: usage in its natural unit, the
+ * price on the Stripe price object, plain `fetch` (server-core has no Stripe
+ * SDK).
  *
  * Three meters, each optional (unset means that part is not billed):
  * - `INFRAWRENCH_STRIPE_CI_VCPU_METER_EVENT`: vCPU-seconds per run (a job is
@@ -12,7 +12,7 @@
  *   caches and unexpired downloads; the runners' `used_bytes`), sampled from
  *   the runners once an hour per GitHub account.
  *
- * Unlike the build meter, nothing is fire-and-forget: the poller pass sends
+ * Nothing is fire-and-forget: the poller pass sends
  * what has not been sent yet (`usage_reported_at` / `reported_at` null),
  * with the run's or the hour's own timestamp and a fixed identifier, so a
  * retry is deduplicated by Stripe and a late report still lands in the
@@ -256,7 +256,9 @@ export async function ciUsage(organizationId: string, month?: string): Promise<C
   const end = new Date(Date.UTC(y ?? now.getUTCFullYear(), m ?? 1, 1));
   const [runs] = await db
     .select({
-      runs: sql<number>`count(*)::int`,
+      // A run with nothing to run is no run (`skipped`); what it used, if a
+      // runner was sent it, still counts.
+      runs: sql<number>`(count(*) filter (where ${ciRuns.status} <> 'skipped'))::int`,
       vcpu: sql<number>`coalesce(sum(${ciRuns.vcpuSeconds}), 0)::float8`,
       memory: sql<number>`coalesce(sum(${ciRuns.memoryGibSeconds}), 0)::float8`,
     })

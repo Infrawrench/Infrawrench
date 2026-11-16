@@ -38,6 +38,8 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # Native Bun runs in a sandbox beside this environment (below).
+      - "ci-runner/crates/iwci-sandbox/**"
       # The vendored V8 bridge is what runs Node jobs: a change to it alone
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
@@ -51,6 +53,8 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # Native Bun runs in a sandbox beside this environment (below).
+      - "ci-runner/crates/iwci-sandbox/**"
       # The vendored V8 bridge is what runs Node jobs: a change to it alone
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
@@ -302,6 +306,37 @@ jobs:
           IWCI_TEST_NODE_WEBC_DIR="$dir" IWCI_TEST_WEBC_DIR="$dir" IWCI_REQUIRE_FIXTURES=1 \
             cargo test -p iwci-runtime --features node -- service engine_flags jobs_stderr heaps_committed
 
+      # The deployment CLIs (builtin:vercel, wrangler, cf and neon) run on
+      # this environment's node: built from their lockfiles with this
+      # machine's npm, and run against fake APIs with no network. One job
+      # checks that env:bash refuses them, so it is built too (a download).
+      - name: Deployment CLIs on Edge.js
+        run: |
+          bash builtins/environments/build.sh bash
+          bash builtins/npm-cli/build.sh
+          SKIP_BUILD=1 bash builtins/test.sh npm-cli
+
+      # Jobs that run native Bun in a gVisor sandbox beside this
+      # environment, with the runner built above inside
+      # (crates/iwci-runtime/tests/sandbox.rs, its conformance cases
+      # included). gVisor and Bun are pinned by tests/fixtures.sh; run as
+      # root in a scope with a cgroup subtree of its own, as the gVisor
+      # tests in ci-runner.yml are.
+      - name: Native Bun in a gVisor sandbox
+        timeout-minutes: 20
+        run: |
+          set -a
+          eval "$(bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox")"
+          set +a
+          dir="$(ls -d "$PWD"/dist/environment/bash-node/*)"
+          bin=$(cargo test -p iwci-runtime --features node --test sandbox --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "sandbox") | .executable')
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_CGROUP=1 \
+            IWCI_TEST_GVISOR="$IWCI_TEST_GVISOR" IWCI_TEST_BUN_ROOT="$IWCI_TEST_BUN_ROOT" \
+            IWCI_TEST_NODE_WEBC_DIR="$dir" IWCI_TEST_IWCI="$PWD/target/debug/iwci" \
+            "$bin" --ignored --test-threads=1
+
       # Main only: what passed above becomes what runners resolve.
       - name: Publish to the runner pool
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -310,7 +345,7 @@ jobs:
           IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
-        run: bash builtins/publish.sh dist/environment/bash-node/*
+        run: bash builtins/publish.sh dist/environment/bash-node/* dist/builtin/{vercel,cf,neon,wrangler}/*
 
   clickhouse:
     name: clickhouse (CloudHouse for WebAssembly)

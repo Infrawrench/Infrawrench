@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.109.0",
+    "version": "1.114.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -422,9 +422,6 @@
     },
     {
       "name": "Weekly digest"
-    },
-    {
-      "name": "Deployments"
     },
     {
       "name": "IaC"
@@ -1093,8 +1090,6 @@
           "escalation-policy",
           "eval",
           "evaluation",
-          "evaluation-job",
-          "evaluator",
           "event-hook",
           "eventbridge-rule",
           "events2metrics",
@@ -1588,7 +1583,6 @@
           "registry-module",
           "registry-namespace",
           "registry-provider",
-          "reinforcement-fine-tuning-job",
           "release",
           "replication-rule",
           "repo-blocklist",
@@ -14127,7 +14121,7 @@
               "probe",
               "metric-alert"
             ],
-            "description": "`moment` covers everything the moment union already indexes; resource changes, deployments, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs. Nothing is copied into the incident's own tables; the timeline is a join, so re-reading it reflects the record as it stands today."
+            "description": "`moment` covers everything the moment union already indexes; resource changes, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs. Nothing is copied into the incident's own tables; the timeline is a join, so re-reading it reflects the record as it stands today."
           },
           "kind": {
             "type": "string",
@@ -14221,7 +14215,6 @@
                       "provider-incident",
                       "costs",
                       "workflow-run",
-                      "deployment",
                       "audit",
                       "freeze",
                       "expiring",
@@ -18945,13 +18938,12 @@
       "DoraSource": {
         "type": "string",
         "enum": [
-          "infrafile",
           "plugin",
           "github",
           "api",
           "change_timeline"
         ],
-        "description": "Where the change was learned from: an Infrafile run, a synced provider deploy, a GitHub deployment, one recorded over this API, or the change timeline."
+        "description": "Where the change was learned from: a synced provider deploy, a GitHub deployment, one recorded over this API, or the change timeline."
       },
       "DoraReport": {
         "type": "object",
@@ -23639,7 +23631,6 @@
           "workflows:write",
           "workflows:approve",
           "deployments:read",
-          "deployments:plan",
           "deployments:write",
           "costs:read",
           "costs:write",
@@ -35015,10 +35006,13 @@
         "type": "object",
         "properties": {
           "subjectKind": {
-            "type": "string",
-            "enum": [
-              "change",
-              "deployment"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "change"
+                ]
+              }
             ]
           },
           "subjectId": {
@@ -42415,753 +42409,6 @@
         ],
         "additionalProperties": false
       },
-      "DeployTrigger": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
-          },
-          "repo": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "env": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "lastSha": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lastRunAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "repo",
-          "branch",
-          "env",
-          "enabled",
-          "lastSha",
-          "lastRunAt"
-        ],
-        "additionalProperties": false
-      },
-      "DeployTriggerInput": {
-        "type": "object",
-        "properties": {
-          "repo": {
-            "type": "string",
-            "minLength": 1
-          },
-          "branch": {
-            "type": "string",
-            "minLength": 1
-          },
-          "env": {
-            "type": "string",
-            "minLength": 1
-          },
-          "answers": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "repo",
-          "branch",
-          "env"
-        ],
-        "additionalProperties": false
-      },
-      "DeployPlanResult": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
-          },
-          "result": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "$ref": "#/components/schemas/DeployStatus"
-              },
-              "env": {
-                "type": "string"
-              },
-              "plan": {},
-              "dockerfile": {
-                "type": "string"
-              },
-              "image": {
-                "type": "string"
-              },
-              "notes": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "createdResources": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DeployCreatedResource"
-                }
-              },
-              "plannedChanges": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DeployPlannedChange"
-                }
-              },
-              "logs": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DeployRunLog"
-                }
-              },
-              "reachedStage": {
-                "$ref": "#/components/schemas/DeployStage"
-              },
-              "error": {
-                "type": "object",
-                "properties": {
-                  "message": {
-                    "type": "string"
-                  },
-                  "stack": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "message"
-                ],
-                "additionalProperties": false
-              },
-              "durationMs": {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": [
-              "status",
-              "env",
-              "notes",
-              "createdResources",
-              "plannedChanges",
-              "logs",
-              "durationMs"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "runId",
-          "result"
-        ],
-        "additionalProperties": false
-      },
-      "DeployStage": {
-        "type": "string",
-        "enum": [
-          "plan",
-          "dockerfile",
-          "build",
-          "deploy",
-          "destroy"
-        ]
-      },
-      "DeployRunLog": {
-        "type": "object",
-        "properties": {
-          "at": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "level": {
-            "type": "string",
-            "enum": [
-              "debug",
-              "info",
-              "warn",
-              "error"
-            ]
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "at",
-          "level",
-          "message"
-        ],
-        "additionalProperties": false
-      },
-      "DeployPlannedChange": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "create",
-              "update",
-              "delete"
-            ]
-          },
-          "accountId": {
-            "type": "string"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "resourceId": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "fields": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "sidecar": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "parentResourceId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "pluginId",
-              "parentResourceId"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "action",
-          "accountId",
-          "resourceTypeId",
-          "displayName"
-        ],
-        "additionalProperties": false
-      },
-      "DeployCreatedResource": {
-        "type": "object",
-        "properties": {
-          "pluginId": {
-            "type": "string"
-          },
-          "accountId": {
-            "type": "string"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "resourceId": {
-            "type": "string"
-          },
-          "externalId": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "sidecar": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "parentResourceId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "pluginId",
-              "parentResourceId"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "pluginId",
-          "accountId",
-          "resourceTypeId",
-          "resourceId",
-          "displayName"
-        ],
-        "additionalProperties": false
-      },
-      "DeployStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "running",
-          "success",
-          "failure",
-          "canceled"
-        ]
-      },
-      "DeployRollbackInput": {
-        "type": "object",
-        "properties": {
-          "deleteCreated": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DeploymentCostImpact": {
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
-          },
-          "costBasis": {
-            "$ref": "#/components/schemas/ChangeCostBasis"
-          },
-          "windowDays": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "eventDay": {
-            "type": "string",
-            "description": "The run's start day, UTC; what both windows hang off."
-          },
-          "resources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DeploymentCostImpactResource"
-            },
-            "description": "One row per resource the run provisioned through `infra.accounts.*.create(...)`. That is the only set attributable to a run with certainty: a deploy that merely re-shipped an image links to nothing and honestly reports an empty breakdown."
-          },
-          "total": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "currency": {
-                  "type": "string"
-                },
-                "deltaPerDay": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "currency",
-                "deltaPerDay"
-              ],
-              "additionalProperties": false
-            },
-            "description": "Summed `deltaPerDay` per currency across the **measured** rows only, so the breakdown always adds up to it. An unmeasurable resource contributes nothing rather than zero."
-          },
-          "unknownResources": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991,
-            "description": "Rows excluded from `total` because their impact could not be measured."
-          },
-          "confidence": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ChangeCostImpactConfidence"
-              },
-              {
-                "description": "The weakest confidence among the measured rows; a breakdown is only as good as its worst row."
-              }
-            ]
-          }
-        },
-        "required": [
-          "runId",
-          "costBasis",
-          "windowDays",
-          "eventDay",
-          "resources",
-          "total",
-          "unknownResources",
-          "confidence"
-        ],
-        "additionalProperties": false
-      },
-      "DeploymentCostImpactResource": {
-        "type": "object",
-        "properties": {
-          "resourceId": {
-            "$ref": "#/components/schemas/ResourceId"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "pluginId": {
-            "type": "string"
-          },
-          "resourceTypeId": {
-            "type": "string"
-          },
-          "impact": {
-            "$ref": "#/components/schemas/ChangeCostImpact"
-          }
-        },
-        "required": [
-          "resourceId",
-          "displayName",
-          "pluginId",
-          "resourceTypeId",
-          "impact"
-        ],
-        "additionalProperties": false
-      },
-      "DeploymentRun": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "00000000-0000-0000-0000-000000000000"
-            ]
-          },
-          "env": {
-            "type": "string"
-          },
-          "repo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "branch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "gitSha": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "image": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/DeployStatus"
-          },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "web",
-              "cli",
-              "trigger"
-            ]
-          },
-          "stage": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DeployStage"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "durationMs": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "buildSeconds": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "buildRunner": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "cloud-build",
-                  "ssh"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "startedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "env",
-          "repo",
-          "branch",
-          "gitSha",
-          "image",
-          "status",
-          "origin",
-          "stage",
-          "durationMs",
-          "buildSeconds",
-          "buildRunner",
-          "startedAt"
-        ],
-        "additionalProperties": false
-      },
-      "DeploymentRunInput": {
-        "type": "object",
-        "properties": {
-          "env": {
-            "type": "string",
-            "minLength": 1
-          },
-          "status": {
-            "$ref": "#/components/schemas/DeployStatus"
-          },
-          "repo": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "gitSha": {
-            "type": "string"
-          },
-          "image": {
-            "type": "string"
-          },
-          "stage": {
-            "$ref": "#/components/schemas/DeployStage"
-          },
-          "notes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "output": {},
-          "plan": {},
-          "createdResources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DeployCreatedResource"
-            }
-          },
-          "durationMs": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "message"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "env",
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "DeployPlanInput": {
-        "type": "object",
-        "properties": {
-          "repo": {
-            "type": "string",
-            "minLength": 1
-          },
-          "branch": {
-            "type": "string",
-            "minLength": 1,
-            "default": "main"
-          },
-          "env": {
-            "type": "string"
-          },
-          "answers": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "repo"
-        ],
-        "additionalProperties": false
-      },
-      "DeployEnvs": {
-        "type": "object",
-        "properties": {
-          "envs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "examples": [
-              [
-                "staging",
-                "production"
-              ]
-            ]
-          },
-          "sha": {
-            "type": "string"
-          },
-          "repo": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "envs",
-          "sha",
-          "repo",
-          "branch"
-        ],
-        "additionalProperties": false
-      },
-      "DeployEnvsInput": {
-        "type": "object",
-        "properties": {
-          "repo": {
-            "type": "string",
-            "minLength": 1,
-            "examples": [
-              "astrid/my-app"
-            ]
-          },
-          "branch": {
-            "type": "string",
-            "minLength": 1,
-            "default": "main"
-          }
-        },
-        "required": [
-          "repo"
-        ],
-        "additionalProperties": false
-      },
-      "DeployRepo": {
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "examples": [
-              "astrid/my-app"
-            ]
-          },
-          "defaultBranch": {
-            "type": "string",
-            "examples": [
-              "main"
-            ]
-          }
-        },
-        "required": [
-          "fullName",
-          "defaultBranch"
-        ],
-        "additionalProperties": false
-      },
       "IacResourceStatusResponse": {
         "type": "object",
         "properties": {
@@ -43889,7 +43136,6 @@
                   "type": "string",
                   "enum": [
                     "terraform",
-                    "infrafile",
                     "kubernetes"
                   ]
                 },
@@ -56870,7 +56116,6 @@
               "delivery",
               "ci",
               "workflows",
-              "deployments",
               "settings",
               "chat",
               "linux-app"
@@ -59461,7 +58706,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. Open set: render unknown kinds generically."
+            "description": "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, `workflow-run.failed`, `freeze.started`, `drift-alert.sent`. Open set: render unknown kinds generically."
           },
           "timestamp": {
             "type": "string",
@@ -59577,7 +58822,6 @@
               "incident",
               "costs",
               "workflow-run",
-              "deployment",
               "audit",
               "freeze",
               "expiring"
@@ -59638,7 +58882,6 @@
           "statusIncidents",
           "costAnomalies",
           "workflowRuns",
-          "deployments",
           "audit",
           "freezes",
           "driftAlerts",
@@ -62605,6 +61848,17 @@
             ],
             "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
           },
+          "peer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CiResourceGrantPeer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the resource is lent as, or null when only its outputs are granted."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -62624,6 +61878,117 @@
           "repos",
           "branchPattern",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrantPeer": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string",
+            "description": "The plugin the resource is lent as, one its type has a peer integration with (a managed cluster as `kubernetes`). Pipelines name it in `connections:` by the grant's CI name."
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "lend": {
+            "type": "boolean",
+            "description": "`connections: [<ciName>]` lends it. Separate from running jobs on it, which lends nothing."
+          },
+          "jobKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vm",
+                "container",
+                "build",
+                "host",
+                "cluster"
+              ]
+            },
+            "description": "Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it. Empty for none."
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "maxJobMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "jobRegions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where else a job may run with `cloud.region` (a cluster's namespaces), besides where each kind was checked. Empty: only there."
+          },
+          "preflight": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CiPreflightRecord"
+            }
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "lend",
+          "jobKinds",
+          "maxConcurrentJobs",
+          "maxJobMinutes",
+          "jobRegions",
+          "preflight"
+        ],
+        "additionalProperties": false
+      },
+      "CiPreflightRecord": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "permission": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "permission",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "region": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ok",
+          "missing",
+          "problems",
+          "checkedAt"
         ],
         "additionalProperties": false
       },
@@ -62678,6 +62043,17 @@
               }
             ],
             "description": "Branches it holds for: globs separated by commas, where `*` stops at `/` and `**` does not (`main, release/*`). Null: every branch."
+          },
+          "peer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CiResourceGrantPeerInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use the resource as a peer plugin's connection: lend it (`connections: [<ciName>]`), run cloud jobs on it, or both. Null: neither. An update must send it when the grant has one: a client that cannot show it is refused (409) rather than changing a grant whose lending it cannot see."
           }
         },
         "required": [
@@ -62687,6 +62063,58 @@
           "secretVersion",
           "repos",
           "branchPattern"
+        ],
+        "additionalProperties": false
+      },
+      "CiResourceGrantPeerInput": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "lend": {
+            "type": "boolean",
+            "description": "Lend it to jobs that name it in `connections:`."
+          },
+          "jobKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vm",
+                "container",
+                "build",
+                "host",
+                "cluster"
+              ]
+            },
+            "description": "Cloud jobs that may run on it. A kind turned on is checked first, through the peer, and refused when the check fails."
+          },
+          "maxConcurrentJobs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "maxJobMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "jobRegions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where else jobs may run with `cloud.region`, each checked through the peer when added. Empty: only where each kind was checked."
+          }
+        },
+        "required": [
+          "pluginId",
+          "lend",
+          "jobKinds",
+          "maxConcurrentJobs",
+          "maxJobMinutes",
+          "jobRegions"
         ],
         "additionalProperties": false
       },
@@ -62752,11 +62180,227 @@
                 "type": "null"
               }
             ]
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CiPeerOption"
+            },
+            "description": "The plugins it can be lent to CI as, through its type's peer integrations: those that lend a connection or run cloud jobs."
           }
         },
         "required": [
           "outputs",
           "secretVersions"
+        ],
+        "additionalProperties": false
+      },
+      "CiPeerOption": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "shortLived": {
+                    "type": "boolean"
+                  },
+                  "namespaces": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "description",
+                  "shortLived",
+                  "namespaces"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "vm",
+                            "container",
+                            "build",
+                            "host",
+                            "cluster"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "defaults": {
+                          "type": "object",
+                          "properties": {
+                            "machine": {
+                              "type": "string"
+                            },
+                            "image": {
+                              "type": "string"
+                            },
+                            "region": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "typicalStartSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "minimumBillingSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Infinity",
+                                "-Infinity",
+                                "NaN"
+                              ]
+                            }
+                          ]
+                        },
+                        "gpus": {
+                          "type": "boolean"
+                        },
+                        "machineSuggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "regionLabel": {
+                          "type": "string",
+                          "description": "What `cloud.region` means for this kind, when it is not a region."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "label",
+                        "defaults"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "helpLink": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "url"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "helpLink"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lends": {
+            "type": "string",
+            "description": "The credential a job is lent, as the resource's provider declares it."
+          },
+          "reach": {
+            "type": "string",
+            "description": "What that credential reaches beyond the resource."
+          },
+          "lifetime": {
+            "type": "string",
+            "description": "How long it lasts once lent."
+          },
+          "unavailable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Why this resource cannot be used as it (and cannot be granted as it), when it cannot."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unreachable": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Why it cannot be reached from outside its network, when its provider says so."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "credential",
+          "executor",
+          "lends",
+          "reach",
+          "lifetime",
+          "unavailable",
+          "unreachable"
         ],
         "additionalProperties": false
       },
@@ -62958,53 +62602,6 @@
           "settings",
           "preflight",
           "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "CiPreflightRecord": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          },
-          "missing": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "permission": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "permission",
-                "label"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "problems": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "region": {
-            "type": "string"
-          },
-          "checkedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "ok",
-          "missing",
-          "problems",
-          "checkedAt"
         ],
         "additionalProperties": false
       },
@@ -63871,7 +63468,8 @@
           "failed",
           "error",
           "rejected",
-          "cancelled"
+          "cancelled",
+          "skipped"
         ]
       },
       "CiManualPipelines": {
@@ -89724,7 +89322,7 @@
             }
           }
         },
-        "description": "Merged on read from what is already recorded between the incident's start and its resolution: resource changes, deployments, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs (all via the same union the Moment screen uses), plus probe state transitions, metric-alert firings, the incident's own life events, its artefacts and its operator notes. Nothing is copied; a correction upstream shows up here on the next read.\n\nProbe transitions are an approximation: `synthetic_probes` keeps only a single `lastStateChangeAt`, so a probe that flapped twice inside the window contributes its most recent flip and no more.\n\n_Requires permission: `incidents:read`._",
+        "description": "Merged on read from what is already recorded between the incident's start and its resolution: resource changes, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs (all via the same union the Moment screen uses), plus probe state transitions, metric-alert firings, the incident's own life events, its artefacts and its operator notes. Nothing is copied; a correction upstream shows up here on the next read.\n\nProbe transitions are an approximation: `synthetic_probes` keeps only a single `lastStateChangeAt`, so a probe that flapped twice inside the window contributes its most recent flip and no more.\n\n_Requires permission: `incidents:read`._",
         "summary": "Assemble the incident's timeline",
         "x-required-permission": "incidents:read",
         "operationId": "getOrgOrgIdIncidentsIncidentIdTimeline"
@@ -92146,7 +91744,7 @@
             }
           }
         },
-        "description": "Deployment frequency, lead time for changes, change failure rate and time to restore over production, from Infrafile runs, synced provider deploys, GitHub deployments, recorded deploys and declared incidents. With the previous period, a trend, and a breakdown.\n\n_Requires permission: `deployments:read`._",
+        "description": "Deployment frequency, lead time for changes, change failure rate and time to restore over production, from synced provider deploys, GitHub deployments, recorded deploys and declared incidents. With the previous period, a trend, and a breakdown.\n\n_Requires permission: `deployments:read`._",
         "summary": "DORA metrics",
         "x-required-permission": "deployments:read",
         "operationId": "getOrgOrgIdDora"
@@ -93231,7 +92829,7 @@
             }
           }
         },
-        "description": "While the freeze is in effect, destructive actions (resource deletion, destructive plugin actions, secret-version destroys, deployment rollbacks) return `423` unless explicitly overridden by a caller with `freezes:override`.\n\n_Requires permission: `freezes:write`._",
+        "description": "While the freeze is in effect, destructive actions (resource deletion, destructive plugin actions, secret-version destroys) return `423` unless explicitly overridden by a caller with `freezes:override`.\n\n_Requires permission: `freezes:write`._",
         "summary": "Declare a change freeze window",
         "requestBody": {
           "content": {
@@ -103804,7 +103402,7 @@
           }
         },
         "description": "Writes the finding as a cost annotation, so the step in the run rate is explained on the graph where it shows. Re-posting the same subject **rewords the existing note** rather than adding a second; which is what makes it safe to pin a finding again once the provider has finished restating. The note's date and report scope are never rewritten: they may have been edited deliberately.\n\nA subject with no measurable impact is a 400, not a note reading `$0.00/day`.\n\n_Requires permission: `costs:write`._",
-        "summary": "Pin a change's or deploy's cost impact onto the cost charts",
+        "summary": "Pin a change's cost impact onto the cost charts",
         "requestBody": {
           "content": {
             "application/json": {
@@ -111841,1037 +111439,6 @@
         },
         "x-required-permission": "secrets:write",
         "operationId": "putOrgOrgIdWorkflowSecretsIdValue"
-      }
-    },
-    "/api/org/{orgId}/deployments/repos": {
-      "get": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Repositories",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeployRepo"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "Repositories visible to the organization's GitHub App installations. Empty when the app is not configured.\n\n_Requires permission: `deployments:read`._",
-        "summary": "List repositories this organization can deploy from",
-        "x-required-permission": "deployments:read",
-        "operationId": "getOrgOrgIdDeploymentsRepos"
-      }
-    },
-    "/api/org/{orgId}/deployments/envs": {
-      "post": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Declared environments",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeployEnvs"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "Reads `Infrafile` at the branch head and returns its declared environments. The file is parsed, not executed.\n\n_Requires permission: `deployments:read`._",
-        "summary": "List the environments a repository's Infrafile declares",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeployEnvsInput"
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:read",
-        "operationId": "postOrgOrgIdDeploymentsEnvs"
-      }
-    },
-    "/api/org/{orgId}/deployments/plan": {
-      "post": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Plan result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeployPlanResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "Runs the Infrafile's `plan()` and renders its Dockerfile, then stops. Nothing is built or deployed.\n\n_Requires permission: `deployments:plan`._",
-        "summary": "Preview a deploy without building",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeployPlanInput"
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:plan",
-        "operationId": "postOrgOrgIdDeploymentsPlan"
-      }
-    },
-    "/api/org/{orgId}/deployments/runs": {
-      "get": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "env",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 200
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Runs, newest first",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeploymentRun"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "summary": "List deployment runs",
-        "x-required-permission": "deployments:read",
-        "operationId": "getOrgOrgIdDeploymentsRuns",
-        "description": "_Requires permission: `deployments:read`._"
-      },
-      "post": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Recorded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "examples": [
-                        "00000000-0000-0000-0000-000000000000"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "The CLI builds on the operator's own machine, so the server never sees that run. Reporting it here keeps one history across both origins.\n\n_Requires permission: `deployments:write`._",
-        "summary": "Record a deployment that ran elsewhere",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeploymentRunInput"
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:write",
-        "operationId": "postOrgOrgIdDeploymentsRuns"
-      }
-    },
-    "/api/org/{orgId}/deployments/runs/{id}": {
-      "get": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Run",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentRun"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get one deployment run, with its logs and rendered Dockerfile",
-        "x-required-permission": "deployments:read",
-        "operationId": "getOrgOrgIdDeploymentsRunsId",
-        "description": "_Requires permission: `deployments:read`._"
-      }
-    },
-    "/api/org/{orgId}/deployments/runs/{id}/cost-impact": {
-      "get": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "windowDays",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 2,
-              "maximum": 30
-            },
-            "required": false
-          },
-          {
-            "name": "costBasis",
-            "in": "query",
-            "schema": {
-              "$ref": "#/components/schemas/ChangeCostBasis"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Per-resource cost impact for the run",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentCostImpact"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "The same comparison as `POST /changes/cost-impacts`, run over the resources this deploy provisioned, with a per-resource breakdown that sums to the total.\n\n_Requires permission: `costs:read`._",
-        "summary": "Cost impact of a deployment run",
-        "x-required-permission": "costs:read",
-        "operationId": "getOrgOrgIdDeploymentsRunsIdCostImpact"
-      }
-    },
-    "/api/org/{orgId}/deployments/runs/{id}/rollback": {
-      "post": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Rollback result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeployPlanResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "Payment required: the organization's plan does not include this",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "423": {
-            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
-                }
-              }
-            }
-          }
-        },
-        "description": "Re-runs that run's `deploy()` with the image and plan it recorded, building nothing; the exact artifact that was known good ships again. The Infrafile is read at the commit that run deployed, not at the branch head. Only a successful run that produced an image can be rolled back to. With `deleteCreated`, resources that runs after the target created through `infra.accounts` are deleted once the rollback has succeeded; undoing the provisioning, not just the shipping. Deletions are best-effort and reported in the result's notes.\n\n_Requires permission: `deployments:write`._",
-        "summary": "Roll back to a previous deployment",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeployRollbackInput"
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:write",
-        "operationId": "postOrgOrgIdDeploymentsRunsIdRollback"
-      }
-    },
-    "/api/org/{orgId}/deployments/triggers": {
-      "get": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Triggers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeployTrigger"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "summary": "List deploy-on-push triggers",
-        "x-required-permission": "deployments:read",
-        "operationId": "getOrgOrgIdDeploymentsTriggers",
-        "description": "_Requires permission: `deployments:read`._"
-      },
-      "post": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Trigger",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeployTrigger"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "Arming a trigger records the branch's current commit WITHOUT deploying it; the trigger fires on the next push, not on the state at the moment it was created. The environment is validated against the Infrafile at that branch head, so a typo fails here rather than silently never firing.\n\n_Requires permission: `deployments:write`._",
-        "summary": "Deploy an environment whenever a branch moves",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeployTriggerInput"
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:write",
-        "operationId": "postOrgOrgIdDeploymentsTriggers"
-      }
-    },
-    "/api/org/{orgId}/deployments/triggers/{id}": {
-      "patch": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Trigger",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeployTrigger"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Enable or disable a deploy trigger",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-required-permission": "deployments:write",
-        "operationId": "patchOrgOrgIdDeploymentsTriggersId",
-        "description": "_Requires permission: `deployments:write`._"
-      },
-      "delete": {
-        "tags": [
-          "Deployments"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ok"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Delete a deploy trigger",
-        "x-required-permission": "deployments:write",
-        "operationId": "deleteOrgOrgIdDeploymentsTriggersId",
-        "description": "_Requires permission: `deployments:write`._"
       }
     },
     "/api/org/{orgId}/iac/states": {
@@ -124911,7 +123478,7 @@
             }
           }
         },
-        "description": "\"What changed around 03:14?\"; one merged, chronological narrative of everything the platform knows happened in a window: resource changes (including sleep/wake schedule attribution), provider status incidents that started/resolved in or overlap the window, cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the drift/expiry alert deliveries. Each feed is gated on the same permission its own endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed whose query fails is reported as `error` without blanking the rest of the response.\n\n_Requires permission: `resources:read`._",
+        "description": "\"What changed around 03:14?\"; one merged, chronological narrative of everything the platform knows happened in a window: resource changes (including sleep/wake schedule attribution), provider status incidents that started/resolved in or overlap the window, cost anomalies, workflow runs, audit-log entries, change freezes, and the drift/expiry alert deliveries. Each feed is gated on the same permission its own endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed whose query fails is reported as `error` without blanking the rest of the response.\n\n_Requires permission: `resources:read`._",
         "summary": "Everything that happened around a timestamp",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdMoment"
@@ -127231,10 +125798,10 @@
             }
           }
         },
+        "description": "Runs with nothing to run (`skipped`: no pipeline runs on the push or pull request) are left out unless `status=skipped` asks for them.\n\n_Requires permission: `ci:read`._",
         "summary": "List CI runs, newest first",
         "x-required-permission": "ci:read",
-        "operationId": "getOrgOrgIdCiRuns",
-        "description": "_Requires permission: `ci:read`._"
+        "operationId": "getOrgOrgIdCiRuns"
       },
       "post": {
         "tags": [
@@ -128567,7 +127134,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Its outputs and, for a secret, its versions",
+            "description": "Its outputs, for a secret its versions, and what it can be lent as",
             "content": {
               "application/json": {
                 "schema": {
@@ -128665,7 +127232,7 @@
             }
           }
         },
-        "description": "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. Only for the listed repositories and branches, and never for a fork's pull request.\n\n_Requires permission: `ci-access:write`._",
+        "description": "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. With `peer`, the resource is also lent as a connection of a plugin its type has a peer integration with (a managed cluster as `kubernetes`, a managed database as `postgres`): `connections: [<ciName>]`, and `cloud:` jobs of the chosen kinds. Only for the listed repositories and branches, and never for a fork's pull request.\n\n_Requires permission: `ci-access:write`._",
         "summary": "Grant CI jobs a resource's outputs",
         "requestBody": {
           "content": {
@@ -128751,6 +127318,7 @@
             }
           }
         },
+        "description": "Replaces the grant. `peer` must be sent when the grant has one (409 otherwise); a cloud job kind or region newly turned on is checked through the peer first.\n\n_Requires permission: `ci-access:write`._",
         "summary": "Change a resource grant",
         "requestBody": {
           "content": {
@@ -128763,8 +127331,7 @@
           "required": true
         },
         "x-required-permission": "ci-access:write",
-        "operationId": "putOrgOrgIdCiAccessGrantsGrantId",
-        "description": "_Requires permission: `ci-access:write`._"
+        "operationId": "putOrgOrgIdCiAccessGrantsGrantId"
       },
       "delete": {
         "tags": [

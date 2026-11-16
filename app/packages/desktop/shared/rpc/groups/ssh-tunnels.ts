@@ -34,9 +34,32 @@ export const SshExecResult = Schema.Struct({
   code: Schema.Finite,
 });
 
+/** A credential field the SSH tunnel rewrites: its key and `CredentialField.tunnel`. */
+const TunnelField = Schema.Struct({
+  key: Schema.String,
+  tunnel: Schema.Literals(["address", "kubeconfig"]),
+});
+
 export class SshTunnelRpcs extends RpcGroup.make(
   Rpc.make("SshTunnelOpen", { payload: SshTunnelConfig, success: OpenedTunnel, error: SshError }),
   Rpc.make("SshTunnelClose", { payload: { tunnelId: Schema.String } }),
+  /**
+   * A local account's credentials pointed at its SSH tunnel (`ssh_tunnel_configs`),
+   * opened first when it is not: the `fields` its plugin marked `tunnel`, and only
+   * their addresses. Unchanged when the account has no tunnel. `peer` is set for a
+   * peer plugin's credentials, which only an address naming the tunnel's remote end
+   * changes. What it answers is for a client to connect with, never to store.
+   */
+  Rpc.make("SshTunnelAccountCredentials", {
+    payload: {
+      accountId: Schema.String.check(Schema.isBetweenLength(1, 128)),
+      fields: Schema.Array(TunnelField),
+      credentials: Schema.Record(Schema.String, Schema.String),
+      peer: Schema.optionalKey(Schema.Boolean),
+    },
+    success: Schema.Record(Schema.String, Schema.String),
+    error: SshError,
+  }),
   /** Open tunnels by id. */
   Rpc.make("SshTunnelsActive", { success: Schema.Record(Schema.String, ActiveTunnel) }),
   /**

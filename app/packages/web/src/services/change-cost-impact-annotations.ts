@@ -1,5 +1,5 @@
 /**
- * Pin a change's or a deploy's cost impact onto the cost graphs.
+ * Pin a change's cost impact onto the cost graphs.
  *
  * The impact itself is never stored: `cost/change-impact-load.ts` recomputes
  * it on every read so late-arriving and restated provider cost keeps moving the
@@ -37,9 +37,8 @@
  *    swap returns nothing deletes the note it just made and rewords the
  *    winner's instead, so both requests end up describing one note.
  *
- * That is the conditional-UPDATE protocol `claimDueDeploymentTriggers` and the
- * digest's `last_sent_week_start` claim already use, reused rather than
- * reinvented.
+ * That is the conditional-UPDATE protocol the digest's `last_sent_week_start`
+ * claim already uses, reused rather than reinvented.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -52,11 +51,8 @@ import {
 } from "@infrawrench/client-core";
 import {
   describeChangeSubject,
-  describeDeploymentSubject,
   loadChangeCostImpact,
-  loadDeploymentCostImpact,
 } from "@infrawrench/server-core/cost/change-impact-load";
-import { sumChangeCostImpacts } from "@infrawrench/server-core/cost/change-impact";
 
 import { db } from "../db/client";
 import { changeCostImpactAnnotations, costAnnotations } from "../db/schema";
@@ -87,42 +83,10 @@ async function resolveSubject(
     ...(request.costBasis === undefined ? {} : { costBasis: request.costBasis }),
   };
 
-  if (request.subjectKind === "change") {
-    const entry = await loadChangeCostImpact(organizationId, request.subjectId, options);
-    if (!entry) return null;
-    const label = await describeChangeSubject(organizationId, request.subjectId);
-    return { impact: entry.impact, label: label ?? "resource change" };
-  }
-
-  const deployment = await loadDeploymentCostImpact(organizationId, request.subjectId, options);
-  if (!deployment) return null;
-  const label = await describeDeploymentSubject(organizationId, request.subjectId);
-  // A deploy has no single impact: it has a breakdown. The note carries the
-  // sum, with the same rule the API applies: unknown resources contribute
-  // nothing rather than zero, and the confidence is the weakest contributor's.
-  const rolled = sumChangeCostImpacts(deployment.resources.map((r) => r.impact));
-  const impact: ChangeCostImpact = {
-    status: rolled.total.length > 0 ? "measured" : "unknown",
-    costBasis: deployment.costBasis,
-    windowDays: deployment.windowDays,
-    effectiveWindowDays: deployment.windowDays,
-    eventDay: deployment.eventDay,
-    before: null,
-    after: null,
-    series: rolled.total.map((t) => ({
-      currency: t.currency,
-      beforePerDay: 0,
-      afterPerDay: 0,
-      deltaPerDay: t.deltaPerDay,
-      deltaPercent: null,
-      beforeTotal: 0,
-      afterTotal: 0,
-    })),
-    confidence: rolled.confidence,
-    reasons: rolled.total.length > 0 ? [] : ["no_cost_data"],
-    overlappingChanges: deployment.resources.reduce((n, r) => n + r.impact.overlappingChanges, 0),
-  };
-  return { impact, label: label ?? "deployment" };
+  const entry = await loadChangeCostImpact(organizationId, request.subjectId, options);
+  if (!entry) return null;
+  const label = await describeChangeSubject(organizationId, request.subjectId);
+  return { impact: entry.impact, label: label ?? "resource change" };
 }
 
 export class ChangeImpactAnnotationError extends Error {}
@@ -183,8 +147,7 @@ export async function writeChangeImpactAnnotation(
     );
 
     // Attaching is a compare-and-swap on the still-null column, not a plain
-    // UPDATE: the same conditional-UPDATE protocol the deployment-trigger and
-    // digest claims use. Two writers can hold the same freshly claimed link
+    // UPDATE: the same conditional-UPDATE protocol the digest claim uses. Two writers can hold the same freshly claimed link
     // (the claim above only agrees on the row, not on who fills it), and only
     // the one that moves the column off null owns the note it just wrote.
     const [won] = await db
