@@ -1959,7 +1959,29 @@ pub fn run<T: Tools>(
                             );
                         }
                         Looked::Done(report) => {
-                            complete(&state, &wake, plan, options, template, *report, kept)
+                            // A hit for a job a helper of this run ran is
+                            // that helper's: its record says how it went.
+                            let elsewhere = report
+                                .cached
+                                .then(|| sharing.and_then(|sh| sh.ran_elsewhere(&job)))
+                                .flatten();
+                            if let Some(holder) = elsewhere {
+                                let mut s = state.lock().unwrap();
+                                split::defer(
+                                    &mut s,
+                                    options,
+                                    split::RemoteJob {
+                                        template,
+                                        job,
+                                        lookup: Lookup::default(),
+                                        rank,
+                                        holder: Some(holder),
+                                        since: Instant::now(),
+                                    },
+                                );
+                            } else {
+                                complete(&state, &wake, plan, options, template, *report, kept)
+                            }
                         }
                         Looked::Run(lookup) => {
                             let mut s = state.lock().unwrap();

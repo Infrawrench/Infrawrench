@@ -116,6 +116,9 @@ impl Split for MemorySplit {
             }
         }
     }
+    fn holder(&self, job: &str) -> Result<Option<String>, String> {
+        Ok(self.store.claims.lock().unwrap().get(job).cloned())
+    }
     fn release(&self, job: &str) -> Result<(), String> {
         self.store.claims.lock().unwrap().remove(job);
         Ok(())
@@ -409,6 +412,40 @@ fn each_job_runs_once_and_what_it_kept_reaches_the_other_runner() {
         Kept::TaskCache { .. }
     ));
     assert_eq!(store.kept.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_job_a_helper_ran_is_billed_when_the_primary_finds_it_in_the_task_cache() {
+    // The helper has `first` and `lib`, and runs both before the primary,
+    // which looks once a second, has seen `first`'s record. By then `lib`'s
+    // entry is in the task cache the two share: taken as a hit, it was
+    // billed nothing on the primary, and a helper's own report is never
+    // billed, so nobody paid for a job that ran.
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  first:\n    using: builtin:ok@1\n  lib:\n    using: builtin:art-write@1\n    needs: [first]\n    artifacts: [dist]\n    task-cache: true\n  check:\n    using: builtin:art-read@1\n    needs: [lib]\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    store.give("first", "ci-2");
+    store.give("lib", "ci-2");
+    store.give("check", "ci-1");
+    let caches: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    let slow = Timing {
+        poll: Duration::from_secs(1),
+        ..PATIENT
+    };
+    let mut first = options(Some(primary(&store, slow)), 1);
+    first.caches = Some(caches.clone());
+    let mut second = options(Some(helper(&store, PATIENT)), 1);
+    second.caches = Some(caches.clone());
+    let (one, two) = both(&p, &first, &second);
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert_eq!(one.ran, ["check"]);
+    assert_eq!(two.ran, ["first", "lib"]);
+    let lib = one.job("lib");
+    assert_eq!(lib.remote.as_deref(), Some("ci-2"), "{lib:#?}");
+    assert!(!lib.cached, "{lib:#?}");
+    assert_eq!(crate::runner::usage_of(&one.report, 4).jobs, 3);
+    assert_eq!(one.stdout("check"), "lib.txt");
 }
 
 #[test]

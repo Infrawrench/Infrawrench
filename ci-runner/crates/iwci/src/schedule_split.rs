@@ -98,6 +98,8 @@ pub trait Split: Send + Sync {
     /// Claims `job`. Exactly one runner gets [`Claim::Ours`] until the
     /// claim is released.
     fn claim(&self, job: &str) -> Result<Claim, String>;
+    /// Who holds the claim on `job`, if anyone, without claiming it.
+    fn holder(&self, job: &str) -> Result<Option<String>, String>;
     /// Drops the claim on `job`, whoever holds it.
     fn release(&self, job: &str) -> Result<(), String>;
     /// Gives up a job this runner claimed, so the primary takes it. The
@@ -549,6 +551,23 @@ impl<'a> Sharing<'a> {
             Ok(Claim::Held(by)) => Err(Some(by)),
             Err(_) if self.helper => Err(None),
             Err(_) => Ok(()),
+        }
+    }
+
+    /// The runner that ran `job` in this run, when the task cache has just
+    /// answered for it on the primary and another runner holds its claim:
+    /// the entry is what that runner saved. The primary then takes the job
+    /// from that runner's record, as it would have had its lookup come
+    /// first, rather than as a hit: a hit is billed nothing and a helper's
+    /// own report is zeroed, so the job would be paid for by nobody. A
+    /// helper, and a store that does not answer, say nothing.
+    pub fn ran_elsewhere(&self, job: &PlannedJob) -> Option<String> {
+        if self.helper {
+            return None;
+        }
+        match self.split.holder(&job.id) {
+            Ok(Some(holder)) if holder != self.split.runner() => Some(holder),
+            _ => None,
         }
     }
 
