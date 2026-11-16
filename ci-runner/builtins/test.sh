@@ -1536,7 +1536,7 @@ jobs:
     using: env:bash-node@24
     network: false
     timeout: 5m
-    tools: [builtin:cf@1.0.0-beta.32]
+    tools: [builtin:cf@1.0.0-rc.0]
     connections: [cloudflare]
     env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
     run: |

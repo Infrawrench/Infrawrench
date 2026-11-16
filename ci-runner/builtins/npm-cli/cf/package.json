@@ -3,7 +3,7 @@
   "private": true,
   "description": "builtin:cf, Cloudflare's CLI pinned by package-lock.json (ci-runner/README.md, Deployment CLIs)",
   "dependencies": {
-    "cf": "1.0.0-beta.32"
+    "cf": "1.0.0-rc.0"
   },
   "overrides": {
     "workerd": "file:../stubs/workerd"

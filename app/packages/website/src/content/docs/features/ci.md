@@ -154,12 +154,12 @@ jobs:
       neon branches create --project-id my-project --name pr-${{ pull-request.number }}
 ```
 
-| Tool                       | What it is                                          |
-| -------------------------- | --------------------------------------------------- |
-| `builtin:vercel@65`        | The Vercel CLI 65.16                                |
-| `builtin:wrangler@4`       | Wrangler 4.162, for Workers and Pages               |
-| `builtin:cf@1.0.0-beta.32` | Cloudflare's `cf`, in beta (name the exact version) |
-| `builtin:neon@9`           | The Neon CLI 9.5 (the successor to `neonctl`)       |
+| Tool                    | What it is                                                      |
+| ----------------------- | --------------------------------------------------------------- |
+| `builtin:vercel@65`     | The Vercel CLI 65.16                                            |
+| `builtin:wrangler@4`    | Wrangler 4.163, for Workers and Pages                           |
+| `builtin:cf@1.0.0-rc.0` | Cloudflare's `cf`, a release candidate (name the exact version) |
+| `builtin:neon@9`        | The Neon CLI 9.5 (the successor to `neonctl`)                   |
 
 Each one is pinned with every package under it, so nothing is downloaded while the job runs, and each reads its token from the environment (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`) and never prompts. Telemetry and update checks are off.
 

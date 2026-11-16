@@ -1,0 +1,12 @@
+// Why workerd cannot run in a job, as lib/main.js and bin/workerd print it.
+"use strict";
+
+module.exports = [
+  "workerd, Cloudflare's local Workers runtime, cannot run in a CI job here: it is a native",
+  "program, and jobs run in a WebAssembly isolate. Commands that run a Worker locally",
+  "(`wrangler dev`, `--local`, `cf dev`, @cloudflare/vitest-pool-workers) need it.",
+  "Use `wrangler dev --remote`, which runs the Worker on Cloudflare, or a `cloud:` job",
+  "for anything that needs the local runtime. Deploying (`wrangler deploy`,",
+  "`wrangler pages deploy`, `cf deploy`) does not need it.",
+  "",
+].join("\n");
