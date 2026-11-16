@@ -3881,6 +3881,28 @@ jobs:
       PY
       wait-for-port 8001 --timeout 60s
       git clone http://127.0.0.1:8001/acme/private.git /tmp/private
+  # Git's prompt for a user name, with prompts allowed, ends at once (#1264):
+  # it reads /dev/tty, which a job has with nothing to read. It used to read
+  # git-remote-http's standard input, the pipe from Git, and waited until
+  # the job's timeout. A fake on the job's loopback answers every request
+  # 401 with `WWW-Authenticate: Basic`, so Git asks.
+  git-prompt-ends-fails:
+    using: env:python@3.13
+    timeout: 2m
+    env: { GIT_TERMINAL_PROMPT: "1" }
+    run: |
+      python - > /tmp/auth.log 2>&1 <<'PY' &
+      import http.server
+      class Private(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(401)
+              self.send_header("WWW-Authenticate", 'Basic realm="private"')
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+      http.server.HTTPServer(("127.0.0.1", 8002), Private).serve_forever()
+      PY
+      wait-for-port 8002 --timeout 60s
+      git clone http://127.0.0.1:8002/acme/private.git /tmp/private
 YAML
       ;;
     aws)
@@ -4621,7 +4643,7 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/git-fatal-fails | python/git-auth-prompt-fails) echo "exited with 128" ;;
+    bash/git-fatal-fails | python/git-auth-prompt-fails | python/git-prompt-ends-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
@@ -4657,6 +4679,7 @@ want_stderr() {
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
     python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
+    python/git-prompt-ends-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8002'" ;;
     openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;

@@ -1121,7 +1121,12 @@ Git came into every environment in `bash` 5.1.19, `bash-node` 24.0.9,
 1.23.13, 1.24.14, 1.25.15, 1.26.12 and 1.27.5 (each the same Go as before)
 and `postgres` 18.4.2 (see [Git](#git)). Go's build cache is kept between
 runs from `go` 1.23.14, 1.24.15, 1.25.16, 1.26.13 and 1.27.6, the same Go
-again (see [Environment caches](#environment-caches)).
+again (see [Environment caches](#environment-caches)). Git's prompts read
+`/dev/tty` and end at once from `bash` 5.1.20, `bash-node` 24.0.20,
+`python` 3.13.20, `php` 8.1.38, 8.2.39, 8.3.40, 8.4.31 and 8.5.16, `go`
+1.23.15, 1.24.16, 1.25.17, 1.26.14 and 1.27.7, `postgres` 18.4.3,
+`clickhouse` 26.11.4, `aws` 1.46.1, `az` 2.92.1 and `gcloud` 593.0.1
+(Git 2.56.1-iwci.2, built with `HAVE_DEV_TTY`; see [Git](#git)).
 
 Edge.js's WASIX package has no JavaScript engine inside it: it imports
 N-API from the host, and the runner provides it with V8 through
@@ -1920,8 +1925,13 @@ What to know:
   password (a private repository without a token, a mistyped URL on a host
   that answers 401) fails Git at once with "could not read Username ...:
   terminal prompts disabled" and status 128, because the runner sets
-  `GIT_TERMINAL_PROMPT=0` for every job. A job has no terminal, and without
-  it Git waited for an answer until the stall check stopped the job.
+  `GIT_TERMINAL_PROMPT=0` for every job. A job that sets it back to `1`
+  fails the same way, without that suffix: Git asks on `/dev/tty`, which a
+  job has with nothing to read, as at a terminal that is closed. In older
+  environments (before `bash` 5.1.20 and the others listed under
+  [Tools and environments](#tools-and-environments)) Git's HTTP helper
+  waited for the answer on the pipe from Git instead, until the job's
+  timeout.
 - **The checkout is not a repository.** The runner writes the commit's
   tree into the job's file system without a `.git`, so `git log` or `git
 describe` in `/app` fails; clone what a job needs to inspect.
