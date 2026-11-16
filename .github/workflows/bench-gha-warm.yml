@@ -5,9 +5,11 @@
 # original shared one key, so only the first job to finish could save its cache).
 name: Bench (GitHub Actions, warm)
 
+# On push, not pull_request: a pull_request run tests the merge with the
+# current main, while Infrawrench CI tests the commit itself.
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [bench/gha-vs-iwci]
 
 jobs:
   vitest:
