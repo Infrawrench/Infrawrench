@@ -200,11 +200,15 @@
 #     of the source and of the payload, so a changed file, an entry from
 #     another engine or flags, or a damaged one costs only the compile. They are written as they are made rather than at exit, so
 #     `flushCompileCache()` has nothing left to do and a process killed by
-#     its test runner keeps what it compiled, and in place (remove, then
-#     create exclusively) rather than renamed over, since renames onto one
-#     name from two threads at once abort the runner (#1092); a reader that
-#     meets a half-written entry finds its hashes wrong. A directory that
-#     cannot be made is no cache, never an error. Ours; drafted for Edge.js.
+#     its test runner keeps what it compiled, and as Node writes them: to a
+#     temporary file beside the entry, renamed over it, so a reader finds
+#     one writer's entry or another's, whole. (They were written in place,
+#     removed and then created exclusively, while renames onto one name from
+#     two threads at once aborted the runner, #1092; a writer that removed
+#     another Worker's entry and then lost the race to create its own left
+#     none, #1249.) Each debug line is one write, so Workers' lines no
+#     longer run into each other. A directory that cannot be made is no
+#     cache, never an error. Ours; drafted for Edge.js.
 #
 #   edgejs-module-syntax-arrow.patch (#1097). An ES module that does not
 #     parse printed where, the file, line, source and caret, two or three
@@ -297,8 +301,9 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # the built-ins cache and CPU time, 7 open flags and structured clone, 8 the
 # child exit poll, 9 postMessage, 10 the worker report state, 11 the
 # worker task free, 12 the compile cache, 13 the module syntax arrow, 14
-# the error report, 15 the release version.
-VERSION="0.2.5-iwci.15"
+# the error report, 15 the release version, 16 compile cache entries
+# renamed into place.
+VERSION="0.2.5-iwci.16"
 # Edge.js's own patches, applied to its checkout in this order.
 EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch edgejs-error-report.patch edgejs-release-version.patch)
 

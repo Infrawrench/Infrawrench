@@ -3144,8 +3144,13 @@ jobs:
       # An entry that cannot be written is no error (each is a directory now).
       for f in "$dir"/*; do rm "$f" && mkdir -p "$f/in-the-way"; done
       test "$(node main.js)" = "$dir"
+      # and leaves no temporary file behind.
+      same "$(find "$dir" -mindepth 1 -name '*.*')" ""
       # Workers compiling the same modules at once write the same entries,
-      # which renaming over them would turn into an aborted runner (#1092).
+      # renamed over each other, which used to abort the runner (#1092).
+      # Each module's entry is there after the first run (an entry removed
+      # by one writer and not made again by another is #1249), whole, and
+      # taken by all four Workers on the second.
       mkdir /tmp/cc/many
       for i in $(seq 300); do printf 'module.exports = %d;\n' "$i" >"/tmp/cc/many/m$i.js"; done
       cat >/tmp/cc/many.js <<'JS'
@@ -3153,8 +3158,37 @@ jobs:
       const code = 'let s = 0; for (let i = 1; i <= 300; i++) s += require("/tmp/cc/many/m" + i + ".js"); require("node:worker_threads").parentPort.postMessage(s);';
       for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) { console.error("worker " + w + " summed " + s); process.exit(1); } });
       JS
-      node /tmp/cc/many.js
-      same "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" 1200
+      many() {
+        NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>"$1" ||
+          { grep -v '^\[compile cache\]' "$1" >&2; return 1; }
+      }
+      many /tmp/cc/many-1.log
+      # Each module's entry, as the first run named it, and those missing,
+      # with what the first run did with each.
+      sed -n 's#.*reading cache from \([^ ]*\) for CommonJS /tmp/cc/many/\(m[0-9]*\.js\)\.\.\..*#\1 \2#p' \
+        /tmp/cc/many-1.log | sort -u >/tmp/cc/many.entries
+      same "$(wc -l </tmp/cc/many.entries)" 300
+      missing=0
+      while read -r entry module; do
+        [[ -f "$entry" ]] && continue
+        missing=$((missing + 1))
+        printf '== %s has no entry (%s):\n%s\n' "$module" "$entry" \
+          "$(grep -F -e "/$module " -e "${entry##*/}" /tmp/cc/many-1.log || true)" >&2
+      done </tmp/cc/many.entries
+      same "$missing" 0
+      same "$(find "$dir" -mindepth 1 -name '*.*')" ""
+      many /tmp/cc/many-2.log
+      accepted="$(grep -c 'many/m[0-9]*\.js was accepted' /tmp/cc/many-2.log || true)"
+      if [[ "$accepted" != 1200 ]]; then
+        # Which modules, and what the cache did with each, both times.
+        for i in $(seq 300); do
+          [[ "$(grep -c "many/m$i\.js was accepted" /tmp/cc/many-2.log || true)" == 4 ]] && continue
+          printf '== m%s.js, first run:\n%s\n== m%s.js, second run:\n%s\n' \
+            "$i" "$(grep "many/m$i\.js" /tmp/cc/many-1.log || true)" \
+            "$i" "$(grep "many/m$i\.js" /tmp/cc/many-2.log || true)" >&2
+        done
+      fi
+      same "$accepted" 1200
       # The API.
       unset NODE_COMPILE_CACHE
       node -e '

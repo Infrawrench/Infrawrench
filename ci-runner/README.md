@@ -1472,9 +1472,14 @@ carries the size and hash of its source and of its payload, so a changed
 file, an entry another engine or other flags wrote, or a damaged one costs
 only the compile, and V8 refuses a cache it did not write in any case.
 They are written as they are made rather than at exit, so a test runner's
-worker killed at the end keeps what it compiled, and in place rather than
-renamed over, since concurrent renames onto one name abort the runner
-(#1092); a directory that cannot be made is no cache, never an error.
+worker killed at the end keeps what it compiled; a directory that cannot
+be made is no cache, never an error. Since 24.0.21 (Edge.js
+`0.2.5-iwci.16`) each entry is written as Node writes it, to a temporary
+file beside it that is then renamed over it, so Workers writing one entry
+at once leave one of theirs, whole. Until then entries were written in
+place (removed, then created exclusively), because concurrent renames onto
+one name aborted the runner (#1092), and now and then a Worker removed
+another's entry and could not make its own, leaving none (#1249).
 Nothing turns it on by itself yet. A job can keep the cache between runs with a [job cache](#job-caches)
 inside the clone, which is scoped by branch like any other:
 
