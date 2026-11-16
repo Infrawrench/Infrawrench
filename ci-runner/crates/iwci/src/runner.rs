@@ -917,6 +917,12 @@ impl Runner {
                 // Tools that read `os.homedir()` or `~` fail without one, and
                 // CI systems commonly set it. A job's own `HOME` wins.
                 ("HOME".into(), "/root".into()),
+                // A job has no terminal to answer Git's prompt for a user
+                // name or password, so a remote that asks for them left Git
+                // waiting until the stall check stopped the job (#1231).
+                // This makes it fail at once with its own error, as it does
+                // on a machine without a terminal. A job's own value wins.
+                ("GIT_TERMINAL_PROMPT".into(), "0".into()),
                 ("IWCI_COMMIT".into(), r.sha.clone()),
                 ("IWCI_BRANCH".into(), r.branch.clone()),
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),

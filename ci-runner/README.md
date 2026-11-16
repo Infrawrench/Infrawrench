@@ -1883,6 +1883,12 @@ What works:
 
 What to know:
 
+- **Nobody answers a prompt.** A remote that asks for a user name or
+  password (a private repository without a token, a mistyped URL on a host
+  that answers 401) fails Git at once with "could not read Username ...:
+  terminal prompts disabled" and status 128, because the runner sets
+  `GIT_TERMINAL_PROMPT=0` for every job. A job has no terminal, and without
+  it Git waited for an answer until the stall check stopped the job.
 - **The checkout is not a repository.** The runner writes the commit's
   tree into the job's file system without a `.git`, so `git log` or `git
 describe` in `/app` fails; clone what a job needs to inspect.
@@ -2844,8 +2850,9 @@ from the environment only. `--base` gives the changed paths that `paths:`
 and `changed()` read. Caches (git, fetched packages, compiled modules,
 objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
-Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
-`IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
+Jobs see `CI=true`, `HOME=/root` and `GIT_TERMINAL_PROMPT=0` (unless they
+set their own), `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and
+`IWCI_OUTPUT`, plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
 [Known limitations](#known-limitations)). A `run:` script and what it starts
@@ -3535,6 +3542,7 @@ for `build[app/web]`). Every body and answer is JSON unless it says tar.
       "CI",
       "IWCI",
       "HOME",
+      "GIT_TERMINAL_PROMPT",
       "IWCI_COMMIT",
       "IWCI_BRANCH",
       "IWCI_REPO_ID",
