@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { buildTestApi } from "@/http/testing";
 
 const mockSelect = vi.fn();
@@ -61,6 +63,33 @@ describe("Audit routes", () => {
     await buildApp().request("/?page=3&pageSize=10");
     expect(limit).toHaveBeenCalledWith(10);
     expect(offset).toHaveBeenCalledWith(20);
+  });
+
+  // The spec allows 1 to 200 per page; a request outside that range reads the
+  // nearest bound rather than a million rows, and a value that is not a
+  // number reads the default rather than `LIMIT NaN` (#901).
+  it.each([
+    ["/?pageSize=1000000", 200, 0],
+    ["/?pageSize=-5", 1, 0],
+    ["/?pageSize=lots", 25, 0],
+    ["/?page=0&pageSize=10", 10, 0],
+    ["/?page=-3&pageSize=10", 10, 0],
+    ["/?page=next&pageSize=10", 10, 0],
+    ["/", 25, 0],
+  ])("keeps %s within the documented page bounds", async (path, size, skip) => {
+    const { limit, offset } = setup([], 0);
+    expect((await buildApp().request(path)).status).toBe(200);
+    expect(limit).toHaveBeenCalledWith(size);
+    expect(offset).toHaveBeenCalledWith(skip);
+  });
+
+  // `count(*)` is a bigint, and postgres.js answers a bigint with a string,
+  // which went out as `"total": "123"` where the spec says integer (#900).
+  it("counts the entries as an integer", async () => {
+    setup([], 0);
+    await buildApp().request("/");
+    const [selection] = mockSelect.mock.calls[0] as [{ count: SQL }];
+    expect(new PgDialect().sqlToQuery(selection.count).sql).toBe("count(*)::int");
   });
 
   it("accepts action/entityType/userId/from/to filters without error", async () => {

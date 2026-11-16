@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { buildTestApi } from "@/http/testing";
 
 // The change feed's transport contract around the revert (which has its own
@@ -54,6 +56,28 @@ describe("GET /", () => {
 
   it("needs resources:read", async () => {
     expect((await buildApp([]).request("/")).status).toBe(403);
+  });
+
+  // `count(*)` is a bigint, and postgres.js answers a bigint with a string,
+  // which went out as `"total": "12"` where the spec says integer.
+  it("counts the changes as an integer, and clamps the page size", async () => {
+    const { db } = await import("@/db/client");
+    const counted = { where: vi.fn(async () => [{ count: 12 }]) };
+    const limit = vi.fn(() => ({ offset: async () => [] }));
+    const listed = {
+      leftJoin: () => ({ where: () => ({ orderBy: () => ({ limit }) }) }),
+    };
+    const select = vi.fn((selection: Record<string, unknown>) => ({
+      from: () => ("count" in selection ? counted : listed),
+    }));
+    Object.assign(db, { select });
+
+    const res = await buildApp().request("/?pageSize=5000");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ entries: [], total: 12 });
+    expect(limit).toHaveBeenCalledWith(200);
+    const [selection] = select.mock.calls.find(([s]) => "count" in s) as [{ count: SQL }];
+    expect(new PgDialect().sqlToQuery(selection.count).sql).toBe("count(*)::int");
   });
 });
 

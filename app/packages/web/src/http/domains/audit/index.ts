@@ -9,6 +9,7 @@ import { db } from "../../../db/client";
 import { apiKeys, auditLogs, users } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { legacy } from "../../legacy";
+import { pageNumber } from "../../paging";
 import { OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 
@@ -23,9 +24,12 @@ interface AuditFilters {
   readonly to?: string | undefined;
 }
 
+/** The documented bound of `pageSize`; a larger value reads as this. */
+const MAX_PAGE_SIZE = 200;
+
 async function listAuditEntries(organizationId: string, query: AuditFilters) {
-  const page = parseInt(query.page ?? "1", 10);
-  const pageSize = parseInt(query.pageSize ?? "25", 10);
+  const page = pageNumber(query.page, 1, Number.MAX_SAFE_INTEGER);
+  const pageSize = pageNumber(query.pageSize, 25, MAX_PAGE_SIZE);
   const { action, entityType, userId, from, to } = query;
   // "Which key did this?": the question an operator asks after a credential
   // leaks. Filtering by owner is not a substitute: a person and every key they
@@ -42,8 +46,10 @@ async function listAuditEntries(organizationId: string, query: AuditFilters) {
 
   const where = and(...conditions);
 
+  // `count(*)` is a bigint, which postgres.js hands back as a string; the
+  // documented `total` is an integer.
   const [countResult] = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(*)::int` })
     .from(auditLogs)
     .where(where);
 

@@ -28,7 +28,7 @@ There are two filters:
 - **Filter by type** narrows to one entity type: account, resource, dashboard, api_key, member or subscription. **All types** shows everything.
 - **Filter by API key** shows everything one key did. Clicking the key chip in the User column does the same. **All API keys** clears it. Deleted keys still work as a filter.
 
-For finer questions, use the API. `GET /api/org/<orgId>/audit-logs` takes `apiKeyId`, `action`, `entityType`, `userId`, `from` and `to`. When a token leaks, filter by `apiKeyId` first. `userId` alone can't answer that, because a person and all their keys share one user id.
+For finer questions, use the API. `GET /api/org/<orgId>/audit-logs` takes `apiKeyId`, `action`, `entityType`, `userId`, `from` and `to`. It answers a page at a time with the matching `total`: `page` starts at 1, and `pageSize` is 25 by default and at most 200. When a token leaks, filter by `apiKeyId` first. `userId` alone can't answer that, because a person and all their keys share one user id.
 
 ## How long entries are kept
 

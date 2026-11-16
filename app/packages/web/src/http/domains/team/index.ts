@@ -385,7 +385,7 @@ const TeamHandlers = HttpApiBuilder.group(TeamApi, "team", (handlers) =>
         const members = yield* legacy(() =>
           countRows(
             db
-              .select({ n: sql<number>`count(*)` })
+              .select({ n: sql<number>`count(*)::int` })
               .from(organizationMembers)
               .where(eq(organizationMembers.roleId, roleId)),
           ),
@@ -398,7 +398,7 @@ const TeamHandlers = HttpApiBuilder.group(TeamApi, "team", (handlers) =>
         const pendingInvites = yield* legacy(() =>
           countRows(
             db
-              .select({ n: sql<number>`count(*)` })
+              .select({ n: sql<number>`count(*)::int` })
               .from(invitations)
               .where(and(eq(invitations.roleId, roleId), isNull(invitations.acceptedAt))),
           ),

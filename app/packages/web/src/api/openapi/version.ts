@@ -520,4 +520,9 @@
 // response enum is a major by the rule above; it ships as a minor for the
 // same reason as 1.113.0, and reports stored before it lose those entries
 // when read, so a client never sees the old value.
-export const API_VERSION = "1.114.0";
+// 1.114.1: `GET /api/org/:orgId/audit-logs` and `GET /api/org/:orgId/changes`
+// answer `total` as the integer the spec always said, not a numeric string,
+// and the audit log keeps `page` and `pageSize` within their documented
+// ranges (`pageSize` above 200 reads as 200). Fixes; the audit log's paging
+// parameters gain descriptions.
+export const API_VERSION = "1.114.1";
