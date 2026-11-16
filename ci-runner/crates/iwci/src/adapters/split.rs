@@ -399,6 +399,15 @@ impl Split for PipelineSplit {
         Err("the job's claim keeps changing hands".into())
     }
 
+    fn holder(&self, job: &str) -> Result<Option<String>, String> {
+        let holder = self
+            .run
+            .store
+            .get(&self.key("claims", job))
+            .map_err(|e| e.to_string())?;
+        Ok(holder.map(|h| String::from_utf8_lossy(&h).into_owned()))
+    }
+
     fn release(&self, job: &str) -> Result<(), String> {
         self.run
             .store
