@@ -58,15 +58,13 @@ pub(crate) type Outside = Arc<OutsideNet>;
 
 impl OutsideNet {
     pub(crate) fn new(net: Arc<dyn VirtualNetworking + Send + Sync>, own: HashSet<IpAddr>) -> Self {
+        let own = own.into_iter().map(embedded_v4).collect();
         Self { net, own }
     }
 
     fn allows(&self, ip: IpAddr) -> bool {
-        let canonical = match ip {
-            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
-            v4 => v4,
-        };
-        public(canonical) && !self.own.contains(&canonical)
+        let ip = embedded_v4(ip);
+        public(ip) && !self.own.contains(&ip)
     }
 }
 
@@ -417,26 +415,34 @@ fn bindable(ip: IpAddr) -> bool {
     ip.is_loopback() || ip.is_unspecified()
 }
 
+/// The IPv4 address an IPv6 address carries, for the forms where its place
+/// is fixed: IPv4-mapped (`::ffff:a.b.c.d`) and NAT64's well-known prefix
+/// (`64:ff9b::a.b.c.d`, RFC 6052, which is only ever used as a /96). Every
+/// address check (public, and not the host's own) is on the result, so
+/// these are judged as the IPv4 address they lead to. Any other address is
+/// returned as it is.
+fn embedded_v4(ip: IpAddr) -> IpAddr {
+    let IpAddr::V6(v6) = ip else {
+        return ip;
+    };
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return IpAddr::V4(v4);
+    }
+    let s = v6.segments();
+    if s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0, 0, 0, 0] {
+        let [.., a, b, c, d] = v6.octets();
+        return IpAddr::V4(Ipv4Addr::new(a, b, c, d));
+    }
+    ip
+}
+
 /// A public unicast address: the only kind a job may connect to outside its
 /// loopback.
 pub(crate) fn public(ip: IpAddr) -> bool {
-    match ip {
+    match embedded_v4(ip) {
         IpAddr::V4(ip) => public_v4(ip),
         IpAddr::V6(ip) => {
-            // IPv4 inside IPv6 (mapped, and NAT64's well-known prefix) is
-            // judged as the IPv4 address it carries.
-            if let Some(v4) = ip.to_ipv4_mapped() {
-                return public_v4(v4);
-            }
             let s = ip.segments();
-            if s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0, 0, 0, 0] {
-                return public_v4(Ipv4Addr::new(
-                    (s[6] >> 8) as u8,
-                    s[6] as u8,
-                    (s[7] >> 8) as u8,
-                    s[7] as u8,
-                ));
-            }
             !(ip.is_unspecified()
                 || ip.is_loopback()
                 || ip.is_multicast()
@@ -446,7 +452,15 @@ pub(crate) fn public(ip: IpAddr) -> bool {
                 || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation
                 || (s[0] == 0x2001 && s[1] < 0x0200) // IETF protocol assignments, Teredo
                 || s[0] == 0x2002 // 6to4, which embeds an IPv4 address
-                || s[0..6] == [0, 0, 0, 0, 0, 0]) // IPv4-compatible
+                || s[0..6] == [0, 0, 0, 0, 0, 0] // IPv4-compatible
+                // The rest of ::/8, reserved, which holds the other forms
+                // that carry IPv4: IPv4-translated (::ffff:0:0/96) and
+                // NAT64's local-use prefix (64:ff9b:1::/48, RFC 8215). In
+                // the latter the operator picks the prefix length, from /48
+                // to /96, so where the IPv4 address sits is not fixed and
+                // it cannot be judged by it; it leads to a translator on
+                // the host's own network, so none of it counts as public.
+                || (s[0] & 0xff00) == 0)
         }
     }
 }
@@ -951,6 +965,9 @@ mod tests {
             "::ffff:10.0.0.1",
             "fd00::1",
             "1.2.3.4",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b::1.2.3.4",
+            "64:ff9b:1::1.1.1.1",
         ] {
             assert!(
                 !Outside::allows(&outside, refused.parse().unwrap()),
@@ -958,6 +975,10 @@ mod tests {
             );
         }
         assert!(Outside::allows(&outside, "1.1.1.1".parse().unwrap()));
+        assert!(Outside::allows(
+            &outside,
+            "64:ff9b::1.1.1.1".parse().unwrap()
+        ));
         // A host listener on the loopback is not connected to, even asked
         // directly.
         let host = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1073,6 +1094,11 @@ mod tests {
             "::ffff:127.0.0.1",
             "::ffff:169.254.169.254",
             "64:ff9b::a00:1",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b:1::8.8.8.8",
+            "64:ff9b:1::169.254.169.254",
+            "64:ff9b:1:a9fe:a9:fe00::",
+            "::ffff:0:169.254.169.254",
             "2002:7f00:1::1",
         ] {
             assert!(!public(no.parse().unwrap()), "{no} is not public");
@@ -1161,12 +1187,46 @@ mod tests {
         let fake = Arc::new(FakeOutside::default());
         let own: HashSet<IpAddr> = ["87.86.80.94".parse().unwrap()].into();
         let net = JobNetwork::new(Some(Arc::new(OutsideNet::new(fake.clone(), own))));
-        for peer in ["87.86.80.94:22", "[::ffff:87.86.80.94]:22"] {
+        for peer in [
+            "87.86.80.94:22",
+            "[::ffff:87.86.80.94]:22",
+            "[64:ff9b::87.86.80.94]:22",
+        ] {
             let err =
                 futures::executor::block_on(net.connect_tcp(any_v4(), addr(peer))).unwrap_err();
             assert_eq!(err, NetworkError::NetworkUnreachable, "{peer}");
         }
         assert!(fake.connects.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn nat64_addresses_are_judged_by_the_ipv4_they_carry() {
+        let own: Ipv4Addr = "87.86.80.94".parse().unwrap();
+        let outside = OutsideNet::new(Arc::new(FakeOutside::default()), [IpAddr::V4(own)].into());
+        let allows = |ip: String| outside.allows(ip.parse().unwrap());
+        let refused = [own.to_string(), "10.1.2.3".into(), "169.254.169.254".into()];
+        // The well-known prefix and the IPv4-mapped form carry the address
+        // at a fixed place: judged by it, as the IPv4 address itself is.
+        for prefix in ["64:ff9b::", "::ffff:"] {
+            for v4 in &refused {
+                assert!(!allows(format!("{prefix}{v4}")), "{prefix}{v4}");
+            }
+            assert!(allows(format!("{prefix}8.8.8.8")), "{prefix}8.8.8.8");
+        }
+        // The local-use prefix: none of it, whatever it carries.
+        for v4 in refused.iter().map(String::as_str).chain(["8.8.8.8"]) {
+            assert!(!allows(format!("64:ff9b:1::{v4}")), "64:ff9b:1::{v4}");
+        }
+        // Public IPv6 is unaffected.
+        assert!(allows("2606:4700::1111".into()));
+        assert!(allows("2001:4860:4860::8888".into()));
+        // A host address in an embedding form refuses the IPv4 it carries.
+        let outside = OutsideNet::new(
+            Arc::new(FakeOutside::default()),
+            ["64:ff9b::87.86.80.94".parse::<IpAddr>().unwrap()].into(),
+        );
+        assert!(!outside.allows(IpAddr::V4(own)));
+        assert!(!outside.allows("64:ff9b::87.86.80.94".parse().unwrap()));
     }
 
     #[test]
