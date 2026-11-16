@@ -338,7 +338,7 @@ export function renderCloudMarkdown(
 /** A service's listing as Markdown: every family and its instance types. */
 export function renderPlatformMarkdown(listing: PlatformListing, tr: Translate): string {
   const out = [
-    `# ${fullLabel(listing.platform)} instance types`,
+    `# ${listing.heading ? tr(listing.heading) : `${fullLabel(listing.platform)} instance types`}`,
     "",
     `> ${tr(listing.summary)}. ${listing.instances} instance types in ${listing.families.length} families.`,
     "",
