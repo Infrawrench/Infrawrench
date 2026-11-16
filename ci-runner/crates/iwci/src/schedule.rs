@@ -2956,8 +2956,13 @@ fn run_job<T: Tools>(
     };
     // What the app lent the job, checked before anything is built: a name
     // it did not supply, or refused, fails the job with the reason.
-    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
-    {
+    let lent = match crate::lent::for_job(
+        &options.access.lent,
+        &job.access,
+        options.access.trusted,
+        crate::runner::now_secs(),
+        job.timeout,
+    ) {
         Ok(lent) => lent,
         Err(reason) => return refused(job, shared.mask.mask(&reason), started.elapsed()),
     };
@@ -3159,6 +3164,7 @@ fn run_job<T: Tools>(
     // the run does not have reads as empty, and the report says which; a
     // resource it was not lent fails the job.
     let mut notes = artifact_notes;
+    notes.extend(lent.notes.iter().cloned());
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
         let filled = entry.fill(
@@ -3657,8 +3663,13 @@ fn run_external(
             None,
         );
     };
-    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
-    {
+    let lent = match crate::lent::for_job(
+        &options.access.lent,
+        &job.access,
+        options.access.trusted,
+        crate::runner::now_secs(),
+        job.timeout,
+    ) {
         Ok(lent) => lent,
         Err(reason) => {
             return with_cloud(
@@ -3672,7 +3683,7 @@ fn run_external(
     env.push(("IWCI_JOB".into(), job.id.clone()));
     merge_env(&mut env, &lent.env);
     merge_env(&mut env, &job.env);
-    let mut notes = Vec::new();
+    let mut notes = lent.notes.clone();
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
         let filled = entry.fill(

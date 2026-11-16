@@ -71,6 +71,7 @@ import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./
 import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
+import { lendGithubTokens } from "./github-token.js";
 
 type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -436,8 +437,15 @@ export async function dispatchRun(id: string): Promise<void> {
       // Audited as soon as it is minted or read, whatever happens to the
       // request next (a proxy that times out, a cancel while it is sent).
       await auditLends(row, built.records);
+      const tokens = await lendGithubTokens(row, access);
+      if (tokens) built.lent["github-token"] = tokens;
       body["lent"] = fitLent(built.lent, Buffer.byteLength(JSON.stringify(body), "utf8"));
     }
+  } else if (!row.fromFork) {
+    // GitHub tokens only (`github-token:`): minted from GitHub, which the
+    // edge reaches too. A few small entries never near the 1 MiB body.
+    const tokens = await lendGithubTokens(row, access);
+    if (tokens) body["lent"] = { "github-token": tokens };
   }
 
   let res: Response;

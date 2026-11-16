@@ -1,6 +1,7 @@
 //! What the app lends a run's jobs (`RunRequest::lent`): the credentials
 //! of Infrawrench connections (a kubeconfig, an SSH host entry), SSH keys,
-//! and infrastructure resources' outputs.
+//! infrastructure resources' outputs, and GitHub tokens for the run's own
+//! repository.
 //!
 //! The runner holds no stored credential of its own. Before a run the app
 //! asks which names its jobs use (`POST /v1/concurrency`, each job's
@@ -14,12 +15,13 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use iwci_spec::JobAccess;
 use serde::Deserialize;
 
-/// The most entries each of a request's `connections`, `ssh-keys` and
-/// `resources` may have.
+/// The most entries each of a request's `connections`, `ssh-keys`,
+/// `resources` and `github-token` may have.
 pub const MAX_ENTRIES: usize = 64;
 /// The most files one connection or key may write.
 pub const MAX_FILES: usize = 16;
@@ -31,7 +33,11 @@ pub const MAX_REASON: usize = 1024;
 pub const DEFAULT_MODE: u32 = 0o600;
 
 /// Why a job of an untrusted run that names anything lent fails.
-pub const UNTRUSTED: &str = "connections, SSH keys and resources are never lent to an untrusted run (a pull request from a fork)";
+pub const UNTRUSTED: &str = "connections, SSH keys, resources and GitHub tokens are never lent to an untrusted run (a pull request from a fork)";
+
+/// A lent value with less than this left when its job starts is refused
+/// rather than handed to a job that could not use it.
+pub const MIN_LIFETIME: Duration = Duration::from_secs(60);
 
 /// What a run is lent, by name.
 #[derive(Clone, Default, Deserialize)]
@@ -43,6 +49,11 @@ pub struct Lent {
     pub ssh_keys: BTreeMap<String, LentItem>,
     #[serde(default)]
     pub resources: BTreeMap<String, LentResource>,
+    /// A token for the run's own repository per set of permissions jobs
+    /// ask for, keyed as [`iwci_spec::JobAccess::github_token_key`] says
+    /// (`contents=write,pull-requests=write`).
+    #[serde(default)]
+    pub github_token: BTreeMap<String, LentItem>,
 }
 
 /// Names only, so logging a request cannot print a value.
@@ -52,6 +63,10 @@ impl std::fmt::Debug for Lent {
             .field("connections", &self.connections.keys().collect::<Vec<_>>())
             .field("ssh_keys", &self.ssh_keys.keys().collect::<Vec<_>>())
             .field("resources", &self.resources.keys().collect::<Vec<_>>())
+            .field(
+                "github_token",
+                &self.github_token.keys().collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -68,6 +83,11 @@ pub struct LentItem {
     /// Set instead of the material: the job that names it fails with this.
     #[serde(default)]
     pub refused: Option<String>,
+    /// When the material stops working, in seconds since the Unix epoch
+    /// (an installation token's hour): a job that starts after it fails
+    /// with that reason, and one whose timeout is later is told so.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -205,7 +225,10 @@ fn parse_mode(mode: Option<&str>) -> Result<u32, String> {
 
 impl Lent {
     pub fn is_empty(&self) -> bool {
-        self.connections.is_empty() && self.ssh_keys.is_empty() && self.resources.is_empty()
+        self.connections.is_empty()
+            && self.ssh_keys.is_empty()
+            && self.resources.is_empty()
+            && self.github_token.is_empty()
     }
 
     /// Checks a request's material: names, sizes, variables and paths.
@@ -243,6 +266,7 @@ impl Lent {
         for (kind, items) in [
             ("connection", &self.connections),
             ("SSH key", &self.ssh_keys),
+            ("GitHub token", &self.github_token),
         ] {
             if items.len() > MAX_ENTRIES {
                 return Err(format!("over {MAX_ENTRIES} {kind}s"));
@@ -298,7 +322,12 @@ impl Lent {
     /// Every secret value it holds, for the run's masker.
     pub fn secret_values(&self) -> Vec<String> {
         let mut out = Vec::new();
-        for item in self.connections.values().chain(self.ssh_keys.values()) {
+        for item in self
+            .connections
+            .values()
+            .chain(self.ssh_keys.values())
+            .chain(self.github_token.values())
+        {
             for v in item
                 .env
                 .values()
@@ -345,12 +374,30 @@ pub struct ForJob {
     /// Each path once: content from every item that writes it, in the
     /// order the job names them, and the strictest of their modes.
     pub files: Vec<(PathBuf, u32, Vec<u8>)>,
+    /// What its report should say: lent material that stops working before
+    /// the job's timeout.
+    pub notes: Vec<String>,
+}
+
+/// Whole minutes, rounded up, for a reason a person reads.
+fn minutes(secs: u64) -> String {
+    match secs.div_ceil(60) {
+        1 => "a minute".into(),
+        n => format!("{n} minutes"),
+    }
 }
 
 /// What `access` names, from `lent`, or the reason the job fails: a name
-/// the request did not supply or refused, or any name at all in an
-/// untrusted run.
-pub fn for_job(lent: &Lent, access: &JobAccess, trusted: bool) -> Result<ForJob, String> {
+/// the request did not supply or refused, material that has expired (`now`
+/// is seconds since the Unix epoch), or any name at all in an untrusted
+/// run. Material that expires before `timeout` is up is given, with a note.
+pub fn for_job(
+    lent: &Lent,
+    access: &JobAccess,
+    trusted: bool,
+    now: u64,
+    timeout: Duration,
+) -> Result<ForJob, String> {
     if access.is_empty() {
         return Ok(ForJob::default());
     }
@@ -359,9 +406,34 @@ pub fn for_job(lent: &Lent, access: &JobAccess, trusted: bool) -> Result<ForJob,
     }
     let mut out = ForJob::default();
     let mut add = |kind: &str, name: &str, item: Option<&LentItem>| -> Result<(), String> {
-        let item = item.ok_or_else(|| format!("{kind} `{name}` was not lent to this run"))?;
+        let what = if kind == "GitHub token" {
+            format!("the GitHub token for `{name}`")
+        } else {
+            format!("{kind} `{name}`")
+        };
+        let item = item.ok_or_else(|| format!("{what} was not lent to this run"))?;
         if let Some(reason) = &item.refused {
             return Err(reason.clone());
+        }
+        if let Some(expires) = item.expires_at {
+            let left = expires.saturating_sub(now);
+            if left < MIN_LIFETIME.as_secs() {
+                return Err(if expires <= now {
+                    format!(
+                        "{what} expired {} before this job started: it was minted when the run was sent, so a job that uses it has to start within its lifetime",
+                        minutes(now - expires)
+                    )
+                } else {
+                    format!("{what} expires in under a minute, before this job could use it")
+                });
+            }
+            if left < timeout.as_secs() {
+                out.notes.push(format!(
+                    "{what} expires in {}, before this job's timeout of {}",
+                    minutes(left),
+                    minutes(timeout.as_secs())
+                ));
+            }
         }
         for (k, v) in &item.env {
             out.env.retain(|(e, _)| e != k);
@@ -390,6 +462,9 @@ pub fn for_job(lent: &Lent, access: &JobAccess, trusted: bool) -> Result<ForJob,
     for k in &access.ssh_keys {
         add("SSH key", k, lent.ssh_keys.get(k))?;
     }
+    if let Some(key) = access.github_token_key() {
+        add("GitHub token", &key, lent.github_token.get(&key))?;
+    }
     for name in &access.env_from {
         let resource = lent
             .resources
@@ -417,6 +492,9 @@ pub fn for_job(lent: &Lent, access: &JobAccess, trusted: bool) -> Result<ForJob,
 mod tests {
     use super::*;
     use iwci_spec::ConnectionUse;
+
+    const NOW: u64 = 1_800_000_000;
+    const TEN_MINUTES: Duration = Duration::from_secs(600);
 
     fn lent(json: &str) -> Lent {
         let lent: Lent = serde_json::from_str(json).unwrap();
@@ -475,6 +553,8 @@ mod tests {
             &lent,
             &access(&["web-1", "Production cluster"], &["deploy"]),
             true,
+            NOW,
+            TEN_MINUTES,
         )
         .unwrap();
         assert_eq!(
@@ -510,23 +590,23 @@ mod tests {
     fn a_refused_missing_or_untrusted_name_fails_the_job_with_its_reason() {
         let lent = lent(LENT);
         assert_eq!(
-            for_job(&lent, &access(&["staging"], &[]), true).unwrap_err(),
+            for_job(&lent, &access(&["staging"], &[]), true, NOW, TEN_MINUTES).unwrap_err(),
             "staging is not lent to CI for acme/web on feature/x"
         );
         assert_eq!(
-            for_job(&lent, &access(&["nope"], &[]), true).unwrap_err(),
+            for_job(&lent, &access(&["nope"], &[]), true, NOW, TEN_MINUTES).unwrap_err(),
             "connection `nope` was not lent to this run"
         );
         assert_eq!(
-            for_job(&lent, &access(&[], &["other"]), true).unwrap_err(),
+            for_job(&lent, &access(&[], &["other"]), true, NOW, TEN_MINUTES).unwrap_err(),
             "SSH key `other` was not lent to this run"
         );
         assert_eq!(
-            for_job(&lent, &access(&["web-1"], &[]), false).unwrap_err(),
+            for_job(&lent, &access(&["web-1"], &[]), false, NOW, TEN_MINUTES).unwrap_err(),
             UNTRUSTED
         );
         // Nothing named, nothing to refuse.
-        assert!(for_job(&lent, &JobAccess::default(), false).is_ok());
+        assert!(for_job(&lent, &JobAccess::default(), false, NOW, TEN_MINUTES).is_ok());
         let mut resources = JobAccess::default();
         resources
             .resources
@@ -534,7 +614,7 @@ mod tests {
             .or_default()
             .insert("adminPassword".into());
         assert_eq!(
-            for_job(&lent, &resources, true).unwrap_err(),
+            for_job(&lent, &resources, true, NOW, TEN_MINUTES).unwrap_err(),
             "adminPassword of prod-db is not granted to CI"
         );
         assert_eq!(
@@ -553,7 +633,13 @@ mod tests {
             env_from: vec!["r2-assets".into()],
             ..Default::default()
         };
-        assert_eq!(for_job(&lent, &env_from, true).unwrap().env.len(), 2);
+        assert_eq!(
+            for_job(&lent, &env_from, true, NOW, TEN_MINUTES)
+                .unwrap()
+                .env
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -568,6 +654,133 @@ mod tests {
         assert!(!secrets.iter().any(|s| s.contains("Host web-1")));
         let shown = format!("{lent:?}");
         assert!(shown.contains("Production cluster") && !shown.contains("kube-token-value"));
+    }
+
+    /// A token as the app lends one: `GH_TOKEN`, `GITHUB_TOKEN` and `GH_REPO`,
+    /// and Git's global configuration with the token as a header for the
+    /// repository, expiring an hour after it was minted.
+    fn github_lent(expires_at: u64) -> Lent {
+        lent(&format!(
+            r#"{{"github-token": {{
+                "contents=write,pull-requests=write": {{
+                    "env": {{
+                        "GH_TOKEN": "installation-token-for-tests",
+                        "GITHUB_TOKEN": "installation-token-for-tests",
+                        "GH_REPO": [{{ "text": "acme/widgets" }}],
+                        "GIT_CONFIG_GLOBAL": [{{ "text": "/root/.gitconfig" }}]
+                    }},
+                    "files": [{{ "path": "/root/.gitconfig", "mode": "600", "content": [
+                        {{ "text": "[http \"https://github.com/acme/widgets\"]\n\textraheader = AUTHORIZATION: basic " }},
+                        {{ "secret": "eC1hY2Nlc3MtdG9rZW46aW5zdGFsbGF0aW9uLXRva2VuLWZvci10ZXN0cw==" }},
+                        {{ "text": "\n" }}
+                    ] }}],
+                    "expires-at": {expires_at}
+                }},
+                "issues=write": {{ "refused": "the Infrawrench GitHub App cannot have issues: write on acme/widgets" }}
+            }}}}"#
+        ))
+    }
+
+    fn github_access(permissions: &[(&str, &str)]) -> JobAccess {
+        JobAccess {
+            github_token: permissions
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_github_token_is_given_by_its_permissions_and_masked() {
+        let lent = github_lent(NOW + 3600);
+        let job = github_access(&[("pull-requests", "write"), ("contents", "write")]);
+        assert_eq!(
+            job.github_token_key().as_deref(),
+            Some("contents=write,pull-requests=write")
+        );
+        let got = for_job(&lent, &job, true, NOW, TEN_MINUTES).unwrap();
+        assert!(got.notes.is_empty());
+        let env: BTreeMap<_, _> = got.env.iter().cloned().collect();
+        assert_eq!(env["GH_TOKEN"], "installation-token-for-tests");
+        assert_eq!(env["GH_REPO"], "acme/widgets");
+        assert_eq!(env["GIT_CONFIG_GLOBAL"], "/root/.gitconfig");
+        assert_eq!(got.files.len(), 1);
+        assert_eq!(got.files[0].1, 0o600);
+        let secrets = lent.secret_values();
+        assert!(secrets.contains(&"installation-token-for-tests".to_string()));
+        assert!(
+            secrets.contains(
+                &"eC1hY2Nlc3MtdG9rZW46aW5zdGFsbGF0aW9uLXRva2VuLWZvci10ZXN0cw==".to_string()
+            )
+        );
+        assert!(!secrets.iter().any(|s| s.contains("acme/widgets")));
+        assert!(!format!("{lent:?}").contains("installation-token-for-tests"));
+        // Other permissions are another token, refused here; none is none.
+        assert_eq!(
+            for_job(
+                &lent,
+                &github_access(&[("issues", "write")]),
+                true,
+                NOW,
+                TEN_MINUTES
+            )
+            .unwrap_err(),
+            "the Infrawrench GitHub App cannot have issues: write on acme/widgets"
+        );
+        assert_eq!(
+            for_job(
+                &lent,
+                &github_access(&[("contents", "read")]),
+                true,
+                NOW,
+                TEN_MINUTES
+            )
+            .unwrap_err(),
+            "the GitHub token for `contents=read` was not lent to this run"
+        );
+        assert_eq!(
+            for_job(&lent, &job, false, NOW, TEN_MINUTES).unwrap_err(),
+            UNTRUSTED
+        );
+    }
+
+    #[test]
+    fn an_expired_token_fails_the_job_and_one_expiring_soon_says_so() {
+        let job = github_access(&[("contents", "write"), ("pull-requests", "write")]);
+        // Minted an hour and five minutes before the job started.
+        assert_eq!(
+            for_job(&github_lent(NOW - 300), &job, true, NOW, TEN_MINUTES).unwrap_err(),
+            "the GitHub token for `contents=write,pull-requests=write` expired 5 minutes before this job started: it was minted when the run was sent, so a job that uses it has to start within its lifetime"
+        );
+        assert!(
+            for_job(&github_lent(NOW + 30), &job, true, NOW, TEN_MINUTES)
+                .unwrap_err()
+                .contains("expires in under a minute")
+        );
+        // Twenty minutes left of a job that may run for an hour: it runs,
+        // and its report says the token may stop working first.
+        let got = for_job(
+            &github_lent(NOW + 1200),
+            &job,
+            true,
+            NOW,
+            Duration::from_secs(3600),
+        )
+        .unwrap();
+        assert_eq!(
+            got.notes,
+            [
+                "the GitHub token for `contents=write,pull-requests=write` expires in 20 minutes, before this job's timeout of 60 minutes"
+            ]
+        );
+        // Within the timeout: nothing to say.
+        assert!(
+            for_job(&github_lent(NOW + 1200), &job, true, NOW, TEN_MINUTES)
+                .unwrap()
+                .notes
+                .is_empty()
+        );
     }
 
     #[test]

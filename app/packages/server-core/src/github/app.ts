@@ -134,6 +134,35 @@ export async function getInstallationToken(installationId: number): Promise<stri
 }
 
 /**
+ * A token for one repository of an installation with only `permissions`
+ * (GitHub's names, such as `pull_requests`), never cached: what CI lends a
+ * job (`ci/github-token.ts`). GitHub refuses a permission the installation
+ * was not granted, and the error says what it answered. It lasts an hour.
+ */
+export async function mintRepositoryToken(
+  installationId: number,
+  repository: string,
+  permissions: Record<string, "read" | "write">,
+): Promise<{ token: string; expiresAt: string }> {
+  const res = await gh(appJwt(), `/app/installations/${installationId}/access_tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repositories: [repository], permissions }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: unknown };
+    const said = typeof body.message === "string" ? `: ${body.message.slice(0, 300)}` : "";
+    throw new Error(`GitHub answered ${res.status}${said}`);
+  }
+  const body = (await res.json()) as { token?: unknown; expires_at?: unknown };
+  if (typeof body.token !== "string" || typeof body.expires_at !== "string") {
+    throw new Error("GitHub answered without a token");
+  }
+  return { token: body.token, expiresAt: body.expires_at };
+}
+
+/**
  * Drop an installation's cached token. A token carries the permissions the
  * installation had when it was minted, so after an owner approves new
  * permissions the cached one keeps failing for up to an hour; callers that

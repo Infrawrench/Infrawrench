@@ -94,6 +94,8 @@ export interface CiJobAccess {
   /** Grant CI name to the outputs the job reads. */
   resources?: Record<string, string[]>;
   envFrom?: string[];
+  /** `github-token:`: each permission (GitHub Actions' names) and `read` or `write`. */
+  githubToken?: Record<string, string>;
   cloud?: Record<string, string>;
 }
 

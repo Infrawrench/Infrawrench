@@ -5,7 +5,7 @@ name: CI runner builtins
 # source with wasixcc, run under the runner's V8, `--features node`), and the
 # language environments, whose tests install packages from the internet
 # (pip, Composer, Go modules), Go's built from source for each minor,
-# kubectl, built with that Go from modules it downloads, OpenSSH's
+# kubectl and gh, built with that Go from modules they download, OpenSSH's
 # clients, built from source with wasixcc and OpenSSL, the cloud CLIs
 # (installed by env:python's pip from PyPI and Wasmer's index), and ClickHouse,
 # built from CloudHouse with Emscripten (hours). Each job builds one with its
@@ -654,6 +654,66 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/builtin/kubectl/*
+
+  gh:
+    name: gh (Go for WASIX)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Its jobs are bash scripts that run Git too.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
+
+      - name: Build the bash environment
+        run: bash builtins/environments/build.sh bash
+
+      # Go's archive with env:go's patch series, gh's source at its pinned
+      # commit and its modules, checked against its go.sum (a few minutes).
+      # The module is checked against the hash gh/build.sh pins, after a
+      # restore as after a build. Key: gh/, environments/go/ (the
+      # toolchain's pins and patch series, and the CA bundle), lib.sh and
+      # the platform.
+      - name: gh, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build gh@2.104
+
+      # Against the fake GitHub its build makes, on the job's loopback, with
+      # a token lent as the app lends one (`github-token:`).
+      - name: Publish and run it through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh bash gh
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/builtin/gh/*
 
   openssh:
     name: openssh (${{ matrix.runner }})

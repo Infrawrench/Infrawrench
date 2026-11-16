@@ -15,7 +15,7 @@
 #   build-cache.sh key <name>...    print each key and what went into it
 #
 # Names, and what each builds (spec below): clickhouse, edgejs, git,
-# go@<minor>, kubectl@<minor>, openssh, typescript, oxfmt.
+# go@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript, oxfmt.
 #
 # The key is the SHA-256 of a listing, stored beside each entry as
 # inputs.txt:
@@ -111,6 +111,15 @@ spec() {
       BUILD=(bash builtins/kubectl/build.sh "$minor")
       VERIFY=(verify_kubectl "$minor")
       ;;
+    gh@*)
+      # And env:go's build script, pins and patch series, which it builds
+      # with (and whose CA bundle it carries).
+      minor="${1#gh@}"
+      INPUTS+=(builtins/gh builtins/environments/go)
+      OUTPUTS=("dist/builtin/gh/$minor.*" dist/test/gh)
+      BUILD=(bash builtins/gh/build.sh "$minor")
+      VERIFY=(verify_gh "$minor")
+      ;;
     openssh)
       # And Git's build script (it reads Git's toolchain pins), the C
       # library patches, and env:go's toolchain, which builds its test server.
@@ -136,7 +145,7 @@ spec() {
       REFRESH=1
       ;;
     *)
-      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, kubectl@<minor>, openssh, typescript and oxfmt" >&2
+      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript and oxfmt" >&2
       exit 2
       ;;
   esac
@@ -350,6 +359,13 @@ verify_kubectl() {
   local version sha
   read -r version _ _ _ _ sha <<<"$(sed -n "s/^    ${1//./\\.}) echo \"\(.*\)\" ;;\$/\1/p" builtins/kubectl/build.sh)"
   check "dist/builtin/kubectl/$version/module.wasm" "$sha"
+}
+
+# verify_gh <minor>: the module, against gh/build.sh's release().
+verify_gh() {
+  local version sha
+  read -r version _ _ _ _ sha <<<"$(sed -n "s/^    ${1//./\\.}) echo \"\(.*\)\" ;;\$/\1/p" builtins/gh/build.sh)"
+  check "dist/builtin/gh/$version/module.wasm" "$sha"
 }
 
 # verify_openssh: each program's module, against openssh/build.sh's PROGRAMS.

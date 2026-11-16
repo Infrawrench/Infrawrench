@@ -321,6 +321,11 @@ pub struct Job {
     /// variable, by their CI name. The job's own `env:` wins.
     #[serde(default)]
     pub env_from: Vec<String>,
+    /// A GitHub token for the run's own repository, minted for the run by
+    /// the app with these permissions (`contents: write`, ...), as
+    /// `GH_TOKEN`/`GITHUB_TOKEN` and Git credentials for the repository.
+    #[serde(default)]
+    pub github_token: Option<IndexMap<String, String>>,
     /// Arguments for a tool (`builtin:` / `repo:`), as a list or one string
     /// split like a shell would split it (no expansion).
     #[serde(default)]
