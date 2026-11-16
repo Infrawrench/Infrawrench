@@ -138,8 +138,9 @@ export interface ToolDefinition {
   /**
    * The app ("product") this tool belongs to, when it belongs to one. An
    * organization that has turned the app off is neither offered the tool nor
-   * allowed to call it ({@link authorizeToolCall}). Set in `./registry` by
-   * factory (`forProduct`) or by name (`./products`), not on each definition.
+   * allowed to call it ({@link authorizeToolCall}). Set in `./registry` for a
+   * module that belongs to one app whole (`forProduct`), and on the
+   * definition itself in a module of mixed tools (`./generic`).
    * Unset means the tool is always available: resources, accounts, DNS and
    * the rest of Infrastructure, which cannot be turned off, plus the tools
    * that cut across apps.
