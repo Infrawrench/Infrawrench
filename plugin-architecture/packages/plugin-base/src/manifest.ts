@@ -83,6 +83,20 @@ export interface CredentialField {
    * address, `example.com` or `co.uk` stays exact. Ignored without `providerHost`.
    */
   providerHostSubdomains?: boolean;
+  /**
+   * This field holds the address of the service the plugin connects to, so an SSH tunnel on
+   * the account points it at the tunnel's local end, in the form named:
+   *
+   * - `address`: a URL of any scheme (a database connection string, an API base URL, with
+   *   several hosts in its authority if the client takes them), a bare host or `host:port`,
+   *   or several of those separated by commas.
+   * - `kubeconfig`: a kubeconfig, whose clusters' `server` URLs are rewritten and nothing else.
+   *
+   * Only the addresses that name the tunnel's remote end are rewritten, unless none of the
+   * account's own do, and nothing else in the value changes. A field without this flag is
+   * never rewritten, whatever it holds.
+   */
+  tunnel?: "address" | "kubeconfig";
 }
 
 /**

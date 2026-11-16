@@ -75,6 +75,8 @@ export async function buildPeerPluginClient(input: {
   client: HostPluginClient;
   plugin: HostPlugin;
   credentials: Record<string, string>;
+  /** A credential rewriter changed the credentials (see `applyCredentialRewriters`). */
+  rewritten: boolean;
 } | null> {
   const peerCredentials: Record<string, string> = {};
   for (const mapping of input.integration.credentialMappings) {
@@ -87,10 +89,15 @@ export async function buildPeerPluginClient(input: {
     peerCredentials[mapping.credentialKey] = value;
   }
 
-  await applyCredentialRewriters(
+  const peerLoaded = await getPlugin(input.integration.pluginId);
+  if (!peerLoaded) return null;
+
+  const rewritten = await applyCredentialRewriters(
     {
       ...(input.organizationId !== undefined && { orgId: input.organizationId }),
       accountId: input.accountId,
+      credentialFields: peerLoaded.plugin.manifest.credentialFields,
+      peerPluginId: input.integration.pluginId,
       resourcePluginId: input.parentPluginId,
       resourceTypeId: input.parentResourceTypeId,
       resourceId: input.parentResourceId,
@@ -104,9 +111,6 @@ export async function buildPeerPluginClient(input: {
     peerCredentials,
   );
 
-  const peerLoaded = await getPlugin(input.integration.pluginId);
-  if (!peerLoaded) return null;
-
   const peerHostServices = await buildPluginHostServices(
     peerLoaded.plugin.manifest,
     peerCredentials,
@@ -116,7 +120,12 @@ export async function buildPeerPluginClient(input: {
     peerLoaded.plugin.createClient(peerCredentials, peerHostServices),
     { accountId: input.accountId, organizationId: input.organizationId },
   );
-  return { client: peerClient, plugin: peerLoaded.plugin, credentials: peerCredentials };
+  return {
+    client: peerClient,
+    plugin: peerLoaded.plugin,
+    credentials: peerCredentials,
+    rewritten,
+  };
 }
 
 /**

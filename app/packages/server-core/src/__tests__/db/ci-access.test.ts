@@ -107,7 +107,9 @@ const fakePlugins = vi.hoisted(() => ({
       id: "postgres",
       displayName: "PostgreSQL",
       ciCredential: { description: "DATABASE_URL", shortLived: false },
-      credentialFields: [{ key: "connectionString", label: "c", sensitive: true }],
+      credentialFields: [
+        { key: "connectionString", label: "c", sensitive: true, tunnel: "address" as const },
+      ],
     },
     resourceTypes: [],
   },
@@ -272,8 +274,28 @@ vi.mock("../../peer-clients.js", async (importOriginal) => {
           },
         };
       }
+      // Through the SSH-tunnel rewriter's own logic, against the account's
+      // tunnel config, as a peer's credentials are.
+      const credentials = { connectionString: "postgres://user:pw@db.example.test/app" };
+      const { db } = await import("../../db/client");
+      const { sshTunnelConfigs } = await import("../../db/schema");
+      const { eq } = await import("drizzle-orm");
+      const { rewriteCredentialFields } = await import("../../credential-rewriters/tunnel-form");
+      const [tunnel] = await db
+        .select()
+        .from(sshTunnelConfigs)
+        .where(eq(sshTunnelConfigs.accountId, input.accountId));
+      const rewritten = tunnel
+        ? rewriteCredentialFields(
+            fakePlugins.postgres.manifest.credentialFields,
+            credentials,
+            { localPort: 41234, remoteHost: tunnel.remoteHost, remotePort: tunnel.remotePort },
+            { fallback: false },
+          ).length > 0
+        : false;
       return {
-        credentials: { connectionString: "postgres://user:pw@db.example.test/app" },
+        credentials,
+        rewritten,
         plugin: fakePlugins.postgres,
         client: {
           lendCiCredential: async () => ({
@@ -1429,35 +1451,51 @@ describe.skipIf(!configured)("CI access against a real Postgres", () => {
   });
 
   it("refuses to lend a credential the SSH-tunnel rewriter changed, and lends one it did not", async () => {
-    const { db, schema, access } = m;
+    const { db, schema, eq, access } = m;
     const org = await organization({ optedIn: true });
     const { dbId } = await managed(org);
     await access.createGrant(org.orgId, peerGrant(dbId, "orders", "postgres"), org.userId);
-    // Through a tunnel, the rewriter points a connection string at the
-    // gateway's loopback and keeps the password: useless to a job, and not
-    // to be lent. A connection whose credentials it leaves alone (this fake
-    // cluster's are none) is lent as usual.
-    for (const accountId of [org.awsId, org.k8sId]) {
+    const tunnelTo = async (accountId: string, remoteHost: string) => {
+      await db
+        .delete(schema.sshTunnelConfigs)
+        .where(eq(schema.sshTunnelConfigs.accountId, accountId));
       await db.insert(schema.sshTunnelConfigs).values({
         id: randomUUID(),
         accountId,
         organizationId: org.orgId,
         sshHost: "bastion.example.test",
+        remoteHost,
         remotePort: 5432,
         encryptedPrivateKey: "unused",
         privateKeyIv: "unused",
       } as typeof schema.sshTunnelConfigs.$inferInsert);
-    }
-    proxy.calls = [];
-    await push(org, "main", deployJob([{ name: "orders" }, { name: "Production cluster" }]));
-    const lent = sentLent() as {
-      connections: Record<string, { refused?: string; files?: unknown[] }>;
     };
-    expect(lent.connections["orders"]?.refused).toMatch(
+    const lentNow = async () => {
+      proxy.calls = [];
+      await push(org, "main", deployJob([{ name: "orders" }, { name: "Production cluster" }]));
+      return sentLent() as {
+        connections: Record<string, { refused?: string; files?: unknown[]; env?: unknown }>;
+      };
+    };
+    // A tunnel to the database's own host: the rewriter points the peer's
+    // connection string at the gateway's end of it and keeps the password,
+    // useless to a job and not to be lent. A connection whose credentials it
+    // leaves alone (this fake cluster's are none) is lent as usual.
+    await tunnelTo(org.awsId, "db.example.test");
+    await tunnelTo(org.k8sId, "db.example.test");
+    const tunnelled = await lentNow();
+    expect(tunnelled.connections["orders"]?.refused).toMatch(
       /SSH tunnel of its own, which a job cannot use/,
     );
-    expect(lent.connections["Production cluster"]?.files).toHaveLength(1);
-    expect(JSON.stringify(lent)).not.toContain("user:pw");
+    expect(tunnelled.connections["Production cluster"]?.files).toHaveLength(1);
+    expect(JSON.stringify(tunnelled)).not.toContain("user:pw");
+
+    // A tunnel the account has for something else leaves the database's
+    // address alone, so it is lent.
+    await tunnelTo(org.awsId, "10.9.8.7");
+    const elsewhere = await lentNow();
+    expect(elsewhere.connections["orders"]?.refused).toBeUndefined();
+    expect(elsewhere.connections["orders"]?.env).toBeDefined();
   });
 
   it("does not hand a grant to a resource deleted and created again under its id", async () => {

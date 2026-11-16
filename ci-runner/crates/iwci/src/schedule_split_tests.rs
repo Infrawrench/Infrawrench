@@ -882,7 +882,7 @@ fn artifacts_over_the_cap_stay_and_so_do_the_jobs_that_need_them() {
 #[test]
 fn a_helper_only_tries_for_jobs_that_may_run_anywhere() {
     let p = plan(
-        "name: x\nsplit: true\njobs:\n  secret:\n    using: builtin:print@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n  commit:\n    using: builtin:write@1\n    changes: { commit: \"style: format\" }\n  keeps:\n    using: builtin:dl-write@1\n    downloads: [out]\n  plain:\n    using: builtin:print@1\n    matrix: [a, b, c, d]\n",
+        "name: x\nsplit: true\njobs:\n  secret:\n    using: builtin:print@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n  commit:\n    using: builtin:write@1\n    changes: { commit: \"style: format\" }\n  keeps:\n    using: builtin:dl-write@1\n    downloads: [out]\n  native:\n    using: env:print@1\n    tools: [builtin:native-bun@1]\n    run: echo hi\n  plain:\n    using: builtin:print@1\n    matrix: [a, b, c, d]\n",
     );
     let store = Arc::new(SplitStore::default());
     // One `plain` is the helper's, so it takes part however busy the host
@@ -895,7 +895,9 @@ fn a_helper_only_tries_for_jobs_that_may_run_anywhere() {
     );
     assert!(one.report.passed(), "{:#?}", one.report.jobs);
     assert!(two.report.passed(), "{:#?}", two.report.jobs);
-    for id in ["secret", "commit", "keeps"] {
+    // A job with a native tool runs in a sandbox, which a helper may not
+    // offer.
+    for id in ["secret", "commit", "keeps", "native"] {
         assert!(one.ran.contains(&id.to_string()), "{id}");
         assert!(!store.tried_by("ci-2").contains(&id.to_string()), "{id}");
         assert_eq!(two.job(id).remote.as_deref(), Some("ci-1"), "{id}");
@@ -1116,6 +1118,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
             held_memory_bytes: 5,
             service_failure: Some("db".into()),
             cancelled: false,
+            sandbox: None,
         }),
         changes: vec![("src/a.ts".into(), "modified".into())],
         commit: None,

@@ -30,18 +30,6 @@ export function saveLocalSshKey(key: {
   return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalSshKeySave(key)));
 }
 
-/** An SSH tunnel config's private key, from the ciphertext its row holds. */
-export function decryptTunnelConfigKey(
-  tunnelConfigId: string,
-  { ciphertext, iv }: EncryptedValue,
-): Promise<string> {
-  return runRpc(
-    DesktopRpcClient.use((rpc) =>
-      rpc.LocalTunnelConfigKeyDecrypt({ tunnelConfigId, ciphertext, iv }),
-    ),
-  );
-}
-
 /** Encrypt an SSH tunnel config's private key for its row. */
 export function encryptTunnelConfigKey(
   tunnelConfigId: string,

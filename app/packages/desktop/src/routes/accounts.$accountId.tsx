@@ -75,7 +75,11 @@ import {
 import { ResourceTile } from "./_account-detail/-ResourceTile";
 import { ResourcePanel } from "./resource.$accountId.$resourceId";
 import { openExternalUrl } from "../lib/app-shell";
-import { getLocalAccountCredentials, saveLocalAccountCredentials } from "../lib/local-credentials";
+import {
+  getLocalAccountCredentials,
+  getLocalConnectionCredentials,
+  saveLocalAccountCredentials,
+} from "../lib/local-credentials";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -295,9 +299,12 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       if (!account) return;
       void (async () => {
         try {
-          const ownerCreds = await getLocalAccountCredentials(account.id);
           const loaded = await getPlugin(account.plugin_id);
           if (!loaded) return;
+          const ownerCreds = await getLocalConnectionCredentials(
+            account.id,
+            loaded.plugin.manifest.credentialFields,
+          );
           const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
           const client = loaded.plugin.createClient(ownerCreds, services);
           const kubeconfig = await client.resolveOutput(
@@ -501,12 +508,14 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, row.display_name);
         }
 
-        const credentials = await getLocalAccountCredentials(row.id);
-
         const loaded = await getPlugin(row.plugin_id);
         if (!loaded)
           throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: row.plugin_id }));
         const { plugin } = loaded;
+        const credentials = await getLocalConnectionCredentials(
+          row.id,
+          plugin.manifest.credentialFields,
+        );
         if (!cancelled) setPreflightSupported(Boolean(plugin.manifest.preflight));
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
@@ -836,12 +845,12 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
    */
   async function runPreflightForAccount() {
     const { runAccountPreflight } = await import("@infrawrench/client-core");
-    const credentials = activeCloudOrgId
-      ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
-      : await getLocalAccountCredentials(accountId);
     const loaded = await getPlugin(account!.plugin_id);
     if (!loaded)
       throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account!.plugin_id }));
+    const credentials = activeCloudOrgId
+      ? await getCloudAccountCredentials(activeCloudOrgId, accountId)
+      : await getLocalConnectionCredentials(accountId, loaded.plugin.manifest.credentialFields);
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
     const client = loaded.plugin.createClient(credentials, services);
     return runAccountPreflight(loaded.plugin, client);

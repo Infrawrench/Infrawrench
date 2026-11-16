@@ -30,137 +30,18 @@ export {
   computeSshPublicKeyFingerprint,
 } from "./openssh-keys.js";
 
-import * as net from "node:net";
-import * as crypto from "node:crypto";
-import ssh2 from "ssh2";
-import type { ConnectConfig } from "ssh2";
+export {
+  openTunnel,
+  ensureTunnel,
+  closeTunnel,
+  closeAllTunnels,
+  getTunnelEntries,
+  findTunnel,
+  SshTunnelUnavailableError,
+  type TunnelRecord,
+  type TunnelExtras,
+  type OpenTunnelOptions,
+  type TunnelPlan,
+} from "./tunnels.js";
 
-const { Client: SshClient } = ssh2;
-// Re-establish the class's dual value/type nature lost by destructuring.
-type SshClient = InstanceType<typeof SshClient>;
-import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
-  "resolution-mode": "import",
-};
-
-export interface TunnelRecord<E = undefined> {
-  tunnelId: string;
-  localPort: number;
-  server: net.Server;
-  client: SshClient;
-  sshHost: string;
-  remotePort: number;
-  extras: E;
-}
-
-/**
- * Standard `extras` payload used by both the web service and server-core for
- * cross-tenant tunnel scoping. Adapters that need additional context can
- * still extend this (or use a different `E` type entirely).
- */
-export interface TunnelExtras {
-  organizationId: string;
-  accountId: string;
-}
-
-export interface OpenTunnelOptions {
-  /**
-   * Hook called just before the SSH client connects. Receives the default
-   * ConnectConfig assembled from the SshTunnelConfig and may return a modified
-   * config (e.g. swap privateKey for `agent: "pageant"`).
-   *
-   * The default ConnectConfig fails closed (its `hostVerifier` rejects every
-   * key with a clear error) so callers MUST provide a verifier here. The
-   * web service supplies one backed by an in-memory pin map; the desktop
-   * supplies one backed by the local sql.js `ssh_host_keys` table.
-   */
-  configureConnect?: (opts: ConnectConfig) => ConnectConfig;
-}
-
-const activeTunnels = new Map<string, TunnelRecord<unknown>>();
-
-export function openTunnel<E = undefined>(
-  config: SshTunnelConfig,
-  extras: E,
-  options?: OpenTunnelOptions,
-): Promise<{ tunnelId: string; localPort: number }> {
-  return new Promise((resolve, reject) => {
-    const sshClient = new SshClient();
-    const server = net.createServer((socket) => {
-      sshClient.forwardOut("127.0.0.1", 0, config.remoteHost, config.remotePort, (err, channel) => {
-        if (err) {
-          socket.destroy();
-          return;
-        }
-        socket.pipe(channel);
-        channel.pipe(socket);
-        socket.on("close", () => channel.end());
-        channel.on("close", () => socket.destroy());
-      });
-    });
-
-    sshClient.once("ready", () => {
-      server.listen(0, "127.0.0.1", () => {
-        const addr = server.address() as net.AddressInfo;
-        const tunnelId = crypto.randomUUID();
-        activeTunnels.set(tunnelId, {
-          tunnelId,
-          localPort: addr.port,
-          server,
-          client: sshClient,
-          sshHost: config.sshHost,
-          remotePort: config.remotePort,
-          extras,
-        });
-        resolve({ tunnelId, localPort: addr.port });
-      });
-    });
-
-    sshClient.once("error", (err) => {
-      server.close();
-      reject(new Error(`SSH connection failed: ${err.message}`));
-    });
-
-    const baseOpts: ConnectConfig = {
-      host: config.sshHost,
-      port: config.sshPort,
-      username: config.sshUser,
-      privateKey: config.privateKey,
-      hostVerifier: () => {
-        throw new Error(
-          "ssh-tunnel-core: no SSH host-key verifier configured. Pass " +
-            "options.configureConnect to install one (see the web and desktop " +
-            "ssh-host-keys modules for TOFU verifiers).",
-        );
-      },
-    };
-    sshClient.connect(options?.configureConnect ? options.configureConnect(baseOpts) : baseOpts);
-  });
-}
-
-export function closeTunnel(tunnelId: string): void {
-  const record = activeTunnels.get(tunnelId);
-  if (!record) return;
-  record.server.close();
-  record.client.end();
-  activeTunnels.delete(tunnelId);
-}
-
-export function closeAllTunnels(): void {
-  for (const tunnelId of [...activeTunnels.keys()]) {
-    closeTunnel(tunnelId);
-  }
-}
-
-export function getTunnelEntries<E = unknown>(): TunnelRecord<E>[] {
-  return [...activeTunnels.values()] as TunnelRecord<E>[];
-}
-
-export function findTunnel<E = unknown>(
-  predicate: (record: TunnelRecord<E>) => boolean,
-): TunnelRecord<E> | null {
-  for (const record of activeTunnels.values()) {
-    if (predicate(record as TunnelRecord<E>)) return record as TunnelRecord<E>;
-  }
-  return null;
-}
 export { execSshScript } from "./exec-script.js";

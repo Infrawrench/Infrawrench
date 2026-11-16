@@ -153,11 +153,13 @@ mod tests {
             name: "vercel".into(),
             version: "65.16.0".parse().unwrap(),
             abi: iwci_store::Abi::Node,
-            module: iwci_store::BlobRef {
+            module: Some(iwci_store::BlobRef {
                 sha256: "0".repeat(64),
                 size: 1,
-            },
+            }),
             files: Vec::new(),
+            targets: Default::default(),
+            aliases: Vec::new(),
             args: args.iter().map(|a| a.to_string()).collect(),
             env: Default::default(),
             description: None,

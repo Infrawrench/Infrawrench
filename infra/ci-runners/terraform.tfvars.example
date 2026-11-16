@@ -22,6 +22,13 @@ hosts = [
 # host that has none. Later versions arrive through update_channel.
 iwci_binary_path = "../../ci-runner/target/release/iwci"
 
+# Required for a host with native_sandbox: the sandbox service, built for
+# the hosts (ci-runner/crates/iwci-sandbox-spawn/build.sh --check). It must
+# match the SHA-256 pinned in git beside build.sh (`sha256`), which
+# Terraform and install.sh both check. A host of another architecture
+# names its own build and `arch`.
+# sandbox_service_path = "../../ci-runner/target/x86_64-unknown-linux-gnu/release/iwci-sandbox-spawn"
+
 # Required. The bearer key the proxy sends runners (its RUNNER_KEY), 32+ chars.
 server_key = "<openssl rand -hex 32>"
 

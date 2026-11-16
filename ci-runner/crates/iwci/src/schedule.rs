@@ -112,6 +112,21 @@ pub trait Tools: Send + Sync {
     fn env_caches(&self, _tool: &Self::Tool) -> Vec<crate::env_cache::EnvCacheDecl> {
         Vec::new()
     }
+    /// For a native tool (`builtin:bun`), which puts its job in a gVisor
+    /// sandbox: what that sandbox takes beyond the job's `memory:`, which
+    /// the job reserves too. `None` for anything else.
+    fn sandbox_overhead(&self, _tool: &ToolRef) -> Option<u64> {
+        None
+    }
+}
+
+/// What a job reserves beyond its `memory:` for its sandbox, when one of
+/// its `tools:` is native ([`Tools::sandbox_overhead`]).
+fn sandbox_need<T: Tools>(tools: &T, job: &PlannedJob) -> Option<u64> {
+    job.tools
+        .iter()
+        .filter_map(|t| tools.sandbox_overhead(t))
+        .max()
 }
 
 pub struct Invocation<'a> {
@@ -364,6 +379,25 @@ pub struct Execution {
     /// The job was stopped because its run was cancelled.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub cancelled: bool,
+    /// The job ran in a gVisor sandbox (a native tool, `builtin:bun`):
+    /// what the sandbox itself took and what it reserved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<SandboxUsage>,
+}
+
+/// What a job's gVisor sandbox took besides the job: its peak and held
+/// memory above are the job's own share, as for a WASIX job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct SandboxUsage {
+    /// The sandbox's own memory (gVisor's kernel, the runner inside and
+    /// the environment's packages), measured before the job's script
+    /// started.
+    pub overhead_mib: u64,
+    /// What the runner reserved for it on top of the job's `memory:`, and
+    /// bills with it.
+    pub reserved_mib: u64,
+    /// The CPU time the whole sandbox used, gVisor's kernel's included.
+    pub cpu_ms: u64,
 }
 
 pub trait Executor<T>: Send + Sync {
@@ -1619,6 +1653,8 @@ struct State<'p> {
     history: HashMap<String, u64>,
     /// What each job is remembered to have held, in MiB, by job id.
     held: HashMap<String, u64>,
+    /// [`sandbox_need`] with the run's tools.
+    sandbox: &'p (dyn Fn(&PlannedJob) -> Option<u64> + Sync),
     /// Cloud jobs ready to hand over: no slot and no memory.
     external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
@@ -1654,12 +1690,15 @@ impl<'p> State<'p> {
         });
         entry.2.expected = Duration::from_millis(expected_ms);
         // Its `memory:`, or what it is expected to hold when the budget
-        // admits by that and the job has run before.
+        // admits by that and the job has run before; and a sandbox's own,
+        // which it holds whatever the job does.
+        entry.2.sandbox = (self.sandbox)(&entry.1);
         let limit = entry.1.memory_bytes;
-        entry.2.reserve = match &self.queued.budget {
+        let job = match &self.queued.budget {
             Some(budget) => budget.reserve(limit, self.held.get(&entry.1.id).copied()),
             None => limit,
         };
+        entry.2.reserve = job.saturating_add(entry.2.sandbox.unwrap_or(0));
         self.queued.add(entry.2.reserve);
         enqueue(&mut self.queue, rank, entry);
     }
@@ -1734,6 +1773,9 @@ struct Lookup {
     /// Its reservation once it has one, for its run to keep up to what
     /// the job holds ([`Gauge`]).
     lease: Option<Arc<Lease>>,
+    /// What it reserves beyond its `memory:` for its sandbox, when it has
+    /// one ([`sandbox_need`]). Such a job runs on this runner only.
+    sandbox: Option<u64>,
 }
 
 /// How a task cache lookup went.
@@ -1840,7 +1882,9 @@ pub fn run<T: Tools>(
         .iter()
         .map(|(id, ms)| (id.clone(), *ms))
         .collect();
+    let sandbox = |job: &PlannedJob| sandbox_need(tools, job);
     let state = Mutex::new(State {
+        sandbox: &sandbox,
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
         lookups: Vec::new(),
@@ -2082,7 +2126,9 @@ pub fn run<T: Tools>(
                                 Some(budget) => {
                                     let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
                                         bytes: l.reserve,
-                                        limit: j.memory_bytes,
+                                        limit: j
+                                            .memory_bytes
+                                            .saturating_add(l.sandbox.unwrap_or(0)),
                                         expected: l.expected,
                                     });
                                     match budget.admit(asks) {
@@ -2479,13 +2525,18 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
             // A helper leaves a job too large for it to the primary.
             Ok(jobs)
                 if !helper
-                    && options
-                        .memory
-                        .as_ref()
-                        .is_some_and(|b| jobs.iter().any(|j| j.memory_bytes > b.total())) =>
+                    && options.memory.as_ref().is_some_and(|b| {
+                        jobs.iter().any(|j| {
+                            j.memory_bytes.saturating_add((s.sandbox)(j).unwrap_or(0)) > b.total()
+                        })
+                    }) =>
             {
                 let total = options.memory.as_ref().map_or(0, |b| b.total());
-                let asks = jobs.iter().map(|j| j.memory_bytes).max().unwrap_or(0);
+                let asks = jobs
+                    .iter()
+                    .map(|j| j.memory_bytes.saturating_add((s.sandbox)(j).unwrap_or(0)))
+                    .max()
+                    .unwrap_or(0);
                 let message = format!(
                     "asks for {} MiB of memory, more than the runner's whole limit of {} MiB (--memory)",
                     asks >> 20,
@@ -2518,8 +2569,11 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         entry: std::cmp::Reverse(i),
                         ..rank
                     };
+                    // A job in a sandbox stays on the runner that has the
+                    // run: a helper may not offer one.
                     if let Some(sharing) = sharing.as_ref().filter(|_| helper)
-                        && !split::runs_here(sharing, template, &job, &s.finished, options)
+                        && (!split::runs_here(sharing, template, &job, &s.finished, options)
+                            || (s.sandbox)(&job).is_some())
                     {
                         // Only the primary runs it; this run waits to hear
                         // how it went.
@@ -4028,6 +4082,7 @@ fn replay(
             held_memory_bytes: 0,
             service_failure: None,
             cancelled: false,
+            sandbox: None,
         }),
         changes: Vec::new(),
         commit: None,

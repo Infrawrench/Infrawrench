@@ -17,6 +17,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "servers",
+      tunnel: "address",
       label: "Server URL",
       description:
         "The client port: nats://nats.internal:4222, or tls://… when TLS is required. Separate several servers of one cluster with commas. Needed to publish and to create, edit and delete streams, consumers, buckets and object stores. For a server on a private network, add an SSH tunnel to this account.",
@@ -27,6 +28,7 @@ export const manifest = {
     {
       key: "url",
       providerHost: true,
+      tunnel: "address",
       label: "Monitoring URL",
       description:
         "The server's HTTP monitoring endpoint: http://nats.internal:8222 (enable it with http_port: 8222 in the server config, or -m 8222). Include the http_base_path if one is set. Serves health, limits, routes, gateways, leaf nodes, accounts and connections. Set this, the server URL, or both.",

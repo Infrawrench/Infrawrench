@@ -26,6 +26,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description: "MySQL connection URI.",
       sensitive: true,

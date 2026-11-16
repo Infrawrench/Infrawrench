@@ -4,6 +4,7 @@ import { SftpRpcs } from "../../../shared/rpc/groups/sftp";
 import { SshKeyRpcs } from "../../../shared/rpc/groups/ssh-keys";
 import { SshTunnelRpcs } from "../../../shared/rpc/groups/ssh-tunnels";
 import { WorkflowSshRpcs } from "../../../shared/rpc/groups/workflow-ssh";
+import { AccountTunnels } from "../../account-tunnels";
 import { AgentSetup } from "../../agent-setup";
 import { Sftp } from "../../sftp";
 import { SshKeys } from "../../ssh-keys";
@@ -13,15 +14,18 @@ import { SshHostKeyHandlers, SshShellHandlers } from "./ssh-shell";
 const SshTunnelHandlers = SshTunnelRpcs.toLayer(
   Effect.gen(function* () {
     const tunnels = yield* SshTunnels;
+    const accountTunnels = yield* AccountTunnels;
     return SshTunnelRpcs.of({
       SshTunnelOpen: (config) => tunnels.open(config),
       SshTunnelClose: ({ tunnelId }) => tunnels.close(tunnelId),
+      SshTunnelAccountCredentials: ({ accountId, fields, credentials, peer }) =>
+        accountTunnels.credentials(accountId, fields, credentials, { peer: peer === true }),
       SshTunnelsActive: () => tunnels.active,
       SshExecCommand: ({ config, command }) => tunnels.exec(config, command),
       SshExecScript: ({ config, script }) => tunnels.execScript(config, script),
     });
   }),
-).pipe(Layer.provide(SshTunnels.layer));
+).pipe(Layer.provide([SshTunnels.layer, AccountTunnels.layer]));
 
 const SshKeyHandlers = SshKeyRpcs.toLayer(
   Effect.gen(function* () {

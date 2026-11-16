@@ -24,13 +24,13 @@ use virtual_fs::{
 
 pub use virtual_fs;
 
-mod accounts;
 pub mod archive;
 mod index;
 mod limit;
 pub use limit::WriteBudget;
 pub mod modes;
 pub use modes::{Modes, TrackModes};
+pub mod tree;
 
 /// The file system type a guest is given.
 pub type DynFs = Arc<dyn FileSystem + Send + Sync>;
@@ -328,7 +328,7 @@ pub struct SnapshotBuilder {
     base: Option<Arc<ReadBase>>,
     /// Modes given to paths (see `modes.rs`), such as the executable bit of
     /// a checked-out file.
-    modes: std::sync::Mutex<BTreeMap<PathBuf, u32>>,
+    modes: std::sync::Mutex<tree::PathTree<u32>>,
 }
 
 impl SnapshotBuilder {
@@ -366,7 +366,7 @@ impl SnapshotBuilder {
         self.modes
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(path, mode & modes::MODE_BITS);
+            .insert(&path, mode & modes::MODE_BITS);
         Ok(())
     }
 
@@ -722,6 +722,11 @@ impl JobFs {
     }
 
     /// The job's file modes: the snapshot's, and what the job changed.
+    /// What the job's writes are charged to, when it has a limit.
+    pub fn budget(&self) -> Option<Arc<dyn WriteBudget>> {
+        self.overlay.budget.clone()
+    }
+
     pub fn modes(&self) -> Modes {
         self.overlay.modes.clone()
     }
@@ -905,7 +910,7 @@ pub struct JobOverlay {
     modes: Modes,
     /// What each file the job may have changed was given without being
     /// charged (`limit::Account`), by path in the upper layer.
-    accounts: std::sync::Mutex<accounts::Accounts>,
+    accounts: std::sync::Mutex<tree::PathTree<Arc<limit::Account>>>,
     /// Held for the whole of a rename (#1092). A rename looks at what is
     /// at both ends, then changes them, in several steps across the two
     /// layers; two renames onto one name at once both saw the old file
@@ -921,7 +926,7 @@ impl JobOverlay {
         meta.is_file().then_some(meta.len)
     }
 
-    fn accounts(&self) -> std::sync::MutexGuard<'_, accounts::Accounts> {
+    fn accounts(&self) -> std::sync::MutexGuard<'_, tree::PathTree<Arc<limit::Account>>> {
         self.accounts.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -930,6 +935,7 @@ impl JobOverlay {
     fn account(&self, path: &Path) -> Arc<limit::Account> {
         self.accounts()
             .get_or_insert_with(path, || limit::Account::new(0))
+            .clone()
     }
 
     /// What the job was charged for the upper file at `path`, which is

@@ -18,6 +18,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection URL",
       description:
         "kafka:// URL, e.g. kafka://broker1:9092,broker2:9092?sasl=scram-sha-256&user=alice&password=…&ssl=true. See plugin docs.",

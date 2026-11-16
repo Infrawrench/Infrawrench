@@ -21,6 +21,7 @@ export const manifest = {
     {
       key: "endpoint",
       providerHost: true,
+      tunnel: "address",
       label: "Account",
       description:
         "Your Spacelift account name (acme for acme.app.spacelift.io), the hostname for the US region (acme.app.us.spacelift.io) or a self-hosted install, or the full GraphQL URL.",

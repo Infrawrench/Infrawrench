@@ -55,6 +55,10 @@ pub struct Export {
     pub root: PathBuf,
     /// Refuse every change.
     pub read_only: bool,
+    /// Charged for every entry the sandbox creates (and given back when it
+    /// removes one it created), beside what the file system charges for
+    /// file contents: the job's write budget, for its own files.
+    pub budget: Option<std::sync::Arc<dyn iwci_vfs::WriteBudget>>,
 }
 
 /// A connection being served, on threads of its own: one for the socket,
@@ -80,6 +84,13 @@ pub fn serve(export: Export, sock: OwnedFd) -> io::Result<Serving> {
 }
 
 impl Serving {
+    /// What the connection keeps: FDs, inode numbers and their paths'
+    /// bytes.
+    #[cfg(test)]
+    pub(crate) fn kept(&self) -> (usize, usize, usize) {
+        self.conn.kept()
+    }
+
     /// Ends the connection: the sandbox's next request fails.
     pub fn stop(&self) {
         self.conn.stop();
@@ -104,7 +115,9 @@ impl Drop for Serving {
     }
 }
 
-pub(crate) use sock::{cmsg_space, fill_rights};
+/// Descriptor passing, shared with the runner's other sockets in the
+/// sandbox (`iwci-runtime`'s shims).
+pub use sock::{cmsg_space, fill_rights, take_rights};
 
 /// A `SOCK_SEQPACKET` socket pair, close-on-exec.
 pub(crate) fn seqpacket_pair() -> io::Result<(OwnedFd, OwnedFd)> {

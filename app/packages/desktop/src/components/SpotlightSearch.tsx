@@ -5,7 +5,7 @@ import type { AccountRow as FullAccountRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
-import { getLocalAccountCredentials } from "../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../lib/local-credentials";
 
 type AccountRow = Pick<FullAccountRow, "id" | "plugin_id" | "display_name">;
 
@@ -188,7 +188,10 @@ export function useLocalSpotlightResults(mode: "pin" | "navigate" | "drop"): {
 
             let creds: Record<string, string>;
             try {
-              creds = await getLocalAccountCredentials(account.id);
+              creds = await getLocalConnectionCredentials(
+                account.id,
+                plugin.manifest.credentialFields,
+              );
             } catch {
               return;
             }
