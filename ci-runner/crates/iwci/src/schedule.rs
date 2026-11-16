@@ -2788,7 +2788,7 @@ fn run_job<T: Tools>(
         gauge: gauge.clone(),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
-    if let Err(e) = fs.write(OUTPUT_PATH, b"") {
+    if let Err(e) = fs.create_for_job(OUTPUT_PATH) {
         return errored(
             job,
             format!("could not create {OUTPUT_PATH}: {e}"),

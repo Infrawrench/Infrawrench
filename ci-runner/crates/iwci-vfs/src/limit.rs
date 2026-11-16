@@ -38,13 +38,30 @@ pub trait WriteBudget: Send + Sync + fmt::Debug {
 #[derive(Debug, Default)]
 pub(crate) struct Account {
     free: Mutex<u64>,
+    /// What the file's entry was charged when the job made it (the runner
+    /// keeps a node and an account for it), given back when it goes.
+    entry: u64,
 }
 
 impl Account {
     pub(crate) fn new(free: u64) -> Arc<Self> {
         Arc::new(Self {
             free: Mutex::new(free),
+            entry: 0,
         })
+    }
+
+    /// A new file's account, its entry charged `entry` bytes.
+    pub(crate) fn made(entry: u64) -> Arc<Self> {
+        Arc::new(Self {
+            free: Mutex::new(0),
+            entry,
+        })
+    }
+
+    /// What the file's entry was charged.
+    pub(crate) fn entry(&self) -> u64 {
+        self.entry
     }
 
     fn free(&self) -> std::sync::MutexGuard<'_, u64> {
