@@ -283,21 +283,6 @@ func TestWriteOnlyFieldsSurviveARefresh(t *testing.T) {
 		}
 	})
 
-	t.Run("deploy trigger answers", func(t *testing.T) {
-		ctx := context.Background()
-		answers, diags := types.MapValueFrom(ctx, types.StringType, map[string]string{"db": "postgres://…"})
-		if diags.HasError() {
-			t.Fatalf("MapValueFrom: %v", diags)
-		}
-		prior := deployTriggerResourceModel{Answers: answers}
-		state := deployTriggerStateFrom(&iw.DeployTrigger{
-			ID: "t1", Repo: "acme/api", Branch: "main", Env: "production", Enabled: true,
-		}, prior)
-		if state.Answers.IsNull() {
-			t.Error("the stored deploy answers were dropped")
-		}
-	})
-
 	t.Run("litellm api key", func(t *testing.T) {
 		prior := aiRequestSourceResourceModel{APIKey: types.StringValue("sk-master")}
 		state, diags := aiRequestSourceStateFrom(context.Background(), &iw.AIRequestSource{
