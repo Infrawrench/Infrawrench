@@ -571,6 +571,41 @@ fn a_write_past_the_budget_is_refused() {
 }
 
 #[test]
+fn a_frozen_snapshot_reads_through_a_read_only_mount() {
+    // A Node tool's directory (`node_tools::unpack`) is a snapshot's
+    // read-only view, served as its own mount beside a native tool.
+    let b = SnapshotBuilder::new();
+    b.mkdir_all("/lib").unwrap();
+    b.write("/cli.js", b"console.log(1);\n").unwrap();
+    b.write("/lib/x.js", b"x").unwrap();
+    let fs = b.freeze().read_only();
+    let mut client = Client::new(Export {
+        fs,
+        modes: iwci_vfs::Modes::default(),
+        root: PathBuf::from("/"),
+        read_only: true,
+        budget: None,
+    });
+    let root = client.mount();
+    assert_eq!(root.stat.mode & S_IFMT, 0o040_000);
+    client.open_channel();
+    let names: Vec<String> = client
+        .list(root.fd)
+        .into_iter()
+        .map(|(n, _, _)| n)
+        .collect();
+    assert!(names.contains(&"cli.js".to_string()), "{names:?}");
+    let cli = client.walk_to(root.fd, "cli.js");
+    assert_eq!(cli.stat.size, 16);
+    let fd = client.open(cli.fd, libc::O_RDONLY);
+    assert_eq!(client.fstat(fd).size, 16);
+    assert_eq!(client.pread(fd, 0, 100), b"console.log(1);\n");
+    let x = client.walk_to(root.fd, "lib/x.js");
+    let fd = client.open(x.fd, libc::O_RDONLY);
+    assert_eq!(client.pread(fd, 0, 10), b"x");
+}
+
+#[test]
 fn a_read_only_mount_refuses_changes() {
     let job = job(None);
     let mut e = export(&job);

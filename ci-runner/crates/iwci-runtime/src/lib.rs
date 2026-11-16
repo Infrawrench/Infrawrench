@@ -619,7 +619,7 @@ impl Runtime {
     pub(crate) fn sandbox_dir(&self, dir: &str) -> std::result::Result<DynFs, String> {
         let fs = virtual_fs::host_fs::FileSystem::new(self.tokio.handle().clone(), dir)
             .map_err(|e| format!("the sandbox's files at {dir}: {e}"))?;
-        Ok(Arc::new(fs))
+        Ok(Arc::new(inside::ReadOnlyMounts::new(Arc::new(fs), dir)))
     }
 
     /// Changes what each of stdout and stderr keeps (default 8 MiB).
