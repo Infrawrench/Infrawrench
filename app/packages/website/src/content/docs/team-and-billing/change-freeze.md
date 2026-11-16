@@ -13,7 +13,6 @@ While a freeze is on, these actions are refused with `423 Locked`:
 - **Deleting resources.**
 - **Destructive plugin actions,** such as deleting an index, purging a cache or deleting a fine-tuned model. Non-destructive actions like restart or snapshot still work.
 - **Destroying secret versions.** Enabling and disabling them still works.
-- **Deployment rollbacks,** including ones requested through the AI assistant.
 
 Reading, creating resources and routine work carry on as normal. A freeze stops you breaking things, not working.
 

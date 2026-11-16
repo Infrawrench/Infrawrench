@@ -1,8 +1,8 @@
 // `infrawrench moment [timestamp]`; "what changed around 03:14?" in the
 // terminal, backed by the same /moment endpoint the web and desktop screens
 // read: one merged, chronological window across the change timeline, provider
-// incidents, cost anomalies, workflow runs, deployments, audit entries,
-// change freezes and the drift/expiry alert deliveries.
+// incidents, cost anomalies, workflow runs, audit entries, change freezes and
+// the drift/expiry alert deliveries.
 //
 // Wire types and the merge/badge/grouping logic come from
 // `@infrawrench/client-core`: the same definitions every other surface

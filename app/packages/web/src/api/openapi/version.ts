@@ -514,4 +514,10 @@
 // owner's decision: the feature had no production use beyond test runs, and a
 // major would also move the Go SDK's module path. DORA keeps
 // `deployments:read` and `deployments:write`, and its `POST /dora/deployments`.
-export const API_VERSION = "1.113.0";
+// 1.114.0: pull request checks no longer single out a file named `Infrafile`:
+// `infrafile` leaves the `PrCheckReport` file kind enum, and such a file is
+// now skipped like any other file the check does not read. Narrowing a
+// response enum is a major by the rule above; it ships as a minor for the
+// same reason as 1.113.0, and reports stored before it lose those entries
+// when read, so a client never sees the old value.
+export const API_VERSION = "1.114.0";

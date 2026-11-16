@@ -1,7 +1,6 @@
 /**
  * Org-level AI spend accounting, shared by AI chat (web) and `infra.ai()` in
- * workflows (web + poller, which is why it lives in server-core, same reason
- * as the build meter).
+ * workflows (web + poller, which is why it lives in server-core).
  *
  * One pool, deliberately: an org has a single monthly AI cap
  * (`organizations.chat_monthly_cap_micros`, plus the $5 free tier for unpaid

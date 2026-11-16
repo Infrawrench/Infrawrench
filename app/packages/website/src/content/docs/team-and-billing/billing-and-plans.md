@@ -17,7 +17,6 @@ sidebar_order: 3
 | SSH terminal / SQL | Yes                    | Yes                    |
 | Audit log          | No                     | Yes                    |
 | Custom graphs      | No                     | Yes                    |
-| Deploy from GitHub | No (CLI deploys free)  | Yes                    |
 | API keys           | No                     | Yes                    |
 | AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
 | Price              | $0                     | $20 / seat / mo        |
@@ -73,7 +72,7 @@ The seats appear as soon as the payment is confirmed, and you get an invoice lik
 
 Good to know:
 
-- **A slot is a paid plan on its own.** An organization with a slot gets every paid feature (audit log, custom graphs, API keys, deploys) with no monthly subscription.
+- **A slot is a paid plan on its own.** An organization with a slot gets every paid feature (audit log, custom graphs, API keys) with no monthly subscription.
 - **Slots add to monthly seats.** Mixing is fine: buy slots for people who'll definitely be around for two years, and rent monthly seats for everyone else.
 - **Each purchase has its own term.** Three slots bought today expire together in two years. One more bought next month gets its own end date. The Billing page lists every purchase with its expiry.
 - **When a term ends, that capacity stops counting.** Nothing is deleted and nobody is removed, but you're over capacity, so invites are refused until you buy more or remove people. If slots were your only paid seats, the organization drops back to the free plan and keeps read-only access to anything over the free limits, just like a cancelled subscription.

@@ -4,7 +4,7 @@ See what your Terraform actually manages, from the file that declares it.
 
 - **Hover a `resource` block** to see the live resource(s) it manages, whether they drifted from state, the owning service, what they cost over the last 30 days, the list-price estimate, and any open posture findings. Links open the resource in Infrawrench or copy its ids.
 - **CodeLens** above each block names the live resource and summarises cost, service and findings.
-- **Estimate Cost of Working Tree Changes** runs your uncommitted `.tf`, Infrafile and Kubernetes changes (unsaved editors included) through the same check a pull request gets, and shows the monthly delta and blast radius.
+- **Estimate Cost of Working Tree Changes** runs your uncommitted `.tf` and Kubernetes changes (unsaved editors included) through the same check a pull request gets, and shows the monthly delta and blast radius.
 - **Search Resources and Services** from the command palette.
 - **Services** view in the activity bar: each service's on-call, cost, posture, scorecards and member resources.
 

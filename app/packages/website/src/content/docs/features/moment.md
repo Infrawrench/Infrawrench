@@ -4,7 +4,7 @@ description: Enter a timestamp and see everything that happened around it in one
 sidebar_order: 10
 ---
 
-Something broke around 03:14. The change timeline knows a droplet resized, the status feed knows DigitalOcean was having a bad night, the deploy log knows someone shipped at 03:02, and the audit log knows who. Normally that means five tabs and a lot of squinting at timestamps.
+Something broke around 03:14. The change timeline knows a droplet resized, the status feed knows DigitalOcean was having a bad night, the workflow history knows a job ran at 03:02, and the audit log knows who started it. Normally that means five tabs and a lot of squinting at timestamps.
 
 The moment view answers the real question: **"what changed around 03:14?"** Enter a timestamp, pick a window (±15m, ±1h or ±6h), and you get one timeline of everything Infrawrench knows happened in that window.
 
@@ -20,7 +20,7 @@ The moment view answers the real question: **"what changed around 03:14?"** Ente
 
 Every event has a severity, and each row links to where it lives: the resource, the workflow or the provider's incident page.
 
-![Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a deploy failure in red, resource changes, and an incident-started event](https://agent-assets.infrawrench.com/docs-screenshots/features/moment/moment-window.png)
+<insert [Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a failed workflow run in red, resource changes, and an incident-started event] here>
 
 ## Spot provider incidents and bursts
 
