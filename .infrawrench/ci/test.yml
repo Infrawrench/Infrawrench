@@ -97,7 +97,7 @@ jobs:
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # What each package's dependents read of it apart from its dist/, as one
   # hash in .source-digest (source-digest.mjs). A package with no build ships
@@ -129,7 +129,7 @@ jobs:
     memory: 1GiB
     timeout: 5m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # The files a package's tests read by path outside the package, as one hash
   # in .reads-digest (outside-reads.mjs). server-core's tests compare a file
@@ -155,7 +155,7 @@ jobs:
     memory: 1GiB
     timeout: 5m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # Each library's JavaScript, as `pnpm build` writes it, for the tests of
   # the packages that use it. Declarations are `build`'s.
@@ -178,7 +178,7 @@ jobs:
     memory: 2GiB
     timeout: 20m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # Each package's `test` script, with the JavaScript of everything it
   # depends on. The runner's installer writes no node_modules/.bin, so
@@ -247,7 +247,7 @@ jobs:
     using: env:bash-node@24.0.18
     env: &test-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: &test-run |
       cores="$(nproc)"
       case "${{ package.dir }}" in
@@ -293,7 +293,7 @@ jobs:
     memory: 2GiB
     timeout: 20m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # Every other package whose typecheck is plain `tsc --noEmit`, against the
   # declarations of what it depends on.
@@ -309,7 +309,7 @@ jobs:
     memory: 4GiB
     timeout: 30m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # The Worker entry points (`tsc --noEmit -p edge`).
   edge:
@@ -325,7 +325,7 @@ jobs:
     memory: 4GiB
     timeout: 30m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # Desktop's typecheck runs ensure-env first (prep does that), then two
   # projects. A `packages:` job of one package, so that `^build` and
@@ -342,7 +342,7 @@ jobs:
     memory: 3GiB
     timeout: 30m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # The packages that pin TypeScript 6 (mobile, plugingen, website) run
   # their own compiler, which is JavaScript, under Node.
@@ -359,7 +359,7 @@ jobs:
     memory: 2GiB
     timeout: 30m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   plugingen:
     name: Typecheck plugingen (TypeScript 6)
@@ -371,7 +371,7 @@ jobs:
     memory: 2GiB
     timeout: 20m
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # `astro check`: `astro sync` writes the content collections' types into
   # .astro/, then @astrojs/check runs the website's TypeScript over the
@@ -389,7 +389,7 @@ jobs:
       HOME: /tmp
       ASTRO_TELEMETRY_DISABLED: "1"
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: node node_modules/astro/bin/astro.mjs check
     task-cache:
       inputs: [app/packages/website/**, app/packages/analytics/**]
@@ -405,7 +405,7 @@ jobs:
     name: Translations audit
     using: env:bash-node@24.0.18
     cwd: /app/app/packages/web
-    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-2}
+    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-3}
     run: node scripts/translation-audit.mjs
     # What the audit reads: the sources of the four translated packages.
     # `task-cache: true` would key it on every file in the repository, and
@@ -424,7 +424,7 @@ jobs:
     name: Translations status
     using: env:bash-node@24.0.18
     cwd: /app/app/packages/web
-    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-2}
+    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-3}
     run: node scripts/translation-status.mjs
     # The same packages: their sources, gt.config.json and _gt catalogs.
     task-cache: *translation-inputs
@@ -448,7 +448,7 @@ jobs:
     timeout: 10m
     memory: 1GiB
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # The rest of the repository: every top-level path outside the package
   # directories (pnpm-workspace.yaml's globs), named rather than found by
@@ -502,7 +502,7 @@ jobs:
     timeout: 20m
     memory: 2GiB
     env:
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
 
   # `db:migrate` (drizzle-kit migrate) against an empty database, then again:
   # the second run must find nothing to apply. pglite-server stands in for
@@ -526,7 +526,7 @@ jobs:
     env:
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: |
       node node_modules/drizzle-kit/bin.cjs migrate
       node node_modules/drizzle-kit/bin.cjs migrate
@@ -564,7 +564,7 @@ jobs:
       CLICKHOUSE_METRICS_USER: default
       CLICKHOUSE_METRICS_PASSWORD: infrawrench
       CLICKHOUSE_METRICS_DATABASE: infrawrench
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: |
       node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts src/__tests__/db/clickhouse.test.ts src/__tests__/db/clickhouse-cost.test.ts
       node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
@@ -624,7 +624,7 @@ jobs:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       DATABASE_URLS: >-
         postgres://infrawrench:infrawrench@postgres:5432/infrawrench, postgres://infrawrench:infrawrench@postgres-2:5433/infrawrench, postgres://infrawrench:infrawrench@postgres-3:5434/infrawrench
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: |
       IFS=', ' read -ra servers <<< "$DATABASE_URLS"
       migrations=()
@@ -668,7 +668,7 @@ jobs:
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: |
       (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
       workers=$(($(nproc) / 4))
@@ -715,7 +715,7 @@ jobs:
     using: env:bash-node@24.0.18
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     # The package script (esbuild, then `vsce package` on a staged copy in
     # out/stage), and the .vsix moved into a directory of its own so the
     # download is the package alone.
@@ -756,7 +756,7 @@ jobs:
     using: env:bash-node@24.0.18
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      IWCI_BENCH_NONCE: cold-2
+      IWCI_BENCH_NONCE: cold-3
     run: |
       script="$(node -p 'require("./package.json").scripts.build')"
       eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
