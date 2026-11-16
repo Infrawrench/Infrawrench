@@ -3555,6 +3555,74 @@ fn an_accept_timeout_the_program_sets_still_applies() {
 }
 
 #[test]
+fn a_listening_socket_is_a_socket_with_no_peer() {
+    // The C library's `getsockopt(SO_TYPE)` is `fd_fdstat_get`'s file
+    // type, and a listening socket's was "unknown", so it answered
+    // ENOTSOCK and Python could not wrap a listening socket in TLS (#1217).
+    // The exit code is 10 * the check that failed + the type it got. Python
+    // then asks the socket for its peer and tries a receive, and needs
+    // ENOTCONN (53) from each, which a listening socket answers on Linux:
+    // the exit code is 100 (the peer) or 200 (the receive) + what it got.
+    let wat = r#"(module
+  (import "wasix_32v1" "sock_open" (func $open (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_bind" (func $bind (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_listen" (func $listen (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_addr_peer" (func $peer (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_recv" (func $recv (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $fdstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  ;; fails with 10 * $check + the file type unless `fd` is of type $want
+  (func $expect (param $check i32) (param $fd i32) (param $want i32)
+    (local $got i32)
+    (if (call $fdstat (local.get $fd) (i32.const 600))
+      (then (call $exit (i32.mul (local.get $check) (i32.const 10)))))
+    (local.set $got (i32.load8_u (i32.const 600)))
+    (if (i32.ne (local.get $got) (local.get $want))
+      (then (call $exit (i32.add (i32.mul (local.get $check) (i32.const 10)) (local.get $got))))))
+  ;; __wasi_addr_port_t at $at: IPv4, `port`, 127.0.0.1
+  (func $addr (param $at i32) (param $port i32)
+    (i32.store8 (local.get $at) (i32.const 1))
+    (i32.store16 (i32.add (local.get $at) (i32.const 2)) (local.get $port))
+    (i32.store (i32.add (local.get $at) (i32.const 4)) (i32.const 0x0100007f)))
+  (func (export "_start")
+    (local $errno i32)
+    ;; an IPv4 (1) stream (1) socket at 400: 6 is a stream socket
+    (if (call $open (i32.const 1) (i32.const 1) (i32.const 0) (i32.const 400))
+      (then (call $exit (i32.const 1))))
+    (call $expect (i32.const 1) (i32.load (i32.const 400)) (i32.const 6))
+    (call $addr (i32.const 500) (i32.const 4463))
+    (if (call $bind (i32.load (i32.const 400)) (i32.const 500))
+      (then (call $exit (i32.const 2))))
+    (call $expect (i32.const 2) (i32.load (i32.const 400)) (i32.const 6))
+    (if (call $listen (i32.load (i32.const 400)) (i32.const 16))
+      (then (call $exit (i32.const 3))))
+    (call $expect (i32.const 3) (i32.load (i32.const 400)) (i32.const 6))
+    (local.set $errno (call $peer (i32.load (i32.const 400)) (i32.const 700)))
+    (if (i32.ne (local.get $errno) (i32.const 53))
+      (then (call $exit (i32.add (i32.const 100) (local.get $errno)))))
+    ;; one 16-byte buffer at 900
+    (i32.store (i32.const 800) (i32.const 900))
+    (i32.store (i32.const 804) (i32.const 16))
+    (local.set $errno (call $recv (i32.load (i32.const 400))
+      (i32.const 800) (i32.const 1) (i32.const 0) (i32.const 820) (i32.const 824)))
+    (if (i32.ne (local.get $errno) (i32.const 53))
+      (then (call $exit (i32.add (i32.const 200) (local.get $errno)))))
+    ;; an IPv4 datagram (2) socket at 404: 5 is a datagram socket (a job
+    ;; has no UDP to bind it to)
+    (if (call $open (i32.const 1) (i32.const 2) (i32.const 0) (i32.const 404))
+      (then (call $exit (i32.const 4))))
+    (call $expect (i32.const 4) (i32.load (i32.const 404)) (i32.const 5))
+    (call $exit (i32.const 0))))"#;
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(&wat_module("sockets", wat), invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+}
+
+#[test]
 fn a_service_blocked_in_accept_takes_its_sigterm() {
     // A service waiting for a client that never came is stopped by the
     // SIGTERM that ends it, here through its own handler (exit 115),
