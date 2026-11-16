@@ -220,7 +220,7 @@ fn placed_fs(root: &Path, files: &[&Placed]) -> Result<(DynFs, Modes)> {
             }
         }
     }
-    Ok((Arc::new(fs), Modes::over(Arc::new(modes))))
+    Ok((Arc::new(fs), Modes::over(Arc::new(modes.into_iter().collect()))))
 }
 
 fn setup(e: impl std::fmt::Display) -> Error {
@@ -637,7 +637,7 @@ impl Runtime {
         }
         let (s, gofer) = serve(Export {
             fs: Arc::new(iwci),
-            modes: Modes::over(Arc::new(iwci_modes)),
+            modes: Modes::over(Arc::new(iwci_modes.into_iter().collect())),
             root: "/".into(),
             read_only: true,
             budget: None,
