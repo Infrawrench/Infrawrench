@@ -19,3 +19,5 @@ export function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
 }
+
+// bench: typical pull request 3
