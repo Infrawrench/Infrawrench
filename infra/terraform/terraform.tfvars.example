@@ -295,9 +295,9 @@ app_env = {
 
   # Optional: CI (app/packages/ci-proxy in front of the runners that
   # infra/ci-runners provisions). Without CI_PROXY_URL and CI_PROXY_KEY (the
-  # proxy's PROXY_KEY) CI stays off for every org; with them it is still on
-  # only for orgs a platform admin picks in /admin. The GitHub App's webhook
-  # must subscribe to "Push" and "Pull request", with "Checks: write".
+  # proxy's PROXY_KEY) CI stays off for every org; with them it is on for every
+  # org on a paid plan. The GitHub App's webhook must subscribe to "Push" and
+  # "Pull request", with "Checks: write".
   CI_PROXY_URL = "https://ci-proxy.example.com"
   CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
   # Optional: signs the links a CI run's downloads (`downloads:`) are fetched
@@ -306,7 +306,9 @@ app_env = {
   # runs list their downloads but cannot hand out a link to one.
   CI_ARTIFACT_SIGNING_KEY = "<the proxy's ARTIFACT_SIGNING_KEY>"
   # Optional: billing CI. Each meter reports its unit (decimals allowed) and
-  # its price carries the unit price; an unset pair goes unbilled.
+  # its price carries the unit price; an unset pair goes unbilled. Checkout
+  # attaches the prices to new subscriptions, and ticking Run CI for a GitHub
+  # account adds any an existing subscription lacks.
   INFRAWRENCH_STRIPE_CI_VCPU_METER_EVENT    = "ci_vcpu_seconds"
   INFRAWRENCH_STRIPE_CI_MEMORY_METER_EVENT  = "ci_memory_gib_seconds"
   INFRAWRENCH_STRIPE_CI_STORAGE_METER_EVENT = "ci_storage_gib_hours"

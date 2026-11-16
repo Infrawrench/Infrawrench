@@ -22955,7 +22955,6 @@
   "37d378961905c076": "Binär: gespeichert, wie der Job sie hinterlassen hat",
   "2261b5f8db5349f3": "Speicher in GiB-Stunden",
   "b406a107b240ab78": "Speicher aktuell",
-  "1e508135da849895": "Abgerechnet als Rechenleistung und Speicher (Caches und Downloads) auf der Rechnung Ihres Tarifs.",
   "41fb8326c7720036": "Wird abgebrochen…",
   "6bc75632fd9c9136": "Der Lauf konnte nicht abgebrochen werden",
   "6138c22e3558dad8": "Diesen Lauf stoppen. Laufende Jobs werden wie bei einer Zeitüberschreitung gestoppt.",
@@ -23260,5 +23259,6 @@
     "t": "p",
     "i": 1,
     "c": "Die Moment-Ansicht führt von Infrawrench Cloud aufgezeichnete Feeds zusammen, etwa Änderungen, Vorfälle, Kostenanomalien und Workflow-Läufe. Melden Sie sich bei einer Organisation an, um sie zu nutzen."
-  }
+  },
+  "b8cecdf7ef0084c3": "Abgerechnet auf der Rechnung Ihres Tarifs: $0.00008 pro vCPU-Sekunde, $0.000008 pro GiB-Sekunde Arbeitsspeicher und $0.0002 pro GiB-Stunde Speicher (Caches und Downloads)."
 }

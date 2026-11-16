@@ -23148,7 +23148,6 @@
   "37d378961905c076": "Binario: guardado tal como lo dejó el trabajo",
   "2261b5f8db5349f3": "Almacenamiento en GiB-hora",
   "b406a107b240ab78": "Almacenamiento actual",
-  "1e508135da849895": "Se factura como cómputo y almacenamiento (cachés y descargas) en la factura de su plan.",
   "41fb8326c7720036": "Cancelando…",
   "6bc75632fd9c9136": "No se pudo cancelar la ejecución",
   "6138c22e3558dad8": "Detén esta ejecución. Los trabajos en curso se detienen como lo haría un tiempo de espera agotado.",
@@ -23449,5 +23448,6 @@
   "59156fa37a426349": "Si los usuarios inician sesión en el clúster con Microsoft Entra ID (integración de Entra administrada por AKS), en lugar de solo con las cuentas locales del clúster",
   "6db050abb2649520": "Nada que ejecutar",
   "13cbe3684e7192d7": "CI, entornos y métricas de entrega.",
-  "3b8863b1121dbcc9": "Gráficos personalizados"
+  "3b8863b1121dbcc9": "Gráficos personalizados",
+  "b8cecdf7ef0084c3": "Se factura en la factura de su plan: $0.00008 por vCPU-segundo, $0.000008 por GiB-segundo de memoria y $0.0002 por GiB-hora de almacenamiento (cachés y descargas)."
 }

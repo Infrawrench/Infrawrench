@@ -22956,7 +22956,6 @@
   "37d378961905c076": "Binaire : stocké tel que la tâche l'a laissé",
   "2261b5f8db5349f3": "Stockage en Gio-heures",
   "b406a107b240ab78": "Stockage actuel",
-  "1e508135da849895": "Facturé en calcul et en stockage (caches et téléchargements) sur la facture de votre forfait.",
   "41fb8326c7720036": "Annulation…",
   "6bc75632fd9c9136": "Impossible d'annuler l'exécution",
   "6138c22e3558dad8": "Arrêter cette exécution. Les tâches en cours sont arrêtées comme le ferait un délai d'expiration.",
@@ -23261,5 +23260,6 @@
     "t": "p",
     "i": 1,
     "c": "La vue instant fusionne les flux enregistrés par Infrawrench Cloud, comme changements, incidents, anomalies de coûts et exécutions de workflow. Connectez-vous à une organisation pour l'utiliser."
-  }
+  },
+  "b8cecdf7ef0084c3": "Facturé sur la facture de votre forfait : $0.00008 par vCPU-seconde, $0.000008 par Gio-seconde de mémoire et $0.0002 par Gio-heure de stockage (caches et téléchargements)."
 }

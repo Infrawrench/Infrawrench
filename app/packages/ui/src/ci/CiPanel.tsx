@@ -281,7 +281,9 @@ function UsageCard({ usage }: { usage: CiUsage }) {
         {gt("Usage in {month}", { month: usage.month })}
       </h3>
       <p className="text-xs text-on-surface-faint">
-        {gt("Billed as compute and storage (caches and downloads) on your plan's invoice.")}
+        {gt(
+          "Billed on your plan's invoice: $0.00008 per vCPU-second, $0.000008 per GiB-second of memory and $0.0002 per GiB-hour of storage (caches and downloads).",
+        )}
       </p>
       <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {cells.map(([label, value]) => (
