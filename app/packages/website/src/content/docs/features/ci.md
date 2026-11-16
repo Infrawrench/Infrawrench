@@ -691,13 +691,15 @@ A job another runner ran is billed like any other job of the run.
 
 ## Usage and billing
 
-CI is part of paid plans. The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
+CI is part of paid plans (from $20 per seat per month). The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
 
-- **vCPU time**: each job's running time, at its share of a vCPU.
-- **Memory**: the memory each job reserves, for as long as it runs.
-- **Storage**: the space your caches and [downloads](#downloads) take on the runners, measured every hour. Task cache results count here too, and a download stops counting when it expires.
+- **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs.
+- **Memory**, $0.000008 per GiB-second: the memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs.
+- **Storage**, $0.0002 per GiB-hour (about $0.14 per GiB for a 30-day month): the space your caches and [downloads](#downloads) take on the runners, measured every hour. Task cache results count here too, and a download stops counting when it expires.
 
-A job the task cache stood in for did not run, so it uses no vCPU time or memory.
+For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all.
+
+A job the task cache stood in for did not run, so it uses no vCPU time or memory. A [cloud job](#cloud-jobs) runs on your own account, so the provider bills you for the machine and it uses no vCPU time or memory here either.
 
 Complimentary organizations are never billed. See [Billing and plans](../team-and-billing/billing-and-plans.md#ci).
 

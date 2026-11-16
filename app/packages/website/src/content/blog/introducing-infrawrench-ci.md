@@ -171,6 +171,16 @@ jobs:
 - Secrets are read only into `env:` values and are masked everywhere a job's text leaves by: the live log, captured output, errors, outputs and text downloads.
 - A job reaches the public internet and its own private loopback, never the runner's host, its private network or cloud metadata addresses.
 
+## Pricing
+
+CI is part of the paid plan (Pro, $20 per seat per month) and is billed by the second for what your jobs use, on the same invoice:
+
+- **vCPU time:** $0.00008 per vCPU-second ($0.0048 per vCPU-minute). Four jobs share a vCPU, so a job is charged a quarter of one for as long as it runs.
+- **Memory:** $0.000008 per GiB-second of the memory a job reserves.
+- **Storage:** $0.0002 per GiB-hour of caches and downloads kept on the runners, about $0.14 per GiB for a 30-day month.
+
+A job with `memory: 4GiB` that runs for 10 minutes comes to 150 vCPU-seconds ($0.012) and 2,400 GiB-seconds ($0.0192), about $0.03. A task cache hit doesn't run, so it costs nothing, and a cloud job is billed by your own provider. [Billing and plans](/docs/team-and-billing/billing-and-plans#ci) has the details.
+
 ## Try it
 
 Infrawrench CI is available now. Open **CI** in the web or desktop app, connect a GitHub account, add a pipeline to `.infrawrench/ci/` and push. The [CI docs](/docs/features/ci) cover the pipeline file, the tools and cloud jobs in full.

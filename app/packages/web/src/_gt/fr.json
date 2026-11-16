@@ -23147,7 +23147,6 @@
   "37d378961905c076": "Binaire : stocké tel que la tâche l'a laissé",
   "2261b5f8db5349f3": "Stockage en Gio-heures",
   "b406a107b240ab78": "Stockage actuel",
-  "1e508135da849895": "Facturé en calcul et en stockage (caches et téléchargements) sur la facture de votre forfait.",
   "41fb8326c7720036": "Annulation…",
   "6bc75632fd9c9136": "Impossible d'annuler l'exécution",
   "6138c22e3558dad8": "Arrêter cette exécution. Les tâches en cours sont arrêtées comme le ferait un délai d'expiration.",
@@ -23448,5 +23447,6 @@
   "59156fa37a426349": "Si les utilisateurs se connectent au cluster avec Microsoft Entra ID (intégration Entra gérée par AKS), plutôt qu'avec les seuls comptes locaux du cluster",
   "6db050abb2649520": "Rien à exécuter",
   "13cbe3684e7192d7": "CI, environnements et métriques de livraison.",
-  "3b8863b1121dbcc9": "Graphes personnalisés"
+  "3b8863b1121dbcc9": "Graphes personnalisés",
+  "b8cecdf7ef0084c3": "Facturé sur la facture de votre forfait : $0.00008 par vCPU-seconde, $0.000008 par Gio-seconde de mémoire et $0.0002 par Gio-heure de stockage (caches et téléchargements)."
 }

@@ -23146,7 +23146,6 @@
   "37d378961905c076": "Binär: gespeichert, wie der Job sie hinterlassen hat",
   "2261b5f8db5349f3": "Speicher in GiB-Stunden",
   "b406a107b240ab78": "Speicher aktuell",
-  "1e508135da849895": "Abgerechnet als Rechenleistung und Speicher (Caches und Downloads) auf der Rechnung Ihres Tarifs.",
   "41fb8326c7720036": "Wird abgebrochen…",
   "6bc75632fd9c9136": "Der Lauf konnte nicht abgebrochen werden",
   "6138c22e3558dad8": "Diesen Lauf stoppen. Laufende Jobs werden wie bei einer Zeitüberschreitung gestoppt.",
@@ -23447,5 +23446,6 @@
   "59156fa37a426349": "Ob sich Benutzer beim Cluster mit Microsoft Entra ID anmelden (AKS-verwaltete Entra-Integration) statt nur mit den lokalen Konten des Clusters",
   "6db050abb2649520": "Nichts auszuführen",
   "13cbe3684e7192d7": "CI, Umgebungen und Auslieferungsmetriken.",
-  "3b8863b1121dbcc9": "Benutzerdefinierte Diagramme"
+  "3b8863b1121dbcc9": "Benutzerdefinierte Diagramme",
+  "b8cecdf7ef0084c3": "Abgerechnet auf der Rechnung Ihres Tarifs: $0.00008 pro vCPU-Sekunde, $0.000008 pro GiB-Sekunde Arbeitsspeicher und $0.0002 pro GiB-Stunde Speicher (Caches und Downloads)."
 }

@@ -19,6 +19,7 @@ sidebar_order: 3
 | Custom graphs      | No                     | Yes                    |
 | API keys           | No                     | Yes                    |
 | AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
+| [CI](#ci)          | No                     | Metered, by usage      |
 | Price              | $0                     | $20 / seat / mo        |
 | Prepaid capacity   | Not available          | $200 / seat / 2 years  |
 
@@ -103,8 +104,12 @@ If your subscription includes a trial period (for example a promotional offer), 
 
 [CI](../features/ci.md) is part of paid plans and is billed by what your pipelines use, on the same invoice as your seats:
 
-- **vCPU time**, per second: each job's running time at its share of a vCPU.
-- **Memory**, per GiB-second: the memory each job reserves while it runs.
-- **Storage**, per GiB-hour: the space your caches and [downloads](../features/ci.md#downloads) take on the runners, measured every hour.
+| Unit      | Price                                              | What counts                                                                                                 |
+| --------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| vCPU time | $0.00008 per vCPU-second ($0.0048 per vCPU-minute) | Each job's running time, at a quarter of a vCPU (four jobs share one)                                       |
+| Memory    | $0.000008 per GiB-second                           | The memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs                  |
+| Storage   | $0.0002 per GiB-hour (about $0.14 per GiB-month)   | The space your caches and [downloads](../features/ci.md#downloads) take on the runners, measured every hour |
+
+For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. A job the task cache stands in for does not run, so it costs nothing, and a [cloud job](../features/ci.md#cloud-jobs) is billed by your provider, not here.
 
 The **CI** page shows this month's runs, compute and storage. Complimentary organizations are never billed for CI.
