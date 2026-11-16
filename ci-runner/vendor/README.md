@@ -798,6 +798,22 @@ descriptor was a terminal, and each silenced a `node`:
 Upstream main still answers the first two as 0.705.0 does (checked
 November 2026).
 
+**A listening socket is a socket with no peer (#1217).** The same
+`SO_TYPE` answer, from `fd_fdstat_get`'s file type, was "unknown" for every
+socket that was not yet bound or already connected: a bound or listening
+TCP socket and a UDP socket. So `getsockopt(SOL_SOCKET, SO_TYPE)` on a
+server's socket failed with `ENOTSOCK`, and Python's
+`ssl.SSLContext.wrap_socket`, which asks for it first, could not wrap one
+(the usual way to serve HTTPS from Python). `fdstat` now answers stream
+socket for a bound or listening TCP socket, datagram socket for a UDP one,
+and a remote socket's own type. `wrap_socket` then asks the socket for its
+peer and takes `ENOTCONN` for "not connected", as Linux answers for a
+listening socket, but `sock_addr_peer` answered `ENOTSUP` for one, which it
+raised; and then tries a receive, for which the same holds. `src/net/socket.rs`
+answers `ENOTCONN` for both, and for a receive on a socket that is bound
+but neither listening nor connected. Upstream main still answers all of
+them as 0.705.0 does (checked November 2026, at b72787f1be).
+
 **A program can use descriptors 3 and 4 (#1019).** They are the preopens,
 the virtual root and the job's `/`, and `dup2_at` refused to replace one
 with `ENOTSUP`, so bash's `exec 3>&1` (`dup2(1, 3)`) and `exec 4< file`
@@ -1117,7 +1133,8 @@ field and the same `proc_parent` (checked November 2026).
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
-still classify as streams, a program can put its own descriptors on the
+still classify as streams, a bound or listening socket has a socket's
+file type and no peer, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
 can be renamed, a guest's CPU clocks are its own, and a blocking accept
 or receive waits with no timeout of its own and still ends for a signal,
@@ -1148,13 +1165,15 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
-`python/idle-server-passes`, `python/idle-server-timeout-fails` and
+`python/idle-server-passes`, `python/idle-server-timeout-fails`,
+`python/tls-server-passes` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,
 `a_program_can_replace_the_preopens_and_keep_its_paths`,
 `a_bash_script_can_use_descriptors_3_and_4`,
 `a_blocking_accept_or_recv_is_stopped_by_the_timeout`,
 `an_accept_timeout_the_program_sets_still_applies`,
+`a_listening_socket_is_a_socket_with_no_peer`,
 `a_service_blocked_in_accept_takes_its_sigterm`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
