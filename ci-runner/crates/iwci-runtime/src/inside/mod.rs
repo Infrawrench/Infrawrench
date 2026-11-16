@@ -251,6 +251,128 @@ impl FileSystem for Observed {
     }
 }
 
+/// The sandbox's own files from `root`, where what a read-only mount
+/// refuses reads as `PermissionDenied`. virtual-fs's host file system turns
+/// EROFS into `UnknownError` (EIO in the guest), and WASIX opens a regular
+/// file's shared handle for reading and writing first, narrowing to what
+/// the program asked for only on `PermissionDenied`: so every plain read
+/// of a file in one of the sandbox's read-only mounts (a Node tool's
+/// directory, a native program's files) failed with EIO. A write the
+/// program asked for there still fails, with EPERM.
+#[derive(Debug)]
+pub(crate) struct ReadOnlyMounts {
+    inner: iwci_vfs::DynFs,
+    root: PathBuf,
+    read_only: fn(&Path) -> bool,
+}
+
+impl ReadOnlyMounts {
+    pub(crate) fn new(inner: iwci_vfs::DynFs, root: impl Into<PathBuf>) -> Self {
+        Self {
+            inner,
+            root: root.into(),
+            read_only: mount_is_read_only,
+        }
+    }
+
+    /// `result`, unless it is an error a read-only mount at `path` caused.
+    fn refused<T>(&self, path: &Path, result: virtual_fs::Result<T>) -> virtual_fs::Result<T> {
+        match result {
+            Err(virtual_fs::FsError::UnknownError | virtual_fs::FsError::IOError)
+                if (self.read_only)(&self.root.join(path.strip_prefix("/").unwrap_or(path))) =>
+            {
+                Err(virtual_fs::FsError::PermissionDenied)
+            }
+            other => other,
+        }
+    }
+}
+
+/// Whether `path`, or the nearest of its ancestors that exists, is on a
+/// read-only mount: `access(2)` for writing answers EROFS there.
+fn mount_is_read_only(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let mut at = Some(path);
+    while let Some(p) = at {
+        let Ok(c) = std::ffi::CString::new(p.as_os_str().as_bytes()) else {
+            return false;
+        };
+        // SAFETY: a NUL-terminated path we own.
+        if unsafe { libc::access(c.as_ptr(), libc::W_OK) } == 0 {
+            return false;
+        }
+        match std::io::Error::last_os_error().raw_os_error() {
+            Some(libc::EROFS) => return true,
+            Some(libc::ENOENT) => at = p.parent(),
+            _ => return false,
+        }
+    }
+    false
+}
+
+impl FileSystem for ReadOnlyMounts {
+    fn readlink(&self, path: &Path) -> virtual_fs::Result<PathBuf> {
+        self.inner.readlink(path)
+    }
+    fn read_dir(&self, path: &Path) -> virtual_fs::Result<virtual_fs::ReadDir> {
+        self.inner.read_dir(path)
+    }
+    fn create_dir(&self, path: &Path) -> virtual_fs::Result<()> {
+        self.refused(path, self.inner.create_dir(path))
+    }
+    fn create_symlink(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
+        self.refused(target, self.inner.create_symlink(source, target))
+    }
+    fn hard_link(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
+        self.refused(target, self.inner.hard_link(source, target))
+    }
+    fn remove_dir(&self, path: &Path) -> virtual_fs::Result<()> {
+        self.refused(path, self.inner.remove_dir(path))
+    }
+    fn rename<'a>(
+        &'a self,
+        from: &'a Path,
+        to: &'a Path,
+    ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
+        Box::pin(async move {
+            let result = self.inner.rename(from, to).await;
+            let result = self.refused(from, result);
+            self.refused(to, result)
+        })
+    }
+    fn metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
+        self.inner.metadata(path)
+    }
+    fn symlink_metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
+        self.inner.symlink_metadata(path)
+    }
+    fn remove_file(&self, path: &Path) -> virtual_fs::Result<()> {
+        self.refused(path, self.inner.remove_file(path))
+    }
+    fn new_open_options(&self) -> virtual_fs::OpenOptions<'_> {
+        virtual_fs::OpenOptions::new(self)
+    }
+}
+
+impl virtual_fs::FileOpener for ReadOnlyMounts {
+    fn open(
+        &self,
+        path: &Path,
+        conf: &virtual_fs::OpenOptionsConfig,
+    ) -> virtual_fs::Result<Box<dyn virtual_fs::VirtualFile + Send + Sync + 'static>> {
+        let opened = self
+            .inner
+            .new_open_options()
+            .options(conf.clone())
+            .open(path);
+        if conf.would_mutate() || conf.write() {
+            self.refused(path, opened)
+        } else {
+            opened
+        }
+    }
+}
+
 /// Writes what the job prints to this process's stdout and stderr, a
 /// chunk at a time.
 fn output_sink() -> crate::LogSink {
@@ -442,4 +564,148 @@ fn run(spec_path: &Path) -> Result<i32, String> {
     )
     .map_err(|e| format!("{}: {e}", spec.result.display()))?;
     Ok(outcome.exit_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use virtual_fs::{FileOpener, FsError, OpenOptionsConfig, TmpFileSystem, VirtualFile};
+
+    /// A read-only mount as virtual-fs's host file system reports it: a
+    /// change, or an open that could make one, fails with `UnknownError`
+    /// (what it makes of EROFS).
+    #[derive(Debug)]
+    struct Erofs(TmpFileSystem);
+
+    impl FileSystem for Erofs {
+        fn readlink(&self, path: &Path) -> virtual_fs::Result<PathBuf> {
+            self.0.readlink(path)
+        }
+        fn read_dir(&self, path: &Path) -> virtual_fs::Result<virtual_fs::ReadDir> {
+            self.0.read_dir(path)
+        }
+        fn create_dir(&self, _: &Path) -> virtual_fs::Result<()> {
+            Err(FsError::UnknownError)
+        }
+        fn create_symlink(&self, _: &Path, _: &Path) -> virtual_fs::Result<()> {
+            Err(FsError::UnknownError)
+        }
+        fn hard_link(&self, _: &Path, _: &Path) -> virtual_fs::Result<()> {
+            Err(FsError::UnknownError)
+        }
+        fn remove_dir(&self, _: &Path) -> virtual_fs::Result<()> {
+            Err(FsError::UnknownError)
+        }
+        fn rename<'a>(
+            &'a self,
+            _: &'a Path,
+            _: &'a Path,
+        ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
+            Box::pin(async { Err(FsError::UnknownError) })
+        }
+        fn metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
+            self.0.metadata(path)
+        }
+        fn symlink_metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
+            self.0.symlink_metadata(path)
+        }
+        fn remove_file(&self, _: &Path) -> virtual_fs::Result<()> {
+            Err(FsError::UnknownError)
+        }
+        fn new_open_options(&self) -> virtual_fs::OpenOptions<'_> {
+            virtual_fs::OpenOptions::new(self)
+        }
+    }
+
+    impl FileOpener for Erofs {
+        fn open(
+            &self,
+            path: &Path,
+            conf: &OpenOptionsConfig,
+        ) -> virtual_fs::Result<Box<dyn VirtualFile + Send + Sync + 'static>> {
+            if conf.would_mutate() || conf.write() {
+                return Err(FsError::UnknownError);
+            }
+            self.0.new_open_options().options(conf.clone()).open(path)
+        }
+    }
+
+    fn mount(read_only: fn(&Path) -> bool) -> ReadOnlyMounts {
+        let tmp = TmpFileSystem::new();
+        tmp.new_open_options()
+            .write(true)
+            .create(true)
+            .open("/cli.js")
+            .unwrap();
+        ReadOnlyMounts {
+            inner: Arc::new(Erofs(tmp)),
+            root: "/usr/local/lib/iwci/tools/greet/1.0.0".into(),
+            read_only,
+        }
+    }
+
+    #[test]
+    fn a_read_only_mount_refuses_with_permission_denied_so_a_read_falls_back() {
+        let fs = mount(|path| path.starts_with("/usr/local/lib/iwci/tools/greet"));
+        // What WASIX tries first for any regular file, and then what the
+        // program asked for, a read.
+        let duplex = fs.new_open_options().read(true).write(true).open("/cli.js");
+        assert!(
+            matches!(duplex, Err(FsError::PermissionDenied)),
+            "{duplex:?}"
+        );
+        assert!(fs.new_open_options().read(true).open("/cli.js").is_ok());
+        assert!(matches!(
+            fs.new_open_options().write(true).create(true).open("/new"),
+            Err(FsError::PermissionDenied)
+        ));
+        assert!(matches!(
+            fs.create_dir(Path::new("/d")),
+            Err(FsError::PermissionDenied)
+        ));
+        assert!(matches!(
+            fs.remove_file(Path::new("/cli.js")),
+            Err(FsError::PermissionDenied)
+        ));
+    }
+
+    #[test]
+    fn other_failures_are_left_as_they_are() {
+        let fs = mount(|_| false);
+        let duplex = fs.new_open_options().read(true).write(true).open("/cli.js");
+        assert!(matches!(duplex, Err(FsError::UnknownError)), "{duplex:?}");
+    }
+
+    /// On a real read-only mount: `IWCI_TEST_RO_DIR` names a directory on
+    /// one that holds a file `f` (a read-only bind mount, for instance).
+    #[test]
+    #[ignore = "needs IWCI_TEST_RO_DIR, a directory on a read-only mount holding a file f"]
+    fn on_a_read_only_mount_a_read_open_succeeds_and_a_write_is_denied() {
+        let Some(dir) = std::env::var_os("IWCI_TEST_RO_DIR") else {
+            return;
+        };
+        let dir = PathBuf::from(dir);
+        let tokio = tokio::runtime::Runtime::new().unwrap();
+        let host =
+            virtual_fs::host_fs::FileSystem::new(tokio.handle().clone(), dir.clone()).unwrap();
+        // What virtual-fs makes of EROFS on its own: not an error WASIX
+        // narrows its open on.
+        let raw = host.new_open_options().read(true).write(true).open("/f");
+        assert!(matches!(raw, Err(FsError::UnknownError)), "{raw:?}");
+        assert!(mount_is_read_only(&dir.join("f")));
+        let fs = ReadOnlyMounts::new(Arc::new(host), dir);
+        let duplex = fs.new_open_options().read(true).write(true).open("/f");
+        assert!(
+            matches!(duplex, Err(FsError::PermissionDenied)),
+            "{duplex:?}"
+        );
+        assert!(fs.new_open_options().read(true).open("/f").is_ok());
+    }
+
+    #[test]
+    fn a_writable_path_is_not_read_only() {
+        let dir = std::env::temp_dir();
+        assert!(!mount_is_read_only(&dir));
+        assert!(!mount_is_read_only(&dir.join("does-not-exist/below")));
+    }
 }

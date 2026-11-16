@@ -283,6 +283,9 @@ fn a_node_tool_runs_beside_bun() {
     // in the same job: the tool's directory is mounted read only in the
     // sandbox, at the same path as outside, and its command runs from the
     // script and from Bun.
+    // The isolate reads files in the sandbox's read-only mounts, the tool's
+    // and the runner's own: those reads failed with EIO
+    // (`inside::ReadOnlyMounts`).
     let Some(fx) = fixture() else { return };
     let dir = "/usr/local/lib/iwci/tools/greet/1.0.0";
     let tool = SnapshotBuilder::new();
@@ -309,6 +312,7 @@ fn a_node_tool_runs_beside_bun() {
         bun -e 'const r = Bun.spawnSync(["greet", "from bun"]); process.stdout.write(r.stdout); process.stderr.write(r.stderr);'
         bun -e 'console.log(require("fs").readFileSync("{dir}/cli.js", "utf8").includes("hello") ? "bun reads the tool" : "no")'
         if touch {dir}/new 2>/dev/null; then echo writable; else echo read only; fi
+        test "$(head -c 1 /.iwci/job/job.json)" = "{{" && echo "bash reads the runner's mount"
         bun -e 'try {{ require("fs").writeFileSync("{dir}/new", "x"); console.log("writable"); }} catch {{ console.log("read only for bun"); }}'
     "#
     );
@@ -321,6 +325,7 @@ fn a_node_tool_runs_beside_bun() {
         "bun reads the tool",
         "read only",
         "read only for bun",
+        "bash reads the runner's mount",
     ] {
         assert!(stdout.lines().any(|l| l == line), "{line:?} in {stdout}");
     }
