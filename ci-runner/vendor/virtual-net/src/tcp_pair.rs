@@ -32,6 +32,10 @@ struct SocketBufferState {
     state: State,
     // This flag prevents a poll write ready storm
     halt_immediate_poll_write: bool,
+    // Whether a write already arrived after the reader went: the first is
+    // taken and dropped, as Linux takes it (and the peer answers with a
+    // reset), and the ones after it fail.
+    written_after_close: bool,
 }
 
 impl SocketBufferState {
@@ -70,6 +74,7 @@ impl SocketBuffer {
                 wakers: Vec::new(),
                 state: State::Alive,
                 halt_immediate_poll_write: false,
+                written_after_close: false,
             })),
             dead_on_drop: false,
         }
@@ -179,6 +184,14 @@ impl SocketBuffer {
     ) -> crate::Result<usize> {
         let mut state = self.state.lock().unwrap();
         if state.state != State::Alive {
+            // The reading end closed. Linux takes the first write after
+            // that (the peer's answer to it is a reset), so a TLS client
+            // that reads to the end and then sends its alert sees the end
+            // of the stream, not ECONNRESET; only the writes after it fail.
+            if matches!(state.state, State::Dead | State::Closed) && !state.written_after_close {
+                state.written_after_close = true;
+                return Ok(data.len());
+            }
             return Err(NetworkError::ConnectionReset);
         }
         state.halt_immediate_poll_write = false;
@@ -710,6 +723,20 @@ mod tests {
         assert!(matches!(
             reader.poll_read_ready(&mut cx),
             Poll::Ready(Ok(4))
+        ));
+    }
+
+    #[test]
+    fn the_first_write_after_the_reader_closed_is_taken() {
+        let addr = "127.0.0.1:5432".parse().unwrap();
+        let (mut writer, reader) = TcpSocketHalf::channel(64, addr, addr);
+        drop(reader);
+        let mut buf = [std::mem::MaybeUninit::<u8>::uninit(); 8];
+        assert_eq!(writer.try_recv(&mut buf, false).unwrap(), 0);
+        assert_eq!(writer.try_send(b"alert").unwrap(), 5);
+        assert!(matches!(
+            writer.try_send(b"more"),
+            Err(NetworkError::ConnectionReset)
         ));
     }
 

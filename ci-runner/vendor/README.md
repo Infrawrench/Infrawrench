@@ -1381,9 +1381,24 @@ closed port were refused; only the address stayed taken.
 adds `test_loopback_closed_listener_releases_its_port` beside upstream's
 loopback tests.
 
+**Also in the patch: a write after the peer closed (#1245).** A connected
+pair's `SocketBuffer::try_send` (`src/tcp_pair.rs`) refused every write once
+the reading end had closed, the first included. Linux takes that first write
+(the peer answers it with a reset) and fails only the ones after it. The
+difference showed in TLS: a client that reads a response to the end of the
+stream finds no close_notify, and OpenSSL then sends a fatal alert before it
+reports the unexpected end; that write failing made Python raise
+`ConnectionResetError` where Linux gives `SSLEOFError`, which `ssl` turns
+into the end of the stream. The buffer now takes one write after its reader
+closed, without storing it, and refuses the rest as before.
+`a_write_after_the_peer_closed_is_taken_once_as_on_linux` in
+`iwci-runtime/src/network.rs` is the check, and the patch adds
+`the_first_write_after_the_reader_closed_is_taken` to the module's tests.
+
 **Remove it** when a virtual-net release after 0.705.0 releases a closed
-listener's address (wasmerio/wasmer `main` still keeps it as of November
-2026): delete `vendor/virtual-net*` and its `[patch.crates-io]` entry.
+listener's address and takes a write after the peer closed (wasmerio/wasmer
+`main` b72787f1be does neither, November 2026): delete `vendor/virtual-net*`
+and its `[patch.crates-io]` entry.
 
 To regenerate after editing: `diff -u` the changed files against the crate
 from crates.io with `a/` and `b/` labels.

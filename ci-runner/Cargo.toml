@@ -74,7 +74,8 @@ opt-level = 2
 # for when to remove it.
 #
 # virtual-net 0.705.0 with vendor/virtual-net.patch: closing a loopback
-# listener frees its port, so a job can listen on it again (#1009). See
+# listener frees its port, so a job can listen on it again (#1009), and the
+# first write after the peer closed is taken as Linux takes it (#1245). See
 # vendor/README.md for when to remove it.
 #
 # virtual-fs 0.705.0 with vendor/virtual-fs.patch: the in-memory file
