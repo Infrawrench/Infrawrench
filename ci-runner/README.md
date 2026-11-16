@@ -1744,6 +1744,39 @@ job runs them, beside the native program:
   the run. The task cache keys it like any job: the native tool's manifest
   is pinned by digest.
 
+What the same job does in a sandbox and as a WASIX job is checked case by
+case (`crates/iwci-runtime/tests/sandbox.rs`, `conformance_*`): the files a
+script lists, reads and writes, the changes and modes it leaves, the run's
+`/tmp/workflow` and lent files, the addresses a program may and may not
+reach with and without `network: false`, and how running out of memory, a
+timeout, a stall and a cancel end it. What still differs:
+
+- **Memory is measured differently.** A WASIX job's memory is its linear
+  memories and V8's reservations; a sandbox's is the pages its cgroup
+  holds, less the sandbox's own. The figures are of the same kind (what
+  the job held), not equal. A program that allocates past the limit is
+  refused as in a WASIX job while it is a WASIX program; native Bun past it
+  is killed with the whole sandbox, and the job fails as out of memory.
+- **Bun's own refused connections** to an address the policy forbids
+  arrive as a reset (`ECONNREFUSED`), not `ENETUNREACH` as for the WASIX
+  programs beside it, which see what they see in a WASIX job.
+- **The root has more in it.** `/` shows the sandbox's mount points
+  (`/.iwci`, `/lib64`, `/lib/<arch>-linux-gnu`, `/usr/local/bin`) and
+  gVisor's `/proc`, `/sys` and `/dev`, and the job's `/etc` gets
+  `passwd`, `group`, `hosts` and `resolv.conf` when it has none. All of it
+  is outside the clone, so none of it is a change. Those directories are
+  read only to native programs.
+- **Signals to Bun.** When the WASIX program that stands for Bun is
+  stopped, Bun gets `SIGTERM` and two seconds later `SIGKILL`, whatever
+  signal stopped it; what Bun writes after it exits is read for 200 ms
+  more.
+- **Speed.** A sandbox starts in about half a second more, and every file
+  operation of a WASIX program in it crosses gVisor's kernel and the
+  runner (roughly 1.5 times a WASIX job's time on the runtime's own test
+  suite).
+- **Bun is real**, so it can do more than a WASIX program: JIT, `bun:ffi`,
+  native addons and `bun build --compile` all work inside the sandbox.
+
 ### kubectl
 
 `tools: [builtin:kubectl@1.37]` puts kubectl on an environment's `PATH`.
