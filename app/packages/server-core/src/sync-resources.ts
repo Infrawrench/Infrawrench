@@ -75,7 +75,11 @@ export async function loadAccountClient(accountId: string, organizationId: strin
 
   // Refreshes an expiring OAuth access token (and persists the rotation).
   const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
-  await rewriteCredentialsThroughTunnel(accountId, credentials);
+  await rewriteCredentialsThroughTunnel(
+    accountId,
+    loaded.plugin.manifest.credentialFields,
+    credentials,
+  );
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,

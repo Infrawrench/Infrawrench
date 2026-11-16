@@ -2,7 +2,7 @@
  * Every bundled plugin package, as a lazy import. The single list both
  * desktop loaders read: the renderer's (`./loader.ts`, which validates
  * manifests and applies ENABLED_RESOURCE_TYPES) and the main process's
- * (`electron/infrafile/plugins.ts`, used by deploy and the CLI peer client).
+ * (`electron/main-plugins.ts`, used by provider OAuth).
  * Adding a plugin to the desktop app means adding it here, once.
  *
  * Every entry is a dynamic import, so a CLI invocation that never touches a

@@ -53,18 +53,6 @@ import type {
   WorkflowPluginInfo,
   WorkflowRegionOption,
 } from "./types.js";
-import { PLAN_PLACEHOLDER, PLANNED_ID_PREFIX } from "./infrafile/types.js";
-import type {
-  BuildRequest,
-  BuildTarget,
-  BuildTargetResource,
-  InfrafileHostOps,
-  InfrafileRunSink,
-  RegistryCredentials,
-  InfrafileAskKind,
-  InfrafileAskSpec,
-  RunInImageRequest,
-} from "./infrafile/types.js";
 
 /**
  * Identifies a peer plugin reached *through* a parent resource, rather than
@@ -202,20 +190,6 @@ export interface WorkflowRunContext {
   log(entry: RunLogEntry): void;
   /** Records the value the workflow declared via `infra.output(...)`. */
   setOutput(value: unknown): void;
-  /**
-   * Present only on an Infrafile run. Collects the stage artifacts (chosen env,
-   * plan, rendered Dockerfile, notes) that are pure bookkeeping and therefore
-   * identical on every platform: see `infrafile/types.ts`.
-   */
-  infrafile?: InfrafileRunSink;
-  /**
-   * Tests an author-supplied `ask(…, { pattern })` regex against an answer.
-   * Both are tenant-controlled on a cloud run, so a backtracking pattern must
-   * not run on the shared host's event loop: `runIsolate` fills this with the
-   * worker-backed `testRegexBounded`. Absent (direct `dispatch` callers) falls
-   * back to an inline `RegExp.test`.
-   */
-  testPattern?: (source: string, input: string) => Promise<boolean>;
 }
 
 /**
@@ -503,13 +477,6 @@ export interface WorkflowHost {
   ): Promise<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>;
 }
 
-/**
- * A host that can additionally run an Infrafile. The build/push/copy ops are
- * separate from {@link WorkflowHost} because a plain workflow never needs them,
- * only a host driving `runInfrafile` has to implement any of it.
- */
-export type InfrafileHost = WorkflowHost & InfrafileHostOps;
-
 /** Error thrown when a workflow uses a capability unavailable in its context. */
 export class WorkflowCapabilityError extends Error {
   constructor(message: string) {
@@ -551,275 +518,6 @@ function sftpParams(args: Record<string, unknown>): SftpParamsLite {
 }
 
 /** Longest page message we forward; transports truncate further as needed. */
-/** Largest rendered Dockerfile we will carry across the bridge. */
-const MAX_DOCKERFILE_BYTES = 256 * 1024;
-
-/** Deploy notes are log lines, not essays. */
-const MAX_NOTE_LENGTH = 4000;
-
-/**
- * The `infrafile` sink is installed by `runInfrafile`. Reaching one of these
- * RPCs without it means an Infrafile epilogue ran under the plain workflow
- * runner, which is a wiring bug rather than anything the author did.
- */
-function requireInfrafileSink(ctx: WorkflowRunContext): InfrafileRunSink {
-  if (!ctx.infrafile) {
-    throw new Error("Infrafile stage RPC used outside an Infrafile run.");
-  }
-  return ctx.infrafile;
-}
-
-/**
- * Where to build, read off the plan's reserved `buildOn` key. A resource handle
- * arrives here as its plain identifying fields: `JSON.stringify` dropped the
- * methods the prelude mixed on, which is exactly what we want to send onward.
- *
- * Returning `undefined` lets the host apply its own default (local for the CLI).
- */
-function buildTarget(raw: unknown): BuildTarget | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw === "string") {
-    if (raw === "local") return { kind: "local" };
-    throw new Error(
-      `plan().buildOn must be a resource or the string "local", not ${JSON.stringify(raw)}.`,
-    );
-  }
-  if (typeof raw !== "object") {
-    throw new Error('plan().buildOn must be a resource or the string "local".');
-  }
-  const r = raw as Record<string, unknown>;
-  const id = typeof r["id"] === "string" ? r["id"] : "";
-  const accountId = typeof r["accountId"] === "string" ? r["accountId"] : "";
-  const resourceTypeId = typeof r["resourceTypeId"] === "string" ? r["resourceTypeId"] : "";
-  if (!id || !accountId || !resourceTypeId) {
-    throw new Error(
-      "plan().buildOn looks like an object but is not a resource — expected one from " +
-        "infra.accounts.<plugin>.<group>.list()/get().",
-    );
-  }
-  const resource: BuildTargetResource = { id, accountId, resourceTypeId };
-  if (typeof r["displayName"] === "string") resource.displayName = r["displayName"];
-  return { kind: "resource", resource };
-}
-
-/** Registry credentials off the plan's reserved `registry` key, if present. */
-function registryCredentials(raw: unknown): RegistryCredentials | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== "object") throw new Error("plan().registry must be an object.");
-  const r = raw as Record<string, unknown>;
-  const host = String(r["host"] ?? "").trim();
-  const username = String(r["username"] ?? "");
-  const password = String(r["password"] ?? "");
-  if (!host || !username || !password) {
-    throw new Error("plan().registry needs host, username and password.");
-  }
-  return { host, username, password };
-}
-
-/**
- * Assemble the build request from the rendered Dockerfile plus the plan's
- * reserved keys. Validation lives here so every host (local Docker on the CLI,
- * SSH on the server) receives an identical, already-checked request.
- */
-function buildRequest(args: Record<string, unknown>): BuildRequest {
-  const dockerfile = String(args["dockerfile"] ?? "");
-  if (!dockerfile.trim()) throw new Error("dockerfile() produced no content.");
-  if (dockerfile.length > MAX_DOCKERFILE_BYTES) {
-    throw new Error(`Rendered Dockerfile exceeds ${MAX_DOCKERFILE_BYTES} bytes.`);
-  }
-  const plan = (args["plan"] ?? {}) as Record<string, unknown>;
-  const target = buildTarget(plan["buildOn"]);
-  const registry = registryCredentials(plan["registry"]);
-
-  const buildArgs: Record<string, string> = {};
-  const rawArgs = plan["buildArgs"];
-  if (rawArgs && typeof rawArgs === "object") {
-    for (const [k, v] of Object.entries(rawArgs as Record<string, unknown>)) {
-      if (v !== undefined && v !== null) buildArgs[k] = String(v);
-    }
-  }
-
-  const request: BuildRequest = { env: String(args["env"] ?? ""), dockerfile };
-  if (target) request.target = target;
-  if (registry) request.registry = registry;
-  if (typeof plan["tag"] === "string" && plan["tag"]) request.tag = plan["tag"];
-  if (typeof plan["platform"] === "string" && plan["platform"]) {
-    request.platform = plan["platform"];
-  }
-  if (Object.keys(buildArgs).length > 0) request.args = buildArgs;
-  return request;
-}
-
-/** Command line length accepted by `run(...)`. Generous, but not unbounded. */
-const MAX_RUN_COMMAND = 16 * 1024;
-
-/** Environment variables per `run(...)` call. */
-const MAX_RUN_ENV_VARS = 200;
-
-/**
- * Marshal + validate a `run(command, opts)` call. Normalizing here means the
- * local Docker path and the SSH path receive an identical request, and it is
- * the single place that bounds what the guest can ask for.
- */
-function runInImageRequest(args: Record<string, unknown>): RunInImageRequest {
-  const image = String(args["image"] ?? "").trim();
-  if (!image) throw new Error("run(): no image to run — was the build skipped?");
-  const command = String(args["command"] ?? "").trim();
-  if (!command) throw new Error("run(command): command must be a non-empty string.");
-  if (command.length > MAX_RUN_COMMAND) {
-    throw new Error(`run(): command exceeds ${MAX_RUN_COMMAND} characters.`);
-  }
-
-  const request: RunInImageRequest = { image, command };
-
-  const rawEnv = args["env"];
-  if (rawEnv !== undefined && rawEnv !== null) {
-    if (typeof rawEnv !== "object") throw new Error("run(): `env` must be an object.");
-    const entries = Object.entries(rawEnv as Record<string, unknown>);
-    if (entries.length > MAX_RUN_ENV_VARS) {
-      throw new Error(`run(): at most ${MAX_RUN_ENV_VARS} environment variables.`);
-    }
-    const env: Record<string, string> = {};
-    for (const [key, value] of entries) {
-      // A newline in a name or value lets a caller forge extra variables
-      // wherever the host writes these as `KEY=value` lines (an env-file, a
-      // shell export). Refuse rather than sanitize.
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-        throw new Error(`run(): ${JSON.stringify(key)} is not a valid environment variable name.`);
-      }
-      const text = String(value ?? "");
-      if (text.includes("\n") || text.includes("\0")) {
-        throw new Error(`run(): the value of ${key} may not contain newlines.`);
-      }
-      env[key] = text;
-    }
-    request.env = env;
-  }
-
-  // Default `sh` rather than leaving it unset: see RunInImageRequest.entrypoint
-  // for why the image's own ENTRYPOINT must not be in play here.
-  const entrypoint = args["entrypoint"];
-  request.entrypoint = typeof entrypoint === "string" ? entrypoint : "sh";
-  if (request.entrypoint.includes("\n")) {
-    throw new Error("run(): `entrypoint` may not contain newlines.");
-  }
-  if (typeof args["workdir"] === "string" && args["workdir"]) {
-    request.workdir = args["workdir"];
-  }
-  if (args["mountSource"] === false) request.mountSource = false;
-  if (args["allowFailure"] === true) request.allowFailure = true;
-  return request;
-}
-
-/**
- * Marshal + validate an `ask(...)`. The same checks run whether the answer was
- * typed by a human or supplied by `--set`, which is the point: the unattended
- * path is exactly the one with nobody watching to notice `replicas=lots`.
- */
-function askSpec(raw: unknown): InfrafileAskSpec {
-  const s = (raw ?? {}) as Record<string, unknown>;
-  const key = String(s["key"] ?? "").trim();
-  if (!key) {
-    throw new Error(
-      "ask(key, label, …): 'key' must be a non-empty string — it is what --set targets.",
-    );
-  }
-  const kind = String(s["kind"] ?? "text") as InfrafileAskKind;
-  if (!["text", "number", "date", "boolean", "password"].includes(kind)) {
-    throw new Error(`ask(${JSON.stringify(key)}): unknown kind ${JSON.stringify(kind)}.`);
-  }
-  const spec: InfrafileAskSpec = { key, label: String(s["label"] ?? key), kind };
-  if (typeof s["defaultValue"] === "string") spec.defaultValue = s["defaultValue"];
-  if (s["required"] === false) spec.required = false;
-  if (typeof s["min"] === "number" || typeof s["min"] === "string") spec.min = s["min"] as never;
-  if (typeof s["max"] === "number" || typeof s["max"] === "string") spec.max = s["max"] as never;
-  if (typeof s["pattern"] === "string") spec.pattern = s["pattern"];
-  return spec;
-}
-
-/** ISO `YYYY-MM-DD` that is also a real calendar date. */
-function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-}
-
-/**
- * Coerce and check one answer against its spec, returning the typed value.
- * Every failure names the key, because the person reading it is often looking
- * at CI output with no other context.
- */
-async function coerceAnswer(
-  spec: InfrafileAskSpec,
-  raw: MetricValue,
-  testPattern: (source: string, input: string) => Promise<boolean>,
-): Promise<MetricValue> {
-  const where = `ask(${JSON.stringify(spec.key)})`;
-  const text = raw === null || raw === undefined ? "" : String(raw).trim();
-
-  if (!text) {
-    if (spec.defaultValue !== undefined && spec.defaultValue !== "") {
-      // Drop the default before recursing, or a default that fails validation
-      // would loop forever rather than reporting itself.
-      const { defaultValue, ...withoutDefault } = spec;
-      return coerceAnswer(withoutDefault, defaultValue, testPattern);
-    }
-    if (spec.required === false) return spec.kind === "boolean" ? false : "";
-    throw new Error(`${where} requires an answer.`);
-  }
-
-  switch (spec.kind) {
-    case "number": {
-      const n = Number(text);
-      if (!Number.isFinite(n))
-        throw new Error(`${where}: ${JSON.stringify(text)} is not a number.`);
-      if (typeof spec.min === "number" && n < spec.min) {
-        throw new Error(`${where}: ${n} is below the minimum of ${spec.min}.`);
-      }
-      if (typeof spec.max === "number" && n > spec.max) {
-        throw new Error(`${where}: ${n} is above the maximum of ${spec.max}.`);
-      }
-      return n;
-    }
-    case "date": {
-      // Normalised to YYYY-MM-DD rather than a Date, so the value means the
-      // same thing on both sides of the JSON bridge and in a --set answer.
-      const day = text.length > 10 && isIsoDate(text.slice(0, 10)) ? text.slice(0, 10) : text;
-      if (!isIsoDate(day)) {
-        throw new Error(`${where}: ${JSON.stringify(text)} is not a date (expected YYYY-MM-DD).`);
-      }
-      if (typeof spec.min === "string" && day < spec.min) {
-        throw new Error(`${where}: ${day} is before ${spec.min}.`);
-      }
-      if (typeof spec.max === "string" && day > spec.max) {
-        throw new Error(`${where}: ${day} is after ${spec.max}.`);
-      }
-      return day;
-    }
-    case "boolean": {
-      const yes = ["true", "yes", "y", "1", "on"];
-      const no = ["false", "no", "n", "0", "off"];
-      const lower = text.toLowerCase();
-      if (yes.includes(lower)) return true;
-      if (no.includes(lower)) return false;
-      throw new Error(`${where}: ${JSON.stringify(text)} is not a yes/no answer.`);
-    }
-    default: {
-      if (spec.pattern) {
-        try {
-          new RegExp(spec.pattern);
-        } catch {
-          throw new Error(`${where}: 'pattern' is not a valid regular expression.`);
-        }
-        if (!(await testPattern(spec.pattern, text))) {
-          throw new Error(`${where}: ${JSON.stringify(text)} does not match ${spec.pattern}.`);
-        }
-      }
-      return text;
-    }
-  }
-}
-
 const MAX_PAGE_MESSAGE = 1000;
 
 /**
@@ -1008,7 +706,7 @@ function sshParams(args: Record<string, unknown>): SshExecParamsLite {
  * as a thrown error inside the workflow.
  */
 export async function dispatch(
-  host: InfrafileHost,
+  host: WorkflowHost,
   ctx: WorkflowRunContext,
   method: string,
   args: Record<string, unknown>,
@@ -1048,15 +746,10 @@ export async function dispatch(
       );
 
     case "resource.resolveOutput": {
-      const resourceId = String(args["resourceId"]);
-      // A planned id names a resource that exists nowhere host-side, so its
-      // outputs can only ever be the placeholder: checked regardless of
-      // dryRun, since a lookup on one would fail wherever it landed.
-      if (resourceId.startsWith(PLANNED_ID_PREFIX)) return PLAN_PLACEHOLDER;
       return host.resolveOutput(
         String(args["accountId"]),
         String(args["typeId"]),
-        resourceId,
+        String(args["resourceId"]),
         String(args["outputKey"]),
         sidecar,
       );
@@ -1069,38 +762,7 @@ export async function dispatch(
       const parentResourceId = args["parentResourceId"]
         ? String(args["parentResourceId"])
         : undefined;
-      // A --plan run must provision nothing: record what would be created and
-      // hand back a synthetic resource so the rest of plan() keeps working.
-      // Its id is namespaced (see PLANNED_ID_PREFIX) so resolveOutput knows
-      // never to send it to the host.
-      if (ctx.infrafile?.dryRun) {
-        const displayName = fields["name"] ?? fields["displayName"] ?? typeId;
-        const index = ctx.infrafile.recordPlanned({
-          action: "create",
-          accountId,
-          resourceTypeId: typeId,
-          displayName,
-          fields,
-          // The plugin id of a bare parented create is only known host-side,
-          // and the host is exactly what a dry run must not consult.
-          ...(sidecar
-            ? { sidecar }
-            : parentResourceId
-              ? { sidecar: { pluginId: "", parentResourceId } }
-              : {}),
-        });
-        const synthetic: ResourceInstanceLite = {
-          id: `${PLANNED_ID_PREFIX}${typeId}:${index}`,
-          pluginId: "",
-          resourceTypeId: typeId,
-          accountId,
-          displayName,
-          fields,
-          resolvedOutputs: {},
-        };
-        return synthetic;
-      }
-      const created = await requireMethod(host.createResource, "createResource").call(
+      return requireMethod(host.createResource, "createResource").call(
         host,
         accountId,
         typeId,
@@ -1108,18 +770,6 @@ export async function dispatch(
         parentResourceId,
         sidecar,
       );
-      // An Infrafile run keeps a ledger of what it provisioned: that is what
-      // lets a rollback offer to undo the provisioning, not just the shipping.
-      ctx.infrafile?.recordCreated({
-        pluginId: created.pluginId,
-        accountId: created.accountId,
-        resourceTypeId: created.resourceTypeId,
-        resourceId: created.id,
-        displayName: created.displayName,
-        ...(created.externalId ? { externalId: created.externalId } : {}),
-        ...(sidecar ? { sidecar } : {}),
-      });
-      return created;
     }
 
     case "resource.update": {
@@ -1127,30 +777,6 @@ export async function dispatch(
       const typeId = String(args["typeId"]);
       const resourceId = String(args["resourceId"]);
       const fields = (args["fields"] as Record<string, string>) ?? {};
-      if (ctx.infrafile?.dryRun) {
-        // The real resource is never fetched (that would be a read *for* a
-        // write), so its display name is best-effort from the update itself.
-        const displayName = fields["name"] ?? fields["displayName"] ?? resourceId;
-        ctx.infrafile.recordPlanned({
-          action: "update",
-          accountId,
-          resourceTypeId: typeId,
-          resourceId,
-          displayName,
-          fields,
-          ...(sidecar ? { sidecar } : {}),
-        });
-        const synthetic: ResourceInstanceLite = {
-          id: resourceId,
-          pluginId: "",
-          resourceTypeId: typeId,
-          accountId,
-          displayName,
-          fields,
-          resolvedOutputs: {},
-        };
-        return synthetic;
-      }
       return requireMethod(host.updateResource, "updateResource").call(
         host,
         accountId,
@@ -1163,18 +789,6 @@ export async function dispatch(
 
     case "resource.delete": {
       const resourceId = String(args["resourceId"]);
-      if (ctx.infrafile?.dryRun) {
-        ctx.infrafile.recordPlanned({
-          action: "delete",
-          accountId: String(args["accountId"]),
-          resourceTypeId: String(args["typeId"]),
-          resourceId,
-          // A delete carries no fields, so the id is the best name available.
-          displayName: resourceId,
-          ...(sidecar ? { sidecar } : {}),
-        });
-        return null;
-      }
       await requireMethod(host.deleteResource, "deleteResource").call(
         host,
         String(args["accountId"]),
@@ -1479,121 +1093,6 @@ export async function dispatch(
 
     case "output":
       ctx.setOutput(args["value"]);
-      return null;
-
-    // ---- Infrafile stage boundaries -------------------------------------
-    // Bookkeeping goes to the run's sink; only the genuinely platform-specific
-    // work (build, push, copy, pre-supplied answers) reaches the host.
-
-    case "infrafile.envs":
-      return requireInfrafileSink(ctx).chooseEnv((args["envs"] as string[]) ?? []);
-
-    case "infrafile.plan":
-      return { proceed: requireInfrafileSink(ctx).recordPlan(args["plan"]) };
-
-    case "infrafile.dockerfile":
-      requireInfrafileSink(ctx).recordDockerfile(String(args["dockerfile"] ?? ""));
-      return null;
-
-    case "infrafile.select": {
-      const key = String(args["key"] ?? "");
-      const options = (args["options"] ?? []) as { label: string; value: string }[];
-      // A pre-supplied answer (`--set key=value`) is what lets the same
-      // Infrafile run unattended in CI, so it is checked before interactivity.
-      const preset = await host.infrafileAnswer?.(key);
-      if (preset !== undefined && preset !== null) return preset;
-      if (!ctx.interactive) {
-        throw new WorkflowCapabilityError(
-          `select(${JSON.stringify(key)}, …) has no answer and this run is not interactive. ` +
-            `Pass --set ${key}=<value>, where <value> is one of: ` +
-            `${options.map((o) => o.value).join(", ")}.`,
-        );
-      }
-      return host.prompt({
-        message: String(args["label"] ?? key),
-        kind: "select",
-        options,
-      });
-    }
-
-    case "infrafile.ask": {
-      const spec = askSpec(args["spec"]);
-      // A pre-supplied answer is validated by exactly the same code a typed one
-      // is: the whole point of doing this host-side.
-      const preset = await host.infrafileAnswer?.(spec.key);
-      const testPattern =
-        ctx.testPattern ??
-        ((source: string, input: string) => Promise.resolve(new RegExp(source).test(input)));
-      if (preset !== undefined && preset !== null) {
-        return coerceAnswer(spec, preset, testPattern);
-      }
-      if (!ctx.interactive) {
-        throw new WorkflowCapabilityError(
-          `ask(${JSON.stringify(spec.key)}, …) has no answer and this run is not interactive. ` +
-            `Pass --set ${spec.key}=<value>.`,
-        );
-      }
-      const answered = await host.prompt({
-        message: spec.label,
-        kind: spec.kind === "date" ? "date" : spec.kind,
-        ...(spec.defaultValue !== undefined ? { defaultValue: spec.defaultValue } : {}),
-      });
-      return coerceAnswer(spec, answered, testPattern);
-    }
-
-    case "infrafile.build": {
-      ctx.infrafile?.stage("build");
-      return requireMethod(host.infrafileBuild, "infrafileBuild").call(host, buildRequest(args));
-    }
-
-    case "infrafile.push": {
-      const image = String(args["image"] ?? "").trim();
-      // Matches the guard on run(): an empty image would otherwise surface as
-      // `docker push ""` from a driver rather than as something an author can act on.
-      if (!image) throw new Error("push(): no image to push — was the build skipped?");
-      await requireMethod(host.infrafilePush, "infrafilePush").call(
-        host,
-        image,
-        registryCredentials(args["registry"]),
-      );
-      return null;
-    }
-
-    case "infrafile.run": {
-      const request = runInImageRequest(args);
-      const result = await requireMethod(host.infrafileRun, "infrafileRun").call(host, request);
-      // A non-zero exit is a failed deploy unless the author opted in to
-      // handling it: the alternative is `wrangler deploy` failing silently
-      // and the run reporting success.
-      if (!request.allowFailure && result.exitCode !== 0) {
-        const detail = (result.stderr || result.stdout || "")
-          .trim()
-          .split("\n")
-          .slice(-20)
-          .join("\n");
-        throw new Error(
-          `run(${JSON.stringify(request.command)}) exited with code ${result.exitCode}` +
-            (detail ? `:\n${detail}` : "."),
-        );
-      }
-      return result;
-    }
-
-    case "infrafile.copyTo": {
-      const target = buildTarget(args["target"]);
-      if (!target || target.kind !== "resource") {
-        throw new Error("copyTo(target, remotePath): target must be a resource to copy onto.");
-      }
-      await requireMethod(host.infrafileCopyTo, "infrafileCopyTo").call(
-        host,
-        target.resource,
-        String(args["remotePath"] ?? ""),
-      );
-      return null;
-    }
-
-    case "infrafile.note":
-      requireInfrafileSink(ctx).recordNote(String(args["text"] ?? "").slice(0, MAX_NOTE_LENGTH));
       return null;
 
     default:

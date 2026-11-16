@@ -39,7 +39,7 @@ export function useProductCopy(): Record<ProductId, ProductCopy> {
       },
       delivery: {
         name: gt("Delivery"),
-        tagline: gt("Deploys, CI, environments and delivery metrics."),
+        tagline: gt("CI, environments and delivery metrics."),
       },
       automation: {
         name: gt("Automation"),
@@ -89,7 +89,6 @@ export function useToolDescriptions(): Record<string, string> {
       "jit-access": gt("Roles granted for a set time, with an approver."),
       expiring: gt("Certificates, domains, tokens and passwords that are running out."),
       backups: gt("What is recoverable, and how old the newest backup is."),
-      deploy: gt("Deploy your repositories and see what shipped."),
       ci: gt("Pipelines on every push and pull request."),
       delivery: gt("How often, how fast and how safely you ship."),
       environments: gt("Short-lived copies of an environment, made from a template."),

@@ -128,7 +128,7 @@ describe("diffInfrastructureFiles", () => {
     });
   });
 
-  it("lists Infrafiles and manifests without analysing them, and honours directories", () => {
+  it("lists manifests without analysing them, skips other files, and honours directories", () => {
     const manifest = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n";
     const diff = diffInfrastructureFiles(
       [
@@ -140,7 +140,6 @@ describe("diffInfrastructureFiles", () => {
       ["k8s", ""],
     );
     expect(diff.files.map((f) => [f.path, f.kind, f.analysed])).toEqual([
-      ["Infrafile", "infrafile", false],
       ["k8s/web.yaml", "kubernetes", false],
       ["other/main.tf", "terraform", true],
     ]);

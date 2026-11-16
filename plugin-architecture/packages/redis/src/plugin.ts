@@ -26,6 +26,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description:
         "Redis connection URI (redis://[:password@]host[:port][/db] or rediss:// for TLS).",

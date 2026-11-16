@@ -1147,24 +1147,34 @@ impl MemoryBudget {
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
+    ///
+    /// The lease leaves the running list and its bytes leave `used` under
+    /// the one lock [`MemoryBudget::admit`] reads both under. Given back
+    /// after the lock was let go, a run that looked in between saw memory
+    /// held that no running job would give back, so nothing protected the
+    /// first job in its order and a smaller one behind it started instead.
     fn release(&self, lease: &Lease) {
-        let bytes = {
+        {
             let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
             leases.running.retain(|r| r.id != lease.id);
             // Read under the lock a top-up holds, so none is lost.
-            lease.bytes.load(Ordering::SeqCst)
-        };
-        self.give(bytes);
+            self.take_back(lease.bytes.load(Ordering::SeqCst));
+        }
+        self.wake_all();
     }
 
     /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
+        self.take_back(bytes);
+        self.wake_all();
+    }
+
+    fn take_back(&self, bytes: u64) {
         let _ = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
             });
-        self.wake_all();
     }
 
     fn wake_all(&self) {
@@ -1959,7 +1969,29 @@ pub fn run<T: Tools>(
                             );
                         }
                         Looked::Done(report) => {
-                            complete(&state, &wake, plan, options, template, *report, kept)
+                            // A hit for a job a helper of this run ran is
+                            // that helper's: its record says how it went.
+                            let elsewhere = report
+                                .cached
+                                .then(|| sharing.and_then(|sh| sh.ran_elsewhere(&job)))
+                                .flatten();
+                            if let Some(holder) = elsewhere {
+                                let mut s = state.lock().unwrap();
+                                split::defer(
+                                    &mut s,
+                                    options,
+                                    split::RemoteJob {
+                                        template,
+                                        job,
+                                        lookup: Lookup::default(),
+                                        rank,
+                                        holder: Some(holder),
+                                        since: Instant::now(),
+                                    },
+                                );
+                            } else {
+                                complete(&state, &wake, plan, options, template, *report, kept)
+                            }
                         }
                         Looked::Run(lookup) => {
                             let mut s = state.lock().unwrap();
@@ -2788,7 +2820,7 @@ fn run_job<T: Tools>(
         gauge: gauge.clone(),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
-    if let Err(e) = fs.write(OUTPUT_PATH, b"") {
+    if let Err(e) = fs.create_for_job(OUTPUT_PATH) {
         return errored(
             job,
             format!("could not create {OUTPUT_PATH}: {e}"),

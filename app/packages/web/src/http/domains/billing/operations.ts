@@ -19,7 +19,6 @@ import { db } from "../../../db/client";
 import { organizations, subscriptions } from "../../../db/schema";
 import {
   getStripe,
-  getStripeBuildPriceId,
   getStripeCapacitySlotPriceId,
   getStripeChatPriceId,
   getStripePriceId,
@@ -140,7 +139,6 @@ export async function openSubscriptionCheckout(
 
   const url = billingUrl(orgId);
   const chatPriceId = getStripeChatPriceId();
-  const buildPriceId = getStripeBuildPriceId();
   // CI's metered prices too, so an organization that later gets CI is
   // billed for it without touching its subscription.
   const ciPriceIds = getStripeCiPriceIds();
@@ -151,7 +149,6 @@ export async function openSubscriptionCheckout(
     line_items: [
       { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
-      ...(buildPriceId ? [{ price: buildPriceId }] : []),
       ...ciPriceIds.map((price) => ({ price })),
     ],
     // organizationId lets a later paid webhook find this checkout. The Revnu

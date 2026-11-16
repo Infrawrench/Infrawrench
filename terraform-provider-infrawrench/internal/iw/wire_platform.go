@@ -762,34 +762,6 @@ type BillingProfile struct {
 	UpdatedAt          string                  `json:"updatedAt"`
 }
 
-/* ----------------------------- deploy triggers ----------------------------- */
-
-// DeployTriggerInput is the POST body. Answers are the deploy questionnaire's
-// stored responses, keyed by question id.
-type DeployTriggerInput struct {
-	Repo    string            `json:"repo"`
-	Branch  string            `json:"branch"`
-	Env     string            `json:"env"`
-	Answers map[string]string `json:"answers,omitempty"`
-}
-
-// DeployTrigger redeploys a repo when its branch moves. The only mutable field
-// is Enabled: repo, branch and env are fixed at creation.
-type DeployTrigger struct {
-	ID        string  `json:"id"`
-	Repo      string  `json:"repo"`
-	Branch    string  `json:"branch"`
-	Env       string  `json:"env"`
-	Enabled   bool    `json:"enabled"`
-	LastSha   *string `json:"lastSha"`
-	LastRunAt *string `json:"lastRunAt"`
-}
-
-// DeployTriggerEnabled is the PATCH body: the whole mutable surface.
-type DeployTriggerEnabled struct {
-	Enabled bool `json:"enabled"`
-}
-
 /* ------------------------------ slack / teams ------------------------------ */
 
 // SlackChannelCreate is the POST body.

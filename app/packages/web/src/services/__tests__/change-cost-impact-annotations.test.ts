@@ -97,9 +97,7 @@ const impact = {
 
 vi.mock("@infrawrench/server-core/cost/change-impact-load", () => ({
   loadChangeCostImpact: vi.fn(async () => ({ changeId: "chg-1", resourceId: "res-1", impact })),
-  loadDeploymentCostImpact: vi.fn(async () => null),
   describeChangeSubject: vi.fn(async () => "api-prod updated"),
-  describeDeploymentSubject: vi.fn(async () => "acme/web → prod"),
 }));
 
 const mockCreate = vi.fn();

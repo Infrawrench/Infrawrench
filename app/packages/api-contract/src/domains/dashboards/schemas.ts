@@ -351,7 +351,6 @@ const TAB_KINDS = [
   "delivery",
   "ci",
   "workflows",
-  "deployments",
   "settings",
   "chat",
   "linux-app",

@@ -573,7 +573,7 @@ Names are the connections' names in Infrawrench. To lend one, open it under **Ma
 - **Redis:** the URL as `REDIS_URL` (`redis-cli -u "$REDIS_URL"`) and its password as `REDISCLI_AUTH`, which `redis-cli` reads. An ACL user's name comes as `REDIS_USERNAME`: `redis-cli` reads no user from the environment, so pass `--user "$REDIS_USERNAME"`.
 - **MongoDB:** the connection string as `MONGODB_URI` (`mongosh "$MONGODB_URI"`), and its user and password as `MONGODB_USERNAME` and `MONGODB_PASSWORD`.
 
-A connection Infrawrench reaches through an SSH tunnel of its own is not lent when the tunnel changes its credentials (a connection string, or a kubeconfig): they would point at Infrawrench's end of the tunnel, which a job cannot reach. Connect it without the tunnel to lend it.
+A connection Infrawrench reaches through an SSH tunnel of its own is not lent when the tunnel changes its credentials (a connection string, or a kubeconfig's cluster): they would point at Infrawrench's end of the tunnel, which a job cannot reach, and the private address behind it is usually out of a job's reach too. Connect it without the tunnel to lend it. A cluster or database in a cloud account whose tunnel goes somewhere else keeps its own address, and is lent as usual.
 
 Two databases lent to one job share the plain variable names (`DATABASE_URL`, `PGHOST`, ...), and the one named last wins; the per-connection files above tell them apart.
 

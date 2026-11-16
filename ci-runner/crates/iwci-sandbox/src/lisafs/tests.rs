@@ -544,7 +544,8 @@ fn modes_sizes_directories_and_links_change_as_asked() {
 
 #[test]
 fn a_write_past_the_budget_is_refused() {
-    let job = job(Some(10));
+    // Ten bytes, and a three-letter file's entry.
+    let job = job(Some(10 + iwci_vfs::ENTRY_COST + 3));
     let client = Client::new(export(&job));
     let root = client.mount();
     let work = client.walk_to(root.fd, "work");
@@ -558,7 +559,7 @@ fn a_write_past_the_budget_is_refused() {
     assert_eq!((failed, errno as i32), (0x200, libc::ENOSPC));
     // Giving bytes back makes room again.
     client.unlink(work.fd, "big", 0).unwrap();
-    let (_, fd) = client.create(work.fd, "again", 0o644, libc::O_WRONLY);
+    let (_, fd) = client.create(work.fd, "new", 0o644, libc::O_WRONLY);
     client.pwrite(fd, 0, b"0123456789");
 }
 

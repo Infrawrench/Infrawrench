@@ -503,4 +503,21 @@
 // rather than `passed`, without reaching the runners, and
 // `GET /api/org/:orgId/ci/runs` leaves these out unless `status=skipped`
 // asks for them. Additive (a new enum value, which clients decode leniently).
-export const API_VERSION = "1.112.0";
+// 1.113.0: the Infrafile Deploy feature is removed. Every `/deployments`
+// route goes (repos, envs, plan, runs, a run's cost impact, rollback and the
+// four trigger routes), with their schemas; `deployments` leaves the TabTarget
+// kind enum and the moment feed enum; `deployment` leaves the moment and
+// incident timeline link kinds; `infrafile` leaves the DORA event source enum;
+// `POST /cost-annotations/change-impact` accepts only the `change` subject
+// kind; and `deployments:plan` leaves the permission catalog. By the rule
+// above that is a major, and it is released as a minor deliberately, by the
+// owner's decision: the feature had no production use beyond test runs, and a
+// major would also move the Go SDK's module path. DORA keeps
+// `deployments:read` and `deployments:write`, and its `POST /dora/deployments`.
+// 1.114.0: pull request checks no longer single out a file named `Infrafile`:
+// `infrafile` leaves the `PrCheckReport` file kind enum, and such a file is
+// now skipped like any other file the check does not read. Narrowing a
+// response enum is a major by the rule above; it ships as a minor for the
+// same reason as 1.113.0, and reports stored before it lose those entries
+// when read, so a client never sees the old value.
+export const API_VERSION = "1.114.0";

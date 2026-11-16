@@ -17,6 +17,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description: "MongoDB connection URI.",
       sensitive: true,

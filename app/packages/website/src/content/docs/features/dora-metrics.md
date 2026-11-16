@@ -14,10 +14,9 @@ Open **Delivery** from the sidebar on the web or desktop app (cloud mode), or ru
 
 **Deploys** are collected from every source Infrawrench can see, without counting anything twice:
 
-- **Infrawrench deploys**: every [Infrafile](./infrafile.md) run, from the web app, the CLI or deploy-on-push.
 - **Provider deploys your accounts already sync**: Vercel deployments, Netlify deploys, Render deploys, Railway deployments, Koyeb deployments, Heroku releases that deploy code, Pulumi Deployments `update` operations, Spacelift tracked runs and HCP Terraform runs that applied. Deploys are kept for a year, so you build up a history even with providers that only list their last few deploys.
 - **CI pipelines named as deploys**: Buildkite builds, CircleCI pipelines, GitLab pipelines and Bitbucket Pipelines runs count only when the pipeline's name matches one of your **deploy pipeline** patterns (by default `*deploy*` and `*release*`). A CI provider can't tell a deploy pipeline from a test pipeline, so you tell Infrawrench.
-- **GitHub deployments**: through the [GitHub App](./workflows.md), deployments any tool created on your most recently pushed repositories, with their latest status. Deployments Infrawrench created itself are skipped, since they're already counted as Infrafile runs.
+- **GitHub deployments**: through the [GitHub App](./workflows.md), deployments any tool created on your most recently pushed repositories, with their latest status.
 - **Anything else**: a deploy step in any CI can record itself with one API call (see below).
 
 **Lead time** needs the time the deployed commit was written. Render reports it. For everything else that names a commit and a GitHub repository, Infrawrench looks it up through the GitHub App. Deploys with no known commit time are left out of the median, not counted as instant.
@@ -55,7 +54,7 @@ The **Breakdown** table splits the four numbers by:
 - **owner**: the [resource owner](../core-concepts/resource-ownership.md) of the project or service a deploy went to
 - **service**: the [service](./services.md) whose resources the deploy or change touched
 
-Click a row, or use the **Scope** picker, to see just that one. "Not known" collects deploys with no repository, owner or service recorded, which is usually where untracked services hide. A resource that belongs to several services counts toward the most critical one (the lowest tier number, then by name), so every change is counted once. Infrafile runs and deploys recorded through the API without a resource aren't placed in a service.
+Click a row, or use the **Scope** picker, to see just that one. "Not known" collects deploys with no repository, owner or service recorded, which is usually where untracked services hide. A resource that belongs to several services counts toward the most critical one (the lowest tier number, then by name), so every change is counted once. Deploys recorded through the API without a resource aren't placed in a service.
 
 <insert [The Delivery tab's Breakdown table grouped by repository, three repositories with their deploys, frequency, lead time, failure rate and restore time, and below it the Changes list filtered to failed changes, one row showing "Incident: Checkout 500s" in red] here>
 

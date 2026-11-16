@@ -1,6 +1,6 @@
 /**
- * Custom graphs: a third program kind in the QuickJS isolate, after workflows
- * and Infrafiles. A graph script is read-only over the org (costs, resource
+ * Custom graphs: a second program kind in the QuickJS isolate, after
+ * workflows. A graph script is read-only over the org (costs, resource
  * listings, provider metrics) plus a private key/value store and the proxied
  * `fetch`; it finishes by declaring controls and a chart, which the host
  * persists and clients render. It can create nothing and delete nothing.

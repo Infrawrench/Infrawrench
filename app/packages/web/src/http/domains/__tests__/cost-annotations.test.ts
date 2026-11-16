@@ -230,6 +230,12 @@ describe("POST /change-impact", () => {
     expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
   });
 
+  it("400s on the retired deployment subject kind", async () => {
+    const res = await post({ subjectKind: "deployment", subjectId: "run-3" });
+    expect(res.status).toBe(400);
+    expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
+  });
+
   it("400s on a cost basis it does not have, instead of silently using cash", async () => {
     const res = await post({ subjectKind: "change", subjectId: "chg-1", costBasis: "unblended" });
     expect(res.status).toBe(400);
@@ -237,14 +243,14 @@ describe("POST /change-impact", () => {
   });
 
   it("writes the note and audits it, naming where it came from", async () => {
-    const res = await post({ subjectKind: "deployment", subjectId: "run-3" });
+    const res = await post({ subjectKind: "change", subjectId: "chg-3" });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ annotationId: "ann-9" });
     expect(mockWriteImpactAnnotation).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        subjectKind: "deployment",
-        subjectId: "run-3",
+        subjectKind: "change",
+        subjectId: "chg-3",
         costBasis: "cash",
       }),
       expect.anything(),

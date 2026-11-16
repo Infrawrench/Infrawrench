@@ -409,7 +409,7 @@ function AuthenticatedShell() {
             </main>
           </div>
         </div>
-        {/* Renders input requests raised by a running workflow or Infrafile. */}
+        {/* Renders input requests raised by a running workflow. */}
         <PromptHost />
         {spotlightOpen && orgId && (
           <WebCommandPalette orgId={orgId} onClose={() => setSpotlightOpen(false)} />

@@ -98,7 +98,10 @@ export interface PrCheckStatus {
   repositories: PrCheckRepository[];
 }
 
-export type PrCheckFileKind = "terraform" | "infrafile" | "kubernetes";
+/** The infrastructure file kinds a check lists. */
+export const PR_CHECK_FILE_KINDS = ["terraform", "kubernetes"] as const;
+
+export type PrCheckFileKind = (typeof PR_CHECK_FILE_KINDS)[number];
 
 export interface PrCheckFile {
   path: string;
@@ -260,7 +263,6 @@ export function pathInPrCheckDirectories(path: string, directories: readonly str
 export function classifyPrCheckPath(path: string, content?: string | null): PrCheckFileKind | null {
   const base = path.split("/").pop() ?? path;
   if (base.endsWith(".tf")) return "terraform";
-  if (base === "Infrafile") return "infrafile";
   if (/\.ya?ml$/i.test(base) && content) {
     return /^apiVersion:/m.test(content) && /^kind:/m.test(content) ? "kubernetes" : null;
   }

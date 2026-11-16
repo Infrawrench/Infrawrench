@@ -1,5 +1,5 @@
 /**
- * Cost per change / cost per deploy: the gathering half.
+ * Cost per change: the gathering half.
  *
  * The arithmetic is in `change-impact.ts` (pure). This module reads what that
  * function needs: the change rows, the resources they name, the accounts'
@@ -20,28 +20,17 @@
  * of which are the same range-scans the cost graphs already do.
  *
  * It lives in `server-core` rather than `web` because the weekly digest runs in
- * the **poller**, which cannot import web: the same reason `runDeployment`
- * moved here.
+ * the **poller**, which cannot import web.
  */
 
-import type {
-  ChangeCostImpact,
-  ChangeCostImpactEntry,
-  CostBasis,
-  DeploymentCostImpact,
-  DeploymentCostImpactResource,
-} from "@infrawrench/client-core";
+import type { ChangeCostImpact, ChangeCostImpactEntry, CostBasis } from "@infrawrench/client-core";
 import { clampChangeImpactWindowDays, MAX_CHANGE_IMPACT_BATCH } from "@infrawrench/client-core";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
 import { db } from "../db/client";
-import { deploymentRuns, resourceChanges, resources } from "../db/schema";
+import { resourceChanges, resources } from "../db/schema";
 import { getPlugin } from "../plugin-loader";
-import {
-  changeImpactFetchRange,
-  computeChangeCostImpact,
-  sumChangeCostImpacts,
-} from "./change-impact";
+import { changeImpactFetchRange, computeChangeCostImpact } from "./change-impact";
 import { addDays, isoDay } from "./dates";
 
 export interface ChangeImpactOptions {
@@ -53,7 +42,7 @@ export interface ChangeImpactOptions {
 
 /** A change event reduced to what the impact computation needs. */
 interface ImpactSubject {
-  /** Identifies the row in the caller's answer. Empty for a deployment resource. */
+  /** Identifies the row in the caller's answer. */
   key: string;
   /** `resources.id`: what `resource_changes.resource_id` holds. */
   resourceId: string;
@@ -177,9 +166,7 @@ async function loadOverlaps(
 }
 
 /**
- * Compute an impact for each subject. Shared by the change feed and the
- * deployment breakdown so the two cannot drift into different definitions of
- * the same delta.
+ * Compute an impact for each subject.
  */
 async function computeForSubjects(
   organizationId: string,
@@ -314,79 +301,6 @@ export async function loadChangeCostImpact(
 }
 
 /**
- * Cost impact for a deployment run, broken down per resource.
- *
- * The set of resources is `deployment_runs.created_resources`: the resources
- * the run actually provisioned through `infra.accounts.*.create(...)`. That is
- * the only set the platform can attribute to a run with certainty; a deploy
- * that merely re-shipped an image links to nothing and honestly reports an
- * empty breakdown rather than blaming whatever drifted in the same hour.
- *
- * The event day is the run's **start**, not its finish: a long build's cost
- * consequences begin when the resources appear.
- */
-export async function loadDeploymentCostImpact(
-  organizationId: string,
-  runId: string,
-  options: ChangeImpactOptions = {},
-): Promise<DeploymentCostImpact | null> {
-  const [run] = await db
-    .select({
-      id: deploymentRuns.id,
-      createdResources: deploymentRuns.createdResources,
-      startedAt: deploymentRuns.startedAt,
-    })
-    .from(deploymentRuns)
-    .where(and(eq(deploymentRuns.organizationId, organizationId), eq(deploymentRuns.id, runId)))
-    .limit(1);
-  if (!run) return null;
-
-  const windowDays = clampChangeImpactWindowDays(options.windowDays);
-  const costBasis: CostBasis = options.costBasis ?? "cash";
-  const created = Array.isArray(run.createdResources) ? run.createdResources : [];
-  const eventDay = isoDay(run.startedAt);
-
-  const subjects: ImpactSubject[] = created.map((r) => ({
-    key: r.resourceId,
-    resourceId: r.resourceId,
-    accountId: r.accountId,
-    pluginId: r.pluginId,
-    eventDay,
-    // A deployment is not itself a `resource_changes` row, so every change to
-    // the resource in the window is genuinely someone else's.
-    selfChangeId: null,
-  }));
-
-  const impacts = await computeForSubjects(organizationId, subjects, options);
-  const rows: DeploymentCostImpactResource[] = created.flatMap((r) => {
-    const impact = impacts.get(r.resourceId);
-    return impact
-      ? [
-          {
-            resourceId: r.resourceId,
-            displayName: r.displayName,
-            pluginId: r.pluginId,
-            resourceTypeId: r.resourceTypeId,
-            impact,
-          },
-        ]
-      : [];
-  });
-
-  const { total, unknownResources, confidence } = sumChangeCostImpacts(rows.map((r) => r.impact));
-  return {
-    runId: run.id,
-    costBasis,
-    windowDays,
-    eventDay,
-    resources: rows,
-    total,
-    unknownResources,
-    confidence,
-  };
-}
-
-/**
  * Human label for a change, used as the cost annotation's subject. Kept beside
  * the loaders so the annotation and the UI name the same thing.
  */
@@ -402,19 +316,4 @@ export async function describeChangeSubject(
     )
     .limit(1);
   return row ? `${row.displayName} ${row.changeKind}` : null;
-}
-
-/** Human label for a deployment run. */
-export async function describeDeploymentSubject(
-  organizationId: string,
-  runId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ env: deploymentRuns.env, repo: deploymentRuns.repo, gitSha: deploymentRuns.gitSha })
-    .from(deploymentRuns)
-    .where(and(eq(deploymentRuns.organizationId, organizationId), eq(deploymentRuns.id, runId)))
-    .limit(1);
-  if (!row) return null;
-  const sha = row.gitSha ? ` @ ${row.gitSha.slice(0, 7)}` : "";
-  return `${row.repo ?? "local"} → ${row.env}${sha}`;
 }
