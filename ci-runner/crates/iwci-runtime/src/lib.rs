@@ -298,6 +298,10 @@ pub struct Invocation {
     /// Wasm commands a script can run by name, written to `/usr/local/bin`
     /// (first on the default `PATH`). Only scripts use them.
     pub commands: Vec<PathCommand>,
+    /// Read-only directories a script's tools run from, with the commands
+    /// that start them (`tools:` that are Node programs). Only scripts use
+    /// them.
+    pub trees: Vec<PathTree>,
     /// Whether the job may reach the public internet, when the runtime
     /// offers it (`Runtime::with_internet`). Off leaves only its loopback.
     pub internet: bool,
@@ -388,6 +392,25 @@ pub enum Ready {
 pub struct PathCommand {
     pub name: String,
     pub module: WasmModule,
+}
+
+/// A tool that is a directory of files rather than one module: a pinned
+/// npm CLI (`builtin:vercel`), which the environment's `node` runs. Its
+/// files are mounted read-only at `dir` and shared by every job that uses
+/// the same build; its command is a script written to `/usr/local/bin`.
+#[derive(Clone)]
+pub struct PathTree {
+    /// The tool's name, for errors.
+    pub name: String,
+    /// Absolute guest path the files are mounted at.
+    pub dir: String,
+    pub fs: DynFs,
+    /// Scripts written to `/usr/local/bin` by name, after the mode commands
+    /// and before `commands` (a module tool of the same name wins).
+    pub scripts: Vec<(String, Vec<u8>)>,
+    /// A command one of the environment's packages must provide, such as
+    /// `node`: a job whose environment has none fails to start, saying so.
+    pub needs: Option<String>,
 }
 
 impl std::fmt::Debug for Invocation {

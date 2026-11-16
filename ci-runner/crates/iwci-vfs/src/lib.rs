@@ -648,6 +648,13 @@ impl Snapshot {
         out
     }
 
+    /// The snapshot itself as a file system, read only: for files that are
+    /// mounted into jobs as they are, such as a Node tool's directory,
+    /// rather than forked for a job to write over.
+    pub fn read_only(&self) -> DynFs {
+        self.fs.clone()
+    }
+
     /// A writable view for one job: a fresh in-memory layer over this
     /// snapshot. Constant time; nothing is copied until the job writes.
     pub fn fork(&self) -> JobFs {

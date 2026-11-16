@@ -1218,6 +1218,9 @@ impl Runner {
     /// store's disk cache by the time it resolves.
     pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
         match resolved {
+            // A Node tool is files for the environment's `node`, with
+            // nothing to compile.
+            Resolved::Tool { manifest, .. } if manifest.abi == iwci_store::Abi::Node => Ok(()),
             Resolved::Tool {
                 manifest, module, ..
             } => {

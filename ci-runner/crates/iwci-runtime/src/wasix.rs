@@ -630,6 +630,7 @@ fn job_root(
     fs: crate::DynFs,
     scratch: Option<crate::DynFs>,
     commands: &[crate::PathCommand],
+    trees: &[crate::PathTree],
     node_support: bool,
     builtins: Option<&bytes::Bytes>,
     shell: bool,
@@ -709,6 +710,11 @@ fn job_root(
         if node_support {
             write_command(&bin, "npx", NPX)?;
         }
+        for tree in trees {
+            for (name, script) in &tree.scripts {
+                write_command(&bin, name, script)?;
+            }
+        }
         // A tool of the same name wins over a mode command.
         for command in commands {
             write_command(&bin, &command.name, &command.module.bytes)?;
@@ -718,6 +724,11 @@ fn job_root(
             "/",
             tracked(Arc::new(bin), "/usr/local/bin"),
         ));
+    }
+    // Each Node tool's files, read only and shared with every job that
+    // uses the same build.
+    for tree in trees {
+        mounts.push((tree.dir.as_str(), "/", tree.fs.clone()));
     }
     if node_support {
         let dir = TmpFileSystem::new();
@@ -1055,6 +1066,8 @@ pub(crate) struct Process<'a> {
     /// `tools:` on `PATH`; a `Command` gets the mode and service commands
     /// there as well.
     pub(crate) commands: &'a [crate::PathCommand],
+    /// Node tools' directories and commands, for a `Command` only.
+    pub(crate) trees: &'a [crate::PathTree],
     pub(crate) stdout: Box<dyn VirtualFile + Send + Sync + 'static>,
     pub(crate) stderr: Box<dyn VirtualFile + Send + Sync + 'static>,
     /// A service's tree: its `/tmp` and its packages' directories are its
@@ -1097,6 +1110,7 @@ impl Starter<'_> {
             self.fs.clone(),
             self.scratch.cloned(),
             process.commands,
+            if shell { process.trees } else { &[] },
             self.node && shell,
             self.builtins,
             shell,
@@ -1234,6 +1248,20 @@ pub(crate) fn run(
         Some(set) => binary_packages(shared, set, &runtime, tokio)?,
         None => Vec::new(),
     };
+    // A tool that runs on a command the environment lacks (a Node tool in
+    // `env:bash`) says so before anything starts.
+    for tree in &inv.trees {
+        if let Some(needed) = &tree.needs
+            && !uses
+                .iter()
+                .any(|package| package.commands.iter().any(|c| c.name() == needed))
+        {
+            return Err(Error::Setup(format!(
+                "`{}` (tools:) runs on `{needed}`, which this environment does not have: use one that has, such as env:bash-node@24",
+                tree.name
+            )));
+        }
+    }
     // An environment job's `node` gets the runner's support files.
     let node_support = node.is_some() && matches!(entry, Entry::Command { .. });
     let mut env = inv.env.clone();
@@ -1317,6 +1345,7 @@ pub(crate) fn run(
         env,
         cwd: &inv.cwd,
         commands: &inv.commands,
+        trees: &inv.trees,
         stdout: stdout.file(),
         stderr: stderr.file(),
         own_dirs: false,
@@ -1837,6 +1866,7 @@ mod job_root_tests {
         job_root(
             job.as_dyn(),
             None,
+            &[],
             &[],
             false,
             None,
