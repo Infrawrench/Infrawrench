@@ -1932,10 +1932,34 @@ jobs:
     run: node --test
 ```
 
-There is no `bun` in a job: jobs run Node (Edge.js), so this is for
-projects that install with Bun and whose scripts run under Node. What a
-job gets is the `node_modules` `bun install --frozen-lockfile` makes, in
-the layout Bun would pick:
+Bun itself is `tools: [builtin:bun@1.4]`, the official release run
+natively in a gVisor sandbox beside the environment (see
+[Native tools in a sandbox](#native-tools-in-a-sandbox)), on a runner
+started with `--native-sandbox`:
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    tools: [builtin:bun@1.4]
+    run: |
+      bun install --frozen-lockfile
+      bun test
+```
+
+`bun` and `bunx` are on the script's `PATH`; from Bun, the environment's
+`bash`, `sh`, `node`, `git` and the rest are on its own, so `bun run` of a
+package script, `Bun.spawn(["node", ...])` and `#!/usr/bin/env node` files
+run them. Bun's JIT, `bun:sqlite`, `bun:ffi`, native addons and
+`bun build --compile` work as they do anywhere, since the program is real.
+The builtin is Bun 1.4.4 for `x86_64-linux` and `aarch64-linux` and
+Ubuntu 24.04's C library and C++ runtime, every file pinned by SHA-256
+(`builtins/bun/build.sh`).
+
+Without it, there is no `bun` in a job: `deps: [bun]` is for projects that
+install with Bun and whose scripts run under Node. What a job gets is the
+`node_modules` `bun install --frozen-lockfile` makes, in the layout Bun
+would pick:
 
 - **hoisted** for a single package: `bun.lock` records that tree itself
   (a package's key is its path in it), so every package is unpacked where
