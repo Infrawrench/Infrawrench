@@ -42,7 +42,7 @@ export const ALL_PERMISSIONS = [
   "freezes:read",
   "freezes:write",
   "freezes:override",
-  // CI (rolled out per organization). `approve` is its own permission
+  // CI. `approve` is its own permission
   // because approving a fork's commit runs a stranger's code on the
   // organization's runners: members can watch runs, maintainers decide.
   "ci:read",

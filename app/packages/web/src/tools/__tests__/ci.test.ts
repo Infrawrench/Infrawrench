@@ -10,7 +10,6 @@ process.env["WORKOS_CLIENT_ID"] ??= "test_workos_client_id";
 // The CI modules read Postgres and the CI proxy: stub them, they have their
 // own tests. The tools are what is under test.
 const ci = {
-  ciTurnedOn: vi.fn(async (_org: string) => true),
   ciStatus: vi.fn(),
   ciAccessOverview: vi.fn(),
   ciUsage: vi.fn(),
@@ -35,7 +34,6 @@ class CiInputError extends Error {
   }
 }
 vi.mock("@infrawrench/server-core/ci/accounts", () => ({
-  ciTurnedOn: (org: string) => ci.ciTurnedOn(org),
   ciStatus: (...a: unknown[]) => ci.ciStatus(...a),
 }));
 vi.mock("@infrawrench/server-core/ci/access", () => ({
@@ -74,7 +72,7 @@ vi.mock("@infrawrench/server-core/products/settings", () => ({
   disabledProducts: (org: string) => mockDisabledProducts(org),
 }));
 
-const { ciTools, CI_OFF_MESSAGE, pageLines, readLiveLog, splitLines } = await import("../ci");
+const { ciTools, pageLines, readLiveLog, splitLines } = await import("../ci");
 const { forProduct } = await import("../products");
 const { authorizeToolCall } = await import("../permissions");
 const { needsApproval } = await import("../approval");
@@ -164,32 +162,8 @@ function openLog(frames: readonly object[], opts: { close?: boolean } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  ci.ciTurnedOn.mockResolvedValue(true);
   mockResolvePerms.mockResolvedValue({ permissions: ["*"], role: null });
   mockDisabledProducts.mockResolvedValue([]);
-});
-
-describe("the CI rollout gate", () => {
-  it("refuses every tool, and reads nothing, while CI is off for the organization", async () => {
-    ci.ciTurnedOn.mockResolvedValue(false);
-    const input = {
-      runId: "run-1",
-      jobId: "lint",
-      installationId: 1,
-      repoFullName: "acme/web",
-      pipelineFile: ".infrawrench/ci/deploy.yml",
-    };
-    for (const t of tools) {
-      const result = await t.handler(input, auth);
-      expect(result.isError, t.name).toBe(true);
-      expect(text(result), t.name).toBe(CI_OFF_MESSAGE);
-    }
-    expect(ci.ciTurnedOn).toHaveBeenCalledWith("o1");
-    for (const [name, fn] of Object.entries(ci)) {
-      if (name !== "ciTurnedOn") expect(fn, name).not.toHaveBeenCalled();
-    }
-    expect(mockLogAudit).not.toHaveBeenCalled();
-  });
 });
 
 describe("permissions", () => {

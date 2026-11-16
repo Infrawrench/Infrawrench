@@ -33,7 +33,6 @@ const json = (status: number, body: unknown) =>
 const parse = (init: RequestInit = {}) =>
   init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
 
-vi.mock("../../features.js", () => ({ orgHasFeature: async () => true }));
 vi.mock("../../entitlements.js", () => ({ planAccess: async () => ({ paid: true }) }));
 vi.mock("../../github/app.js", () => ({
   getInstallationToken: async () => "installation-token-for-tests",

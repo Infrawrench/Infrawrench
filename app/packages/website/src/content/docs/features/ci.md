@@ -6,8 +6,6 @@ sidebar_order: 14
 
 Infrawrench CI runs the pipelines in a repository's `.infrawrench/ci/` folder on every push and pull request. Each job runs in its own WebAssembly sandbox over a snapshot of the commit, so a job starts in the time it takes to load a program that is already compiled: there is no container to pull, no clone per job and no dependency install per job.
 
-CI is being rolled out to organizations one at a time. Until it is on for yours, the **CI** page says so and nothing runs.
-
 <insert [The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons] here>
 
 ## Turn it on for your repositories
@@ -711,8 +709,6 @@ The in-app chat and any client connected to the [MCP server](./mcp.md) can work 
 - **Read a run:** `get_ci_run` has the run's jobs, with their status, reason, duration, what they were lent (by name) and their downloads. `get_ci_job_log` reads one job's output a page at a time, the last 200 lines by default: from the finished run's report, or from a running run's live log. It is the output the run page shows, with your secrets masked by the runner. Download links are not handed out; open the run in Infrawrench for those.
 - **Act on a run:** `start_ci_run` starts a [pipeline by hand](#start-a-pipeline-by-hand) with its inputs, `retry_ci_run` [retries a run](#retry-a-run) (with or without the task cache), `cancel_ci_run` [cancels one](#cancel-a-run), and `approve_ci_run` and `reject_ci_run` decide a [fork's pull request](#pull-requests-from-forks). Each takes `ci:approve`, like the buttons. The chat asks you to approve every one of them first, and each is recorded in the audit log.
 - **See the setup:** `list_ci_repositories`, `list_ci_pipelines` (the scheduled and manual pipelines on each default branch), `list_ci_values` (the names of secrets and variables, never their values; it takes `ci:write`, as the card does), `get_ci_access` (what [CI access](#ci-access) allows) and `get_ci_usage`. These only read: change them here, in the CI tab.
-
-Every one of them answers "CI is not turned on for this organization" until CI is on for it.
 
 ## Limits
 

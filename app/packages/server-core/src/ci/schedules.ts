@@ -53,7 +53,6 @@ import {
   type CiScheduleEntry,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { orgHasFeature } from "../features.js";
 import { getInstallationToken } from "../github/app.js";
 import { ownerKey, repoKey } from "./events.js";
 import { CiProxyError, proxyJson } from "./proxy.js";
@@ -297,9 +296,9 @@ export function dueRuns(
 
 /**
  * Queues every scheduled pipeline due since the last pass. Only for
- * organizations that still run CI for the account, have it turned on and
- * pay for it; the others' minutes pass without a run (and without a failed
- * check every minute).
+ * organizations that still run CI for the account and pay for it; the
+ * others' minutes pass without a run (and without a failed check every
+ * minute).
  */
 export async function fireDueSchedules(now = new Date()): Promise<number> {
   const minute = Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS;
@@ -325,8 +324,7 @@ export async function fireDueSchedules(now = new Date()): Promise<number> {
   const mayRun = (organizationId: string) => {
     let answer = allowed.get(organizationId);
     if (!answer) {
-      answer = (async () =>
-        (await orgHasFeature(organizationId, "ci")) && (await planAccess(organizationId)).paid)();
+      answer = planAccess(organizationId).then((access) => access.paid);
       allowed.set(organizationId, answer);
     }
     return answer;

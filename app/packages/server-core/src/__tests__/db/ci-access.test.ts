@@ -147,7 +147,6 @@ vi.mock("../../plugin-loader.js", () => {
   };
 });
 
-vi.mock("../../features.js", () => ({ orgHasFeature: async () => true }));
 vi.mock("../../entitlements.js", () => ({ planAccess: async () => ({ paid: true }) }));
 vi.mock("../../github/app.js", () => ({
   getInstallationToken: async () => "installation-token-for-tests",

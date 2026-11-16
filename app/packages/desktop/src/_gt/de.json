@@ -22807,7 +22807,6 @@
   "3c90939990664d77": "CI konnte nicht geladen werden",
   "ec0ed1ca24372801": "CI",
   "8ed6827da4c2a1f0": "Pipelines in .infrawrench/ci laufen bei jedem Push und Pull Request, jeder Job in einer eigenen WebAssembly-Sandbox. Pull Requests aus Forks warten auf einen Maintainer und erhalten nie Secrets.",
-  "032606f77a5b7fb2": "CI ist für diese Organisation noch nicht aktiviert. Es wird schrittweise für einzelne Organisationen eingeführt.",
   "2d53b34194963500": "Der CI-Runner-Pool ist auf diesem Server nicht konfiguriert, daher startet kein Lauf.",
   "c1ff5bab3cf868fa": "CI benötigt einen kostenpflichtigen Tarif. Läufe werden aufgezeichnet, aber erst nach einem Upgrade gestartet.",
   "946abc507faceec1": "Noch keine Läufe. Pushen Sie in ein Repository eines Kontos, für das CI läuft.",

@@ -1,8 +1,6 @@
 /**
  * `/api/org/:orgId/ci`: CI on the organization's GitHub repositories.
  *
- * CI is rolled out per organization (`ORG_FEATURES`): until a platform admin
- * turns it on, the status endpoint says so and everything else is a 404.
  * Runs come from the GitHub App's push and pull request deliveries; a pull
  * request from a fork waits for someone with `ci:approve`, and runs without
  * secrets once approved. Someone with `ci:approve` may also start a
@@ -433,7 +431,10 @@ export const CiAccountSchema = Schema.Struct({
 }).annotate({ identifier: "CiAccount" });
 
 export const CiStatusSchema = Schema.Struct({
-  enabled: Schema.Boolean.annotate({ description: "CI is turned on for this organization" }),
+  enabled: Schema.Boolean.annotate({
+    description:
+      "Always true: CI is on for every organization. Kept for clients that predate that, which hide CI when it is false",
+  }),
   configured: Schema.Boolean.annotate({
     description: "The runner pool is configured on this server",
   }),

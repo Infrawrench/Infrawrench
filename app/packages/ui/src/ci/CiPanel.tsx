@@ -822,7 +822,6 @@ export function CiPanel({
       .then(async (s) => {
         if (cancelled) return;
         setStatus(s);
-        if (!s.enabled) return;
         const [r, u] = await Promise.all([client.listRuns(filter || undefined), client.usage()]);
         if (cancelled) return;
         setRuns(r);
@@ -839,8 +838,9 @@ export function CiPanel({
   // while something is. Not while a run's detail is open (it follows its own
   // run) or while the window is hidden.
   const anyActive = useMemo(() => (runs ?? []).some((r) => ACTIVE.includes(r.status)), [runs]);
+  const loaded = status !== null;
   useEffect(() => {
-    if (selectedRunId || status?.enabled !== true) return;
+    if (selectedRunId || !loaded) return;
     const timer = setInterval(
       () => {
         if (typeof document === "undefined" || document.visibilityState === "visible") refresh();
@@ -848,7 +848,7 @@ export function CiPanel({
       anyActive ? 5_000 : 15_000,
     );
     return () => clearInterval(timer);
-  }, [anyActive, selectedRunId, status?.enabled, refresh]);
+  }, [anyActive, selectedRunId, loaded, refresh]);
 
   return (
     <div className="space-y-6">
@@ -873,15 +873,7 @@ export function CiPanel({
         </p>
       ) : null}
 
-      {status && !status.enabled ? (
-        <Notice>
-          {gt(
-            "CI is not turned on for this organization yet. It is being rolled out to organizations one at a time.",
-          )}
-        </Notice>
-      ) : null}
-
-      {status?.enabled ? (
+      {status ? (
         <>
           {!status.configured ? (
             <Notice tone="warning">

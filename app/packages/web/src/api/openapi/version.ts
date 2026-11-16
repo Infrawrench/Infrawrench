@@ -525,4 +525,12 @@
 // and the audit log keeps `page` and `pageSize` within their documented
 // ranges (`pageSize` above 200 reads as 200). Fixes; the audit log's paging
 // parameters gain descriptions.
-export const API_VERSION = "1.114.1";
+// 1.115.0: CI is on for every organization, so its per-organization rollout
+// goes: `GET /api/org/:orgId/features` and the platform admin's
+// `PUT /api/admin/organizations/:orgId/features/:feature` are removed with
+// `OrgFeatureName`, `OrgFeatureList`, `AdminFeatureUpdate` and
+// `AdminFeatureResult`, and `AdminOrganization` loses `features`. CI routes
+// no longer answer 404 for an organization nobody turned CI on for, and
+// `CiStatus.enabled` is always true (kept for clients that hide CI when it is
+// false). Removals ship as a minor by the owner's decision, as in 1.113.0.
+export const API_VERSION = "1.115.0";

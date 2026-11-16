@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.114.1",
+    "version": "1.115.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -61548,31 +61548,6 @@
         ],
         "additionalProperties": false
       },
-      "OrgFeatureList": {
-        "type": "object",
-        "properties": {
-          "features": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrgFeatureName"
-            }
-          }
-        },
-        "required": [
-          "features"
-        ],
-        "additionalProperties": false
-      },
-      "OrgFeatureName": {
-        "anyOf": [
-          {
-            "type": "string",
-            "enum": [
-              "ci"
-            ]
-          }
-        ]
-      },
       "OrgProductPolicy": {
         "type": "object",
         "properties": {
@@ -64014,7 +63989,7 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "CI is turned on for this organization"
+            "description": "Always true: CI is on for every organization. Kept for clients that predate that, which hide CI when it is false"
           },
           "configured": {
             "type": "boolean",
@@ -79029,37 +79004,6 @@
         ],
         "additionalProperties": false
       },
-      "AdminFeatureResult": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "features": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrgFeatureName"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "features"
-        ],
-        "additionalProperties": false
-      },
-      "AdminFeatureUpdate": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "enabled"
-        ],
-        "additionalProperties": false
-      },
       "ComplimentaryResult": {
         "type": "object",
         "properties": {
@@ -79110,13 +79054,6 @@
             "minimum": 0,
             "maximum": 9007199254740991
           },
-          "features": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrgFeatureName"
-            },
-            "description": "Rolled-out features a platform admin has turned on for the org"
-          },
           "subscriptionStatus": {
             "anyOf": [
               {
@@ -79142,7 +79079,6 @@
           "complimentary",
           "createdAt",
           "memberCount",
-          "features",
           "subscriptionStatus"
         ],
         "additionalProperties": false
@@ -125475,43 +125411,6 @@
         "operationId": "deleteOrgOrgIdStarredKindObjectId"
       }
     },
-    "/api/org/{orgId}/features": {
-      "get": {
-        "tags": [
-          "Organization"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id",
-              "format": "uuid",
-              "examples": [
-                "00000000-0000-0000-0000-000000000000"
-              ]
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The organization's features",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrgFeatureList"
-                }
-              }
-            }
-          }
-        },
-        "description": "Features still being rolled out are turned on per organization by a platform admin. A feature not listed here is refused by its own routes.",
-        "summary": "List the organization's rolled-out features",
-        "operationId": "getOrgOrgIdFeatures"
-      }
-    },
     "/api/org/{orgId}/products": {
       "get": {
         "tags": [
@@ -141910,88 +141809,6 @@
           }
         },
         "operationId": "putAdminOrganizationsOrgIdComplimentary",
-        "x-internal": true
-      }
-    },
-    "/api/admin/organizations/{orgId}/features/{feature}": {
-      "put": {
-        "tags": [
-          "Admin"
-        ],
-        "parameters": [
-          {
-            "name": "orgId",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "description": "Organization id"
-            },
-            "required": true
-          },
-          {
-            "name": "feature",
-            "in": "path",
-            "schema": {
-              "$ref": "#/components/schemas/OrgFeatureName"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The org's features after the change",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminFeatureResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "description": "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). 403 for everyone else.",
-        "summary": "Turn a rolled-out feature on or off for an org",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminFeatureUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "operationId": "putAdminOrganizationsOrgIdFeaturesFeature",
         "x-internal": true
       }
     },

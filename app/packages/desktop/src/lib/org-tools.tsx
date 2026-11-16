@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -42,7 +41,6 @@ import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
-import type { OrgFeature } from "@infrawrench/client-core";
 import {
   accessReviewTabTarget,
   agentsTabTarget,
@@ -69,9 +67,7 @@ import {
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "./workspace-tabs";
-import { cloudClient } from "./cloud-client";
 import { useDisabledProducts } from "./disabled-products";
-import { runRpc } from "./rpc/client";
 
 /**
  * The org-level tools, one entry per sidebar tile. One list feeds both the
@@ -84,21 +80,6 @@ export function useOrgTools(): SidebarToolDef[] {
   const gt = useGT();
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
-  // Features a platform admin rolls out per organization (CI): their entry
-  // points show only once the active cloud organization has them.
-  const [orgFeatures, setOrgFeatures] = useState<readonly OrgFeature[]>([]);
-  useEffect(() => {
-    setOrgFeatures([]);
-    if (!activeCloudOrgId) return;
-    let cancelled = false;
-    runRpc(cloudClient("orgFeatures").orgFeatures.list({ params: { orgId: activeCloudOrgId } }))
-      .then((r) => !cancelled && setOrgFeatures(r.features))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [activeCloudOrgId]);
-
   const disabledProducts = useDisabledProducts();
 
   // Costs and Changes have no local half (spend is collected server-side,
@@ -268,18 +249,13 @@ export function useOrgTools(): SidebarToolDef[] {
             icon: <DeliveryIcon />,
             onClick: () => void navigate({ to: "/delivery" }),
           },
-          // Cloud-only and rolled out per organization: runs come from the
-          // GitHub App's webhooks.
-          ...(orgFeatures.includes("ci")
-            ? [
-                {
-                  key: "ci",
-                  label: gt("CI"),
-                  icon: <CiIcon />,
-                  onClick: () => void navigate({ to: "/ci", search: {} }),
-                },
-              ]
-            : []),
+          // Cloud-only: runs come from the GitHub App's webhooks.
+          {
+            key: "ci",
+            label: gt("CI"),
+            icon: <CiIcon />,
+            onClick: () => void navigate({ to: "/ci", search: {} }),
+          },
           {
             key: "status-pages",
             label: gt("Status pages"),

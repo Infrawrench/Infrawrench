@@ -8,7 +8,6 @@ import type { CiAccount, CiStatus } from "@infrawrench/client-core";
 import { db } from "../db/client.js";
 import { ciAccounts, githubInstallations } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { orgHasFeature } from "../features.js";
 import { isGithubAppConfigured } from "../github/app.js";
 import { ciProxyConfigured } from "./proxy.js";
 import { CiInputError } from "./runs.js";
@@ -44,24 +43,14 @@ export async function ciAccountsOf(organizationId: string): Promise<CiAccount[]>
   }));
 }
 
-/**
- * CI is turned on for the organization. Every CI surface but its status
- * refuses without it: the HTTP routes (`requireCi`) and the chat and MCP
- * tools (`web/src/tools/ci.ts`) both ask here, so the rollout gate is one
- * place to change.
- */
-export async function ciTurnedOn(organizationId: string): Promise<boolean> {
-  return await orgHasFeature(organizationId, "ci");
-}
-
 export async function ciStatus(organizationId: string): Promise<CiStatus> {
-  const enabled = await ciTurnedOn(organizationId);
   return {
-    enabled,
+    // CI is on for every organization; clients built before that still read it.
+    enabled: true,
     configured: ciProxyConfigured(),
     githubConfigured: isGithubAppConfigured(),
     planIncludesCi: (await planAccess(organizationId)).paid,
-    accounts: enabled ? await ciAccountsOf(organizationId) : [],
+    accounts: await ciAccountsOf(organizationId),
   };
 }
 
