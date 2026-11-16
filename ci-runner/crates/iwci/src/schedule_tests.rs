@@ -3676,6 +3676,43 @@ fn the_first_job_waiting_for_memory_is_not_passed_over_by_jobs_that_would_delay_
 }
 
 #[test]
+fn memory_given_back_is_never_seen_half_given_back() {
+    // One thread starts and ends a job of 2 GiB over and over; another
+    // asks for a job of 3 GiB first and one of 2 GiB behind it, which
+    // takes longer than the first job would wait. The second may never
+    // start: either the first fits, or it waits for the job of 2 GiB and
+    // the second would keep it waiting. A lease once left the running
+    // list before its memory came back, and a look in between saw memory
+    // held that nothing would give back, so it let the second in (#1260).
+    let budget = MemoryBudget::new(4 * GIB);
+    let stop = AtomicBool::new(false);
+    let passed_over = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !stop.load(Ordering::SeqCst) {
+                if let Admission::Start(_, lease) = budget.admit([ask(2, 60)]) {
+                    budget.release(&lease);
+                }
+            }
+        });
+        let until = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < until {
+            match budget.admit([ask(3, 60), ask(2, 600)]) {
+                Admission::Start(0, lease) => budget.release(&lease),
+                Admission::Start(_, lease) => {
+                    passed_over.fetch_add(1, Ordering::SeqCst);
+                    budget.release(&lease);
+                }
+                Admission::Wait { .. } => {}
+            }
+        }
+        stop.store(true, Ordering::SeqCst);
+    });
+    assert_eq!(passed_over.load(Ordering::SeqCst), 0);
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
 fn a_job_that_outlasts_its_expected_time_is_expected_to_go_on_as_long_as_it_overran() {
     let taken = Instant::now();
     let running = Running {

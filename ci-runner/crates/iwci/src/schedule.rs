@@ -1147,24 +1147,34 @@ impl MemoryBudget {
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
+    ///
+    /// The lease leaves the running list and its bytes leave `used` under
+    /// the one lock [`MemoryBudget::admit`] reads both under. Given back
+    /// after the lock was let go, a run that looked in between saw memory
+    /// held that no running job would give back, so nothing protected the
+    /// first job in its order and a smaller one behind it started instead.
     fn release(&self, lease: &Lease) {
-        let bytes = {
+        {
             let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
             leases.running.retain(|r| r.id != lease.id);
             // Read under the lock a top-up holds, so none is lost.
-            lease.bytes.load(Ordering::SeqCst)
-        };
-        self.give(bytes);
+            self.take_back(lease.bytes.load(Ordering::SeqCst));
+        }
+        self.wake_all();
     }
 
     /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
+        self.take_back(bytes);
+        self.wake_all();
+    }
+
+    fn take_back(&self, bytes: u64) {
         let _ = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
             });
-        self.wake_all();
     }
 
     fn wake_all(&self) {
