@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use iwci_runtime::sandbox::{Content, NativeTool, Placed, SandboxHost};
-use iwci_runtime::{Invocation, Limits, Outcome, Runtime, WebcPackage};
+use iwci_runtime::{Invocation, Limits, Outcome, PathTree, Runtime, WebcPackage};
 use iwci_vfs::{JobFs, SnapshotBuilder};
 use shared_buffer::OwnedBuffer;
 
@@ -271,6 +271,56 @@ fn a_script_runs_bun_and_bun_runs_the_environments_commands() {
         "bun read piped",
         "bun exited 7",
         "done",
+    ] {
+        assert!(stdout.lines().any(|l| l == line), "{line:?} in {stdout}");
+    }
+}
+
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment and the runner; see the module docs"]
+fn a_node_tool_runs_beside_bun() {
+    // A Node tool (`abi: node`, such as builtin:vercel) and a native one
+    // in the same job: the tool's directory is mounted read only in the
+    // sandbox, at the same path as outside, and its command runs from the
+    // script and from Bun.
+    let Some(fx) = fixture() else { return };
+    let dir = "/usr/local/lib/iwci/tools/greet/1.0.0";
+    let tool = SnapshotBuilder::new();
+    tool.write(
+        "/cli.js",
+        b"console.log(\"hello \" + process.argv.slice(2).join(\" \"));\n",
+    )
+    .unwrap();
+    let job = job(&[]);
+    let mut inv = invocation(&job);
+    inv.trees.push(PathTree {
+        name: "greet".into(),
+        dir: dir.into(),
+        fs: tool.freeze().read_only(),
+        scripts: vec![(
+            "greet".into(),
+            format!("#!/bin/bash\nexec node '{dir}/cli.js' \"$@\"\n").into_bytes(),
+        )],
+        needs: Some("node".into()),
+    });
+    let script = format!(
+        r#"
+        greet from bash
+        bun -e 'const r = Bun.spawnSync(["greet", "from bun"]); process.stdout.write(r.stdout); process.stderr.write(r.stderr);'
+        bun -e 'console.log(require("fs").readFileSync("{dir}/cli.js", "utf8").includes("hello") ? "bun reads the tool" : "no")'
+        if touch {dir}/new 2>/dev/null; then echo writable; else echo read only; fi
+        bun -e 'try {{ require("fs").writeFileSync("{dir}/new", "x"); console.log("writable"); }} catch {{ console.log("read only for bun"); }}'
+    "#
+    );
+    let out = fx.run(inv, &script);
+    assert_eq!(out.exit_code, 0, "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    for line in [
+        "hello from bash",
+        "hello from bun",
+        "bun reads the tool",
+        "read only",
+        "read only for bun",
     ] {
         assert!(stdout.lines().any(|l| l == line), "{line:?} in {stdout}");
     }

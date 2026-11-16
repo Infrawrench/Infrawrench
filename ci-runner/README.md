@@ -1723,8 +1723,10 @@ job runs them, beside the native program:
 - **Billing.** The job is charged its wall time as any job, and the memory
   it reserved: its `memory:` and the sandbox's 384 MiB.
 - **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
-  the like) does not run beside a native one yet: such a job fails to
-  start, saying so. Use it in a job of its own.
+  the like) runs beside a native one: its directory is mounted read only
+  in the sandbox at the same path as in any job, and its command is on
+  the script's `PATH` and on the native program's, which runs it on the
+  environment's `node` (`bun -e 'Bun.spawnSync(["vercel", ...])'`).
 - **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
   release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
   another fails it, saying so. The runner starts each sandbox in new user,
