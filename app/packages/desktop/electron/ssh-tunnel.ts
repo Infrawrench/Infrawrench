@@ -10,9 +10,11 @@ import { Client as SshClient } from "ssh2";
 import type { ConnectConfig } from "ssh2";
 import {
   openTunnel as coreOpenTunnel,
+  ensureTunnel as coreEnsureTunnel,
   closeAllTunnels as coreCloseAllTunnels,
   closeTunnel as coreCloseTunnel,
   getTunnelEntries,
+  type OpenTunnelOptions,
 } from "@infrawrench/ssh-tunnel-core";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
@@ -93,22 +95,45 @@ interface DesktopTunnelExtras {
   accountId?: string;
 }
 
+/**
+ * The desktop's connect options for a tunnel: its agents and the TOFU host-key
+ * store, with a refused host key reported as itself rather than as ssh2's
+ * generic handshake failure.
+ */
+async function desktopTunnelOptions(): Promise<OpenTunnelOptions> {
+  await ensureHostKeyCacheLoaded();
+  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  return {
+    configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
+    connectError: () => hostKeyErrorRef.value,
+  };
+}
+
+/** Opens a tunnel the renderer asked for ("Connect to service via SSH"). */
 export async function openTunnel(
   config: SshTunnelConfig,
-  { accountId }: { accountId?: string } = {},
 ): Promise<{ tunnelId: string; localPort: number }> {
-  await ensureHostKeyCacheLoaded();
-  // The ssh-tunnel-core surface doesn't expose the host-key error path
-  // separately, so any mismatch will manifest as a connection failure with a
-  // message we log above. That's acceptable for tunnels because the IPC
-  // caller only sees pass/fail; the console log identifies the cause.
-  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
-  const extras: DesktopTunnelExtras = {
-    remoteHost: config.remoteHost,
-    ...(accountId === undefined ? {} : { accountId }),
-  };
-  return coreOpenTunnel<DesktopTunnelExtras>(config, extras, {
-    configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
+  const extras: DesktopTunnelExtras = { remoteHost: config.remoteHost };
+  return coreOpenTunnel<DesktopTunnelExtras>(config, extras, await desktopTunnelOptions());
+}
+
+/**
+ * A local account's own tunnel, opened from `config()` when the account has none
+ * (`config` runs only then, so its key is decrypted only then). The core forgets a
+ * tunnel whose SSH connection ends, so the next call opens a new one, and waits a
+ * little between attempts while the bastion stays unreachable (#1276).
+ */
+export function ensureAccountTunnel(
+  accountId: string,
+  config: () => SshTunnelConfig,
+): Promise<{ tunnelId: string; localPort: number }> {
+  return coreEnsureTunnel<DesktopTunnelExtras>(`account:${accountId}`, async () => {
+    const tunnelConfig = config();
+    return {
+      config: tunnelConfig,
+      extras: { remoteHost: tunnelConfig.remoteHost, accountId },
+      options: await desktopTunnelOptions(),
+    };
   });
 }
 

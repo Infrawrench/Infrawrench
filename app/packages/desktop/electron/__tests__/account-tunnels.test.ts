@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   open: new Map<string, number>(),
   nextPort: 41000,
   openTunnel: vi.fn(),
+  pending: new Map<string, Promise<unknown>>(),
 }));
 
 vi.mock("../db", () => ({
@@ -61,9 +62,20 @@ vi.mock("../main-utils", () => ({
     `decrypted(${ciphertext}, ${aad})`,
 }));
 
+// `ensureAccountTunnel` stands in for `@infrawrench/ssh-tunnel-core`'s `ensureTunnel`:
+// one open per account at a time, the config read only when it opens. Reopening
+// after a drop and waiting between failures are the core's, tested there.
 vi.mock("../ssh-tunnel", () => ({
   findAccountTunnel: (accountId: string) => h.open.get(accountId) ?? null,
-  openTunnel: (...args: unknown[]) => h.openTunnel(...args),
+  ensureAccountTunnel: (accountId: string, config: () => unknown) => {
+    const pending = h.pending.get(accountId);
+    if (pending) return pending;
+    const started = Promise.resolve()
+      .then(() => h.openTunnel(config(), { accountId }))
+      .finally(() => h.pending.delete(accountId));
+    h.pending.set(accountId, started);
+    return started;
+  },
 }));
 
 const { tunnelAccountCredentials } = await import("../account-tunnels");
@@ -71,6 +83,7 @@ const { tunnelAccountCredentials } = await import("../account-tunnels");
 beforeEach(() => {
   h.rows.clear();
   h.open.clear();
+  h.pending.clear();
   h.queries = 0;
   h.nextPort = 41000;
   h.openTunnel.mockReset();
@@ -196,7 +209,7 @@ describe("tunnelAccountCredentials", () => {
     ).rejects.toThrow(
       "Could not open the SSH tunnel through bastion.example.com: SSH connection failed: connect ECONNREFUSED",
     );
-    // The next attempt opens it again rather than waiting on the failed one.
+    // A failed open is not handed to the next caller.
     await tunnelAccountCredentials("acc", mysql.manifest.credentialFields, credentials);
     expect(credentials["connectionString"]).toBe("mysql://127.0.0.1:41000/mysql");
   });
