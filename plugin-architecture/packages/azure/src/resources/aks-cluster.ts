@@ -34,6 +34,12 @@ export const AKSClusterResourceType = rt({
       description: "OS disk size of the first node pool",
     }),
     f("networkPlugin", "Network Plugin", { required: false }),
+    f("entraId", "Entra ID Sign-in", {
+      required: false,
+      kind: "boolean",
+      description:
+        "Whether users sign in to the cluster with Microsoft Entra ID (AKS-managed Entra integration), rather than only the cluster's local accounts",
+    }),
     f("tier", "Tier", { required: false }),
     f("supportPlan", "Support Plan", {
       required: false,
@@ -114,6 +120,21 @@ export const AKSClusterResourceType = rt({
       // own Metrics tab, so cluster spend sits next to the provider's node
       // metrics instead of being buried one tab deeper.
       exposeMetricsToParent: true,
+      ci: {
+        lends:
+          "A kubeconfig with a Microsoft Entra ID token for the Azure connection's service principal, minted for the run.",
+        reach:
+          "Only this cluster: the token is for the AKS API (its audience) and can do what the service principal's Azure RBAC or Kubernetes RBAC on the cluster allows.",
+        lifetime: "About an hour from when the run starts, as Entra ID issues it.",
+        // Never the local account's client certificate (`ciKubeconfig`).
+        credentialMappings: [{ outputKey: "ciKubeconfig", credentialKey: "kubeconfig" }],
+        availableWhen: {
+          fieldKey: "entraId",
+          equals: "true",
+          reason:
+            "This cluster signs in only with local accounts, whose credential is a long-lived client certificate, often with admin rights, that cannot be revoked without rotating the cluster's certificates. Turn on Microsoft Entra ID integration to lend it.",
+        },
+      },
     },
   ],
   secretExportTemplates: [

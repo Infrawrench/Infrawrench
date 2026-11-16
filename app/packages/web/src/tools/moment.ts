@@ -4,7 +4,7 @@
  * Mirrors `GET /moment`: same union service, same per-feed permission
  * gating. The declared permission is the endpoint's floor (`resources:read`);
  * the handler then resolves the caller's full effective grants so feeds
- * needing more (costs, workflows, deployments, audit, freezes) are omitted
+ * needing more (costs, workflows, audit, freezes) are omitted
  * per-feed exactly as the HTTP route omits them.
  */
 import { z } from "zod";
@@ -20,7 +20,7 @@ export function momentTools(): ToolDefinition[] {
       description:
         "Everything the platform knows happened around a timestamp, merged chronologically: " +
         "resource changes (with sleep/wake schedule attribution), provider status incidents " +
-        "overlapping the window, cost anomalies, workflow runs, deployments, audit-log " +
+        "overlapping the window, cost anomalies, workflow runs, audit-log " +
         "entries, change freezes, and drift/expiry alert deliveries. Feeds you lack " +
         "permission for are reported as omitted; a failing feed is reported as errored " +
         "without losing the rest. Events inside a provider incident's span can be " +

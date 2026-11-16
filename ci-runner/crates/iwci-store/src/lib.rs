@@ -138,12 +138,12 @@ pub use error::{Error, ManifestError, StoreError};
 pub use keys::{Namespace, RepoId};
 pub use manifest::{
     Abi, BlobRef, EnvCache, EnvEntry, EnvManifest, EnvPackage, MAX_BLOB_SIZE, MAX_FILES,
-    MAX_MANIFEST_SIZE, MAX_PACKAGES, MAX_TOTAL_SIZE, SCHEMA, ToolFile, ToolManifest,
-    is_valid_guest_path,
+    MAX_MANIFEST_SIZE, MAX_PACKAGES, MAX_TOTAL_SIZE, NativeTarget, SCHEMA, ToolFile, ToolManifest,
+    host_target, is_valid_guest_path,
 };
 pub use publish::{
-    EnvDraft, FileSource, ManifestOutcome, PackageSource, PublishReport, ToolDraft, publish_env,
-    publish_tool,
+    EnvDraft, FileSource, ManifestOutcome, PackageSource, PublishReport, TargetSource, ToolDraft,
+    publish_env, publish_tool,
 };
 pub use r2::{Credentials, R2Options, R2Store, RetryPolicy, UrlStyle, account_endpoint};
 pub use store::{LayeredStore, LocalStore, MAX_OBJECT_SIZE, ObjectInfo, ObjectMeta, ObjectStore};

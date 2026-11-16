@@ -698,51 +698,6 @@ func (c *Client) DeleteBillingProfile(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/billing-profiles/"+seg(id))
 }
 
-/* ----------------------------- deploy triggers ----------------------------- */
-
-func (c *Client) ListDeployTriggers(ctx context.Context) ([]DeployTrigger, error) {
-	var out []DeployTrigger
-	err := c.Get(ctx, "/deployments/triggers", &out)
-	return out, err
-}
-
-// GetDeployTrigger lists and filters: there is no single-GET route.
-func (c *Client) GetDeployTrigger(ctx context.Context, id string) (*DeployTrigger, error) {
-	all, err := c.ListDeployTriggers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range all {
-		if all[i].ID == id {
-			return &all[i], nil
-		}
-	}
-	return nil, notFound(http.MethodGet, "/deployments/triggers", id)
-}
-
-func (c *Client) CreateDeployTrigger(ctx context.Context, in DeployTriggerInput) (*DeployTrigger, error) {
-	var out DeployTrigger
-	if err := c.Post(ctx, "/deployments/triggers", in, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// SetDeployTriggerEnabled is the trigger's whole mutable surface. Repo, branch
-// and env are fixed at creation, so the Terraform resource replaces on a change
-// to any of them.
-func (c *Client) SetDeployTriggerEnabled(ctx context.Context, id string, enabled bool) (*DeployTrigger, error) {
-	var out DeployTrigger
-	if err := c.Patch(ctx, "/deployments/triggers/"+seg(id), DeployTriggerEnabled{Enabled: enabled}, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *Client) DeleteDeployTrigger(ctx context.Context, id string) error {
-	return c.Delete(ctx, "/deployments/triggers/"+seg(id))
-}
-
 /* ------------------------------ slack / teams ------------------------------ */
 
 // GetSlackStatus reads the whole Slack picture. There is no listing route for

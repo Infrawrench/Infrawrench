@@ -51,6 +51,27 @@ export function isApiDisabled(err: unknown): boolean {
   return (err as { apiDisabled?: unknown } | null)?.apiDisabled === true;
 }
 
+/**
+ * Runs one part of a preflight, keeping going when its API is switched off:
+ * the switched-off API becomes a problem (once, however many parts need it)
+ * and the part answers `fallback`, so a single check names every API the
+ * project has to turn on rather than the first one it met.
+ */
+export async function unlessApiDisabled<T>(
+  problems: string[],
+  fallback: T,
+  part: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await part();
+  } catch (err) {
+    if (!isApiDisabled(err)) throw err;
+    const text = errorText(err);
+    if (!problems.includes(text)) problems.push(text);
+    return fallback;
+  }
+}
+
 /** A tag as a GCP label key: lowercase, `[a-z0-9_-]`, starting with a letter, at most 63. */
 export function labelKey(key: string): string {
   const safe = key
@@ -148,13 +169,17 @@ export const SERVICE_ACCOUNT_PERMISSIONS = {
   actAs: { permission: "iam.serviceAccounts.actAs", label: "Run the job as that service account" },
 } as const satisfies Record<string, CiMissingPermission>;
 
-/** Whether the CI service account is there (null when it cannot be read). */
+/**
+ * Whether the CI service account is there (null when it cannot be read).
+ * Throws when the IAM API is switched off, which no permission can get past.
+ */
 export async function serviceAccountExists(calls: GcpCiCalls): Promise<boolean | null> {
   try {
     await calls.call("GET", serviceAccountUrl(calls.project));
     return true;
   } catch (err) {
     if (statusOf(err) === 404) return false;
+    if (isApiDisabled(err)) throw err;
     return null;
   }
 }

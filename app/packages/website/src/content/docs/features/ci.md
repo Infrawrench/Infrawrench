@@ -40,7 +40,9 @@ jobs:
     needs: [typecheck]
 ```
 
-The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. A run whose pipelines all skip that event (for example `on.push` limited to `main`) shows as skipped, not passed. The check's **Details** link opens the run in Infrawrench.
+The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. The check's **Details** link opens the run in Infrawrench.
+
+A push or pull request that no pipeline runs on (every pipeline's `on:` names other branches or events, or its `paths:` leave the change out) is not a run: nothing is sent to the runners, it is not billed, and the runs table leaves it out (pick **Nothing to run** under **Show** to list them). A push like that shows nothing on GitHub, so pushing to a branch with an open pull request leaves only the pull request's check. A pull request like that gets an **Infrawrench CI / pull request** check concluded as skipped, which a branch protection rule requiring that check accepts, so the pull request can still be merged.
 
 Each job has its own check too, named after its pipeline and the event (**Test / build (pull request)**), which turns from waiting to running to passed or failed as the job does. A matrix's entries, or a `packages:` job's packages, share one check that lists each of them. Require the run's check (**Infrawrench CI / pull request**) in a branch protection rule: it covers every job, whichever jobs a change adds or removes.
 
@@ -132,6 +134,42 @@ jobs:
     run: pnpm test
 ```
 
+### Deployment CLIs
+
+The Vercel CLI, Wrangler, Cloudflare's new `cf` and the Neon CLI are built in. List them under `tools:` in a job on `env:bash-node@24` and run them by name:
+
+```yaml
+jobs:
+  deploy:
+    using: env:bash-node@24
+    tools: [builtin:vercel@65, builtin:wrangler@4, builtin:neon@9]
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+    run: |
+      vercel deploy --prebuilt --prod --yes
+      wrangler deploy
+      neon branches create --project-id my-project --name pr-${{ pull-request.number }}
+```
+
+| Tool                       | What it is                                          |
+| -------------------------- | --------------------------------------------------- |
+| `builtin:vercel@65`        | The Vercel CLI 65.16                                |
+| `builtin:wrangler@4`       | Wrangler 4.162, for Workers and Pages               |
+| `builtin:cf@1.0.0-beta.32` | Cloudflare's `cf`, in beta (name the exact version) |
+| `builtin:neon@9`           | The Neon CLI 9.5 (the successor to `neonctl`)       |
+
+Each one is pinned with every package under it, so nothing is downloaded while the job runs, and each reads its token from the environment (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`) and never prompts. Telemetry and update checks are off.
+
+Jobs run in an isolate that cannot start native programs, so a few things work differently:
+
+- `wrangler deploy` bundles your Worker with the WebAssembly build of esbuild. `wrangler deploy --no-bundle` uploads a Worker you built in an earlier job as it is.
+- Anything that runs a Worker locally needs `workerd`, Cloudflare's local runtime, which cannot run here: `wrangler dev`, `--local`, `cf dev` and `@cloudflare/vitest-pool-workers` stop with a message that says so. Use `wrangler dev --remote`, or a [cloud job](#cloud-jobs).
+- `cf deploy <dir>` deploys a folder of static files. For a Worker with server-side code, use `wrangler deploy`, as Cloudflare recommends until a project moves to `cloudflare.config.ts`.
+- `vercel deploy` (which builds on Vercel) and `vercel deploy --prebuilt` both work. `vercel build` runs your framework's build inside the job.
+
 ### Background services
 
 `services:` starts programs a job's tests need, such as a database or your own API server, before the job runs, and stops them when it ends. Each runs inside the job, on the job's private network, so its name works as a host name (`postgres:5432`) and its ports never clash with another job's:
@@ -215,7 +253,7 @@ jobs:
 
 ## Runs
 
-The runs table lists the latest runs, newest first, with their status, where they came from (a branch, or a pull request and its branch) and how long they took. Filter it by status with **Show**.
+The runs table lists the latest runs, newest first, with their status, where they came from (a branch, or a pull request and its branch) and how long they took. Filter it by status with **Show**. Pushes and pull requests no pipeline ran on are left out unless you pick **Nothing to run** there.
 
 Open a run to see its jobs. The sidebar lists every job, with a matrix's entries and a `packages:` job's packages grouped under the job they were written as. **Summary** draws each pipeline as a graph: a box per job, below the jobs it needs, each with its status and how long it took. Drag to move around it, zoom with the buttons (or Ctrl and the scroll wheel), **Fit** to see all of it and **Expand** to fill the window. Click a job, in the graph or the sidebar, to read its output.
 
@@ -524,16 +562,59 @@ Names are the connections' names in Infrawrench. To lend one, open it under **Ma
 
 - **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
 - **SSH:** an entry in `/root/.ssh/config` named after the connection, with its key, user and port, a check against the host key Infrawrench pinned for it, and the jump host it connects through, which must be lent too. A host with no pinned key is not lent: open a terminal to it from Infrawrench once first.
-- **AWS:** session credentials from STS, minted from the connection's access key for each run and expiring with it (four hours), never the key itself: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` and `AWS_DEFAULT_REGION`, which the AWS CLI, every AWS SDK and Terraform read, and the same session as a profile named after the connection in `~/.aws/credentials` (`aws --profile production ...` when a job is lent two). A session has the IAM user's permissions, except that AWS lets it call no IAM operation and no STS operation but `AssumeRole` and `GetCallerIdentity`.
+- **AWS:** session credentials from STS, minted from the connection's access key for each run and expiring with it (seven hours), never the key itself: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` and `AWS_DEFAULT_REGION`, which the AWS CLI, every AWS SDK and Terraform read, and the same session as a profile named after the connection in `~/.aws/credentials` (`aws --profile production ...` when a job is lent two). A session has the IAM user's permissions, except that AWS lets it call no IAM operation and no STS operation but `AssumeRole` and `GetCallerIdentity`.
 - **Google Cloud:** an access token for the connection's service account, never its key. `gcloud` reads it from the file `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE` names, Terraform from `GOOGLE_OAUTH_ACCESS_TOKEN`, and `CLOUDSDK_CORE_PROJECT` and `GOOGLE_CLOUD_PROJECT` name the project. Google's client libraries have no variable for a token, so a script hands it to the library itself. A token lasts an hour from when the run is sent to the runner; where your organization allows longer ones for the account (the `iam.allowServiceAccountCredentialLifetimeExtension` policy) and the account may mint its own (`iam.serviceAccounts.getAccessToken` on itself), it lasts as long as the run may.
 - **Azure:** the connection's service principal: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` and `AZURE_SUBSCRIPTION_ID`, which the Azure SDKs read, and the same as `ARM_*` for Terraform. This is the connection's own client secret, not a short-lived one: the Azure CLI accepts no token from outside. Sign the CLI in with `az login --service-principal --username "$AZURE_CLIENT_ID" --password="$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"`.
 - **Vercel:** the connection's access token as `VERCEL_TOKEN`, which the Vercel CLI reads, so `vercel deploy` needs no `--token`. Say which project to deploy as usual: a committed `.vercel/project.json`, `VERCEL_ORG_ID` with `VERCEL_PROJECT_ID`, or `--scope`.
 - **Cloudflare:** the connection's API token as `CLOUDFLARE_API_TOKEN` and its account as `CLOUDFLARE_ACCOUNT_ID`, which Wrangler and Cloudflare's `cf` read. The token has the scopes it was created with, so give the connection the Workers and Pages scopes a deploy needs.
 - **Neon:** the connection's API key as `NEON_API_KEY`, which the Neon CLI reads, for a job that creates a branch per pull request and deletes it after.
+- **PostgreSQL:** the connection string as `DATABASE_URL`, its parts as `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` and `PGSSLMODE`, so `psql` connects with no arguments, and a section named after the connection in `~/.pg_service.conf`, so a job lent two picks one with `psql service=<name>`. A CA certificate the connection holds is written beside it and named by `PGSSLROOTCERT`.
+- **MySQL:** the connection string as `DATABASE_URL`, its password as `MYSQL_PASSWORD`, and an option group named after the connection in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects, so `mysql` connects with no arguments (`mysql --defaults-group-suffix=_<name>` picks another when a job is lent two). A password with both kinds of quote in it cannot be written there, so it is left out of the file and the job passes `MYSQL_PASSWORD` itself.
+- **Redis:** the URL as `REDIS_URL` (`redis-cli -u "$REDIS_URL"`) and its password as `REDISCLI_AUTH`, which `redis-cli` reads. An ACL user's name comes as `REDIS_USERNAME`: `redis-cli` reads no user from the environment, so pass `--user "$REDIS_USERNAME"`.
+- **MongoDB:** the connection string as `MONGODB_URI` (`mongosh "$MONGODB_URI"`), and its user and password as `MONGODB_USERNAME` and `MONGODB_PASSWORD`.
 
-These three lend the connection's own token or key, not a short-lived one, and it is masked in the job's log like a secret. A job installs their CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
+A connection Infrawrench reaches through an SSH tunnel of its own is not lent when the tunnel changes its credentials (a connection string, or a kubeconfig's cluster): they would point at Infrawrench's end of the tunnel, which a job cannot reach, and the private address behind it is usually out of a job's reach too. Connect it without the tunnel to lend it. A cluster or database in a cloud account whose tunnel goes somewhere else keeps its own address, and is lent as usual.
+
+Two databases lent to one job share the plain variable names (`DATABASE_URL`, `PGHOST`, ...), and the one named last wins; the per-connection files above tell them apart.
+
+Vercel, Cloudflare and Neon lend the connection's own token or key, not a short-lived one, and the databases lend the password their connection string holds; each is masked in the job's log like a secret. A job installs the CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
 
 <insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
+
+#### A cluster or database in a cloud account
+
+A managed cluster (GKE, EKS, AKS) or a managed database (Cloud SQL, RDS and Aurora, DigitalOcean's databases) can be used as if it were a Kubernetes, PostgreSQL, MySQL, Redis or MongoDB connection of its own, without connecting it separately. Grant it under **Resources jobs may read** and choose **As a Kubernetes connection** (or the database's engine) in **Use it in CI as a connection**. The choices are the resource's own tabs in Infrawrench that its provider declares for CI, so a Cloud SQL instance running MySQL is offered as MySQL only.
+
+The form then says exactly what a job would get, before anything is switched on: the credential, what it reaches beyond the resource, and how long it lasts. Two switches are separate, and both start off:
+
+- **Lend it to jobs:** jobs name it in `connections:` by its name in pipelines, exactly like a connection, and are lent what the matching connection would be.
+- **Run cloud jobs on it:** `cloud:` jobs of the ticked kinds run there. This lends the jobs nothing: a grant that only runs jobs on a cluster never hands its credential to a pipeline.
+
+```yaml
+jobs:
+  deploy:
+    tools: [builtin:kubectl@1.37]
+    connections: [{ name: gke-prod, namespace: web }, orders-db]
+    run: |
+      kubectl rollout status deploy/web
+      psql -c 'select 1'
+  migrate:
+    cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }
+    run: ./migrate.sh
+```
+
+What each is lent, read fresh for every run through the cloud connection that holds it, and never a credential plugin:
+
+- **GKE:** a kubeconfig with a Google access token minted for the run, scoped to `userinfo.email` only, the one scope GKE needs, so it calls no other Google API. In the cluster it can do what the Google Cloud connection's service account may. It lasts seven hours where your organization allows longer tokens for the account (`iam.allowServiceAccountCredentialLifetimeExtension`) and the account may mint its own (`iam.serviceAccounts.getAccessToken` on itself), and one hour otherwise.
+- **EKS:** a kubeconfig with a token presigned with the AWS connection's key. It reaches only the cluster, as that IAM user, and EKS accepts it for 15 minutes from when the run starts, so a job that waits longer behind others gets a refused token.
+- **AKS:** a kubeconfig with a Microsoft Entra ID token for the Azure connection's service principal, about an hour. Only clusters that sign in with Entra ID are offered: a cluster with only local accounts would lend a long-lived client certificate, often with admin rights, which cannot be revoked without rotating the cluster's certificates.
+- **Databases:** the connection string, with the user and password Infrawrench reads it with, as a connection of that engine would lend it. It reaches what that user may do, and lasts until the password is changed.
+
+A grant holds for the resource it was made for: if the resource is deleted and one is created again under the same name, the grant no longer lends it or runs jobs on it until it is saved again. A name in pipelines that is also a connection's name is refused rather than guessed: rename one.
+
+Ticking a job kind checks, through the cluster, that it can run there, and refuses the grant with what is missing when it cannot. Jobs run where the kind was checked (a cluster's own namespace) unless the grant lists other places in **Other places jobs may run**; each one is checked when it is added, and a job that names anywhere else in `cloud.region` is refused.
+
+<insert [The grant form for the GKE cluster "prod-cluster": no outputs ticked, Use it in CI as a connection set to "As a Kubernetes connection", the Credential, Reach and Lifetime lines, Lend it to jobs unticked, Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, Other places jobs may run empty, and the branch pattern "main"] here>
 
 ### SSH keys
 
@@ -560,7 +641,7 @@ jobs:
 
 ### When a job is refused
 
-A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
+A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
 
 ## Caches
 

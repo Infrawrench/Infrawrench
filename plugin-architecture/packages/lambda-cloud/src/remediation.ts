@@ -14,7 +14,7 @@ import {
  * Lambda has no filesystem snapshot or backup operation, so there is no
  * preceding backup step; the description says to copy the data off first.
  *
- * Reference: https://docs.lambda.ai/api/cloud (Delete filesystem,
+ * Reference: https://docs.lambda.com/api/cloud (Delete filesystem,
  * `DELETE /api/v1/filesystems/{id}`, Bearer API key).
  */
 export function lambdaCloudRemediationCommands(finding: RemediationFinding): RemediationCommand[] {
@@ -23,7 +23,7 @@ export function lambdaCloudRemediationCommands(finding: RemediationFinding): Rem
   if (resource.resourceTypeId !== "filesystem") return [];
   const id = remediationId(resource);
   if (!id) return [];
-  const url = `https://cloud.lambda.ai/api/v1/filesystems/${encodeURIComponent(id)}`;
+  const url = `https://cloud.lambda.com/api/v1/filesystems/${encodeURIComponent(id)}`;
   return [
     {
       tool: "curl",

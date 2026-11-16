@@ -1,4 +1,5 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { MONGODB_CI_CREDENTIAL } from "./ci-credential.js";
 import type {
   PluginManifest,
   ResourceTypeDefinition,
@@ -16,6 +17,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description: "MongoDB connection URI.",
       sensitive: true,
@@ -27,6 +29,9 @@ export const manifest = {
     credentialKey: "connectionString",
     browser: "documents",
   },
+  // Lend the connection to a CI job (`connections:`), or a managed database
+  // granted as this plugin's peer. See `ci-credential.ts`.
+  ciCredential: MONGODB_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

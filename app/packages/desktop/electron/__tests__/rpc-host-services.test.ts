@@ -73,7 +73,7 @@ vi.mock("../main-utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../main-utils")>()),
   getEncryptionKey: () => Buffer.alloc(32, 7),
 }));
-vi.mock("../infrafile/plugins", () => ({
+vi.mock("../main-plugins", () => ({
   loadPlugins: async () => h.plugins,
   getPlugin: async () => undefined,
 }));

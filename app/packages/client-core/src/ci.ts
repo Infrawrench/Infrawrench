@@ -18,7 +18,16 @@ export const CI_RUN_STATUSES = [
   "rejected",
   /** Stopped before it finished: by a newer run of its concurrency group, or by a person. */
   "cancelled",
+  /**
+   * Nothing to run: no pipeline of the commit runs on its push or pull
+   * request (`on:` names other branches or events, or `paths:` left every
+   * one out). The run list leaves these out.
+   */
+  "skipped",
 ] as const;
+
+/** The statuses the run list leaves out unless they are asked for by name. */
+export const CI_HIDDEN_RUN_STATUSES: readonly CiRunStatus[] = ["skipped"];
 
 export type CiRunStatus = (typeof CI_RUN_STATUSES)[number];
 

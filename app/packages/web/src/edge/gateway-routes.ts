@@ -68,9 +68,6 @@ const SESSION_ROUTES: readonly RegExp[] = [
         "apps",
         "agents",
         "ssh-tunnels",
-        // Deploys stream over the WebSocket and hosted builds run for up to
-        // 20 minutes, past Lambda's 15.
-        "deployments",
         // Object storage and SFTP: uploads larger than a Lambda request
         // carries, staged on local disk.
         "storage",
@@ -102,8 +99,9 @@ const NODE_ROUTES: readonly RegExp[] = [
   // claim (Node crypto) and the source redirect signs as the GitHub App.
   /^\/api\/ci-jobs\//,
   // CI access: checking a connection's permissions and listing a secret's
-  // versions are plugin calls for the connection's account.
-  new RegExp(`${ORG}/ci/access/(connections/[^/]+/preflight|resource-outputs)$`),
+  // versions are plugin calls for the connection's account, and saving a
+  // grant that runs cloud jobs on its peer checks the peer's permissions.
+  new RegExp(`${ORG}/ci/access/(connections/[^/]+/preflight|resource-outputs|grants(/[^/]+)?)$`),
   // The org grade reads the posture and backup feeds, which bind plugin
   // functions the edge registry only stubs: every attempt there would replay.
   // Its history (`/scorecards/org/history`) is Postgres only and stays.

@@ -61,7 +61,6 @@ import {
   buildMemcachedHostServices,
   buildDockerHostServices,
 } from "../lib/sql-drivers";
-import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { setSqlSession } from "../lib/sql-session";
 import {
   accountTabTarget,
@@ -123,7 +122,7 @@ import {
 import { ResourceCard } from "./DashboardView/ResourceCard";
 import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 import { openExternalUrl } from "../lib/app-shell";
-import { getLocalAccountCredentials } from "../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../lib/local-credentials";
 
 /**
  * A pinned workflow. Cloud pins arrive with the card's contents already joined
@@ -618,11 +617,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       }
       const credsByAccount = new Map<string, Record<string, string>>();
 
-      const accountIds = [...new Set(pinned.map((r) => r.account_id))];
+      const pluginByAccount = new Map(pinned.map((r) => [r.account_id, r.plugin_id]));
       await Promise.all(
-        accountIds.map(async (accountId) => {
+        [...pluginByAccount].map(async ([accountId, pluginId]) => {
           try {
-            const creds = await getLocalAccountCredentials(accountId);
+            const loaded = await getPlugin(pluginId);
+            if (!loaded) return;
+            // Through the account's SSH tunnel when it has one.
+            const creds = await getLocalConnectionCredentials(
+              accountId,
+              loaded.plugin.manifest.credentialFields,
+            );
             credsByAccount.set(accountId, creds);
           } catch {
             /* skip this account */
@@ -760,11 +765,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 ? buildMemcachedHostServices(manifest.kvDriver.driver, cs)
                 : buildKvHostServices(manifest.kvDriver.driver, cs);
           } else if (manifest.dockerDriver) {
-            const rawDockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
-            const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
             hostServices = buildDockerHostServices(
               manifest.dockerDriver.driver,
-              effectiveDockerHost,
+              creds[manifest.dockerDriver.credentialKey] ?? "",
             );
           }
 

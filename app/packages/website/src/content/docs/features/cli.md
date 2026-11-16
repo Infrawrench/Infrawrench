@@ -693,7 +693,7 @@ infrawrench blast-radius <id> --output json
 - `--json` includes the whole comparison.
 - `diff` also works with `--local`, comparing two of your desktop workspace's accounts live from the provider. Any resource type it couldn't list is reported instead of being counted as missing.
 
-`moment` is the [moment view](./moment.md) in your terminal: one timeline of everything that happened around a timestamp. That includes changes, provider incidents, cost anomalies, workflow runs, deployments, audit entries, freezes and alert deliveries. If you lack permission for a feed, or a feed fails, it says so inline. Leave out the timestamp for "around now". `-w/--window 15m|1h|6h` sets how far either side to look. `--json` includes the events, each feed's status and overlapping incidents.
+`moment` is the [moment view](./moment.md) in your terminal: one timeline of everything that happened around a timestamp. That includes changes, provider incidents, cost anomalies, workflow runs, audit entries, freezes and alert deliveries. If you lack permission for a feed, or a feed fails, it says so inline. Leave out the timestamp for "around now". `-w/--window 15m|1h|6h` sets how far either side to look. `--json` includes the events, each feed's status and overlapping incidents.
 
 `graph` prints the [dependency graph](./dependency-graph.md) as a text tree. Roots are resources nothing depends on, and each child is something its parent depends on. Focus on one resource and you get a **Depends on** tree and a **Depended on by** tree headed with the blast radius count. `--json` gives the node and edge lists.
 
@@ -833,44 +833,6 @@ infrawrench config apply -f infrawrench.json
 ```
 
 `--sections budgets,workflows` narrows either direction. `--prune` also deletes anything the document doesn't name (within the sections it covers), which is how you make a staging organization an exact copy. See [config as code](./config-as-code.md) for what the document includes and leaves out.
-
-## Deploy a project
-
-`infrawrench deploy` builds and ships the project in the current directory, using the [Infrafile](./infrafile.md) at its repository root:
-
-```bash
-# One environment declared? Nothing else to say.
-infrawrench deploy
-
-# Show what it decided and the Dockerfile it rendered, but build nothing.
-infrawrench deploy --plan --env production
-
-# Answer a select() without prompting, so this runs in CI.
-infrawrench deploy --env staging --set build-host=local --json
-```
-
-The CLI builds with the **Docker daemon on your machine**, so you keep your layer cache and don't need a build VM. You can deploy a working tree with uncommitted changes, and the CLI points it out when it spots them. Anything the Infrafile asks about with `select` is prompted for in the terminal, or you can answer up front with a repeatable `--set <key>=<value>`.
-
-Every run is recorded in your organization, so terminal and web deploys share one history. It's also recorded on your machine, which is the only record a `--local` run has:
-
-```bash
-# The organization's deploy history.
-infrawrench deploy log --env production
-
-# What this machine built, wherever it was building it.
-infrawrench deploy log --local
-```
-
-`--local` lists the runs the **desktop app's Deploy tab** shows when no organization is selected. It includes the project directory each one built, and a `*` on any commit built from a working tree with uncommitted changes.
-
-`infrawrench deploy typings > Infrafile.d.ts` writes type declarations that give your editor autocomplete for your own accounts.
-
-The other verbs work on what earlier runs did. `-e/--env` goes before or after the verb (`infrawrench deploy -e production log` and `infrawrench deploy log -e production` are the same):
-
-- `deploy rollback` ships the deploy before the live one again, or the run you name with `--to-run <runId>`. Nothing is rebuilt. `--delete-created` also deletes the resources later runs created. Needs an organization.
-- `deploy outputs` prints what the last successful deploy passed to `infra.output(...)`.
-- `deploy status` checks that the resources this machine's deploys created still exist.
-- `deploy destroy` runs the Infrafile's `destroy()` stage. At a terminal it asks first. `deploy destroy --created -e <env>` skips the Infrafile and deletes what this machine's deploys of that environment created.
 
 ## Use the TUI
 

@@ -3,10 +3,10 @@
  * definitions. The report, its two drill-downs, the org settings singleton,
  * and a way to push in a deploy no plugin covers.
  *
- * Reads take `deployments:read`, the permission the deployment history
- * already uses: the metrics are a view over the same record. The settings
+ * Reads take `deployments:read` and recording a deploy takes
+ * `deployments:write`: the metrics are a view over the deploy record. The settings
  * decide what counts as production for everyone, so writing them takes
- * `org:settings:write`; recording a deploy takes `deployments:write`.
+ * `org:settings:write`.
  *
  * Query strings and write bodies are documented here and checked by hand in
  * the handlers, whose 400s name the field at fault.
@@ -30,17 +30,11 @@ const DoraBand = Schema.Literals(["elite", "high", "medium", "low"]).annotate({
 
 const DeployStatus = Schema.Literals(["success", "failure", "in_progress", "canceled"]);
 
-const DoraSource = Schema.Literals([
-  "infrafile",
-  "plugin",
-  "github",
-  "api",
-  "change_timeline",
-]).annotate({
+const DoraSource = Schema.Literals(["plugin", "github", "api", "change_timeline"]).annotate({
   identifier: "DoraSource",
   description:
-    "Where the change was learned from: an Infrafile run, a synced provider deploy, a GitHub " +
-    "deployment, one recorded over this API, or the change timeline.",
+    "Where the change was learned from: a synced provider deploy, a GitHub deployment, one " +
+    "recorded over this API, or the change timeline.",
 });
 
 const DoraScopeValue = Schema.Struct({
@@ -288,8 +282,8 @@ export class DoraGroup extends HttpApiGroup.make("dora")
       .annotate(
         OpenApi.Description,
         "Deployment frequency, lead time for changes, change failure rate and time to restore over " +
-          "production, from Infrafile runs, synced provider deploys, GitHub deployments, recorded " +
-          "deploys and declared incidents. With the previous period, a trend, and a breakdown.",
+          "production, from synced provider deploys, GitHub deployments, recorded deploys and " +
+          "declared incidents. With the previous period, a trend, and a breakdown.",
       )
       .annotate(SuccessDescription, "The report"),
     HttpApiEndpoint.get("changes", "/changes", {

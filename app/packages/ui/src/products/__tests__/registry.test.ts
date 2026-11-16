@@ -29,7 +29,7 @@ describe("product registry", () => {
 
   it("maps a tab to its tool, and leaves non-tool tabs out", () => {
     expect(toolKeyForTabTarget({ kind: "costs" })).toBe("costs");
-    expect(toolKeyForTabTarget({ kind: "deployments" })).toBe("deploy");
+    expect(toolKeyForTabTarget({ kind: "ci" })).toBe("ci");
     expect(toolKeyForTabTarget({ kind: "dashboard" })).toBeUndefined();
     expect(toolKeyForTabTarget({ kind: "home" })).toBeUndefined();
     expect(toolKeyForTabTarget(undefined)).toBeUndefined();

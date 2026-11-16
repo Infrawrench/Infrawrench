@@ -151,6 +151,9 @@ importers:
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       tsdown:
         specifier: ^0.22.14

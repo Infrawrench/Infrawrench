@@ -56,6 +56,7 @@ export const manifest = {
     {
       key: "host",
       providerHost: true,
+      tunnel: "address",
       label: "Instance URL (self-hosted)",
       description:
         "Only for self-hosted PostHog: the address of your instance. Leave blank for PostHog Cloud.",

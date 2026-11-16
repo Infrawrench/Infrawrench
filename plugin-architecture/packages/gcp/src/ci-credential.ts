@@ -46,6 +46,44 @@ export const GCP_CI_CREDENTIAL: CiCredentialDeclaration = {
   shortLived: true,
 };
 
+/**
+ * The only scope GKE needs to authenticate a Google identity: "the
+ * credentials for those accounts must include the `userinfo.email` OAuth
+ * scope" (GKE, "Authenticate to the Kubernetes API server", read 2026-11).
+ * What the identity may then do in the cluster is IAM and RBAC's to say; a
+ * token with only this scope can call no other Google API.
+ */
+export const GKE_TOKEN_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
+
+export interface GkeTokenDeps {
+  /** A fresh `cloud-platform` token from the key, never the cached one: the bearer for `generate`. */
+  exchange(): Promise<GcpToken>;
+  /** `generateAccessToken` for the account itself, with `scopes`, for `seconds`. */
+  generate(bearer: string, seconds: number, scopes: readonly string[]): Promise<GcpToken>;
+  /** A fresh token from the key with only `scope`: an hour. */
+  exchangeScoped(scope: string): Promise<GcpToken>;
+}
+
+/**
+ * The token a GKE cluster's CI kubeconfig carries: minted for this lend,
+ * scoped to `userinfo.email` so it reaches the cluster and no other Google
+ * API, and lasting `seconds` where the organization lets the account have
+ * longer tokens (and the account may mint its own), else an hour.
+ */
+export async function gkeCiToken(deps: GkeTokenDeps, seconds: number): Promise<GcpToken> {
+  const wanted = Math.min(MAX_SECONDS, Math.max(HOUR, Math.ceil(seconds)));
+  const bearer = await deps.exchange().catch(() => null);
+  if (bearer) {
+    for (const lifetime of wanted > HOUR ? [wanted, HOUR] : [HOUR]) {
+      const minted = await deps
+        .generate(bearer.token, lifetime, [GKE_TOKEN_SCOPE])
+        .catch(() => null);
+      if (minted) return minted;
+    }
+  }
+  return deps.exchangeScoped(GKE_TOKEN_SCOPE);
+}
+
 /** The body `generateAccessToken` answers with, read. */
 export function tokenFromGenerate(body: unknown): GcpToken {
   const answer = body as { accessToken?: unknown; expireTime?: unknown } | null;

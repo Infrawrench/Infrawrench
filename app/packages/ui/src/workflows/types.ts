@@ -13,9 +13,8 @@ import type { WorkflowApprovalStatus as WireWorkflowApprovalStatus } from "@infr
 export type MetricValue = number | string | boolean | null;
 
 /**
- * A request for input raised by `infra.prompt(...)`, or by an Infrafile's
- * `select(...)` (which routes through the same host method). Mirrors the
- * runtime's `PromptSpec`.
+ * A request for input raised by `infra.prompt(...)`. Mirrors the runtime's
+ * `PromptSpec`.
  */
 export interface PromptSpec {
   message: string;

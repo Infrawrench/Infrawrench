@@ -141,7 +141,7 @@ describe("composeAnomalyHints — merged ranking", () => {
       [
         audit("change_freeze.end"),
         audit("workflow.run", { entityName: "Scale up" }),
-        audit("deployment.plan"),
+        audit("resource.create"),
       ],
     );
     expect(hints).toHaveLength(MAX_ANOMALY_HINTS);

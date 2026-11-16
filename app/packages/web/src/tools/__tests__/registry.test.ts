@@ -124,11 +124,6 @@ vi.mock("../custom-graphs", () => ({
     { name: "cg1", title: "CG1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
-vi.mock("../deployments", () => ({
-  deploymentTools: () => [
-    { name: "d1", title: "D1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
-  ],
-}));
 vi.mock("../ssh-keys", () => ({
   sshKeyTools: () => [
     { name: "s1", title: "S1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -198,7 +193,6 @@ describe("getToolRegistry", () => {
     expect(names).toContain("ai1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
-    expect(names).toContain("d1");
     expect(names).toContain("s1");
     expect(names).toContain("h1");
     expect(names).toContain("la1");

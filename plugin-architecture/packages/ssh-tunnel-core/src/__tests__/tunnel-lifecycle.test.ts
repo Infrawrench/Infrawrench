@@ -119,6 +119,22 @@ describe("tunnel lifecycle", () => {
     expect(socket.pipe).not.toHaveBeenCalled();
   });
 
+  it("treats a forwardOut that throws as a failed forward", async () => {
+    await openReady(undefined);
+    const server = getTunnelEntries()[0]!.server;
+    forwardOutMock.mockImplementation(() => {
+      throw new Error("Not connected");
+    });
+    for (let i = 0; i < 3; i++) {
+      const socket = Object.assign(new EventEmitter(), { destroy: vi.fn(), pipe: vi.fn() });
+      expect(() => server.emit("connection", socket)).not.toThrow();
+      expect(socket.destroy).toHaveBeenCalled();
+    }
+    // Three in a row: the tunnel is broken, so it is dropped.
+    expect(getTunnelEntries()).toHaveLength(0);
+    forwardOutMock.mockReset();
+  });
+
   it("rejects and closes the server when the client errors before ready", async () => {
     const promise = openTunnel(baseConfig, undefined);
     await Promise.resolve();
@@ -132,6 +148,23 @@ describe("tunnel lifecycle", () => {
     expect(getTunnelEntries()).toHaveLength(1);
     closeTunnel(tunnelId);
     expect(endMock).toHaveBeenCalledTimes(1);
+    expect(getTunnelEntries()).toHaveLength(0);
+  });
+
+  it("forgets a tunnel whose SSH connection closes after ready (#1276)", async () => {
+    await openReady({ organizationId: "o1", accountId: "a1" });
+    expect(findTunnel<{ accountId: string }>((r) => r.extras.accountId === "a1")).not.toBeNull();
+    lastClient!.emit("close");
+    expect(getTunnelEntries()).toHaveLength(0);
+    expect(findTunnel<{ accountId: string }>((r) => r.extras.accountId === "a1")).toBeNull();
+  });
+
+  it("forgets a tunnel whose SSH connection errors after ready, more than once", async () => {
+    await openReady(undefined);
+    const client = lastClient!;
+    client.emit("error", new Error("Keepalive timeout"));
+    // ssh2 can emit a second error while closing; it must not go unhandled.
+    expect(() => client.emit("error", new Error("read ECONNRESET"))).not.toThrow();
     expect(getTunnelEntries()).toHaveLength(0);
   });
 

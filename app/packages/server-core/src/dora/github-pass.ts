@@ -11,9 +11,7 @@
  *    `dora_commit_times`. A miss is stored too (null), so a repository the App
  *    cannot see costs one request ever, not one a tick.
  * 2. **GitHub deployments.** Deployments created by any tool on the org's
- *    most recently pushed repositories, with their latest status. Deployments
- *    this App created are skipped: those are Infrafile runs, already counted
- *    from `deployment_runs`.
+ *    most recently pushed repositories, with their latest status.
  *
  * Bounded per tick so a large org cannot spend the installation's hourly
  * budget: `COMMIT_LOOKUPS_PER_TICK` lookups across all orgs, and deployments
@@ -24,8 +22,8 @@
  */
 import { and, eq, gte, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { deployEvents, deploymentRuns, doraCommitTimes, githubInstallations } from "../db/schema";
-import { githubAppSlug, githubInstallationFetch } from "../github/app";
+import { deployEvents, doraCommitTimes, githubInstallations } from "../db/schema";
+import { githubInstallationFetch } from "../github/app";
 import { isOwnerSlashName, normalizeRepository } from "./repository";
 import { upsertDeployEvents } from "./record";
 
@@ -55,7 +53,7 @@ function settled(retryBefore: Date) {
 }
 
 async function pendingCommitLookups(since: Date, retryBefore: Date): Promise<Pending[]> {
-  const fromEvents = db
+  return db
     .selectDistinct({
       organizationId: deployEvents.organizationId,
       repository: sql<string>`${deployEvents.repository}`,
@@ -84,36 +82,6 @@ async function pendingCommitLookups(since: Date, retryBefore: Date): Promise<Pen
       ),
     )
     .limit(COMMIT_LOOKUPS_PER_TICK);
-  const fromRuns = db
-    .selectDistinct({
-      organizationId: deploymentRuns.organizationId,
-      repository: sql<string>`${deploymentRuns.repo}`,
-      commitSha: sql<string>`${deploymentRuns.gitSha}`,
-    })
-    .from(deploymentRuns)
-    .where(
-      and(
-        isNotNull(deploymentRuns.repo),
-        isNotNull(deploymentRuns.gitSha),
-        gte(deploymentRuns.startedAt, since),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(doraCommitTimes)
-            .where(
-              and(
-                eq(doraCommitTimes.organizationId, deploymentRuns.organizationId),
-                eq(doraCommitTimes.repository, deploymentRuns.repo),
-                eq(doraCommitTimes.commitSha, deploymentRuns.gitSha),
-                settled(retryBefore),
-              ),
-            ),
-        ),
-      ),
-    )
-    .limit(COMMIT_LOOKUPS_PER_TICK);
-  const [a, b] = await Promise.all([fromEvents, fromRuns]);
-  return [...a, ...b].slice(0, COMMIT_LOOKUPS_PER_TICK);
 }
 
 async function orgInstallations(organizationId: string): Promise<number[]> {
@@ -223,7 +191,6 @@ interface GhDeployment {
   sha: string;
   environment: string;
   created_at: string;
-  performed_via_github_app?: { slug?: string } | null;
 }
 
 interface GhDeploymentStatus {
@@ -267,7 +234,6 @@ async function importOrgDeployments(
   organizationId: string,
   installations: number[],
 ): Promise<number> {
-  const ownSlug = githubAppSlug();
   let written = 0;
   for (const installationId of installations) {
     const repos = (await recentRepos(installationId))
@@ -280,9 +246,7 @@ async function importOrgDeployments(
         `/repos/${repo.full_name}/deployments?per_page=${DEPLOYMENTS_PER_REPO}`,
       );
       if (!res.ok) continue;
-      const deployments = ((await res.json()) as GhDeployment[]).filter(
-        (d) => !(ownSlug && d.performed_via_github_app?.slug === ownSlug),
-      );
+      const deployments = (await res.json()) as GhDeployment[];
       const rows: (typeof deployEvents.$inferInsert)[] = [];
       for (const d of deployments) {
         const sres = await githubInstallationFetch(

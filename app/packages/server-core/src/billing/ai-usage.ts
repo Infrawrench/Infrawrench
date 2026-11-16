@@ -1,7 +1,6 @@
 /**
  * Org-level AI spend accounting, shared by AI chat (web) and `infra.ai()` in
- * workflows (web + poller, which is why it lives in server-core, same reason
- * as the build meter).
+ * workflows (web + poller, which is why it lives in server-core).
  *
  * One pool, deliberately: an org has a single monthly AI cap
  * (`organizations.chat_monthly_cap_micros`, plus the $5 free tier for unpaid
@@ -22,8 +21,7 @@
  * the cap); on failure or Stop they release without recording.
  *
  * Workflow usage reports to the same Stripe chat meter (micro-dollar unit)
- * with the same plain-fetch approach as `./build-meter.ts`: server-core does
- * not depend on the Stripe SDK. Best-effort by contract: a null
+ * with a plain fetch: server-core does not depend on the Stripe SDK. Best-effort by contract: a null
  * `stripe_usage_record_id` is what a future replay job would key on.
  */
 import { randomUUID } from "node:crypto";

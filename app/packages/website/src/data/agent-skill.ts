@@ -6,7 +6,7 @@ import body from "./agent-skill-body.md?raw";
 const MCP_URL = "https://app.infrawrench.com/api/mcp";
 
 const description =
-  "Use the infrawrench CLI to inspect accounts, resources, metrics, costs, and deploys from the terminal. Trigger when asked to list or check infrastructure from the shell, script against Infrawrench data (--json), page on-call, push cost rows, or run a deploy.";
+  "Use the infrawrench CLI to inspect accounts, resources, metrics, and costs from the terminal. Trigger when asked to list or check infrastructure from the shell, script against Infrawrench data (--json), page on-call, or push cost rows.";
 
 const trimmedBody = body.trim();
 

@@ -739,14 +739,14 @@ describe("pr-check helpers", () => {
       "D",
       "gone.tf",
       "A",
-      "Infrafile",
+      "k8s/app.yaml",
       "",
     ].join("\0");
     expect(parseNameStatusZ(out)).toEqual([
       { status: "M", path: "main.tf", previousPath: null },
       { status: "R", path: "new dir/new.tf", previousPath: "old.tf" },
       { status: "D", path: "gone.tf", previousPath: null },
-      { status: "A", path: "Infrafile", previousPath: null },
+      { status: "A", path: "k8s/app.yaml", previousPath: null },
     ]);
   });
 });

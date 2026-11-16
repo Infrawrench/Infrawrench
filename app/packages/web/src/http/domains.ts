@@ -74,7 +74,6 @@ import { githubIssuesDomain } from "./domains/github-issues/index";
 import { workflowsDomain } from "./domains/workflows/index";
 import { workflowApprovalsDomain } from "./domains/workflow-approvals/index";
 import { workflowSecretsDomain } from "./domains/workflow-secrets/index";
-import { deploymentsDomain } from "./domains/deployments/index";
 import { iacDomain } from "./domains/iac/index";
 import { prChecksDomain } from "./domains/pr-checks/index";
 import { logWorkspacesDomain } from "./domains/log-workspaces/index";
@@ -244,7 +243,6 @@ export const DOMAINS: readonly Domain[] = [
   workflowsDomain,
   workflowApprovalsDomain,
   workflowSecretsDomain,
-  deploymentsDomain,
   iacDomain,
   prChecksDomain,
   logWorkspacesDomain,

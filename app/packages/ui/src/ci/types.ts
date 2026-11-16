@@ -6,6 +6,7 @@ import type {
   CiConnectionAccessSettings,
   CiExecutorKindId,
   CiResourceGrant,
+  CiResourceGrantPeerInput,
   CiResourceOutputs,
   SearchResult,
   CiAccount,
@@ -112,4 +113,6 @@ export interface CiGrantInput {
   secretVersion: string | null;
   repos: string[] | null;
   branchPattern: string | null;
+  /** What the resource is lent as. Left out of an update: unchanged. */
+  peer?: CiResourceGrantPeerInput | null;
 }

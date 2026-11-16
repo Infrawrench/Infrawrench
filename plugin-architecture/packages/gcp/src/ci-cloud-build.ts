@@ -46,6 +46,7 @@ import {
   retryWhileAccountSettles,
   serviceAccountEmail,
   statusOf,
+  unlessApiDisabled,
   type GcpCiCalls,
 } from "./ci-shared.js";
 
@@ -146,11 +147,13 @@ export async function buildPreflight(
   calls: GcpCiCalls,
   region: string,
 ): Promise<CiPreflightResult> {
-  const missing = [
-    ...(await missingOnProject(calls, Object.values(BUILD_PERMISSIONS))),
-    ...(await missingServiceAccountPermissions(calls)),
-  ];
   const problems: string[] = [];
+  const missing = [
+    ...(await unlessApiDisabled(problems, [], () =>
+      missingOnProject(calls, Object.values(BUILD_PERMISSIONS)),
+    )),
+    ...(await unlessApiDisabled(problems, [], () => missingServiceAccountPermissions(calls))),
+  ];
   try {
     await calls.call("GET", `${buildsUrl(calls.project, region)}?pageSize=1`);
   } catch (err) {

@@ -191,7 +191,7 @@ export function MomentPanel({
       <h1 className="text-xl font-semibold mb-1">{gt("Investigate a moment")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Everything that happened around a timestamp (changes, incidents, anomalies, runs, deployments, audit entries and freezes) in one timeline.",
+          "Everything that happened around a timestamp (changes, incidents, anomalies, runs, audit entries and freezes) in one timeline.",
         )}
       </p>
 

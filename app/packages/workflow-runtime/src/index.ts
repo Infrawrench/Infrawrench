@@ -35,6 +35,3 @@ export { testRegexBounded, RegexTimeoutError, DEFAULT_REGEX_TIMEOUT_MS } from ".
 export * from "./graphs/types.js";
 export { runGraph } from "./graphs/run.js";
 export { generateGraphDts } from "./graphs/codegen.js";
-export * from "./infrafile/types.js";
-export { runInfrafile, INFRAFILE_NAME, type RunInfrafileOptions } from "./infrafile/run.js";
-export { generateInfrafileDts, type GenerateInfrafileDtsInput } from "./infrafile/codegen.js";

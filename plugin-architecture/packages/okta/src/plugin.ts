@@ -21,6 +21,7 @@ export const manifest = {
     {
       key: "orgUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Okta Org URL",
       description:
         "Your Okta org's address, e.g. https://acme.okta.com (the admin console address works too).",

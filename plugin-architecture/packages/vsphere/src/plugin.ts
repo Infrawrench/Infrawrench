@@ -26,6 +26,7 @@ export const manifest = {
     {
       key: "url",
       providerHost: true,
+      tunnel: "address",
       label: "vCenter Server URL",
       description:
         "The vCenter Server address (vCenter 7.0 or later; the REST API is not served by standalone ESXi hosts). Private addresses work from the desktop app or through an SSH tunnel on the account.",
