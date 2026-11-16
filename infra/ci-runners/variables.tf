@@ -19,6 +19,17 @@ variable "hosts" {
       `memory_admission = "estimate"`: see files/install.sh.
     - iwci_binary_path: this host's first binary, when its architecture
       differs from `iwci_binary_path`'s (an ARM64 host beside x86_64 ones).
+    - native_sandbox: prepare the host for native jobs (Bun) in gVisor
+      sandboxes: the pinned gVisor release in /opt/iwci/lib, the system
+      user `iwci-sandbox` the sandboxes run as, the root sandbox service
+      that starts them (`sandbox_service_path`, checked against
+      `sandbox_service_sha256`; socket-activated, only the runner may
+      connect), and `Delegate=memory cpu pids` in the unit. Off by default;
+      the runner's own flag for native jobs is separate.
+    - sandbox_service_path: this host's sandbox service, when its
+      architecture differs from the default's; `arch` (x86_64 by default)
+      picks its pin from ci-runner/crates/iwci-sandbox-spawn/sha256, and
+      sandbox_service_sha256 overrides that.
     - tunnel_token: optional Cloudflare Tunnel token; when set, cloudflared
       is installed as a service and the tunnel's public hostname should
       point at http://<listen>.
@@ -40,6 +51,13 @@ variable "hosts" {
     # This host's first binary, when its architecture differs from the
     # default's.
     iwci_binary_path = optional(string)
+    # Native jobs in gVisor sandboxes (see above).
+    native_sandbox         = optional(bool)
+    sandbox_service_path   = optional(string)
+    sandbox_service_sha256 = optional(string)
+    # x86_64 or aarch64: which of the sandbox service's pinned builds this
+    # host takes. x86_64 when unset.
+    arch = optional(string)
   }))
   default = []
 
@@ -74,6 +92,18 @@ variable "ssh_private_key_path" {
 variable "iwci_binary_path" {
   description = "A local iwci binary for the hosts' platform, installed only on a host that has none yet. After that, hosts update themselves from update_channel."
   type        = string
+}
+
+variable "sandbox_service_path" {
+  description = "A local build of the sandbox service (ci-runner/crates/iwci-sandbox-spawn/build.sh) for the hosts' platform, installed on every host with native_sandbox. Unused without one."
+  type        = string
+  default     = ""
+}
+
+variable "sandbox_service_sha256" {
+  description = "Overrides the pin in ci-runner/crates/iwci-sandbox-spawn/sha256 for every host: the SHA-256 the sandbox service must have, checked here before upload and on the host before install. Empty uses the reviewed pin."
+  type        = string
+  default     = ""
 }
 
 variable "server_key" {

@@ -31,7 +31,6 @@ describe("routeRequest", () => {
       "/api/org/org_1/shared-consoles/abc",
       "/api/org/org_1/apps/start",
       "/api/org/org_1/ssh-tunnels/open",
-      "/api/org/org_1/deployments/run",
       "/api/org/org_1/v1/storage/upload",
       "/api/org/org_1/v1/sftp/list",
     ]) {
@@ -106,6 +105,9 @@ describe("routeRequest", () => {
       ["POST", "/api/ci-jobs/finish"],
       ["POST", "/api/org/org_1/ci/access/connections/acc_1/preflight"],
       ["GET", "/api/org/org_1/ci/access/resource-outputs"],
+      // Saving a grant may check its peer's permissions to run cloud jobs.
+      ["POST", "/api/org/org_1/ci/access/grants"],
+      ["PUT", "/api/org/org_1/ci/access/grants/grant_1"],
     ] as const) {
       expect(routeRequest(method, path, null)).toMatchObject({ target: "gateway", tier: "node" });
     }

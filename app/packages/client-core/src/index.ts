@@ -28,7 +28,6 @@ export {
   type OrgRoleSummary,
 } from "./permissions";
 export { ALL_PERMISSIONS } from "./permission-catalog";
-export * from "./org-features";
 export * from "./products";
 export * from "./ci";
 export * from "./ci-access";
@@ -1049,11 +1048,6 @@ export * from "./github-issues";
 export * from "./pr-checks";
 export * from "./cost-exports";
 export * from "./change-cost-impact";
-export {
-  createDeployStopController,
-  type DeployStopController,
-  type DeployStopSender,
-} from "./deploy-stop";
 export * from "./report-notifications";
 export * from "./cost-visibility";
 export * from "./chat/types";

@@ -1,0 +1,10 @@
+{
+  "name": "workerd",
+  "version": "1.20261113.1",
+  "description": "Stands in for workerd in the CI runner's Node tools: it cannot run in a job (ci-runner/README.md, Deployment CLIs)",
+  "main": "lib/main.js",
+  "bin": {
+    "workerd": "bin/workerd"
+  },
+  "license": "BUSL-1.1"
+}

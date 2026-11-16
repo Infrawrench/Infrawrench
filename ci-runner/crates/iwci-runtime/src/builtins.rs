@@ -133,6 +133,7 @@ pub(crate) fn make(
         log: None,
         scratch: None,
         commands: Vec::new(),
+        trees: Vec::new(),
         internet: false,
         modes: fs.modes(),
         services: Vec::new(),

@@ -1,7 +1,7 @@
 // The cloud HTTP API, as an Effect service: every cloud read and write the
 // CLI makes goes through it. Promise code that needs the cloud (the TUI's
-// loaders, a deploy's org account clients) is handed a runner over the
-// command's own services rather than a client of its own.
+// loaders) is handed a runner over the command's own services rather than a
+// client of its own.
 //
 // Token reads, refreshes and the network itself stay Promise calls through
 // `Effect.promise`: a rejection there (a locked keychain, `fetch failed`) is a

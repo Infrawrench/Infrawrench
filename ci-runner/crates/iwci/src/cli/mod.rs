@@ -47,6 +47,12 @@ usage:
   iwci help                              this text";
 
 pub fn main() -> ExitCode {
+    // Inside a job's sandbox, the runner's binary also stands in for the
+    // environment's commands, under their names (`iwci_runtime::inside`).
+    #[cfg(target_os = "linux")]
+    if let Some(code) = iwci_runtime::inside::shim_client() {
+        return ExitCode::from(code.clamp(0, 255) as u8);
+    }
     let mut argv: Vec<String> = std::env::args().skip(1).collect();
     if argv.is_empty() {
         eprintln!("{USAGE}");
@@ -64,6 +70,14 @@ pub fn main() -> ExitCode {
         "release-status" => release::status(args),
         "release-keygen" => release::keygen(args),
         "version" | "--version" => release::version(args),
+        // The runner's first process inside a job's sandbox; not for people.
+        #[cfg(target_os = "linux")]
+        "sandbox-init" => match args.rest().first() {
+            Some(spec) => Ok(ExitCode::from(
+                iwci_runtime::inside::main(std::path::Path::new(spec)).clamp(0, 255) as u8,
+            )),
+            None => Err("sandbox-init <job.json>".into()),
+        },
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             Ok(ExitCode::SUCCESS)

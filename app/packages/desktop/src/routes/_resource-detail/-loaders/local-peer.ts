@@ -4,7 +4,8 @@ import type { AccountRow } from "../../../db/rows";
 import { getPlugin } from "../../../plugins/loader";
 import { buildPluginHostServices } from "../../../lib/sql-drivers";
 import type { LoaderParams } from "./types";
-import { getLocalAccountCredentials } from "../../../lib/local-credentials";
+import { applyCredentialRewriters } from "../../../lib/credential-rewriters";
+import { getLocalConnectionCredentials } from "../../../lib/local-credentials";
 
 export async function loadLocalPeerResource(params: LoaderParams): Promise<void> {
   const {
@@ -29,10 +30,12 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   const accountRow = accountRows[0];
   if (!accountRow) throw new Error("Account not found");
 
-  const parentCredentials = await getLocalAccountCredentials(accountRow.id);
-
   const parentLoaded = await getPlugin(accountRow.plugin_id);
   if (!parentLoaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);
+  const parentCredentials = await getLocalConnectionCredentials(
+    accountRow.id,
+    parentLoaded.plugin.manifest.credentialFields,
+  );
 
   const parentHostServices = buildPluginHostServices(
     parentLoaded.plugin.manifest,
@@ -60,6 +63,17 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
 
   const peerLoaded = await getPlugin(peerPlugin!);
   if (!peerLoaded) throw new Error(`Plugin "${peerPlugin}" not loaded`);
+  await applyCredentialRewriters(
+    {
+      accountId,
+      credentialFields: peerLoaded.plugin.manifest.credentialFields,
+      peerPluginId: peerPlugin!,
+      resourcePluginId: accountRow.plugin_id,
+      resourceTypeId: parentTypeId,
+      resourceId: peerParent!,
+    },
+    peerCredentials,
+  );
   const peerHostServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
   const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
   refs.client.current = peerClient;

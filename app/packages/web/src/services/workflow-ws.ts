@@ -30,8 +30,7 @@ function send(ws: WebSocket, msg: unknown): void {
 /**
  * The socket upgrade only established `resources:execute`, which every channel
  * on `/api/ws` shares. A debug run executes the workflow for real, so without a
- * per-frame check the websocket would be a way around `POST /workflows/:id/run`:
- * the same reasoning `deployment-ws.ts` spells out for `deploy:run`.
+ * per-frame check the websocket would be a way around `POST /workflows/:id/run`.
  *
  * Checked against the whole principal, key scopes and agent ceiling included,
  * so a key gets here exactly what the HTTP route would give it.

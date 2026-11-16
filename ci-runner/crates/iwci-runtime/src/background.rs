@@ -353,8 +353,10 @@ impl Probe {
                 env: self.env.clone(),
                 cwd: &self.cwd,
                 commands: &[],
+                trees: &[],
                 stdout: output.file(),
                 stderr: output.file(),
+                stdin: None,
                 own_dirs: true,
             })?;
             self.attempt = Some(Attempt {
@@ -457,8 +459,10 @@ fn start_one(
         env,
         cwd,
         commands: &[],
+        trees: &[],
         stdout: sink_file(LogStream(log.clone(), 0)),
         stderr: sink_file(LogStream(log.clone(), 1)),
+        stdin: None,
         own_dirs: true,
     })?;
     Ok(Running {

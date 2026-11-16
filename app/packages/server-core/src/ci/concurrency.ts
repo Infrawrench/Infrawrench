@@ -152,7 +152,7 @@ export function decideAdmission(self: AdmissionRun, others: readonly AdmissionRu
 }
 
 /** The pipelines a run would trigger, with their groups, as the CI proxy's `POST /v1/concurrency` answers. */
-interface ResolvedPipelines {
+export interface ResolvedPipelines {
   pipelines?: Array<{
     file?: unknown;
     name?: unknown;
@@ -160,6 +160,26 @@ interface ResolvedPipelines {
     /** Jobs that name something to be lent, or run in the cloud (runners from 0.3.16). */
     jobs?: unknown;
   }>;
+  /**
+   * Pipeline files that do not parse, which `pipelines` leaves out and the
+   * run would report. Absent from runners before they listed them.
+   */
+  invalid?: unknown;
+}
+
+/**
+ * Whether the answer says the run has nothing to run: no pipeline triggers
+ * and none fails to parse. Only a runner that lists `invalid` can say so;
+ * from one before, an empty list may hide a broken file the run would
+ * report, so it says nothing.
+ */
+export function nothingToRun(answer: ResolvedPipelines): boolean {
+  return (
+    Array.isArray(answer.pipelines) &&
+    answer.pipelines.length === 0 &&
+    Array.isArray(answer.invalid) &&
+    answer.invalid.length === 0
+  );
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -203,6 +223,15 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
         const envFrom = (job["env-from"] as unknown[]).filter(isString);
         if (envFrom.length > 0) entry.envFrom = envFrom;
       }
+      if (typeof job["github-token"] === "object" && job["github-token"] !== null) {
+        const permissions: Record<string, string> = {};
+        for (const [name, level] of Object.entries(
+          job["github-token"] as Record<string, unknown>,
+        )) {
+          if (isString(level)) permissions[name] = level;
+        }
+        if (Object.keys(permissions).length > 0) entry.githubToken = permissions;
+      }
       if (typeof job["cloud"] === "object" && job["cloud"] !== null) {
         const cloud: Record<string, string> = {};
         for (const [k, v] of Object.entries(job["cloud"] as Record<string, unknown>)) {
@@ -236,11 +265,14 @@ export function entriesFrom(answer: ResolvedPipelines): CiConcurrencyEntry[] {
  * body the run will be dispatched with. `retry` when the pool is busy or
  * unreachable. A runner or proxy from before concurrency answers 404, which
  * reads as no groups; so does a request they cannot resolve, which the run
- * itself will then report.
+ * itself will then report. `nothing` when the runners say no pipeline runs
+ * (see {@link nothingToRun}).
  */
 export async function resolveConcurrency(
   body: Record<string, unknown>,
-): Promise<{ entries: CiConcurrencyEntry[]; access: CiJobAccess[] } | { retry: string }> {
+): Promise<
+  { entries: CiConcurrencyEntry[]; access: CiJobAccess[]; nothing: boolean } | { retry: string }
+> {
   let res: Response;
   try {
     res = await proxyFetch("/v1/concurrency", { method: "POST", body: JSON.stringify(body) });
@@ -253,10 +285,14 @@ export async function resolveConcurrency(
   }
   if (!res.ok) {
     await res.body?.cancel();
-    return { entries: [], access: [] };
+    return { entries: [], access: [], nothing: false };
   }
   const answer = (await res.json().catch(() => ({}))) as ResolvedPipelines;
-  return { entries: entriesFrom(answer), access: accessFrom(answer) };
+  return {
+    entries: entriesFrom(answer),
+    access: accessFrom(answer),
+    nothing: nothingToRun(answer),
+  };
 }
 
 /**

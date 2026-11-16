@@ -98,6 +98,8 @@ pub trait Split: Send + Sync {
     /// Claims `job`. Exactly one runner gets [`Claim::Ours`] until the
     /// claim is released.
     fn claim(&self, job: &str) -> Result<Claim, String>;
+    /// Who holds the claim on `job`, if anyone, without claiming it.
+    fn holder(&self, job: &str) -> Result<Option<String>, String>;
     /// Drops the claim on `job`, whoever holds it.
     fn release(&self, job: &str) -> Result<(), String>;
     /// Gives up a job this runner claimed, so the primary takes it. The
@@ -552,6 +554,23 @@ impl<'a> Sharing<'a> {
         }
     }
 
+    /// The runner that ran `job` in this run, when the task cache has just
+    /// answered for it on the primary and another runner holds its claim:
+    /// the entry is what that runner saved. The primary then takes the job
+    /// from that runner's record, as it would have had its lookup come
+    /// first, rather than as a hit: a hit is billed nothing and a helper's
+    /// own report is zeroed, so the job would be paid for by nobody. A
+    /// helper, and a store that does not answer, say nothing.
+    pub fn ran_elsewhere(&self, job: &PlannedJob) -> Option<String> {
+        if self.helper {
+            return None;
+        }
+        match self.split.holder(&job.id) {
+            Ok(Some(holder)) if holder != self.split.runner() => Some(holder),
+            _ => None,
+        }
+    }
+
     /// Whether a helper gives a job it ran back rather than report it: it
     /// was stopped (to give way, or with the helper's run), or this runner
     /// could not run it, which says nothing about the job.
@@ -773,6 +792,7 @@ impl<'a> Sharing<'a> {
             access: job.access.clone(),
             cloud: None,
             remote: Some(done.runner.clone()),
+            waited_for: None,
             elsewhere: false,
         };
         // A runner that plans from this job's outputs (a matrix another
@@ -1094,6 +1114,30 @@ pub(super) fn watch<'p>(
                         holder: None,
                         since: now,
                     });
+                } else if let Some(pos) = s.awaiting.iter().position(|a| a.job.id == *id) {
+                    // Finished elsewhere while this runner waited for
+                    // another run's task cache entry: counted in
+                    // `running` already.
+                    let a = s.awaiting.swap_remove(pos);
+                    if let Some(logs) = &options.logs {
+                        logs(LogEvent::JobStarted {
+                            job: a.job.id.clone(),
+                            name: a.job.display_name.clone(),
+                        });
+                    }
+                    s.arrived.push(RemoteJob {
+                        template: a.template,
+                        job: a.job,
+                        lookup: Lookup {
+                            key: Some(a.waiting.key),
+                            lines: a.waiting.lines,
+                            waited: true,
+                            ..Lookup::default()
+                        },
+                        rank: a.rank,
+                        holder: None,
+                        since: now,
+                    });
                 } else {
                     // Not ready here yet, or running here too: looked at
                     // again next time.
@@ -1151,12 +1195,14 @@ pub(super) fn watch<'p>(
                 // was cut short there: so it is here.
                 left_behind = !s.remote.is_empty()
                     || !s.queue.is_empty()
+                    || !s.awaiting.is_empty()
                     || sharing.running.load(Ordering::SeqCst) > 0;
             }
             if !sharing.helper {
                 ask = !asked
                     && s.queue.iter().any(|(_, (_, job, lookup))| {
                         shareable(job)
+                            && lookup.sandbox.is_none()
                             && lookup
                                 .queued
                                 .is_some_and(|at| at.elapsed() >= timing.ask_after)

@@ -22,7 +22,6 @@ const MomentFeedId = Schema.Literals([
   "statusIncidents",
   "costAnomalies",
   "workflowRuns",
-  "deployments",
   "audit",
   "freezes",
   "driftAlerts",
@@ -58,7 +57,6 @@ const MomentEventLink = Schema.Struct({
     "incident",
     "costs",
     "workflow-run",
-    "deployment",
     "audit",
     "freeze",
     "expiring",
@@ -95,7 +93,7 @@ const MomentEvent = Schema.Struct({
   kind: Schema.String.annotate({
     description:
       "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, " +
-      "`workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. " +
+      "`workflow-run.failed`, `freeze.started`, `drift-alert.sent`. " +
       "Open set: render unknown kinds generically.",
   }),
   timestamp: IsoDateTime,
@@ -175,7 +173,7 @@ export class MomentGroup extends HttpApiGroup.make("moment")
         '"What changed around 03:14?"; one merged, chronological narrative of everything the ' +
           "platform knows happened in a window: resource changes (including sleep/wake schedule " +
           "attribution), provider status incidents that started/resolved in or overlap the window, " +
-          "cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the " +
+          "cost anomalies, workflow runs, audit-log entries, change freezes, and the " +
           "drift/expiry alert deliveries. Each feed is gated on the same permission its own " +
           "endpoint requires; feeds the caller cannot read are reported as `omitted`, and a feed " +
           "whose query fails is reported as `error` without blanking the rest of the response.",

@@ -9,8 +9,10 @@ import type { paths } from "./api-types.gen.js";
 import type { LInstance } from "./types.js";
 
 /**
- * Transport for the Lambda Cloud API (`https://cloud.lambda.ai/api/v1`,
- * OpenAPI 1.10.0 at `/api/v1/openapi.json`, checked 2026-10). Auth is
+ * Transport for the Lambda Cloud API (`https://cloud.lambda.com/api/v1`,
+ * OpenAPI 1.10.0 at `/api/v1/openapi.json`, checked 2026-11). The document
+ * lists `cloud.lambda.com` as the production server and `cloud.lambda.ai` and
+ * `cloud.lambdalabs.com` as deprecated. Auth is
  * `Authorization: Bearer <key>`. Every success is wrapped as `{data}`, every
  * failure as `{error: {code, message, suggestion?}}`. Lambda documents a rate
  * limit of one request per second (one launch per 12 seconds).
@@ -19,7 +21,7 @@ import type { LInstance } from "./types.js";
  * custom CA); plain `fetch` otherwise.
  */
 
-export const API_BASE = "https://cloud.lambda.ai/api/v1";
+export const API_BASE = "https://cloud.lambda.com/api/v1";
 
 export class LambdaApiError extends Error {
   readonly status: number;

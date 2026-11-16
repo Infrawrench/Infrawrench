@@ -1,6 +1,11 @@
 /** Reads over `pr_check_runs`: the recent checks a settings page lists. */
 import { and, desc, eq, lt } from "drizzle-orm";
-import type { PrCheckConclusion, PrCheckRun } from "@infrawrench/client-core";
+import {
+  PR_CHECK_FILE_KINDS,
+  type PrCheckConclusion,
+  type PrCheckReport,
+  type PrCheckRun,
+} from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
 import { prCheckRepositories, prCheckRuns } from "../db/schema.js";
@@ -37,11 +42,22 @@ export async function listPrCheckRuns(
     conclusion: (run.conclusion as PrCheckConclusion | null) ?? null,
     checkRunUrl: run.checkRunUrl,
     commentUrl: run.commentUrl,
-    report: run.report ?? null,
+    report: run.report ? withCurrentFileKinds(run.report) : null,
     error: run.error,
     createdAt: run.createdAt.toISOString(),
     completedAt: run.completedAt?.toISOString() ?? null,
   }));
+}
+
+/**
+ * A stored report as the API describes it today: files of a kind the check no
+ * longer lists (API 1.114.0 dropped one) are left out, so a run kept from
+ * before reads like one checked now.
+ */
+export function withCurrentFileKinds(report: PrCheckReport): PrCheckReport {
+  const kinds: readonly string[] = PR_CHECK_FILE_KINDS;
+  const files = report.files.filter((f) => kinds.includes(f.kind));
+  return files.length === report.files.length ? report : { ...report, files };
 }
 
 /** Delete runs past retention. Returns how many went. */

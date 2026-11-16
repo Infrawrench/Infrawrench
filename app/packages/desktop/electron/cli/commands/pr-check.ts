@@ -13,8 +13,8 @@
 // server's plugin clients, blast radius on the org's synced graph).
 //
 // Zero new dependencies: git is run with node:child_process, and only the
-// file kinds the check reads are sent (Terraform, Infrafiles and YAML that
-// looks like a Kubernetes manifest), at most 50 of them.
+// file kinds the check reads are sent (Terraform and YAML that looks like a
+// Kubernetes manifest), at most 50 of them.
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -108,7 +108,7 @@ const gitOr = (args: string[], fallback: string | null) =>
 
 function isInfraPath(path: string): boolean {
   const base = path.split("/").pop() ?? path;
-  return base.endsWith(".tf") || base === "Infrafile" || /\.ya?ml$/i.test(base);
+  return base.endsWith(".tf") || /\.ya?ml$/i.test(base);
 }
 
 const defaultBase = Effect.gen(function* () {

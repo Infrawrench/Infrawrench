@@ -20,8 +20,8 @@
  *   their term, so a slot stops counting the moment it lapses without any cron
  *   having to run. Nothing mutates a row except a refund.
  *
- * Deliberately free of Stripe: server-core has no `stripe` dependency (same
- * reason as `build-meter.ts`). The purchase flow lives in
+ * Deliberately free of Stripe: server-core has no `stripe` dependency. The
+ * purchase flow lives in
  * `web/src/http/domains/billing/` and hands the settled numbers to
  * {@link recordCapacitySlotPurchase}.
  */

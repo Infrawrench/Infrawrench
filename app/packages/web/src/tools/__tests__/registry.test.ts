@@ -124,11 +124,6 @@ vi.mock("../custom-graphs", () => ({
     { name: "cg1", title: "CG1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
-vi.mock("../deployments", () => ({
-  deploymentTools: () => [
-    { name: "d1", title: "D1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
-  ],
-}));
 vi.mock("../ssh-keys", () => ({
   sshKeyTools: () => [
     { name: "s1", title: "S1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -152,6 +147,11 @@ vi.mock("../linux-apps", () => ({
 vi.mock("../vulnerabilities", () => ({
   vulnerabilityTools: () => [
     { name: "vu1", title: "VU1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
+vi.mock("../ci", () => ({
+  ciTools: () => [
+    { name: "ci1", title: "CI1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
 const mockPerPlugin = vi.fn();
@@ -198,11 +198,11 @@ describe("getToolRegistry", () => {
     expect(names).toContain("ai1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
-    expect(names).toContain("d1");
     expect(names).toContain("s1");
     expect(names).toContain("h1");
     expect(names).toContain("la1");
     expect(names).toContain("vu1");
+    expect(names).toContain("ci1");
     expect(names).toContain("p1");
 
     // Second call returns the cached result without re-invoking the loader.

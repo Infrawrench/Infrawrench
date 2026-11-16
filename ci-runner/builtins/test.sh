@@ -15,6 +15,9 @@
 #   builtins/test.sh bash-node-pool  many V8 heaps at once, and large ones
 #   builtins/test.sh bash kubectl    kubectl against a fake API server
 #   builtins/test.sh bash openssh    ssh, scp and sftp against SSH servers
+#   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
+#   builtins/test.sh npm-cli         the deployment CLIs against fake APIs
+#   builtins/test.sh bash gh         gh and git push against a fake GitHub
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -37,12 +40,26 @@
 # with connections and keys lent the same way, so it needs bash in the
 # same list, ssh-keygen on this machine for the fixture's keys, and the
 # internet to build (OpenSSH, OpenSSL, the toolchains, Go modules).
+# `gh` runs the GitHub CLI and Git from bash scripts against a fake GitHub
+# its build makes (`gh/fake-github.go`), on the job's loopback, with a
+# token lent the way the app lends one (`github-token:`, `IWCI_LENT_FILE`),
+# so it needs bash in the same list and the internet to build (Go's
+# archive, gh's source and modules).
+#
+# `aws`, `az` and `gcloud` run each cloud CLI's environment against a fake
+# of the calls they make (`environments/cloud-clis/fake-cloud.py`), a
+# service on the job's loopback, in jobs with no network, so no request can
+# reach a provider. Each is lent its connection the way the app lends one
+# (IWCI_LENT_FILE: what the AWS, GCP and Azure plugins' lendCiCredential
+# write), and the lent secrets must come out masked. `az`'s fake serves
+# HTTPS with a certificate made here with openssl.
 #
 # Expectations live in the job names: a job whose key ends in `-passes`
 # must pass and one ending in `-fails` must fail, for the reason
 # `want_reason` gives (a formatter by changing files, not by exiting with an
 # error). A tool that does not resolve or start is an `error`, not a
-# failure, so it cannot hide behind an expected failure.
+# failure, so it cannot hide behind an expected failure; a job that must
+# not start ends in `-errors`, and its error must contain `want_reason`.
 #
 # IWCI is the `iwci` binary to use (default: target/debug/iwci; bash-node
 # needs one built with `--features node`, and x86_64 Linux to build its
@@ -50,7 +67,7 @@
 # already in dist/ instead of building. python, php and go need the internet:
 # python and php install packages (from PyPI and Wasmer's wheel index, and
 # from Packagist, in jobs and through `deps:`), and go fetches its fixture's
-# module and an HTTPS page. Needs: git, jq, and
+# module and an HTTPS page. Needs: git, jq, openssl, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -66,6 +83,24 @@ export IWCI_SECRET_FIXTURE_TOKEN="fixture-secret-value-0451"
 # server wants it, and it must never show up in a report either (the
 # kubectl-passes job prints it).
 KUBE_FIXTURE_TOKEN="fixture-token"
+# What the cloud CLI jobs are lent, which the fake cloud wants and the report
+# must never show (cloud_lent, below). The fake reads them as secrets too.
+export IWCI_SECRET_AWS_FIXTURE_KEY="ASIAFIXTUREKEY0451"
+export IWCI_SECRET_AWS_FIXTURE_TOKEN="fixture-aws-session-0451"
+AWS_FIXTURE_SECRET_KEY="fixture-aws-secret-0451"
+export IWCI_SECRET_GCP_FIXTURE_TOKEN="ya29.fixture-gcp-token-0451"
+export IWCI_SECRET_AZURE_FIXTURE_SECRET="fixture-azure-secret-0451"
+# The tokens the npm-cli pipeline's connections lend, which its fake APIs
+# want (npm-cli/fake-apis.mjs) and which must never show up in a report.
+# Vercel's CLI takes no `-` in a token.
+VERCEL_FIXTURE_TOKEN="vercelfixturetoken0451"
+CLOUDFLARE_FIXTURE_TOKEN="cloudflare-fixture-token-0451"
+NEON_FIXTURE_KEY="neon-fixture-key-0451"
+# The token the gh jobs are lent, which the fake GitHub wants (in no real
+# token's format), and the Basic credential Git sends with it: neither may
+# show up in a report (gh-passes prints both).
+GH_FIXTURE_TOKEN="fixture-installation-token-0451"
+GH_FIXTURE_BASIC="$(printf 'x-access-token:%s' "$GH_FIXTURE_TOKEN" | base64 | tr -d '\n')"
 
 # `go` is every Go minor the environments build.
 names=()
@@ -93,6 +128,10 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/kubectl/build.sh" 1.37
       dirs=("$dist"/builtin/kubectl/*)
       ;;
+    gh)
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/gh/build.sh" 2.104
+      dirs=("$dist"/builtin/gh/*)
+      ;;
     openssh)
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/openssh/build.sh"
       dirs=()
@@ -100,11 +139,11 @@ for name in "$@"; do
         dirs+=("$dist"/builtin/"$program"/*)
       done
       ;;
-    bash | bash-node | python | php | go@* | postgres | clickhouse)
+    bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
@@ -119,6 +158,22 @@ for name in "$@"; do
       # Uses what gofmt and bash published.
       continue
       ;;
+    npm-cli)
+      # Node tools: Vercel's, Cloudflare's and Neon's CLIs and Wrangler,
+      # from their lockfiles (npm-cli/build.sh). They run on bash-node's
+      # environment, and one job checks that bash's refuses them, so both
+      # are published here too, built unless they already are.
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/npm-cli/build.sh"
+      for env in bash bash-node; do
+        if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/$env/*" >/dev/null; then
+          bash "$here/environments/build.sh" "$env"
+        fi
+      done
+      dirs=("$dist"/environment/bash/* "$dist"/environment/bash-node/*)
+      for tool in vercel cf neon wrangler; do
+        dirs+=("$dist"/builtin/"$tool"/*)
+      done
+      ;;
     bash-node-pool)
       # Runs on bash-node's environment, built here unless it already is.
       if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/bash-node/*" >/dev/null; then
@@ -127,7 +182,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh" >&2
       exit 2
       ;;
   esac
@@ -404,6 +459,12 @@ with zipfile.ZipFile(f"{sys.argv[1]}/{dist}-{version}-py3-none-any.whl", "w") as
     record.append(f"{info}/RECORD,,")
     whl.writestr(f"{info}/RECORD", "\n".join(record) + "\n")
 PY
+# A certificate for `localhost` and its key, for the Python job that serves
+# HTTPS (`tls-server-passes`). Made here, so no key is checked in.
+mkdir -p "$repo/py/tls"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 \
+  -subj /CN=localhost -addext subjectAltName=DNS:localhost \
+  -keyout "$repo/py/tls/key.pem" -out "$repo/py/tls/cert.pem" 2>/dev/null
 # A Python project installed by `deps: [pip]`: requests and what it needs
 # from PyPI, and numpy as Wasmer's WASIX wheel, in pip-compile's format
 # with the WASIX wheel's hash beside PyPI's sdist (README, "WASIX wheels in
@@ -450,6 +511,22 @@ if [[ -f "$dist/test/kubectl/fake-apiserver.wasm" ]]; then
   mkdir -p "$repo/k8s"
   cp "$dist/test/kubectl/fake-apiserver.wasm" "$repo/k8s/"
 fi
+# The fake GitHub, from gh's build.
+if [[ -f "$dist/test/gh/fake-github.wasm" ]]; then
+  mkdir -p "$repo/gh"
+  cp "$dist/test/gh/fake-github.wasm" "$repo/gh/"
+  # What every gh job does first: the fake on the job's loopback as the
+  # HTTPS proxy, and gh and Git trusting the CA it made. Nothing else
+  # changes, so they reach "github.com" as they would GitHub.
+  cat >"$repo/gh/serve.sh" <<'SH'
+serve_github() {
+  /app/gh/fake-github.wasm "$@" > /tmp/github.log 2>&1 &
+  wait-for-port 8080
+  export HTTPS_PROXY=http://127.0.0.1:8080
+  export SSL_CERT_FILE=/tmp/fake-github-ca.pem GIT_SSL_CAINFO=/tmp/fake-github-ca.pem
+}
+SH
+fi
 # OpenSSH's test server, from its build, and keys made here: host keys of
 # three types for three servers, another the wrong server holds, and the
 # users' keys it accepts. The users' private halves are lent, never
@@ -473,6 +550,29 @@ serve() {
 }
 SH
 fi
+# The fake APIs the npm CLI builtins deploy to (npm-cli/fake-apis.mjs).
+mkdir -p "$repo/npm-cli"
+cp "$here/npm-cli/fake-apis.mjs" "$repo/npm-cli/"
+# A package registry the Node jobs install from (npm-registry/registry.mjs),
+# with a command-line package in two versions.
+mkdir -p "$repo/npm"
+cp "$here/npm-registry/registry.mjs" "$repo/npm/"
+for version in 1.0.0 2.0.0; do
+  mkdir -p "$repo/npm/packages/hello-cli/$version/bin"
+  printf '{ "name": "hello-cli", "version": "%s", "bin": { "hello": "bin/hello.js" } }\n' "$version" \
+    >"$repo/npm/packages/hello-cli/$version/package.json"
+  printf '#!/usr/bin/env node\nconsole.log("hello %s " + process.argv.slice(2).join(" "));\n' "$version" \
+    >"$repo/npm/packages/hello-cli/$version/bin/hello.js"
+done
+# The cloud CLIs' fake cloud, and a certificate for its HTTPS half (the
+# Azure CLI signs in over HTTPS only) that the az jobs trust.
+mkdir -p "$repo/cloud"
+cp "$here/environments/cloud-clis/fake-cloud.py" "$repo/cloud/"
+for name in "$@"; do
+  [[ "$name" == az ]] || continue
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=127.0.0.1 \
+    -addext subjectAltName=IP:127.0.0.1 -keyout "$repo/cloud/key.pem" -out "$repo/cloud/cert.pem" 2>/dev/null
+done
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -1071,10 +1171,98 @@ jobs:
     run: kubectl get namespaces
 YAML
       ;;
+    gh)
+      # A token lent as the app lends one (gh_lent, below): GH_TOKEN,
+      # GITHUB_TOKEN, GH_REPO, and Git's global configuration with the
+      # token as a header for the repository. The fake GitHub serves
+      # acme/widgets and wants that token.
+      cat <<'YAML'
+name: gh
+jobs:
+  gh-passes:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write, issues: write }
+    run: |
+      source /app/gh/serve.sh
+      serve_github
+      gh --version | grep -q '^gh version 2.104.0 (2026-11-12)'
+      test "$GH_REPO" = acme/widgets
+      test "$GIT_CONFIG_GLOBAL" = /root/.gitconfig
+      test "$(stat -c %a /root/.gitconfig)" = 600
+      # Masked wherever they are printed.
+      echo "token $GH_TOKEN, $GITHUB_TOKEN"
+      cat /root/.gitconfig
+      # git push with the lent credentials: a branch and a tag.
+      git config --global user.name ci
+      git config --global user.email ci@example.com
+      git init -q -b main /tmp/w && cd /tmp/w
+      echo widget > widget.txt && git add widget.txt && git commit -q -m 'Add a widget'
+      git push https://github.com/acme/widgets.git HEAD:main
+      git push https://github.com/acme/widgets.git HEAD:refs/heads/feature
+      git tag v1.0.0 && git push https://github.com/acme/widgets.git v1.0.0
+      test "$(git ls-remote https://github.com/acme/widgets.git refs/tags/v1.0.0 | cut -f1)" = "$(git rev-parse HEAD)"
+      cd /tmp
+      # Pull requests.
+      test "$(gh pr create --head feature --base main --title 'Add a widget' --body 'From CI.' --label bug)" = https://github.com/acme/widgets/pull/1
+      test "$(gh pr list --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"')" = "1 feature"
+      gh pr edit 1 --title 'Add widgets' --add-label release
+      test "$(gh pr view 1 --json title,labels --jq '.title + " " + ([.labels[].name] | join(","))')" = "Add widgets bug,release"
+      # Issues.
+      test "$(gh issue create --title 'A bug' --body 'Found by CI.' --label bug)" = https://github.com/acme/widgets/issues/2
+      gh issue edit 2 --title 'A real bug' --remove-label bug
+      gh issue close 2
+      test "$(gh issue view 2 --json state,title --jq '.state + " " + .title')" = "CLOSED A real bug"
+      # A release with an asset, and the REST API.
+      echo built > widget.tgz
+      test "$(gh release create v1.0.0 --title v1.0.0 --notes 'First.' ./widget.tgz)" = https://github.com/acme/widgets/releases/tag/v1.0.0
+      test "$(gh api repos/acme/widgets/releases/tags/v1.0.0 --jq '.assets[0].name')" = widget.tgz
+      test "$(gh api repos/acme/widgets --jq .full_name)" = acme/widgets
+      # Everything above reached the fake, as the right calls.
+      for want in 'POST github.com/acme/widgets.git/git-receive-pack' 'POST api.github.com/graphql PullRequestCreate' \
+        'POST api.github.com/graphql PullRequestUpdate' 'POST api.github.com/graphql IssueCreate' \
+        'POST api.github.com/graphql IssueClose' 'POST api.github.com/repos/acme/widgets/releases' \
+        'POST uploads.github.com/repos/acme/widgets/releases/1/assets'; do
+        grep -qF "$want" /tmp/github.log || { echo "the fake saw no $want"; cat /tmp/github.log; exit 1; }
+      done
+      ! grep -q -- '-> 401' /tmp/github.log
+  # GitHub refuses a token it did not issue, and gh and Git fail for it
+  # (Git at once: the lent token sets GIT_TERMINAL_PROMPT=0).
+  bad-token-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { contents: write, pull-requests: write, issues: write }
+    run: |
+      source /app/gh/serve.sh
+      serve_github -token another-token
+      if git ls-remote https://github.com/acme/widgets.git; then exit 2; fi
+      gh api repos/acme/widgets
+  # A job that asks for no token has none: gh says to log in.
+  no-token-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    run: |
+      test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}${GIT_CONFIG_GLOBAL:-}"
+      gh api repos/acme/widgets
+  # Permissions the app would not mint: the job never starts, with its reason.
+  refused-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { issues: write }
+    run: gh issue list
+  # A token that expired before the job started.
+  expired-fails:
+    using: env:bash@5
+    tools: [builtin:gh@2.104]
+    github-token: { statuses: write }
+    run: gh api repos/acme/widgets
+YAML
+      ;;
     openssh)
       # Connections and keys are lent as the app lends them (openssh_lent,
-      # below): a Host entry in ~/.ssh/config, its pinned host key in
-      # ~/.ssh/known_hosts, a key at mode 0600 named as an IdentityFile.
+      # below): a Host entry in ~/.ssh/config with the connection's key and
+      # its pinned host key as a known_hosts file of its own, and a key at
+      # mode 0600 named as an IdentityFile.
       # Servers: `web` on 2222 (Ed25519 host key), `jump` on 2223 (ECDSA),
       # `legacy` on 2224 (RSA). Each job is lent only what it names, so the
       # wrong host key is never next to the right one.
@@ -1141,7 +1329,8 @@ jobs:
       serve web 2222 host_a
       ssh -N -L 127.0.0.1:2290:127.0.0.1:2222 web &
       wait-for-port 2290
-      test "$(ssh -o HostKeyAlias='[127.0.0.1]:2222' -p 2290 deploy@127.0.0.1 echo tunnelled)" = tunnelled
+      test "$(ssh -o UserKnownHostsFile=/root/.ssh/iw_web.known_hosts -o HostKeyAlias='[127.0.0.1]:2222' \
+        -p 2290 deploy@127.0.0.1 echo tunnelled)" = tunnelled
       grep -q 'direct-tcpip to 127.0.0.1:2222' /tmp/web.log
   rsa-passes:
     using: env:bash@5
@@ -1166,8 +1355,8 @@ jobs:
       test "$(stat -c %a /tmp/new)" = 600
       ssh-keygen -l -f /tmp/new.pub | grep -q '(ED25519)$'
       ssh-keyscan -q -p 2222 -t ed25519 127.0.0.1 | grep -v '^#' | cut -d' ' -f2- > /tmp/scanned
-      test "$(cat /tmp/scanned)" = "$(cut -d' ' -f2- ~/.ssh/known_hosts)"
-      ssh-keygen -F '[127.0.0.1]:2222' | grep -q ssh-ed25519
+      test "$(cat /tmp/scanned)" = "$(cut -d' ' -f2- ~/.ssh/iw_web.known_hosts)"
+      ssh-keygen -F '[127.0.0.1]:2222' -f ~/.ssh/iw_web.known_hosts | grep -q ssh-ed25519
   # The server holds another key than the one pinned for it.
   wrong-host-key-fails:
     using: env:bash@5
@@ -1197,7 +1386,7 @@ jobs:
       source /app/ssh/serve.sh
       serve web 2222 host_a
       cat ~/.ssh/id_deploy > /tmp/loose
-      ssh -F none -i /tmp/loose -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/known_hosts \
+      ssh -F none -i /tmp/loose -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/iw_web.known_hosts \
         -p 2222 deploy@127.0.0.1 echo reached
   refused-fails:
     using: env:bash@5
@@ -1211,6 +1400,192 @@ jobs:
     tools: [builtin:ssh@10.6]
     connections: [staging]
     run: ssh staging echo reached
+YAML
+      ;;
+    npm-cli)
+      # The deployment CLIs (npm-cli/build.sh) against fake Vercel,
+      # Cloudflare and Neon APIs on the job's loopback (npm-cli/fake-apis.mjs),
+      # with the network off, so nothing can reach a real one. Each token
+      # comes from a lent connection, as the app lends one (npm_cli_lent,
+      # below), and must come out masked.
+      cat <<'YAML'
+name: npm-cli
+workspace:
+  services:
+    apis:
+      using: env:bash-node@24
+      run: node /app/npm-cli/fake-apis.mjs
+      ready: { port: 4300 }
+jobs:
+  # `vercel deploy` uploads the directory and creates a deployment;
+  # `--prebuilt` sends `vercel build`'s output as it is, to production.
+  vercel-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    connections: [vercel]
+    env: { VERCEL_ORG_ID: team_fixture, VERCEL_PROJECT_ID: prj_fixture }
+    run: |
+      mkdir -p /tmp/site && cd /tmp/site
+      echo '<h1>hello</h1>' >index.html
+      vercel deploy --api http://127.0.0.1:4100 --yes >/tmp/out 2>&1 || { cat /tmp/out; exit 1; }
+      cat /tmp/out
+      grep -q 'https://web-.*\.vercel\.app' /tmp/out
+      echo "token: $VERCEL_TOKEN"
+      node -e '
+      fetch("http://127.0.0.1:4100/_received").then((r) => r.json()).then(([d]) => {
+        if (d.files["index.html"] !== "<h1>hello</h1>\n" || d.target !== null || d.prebuilt) throw new Error(JSON.stringify(d));
+      });'
+  vercel-prebuilt-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    connections: [vercel]
+    run: |
+      mkdir -p /tmp/pb/.vercel/output/static && cd /tmp/pb
+      echo '{"projectId":"prj_fixture","orgId":"team_fixture"}' >.vercel/project.json
+      echo '{"version":3}' >.vercel/output/config.json
+      echo '<h1>prebuilt</h1>' >.vercel/output/static/index.html
+      vercel deploy --prebuilt --prod --api http://127.0.0.1:4100 --yes
+      node -e '
+      fetch("http://127.0.0.1:4100/_received").then((r) => r.json()).then(([d]) => {
+        if (!d.prebuilt || d.target !== "production" || d.files[".vercel/output/static/index.html"] !== "<h1>prebuilt</h1>\n") throw new Error(JSON.stringify(d));
+      });'
+  # A token the API refuses fails the deploy.
+  vercel-bad-token-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:vercel@65]
+    env: { VERCEL_TOKEN: notthetoken, VERCEL_ORG_ID: team_fixture, VERCEL_PROJECT_ID: prj_fixture }
+    run: |
+      mkdir -p /tmp/site && cd /tmp/site && echo hi >index.html
+      vercel deploy --api http://127.0.0.1:4100 --yes
+  # Wrangler bundles with esbuild-wasm (the import is inlined), uploads
+  # the Worker and turns its workers.dev route on.
+  wrangler-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/w/src && cd /tmp/w
+      echo '{"name":"hello","main":"src/index.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      printf 'import { greet } from "./greet.js";\nexport default { fetch() { return new Response(greet("ci")); } };\n' >src/index.js
+      printf 'export const greet = (n) => `hello ${n}`;\n' >src/greet.js
+      started=$(date +%s%N)
+      wrangler deploy
+      echo "deployed in $(( ($(date +%s%N) - started) / 1000000 )) ms"
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        const code = d.modules[d.main_module] ?? "";
+        if (d.worker !== "hello" || !code.includes("hello ${n}") || code.includes("import ")) throw new Error(JSON.stringify(d));
+      });'
+  # Without bundling: a Worker built elsewhere, uploaded as it is.
+  wrangler-no-bundle-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/nb/dist && cd /tmp/nb
+      echo '{"name":"prebundled","main":"dist/worker.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      echo 'export default { fetch() { return new Response("as built"); } };' >dist/worker.js
+      wrangler deploy --no-bundle
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.modules["worker.js"] !== "export default { fetch() { return new Response(\"as built\"); } };\n") throw new Error(JSON.stringify(d));
+      });'
+  wrangler-pages-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/pages/dist && cd /tmp/pages
+      echo '<h1>pages</h1>' >dist/index.html
+      echo 'body {}' >dist/app.css
+      wrangler pages deploy dist --project-name site --branch main
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.pages !== "site" || d.branch !== "main" || d.files.join() !== "/app.css,/index.html") throw new Error(JSON.stringify(d));
+      });'
+  # workerd cannot run in a job: `wrangler dev` says so and fails.
+  wrangler-dev-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:wrangler@4]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/w && cd /tmp/w
+      echo '{"name":"hello","main":"index.js","compatibility_date":"2026-11-01"}' >wrangler.json
+      echo 'export default { fetch() { return new Response("hi"); } };' >index.js
+      wrangler dev
+  # Cloudflare's CLI deploys a directory of static assets as a Worker.
+  cf-deploy-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:cf@1.0.0-beta.32]
+    connections: [cloudflare]
+    env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
+    run: |
+      mkdir -p /tmp/site/public && cd /tmp/site
+      echo '<h1>cf</h1>' >public/index.html
+      cf deploy public
+      node -e '
+      fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
+        if (d.worker !== "site" || !d.assets) throw new Error(JSON.stringify(d));
+      });'
+  # A branch for a pull request: made, its connection string read, and
+  # deleted, by name.
+  neon-branch-passes:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:neon@9]
+    connections: [neon]
+    env: { NEON_API_HOST: "http://127.0.0.1:4300/api/v2" }
+    run: |
+      p=fixture-project-123456
+      neon branches create --project-id $p --name pr-42 -o json >/tmp/branch.json
+      test "$(node -p 'require("/tmp/branch.json").branch.name')" = pr-42
+      url="$(neon connection-string pr-42 --project-id $p)"
+      echo "$url"
+      [[ "$url" == postgresql://app_owner:*@ep-made-*.fake.neon.test/app?sslmode=require* ]]
+      neon branches delete pr-42 --project-id $p
+      node -e '
+      fetch("http://127.0.0.1:4300/_received").then((r) => r.json()).then((d) => {
+        if (JSON.stringify(d) !== JSON.stringify([{ created: "pr-42" }, { deleted: "pr-42" }])) throw new Error(JSON.stringify(d));
+      });'
+  neon-bad-key-fails:
+    using: env:bash-node@24
+    network: false
+    timeout: 5m
+    tools: [builtin:neon@9]
+    env: { NEON_API_KEY: not-the-key, NEON_API_HOST: "http://127.0.0.1:4300/api/v2" }
+    run: neon branches list --project-id fixture-project-123456
+  # A Node tool needs `node`: in env:bash it never starts, and saying so.
+  in-bash-errors:
+    using: env:bash@5
+    services: false
+    tools: [builtin:vercel@65]
+    run: vercel --version
+  # And it is not a job of its own.
+  as-a-job-errors:
+    using: builtin:neon@9
+    services: false
+    args: [--version]
 YAML
       ;;
     tools)
@@ -1276,6 +1651,131 @@ jobs:
     run: |
       npm --version
       pnpm --version
+      npx --version
+  # HOME is a directory: it was only a variable, so `pnpm dlx` failed with
+  # "lstat '/root'".
+  home-passes:
+    using: env:bash-node@24
+    run: |
+      test "$HOME" = /root
+      test -d "$HOME"
+      test "$(node -p 'require("os").homedir()')" = /root
+  # A command reached through a symbolic link runs what the link points
+  # at, as execve does: npm and pnpm install commands as links into their
+  # packages, and running one failed with "No such file or directory". The
+  # script is handed the path that was run, as on Linux.
+  symlink-exec-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/l/lib /tmp/l/bin
+      printf '#!/usr/bin/env node\nconsole.log(process.argv[1])\n' >/tmp/l/lib/s.js
+      ln -s ../lib/s.js /tmp/l/bin/rel
+      ln -s /tmp/l/lib/s.js /tmp/l/bin/abs
+      ln -s rel /tmp/l/bin/chain
+      ln -s ../l/lib /tmp/l/dir
+      test "$(/tmp/l/bin/rel)" = /tmp/l/bin/rel
+      test "$(/tmp/l/bin/abs)" = /tmp/l/bin/abs
+      test "$(/tmp/l/bin/chain)" = /tmp/l/bin/chain
+      test "$(/tmp/l/dir/s.js)" = /tmp/l/dir/s.js
+      test "$(PATH="/tmp/l/bin:$PATH" rel)" = /tmp/l/bin/rel
+      test "$(node -e 'process.stdout.write(require("child_process").execFileSync("/tmp/l/bin/chain"))')" = /tmp/l/bin/chain
+      # A loop is a failure to run, not a hang.
+      ln -s loop-b /tmp/l/bin/loop-a
+      ln -s loop-a /tmp/l/bin/loop-b
+      if /tmp/l/bin/loop-a 2>/dev/null; then exit 1; fi
+  # A child's command is looked up on the PATH it is given, as Node does
+  # (#1201): Edge.js searched its parent's.
+  spawn-child-path-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/x
+      printf '#!/usr/bin/env node\nconsole.log("x ran")\n' >/tmp/x/xcmd
+      cat >/tmp/spawn.cjs <<'JS'
+      const cp = require("node:child_process");
+      const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+      const out = [
+        cp.execFileSync("xcmd", { env }),
+        cp.spawnSync("xcmd", [], { env }).stdout,
+        cp.execFileSync("xcmd", [], { env, cwd: "/tmp" }),
+      ].join("");
+      if (out !== "x ran\n".repeat(3)) throw new Error(JSON.stringify(out));
+      // Not on the parent's PATH, so not found without it.
+      if (cp.spawnSync("xcmd").error?.code !== "ENOENT") throw new Error("found");
+      cp.spawn("xcmd", { env, stdio: "inherit" }).on("exit", (code) => process.exit(code));
+      JS
+      test "$(node /tmp/spawn.cjs)" = "x ran"
+  # Global installs (README.md, "Global installs"), from a registry on the
+  # job's loopback: `npm i -g` (pnpm, in Edge.js) and `pnpm add -g` put
+  # the package's commands on PATH, the first time in a job too, and
+  # `pnpm remove -g` takes them away again.
+  global-install-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: |
+      npm i -g hello-cli@1.0.0
+      test "$(command -v hello)" = /root/.local/share/pnpm/hello
+      test "$(hello a b)" = "hello 1.0.0 a b"
+      pnpm add -g hello-cli@2.0.0
+      test "$(hello c)" = "hello 2.0.0 c"
+      test "$(node -e 'process.stdout.write(require("child_process").execFileSync("hello", ["d"]))')" = "hello 2.0.0 d"
+      pnpm remove -g hello-cli
+      if command -v hello; then exit 1; fi
+  # npx (npm's, which Edge.js ships without putting on PATH) and pnpm dlx
+  # run a package's command without installing it, and npx prefers the
+  # project's own.
+  npx-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: |
+      test "$(npx --yes hello-cli@1.0.0 x)" = "hello 1.0.0 x"
+      test "$(pnpm dlx hello-cli@2.0.0 y)" = "hello 2.0.0 y"
+      mkdir -p /tmp/proj && cd /tmp/proj && echo '{}' >package.json
+      pnpm add hello-cli@1.0.0
+      test "$(npx hello z)" = "hello 1.0.0 z"
+  # A global install can be kept with a job cache, and runs again with the
+  # registry gone (no service, no network).
+  global-cache-save-passes:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    cache: { key: pnpm-global-fixture, paths: [/root/.local/share/pnpm] }
+    run: |
+      npm i -g hello-cli@2.0.0
+      test "$(hello)" = "hello 2.0.0 "
+  global-cache-restore-passes:
+    using: env:bash-node@24
+    needs: [global-cache-save-passes]
+    network: false
+    cache: { key: pnpm-global-fixture, paths: [/root/.local/share/pnpm] }
+    run: test "$(hello again)" = "hello 2.0.0 again"
+  # A package the registry does not have fails the install, and the job.
+  global-install-missing-fails:
+    using: env:bash-node@24
+    timeout: 4m
+    services:
+      registry:
+        using: env:bash-node@24
+        run: node /app/npm/registry.mjs /app/npm/packages 4873
+        ready: { port: 4873 }
+    env: { npm_config_registry: "http://127.0.0.1:4873/" }
+    run: npm i -g no-such-cli
   throw-fails:
     using: env:bash-node@24
     run: |
@@ -2596,6 +3096,9 @@ jobs:
     needs: [node-passes]
     timeout: 3m
     run: |
+      # A failing step says which it was, and what it got (#1249).
+      trap 'echo "compile-cache-passes: line $LINENO exited $?: $BASH_COMMAND" >&2' ERR
+      same() { [[ "$1" == "$2" ]] || { printf 'got:  %s\nwant: %s\n' "$1" "$2" >&2; return 1; }; }
       mkdir -p /tmp/cc/app && cd /tmp/cc/app
       printf 'module.exports = (a) => a + 1;\n' >dep.js
       printf 'export const twice = (a) => a * 2;\n' >dep.mjs
@@ -2614,9 +3117,12 @@ jobs:
       JS
       # What the engine did with each of this tree's modules, as
       # NODE_DEBUG_NATIVE=COMPILE_CACHE reports it.
+      # `node`'s own errors go to the job's stderr, not into the comparison.
       report() {
-        NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null |
-          sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' |
+        local log
+        log="$(NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null)" ||
+          printf 'node main.js exited %s:\n%s\n' "$?" "$(grep -v '^\[compile cache\]' <<<"$log")" >&2
+        sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' <<<"$log" |
           sort | tr '\n' ';'
       }
       test "$(node -p 'require("node:module").getCompileCacheDir()')" = undefined
@@ -2626,15 +3132,15 @@ jobs:
       test "$(find "$dir" -type f | wc -l)" -ge 4
       # The worker requires dep.js after the main thread has written it.
       hits="CommonJS dep.js accepted;CommonJS dep.js accepted;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "$hits"
       # A changed module is compiled again and its entry replaced.
       printf 'module.exports = (a) => a + 1; // changed\n' >dep.js
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
+      same "$(report)" "$hits"
       # A damaged entry is a miss.
       for f in "$dir"/*; do printf 'garbage' | dd of="$f" bs=1 seek=60 conv=notrunc 2>/dev/null; done
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
+      same "$(report)" "$hits"
       # An entry that cannot be written is no error (each is a directory now).
       for f in "$dir"/*; do rm "$f" && mkdir -p "$f/in-the-way"; done
       test "$(node main.js)" = "$dir"
@@ -2645,10 +3151,10 @@ jobs:
       cat >/tmp/cc/many.js <<'JS'
       const { Worker } = require("node:worker_threads");
       const code = 'let s = 0; for (let i = 1; i <= 300; i++) s += require("/tmp/cc/many/m" + i + ".js"); require("node:worker_threads").parentPort.postMessage(s);';
-      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) process.exit(1); });
+      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) { console.error("worker " + w + " summed " + s); process.exit(1); } });
       JS
       node /tmp/cc/many.js
-      test "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" = 1200
+      same "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" 1200
       # The API.
       unset NODE_COMPILE_CACHE
       node -e '
@@ -2682,7 +3188,7 @@ jobs:
       NODE_COMPILE_CACHE=/tmp/cc/one/.cache NODE_COMPILE_CACHE_PORTABLE=1 node /tmp/cc/one/main.js >/dev/null
       mv /tmp/cc/one /tmp/cc/two
       cd /tmp/cc/two
-      test "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" = "$hits"
+      same "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" "$hits"
   # CPU time is CPU time (#1038): the C library read the monotonic clock
   # (days, and a sleep counted as work), and the host's clocks would be the
   # whole runner's. Now `process.cpuUsage()` starts near zero, grows with
@@ -3387,6 +3893,95 @@ jobs:
         run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
         ready: { port: 7002 }
     run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
+  # A listening socket is a stream socket with no peer (#1217):
+  # `getsockopt(SO_TYPE)` answered ENOTSOCK for one and `getpeername`
+  # ENOTSUP, so `ssl.wrap_socket` could not wrap a server's socket, the usual
+  # way to serve HTTPS from Python.
+  tls-server-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python - <<'PY'
+      import socket
+      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      types = [s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)]
+      s.bind(("127.0.0.1", 7004))
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      s.listen()
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      assert types == [socket.SOCK_STREAM] * 3, types
+      s.close()
+      PY
+      python - <<'PY' &
+      import http.server, ssl
+      served = []
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header("Content-Length", "8")
+              self.end_headers()
+              self.wfile.write(b"over tls")
+              served.append(True)
+      server = http.server.HTTPServer(("127.0.0.1", 7443), Handler)
+      context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+      context.load_cert_chain("/app/py/tls/cert.pem", "/app/py/tls/key.pem")
+      server.socket = context.wrap_socket(server.socket, server_side=True)
+      while not served:
+          server.handle_request()
+      PY
+      server=$!
+      wait-for-port 7443 --host localhost --timeout 60s
+      test "$(python -c 'import ssl, urllib.request; print(urllib.request.urlopen("https://localhost:7443/", context=ssl.create_default_context(cafile="/app/py/tls/cert.pem")).read().decode())')" = "over tls"
+      wait "$server"
+  # File locks (#1216): `fcntl.flock` and `fcntl.lockf` failed with
+  # ENOSYS. Another process's lock is refused without waiting, a blocking
+  # one waits for its holder to exit, which releases it, and a second open
+  # of a file in one process is a description of its own for flock (and
+  # the same process for lockf), as on Linux.
+  file-locks-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python -u - > /tmp/holder.log <<'PY' &
+      import fcntl, time
+      f = open("/tmp/flock", "w")
+      fcntl.flock(f, fcntl.LOCK_EX)
+      g = open("/tmp/lockf", "w")
+      fcntl.lockf(g, fcntl.LOCK_EX)
+      print("held")
+      time.sleep(2)
+      PY
+      holder=$!
+      wait-for-log /tmp/holder.log held --timeout 60s
+      python - <<'PY'
+      import errno, fcntl, time
+      f = open("/tmp/flock", "w")
+      g = open("/tmp/lockf", "w")
+      for lock, file in ((fcntl.flock, f), (fcntl.lockf, g)):
+          try:
+              lock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+              raise SystemExit(f"{lock.__name__} took a lock another process holds")
+          except OSError as e:
+              assert e.errno in (errno.EAGAIN, errno.EACCES), e
+      start = time.monotonic()
+      fcntl.flock(f, fcntl.LOCK_EX)
+      fcntl.lockf(g, fcntl.LOCK_EX)
+      assert time.monotonic() - start > 0.5, "the blocking locks did not wait"
+      again = open("/tmp/flock", "w")
+      try:
+          fcntl.flock(again, fcntl.LOCK_SH | fcntl.LOCK_NB)
+          raise SystemExit("flock shared a lock between two opens of one file")
+      except BlockingIOError:
+          pass
+      fcntl.lockf(open("/tmp/lockf", "w"), fcntl.LOCK_EX | fcntl.LOCK_NB)
+      fcntl.flock(f, fcntl.LOCK_UN)
+      fcntl.flock(again, fcntl.LOCK_SH | fcntl.LOCK_NB)
+      PY
+      wait "$holder"
+      # SQLite in CPython locks its database file with the same record
+      # locks; a database on disk still works from two processes.
+      python -c 'import sqlite3; c = sqlite3.connect("/tmp/t.db"); c.execute("create table t (x)"); c.execute("insert into t values (42)"); c.commit()'
+      test "$(python -c 'import sqlite3; print(sqlite3.connect("/tmp/t.db").execute("select x from t").fetchone()[0])')" = 42
   # pip's three ways to keep packages apart from the interpreter's own, from
   # the local wheel and with no network: the user site, whose console
   # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
@@ -3434,6 +4029,241 @@ jobs:
     run: |
       git init -q -b main /tmp/r
       python -c 'import subprocess; print(subprocess.run(["git", "-C", "/tmp/r", "status", "--short", "--branch"], check=True, capture_output=True, text=True).stdout)' | grep -q '^## No commits yet on main$'
+  # A remote that wants credentials, as a private repository does, fails
+  # Git at once with its own error (#1231): nobody can answer its prompt,
+  # and it waited for an answer until the stall check stopped the job. The
+  # fake answers every request 401; the timeout is well inside the stall
+  # check, so a prompt that waits ends this job as timed out.
+  git-auth-prompt-fails:
+    using: env:python@3.13
+    timeout: 2m
+    run: |
+      python - > /tmp/auth.log 2>&1 <<'PY' &
+      import http.server
+      class Private(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(401)
+              self.send_header("WWW-Authenticate", 'Basic realm="private"')
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+      http.server.HTTPServer(("127.0.0.1", 8001), Private).serve_forever()
+      PY
+      wait-for-port 8001 --timeout 60s
+      git clone http://127.0.0.1:8001/acme/private.git /tmp/private
+  # Git's prompt for a user name, with prompts allowed, ends at once (#1264):
+  # it reads /dev/tty, which a job has with nothing to read. It used to read
+  # git-remote-http's standard input, the pipe from Git, and waited until
+  # the job's timeout. A fake on the job's loopback answers every request
+  # 401 with `WWW-Authenticate: Basic`, so Git asks.
+  git-prompt-ends-fails:
+    using: env:python@3.13
+    timeout: 2m
+    env: { GIT_TERMINAL_PROMPT: "1" }
+    run: |
+      python - > /tmp/auth.log 2>&1 <<'PY' &
+      import http.server
+      class Private(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(401)
+              self.send_header("WWW-Authenticate", 'Basic realm="private"')
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+      http.server.HTTPServer(("127.0.0.1", 8002), Private).serve_forever()
+      PY
+      wait-for-port 8002 --timeout 60s
+      git clone http://127.0.0.1:8002/acme/private.git /tmp/private
+YAML
+      ;;
+    aws)
+      cat <<'YAML'
+name: aws
+workspace:
+  # The fake cloud (environments/cloud-clis/fake-cloud.py) on the job's
+  # loopback. It wants the lent session, and gets it as secrets.
+  services:
+    cloud:
+      using: env:aws@1.46
+      env:
+        FAKE_AWS_KEY: ${{ secrets.AWS_FIXTURE_KEY }}
+        FAKE_AWS_TOKEN: ${{ secrets.AWS_FIXTURE_TOKEN }}
+      run: exec python3 -u /app/cloud/fake-cloud.py
+      ready: { port: 4566 }
+jobs:
+  version-passes:
+    using: env:aws@1.46
+    services: false
+    run: |
+      aws --version
+      aws --version | grep -q '^aws-cli/1\.46\.3 Python/3\.13\.15 '
+      test -z "$AWS_PAGER"
+      test "$AWS_EC2_METADATA_DISABLED" = true
+      # The CLI's own packages, not the job's: a urllib3 the job installs
+      # does not reach it.
+      if python3 -c 'import awscli' 2>/dev/null; then exit 1; fi
+  # Lent the way the app lends an AWS connection (cloud_lent): the session
+  # as variables and as a profile named after the connection. Every common
+  # path, with no network: the fake cloud is the only thing it can reach.
+  deploy-passes:
+    using: env:aws@1.46
+    connections: [aws fixture]
+    network: false
+    timeout: 15m
+    env: { AWS_ENDPOINT_URL: "http://127.0.0.1:4566" }
+    run: |
+      test "$(aws sts get-caller-identity --query Account --output text)" = 123456789012
+      test "$(aws --profile aws-fixture sts get-caller-identity --query Arn --output text)" = arn:aws:iam::123456789012:user/ci
+      mkdir -p /tmp/site/sub
+      echo hello > /tmp/site/index.html
+      echo x > /tmp/site/sub/a.txt
+      aws s3 cp /tmp/site/index.html s3://assets/index.html
+      aws s3 sync /tmp/site s3://assets/site
+      test "$(aws s3 ls s3://assets/site/ --recursive | wc -l)" = 2
+      test "$(aws s3 cp s3://assets/site/sub/a.txt -)" = x
+      test "$(aws s3api list-buckets --query 'Buckets[].Name' --output text)" = assets
+      test "$(aws s3api head-object --bucket assets --key index.html --query ContentLength)" = 6
+      test "$(aws ecr get-login-password)" = fake-ecr-password
+      printf 'Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n' > /tmp/stack.yml
+      aws cloudformation deploy --template-file /tmp/stack.yml --stack-name web
+      test "$(aws cloudformation describe-stacks --stack-name web --query 'Stacks[0].StackStatus' --output text)" = CREATE_COMPLETE
+      printf 'def handler(event, context):\n    return 1\n' > /tmp/handler.py
+      (cd /tmp && python3 -c 'import zipfile; zipfile.ZipFile("fn.zip", "w").write("handler.py")')
+      test "$(aws lambda update-function-code --function-name web --zip-file fileb:///tmp/fn.zip --query LastUpdateStatus --output text)" = Successful
+      # An exec kubeconfig that runs this `aws` for its token.
+      aws eks update-kubeconfig --name prod --kubeconfig /tmp/kubeconfig
+      grep -q 'command: aws' /tmp/kubeconfig
+      aws eks get-token --cluster-name prod |
+        python3 -c 'import json, sys; t = json.load(sys.stdin)["status"]["token"]; assert t.startswith("k8s-aws-v1."), t'
+      # Masked in the report, like any lent value.
+      echo "session: $AWS_SESSION_TOKEN" >&2
+      grep aws_session_token ~/.aws/credentials
+  # A session the cloud does not know is refused, and the CLI says so.
+  wrong-session-fails:
+    using: env:aws@1.46
+    network: false
+    env:
+      AWS_ENDPOINT_URL: "http://127.0.0.1:4566"
+      AWS_ACCESS_KEY_ID: ASIAWRONG
+      AWS_SECRET_ACCESS_KEY: wrong
+      AWS_SESSION_TOKEN: wrong
+      AWS_DEFAULT_REGION: us-east-1
+    run: aws sts get-caller-identity
+  # With nothing lent the CLI finds no credentials at once: it does not wait
+  # on the instance metadata service, which a job cannot reach.
+  no-credentials-passes:
+    using: env:aws@1.46
+    services: false
+    network: false
+    run: |
+      start=$(date +%s)
+      if aws sts get-caller-identity 2> /tmp/err; then exit 1; fi
+      grep -q 'Unable to locate credentials' /tmp/err
+      test $(( $(date +%s) - start )) -lt 30
+  not-lent-fails:
+    using: env:aws@1.46
+    services: false
+    connections: [staging]
+    run: aws sts get-caller-identity
+YAML
+      ;;
+    gcloud)
+      cat <<'YAML'
+name: gcloud
+workspace:
+  services:
+    cloud:
+      using: env:gcloud@593
+      env: { FAKE_GCP_TOKEN: "${{ secrets.GCP_FIXTURE_TOKEN }}" }
+      run: exec python3 -u /app/cloud/fake-cloud.py
+      ready: { port: 4566 }
+jobs:
+  version-passes:
+    using: env:gcloud@593
+    services: false
+    timeout: 5m
+    run: |
+      gcloud version
+      gcloud version | grep -q '^Google Cloud SDK 593\.0\.0$'
+      # What was left out is not listed as installed.
+      if gcloud version | grep -q -e gsutil -e bundled-python; then exit 1; fi
+      bq version | grep -q '^This is BigQuery CLI'
+      test "$(gcloud config get-value core/disable_prompts 2>/dev/null)" = 1
+  # Lent the way the app lends a Google Cloud connection (cloud_lent): an
+  # access token in a file gcloud reads, and the project.
+  lent-passes:
+    using: env:gcloud@593
+    connections: [gcp fixture]
+    network: false
+    timeout: 10m
+    env:
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_CLOUDRESOURCEMANAGER: "http://127.0.0.1:4566/gcp/"
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_STORAGE: "http://127.0.0.1:4566/gcp/storage/v1/"
+    run: |
+      test "$(gcloud config get-value project)" = acme
+      test "$(gcloud projects describe acme --format='value(projectNumber)')" = 424242424242
+      gcloud storage ls gs://site | grep -qx gs://site/index.html
+      # Masked in the report.
+      gcloud auth print-access-token
+  wrong-token-fails:
+    using: env:gcloud@593
+    network: false
+    timeout: 10m
+    env:
+      CLOUDSDK_API_ENDPOINT_OVERRIDES_CLOUDRESOURCEMANAGER: "http://127.0.0.1:4566/gcp/"
+      CLOUDSDK_CORE_PROJECT: acme
+    run: |
+      printf wrong > /tmp/token
+      CLOUDSDK_AUTH_ACCESS_TOKEN_FILE=/tmp/token gcloud projects describe acme
+YAML
+      ;;
+    az)
+      cat <<'YAML'
+name: az
+workspace:
+  services:
+    cloud:
+      using: env:az@2.92
+      env: { FAKE_AZURE_SECRET: "${{ secrets.AZURE_FIXTURE_SECRET }}" }
+      run: exec python3 -u /app/cloud/fake-cloud.py --cert /app/cloud/cert.pem --key /app/cloud/key.pem
+      ready: { port: 4567 }
+jobs:
+  version-passes:
+    using: env:az@2.92
+    services: false
+    timeout: 5m
+    run: |
+      az version
+      test "$(az version --query '"azure-cli"' -o tsv)" = 2.92.0
+      test "$AZURE_CORE_COLLECT_TELEMETRY" = no
+  # Lent the way the app lends an Azure connection (cloud_lent): the service
+  # principal as variables. The fake is a cloud of its own the CLI is told
+  # about; its first command that needs an account signs in by itself.
+  lent-passes:
+    using: env:az@2.92
+    connections: [azure fixture]
+    network: false
+    timeout: 15m
+    env: { REQUESTS_CA_BUNDLE: /app/cloud/cert.pem, AZURE_CORE_INSTANCE_DISCOVERY: "false" }
+    run: |
+      az cloud register --name Fixture --endpoint-resource-manager https://127.0.0.1:4567/ --output none
+      az cloud set --name Fixture --output none
+      test "$(az group list --query '[].name' -o tsv)" = web
+      test "$(az account show --query id -o tsv)" = "$AZURE_SUBSCRIPTION_ID"
+      test "$(az account show --query user.type -o tsv)" = servicePrincipal
+      # Signed in once: the second command finds the account.
+      az group list --output none
+  wrong-secret-fails:
+    using: env:az@2.92
+    connections: [azure fixture]
+    network: false
+    timeout: 15m
+    env:
+      REQUESTS_CA_BUNDLE: /app/cloud/cert.pem
+      AZURE_CORE_INSTANCE_DISCOVERY: "false"
+      AZURE_CLIENT_SECRET: wrong
+    run: |
+      az cloud register --name Fixture --endpoint-resource-manager https://127.0.0.1:4567/ --output none
+      az cloud set --name Fixture --output none
+      az group list
 YAML
       ;;
     postgres)
@@ -3982,14 +4812,24 @@ want_reason() {
   case "$1" in
     gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
-    bash/git-fatal-fails) echo "exited with 128" ;;
+    bash/git-fatal-fails | python/git-auth-prompt-fails | python/git-prompt-ends-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
     kubectl/refused-fails) echo "staging is not lent to CI for this fixture" ;;
+    gh/bad-token-fails) echo "exited with 1" ;;
+    gh/no-token-fails) echo "exited with 4" ;;
+    gh/refused-fails) echo "the Infrawrench GitHub App's installation on acme does not have issues: write" ;;
+    gh/expired-fails) echo "the GitHub token for \`statuses=write\` expired" ;;
     openssh/wrong-host-key-fails | openssh/unknown-host-fails | openssh/loose-key-fails | openssh/refused-fails) echo "exited with 255" ;;
-    openssh/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
+    openssh/not-lent-fails | aws/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
+    aws/wrong-session-fails) echo "exited with 255" ;;
+    gcloud/wrong-token-fails | az/wrong-secret-fails) echo "exited with 1" ;;
     bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/unsettled-tla-fails) echo "exited with 13" ;;
+    bash-node/global-install-missing-fails) echo "exited with 1" ;;
+    npm-cli/vercel-bad-token-fails | npm-cli/wrangler-dev-fails | npm-cli/neon-bad-key-fails) echo "exited with 1" ;;
+    npm-cli/in-bash-errors) echo "runs on \`node\`, which this environment does not have" ;;
+    npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
@@ -4011,10 +4851,18 @@ want_stderr() {
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
+    python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
+    python/git-prompt-ends-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8002'" ;;
+    gh/bad-token-fails) echo "could not read Username for 'https://github.com': terminal prompts disabled.*gh: Bad credentials \(HTTP 401\)" ;;
+    gh/no-token-fails) echo "gh auth login|GH_TOKEN" ;;
     openssh/wrong-host-key-fails) echo "REMOTE HOST IDENTIFICATION HAS CHANGED.*Host key verification failed" ;;
     openssh/unknown-host-fails) echo "Host key verification failed" ;;
     openssh/loose-key-fails) echo "UNPROTECTED PRIVATE KEY FILE.*Permission denied \(publickey\)" ;;
     openssh/refused-fails) echo "ssh: connect to host 127.0.0.1 port 2299: Connection refused" ;;
+    aws/wrong-session-fails) echo "InvalidClientTokenId" ;;
+    aws/deploy-passes) echo "session: \\*\\*\\*" ;;
+    gcloud/wrong-token-fails) echo "Request had invalid authentication credentials" ;;
+    az/wrong-secret-fails) echo "AADSTS7000215: Invalid client secret provided.*could not sign in with the lent service principal" ;;
     postgres/exits-early-fails) echo "\[service postgres\] bye.*iwci: service .postgres. exited with 3 before it was ready" ;;
     postgres/log-ready-passes) echo "\[service postgres\] starting with \*\*\*" ;;
     clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
@@ -4022,6 +4870,9 @@ want_stderr() {
     bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
     bash-node/error-report-fails) echo "^/tmp/throw\.cjs:2 throw new Error\(\"boom\"\); \^  Error: boom     at Object\.<anonymous> \(/tmp/throw\.cjs:2:7\)" ;;
     bash-node/unsettled-tla-fails) echo "^Warning: Detected unsettled top-level await at file:///tmp/stall\.mjs:2 await new Promise\(\(\) => \{\}\); \^" ;;
+    npm-cli/wrangler-dev-fails) echo "workerd, Cloudflare's local Workers runtime, cannot run in a CI job here" ;;
+    npm-cli/neon-bad-key-fails) echo "Authentication failed: the Neon API rejected the API key" ;;
+    npm-cli/vercel-bad-token-fails) echo "The token provided via VERCEL_TOKEN environment variable is not valid" ;;
     bash-node/heap-objects-fails) echo "iwci: the job ran out of its 512 MiB of memory.*JavaScript heap could not grow" ;;
     bash-node/heap-strings-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
     bash-node/workers-heap-fails) echo "iwci: the job ran out of its 1024 MiB of memory.*JavaScript heaps? could not grow" ;;
@@ -4030,26 +4881,35 @@ want_stderr() {
   esac
 }
 
-# What the app would lend the openssh pipeline (a run request's `lent`):
-# connections as a Host entry in ~/.ssh/config with its pinned host key in
-# ~/.ssh/known_hosts (and, behind a jump host, both keys and ProxyJump),
-# and keys as a file at mode 0600 named as an IdentityFile.
+# What the app would lend the openssh pipeline (a run request's `lent`), in
+# the shape the `ssh` plugin lends it (plugin-architecture/packages/ssh,
+# `lendSshHost`): a connection is its key at /root/.ssh/iw_<alias>, the
+# host key pinned for it as a line of /root/.ssh/iw_<alias>.known_hosts, and
+# a Host entry in ~/.ssh/config naming both (and, behind a jump host, the
+# jump host's own three and ProxyJump, joined as the app joins them); a key
+# is a file at mode 0600 named as an IdentityFile.
 openssh_lent() {
   local keys="$SCRATCH/ssh-keys"
   pub() { cut -d' ' -f1,2 "$keys/$1.pub"; }
   jq -n --arg a "$(pub host_a)" --arg jump "$(pub host_jump)" --arg rsa "$(pub host_rsa)" \
     --rawfile deploy "$keys/deploy" --rawfile deploy_rsa "$keys/deploy_rsa" '
-    def host($name; $config; $known): { files: [
-      { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host \($name)\n\($config)" }] },
-      { path: "/root/.ssh/known_hosts", mode: "644", content: [{ text: $known }] } ] };
+    def host($alias; $port; $key; $known; $via): [
+      { path: "/root/.ssh/iw_\($alias)", mode: "600", content: $key },
+      { path: "/root/.ssh/iw_\($alias).known_hosts", mode: "600",
+        content: [{ text: "[127.0.0.1]:\($port) \($known)\n" }] },
+      { path: "/root/.ssh/config", mode: "600", content: [{ text: "Host \($alias)\n  HostName 127.0.0.1\n  Port \($port)\n  User deploy\n  IdentityFile /root/.ssh/iw_\($alias)\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /root/.ssh/iw_\($alias).known_hosts\n\($via)" }] } ];
+    def direct($alias; $port; $key; $known): { files: host($alias; $port; $key; $known; "") };
     {
       connections: {
-        web: host("web"; "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n"; "[127.0.0.1]:2222 \($a)\n"),
-        "web-via-jump": host("web-via-jump";
-          "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n  ProxyJump hop@127.0.0.1:2223\n";
-          "[127.0.0.1]:2222 \($a)\n[127.0.0.1]:2223 \($jump)\n"),
-        legacy: host("legacy"; "  HostName 127.0.0.1\n  Port 2224\n  User deploy\n"; "[127.0.0.1]:2224 \($rsa)\n"),
-        closed: host("closed"; "  HostName 127.0.0.1\n  Port 2299\n  User deploy\n"; "[127.0.0.1]:2299 \($a)\n"),
+        web: direct("web"; 2222; $deploy; $a),
+        "web-via-jump": { files:
+          (host("jump"; 2223; $deploy; $jump; "")[0:2]
+            + host("web-via-jump"; 2222; $deploy; $a; "  ProxyJump jump\n")[0:2]
+            + [{ path: "/root/.ssh/config", mode: "600", content:
+                 (host("jump"; 2223; $deploy; $jump; "")[2].content + [{ text: "\n" }]
+                   + host("web-via-jump"; 2222; $deploy; $a; "  ProxyJump jump\n")[2].content) }]) },
+        legacy: direct("legacy"; 2224; $deploy_rsa; $rsa),
+        closed: direct("closed"; 2299; $deploy; $a),
         staging: { refused: "staging is not lent to CI for this fixture" }
       },
       "ssh-keys": {
@@ -4061,6 +4921,70 @@ openssh_lent() {
           { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host *\n  IdentityFile /root/.ssh/id_deploy_rsa\n" }] } ] }
       }
     }'
+}
+
+# What the app would lend the cloud CLI pipelines: what the AWS, GCP and
+# Azure plugins' lendCiCredential return (plugin-architecture/packages/
+# {aws,gcp,azure}/src/ci-credential.ts), with fixture values.
+cloud_lent() {
+  case "$1" in
+    aws)
+      jq -n --arg key "$IWCI_SECRET_AWS_FIXTURE_KEY" --arg secret "$AWS_FIXTURE_SECRET_KEY" \
+        --arg token "$IWCI_SECRET_AWS_FIXTURE_TOKEN" '{ connections: {
+          "aws fixture": {
+            env: { AWS_ACCESS_KEY_ID: $key, AWS_SECRET_ACCESS_KEY: $secret, AWS_SESSION_TOKEN: $token,
+                   AWS_REGION: [{ text: "us-east-1" }], AWS_DEFAULT_REGION: [{ text: "us-east-1" }] },
+            files: [
+              { path: "/root/.aws/credentials", mode: "600", content: [
+                { text: "[aws-fixture]\naws_access_key_id = " }, { secret: $key },
+                { text: "\naws_secret_access_key = " }, { secret: $secret },
+                { text: "\naws_session_token = " }, { secret: $token }, { text: "\n" } ] },
+              { path: "/root/.aws/config", mode: "600", content: [{ text: "[profile aws-fixture]\nregion = us-east-1\n" }] } ] },
+          staging: { refused: "staging is not lent to CI for this fixture" } } }' ;;
+    gcloud)
+      jq -n --arg token "$IWCI_SECRET_GCP_FIXTURE_TOKEN" '{ connections: {
+          "gcp fixture": {
+            env: { CLOUDSDK_AUTH_ACCESS_TOKEN_FILE: [{ text: "/root/.config/gcloud/gcp-fixture.token" }],
+                   GOOGLE_OAUTH_ACCESS_TOKEN: $token,
+                   CLOUDSDK_CORE_PROJECT: [{ text: "acme" }], GOOGLE_CLOUD_PROJECT: [{ text: "acme" }] },
+            files: [{ path: "/root/.config/gcloud/gcp-fixture.token", mode: "600", content: $token }] } } }' ;;
+    az)
+      jq -n --arg secret "$IWCI_SECRET_AZURE_FIXTURE_SECRET" '
+        def shown($v): [{ text: $v }];
+        { connections: { "azure fixture": { env: {
+          AZURE_CLIENT_ID: shown("00000000-0000-0000-0000-00000000000b"),
+          AZURE_TENANT_ID: shown("00000000-0000-0000-0000-00000000000a"),
+          AZURE_CLIENT_SECRET: $secret,
+          AZURE_SUBSCRIPTION_ID: shown("00000000-0000-0000-0000-00000000000c"),
+          ARM_CLIENT_ID: shown("00000000-0000-0000-0000-00000000000b"),
+          ARM_TENANT_ID: shown("00000000-0000-0000-0000-00000000000a"),
+          ARM_CLIENT_SECRET: $secret,
+          ARM_SUBSCRIPTION_ID: shown("00000000-0000-0000-0000-00000000000c") } } } }' ;;
+  esac
+}
+
+# What the app would lend the gh pipeline: a token per set of permissions
+# a job asks for (`ci/github-token.ts`, githubTokenEntry), one GitHub
+# would not mint, and one minted an hour and ten minutes ago.
+gh_lent() {
+  local now
+  now="$(date +%s)"
+  jq -n --arg token "$GH_FIXTURE_TOKEN" --arg basic "$GH_FIXTURE_BASIC" --argjson now "$now" '
+    def config: [
+      { text: "[http \"https://github.com/acme/widgets\"]\n\textraheader = AUTHORIZATION: basic " },
+      { secret: $basic }, { text: "\n" },
+      { text: "[http \"https://github.com/acme/widgets.git\"]\n\textraheader = AUTHORIZATION: basic " },
+      { secret: $basic }, { text: "\n" } ];
+    def token($expires): {
+      env: { GH_TOKEN: $token, GITHUB_TOKEN: $token, GH_REPO: [{ text: "acme/widgets" }],
+             GIT_CONFIG_GLOBAL: [{ text: "/root/.gitconfig" }], GIT_TERMINAL_PROMPT: [{ text: "0" }] },
+      files: [{ path: "/root/.gitconfig", mode: "600", content: config }],
+      "expires-at": $expires };
+    { "github-token": {
+        "contents=write,issues=write,pull-requests=write": token($now + 3600),
+        "issues=write": { refused: "the Infrawrench GitHub App'"'"'s installation on acme does not have issues: write, so it cannot lend a token with it; an owner of acme can grant it from the installation'"'"'s settings on GitHub" },
+        "statuses=write": token($now - 600)
+    } }'
 }
 
 failed=0
@@ -4096,6 +5020,23 @@ JSON
   elif [[ "$name" == openssh ]]; then
     lent="$SCRATCH/openssh-lent.json"
     openssh_lent >"$lent"
+  elif [[ "$name" == aws || "$name" == az || "$name" == gcloud ]]; then
+    lent="$SCRATCH/$name-lent.json"
+    cloud_lent "$name" >"$lent"
+  elif [[ "$name" == npm-cli ]]; then
+    # As the Vercel, Cloudflare and Neon plugins lend a connection: the
+    # token their CLI reads, secret, and Cloudflare's account ID, shown.
+    lent="$SCRATCH/npm-cli-lent.json"
+    jq -n --arg v "$VERCEL_FIXTURE_TOKEN" --arg c "$CLOUDFLARE_FIXTURE_TOKEN" --arg n "$NEON_FIXTURE_KEY" '{
+      connections: {
+        vercel: { env: { VERCEL_TOKEN: [{ secret: $v }] }, files: [] },
+        cloudflare: { env: { CLOUDFLARE_API_TOKEN: [{ secret: $c }], CLOUDFLARE_ACCOUNT_ID: [{ text: "0123456789abcdef0123456789abcdef" }] }, files: [] },
+        neon: { env: { NEON_API_KEY: [{ secret: $n }] }, files: [] }
+      }
+    }' >"$lent"
+  elif [[ "$name" == gh ]]; then
+    lent="$SCRATCH/gh-lent.json"
+    gh_lent >"$lent"
   fi
   # iwci's own stderr goes on to ours as it comes, and to a file that is
   # checked below.
@@ -4148,7 +5089,8 @@ JSON
     fi
   done < <(jq -r '.pipelines[0].report.jobs[]
       | [.id, .status,
-         (if (.id | endswith("-passes")) then "passed" else "failed" end),
+         (if (.id | endswith("-passes")) then "passed"
+          elif (.id | endswith("-errors")) then "error" else "failed" end),
          (.execution.out_of_memory // false | tostring),
          (.reason // .message // "")]
       | @tsv' <<<"$out")
@@ -4163,7 +5105,11 @@ JSON
       failed=1
     fi
   done < <(jq -r '.pipelines[0].report.jobs[].id' <<<"$out")
-  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out"; then
+  if grep -q "$IWCI_SECRET_FIXTURE_TOKEN" <<<"$out" || grep -q "$KUBE_FIXTURE_TOKEN" <<<"$out" ||
+    grep -qF -e "$IWCI_SECRET_AWS_FIXTURE_KEY" -e "$IWCI_SECRET_AWS_FIXTURE_TOKEN" -e "$AWS_FIXTURE_SECRET_KEY" \
+      -e "$IWCI_SECRET_GCP_FIXTURE_TOKEN" -e "$IWCI_SECRET_AZURE_FIXTURE_SECRET" \
+      -e "$VERCEL_FIXTURE_TOKEN" -e "$CLOUDFLARE_FIXTURE_TOKEN" -e "$NEON_FIXTURE_KEY" \
+      -e "$GH_FIXTURE_TOKEN" -e "$GH_FIXTURE_BASIC" <<<"$out"; then
     echo "  FAIL the secret's value appears in the report"
     failed=1
   fi

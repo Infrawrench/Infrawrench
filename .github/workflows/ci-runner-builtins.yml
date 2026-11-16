@@ -5,8 +5,9 @@ name: CI runner builtins
 # source with wasixcc, run under the runner's V8, `--features node`), and the
 # language environments, whose tests install packages from the internet
 # (pip, Composer, Go modules), Go's built from source for each minor,
-# kubectl, built with that Go from modules it downloads, OpenSSH's
-# clients, built from source with wasixcc and OpenSSL, and ClickHouse,
+# kubectl and gh, built with that Go from modules they download, OpenSSH's
+# clients, built from source with wasixcc and OpenSSL, the cloud CLIs
+# (installed by env:python's pip from PyPI and Wasmer's index), and ClickHouse,
 # built from CloudHouse with Emscripten (hours). Each job builds one with its
 # own script in ci-runner/builtins/, then runs builtins/test.sh, which
 # publishes it to a throwaway store and runs pipelines through `iwci run`.
@@ -37,6 +38,8 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # Native Bun runs in a sandbox beside this environment (below).
+      - "ci-runner/crates/iwci-sandbox/**"
       # The vendored V8 bridge is what runs Node jobs: a change to it alone
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
@@ -50,6 +53,8 @@ on:
       - "ci-runner/builtins/**"
       - "ci-runner/crates/iwci-runtime/**"
       - "ci-runner/crates/iwci-store/**"
+      # Native Bun runs in a sandbox beside this environment (below).
+      - "ci-runner/crates/iwci-sandbox/**"
       # The vendored V8 bridge is what runs Node jobs: a change to it alone
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
@@ -301,6 +306,37 @@ jobs:
           IWCI_TEST_NODE_WEBC_DIR="$dir" IWCI_TEST_WEBC_DIR="$dir" IWCI_REQUIRE_FIXTURES=1 \
             cargo test -p iwci-runtime --features node -- service engine_flags jobs_stderr heaps_committed
 
+      # The deployment CLIs (builtin:vercel, wrangler, cf and neon) run on
+      # this environment's node: built from their lockfiles with this
+      # machine's npm, and run against fake APIs with no network. One job
+      # checks that env:bash refuses them, so it is built too (a download).
+      - name: Deployment CLIs on Edge.js
+        run: |
+          bash builtins/environments/build.sh bash
+          bash builtins/npm-cli/build.sh
+          SKIP_BUILD=1 bash builtins/test.sh npm-cli
+
+      # Jobs that run native Bun in a gVisor sandbox beside this
+      # environment, with the runner built above inside
+      # (crates/iwci-runtime/tests/sandbox.rs, its conformance cases
+      # included). gVisor and Bun are pinned by tests/fixtures.sh; run as
+      # root in a scope with a cgroup subtree of its own, as the gVisor
+      # tests in ci-runner.yml are.
+      - name: Native Bun in a gVisor sandbox
+        timeout-minutes: 20
+        run: |
+          set -a
+          eval "$(bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox")"
+          set +a
+          dir="$(ls -d "$PWD"/dist/environment/bash-node/*)"
+          bin=$(cargo test -p iwci-runtime --features node --test sandbox --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "sandbox") | .executable')
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_CGROUP=1 \
+            IWCI_TEST_GVISOR="$IWCI_TEST_GVISOR" IWCI_TEST_BUN_ROOT="$IWCI_TEST_BUN_ROOT" \
+            IWCI_TEST_NODE_WEBC_DIR="$dir" IWCI_TEST_IWCI="$PWD/target/debug/iwci" \
+            "$bin" --ignored --test-threads=1
+
       # Main only: what passed above becomes what runners resolve.
       - name: Publish to the runner pool
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -309,7 +345,7 @@ jobs:
           IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
-        run: bash builtins/publish.sh dist/environment/bash-node/*
+        run: bash builtins/publish.sh dist/environment/bash-node/* dist/builtin/{vercel,cf,neon,wrangler}/*
 
   clickhouse:
     name: clickhouse (CloudHouse for WebAssembly)
@@ -460,6 +496,55 @@ jobs:
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/environment/python/* dist/environment/postgres/*
 
+  cloud-clis:
+    name: cloud CLIs (aws, az, gcloud on CPython for WASIX)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Every environment carries Git, built from source. See the bash-node
+      # job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
+
+      # Each CLI installed from its lock (PyPI and Wasmer's WASIX index) or
+      # Google's archive by environments/cloud-clis/build.sh, a minute or
+      # two each, and pinned by hash in environments/build.sh.
+      - name: Build the environments
+        run: bash builtins/environments/build.sh aws az gcloud
+
+      # Against the fake cloud, with no network in the jobs.
+      - name: Publish and run them through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh aws az gcloud
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/environment/aws/* dist/environment/az/* dist/environment/gcloud/*
+
   php:
     name: php (phpix on WASIX)
     runs-on: ubuntu-24.04-arm
@@ -569,6 +654,66 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/builtin/kubectl/*
+
+  gh:
+    name: gh (Go for WASIX)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+
+      # Its jobs are bash scripts that run Git too.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
+
+      - name: Build the bash environment
+        run: bash builtins/environments/build.sh bash
+
+      # Go's archive with env:go's patch series, gh's source at its pinned
+      # commit and its modules, checked against its go.sum (a few minutes).
+      # The module is checked against the hash gh/build.sh pins, after a
+      # restore as after a build. Key: gh/, environments/go/ (the
+      # toolchain's pins and patch series, and the CA bundle), lib.sh and
+      # the platform.
+      - name: gh, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build gh@2.104
+
+      # Against the fake GitHub its build makes, on the job's loopback, with
+      # a token lent as the app lends one (`github-token:`).
+      - name: Publish and run it through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh bash gh
+
+      # Main only: what passed above becomes what runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/builtin/gh/*
 
   openssh:
     name: openssh (${{ matrix.runner }})

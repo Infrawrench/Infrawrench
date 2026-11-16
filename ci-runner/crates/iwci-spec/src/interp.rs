@@ -40,6 +40,24 @@ pub(crate) struct Scope<'a> {
     pub hash_files: Cell<bool>,
     /// The package of a job a `packages:` job made, for `package.*`.
     pub package: Option<&'a crate::PackageRef>,
+    /// What the text being substituted becomes, which decides whether an
+    /// input may be read in it.
+    pub text: Cell<Text>,
+}
+
+/// What a field's text is once substituted. An `on.manual` input comes from
+/// whoever starts the run, so it is only ever data: it may become a value
+/// (a variable, a name, a path, one argument), never part of a script or a
+/// line split into arguments, where a quote or a `$(...)` in it would be
+/// code.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Text {
+    #[default]
+    Data,
+    /// `run:` and a service's `ready.command`: a bash script.
+    Script,
+    /// A one-line `args:`, split into words after substitution.
+    Words,
 }
 
 /// The globs of a `hashFiles('a', 'b')` expression, or why it is malformed.
@@ -234,6 +252,9 @@ impl Scope<'_> {
                     .into(),
             );
         }
+        if let Some(name) = text.strip_prefix("inputs.") {
+            return self.input(name);
+        }
         if text.starts_with("resources.") {
             return Err(
                 "resources can only be read in `env:` values, as secrets are, so they never appear in arguments, scripts or names; set one there and read the variable"
@@ -242,7 +263,7 @@ impl Scope<'_> {
         }
         let name = expr::parse_name(text).map_err(|_| {
             format!(
-                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `vars.<name>`, `secrets.<name>` and `resources.<name>.<output>` (in `env:`)"
+                "unknown expression `{text}`; available: `matrix`, `matrix.<axis>`, `needs.<job>.outputs.<name>`, `needs.<job>.result`, `commit.sha`, `commit.short-sha`, `commit.branch`, `repo.id`, `event`, `pipeline.name`, `pull-request.number`, `vars.<name>`, `inputs.<name>`, `secrets.<name>` and `resources.<name>.<output>` (in `env:`)"
             )
         })?;
         check_name(&name, self.needs_list, self.decls)?;
@@ -254,6 +275,7 @@ impl Scope<'_> {
             Name::Event => self.ctx.event.as_str().to_string(),
             Name::PipelineName => self.ctx.pipeline_name.clone(),
             Name::PullRequestNumber => self.ctx.pull_request_number(),
+            Name::Input { name } => self.input(name)?,
             Name::NeedsResult { job } => match self.needs {
                 Some(values) => values.result(job).as_str().to_string(),
                 None => {
@@ -268,6 +290,27 @@ impl Scope<'_> {
                     String::new()
                 }
             },
+        })
+    }
+
+    /// `inputs.<name>`: the value the run was started with, or the input's
+    /// default, refused where the text becomes code.
+    fn input(&self, name: &str) -> Result<String, String> {
+        match self.text.get() {
+            Text::Script => {
+                return Err(format!(
+                    "inputs are data, never part of a script: set one in `env:` (`INPUT: ${{{{ inputs.{name} }}}}`) and read the variable (`\"$INPUT\"`)"
+                ));
+            }
+            Text::Words => {
+                return Err(format!(
+                    "inputs are data, never split into words: write `args:` as a list, with `${{{{ inputs.{name} }}}}` as one element"
+                ));
+            }
+            Text::Data => {}
+        }
+        self.ctx.inputs.get(name).cloned().ok_or_else(|| {
+            format!("the pipeline declares no input `{name}`; declare it under `on.manual.inputs`")
         })
     }
 

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapters::caches::{StoreCaches, owner_from_url};
 use crate::adapters::downloads::{DownloadLimits, StoreDownloads};
+use crate::adapters::inflight::StoreInFlight;
 use crate::adapters::split::{Asked, SplitRun, runner_name};
 use crate::adapters::tools::{RuntimeExecutor, StoreTools};
 use crate::adapters::workspace::{GitCommitter, GitWorkspaces};
@@ -52,6 +53,10 @@ pub struct Runner {
     /// The helper jobs running here, which give way to this runner's own
     /// runs (`iwci serve`); `None` for a single `iwci run`.
     pub helping: Option<Arc<schedule::Helping>>,
+    /// Where jobs with native tools run (`--native-sandbox`); `None`
+    /// refuses them.
+    #[cfg(target_os = "linux")]
+    pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -65,7 +70,7 @@ pub struct RunRequest {
     pub sha: Option<String>,
     #[serde(default)]
     pub branch: Option<String>,
-    /// `push` (the default) or `pull-request`.
+    /// `push` (the default), `pull-request`, `schedule` or `manual`.
     #[serde(default)]
     pub event: Option<String>,
     /// The commit to diff against for `paths:` and `changed()`.
@@ -83,6 +88,16 @@ pub struct RunRequest {
     /// A pipeline file's text, run instead of the repository's own.
     #[serde(default)]
     pub pipeline: Option<String>,
+    /// A manual run's pipeline: the commit's file to run
+    /// (`.infrawrench/ci/deploy.yml`), and none of its others. A manual run
+    /// names this or sends `pipeline`.
+    #[serde(default)]
+    pub pipeline_file: Option<String>,
+    /// A manual run's inputs, by name: a string, a boolean or a number
+    /// each. Checked against the pipeline's `on.manual.inputs` when it is
+    /// parsed. Not secret: they are part of the plan.
+    #[serde(default)]
+    pub inputs: BTreeMap<String, serde_json::Value>,
     /// The owner's storage quota, for a caller that knows the owner's
     /// plan: bytes, or a size such as `"10GiB"`. Overrides the runner's
     /// default for this run's saves.
@@ -217,15 +232,71 @@ impl RunRequest {
             .unwrap_or_else(|| !matches!(self.event(), Ok(Event::PullRequest)))
     }
 
-    fn event(&self) -> Result<Event, String> {
+    pub fn event(&self) -> Result<Event, String> {
         match self.event.as_deref() {
             None | Some("push") => Ok(Event::Push),
             Some("pull-request") => Ok(Event::PullRequest),
             Some("schedule") => Ok(Event::Schedule),
+            Some("manual") => Ok(Event::Manual),
             Some(other) => Err(format!(
-                "event is `push`, `pull-request` or `schedule`, not `{other}`"
+                "event is `push`, `pull-request`, `schedule` or `manual`, not `{other}`"
             )),
         }
+    }
+
+    /// The inputs as the pipeline parser reads them, checked: only a manual
+    /// run has any, by valid names, each a string, a boolean or a number.
+    pub fn inputs(&self) -> Result<BTreeMap<String, String>, String> {
+        let event = self.event()?;
+        if event != Event::Manual {
+            if !self.inputs.is_empty() {
+                return Err("only a manual run (`\"event\": \"manual\"`) has inputs".into());
+            }
+            if self.pipeline_file.is_some() {
+                return Err(
+                    "only a manual run (`\"event\": \"manual\"`) names a `pipeline-file`".into(),
+                );
+            }
+        } else if self.pipeline_file.is_some() == self.pipeline.is_some() {
+            return Err("a manual run names one pipeline: `pipeline-file` or `pipeline`".into());
+        }
+        if let Some(file) = &self.pipeline_file {
+            let ok = file
+                .strip_prefix(&format!("{PIPELINE_DIR}/"))
+                .is_some_and(|name| {
+                    !name.is_empty()
+                        && !name.contains('/')
+                        && (name.ends_with(".yml") || name.ends_with(".yaml"))
+                });
+            if !ok {
+                return Err(format!(
+                    "`pipeline-file` is a file in {PIPELINE_DIR}/, such as {PIPELINE_DIR}/deploy.yml, not `{file}`"
+                ));
+            }
+        }
+        if self.inputs.len() > iwci_spec::inputs::MAX_INPUTS {
+            return Err(format!(
+                "{} inputs; the limit is {}",
+                self.inputs.len(),
+                iwci_spec::inputs::MAX_INPUTS
+            ));
+        }
+        let mut out = BTreeMap::new();
+        for (name, value) in &self.inputs {
+            if !iwci_spec::inputs::is_input_name(name) {
+                return Err(format!("`{name}` is not a valid name for an input"));
+            }
+            let text = match value {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => {
+                    return Err(format!("input `{name}` is a string, a boolean or a number"));
+                }
+            };
+            out.insert(name.clone(), text);
+        }
+        Ok(out)
     }
 
     pub fn owner(&self) -> Result<RepoId, String> {
@@ -465,6 +536,8 @@ struct Target {
     owner: RepoId,
     repo_id: RepoId,
     event: Event,
+    /// A manual run's inputs, as given.
+    inputs: BTreeMap<String, String>,
 }
 
 impl Target {
@@ -484,6 +557,7 @@ impl Target {
                 _ => None,
             },
             pipeline_name: String::new(),
+            inputs: self.inputs.clone(),
         }
     }
 }
@@ -526,18 +600,29 @@ impl JobNeeds {
     }
 }
 
+/// A pipeline file that does not parse: `pipelines` leaves it out, and a
+/// run of the request reports it.
+#[derive(Debug, Serialize)]
+pub struct InvalidPipeline {
+    pub file: String,
+    pub errors: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ConcurrencyOutput {
     pub commit: String,
     pub pipelines: Vec<PipelineConcurrency>,
+    /// The files that do not parse, so that an empty `pipelines` with an
+    /// empty `invalid` says the run would run nothing at all.
+    pub invalid: Vec<InvalidPipeline>,
 }
 
 impl Runner {
     /// Which pipelines a run of `req` would run, and the concurrency group
     /// of each, without running anything: the commit and its pipeline
     /// files resolved and parsed as the run would (the same `base` for
-    /// `paths:`). Files that do not parse are left out; the run reports
-    /// them.
+    /// `paths:`). Files that do not parse are listed in `invalid` rather
+    /// than `pipelines`; the run reports them.
     pub fn concurrency(&self, req: &RunRequest) -> Result<ConcurrencyOutput, String> {
         let r = self.resolve(req)?;
         let changed_paths = match &req.base {
@@ -555,9 +640,21 @@ impl Runner {
         };
         let ctx = r.context(req);
         let mut pipelines = Vec::new();
+        let mut invalid = Vec::new();
         for (file, text) in &r.pipelines {
-            let Ok(plan) = iwci_spec::parse(text, &ctx) else {
-                continue;
+            let plan = match iwci_spec::parse(text, &ctx) {
+                Ok(plan) => plan,
+                Err(errors) => {
+                    invalid.push(InvalidPipeline {
+                        file: file.clone(),
+                        errors: errors
+                            .0
+                            .iter()
+                            .map(|e| format!("{}: {}", e.path, e.message))
+                            .collect(),
+                    });
+                    continue;
+                }
             };
             if !plan
                 .triggers
@@ -575,6 +672,7 @@ impl Runner {
         Ok(ConcurrencyOutput {
             commit: r.sha,
             pipelines,
+            invalid,
         })
     }
 
@@ -583,6 +681,7 @@ impl Runner {
         check_named("vars", &req.vars)?;
         req.lent.check().map_err(|e| format!("lent: {e}"))?;
         let event = req.event()?;
+        let inputs = req.inputs()?;
         let owner = req.owner()?;
         let repo_id = req.repo_id()?;
         let auth = req
@@ -616,9 +715,17 @@ impl Runner {
             }
         };
         let (files, packages) = read_commit(&remote, &sha)?;
-        let pipelines = match &req.pipeline {
-            Some(text) => vec![("request".to_string(), text.clone())],
-            None => files,
+        let pipelines = match (&req.pipeline, &req.pipeline_file) {
+            (Some(text), _) => vec![("request".to_string(), text.clone())],
+            // A manual run's one file, as the branch has it.
+            (None, Some(file)) => {
+                let found: Vec<_> = files.into_iter().filter(|(f, _)| f == file).collect();
+                if found.is_empty() {
+                    return Err(format!("{sha} has no pipeline file {file}"));
+                }
+                found
+            }
+            (None, None) => files,
         };
         Ok(Target {
             remote,
@@ -631,6 +738,7 @@ impl Runner {
             owner,
             repo_id,
             event,
+            inputs,
         })
     }
 
@@ -642,9 +750,15 @@ impl Runner {
         let tools = StoreTools {
             catalog: iwci_store::Catalog::new(self.store.clone()),
             repo: r.repo_id.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox_overhead: self.sandbox.as_ref().map_or(0, |s| s.overhead()),
+            #[cfg(not(target_os = "linux"))]
+            sandbox_overhead: 0,
         };
         let executor = RuntimeExecutor {
             runtime: self.runtime.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox: self.sandbox.clone(),
         };
         let workspaces = GitWorkspaces {
             remote: r.remote.clone(),
@@ -716,6 +830,10 @@ impl Runner {
         };
         let split = split.map(Finishing);
         let helping = req.split.as_ref().and_then(|s| s.of.clone());
+        let inflight_run = match &helping {
+            Some(of) => RepoId::new(of.as_str()).map_err(|e| format!("split.of: {e}"))?,
+            None => run.clone(),
+        };
         // A helper's run counts as one this runner helps from when it
         // joins, not from when it was offered.
         let joined: std::sync::Mutex<Option<schedule::Joined>> = Default::default();
@@ -794,6 +912,17 @@ impl Runner {
             r.event,
             quota,
         ));
+        // Task cache keys this run computes, and the ones other runs do,
+        // in the same scopes as the entries. The runners of a split run
+        // count as one run, the primary's.
+        let inflight = Arc::new(StoreInFlight::new(
+            self.store.clone(),
+            &r.owner,
+            &r.repo_id,
+            caches.scopes(),
+            &inflight_run,
+            &runner_name(req.split.as_ref().and_then(|s| s.runner.as_deref())),
+        ));
         let mut options = schedule::Options {
             // With shared slots the slots are the limit; without, `cpus`.
             parallelism: self.slots.as_ref().map_or(self.cpus, |s| s.total()),
@@ -804,6 +933,12 @@ impl Runner {
                 // Tools that read `os.homedir()` or `~` fail without one, and
                 // CI systems commonly set it. A job's own `HOME` wins.
                 ("HOME".into(), "/root".into()),
+                // A job has no terminal to answer Git's prompt for a user
+                // name or password, so a remote that asks for them left Git
+                // waiting until the stall check stopped the job (#1231).
+                // This makes it fail at once with its own error, as it does
+                // on a machine without a terminal. A job's own value wins.
+                ("GIT_TERMINAL_PROMPT".into(), "0".into()),
                 ("IWCI_COMMIT".into(), r.sha.clone()),
                 ("IWCI_BRANCH".into(), r.branch.clone()),
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),
@@ -826,6 +961,7 @@ impl Runner {
             cancel: None,
             split: None,
             helping: self.helping.clone(),
+            inflight: Some(inflight),
             access: schedule::RunAccess {
                 // An untrusted run is lent nothing, whatever the request
                 // carries; its jobs that name anything fail.
@@ -867,6 +1003,19 @@ impl Runner {
                     continue;
                 }
             };
+            if r.event == Event::Manual && plan.triggers.manual.is_none() {
+                // Someone asked for this one file by hand: say why it did
+                // not run, rather than that nothing matched.
+                passed = false;
+                pipelines.push(PipelineOutput::Invalid {
+                    file: file.clone(),
+                    errors: vec![
+                        "on.manual: this pipeline cannot be started by hand; add `manual:` under its `on:`"
+                            .to_string(),
+                    ],
+                });
+                continue;
+            }
             if !plan
                 .triggers
                 .matches(r.event, &r.branch, changed_paths.as_deref())
@@ -998,7 +1147,14 @@ pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
         usage.jobs += 1;
         usage.wall_seconds += secs;
         usage.vcpu_seconds += secs / share;
-        usage.memory_gib_seconds += secs * job.memory_mib as f64 / 1024.0;
+        // A job in a sandbox holds what it reserved for the sandbox too.
+        let reserved = job.memory_mib
+            + job
+                .execution
+                .as_ref()
+                .and_then(|e| e.sandbox)
+                .map_or(0, |s| s.reserved_mib);
+        usage.memory_gib_seconds += secs * reserved as f64 / 1024.0;
     }
     usage
 }
@@ -1126,6 +1282,9 @@ impl Runner {
     /// store's disk cache by the time it resolves.
     pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
         match resolved {
+            // A Node tool is files for the environment's `node`, with
+            // nothing to compile.
+            Resolved::Tool { manifest, .. } if manifest.abi == iwci_store::Abi::Node => Ok(()),
             Resolved::Tool {
                 manifest, module, ..
             } => {
@@ -1233,6 +1392,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_concurrency_answer_always_lists_its_invalid_files() {
+        // The app reads an empty `pipelines` beside an empty `invalid` as
+        // "nothing runs", and an absent `invalid` as a runner from before
+        // that cannot say: the key is there even when it is empty.
+        let empty = ConcurrencyOutput {
+            commit: "c".into(),
+            pipelines: vec![],
+            invalid: vec![],
+        };
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap(),
+            serde_json::json!({ "commit": "c", "pipelines": [], "invalid": [] })
+        );
+        let broken = ConcurrencyOutput {
+            commit: "c".into(),
+            pipelines: vec![],
+            invalid: vec![InvalidPipeline {
+                file: ".infrawrench/ci/test.yml".into(),
+                errors: vec!["jobs: required".into()],
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&broken).unwrap()["invalid"],
+            serde_json::json!([{ "file": ".infrawrench/ci/test.yml", "errors": ["jobs: required"] }])
+        );
+    }
+
+    #[test]
     fn a_pull_request_is_fetched_from_its_ref_and_a_push_from_its_branch() {
         let req: RunRequest = serde_json::from_str(
             r#"{"repo": "r", "branch": "pull/12", "ref": "refs/pull/12/head"}"#,
@@ -1303,6 +1490,57 @@ mod tests {
                 .no_task_cache
         );
         assert!(parse("{\"repo\": \"r\", \"no-task-cache\": \"yes\"}").is_err());
+    }
+
+    #[test]
+    fn a_manual_run_names_one_pipeline_and_typed_inputs() {
+        let parse = |body: &str| serde_json::from_str::<RunRequest>(body).unwrap();
+        let req = parse(
+            r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/deploy.yml",
+                "inputs": {"urls": "a\nb $(id)", "force": true, "shards": 3}}"#,
+        );
+        assert_eq!(req.event(), Ok(Event::Manual));
+        assert!(req.trusted(), "a branch of the repository itself");
+        let inputs = req.inputs().unwrap();
+        assert_eq!(inputs["urls"], "a\nb $(id)");
+        assert_eq!(inputs["force"], "true");
+        assert_eq!(inputs["shards"], "3");
+
+        for (body, needle) in [
+            (
+                r#"{"repo": "r", "inputs": {"a": "x"}}"#,
+                "only a manual run",
+            ),
+            (
+                r#"{"repo": "r", "event": "schedule", "pipeline-file": ".infrawrench/ci/a.yml"}"#,
+                "only a manual run",
+            ),
+            (r#"{"repo": "r", "event": "manual"}"#, "names one pipeline"),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline": "x", "pipeline-file": ".infrawrench/ci/a.yml"}"#,
+                "names one pipeline",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/../../etc/a.yml"}"#,
+                "is a file in .infrawrench/ci/",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": "deploy.yml"}"#,
+                "is a file in .infrawrench/ci/",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/a.yml", "inputs": {"a": [1]}}"#,
+                "a string, a boolean or a number",
+            ),
+            (
+                r#"{"repo": "r", "event": "manual", "pipeline-file": ".infrawrench/ci/a.yml", "inputs": {"a b": "x"}}"#,
+                "not a valid name",
+            ),
+            (r#"{"repo": "r", "event": "dispatch"}"#, "or `manual`"),
+        ] {
+            let err = parse(body).inputs().unwrap_err();
+            assert!(err.contains(needle), "{body}: {err}");
+        }
     }
 
     #[test]

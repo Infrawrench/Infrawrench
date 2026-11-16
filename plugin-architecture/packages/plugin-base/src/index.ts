@@ -334,6 +334,7 @@ export {
   CI_JOB_TAG,
   CI_RUN_TAG,
   CI_TAG,
+  CI_LEND_SECONDS,
   ciAlias,
   ciComputeKey,
   ciContainerCommand,
@@ -349,6 +350,7 @@ export type {
   AssociationSource,
   ResourceOutput,
   PeerPluginIntegration,
+  PeerCiDeclaration,
   ResourceDependencyRule,
   SecretExportTemplate,
   SecretExportEntry,
@@ -382,6 +384,7 @@ export type {
 } from "./instance.js";
 export { externalIdOf, normalizeResourceCreateResult } from "./instance.js";
 export {
+  CI_DATABASE_PASSWORD_LENDING,
   evaluatePeerIntegrationUnreachable,
   evaluateOrphanRule,
   isFieldEditable,

@@ -1,11 +1,15 @@
 import { useEffect, useId, useState } from "react";
 import { useGT } from "gt-react";
 import {
+  CI_DEFAULT_PEER_LIMITS,
   CI_GRANT_NAME,
   ciGrantNameFor,
   type CiAccessOverview,
   type CiConnectionAccess,
+  type CiExecutorKindId,
+  type CiPeerOption,
   type CiResourceGrant,
+  type CiResourceGrantPeerInput,
   type CiResourceOutputs,
   type SearchResult,
 } from "@infrawrench/client-core";
@@ -186,6 +190,233 @@ interface GrantTarget {
   logo: string | undefined;
 }
 
+/**
+ * Lending a granted resource as a connection of one of its peers (a managed
+ * cluster as Kubernetes), and the cloud jobs that may run on it.
+ */
+function PeerFields({
+  options,
+  peer,
+  ciName,
+  onChange,
+}: {
+  options: CiPeerOption[];
+  peer: CiResourceGrantPeerInput | null;
+  ciName: string;
+  onChange: (peer: CiResourceGrantPeerInput | null) => void;
+}) {
+  const gt = useGT();
+  const data = useDataString();
+  const id = useId();
+  const option = peer ? options.find((o) => o.pluginId === peer.pluginId) : undefined;
+  const kinds = option?.executor?.kinds ?? [];
+  const regionLabel = kinds.find((k) => peer?.jobKinds.includes(k.kind))?.regionLabel;
+  const name = ciName || "<name>";
+  const [regionsText, setRegionsText] = useState((peer?.jobRegions ?? []).join(", "));
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${id}-peer`} className={LABEL}>
+          {gt("Use it in CI as a connection")}
+        </label>
+        <select
+          id={`${id}-peer`}
+          value={peer?.pluginId ?? ""}
+          onChange={(e) => {
+            const chosen = options.find((o) => o.pluginId === e.target.value);
+            setRegionsText("");
+            onChange(
+              chosen
+                ? {
+                    pluginId: chosen.pluginId,
+                    // Nothing is switched on until the admin has read what it lends.
+                    lend: false,
+                    jobKinds: [],
+                    maxConcurrentJobs:
+                      peer?.maxConcurrentJobs ?? CI_DEFAULT_PEER_LIMITS.maxConcurrentJobs,
+                    maxJobMinutes: peer?.maxJobMinutes ?? CI_DEFAULT_PEER_LIMITS.maxJobMinutes,
+                    jobRegions: [],
+                  }
+                : null,
+            );
+          }}
+          className={INPUT}
+        >
+          <option value="">{gt("Not used as a connection")}</option>
+          {options.map((o) => (
+            <option key={o.pluginId} value={o.pluginId} disabled={Boolean(o.unavailable)}>
+              {gt("As a {plugin} connection", { plugin: o.pluginName })}
+            </option>
+          ))}
+        </select>
+        {options
+          .filter((o) => o.unavailable)
+          .map((o) => (
+            <p key={o.pluginId} className="mt-1 text-[11px] text-warning">
+              {data(o.unavailable ?? "")}
+            </p>
+          ))}
+      </div>
+      {peer && option ? (
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <dl
+            aria-label={gt("What it lends")}
+            className="grid gap-x-3 gap-y-1.5 text-xs sm:grid-cols-[auto_1fr]"
+          >
+            <dt className="text-on-surface-faint">{gt("Credential")}</dt>
+            <dd className="text-on-surface">{data(option.lends)}</dd>
+            <dt className="text-on-surface-faint">{gt("Reach")}</dt>
+            <dd className="text-on-surface">{data(option.reach)}</dd>
+            <dt className="text-on-surface-faint">{gt("Lifetime")}</dt>
+            <dd className="text-on-surface">{data(option.lifetime)}</dd>
+          </dl>
+          {option.unreachable ? (
+            <p className="text-xs text-warning">{data(option.unreachable)}</p>
+          ) : null}
+          {option.credential ? (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={peer.lend}
+                onChange={(e) => onChange({ ...peer, lend: e.target.checked })}
+              />
+              <span className="min-w-0">
+                <span className="block text-on-surface">{gt("Lend it to jobs")}</span>
+                <span className="block font-mono text-[11px] text-on-surface-faint">
+                  {`connections: [${name}]`}
+                </span>
+              </span>
+            </label>
+          ) : null}
+          {kinds.length > 0 ? (
+            <>
+              <div role="group" aria-labelledby={`${id}-kinds`}>
+                <span id={`${id}-kinds`} className={LABEL}>
+                  {gt("Run cloud jobs on it")}
+                </span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {kinds.map((k) => (
+                    <label key={k.kind} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={peer.jobKinds.includes(k.kind)}
+                        onChange={(e) =>
+                          onChange({
+                            ...peer,
+                            jobKinds: e.target.checked
+                              ? [...peer.jobKinds, k.kind]
+                              : peer.jobKinds.filter((x: CiExecutorKindId) => x !== k.kind),
+                          })
+                        }
+                      />
+                      <span className="text-on-surface">{data(k.label)}</span>
+                      <span className="rounded bg-surface-sunken px-1.5 py-px font-mono text-[10px] text-on-surface-muted">
+                        {k.kind}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {peer.jobKinds.length > 0 ? (
+                  <p className="mt-1 text-[11px] text-on-surface-faint">
+                    {gt(
+                      "Running jobs on it lends them nothing. Each kind is checked when you save.",
+                    )}
+                  </p>
+                ) : null}
+              </div>
+              {peer.jobKinds.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor={`${id}-concurrent`} className={LABEL}>
+                        {gt("Jobs at once")}
+                      </label>
+                      <input
+                        id={`${id}-concurrent`}
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={peer.maxConcurrentJobs}
+                        onChange={(e) =>
+                          onChange({ ...peer, maxConcurrentJobs: Number(e.target.value) })
+                        }
+                        className={INPUT}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`${id}-minutes`} className={LABEL}>
+                        {gt("Minutes per job")}
+                      </label>
+                      <input
+                        id={`${id}-minutes`}
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={peer.maxJobMinutes}
+                        onChange={(e) =>
+                          onChange({ ...peer, maxJobMinutes: Number(e.target.value) })
+                        }
+                        className={INPUT}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor={`${id}-regions`} className={LABEL}>
+                      {regionLabel
+                        ? gt("Other places jobs may run ({label})", { label: data(regionLabel) })
+                        : gt("Other places jobs may run")}
+                    </label>
+                    <input
+                      id={`${id}-regions`}
+                      value={regionsText}
+                      onChange={(e) => {
+                        setRegionsText(e.target.value);
+                        onChange({
+                          ...peer,
+                          jobRegions: e.target.value
+                            .split(",")
+                            .map((r) => r.trim())
+                            .filter((r) => r !== ""),
+                        });
+                      }}
+                      className={`${INPUT} font-mono`}
+                      autoComplete="off"
+                    />
+                    <p className="mt-1 text-[11px] text-on-surface-faint">
+                      {gt(
+                        "Separated by commas. Leave empty for only where each kind was checked; jobs that name anywhere else are refused.",
+                      )}
+                    </p>
+                  </div>
+                  <p className="font-mono text-[11px] text-on-surface-faint">
+                    {`cloud: { provider: ${peer.pluginId}, kind: ${peer.jobKinds[0]}, connection: ${name} }`}
+                  </p>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A grant's peer as the form edits it. */
+function peerInputOf(grant: CiResourceGrant | null): CiResourceGrantPeerInput | null {
+  const peer = grant?.peer;
+  return peer
+    ? {
+        pluginId: peer.pluginId,
+        lend: peer.lend,
+        jobKinds: peer.jobKinds,
+        maxConcurrentJobs: peer.maxConcurrentJobs,
+        maxJobMinutes: peer.maxJobMinutes,
+        jobRegions: peer.jobRegions,
+      }
+    : null;
+}
+
 function GrantForm({
   client,
   allRepos,
@@ -215,6 +446,7 @@ function GrantForm({
           secretVersion: editing.secretVersion,
           repos: editing.repos,
           branchPattern: editing.branchPattern,
+          peer: peerInputOf(editing),
         }
       : {
           resourceId: target.resourceId,
@@ -223,6 +455,7 @@ function GrantForm({
           secretVersion: null,
           repos: null,
           branchPattern: null,
+          peer: null,
         },
   );
   const [busy, setBusy] = useState(false);
@@ -252,12 +485,18 @@ function GrantForm({
   }, [client, target.resourceId, editing, outputsFailed]);
 
   const nameOk = CI_GRANT_NAME.test(input.ciName);
+  const peers = outputs?.peers ?? [];
+  const peer = input.peer ?? null;
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      if (editing) await client.updateGrant(editing.id, input);
-      else await client.createGrant(input);
+      // A grant that is not lent as a peer, and was not, says nothing about
+      // peers: a server from before them takes it as it always did.
+      const { peer: chosen, ...rest } = input;
+      const body = chosen || editing?.peer ? input : rest;
+      if (editing) await client.updateGrant(editing.id, body);
+      else await client.createGrant(body);
       onDone(true);
     } catch (e) {
       setError(errorText(e, gt("Could not save")));
@@ -368,15 +607,25 @@ function GrantForm({
               autoComplete="off"
             />
             {nameOk ? (
-              <p className="mt-1 font-mono text-[11px] text-on-surface-faint">
-                {`\${{ resources.${input.ciName}.<output> }}`}
-              </p>
+              input.outputs.length > 0 || input.secretVersion || !peer ? (
+                <p className="mt-1 font-mono text-[11px] text-on-surface-faint">
+                  {`\${{ resources.${input.ciName}.<output> }}`}
+                </p>
+              ) : null
             ) : input.ciName !== "" ? (
               <p className="mt-1 text-[11px] text-danger">
                 {gt("Letters, digits, - and _, starting with a letter or digit.")}
               </p>
             ) : null}
           </div>
+          {peers.length > 0 ? (
+            <PeerFields
+              options={peers}
+              peer={peer}
+              ciName={nameOk ? input.ciName : ""}
+              onChange={(next) => setInput((i) => ({ ...i, peer: next }))}
+            />
+          ) : null}
           <ScopeFields
             repos={input.repos}
             allRepos={allRepos}
@@ -389,7 +638,13 @@ function GrantForm({
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <button
           type="submit"
-          disabled={busy || !nameOk || (input.outputs.length === 0 && !input.secretVersion)}
+          disabled={
+            busy ||
+            !nameOk ||
+            // A peer chosen does something only once lent or run on.
+            (peer !== null && !peer.lend && peer.jobKinds.length === 0) ||
+            (input.outputs.length === 0 && !input.secretVersion && !peer)
+          }
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {editing ? gt("Save") : gt("Grant")}
@@ -619,6 +874,17 @@ export function CiAccessCard({
                         <span className="truncate font-mono text-[11px] text-on-surface-faint">
                           {[...g.outputs, ...(g.secretVersion ? ["value"] : [])].join(", ")}
                         </span>
+                        {g.peer?.lend ? (
+                          <Chip tone="on">
+                            {gt("Lent as {plugin}", { plugin: g.peer.pluginName })}
+                          </Chip>
+                        ) : null}
+                        {g.peer && g.peer.jobKinds.length > 0 ? (
+                          <Chip tone="on">
+                            {gt("Runs jobs as {plugin}", { plugin: g.peer.pluginName })}
+                            <span className="opacity-80">{` · ${g.peer.jobKinds.join(", ")}`}</span>
+                          </Chip>
+                        ) : null}
                         <Chip>{scopeSummary(gt, g.repos, g.branchPattern)}</Chip>
                       </div>
                     </div>

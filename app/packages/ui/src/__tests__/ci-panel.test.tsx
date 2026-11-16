@@ -70,6 +70,7 @@ const run: CiRun = {
 };
 
 const RETRY_ID = "33333333-3333-4333-8333-333333333333";
+const MANUAL_ID = "44444444-4444-4444-8444-444444444444";
 
 function client() {
   return {
@@ -141,6 +142,49 @@ function client() {
           error: "other.yml: unknown key `whenn`",
         },
       ],
+    })),
+    listManual: vi.fn(async () => ({
+      repositories: [
+        {
+          installationId: 7,
+          repoFullName: "acme/web",
+          defaultBranch: "main",
+          sha: "d".repeat(40),
+          refreshedAt: "2026-11-15T10:00:00.000Z",
+          pipelines: [
+            {
+              file: ".infrawrench/ci/purge.yml",
+              name: "Purge the CDN",
+              inputs: [
+                {
+                  name: "urls",
+                  type: "string" as const,
+                  required: false,
+                  description: "One URL per line",
+                },
+                {
+                  name: "zone",
+                  type: "choice" as const,
+                  required: false,
+                  default: "www",
+                  options: ["www", "docs"],
+                },
+                { name: "dry-run", type: "boolean" as const, required: false },
+                { name: "shards", type: "number" as const, required: false, default: "4" },
+                { name: "reason", type: "string" as const, required: true },
+              ],
+            },
+          ],
+        },
+      ],
+    })),
+    startRun: vi.fn(async () => ({
+      ...run,
+      id: MANUAL_ID,
+      event: "manual" as const,
+      status: "queued" as const,
+      pullNumber: null,
+      headRef: "main",
     })),
     clearCache: vi.fn(async (installationId: number, repo: string) => ({
       installationId,
@@ -275,8 +319,13 @@ describe("CI access", () => {
     await waitFor(() => expect(screen.getByText("ec2:RunInstances")).toBeTruthy());
     expect(c.preflightConnection).toHaveBeenCalledWith("acc-aws", "vm");
     expect(screen.getByText("Not ready")).toBeTruthy();
+    // The box can still be ticked: that checks again, and it stays off while the check fails.
     const kind = screen.getByRole("checkbox", { name: /EC2 instance/ }) as HTMLInputElement;
-    expect(kind.disabled).toBe(true);
+    expect(kind.disabled).toBe(false);
+    fireEvent.click(kind);
+    await waitFor(() => expect(c.preflightConnection).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(kind.disabled).toBe(false));
+    expect(kind.checked).toBe(false);
   });
 
   it("lists only the connections that are on, in short, and saves one from the dialog", async () => {
@@ -364,6 +413,287 @@ describe("CI access", () => {
       }),
     );
   });
+  it("shows what a cluster lends before it is granted, and runs jobs on it without lending it", async () => {
+    const c = client();
+    c.searchResources.mockImplementation(async () => [
+      {
+        id: "res-gke",
+        pluginId: "gcp",
+        pluginDisplayName: "Google Cloud",
+        pluginLogoSvg: "",
+        resourceTypeId: "gke-cluster",
+        resourceTypeLabel: "GKE cluster",
+        accountId: "acc-gcp",
+        accountName: "Infrawrench GCP",
+        displayName: "prod-cluster",
+      },
+    ]);
+    c.resourceOutputs.mockImplementation(async () => ({
+      outputs: [{ key: "kubeconfig", label: "Kubeconfig", sensitive: true }],
+      secretVersions: null,
+      peers: [
+        {
+          pluginId: "kubernetes",
+          pluginName: "Kubernetes",
+          credential: { description: "A kubeconfig", shortLived: false, namespaces: true },
+          executor: {
+            kinds: [
+              { kind: "cluster", label: "Kubernetes Job", defaults: {}, regionLabel: "Namespace" },
+            ],
+            helpLink: null,
+          },
+          lends: "A Google token minted for the run",
+          reach: "Only the cluster",
+          lifetime: "Up to seven hours",
+          unavailable: null,
+          unreachable: null,
+        },
+        {
+          pluginId: "postgres",
+          pluginName: "PostgreSQL",
+          credential: { description: "DATABASE_URL", shortLived: false, namespaces: false },
+          executor: null,
+          lends: "x",
+          reach: "x",
+          lifetime: "x",
+          unavailable: "Not with local accounts",
+          unreachable: null,
+        },
+      ],
+    }));
+    c.createGrant.mockImplementation(async () => ({}));
+    renderPanel(c);
+    fireEvent.change(await screen.findByPlaceholderText("Search for resources"), {
+      target: { value: "prod" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /prod-cluster/ }));
+    const useAs = (await screen.findByLabelText(
+      "Use it in CI as a connection",
+    )) as HTMLSelectElement;
+    // A peer its provider rules out is shown, with why, and cannot be chosen.
+    expect(
+      ([...useAs.options].find((o) => o.value === "postgres") as HTMLOptionElement).disabled,
+    ).toBe(true);
+    expect(screen.getByText("Not with local accounts")).toBeTruthy();
+    fireEvent.change(useAs, { target: { value: "kubernetes" } });
+    // What it lends, before anything is switched on.
+    expect(screen.getByText("A Google token minted for the run")).toBeTruthy();
+    expect(screen.getByText("Only the cluster")).toBeTruthy();
+    expect(screen.getByText("Up to seven hours")).toBeTruthy();
+    const lend = screen.getByRole("checkbox", { name: /Lend it to jobs/ }) as HTMLInputElement;
+    expect(lend.checked).toBe(false);
+    expect((screen.getByRole("button", { name: "Grant" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Kubernetes Job/ }));
+    fireEvent.change(screen.getByLabelText("Other places jobs may run (Namespace)"), {
+      target: { value: "ci, staging" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Grant" }));
+    await waitFor(() =>
+      expect(c.createGrant).toHaveBeenCalledWith({
+        resourceId: "res-gke",
+        ciName: "prod-cluster",
+        outputs: [],
+        secretVersion: null,
+        repos: null,
+        branchPattern: null,
+        peer: {
+          pluginId: "kubernetes",
+          lend: false,
+          jobKinds: ["cluster"],
+          maxConcurrentJobs: 2,
+          maxJobMinutes: 60,
+          jobRegions: ["ci", "staging"],
+        },
+      }),
+    );
+  });
+});
+
+/** A ready check, as the server keeps it. */
+const passed = {
+  ok: true,
+  missing: [],
+  problems: [],
+  checkedAt: "2026-11-15T00:00:00.000Z",
+};
+
+/** Google Cloud runs jobs but cannot lend; Kubernetes can do both. */
+function gcpAndCluster(): CiAccessOverview {
+  return {
+    viewerUserId: "u1",
+    connections: [
+      {
+        accountId: "acc-gcp",
+        accountName: "Infrawrench GCP",
+        pluginId: "gcp",
+        pluginName: "Google Cloud",
+        executor: {
+          kinds: [
+            { kind: "vm", label: "Compute Engine instance", defaults: {} },
+            { kind: "container", label: "Cloud Run job", defaults: {} },
+          ],
+          helpLink: null,
+        },
+        credential: null,
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+        preflight: {},
+        updatedAt: null,
+      },
+      {
+        accountId: "acc-k8s",
+        accountName: "Cluster",
+        pluginId: "kubernetes",
+        pluginName: "Kubernetes",
+        executor: null,
+        credential: { description: "A kubeconfig.", shortLived: false, namespaces: true },
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS },
+        preflight: {},
+        updatedAt: null,
+      },
+    ],
+    grants: [],
+    sshKeys: [],
+  };
+}
+
+async function openDialog(c: ReturnType<typeof client>, overview: () => CiAccessOverview) {
+  c.access.mockImplementation(async () => overview());
+  renderPanel(c);
+  fireEvent.click(await screen.findByText("Manage connections"));
+  return screen.findByRole("dialog", { name: "Manage connections" });
+}
+
+const saveButton = (dialog: HTMLElement) =>
+  within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+
+describe("CI connections dialog", () => {
+  it("keeps Save off, and says why, while running jobs has no kind", async () => {
+    const c = client();
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(true);
+    // Beside the kinds and beside Save.
+    expect(within(dialog).getAllByText("Choose at least one kind of job.")).toHaveLength(2);
+    expect(within(dialog).getAllByText("Not checked")).toHaveLength(2);
+    const boxes = within(dialog).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes.every((b) => !b.disabled)).toBe(true);
+    expect(c.setConnectionAccess).not.toHaveBeenCalled();
+  });
+
+  it("checks a kind when it is ticked, ticks it once the check passes, and saves", async () => {
+    const c = client();
+    c.preflightConnection.mockImplementation(async () => ({
+      ...gcpAndCluster().connections[0]!,
+      preflight: { vm: { ...passed, region: "us-central1" } },
+    }));
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    const vm = within(dialog).getByRole("checkbox", {
+      name: /Compute Engine instance/,
+    }) as HTMLInputElement;
+    fireEvent.click(vm);
+    expect(c.preflightConnection).toHaveBeenCalledWith("acc-gcp", "vm");
+    await waitFor(() => expect(within(dialog).getByText("Ready")).toBeTruthy());
+    expect(vm.checked).toBe(true);
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(within(dialog).getByText("Saved")).toBeTruthy());
+    expect(c.setConnectionAccess).toHaveBeenCalledWith(
+      "acc-gcp",
+      expect.objectContaining({ jobsEnabled: true, jobKinds: ["vm"] }),
+    );
+  });
+
+  it("shows the server's refusal beside Save", async () => {
+    const c = client();
+    c.setConnectionAccess.mockImplementation(async () => {
+      throw new Error("Kubernetes connections cannot be lent to jobs.");
+    });
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe("Kubernetes connections cannot be lent to jobs.");
+  });
+
+  it("says the save failed when the failure has no message", async () => {
+    const c = client();
+    c.setConnectionAccess.mockImplementation(async () => {
+      throw new Error("");
+    });
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("Could not save");
+  });
+
+  it("saves lending alone, with running jobs off", async () => {
+    const c = client();
+    const dialog = await openDialog(c, gcpAndCluster);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Cluster/ }));
+    // Kubernetes here runs no jobs: said, with no switch.
+    expect(within(dialog).getByText("Kubernetes connections can't run jobs.")).toBeTruthy();
+    expect(within(dialog).queryByRole("switch", { name: "Run jobs on it" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" }));
+    fireEvent.click(saveButton(dialog));
+    await waitFor(() => expect(within(dialog).getByText("Saved")).toBeTruthy());
+    expect(c.setConnectionAccess).toHaveBeenCalledWith(
+      "acc-k8s",
+      expect.objectContaining({ jobsEnabled: false, lendEnabled: true }),
+    );
+  });
+
+  it("says a provider cannot lend, and lets lending that is on anyway be turned off", async () => {
+    const c = client();
+    const lentAnyway = () => {
+      const o = gcpAndCluster();
+      o.connections[0] = {
+        ...o.connections[0]!,
+        settings: { ...CI_DEFAULT_CONNECTION_ACCESS, lendEnabled: true },
+      };
+      return o;
+    };
+    c.preflightConnection.mockImplementation(async () => ({
+      ...lentAnyway().connections[0]!,
+      preflight: { vm: { ...passed, region: "us-central1" } },
+    }));
+    const dialog = await openDialog(c, lentAnyway);
+    expect(
+      within(dialog).getByText("Google Cloud connections can't be lent to jobs."),
+    ).toBeTruthy();
+    const lend = within(dialog).getByRole("switch", { name: "Lend its credentials to jobs" });
+    expect(lend.getAttribute("aria-checked")).toBe("true");
+    // Any other change cannot be saved while it is on, since the server would refuse it.
+    fireEvent.click(within(dialog).getByRole("switch", { name: "Run jobs on it" }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Compute Engine instance/ }));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(
+          "Google Cloud connections can't be lent to jobs. Turn lending off.",
+        ),
+      ).toBeTruthy(),
+    );
+    const save = saveButton(dialog);
+    expect(save.disabled).toBe(true);
+    fireEvent.click(lend);
+    expect(
+      within(dialog).queryByRole("switch", { name: "Lend its credentials to jobs" }),
+    ).toBeNull();
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(c.setConnectionAccess).toHaveBeenCalledWith(
+        "acc-gcp",
+        expect.objectContaining({ jobsEnabled: true, jobKinds: ["vm"], lendEnabled: false }),
+      ),
+    );
+  });
 });
 
 describe("CI access without ci-access:write", () => {
@@ -419,6 +749,148 @@ describe("CiPanel", () => {
     await waitFor(() =>
       expect(screen.getByText("Scheduled .infrawrench/ci/nightly.yml on main")).toBeTruthy(),
     );
+  });
+
+  it("starts a manual pipeline from a form built from its inputs, and opens the run", async () => {
+    const c = client();
+    const onSelectRun = vi.fn();
+    render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={onSelectRun} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    const card = screen.getByRole("region", { name: "Manual runs" });
+    fireEvent.click(within(card).getByRole("button", { name: "Run" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("One URL per line")).toBeTruthy();
+    expect((within(dialog).getByLabelText("Branch") as HTMLInputElement).value).toBe("main");
+    expect((within(dialog).getByLabelText(/zone/) as HTMLSelectElement).value).toBe("www");
+    expect((within(dialog).getByLabelText(/shards/) as HTMLInputElement).value).toBe("4");
+
+    // A required input left empty, and a number that is not one, stop it.
+    fireEvent.change(within(dialog).getByLabelText(/shards/), { target: { value: "lots" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(within(dialog).getByText("Required")).toBeTruthy());
+    expect(within(dialog).getByText("A number")).toBeTruthy();
+    expect(c.startRun).not.toHaveBeenCalled();
+
+    // A value a shell would run is sent as typed; defaults left alone are
+    // not sent, so the branch's own file decides them.
+    const hostile = "$(touch /tmp/pwned)\n'; rm -rf / #";
+    fireEvent.change(within(dialog).getByLabelText(/shards/), { target: { value: "4" } });
+    fireEvent.change(within(dialog).getByLabelText(/reason/), { target: { value: "release" } });
+    fireEvent.change(within(dialog).getByLabelText(/urls/), { target: { value: hostile } });
+    fireEvent.click(within(dialog).getByLabelText("dry-run"));
+    fireEvent.change(within(dialog).getByLabelText("Branch"), { target: { value: "feature/x" } });
+    expect(
+      within(dialog).getByText(
+        "The inputs below are main's. The run checks them against feature/x's own pipeline file.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(onSelectRun).toHaveBeenCalledWith(MANUAL_ID));
+    expect(c.startRun).toHaveBeenCalledWith({
+      installationId: 7,
+      repoFullName: "acme/web",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      branch: "feature/x",
+      inputs: { urls: hostile, "dry-run": true, reason: "release" },
+    });
+  });
+
+  it("shows the server's refusal in the form, and offers no start without ci:approve", async () => {
+    const c = client();
+    c.startRun.mockRejectedValueOnce(new Error("acme/web has no branch nope."));
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/reason/), { target: { value: "x" } });
+    fireEvent.change(within(dialog).getByLabelText("Branch"), { target: { value: "nope" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() =>
+      expect(within(dialog).getByText("acme/web has no branch nope.")).toBeTruthy(),
+    );
+    unmount();
+
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove={false}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Purge the CDN")).toBeTruthy());
+    const button = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe("Starting a run takes permission to approve CI runs.");
+  });
+
+  it("labels a manual run and lists the inputs it was started with", async () => {
+    const c = client();
+    const manualRun: CiRun = {
+      ...run,
+      event: "manual",
+      headRef: "feature/x",
+      pullNumber: null,
+      actorLogin: "someone@example.com",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      inputs: { zone: "docs", urls: "a\nb" },
+    };
+    c.listRuns.mockResolvedValue([manualRun]);
+    c.getRun.mockResolvedValue({ run: manualRun, jobs: [] });
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText("Started by hand: .infrawrench/ci/purge.yml on feature/x"),
+      ).toBeTruthy(),
+    );
+    unmount();
+    render(
+      <CiPanel client={c} selectedRunId={run.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("zone")).toBeTruthy());
+    expect(screen.getByText("docs")).toBeTruthy();
+    expect(screen.getByText("Started by someone@example.com")).toBeTruthy();
+  });
+
+  it("lists runs with nothing to run only when asked for, and says why on the run", async () => {
+    const skipped: CiRun = {
+      ...run,
+      id: "33333333-3333-4333-8333-333333333333",
+      status: "skipped",
+      statusReason: "No pipeline runs on this push.",
+      startedAt: null,
+      jobs: [],
+    };
+    const c = client();
+    c.listRuns.mockImplementation(async (status?: string) =>
+      status === "skipped" ? [skipped] : [run],
+    );
+    const { unmount } = render(
+      <CiPanel client={c} selectedRunId={null} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("aaaaaaa")).toBeTruthy());
+    expect(c.listRuns).toHaveBeenLastCalledWith(undefined);
+    fireEvent.change(screen.getByRole("combobox", { name: /Show/ }), {
+      target: { value: "skipped" },
+    });
+    await waitFor(() => expect(c.listRuns).toHaveBeenLastCalledWith("skipped"));
+    await waitFor(() => expect(screen.getAllByText("Nothing to run").length).toBeGreaterThan(1));
+    unmount();
+    c.getRun.mockResolvedValue({ run: skipped, jobs: null });
+    render(
+      <CiPanel client={c} selectedRunId={skipped.id} onSelectRun={() => {}} canWrite canApprove />,
+    );
+    await waitFor(() => expect(screen.getByText("No pipeline runs on this push.")).toBeTruthy());
+    expect(screen.queryByText("No pipeline ran for this event.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("opens a run from anywhere on its row, but not from the approval buttons", async () => {

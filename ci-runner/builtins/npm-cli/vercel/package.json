@@ -1,0 +1,8 @@
+{
+  "name": "iwci-builtin-vercel",
+  "private": true,
+  "description": "builtin:vercel, the Vercel CLI pinned by package-lock.json (ci-runner/README.md, Deployment CLIs)",
+  "dependencies": {
+    "vercel": "65.16.0"
+  }
+}

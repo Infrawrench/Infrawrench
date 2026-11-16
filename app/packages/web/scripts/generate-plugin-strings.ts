@@ -118,6 +118,13 @@ for (const plugin of BUNDLED_PLUGINS) {
       add(output.label);
       add(output.description);
     }
+    // What a peer lends a CI job, shown on the CI grant form.
+    for (const integration of type.peerIntegrations ?? []) {
+      add(integration.ci?.lends);
+      add(integration.ci?.reach);
+      add(integration.ci?.lifetime);
+      add(integration.ci?.availableWhen?.reason);
+    }
   }
 }
 

@@ -74,7 +74,6 @@ import { githubIssuesDomain } from "./domains/github-issues/index";
 import { workflowsDomain } from "./domains/workflows/index";
 import { workflowApprovalsDomain } from "./domains/workflow-approvals/index";
 import { workflowSecretsDomain } from "./domains/workflow-secrets/index";
-import { deploymentsDomain } from "./domains/deployments/index";
 import { iacDomain } from "./domains/iac/index";
 import { prChecksDomain } from "./domains/pr-checks/index";
 import { logWorkspacesDomain } from "./domains/log-workspaces/index";
@@ -115,7 +114,6 @@ import { businessMetricsDomain } from "./domains/business-metrics/index";
 import { dashboardsDomain } from "./domains/dashboards/index";
 import { searchDomain } from "./domains/search/index";
 import { starredDomain } from "./domains/starred/index";
-import { orgFeaturesDomain } from "./domains/org-features/index";
 import { productsDomain } from "./domains/products/index";
 import { ciDomain } from "./domains/ci/index";
 import { ciJobsDomain } from "./domains/ci-jobs/index";
@@ -244,7 +242,6 @@ export const DOMAINS: readonly Domain[] = [
   workflowsDomain,
   workflowApprovalsDomain,
   workflowSecretsDomain,
-  deploymentsDomain,
   iacDomain,
   prChecksDomain,
   logWorkspacesDomain,
@@ -273,7 +270,6 @@ export const DOMAINS: readonly Domain[] = [
   savingsFindingsDomain,
   searchDomain,
   starredDomain,
-  orgFeaturesDomain,
   productsDomain,
   ciDomain,
   orgConfigDomain,

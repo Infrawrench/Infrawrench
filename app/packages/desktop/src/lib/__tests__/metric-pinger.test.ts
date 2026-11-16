@@ -15,6 +15,9 @@ vi.mock("../app-shell", () => ({
 vi.mock("../local-credentials", () => ({
   getLocalAccountCredentials: (accountId: string) =>
     mainCall("LocalAccountCredentials", { accountId }),
+  // No account here has an SSH tunnel.
+  localConnectionCredentials: (_accountId: string, _fields: unknown, c: object) =>
+    Promise.resolve({ ...c }),
 }));
 vi.mock("../../db/client", () => ({ getDb: () => Promise.resolve({ select, execute }) }));
 vi.mock("../../plugins/loader", () => ({ getPlugin: (...args: unknown[]) => getPlugin(...args) }));

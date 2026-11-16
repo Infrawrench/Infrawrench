@@ -2,7 +2,7 @@
  * Gathering for DORA metrics: every source read in one place, then handed to
  * the pure engine in `client-core/src/dora.ts`.
  *
- * Reads Postgres only (deploy events, Infrafile runs, declared incidents,
+ * Reads Postgres only (deploy events, declared incidents,
  * resource changes, commit times, ownership) and calls no plugin code, so the
  * routes that use it are safe on the edge.
  */
@@ -26,16 +26,9 @@ import {
   type DoraSummary,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import {
-  deployEvents,
-  deploymentRuns,
-  doraCommitTimes,
-  incidents,
-  resourceChanges,
-} from "../db/schema";
+import { deployEvents, doraCommitTimes, incidents, resourceChanges } from "../db/schema";
 import { listDoraScopeDimensions, type DoraScopeSubject } from "./dimensions";
 import { getDoraSettings } from "./settings";
-import { normalizeRepository } from "./repository";
 
 /** Hard caps per source, so a pathological org cannot make one report unbounded. */
 export const DORA_LOAD_LIMIT = 20_000;
@@ -67,7 +60,7 @@ async function loadInputs(organizationId: string, window: DoraWindow): Promise<L
   const loadFrom = new Date(window.from.getTime() - span - settings.failureWindowHours * HOUR_MS);
   const loadTo = window.to;
 
-  const [eventRows, runRows, incidentRows, changeRows] = await Promise.all([
+  const [eventRows, incidentRows, changeRows] = await Promise.all([
     db
       .select()
       .from(deployEvents)
@@ -79,26 +72,6 @@ async function loadInputs(organizationId: string, window: DoraWindow): Promise<L
         ),
       )
       .orderBy(desc(deployEvents.deployedAt))
-      .limit(DORA_LOAD_LIMIT),
-    db
-      .select({
-        id: deploymentRuns.id,
-        env: deploymentRuns.env,
-        repo: deploymentRuns.repo,
-        gitSha: deploymentRuns.gitSha,
-        status: deploymentRuns.status,
-        startedAt: deploymentRuns.startedAt,
-        finishedAt: deploymentRuns.finishedAt,
-      })
-      .from(deploymentRuns)
-      .where(
-        and(
-          eq(deploymentRuns.organizationId, organizationId),
-          gte(deploymentRuns.startedAt, loadFrom),
-          lt(deploymentRuns.startedAt, loadTo),
-        ),
-      )
-      .orderBy(desc(deploymentRuns.startedAt))
       .limit(DORA_LOAD_LIMIT),
     db
       .select({
@@ -147,46 +120,25 @@ async function loadInputs(organizationId: string, window: DoraWindow): Promise<L
       : Promise.resolve([]),
   ]);
 
-  const events: DoraDeployEvent[] = [
-    ...eventRows.map((r): DoraDeployEvent => ({
-      id: r.id,
-      source: r.source,
-      kind: r.kind,
-      name: r.name,
-      environment: r.environment,
-      repository: r.repository,
-      commitSha: r.commitSha,
-      commitAt: r.commitAt?.toISOString() ?? null,
-      deployedAt: r.deployedAt.toISOString(),
-      status: r.status,
-      isRollback: r.isRollback,
-      accountId: r.accountId,
-      pluginId: r.pluginId,
-      resourceId: r.resourceId,
-      targetResourceId: r.targetResourceId,
-      url: r.url,
-      scope: {},
-    })),
-    ...runRows.map((r): DoraDeployEvent => ({
-      id: r.id,
-      source: "infrafile",
-      kind: "deployment",
-      name: r.repo ?? r.env,
-      environment: r.env,
-      repository: normalizeRepository(r.repo),
-      commitSha: r.gitSha,
-      commitAt: null,
-      deployedAt: (r.finishedAt ?? r.startedAt).toISOString(),
-      status: infrafileStatus(r.status),
-      isRollback: false,
-      accountId: null,
-      pluginId: null,
-      resourceId: null,
-      targetResourceId: null,
-      url: null,
-      scope: {},
-    })),
-  ];
+  const events: DoraDeployEvent[] = eventRows.map((r): DoraDeployEvent => ({
+    id: r.id,
+    source: r.source,
+    kind: r.kind,
+    name: r.name,
+    environment: r.environment,
+    repository: r.repository,
+    commitSha: r.commitSha,
+    commitAt: r.commitAt?.toISOString() ?? null,
+    deployedAt: r.deployedAt.toISOString(),
+    status: r.status,
+    isRollback: r.isRollback,
+    accountId: r.accountId,
+    pluginId: r.pluginId,
+    resourceId: r.resourceId,
+    targetResourceId: r.targetResourceId,
+    url: r.url,
+    scope: {},
+  }));
 
   await attachCommitTimes(organizationId, events);
 
@@ -214,13 +166,6 @@ async function loadInputs(organizationId: string, window: DoraWindow): Promise<L
       scope: {},
     })),
   };
-}
-
-function infrafileStatus(s: string): DoraDeployEvent["status"] {
-  if (s === "success") return "success";
-  if (s === "failure") return "failure";
-  if (s === "canceled") return "canceled";
-  return "in_progress";
 }
 
 /** Fill `commitAt` from resolved commit times where the source did not carry it. */

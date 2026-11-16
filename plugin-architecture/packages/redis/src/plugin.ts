@@ -1,4 +1,5 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { REDIS_CI_CREDENTIAL } from "./ci-credential.js";
 import type {
   PluginManifest,
   ResourceTypeDefinition,
@@ -25,6 +26,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description:
         "Redis connection URI (redis://[:password@]host[:port][/db] or rediss:// for TLS).",
@@ -36,6 +38,9 @@ export const manifest = {
     driver: "redis",
     credentialKey: "connectionString",
   },
+  // Lend the connection to a CI job (`connections:`), or a managed database
+  // granted as this plugin's peer. See `ci-credential.ts`.
+  ciCredential: REDIS_CI_CREDENTIAL,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

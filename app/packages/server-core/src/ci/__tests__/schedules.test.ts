@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 // helpers tested here touch neither.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { CATCH_UP_MINUTES, dueRuns, minutesToFire, scheduleEntries } = await import("../schedules");
+const { CATCH_UP_MINUTES, dueRuns, manualEntries, minutesToFire, scheduleEntries } =
+  await import("../schedules");
 
 const at = (iso: string) => Date.parse(`${iso}:00Z`);
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 16);
@@ -64,5 +65,53 @@ describe("scheduleEntries", () => {
       { file: "b.yml", name: "b.yml", cron: ["@daily"], text: "name: B" },
     ]);
     expect(scheduleEntries(undefined)).toEqual([]);
+  });
+});
+
+describe("manualEntries", () => {
+  it("keeps pipelines whose inputs it can read, with only the fields an input has", () => {
+    expect(
+      manualEntries([
+        {
+          file: ".infrawrench/ci/purge.yml",
+          name: "Purge",
+          inputs: [
+            { name: "urls", type: "string", required: false, description: "One per line" },
+            {
+              name: "zone",
+              type: "choice",
+              required: true,
+              default: "www",
+              options: ["www", 3, "docs"],
+            },
+            { name: "force", type: "boolean", required: false, options: ["ignored"] },
+          ],
+        },
+        { file: ".infrawrench/ci/plain.yml", inputs: [] },
+        // A type from a newer runner: no form that would leave it out.
+        { file: ".infrawrench/ci/new.yml", name: "New", inputs: [{ name: "f", type: "file" }] },
+        { name: "No file", inputs: [] },
+        null,
+      ]),
+    ).toEqual([
+      {
+        file: ".infrawrench/ci/purge.yml",
+        name: "Purge",
+        inputs: [
+          { name: "urls", type: "string", required: false, description: "One per line" },
+          {
+            name: "zone",
+            type: "choice",
+            required: true,
+            default: "www",
+            options: ["www", "docs"],
+          },
+          { name: "force", type: "boolean", required: false },
+        ],
+      },
+      { file: ".infrawrench/ci/plain.yml", name: ".infrawrench/ci/plain.yml", inputs: [] },
+    ]);
+    // A runner from before manual runs answers none.
+    expect(manualEntries(undefined)).toEqual([]);
   });
 });

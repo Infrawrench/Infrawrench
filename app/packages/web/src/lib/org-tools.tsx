@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { useUIStore, withoutDisabledProducts, type SidebarToolDef } from "@infrawrench/ui";
-import type { OrgFeature } from "@infrawrench/client-core";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
@@ -11,7 +9,6 @@ import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
-  DeployIcon,
   ChangesIcon,
   IacIcon,
   GraphIcon,
@@ -42,7 +39,6 @@ import {
   CiIcon,
   EnvironmentsIcon,
 } from "@infrawrench/ui";
-import { apiGet } from "@/lib/api";
 import { useDisabledProducts } from "@/lib/disabled-products";
 import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
 
@@ -56,21 +52,6 @@ import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-t
 export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
   const gt = useGT();
   const navigate = useNavigate();
-
-  // Features a platform admin rolls out per organization (CI): their
-  // entry points show only once the organization has them.
-  const [orgFeatures, setOrgFeatures] = useState<readonly OrgFeature[]>([]);
-  useEffect(() => {
-    setOrgFeatures([]);
-    if (!orgId) return;
-    let cancelled = false;
-    apiGet<{ features: OrgFeature[] }>(`/api/org/${orgId}/features`)
-      .then((r) => !cancelled && setOrgFeatures(r.features))
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
 
   // Apps the organization has turned off take their tools with them, which
   // is what removes them from the Apps tree, Recent, the launcher and Home.
@@ -89,12 +70,6 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Workflows"),
       icon: <WorkflowIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } }),
-    },
-    {
-      key: "deploy",
-      label: gt("Deploy"),
-      icon: <DeployIcon />,
-      onClick: () => void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } }),
     },
     {
       key: "costs",
@@ -278,16 +253,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       icon: <DeliveryIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/delivery", params: { orgId: orgId! } }),
     },
-    ...(orgFeatures.includes("ci")
-      ? [
-          {
-            key: "ci",
-            label: gt("CI"),
-            icon: <CiIcon />,
-            onClick: () => void navigate({ to: "/org/$orgId/ci", params: { orgId: orgId! } }),
-          },
-        ]
-      : []),
+    {
+      key: "ci",
+      label: gt("CI"),
+      icon: <CiIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/ci", params: { orgId: orgId! } }),
+    },
     {
       key: "status-pages",
       label: gt("Status pages"),

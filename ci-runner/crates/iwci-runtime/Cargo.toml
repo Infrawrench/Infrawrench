@@ -15,6 +15,8 @@ node = ["dep:wasmer-napi"]
 
 [dependencies]
 iwci-vfs.workspace = true
+# A sandboxed job's network goes through this crate's policy (network.rs).
+iwci-sandbox.workspace = true
 # `experimental-host-interrupt` is what lets a watchdog thread stop a guest
 # that is spinning in compiled code without making a single host call.
 wasmer = { workspace = true, features = ["experimental-host-interrupt"] }
@@ -63,7 +65,17 @@ getrandom = "0.3"
 # (modes.rs `ino_of`). Already in the tree, through wasmer-wasix.
 xxhash-rust = { version = "0.8.10", default-features = false, features = ["xxh64"] }
 wasmer-napi = { version = "=0.705.0", features = ["wasix"], optional = true }
+# The job description the runner hands its copy inside a sandbox
+# (`inside`). Already in the tree.
+serde.workspace = true
+serde_json.workspace = true
+# The trampoline a script runs a native program through, assembled from
+# its text (`inside/trampoline.wat`). Already in the tree.
+wat = "1"
+
+# Inside a sandbox the job's files are the sandbox's own, which a host file
+# system reaches. The feature's crates are already in the tree.
+[target.'cfg(target_os = "linux")'.dependencies]
+virtual-fs = { workspace = true, features = ["host-fs"] }
 
 [dev-dependencies]
-serde_json.workspace = true
-wat = "1"

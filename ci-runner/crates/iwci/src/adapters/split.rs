@@ -90,13 +90,113 @@ pub struct SplitRun {
     helper: bool,
     asked: AtomicBool,
     timing: Timing,
+    beat: Beating,
+}
+
+/// Work a run leaves to do in the store after it ends (deleting its
+/// signs of life and what its jobs did not delete), counted so that a
+/// process about to exit can wait for it a little ([`settle`]) and a server
+/// never has to.
+static PENDING: Mutex<usize> = Mutex::new(0);
+static SETTLED: Condvar = Condvar::new();
+
+/// Runs `work` on a thread of its own, counted until it is done.
+pub(crate) fn in_background(name: &str, work: impl FnOnce() + Send + 'static) {
+    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
+            *pending = pending.saturating_sub(1);
+            SETTLED.notify_all();
+        }
+    }
+    let spawned = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let _done = Done;
+            work();
+        });
+    if spawned.is_err() {
+        drop(Done);
+    }
+}
+
+/// Waits up to `max` for what runs left to do in the store in the
+/// background: for `iwci run`, which exits right after its run and would
+/// otherwise leave it for the sweep. Returns whether it all finished.
+pub fn settle(max: Duration) -> bool {
+    let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
+    let (pending, _) = SETTLED
+        .wait_timeout_while(pending, max, |n| *n > 0)
+        .unwrap_or_else(|e| e.into_inner());
+    *pending == 0
+}
+
+/// A sign of life: `<key>.<n>`, with `<n>` moving on every beat from
+/// when it starts until it is stopped or dropped, when it is deleted. A
+/// reader that lists it and sees `<n>` stand still for a lease, by its own
+/// clock, counts whoever wrote it gone; no clocks are compared and nothing
+/// is read but the listing. Split runs and task cache markers
+/// (`adapters::inflight`) both say they are alive this way.
+///
+/// Stopping it never waits for the store: the last one is deleted in the
+/// background, which [`settle`] waits for.
+pub struct Beating {
     beat: Arc<Beat>,
 }
 
-/// The thread that keeps a runner's sign of life moving.
 struct Beat {
     stop: Mutex<bool>,
     stopped: Condvar,
+}
+
+impl Beating {
+    /// Writes `<key>.1` before it returns, so nobody looks for it in vain,
+    /// and moves it on from a thread of its own.
+    pub fn start(store: Arc<dyn ObjectStore>, key: String, every: Duration) -> Self {
+        let beat = Arc::new(Beat {
+            stop: Mutex::new(false),
+            stopped: Condvar::new(),
+        });
+        let _ = store.put(&format!("{key}.1"), b"", "text/plain");
+        let moving = beat.clone();
+        in_background("iwci-beat", move || {
+            let mut n = 1u64;
+            loop {
+                let stop = moving.stop.lock().unwrap_or_else(|e| e.into_inner());
+                let (stop, _) = moving
+                    .stopped
+                    .wait_timeout_while(stop, every, |stop| !*stop)
+                    .unwrap_or_else(|e| e.into_inner());
+                if *stop {
+                    break;
+                }
+                drop(stop);
+                if store
+                    .put(&format!("{key}.{}", n + 1), b"", "text/plain")
+                    .is_ok()
+                {
+                    let _ = store.delete(&format!("{key}.{n}"));
+                    n += 1;
+                }
+            }
+            let _ = store.delete(&format!("{key}.{n}"));
+        });
+        Self { beat }
+    }
+
+    /// Stops moving it, and deletes it, in the background.
+    pub fn stop(&self) {
+        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.beat.stopped.notify_all();
+    }
+}
+
+impl Drop for Beating {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 impl SplitRun {
@@ -129,10 +229,6 @@ impl SplitRun {
             repo.as_str(),
             run.as_str()
         );
-        let beat = Arc::new(Beat {
-            stop: Mutex::new(false),
-            stopped: Condvar::new(),
-        });
         let key = if helper {
             format!("{root}/state/helper/{runner}")
         } else {
@@ -140,34 +236,7 @@ impl SplitRun {
         };
         // The first one before anything else, so the other runners never
         // look for this one in vain.
-        let _ = store.put(&format!("{key}.1"), b"", "text/plain");
-        {
-            let (store, beat) = (store.clone(), beat.clone());
-            let _ = std::thread::Builder::new()
-                .name("iwci-split-beat".into())
-                .spawn(move || {
-                    let mut n = 1u64;
-                    loop {
-                        let stop = beat.stop.lock().unwrap_or_else(|e| e.into_inner());
-                        let (stop, _) = beat
-                            .stopped
-                            .wait_timeout_while(stop, BEAT, |stop| !*stop)
-                            .unwrap_or_else(|e| e.into_inner());
-                        if *stop {
-                            break;
-                        }
-                        drop(stop);
-                        if store
-                            .put(&format!("{key}.{}", n + 1), b"", "text/plain")
-                            .is_ok()
-                        {
-                            let _ = store.delete(&format!("{key}.{n}"));
-                            n += 1;
-                        }
-                    }
-                    let _ = store.delete(&format!("{key}.{n}"));
-                });
-        }
+        let beat = Beating::start(store.clone(), key, BEAT);
         Arc::new(Self {
             store,
             root,
@@ -273,34 +342,24 @@ impl SplitRun {
     /// The run is over. The primary says so and clears what the run left,
     /// in the background; either way this runner stops saying it is alive.
     pub fn finish(&self) {
-        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
-        self.beat.stopped.notify_all();
+        self.beat.stop();
         if self.helper {
             return;
         }
         let end = format!("{}/state/end", self.root);
         let _ = self.store.put(&end, b"", "text/plain");
         let (store, root) = (self.store.clone(), self.root.clone());
-        let _ = std::thread::Builder::new()
-            .name("iwci-split-clear".into())
-            .spawn(move || {
-                let Ok(keys) = store.list(&format!("{root}/")) else {
-                    return;
-                };
-                let keys: Vec<String> = keys.into_iter().filter(|k| *k != end).collect();
-                delete_all(store.as_ref(), &keys);
-            });
+        in_background("iwci-split-clear", move || {
+            let Ok(keys) = store.list(&format!("{root}/")) else {
+                return;
+            };
+            let keys: Vec<String> = keys.into_iter().filter(|k| *k != end).collect();
+            delete_all(store.as_ref(), &keys);
+        });
     }
 }
 
-impl Drop for SplitRun {
-    fn drop(&mut self) {
-        *self.beat.stop.lock().unwrap_or_else(|e| e.into_inner()) = true;
-        self.beat.stopped.notify_all();
-    }
-}
-
-fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
+pub(crate) fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
     let next = AtomicU64::new(0);
     std::thread::scope(|scope| {
         for _ in 0..CLEAR_THREADS.min(keys.len()) {
@@ -318,8 +377,18 @@ fn delete_all(store: &dyn ObjectStore, keys: &[String]) {
 /// everything of a run whose primary died. Returns how many objects went.
 /// A store that does not say when an object was written is left alone.
 pub fn sweep(store: &dyn ObjectStore, now: u64) -> Result<usize, String> {
+    sweep_under(store, PREFIX, now)
+}
+
+/// Removes every object under `prefix/` written more than
+/// [`SWEEP_AFTER_SECS`] ago.
+pub(crate) fn sweep_under(
+    store: &dyn ObjectStore,
+    prefix: &str,
+    now: u64,
+) -> Result<usize, String> {
     let old: Vec<String> = store
-        .list_detailed(&format!("{PREFIX}/"))
+        .list_detailed(&format!("{prefix}/"))
         .map_err(|e| e.to_string())?
         .into_iter()
         .filter(|o| {
@@ -397,6 +466,15 @@ impl Split for PipelineSplit {
             }
         }
         Err("the job's claim keeps changing hands".into())
+    }
+
+    fn holder(&self, job: &str) -> Result<Option<String>, String> {
+        let holder = self
+            .run
+            .store
+            .get(&self.key("claims", job))
+            .map_err(|e| e.to_string())?;
+        Ok(holder.map(|h| String::from_utf8_lossy(&h).into_owned()))
     }
 
     fn release(&self, job: &str) -> Result<(), String> {

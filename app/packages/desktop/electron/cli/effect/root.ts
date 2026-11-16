@@ -83,7 +83,6 @@ import { scorecards } from "../commands/scorecards";
 import { apps } from "../commands/apps";
 import { sshFanout } from "../commands/ssh-fanout";
 import { config } from "../commands/config";
-import { deploy } from "../commands/deploy";
 import { help, home, tui } from "../commands/tui";
 import { CliSession, globalFlags, makeSession } from "./session";
 
@@ -170,7 +169,6 @@ const subcommands = [
   apps,
   sshFanout,
   config,
-  deploy,
   tui,
   help,
 ] as const;

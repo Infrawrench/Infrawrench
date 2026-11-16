@@ -17,6 +17,7 @@
 mod fd;
 mod fd_list;
 mod inode_guard;
+mod locks;
 mod notification;
 mod path_posix;
 
@@ -55,6 +56,7 @@ use wasmer_wasix_types::{
 
 pub(crate) use self::fd::VirtualFileLock;
 pub use self::fd::{Fd, FdInner, InodeVal, Kind, SymlinkKind};
+pub use self::locks::{Conflict, FileLocks, FlockOp, RecordOwner, RecordType};
 pub(crate) use self::fd_list::FdList;
 pub(crate) use self::inode_guard::{
     InodeValFilePollGuard, InodeValFilePollGuardJoin, InodeValFilePollGuardMode,
@@ -1974,17 +1976,23 @@ impl WasiFs {
                 Kind::Symlink { .. } => Filetype::SymbolicLink,
                 // Only `sock_pair` makes these, and its filestat says the same.
                 Kind::DuplexPipe { .. } => Filetype::SocketStream,
+                // Every kind of socket is one, whatever state it is in: the
+                // C library's `getsockopt(SO_TYPE)` answers from this, and
+                // took a listening socket for none (#1217).
                 Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
-                    InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
-                    InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
-                    InodeSocketKind::PreSocket { props, .. } => match props.ty {
+                    InodeSocketKind::TcpStream { .. }
+                    | InodeSocketKind::TcpListener { .. }
+                    | InodeSocketKind::BoundTcp { .. } => Filetype::SocketStream,
+                    InodeSocketKind::UdpSocket { .. } => Filetype::SocketDgram,
+                    InodeSocketKind::Raw { .. } | InodeSocketKind::Icmp(_) => Filetype::SocketRaw,
+                    InodeSocketKind::PreSocket { props, .. }
+                    | InodeSocketKind::RemoteSocket { props, .. } => match props.ty {
                         Socktype::Stream => Filetype::SocketStream,
                         Socktype::Dgram => Filetype::SocketDgram,
                         Socktype::Raw => Filetype::SocketRaw,
                         Socktype::Seqpacket => Filetype::SocketSeqpacket,
                         _ => Filetype::Unknown,
                     },
-                    _ => Filetype::Unknown,
                 },
                 _ => Filetype::Unknown,
             },

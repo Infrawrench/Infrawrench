@@ -138,11 +138,12 @@ jobs:
 - The Job has `activeDeadlineSeconds` set to the job's time limit and is deleted with its pods when the job ends; a finished Job the cluster still has is removed after ten minutes.
 - The connection needs `create`, `get`, `list` and `delete` on `jobs.batch` in the namespace. **Check permissions** names any that are missing.
 
-A CoreWeave CKS, EKS, GKE, AKS or DOKS cluster runs jobs the same way once it's connected as a Kubernetes connection with its kubeconfig.
+A CoreWeave CKS, EKS, GKE, AKS or DOKS cluster runs jobs the same way, either connected as a Kubernetes connection with its kubeconfig, or straight from its cloud connection: grant the cluster to CI as a Kubernetes connection, switch on running jobs on it (and, separately, lending it), and name it by its name in pipelines (`cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }`, `connections: [gke-prod]`). See [a cluster or database in a cloud account](../features/ci.md#a-cluster-or-database-in-a-cloud-account).
 
 ## Tips and limits
 
 - In the web app, terminals and port forwards go through Infrawrench's servers. Long sessions are fine, but heavy streaming over days (a continuous log tail, say) may reconnect.
+- **Through an SSH tunnel**: in the cloud app, a connection with an [SSH tunnel](../features/ssh-tunnels.md) reaches its cluster through it. The `server` of the cluster behind the tunnel is pointed at the tunnel and gets a `tls-server-name`, so its certificate is still checked, and the rest of the kubeconfig is left as it is. A connection reached that way can't be lent to CI jobs.
 - RBAC applies. If the kubeconfig has limited permissions, some resource types are hidden and some actions fail. Cost allocation needs `list` on nodes and pods cluster-wide. Without it the workload list still works, just without cost. Storage and load-balancer costs also need `list` on `persistentvolumeclaims` and `services`. Each works on its own, so a kubeconfig that can list pods but not PVCs still gets full compute costs, with storage shown as unavailable, not zero.
 - **Network costs need `get` on `nodes/proxy`** or the cloud account's VPC flow logs. Without either, the cluster shows no network figures and says why. Nothing else is affected.
 - **How full a volume is isn't measured.** Storage is priced on provisioned size, which is what you're billed for.

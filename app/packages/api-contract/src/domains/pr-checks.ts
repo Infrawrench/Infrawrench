@@ -167,7 +167,7 @@ const PrCheckReport = Schema.Struct({
   files: Schema.Array(
     Schema.Struct({
       path: Schema.String,
-      kind: Schema.Literals(["terraform", "infrafile", "kubernetes"]),
+      kind: Schema.Literals(["terraform", "kubernetes"]),
       status: Schema.Literals(["added", "modified", "removed", "renamed"]),
       analysed: Schema.Boolean,
       note: Schema.NullOr(Schema.String),

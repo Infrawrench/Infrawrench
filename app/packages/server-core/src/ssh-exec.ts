@@ -15,6 +15,11 @@
  *   egress guard (`resolveSafeHost`) and the socket goes to the address that
  *   cleared.
  * - One connection per call, closed when the script ends.
+ * - **A host's key is read the same way** (`hostKeyOfAccountHost`), for a CI
+ *   job lent the connection: through the jump hosts, and handed out only
+ *   when it is the pinned one, so the job gets a `known_hosts` line rather
+ *   than a fingerprint OpenSSH can only check with a command. Reading it
+ *   stops at the key exchange: nothing logs in to the host.
  *
  * ssh2 is a socket driver: this runs only where plugin code does (the
  * gateway). `host-services.ts` loads it lazily, so the edge never imports it.
@@ -47,7 +52,7 @@ export class SshHostKeyRefusedError extends Error {
 /** The fingerprint the organization pinned for a host, or null. */
 export type PinLookup = (host: string, port: number) => Promise<string | null>;
 
-function databasePins(organizationId: string): PinLookup {
+export function databasePins(organizationId: string): PinLookup {
   return async (host, port) => {
     const [row] = await db
       .select({ fingerprint: sshHostKeys.fingerprint })
@@ -64,7 +69,12 @@ function databasePins(organizationId: string): PinLookup {
   };
 }
 
-function pinnedKeyVerifier(
+/**
+ * An ssh2 `hostVerifier` that accepts only the key the organization pinned for
+ * `host:port`, read-only; a refusal is left on `refused.value`. Also used by
+ * `tunnel-resolver.ts` for the tunnels it opens unattended.
+ */
+export function pinnedKeyVerifier(
   pins: PinLookup,
   host: string,
   port: number,
@@ -105,26 +115,23 @@ export async function connectPinned(
   resolve: SshAccountResolver,
   pins: PinLookup = databasePins(organizationId),
 ): Promise<{ client: Client; close: () => void }> {
-  const upstream: SshHop[] = throughAccountId
-    ? await resolveSshChain(throughAccountId, async (accountId) => {
-        const hop = await resolve(accountId);
-        return {
-          ...hop.config,
-          ...(hop.throughAccountId ? { connectThroughAccountId: hop.throughAccountId } : {}),
-        };
-      })
-    : [];
+  const upstream = await upstreamHops(throughAccountId, resolve);
+  const { clients, close } = await connectHops([...upstream, config], pins);
+  return { client: clients.at(-1)!, close };
+}
+
+/** Connects to each hop through the one before it, checking each one's pinned key. */
+async function connectHops(
+  hops: readonly SshConfig[],
+  pins: PinLookup,
+): Promise<{ clients: Client[]; close: () => void }> {
   const clients: Client[] = [];
   const close = () => {
     for (const client of [...clients].reverse()) client.end();
   };
   try {
-    for (const hop of [...upstream, config]) {
-      const previous = clients.at(-1);
-      const sock = previous
-        ? ((await forwardOutHop(previous, hop.host, hop.port)) as Readable)
-        : undefined;
-      const dialAddress = sock ? undefined : await resolveSafeHost(hop.host);
+    for (const hop of hops) {
+      const { sock, dialAddress } = await route(clients.at(-1), hop);
       const client = new ssh2.Client();
       clients.push(client);
       const refused = { value: null as Error | null };
@@ -145,11 +152,106 @@ export async function connectPinned(
         });
       });
     }
-    return { client: clients.at(-1)!, close };
+    return { clients, close };
   } catch (error) {
     close();
     throw error;
   }
+}
+
+/** The jump hosts in front of a host that goes through `throughAccountId`, first one first. */
+async function upstreamHops(
+  throughAccountId: string | undefined,
+  resolve: SshAccountResolver,
+): Promise<SshHop[]> {
+  if (!throughAccountId) return [];
+  return resolveSshChain(throughAccountId, async (accountId) => {
+    const hop = await resolve(accountId);
+    return {
+      ...hop.config,
+      ...(hop.throughAccountId ? { connectThroughAccountId: hop.throughAccountId } : {}),
+    };
+  });
+}
+
+/**
+ * How to reach `hop`: a channel forwarded by the hop before it, or for the
+ * first hop the address the egress guard cleared.
+ */
+async function route(
+  previous: Client | undefined,
+  hop: { host: string; port: number },
+): Promise<{ sock?: Readable; dialAddress?: string }> {
+  if (previous) return { sock: (await forwardOutHop(previous, hop.host, hop.port)) as Readable };
+  return { dialAddress: await resolveSafeHost(hop.host) };
+}
+
+/**
+ * The public key the account's host offers, as `<type> <base64>` (a
+ * `known_hosts` line without its host), when it is the key the organization
+ * pinned; otherwise an {@link SshHostKeyRefusedError}. The jump hosts are
+ * connected to as {@link connectPinned} does, each checked against its pin.
+ * The host itself is only asked for its key: the exchange ends there, before
+ * anything logs in.
+ */
+export async function hostKeyOfAccountHost(
+  organizationId: string,
+  accountId: string,
+  resolve: SshAccountResolver,
+  pins: PinLookup = databasePins(organizationId),
+): Promise<string> {
+  const target = await resolve(accountId);
+  const { host, port } = target.config;
+  const upstream = await connectHops(await upstreamHops(target.throughAccountId, resolve), pins);
+  try {
+    const key = await offeredHostKey(upstream.clients.at(-1), target.config);
+    const presented = sha256Fingerprint(key);
+    const pinned = await pins(host, port);
+    if (pinned !== presented) throw new SshHostKeyRefusedError(host, port, presented, pinned);
+    return `${sshKeyType(key)} ${key.toString("base64")}`;
+  } finally {
+    upstream.close();
+  }
+}
+
+/** The host key `hop` offers in its key exchange; the connection ends there. */
+async function offeredHostKey(previous: Client | undefined, hop: SshConfig): Promise<Buffer> {
+  const { sock, dialAddress } = await route(previous, hop);
+  const client = new ssh2.Client();
+  try {
+    return await new Promise<Buffer>((offered, fail) => {
+      client.on("error", (error) => fail(error));
+      client.once("close", () =>
+        fail(
+          new Error(`${hop.host}:${hop.port} closed the connection before offering a host key.`),
+        ),
+      );
+      client.connect({
+        host: dialAddress ?? hop.host,
+        port: hop.port,
+        username: hop.username,
+        ...(sock ? { sock } : {}),
+        readyTimeout: 30_000,
+        // Refusing the key ends the exchange before authentication.
+        hostVerifier: (key: Buffer, verify: (valid: boolean) => void) => {
+          offered(Buffer.from(key));
+          verify(false);
+        },
+      });
+    });
+  } finally {
+    client.end();
+  }
+}
+
+/** The key type a public key blob names first (`ssh-ed25519`, `ecdsa-sha2-nistp256`, ...). */
+function sshKeyType(blob: Buffer): string {
+  const length = blob.length >= 4 ? blob.readUInt32BE(0) : 0;
+  const type = blob.subarray(4, 4 + length).toString("latin1");
+  if (length === 0 || 4 + length > blob.length || !/^[a-z0-9@.-]+$/.test(type)) {
+    throw new Error("The host offered a key that is not an SSH public key.");
+  }
+  return type;
 }
 
 /** Runs `script` with `sh -s` on the account's host. */

@@ -29,7 +29,7 @@ describe("createPluginClient", () => {
     getCredentials.mockResolvedValue(credentials);
     const services = { http: {} };
     buildPluginHostServices.mockReturnValue(services);
-    const manifest = { id: "p" };
+    const manifest = { id: "p", credentialFields: [{ key: "token", label: "Token" }] };
     const client = { listResources: vi.fn() };
     const createClient = vi.fn().mockReturnValue(client);
     getPlugin.mockResolvedValue({ plugin: { manifest, createClient } });
@@ -41,6 +41,44 @@ describe("createPluginClient", () => {
     expect(buildPluginHostServices).toHaveBeenCalledWith(manifest, credentials);
     expect(createClient).toHaveBeenCalledWith(credentials, services);
     expect(result).toBe(client);
+  });
+
+  it("connects an account behind an SSH tunnel through it", async () => {
+    getCredentials.mockResolvedValue({
+      connectionString: "postgresql://localhost:5432/postgres",
+      password: "pw",
+    });
+    const tunnel = vi.fn((payload: { credentials: Record<string, string> }) => ({
+      connectionString: payload.credentials["connectionString"]!.replace(
+        "localhost:5432",
+        "127.0.0.1:41000",
+      ),
+    }));
+    fakeRpc["SshTunnelAccountCredentials"] = (payload: never) => Effect.sync(() => tunnel(payload));
+    buildPluginHostServices.mockReturnValue({});
+    const createClient = vi.fn().mockReturnValue({});
+    const manifest = {
+      id: "postgres",
+      credentialFields: [
+        { key: "connectionString", label: "Connection string", tunnel: "address" },
+        { key: "password", label: "Password" },
+      ],
+    };
+    getPlugin.mockResolvedValue({ plugin: { manifest, createClient } });
+
+    await createPluginClient("acc-1", "postgres");
+
+    const connected = {
+      connectionString: "postgresql://127.0.0.1:41000/postgres",
+      password: "pw",
+    };
+    expect(tunnel).toHaveBeenCalledWith({
+      accountId: "acc-1",
+      fields: [{ key: "connectionString", tunnel: "address" }],
+      credentials: { connectionString: "postgresql://localhost:5432/postgres" },
+    });
+    expect(buildPluginHostServices).toHaveBeenCalledWith(manifest, connected);
+    expect(createClient).toHaveBeenCalledWith(connected, {});
   });
 
   it("throws when the plugin is not loaded", async () => {

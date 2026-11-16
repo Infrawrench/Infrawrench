@@ -17,14 +17,23 @@
  * - A pipeline's `on.schedule` cron starts a run from the poller pass
  *   (`schedules.ts`): trusted like a push to the default branch, whose
  *   caches it shares, and carrying that one pipeline's text.
+ * - A person with `ci:approve` starts an `on.manual` pipeline on a branch
+ *   of the repository itself (`startManualRun`): trusted like a push to that
+ *   branch, whose caches and lending opt-ins it has, running that one file
+ *   as the branch's head has it, with the inputs they gave.
  *
  * Dispatch claims the row first (one UPDATE that only one caller can win),
  * because both the webhook and the poller pass dispatch.
  */
-import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import {
   CI_CANCELLABLE_STATUSES,
+  CI_HIDDEN_RUN_STATUSES,
   CI_RETRYABLE_STATUSES,
+  checkCiInputs,
+  ciInputText,
+  type CiInputProblem,
+  type CiStartRun,
   type CiCloudJob,
   type CiDownload,
   type CiDownloadLink,
@@ -36,10 +45,16 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { accounts, ciAccounts, ciCloudJobs, ciRuns, githubInstallations } from "../db/schema.js";
+import {
+  accounts,
+  ciAccounts,
+  ciCloudJobs,
+  ciRuns,
+  ciSchedules,
+  githubInstallations,
+} from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { orgHasFeature } from "../features.js";
-import { getInstallationToken } from "../github/app.js";
+import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
 import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
 import {
@@ -55,6 +70,7 @@ import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./
 import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
+import { lendGithubTokens } from "./github-token.js";
 
 type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -62,8 +78,14 @@ type CiRunRow = typeof ciRuns.$inferSelect;
 const CLAIM_MS = 2 * 60_000;
 /** Dispatch attempts (busy or unreachable runners) before a run is given up on. */
 const MAX_ATTEMPTS = 40;
-/** A run the runners have not reported on for this long is given up on. */
+/**
+ * A run the runners have not reported on for this long is given up on,
+ * counted from its last good read: a job may run for six hours, so a run
+ * may outlast this many times over while it reports.
+ */
 const LOST_AFTER_MS = 2 * 60 * 60_000;
+/** How often a good read of a running run is recorded (`updated_at`), which `LOST_AFTER_MS` counts from. */
+const SEEN_EVERY_MS = 5 * 60_000;
 /**
  * A run its runner answers 404 for, this long after it started, is gone:
  * the read names the owner, so a finished run is found in the store, and a
@@ -135,13 +157,12 @@ async function ciOrganization(installationId: number): Promise<string | null> {
     )
     .where(eq(ciAccounts.installationId, installationId))
     .limit(1);
-  if (!row) return null;
-  return (await orgHasFeature(row.organizationId, "ci")) ? row.organizationId : null;
+  return row?.organizationId ?? null;
 }
 
 /**
  * Records the run a webhook delivery asks for. Returns it, or `null` when
- * the delivery starts nothing (CI off, account not chosen, a redelivery).
+ * the delivery starts nothing (account not chosen, a redelivery).
  */
 export async function acceptCiEvent(
   ev: CiEvent,
@@ -220,7 +241,7 @@ async function load(id: string): Promise<CiRunRow | null> {
 
 async function finish(
   row: CiRunRow,
-  status: "passed" | "failed" | "error" | "rejected" | "cancelled",
+  status: "passed" | "failed" | "error" | "rejected" | "cancelled" | "skipped",
   reason: string | null,
   extra: Partial<typeof ciRuns.$inferInsert> = {},
 ): Promise<void> {
@@ -285,6 +306,8 @@ export function dispatchBody(
     | "fromFork"
     | "noTaskCache"
     | "pipelineText"
+    | "pipelineFile"
+    | "inputs"
   >,
   token: string,
 ): Record<string, unknown> {
@@ -314,6 +337,15 @@ export function dispatchBody(
   // A scheduled run runs the one pipeline whose cron fired, as read from
   // `sha`, not every pipeline of the commit with `on.schedule`.
   if (row.pipelineText !== null) body["pipeline"] = row.pipelineText;
+  // A manual run runs the one file it was started for, as `sha` has it,
+  // with its inputs. Only a manual run sends either: a runner refuses them
+  // on any other event, and runners before manual runs refuse both.
+  if (row.event === "manual") {
+    if (row.pipelineFile !== null && row.pipelineText === null) {
+      body["pipeline-file"] = row.pipelineFile;
+    }
+    if (row.inputs !== null && Object.keys(row.inputs).length > 0) body["inputs"] = row.inputs;
+  }
   // Only when asked: a runner before 0.3.8 refuses fields it does not know.
   if (row.noTaskCache) body["no-task-cache"] = true;
   return body;
@@ -332,10 +364,6 @@ export async function dispatchRun(id: string): Promise<void> {
     .returning();
   if (!row) return;
 
-  if (!(await orgHasFeature(row.organizationId, "ci"))) {
-    await finish(row, "error", "CI is not turned on for this organization.");
-    return;
-  }
   if (!(await planAccess(row.organizationId)).paid) {
     await finish(row, "error", "CI needs a paid plan.");
     await upsertCheck(row, {
@@ -373,6 +401,12 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     const { entries } = resolved;
+    if (resolved.nothing && skipsWhenEmpty(row)) {
+      // No pipeline runs on this push or pull request: nothing is sent to
+      // the runners, and the run leaves the list (see `skipRun`).
+      await skipRun(row);
+      return;
+    }
     access = resolved.access;
     await db.update(ciRuns).set({ access }).where(eq(ciRuns.id, row.id));
     if (entries.some((e) => e.group !== null)) {
@@ -397,8 +431,15 @@ export async function dispatchRun(id: string): Promise<void> {
       // Audited as soon as it is minted or read, whatever happens to the
       // request next (a proxy that times out, a cancel while it is sent).
       await auditLends(row, built.records);
+      const tokens = await lendGithubTokens(row, access);
+      if (tokens) built.lent["github-token"] = tokens;
       body["lent"] = fitLent(built.lent, Buffer.byteLength(JSON.stringify(body), "utf8"));
     }
+  } else if (!row.fromFork) {
+    // GitHub tokens only (`github-token:`): minted from GitHub, which the
+    // edge reaches too. A few small entries never near the 1 MiB body.
+    const tokens = await lendGithubTokens(row, access);
+    if (tokens) body["lent"] = { "github-token": tokens };
   }
 
   let res: Response;
@@ -439,10 +480,49 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   // Pipelines a newer run cancelled before this one started.
   await resendCancels(started);
+  // A run the runners listed no pipeline for (one from before they could
+  // say a file is broken) most likely runs nothing: its check waits for the
+  // result, so a push that runs nothing shows nothing on GitHub.
+  if (skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0) return;
   await upsertCheck(row, {
     status: "in_progress",
     title: "Running",
     summary: row.fromFork ? "Running a fork's pull request, without secrets." : "Running.",
+  });
+}
+
+/**
+ * Whether a run that runs no pipeline is `skipped` (and left out of the run
+ * list) rather than `passed`: a push or a pull request, which every commit
+ * of a branch makes whatever its pipelines' `on:` says. A scheduled or
+ * manual run was asked for by name, so it stays in the list.
+ */
+export function skipsWhenEmpty(row: Pick<CiRunRow, "event">): boolean {
+  return row.event === "push" || row.event === "pull-request";
+}
+
+/** Why a run is `skipped`, in its event's words. */
+export function skippedReason(row: Pick<CiRunRow, "event">): string {
+  return `No pipeline runs on this ${row.event === "pull-request" ? "pull request" : "push"}.`;
+}
+
+/**
+ * Ends a run with nothing to run as `skipped`. A push shows nothing on
+ * GitHub, as a workflow that does not run shows nothing. A pull request gets
+ * a `skipped` check, which a branch protection rule requiring it accepts, so
+ * a pull request whose `paths:` leave out every pipeline can still merge. A
+ * check the run already has (a runner that could not say beforehand, a
+ * fork's approval) is closed as skipped either way.
+ */
+async function skipRun(row: CiRunRow, extra: Partial<typeof ciRuns.$inferInsert> = {}) {
+  const reason = skippedReason(row);
+  await finish(row, "skipped", reason, { concurrency: [], access: [], jobs: [], ...extra });
+  if (row.event !== "pull-request" && row.checkRunId === null) return;
+  await upsertCheck(row, {
+    status: "completed",
+    conclusion: "skipped",
+    title: reason.replace(/\.$/, ""),
+    summary: reason.replace(/^No pipeline/, "No pipeline in `.infrawrench/ci`"),
   });
 }
 
@@ -650,13 +730,15 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     );
   } catch (err) {
     const started = (row.startedAt ?? row.createdAt).getTime();
+    // The last good read (recorded every few minutes), or the start.
+    const seen = Math.max(started, row.updatedAt.getTime());
     const gone = err instanceof CiProxyError && err.status === 404;
     if (gone && row.cancelRequestedAt && Date.now() - started > GONE_AFTER_MS) {
       // Asked to stop, and gone: nothing is left to cancel.
       await finish(row, "cancelled", CANCELLED_BY_PERSON);
       await abandonJobChecks(row, CANCELLED_BY_PERSON);
       await upsertCheck(row, cancelledCheck(CANCELLED_BY_PERSON));
-    } else if (Date.now() - started > (gone ? GONE_AFTER_MS : LOST_AFTER_MS)) {
+    } else if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
       const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
       await finish(row, "error", reason);
       // Its jobs' checks would otherwise say "in progress" for good.
@@ -673,6 +755,9 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     return;
   }
   if (run.state === "running") {
+    if (Date.now() - row.updatedAt.getTime() > SEEN_EVERY_MS) {
+      await db.update(ciRuns).set({ updatedAt: new Date() }).where(eq(ciRuns.id, row.id));
+    }
     // Each job's own check, as it starts and finishes.
     if (run.progress && opts.jobChecks !== false) {
       await syncJobChecks(row, groupsFromProgress(run.progress));
@@ -699,6 +784,11 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     failedCount === 0 &&
     (run.result?.cancelled === true || jobs.some((j) => j.status === "cancelled"));
   const cancelReason = cancelled ? cancelledReason(row) : null;
+  if (passed && jobs.length === 0 && skipsWhenEmpty(row)) {
+    // Ran, and nothing in it did: a runner that could not say beforehand.
+    await skipRun(row, runUsage(run));
+    return;
+  }
   await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
     jobs,
     ...runUsage(run),
@@ -727,7 +817,12 @@ function finishedCheck(
   // No pipeline matched this event (a push to a branch when `on.push` only
   // names main): skipped, not a green pass for code nothing checked.
   if (passed && jobs.length === 0) {
-    const what = row.event === "pull-request" ? "pull request" : "push";
+    const what =
+      row.event === "pull-request"
+        ? "pull request"
+        : row.event === "manual"
+          ? "manual run"
+          : "push";
     return {
       status: "completed",
       conclusion: "skipped",
@@ -928,6 +1023,8 @@ export async function retryRun(
       event: original.event,
       pipelineFile: original.pipelineFile,
       pipelineText: original.pipelineText,
+      inputs: original.inputs,
+      startedByUserId: original.event === "manual" ? userId || null : null,
       branch: original.branch,
       headRef: original.headRef,
       defaultBranch: original.defaultBranch,
@@ -947,6 +1044,138 @@ export async function retryRun(
     .onConflictDoNothing()
     .returning();
   if (!row) throw new CiInputError("This run is already being retried.", 409);
+  return toWire(row);
+}
+
+/** A Git branch name a manual run may be started on, or why it is not one. */
+export function manualBranchRefusal(branch: string): string | null {
+  const bad =
+    branch.length === 0 ||
+    branch.length > 255 ||
+    /[\u0000-\u0020\u007f~^:?*[\\]/.test(branch) ||
+    branch.includes("..") ||
+    branch.includes("@{") ||
+    branch.includes("//") ||
+    branch.startsWith("-") ||
+    branch.startsWith("/") ||
+    branch.startsWith("refs/") ||
+    branch.endsWith("/") ||
+    branch.endsWith(".") ||
+    branch.endsWith(".lock") ||
+    branch === "@";
+  return bad ? `"${branch}" is not a branch name.` : null;
+}
+
+/** An input's problem in the API's words. */
+export function inputProblemText(name: string, problem: CiInputProblem): string {
+  switch (problem.kind) {
+    case "required":
+      return `${name} is required.`;
+    case "unknown":
+      return `The pipeline declares no input ${name}.`;
+    case "boolean":
+      return `${name} is true or false.`;
+    case "number":
+      return `${name} is a number.`;
+    case "choice":
+      return `${name} is one of ${problem.options.join(", ")}.`;
+    case "too-long":
+      return `${name} is over ${problem.maxBytes / 1024} KiB.`;
+    case "nul":
+      return `${name} contains a NUL character.`;
+  }
+}
+
+/**
+ * Starts an `on.manual` pipeline by hand: the file as the branch's head has
+ * it, with the given inputs, queued and dispatched like any other run. The
+ * pipeline must be one the default branch's last read lists with
+ * `on.manual`, and the inputs are checked against that declaration here (the
+ * runner checks them again against the branch's own file). The branch must
+ * be one of the repository itself, never a fork's, which is why the run is
+ * trusted like a push to it: the repository's secrets, and only what is lent
+ * to that branch. Whoever may do this holds `ci:approve`, as for a retry.
+ */
+export async function startManualRun(
+  organizationId: string,
+  userId: string,
+  actor: string | null,
+  request: CiStartRun,
+): Promise<CiRun> {
+  const [found] = await db
+    .select({ schedule: ciSchedules })
+    .from(ciSchedules)
+    .innerJoin(
+      ciAccounts,
+      and(
+        eq(ciAccounts.installationId, ciSchedules.installationId),
+        eq(ciAccounts.organizationId, ciSchedules.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(ciSchedules.organizationId, organizationId),
+        eq(ciSchedules.installationId, request.installationId),
+        eq(ciSchedules.repoFullName, request.repoFullName),
+      ),
+    )
+    .limit(1);
+  if (!found) {
+    throw new CiInputError(`No repository ${request.repoFullName} runs CI here.`, 404);
+  }
+  const repo = found.schedule;
+  const pipeline = (repo.manual ?? []).find((p) => p.file === request.pipelineFile);
+  if (!pipeline) {
+    throw new CiInputError(
+      `${repo.repoFullName} has no pipeline ${request.pipelineFile} with on.manual on ${repo.defaultBranch}.`,
+      404,
+    );
+  }
+  const branch = request.branch?.trim() || repo.defaultBranch;
+  const refusal = manualBranchRefusal(branch);
+  if (refusal) throw new CiInputError(refusal, 400);
+  const given = request.inputs ?? {};
+  const { problems } = checkCiInputs(pipeline.inputs, given);
+  const names = Object.keys(problems);
+  if (names.length > 0) {
+    throw new CiInputError(
+      names.map((name) => inputProblemText(name, problems[name]!)).join(" "),
+      400,
+    );
+  }
+  const [owner, name] = repo.repoFullName.split("/");
+  const sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  if (!sha) throw new CiInputError(`${repo.repoFullName} has no branch ${branch}.`, 404);
+
+  const id = crypto.randomUUID();
+  const [row] = await db
+    .insert(ciRuns)
+    .values({
+      id,
+      organizationId,
+      installationId: repo.installationId,
+      repoFullName: repo.repoFullName,
+      ownerKey: ownerKey(repo.repoFullName),
+      repoKey: repoKey(repo.repoFullName),
+      event: "manual",
+      pipelineFile: pipeline.file,
+      // What was given, as text: the branch's own file fills in its defaults.
+      inputs: Object.fromEntries(
+        Object.entries(given).map(([key, value]) => [key, ciInputText(value)]),
+      ),
+      // Its own cache scope and lending opt-ins, as a push to it.
+      branch,
+      headRef: branch,
+      defaultBranch: repo.defaultBranch,
+      sha,
+      actorLogin: actor,
+      startedByUserId: userId || null,
+      status: "queued",
+      // Every start is a run of its own.
+      dedupeKey: `manual:${id}`,
+    })
+    .returning();
+  if (!row) throw new CiInputError("The run could not be recorded.", 409);
   return toWire(row);
 }
 
@@ -1002,6 +1231,7 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     retriedAsRunId,
     noTaskCache: row.noTaskCache,
     ...(row.pipelineFile !== null ? { pipelineFile: row.pipelineFile } : {}),
+    ...(row.inputs !== null ? { inputs: row.inputs } : {}),
     ...(row.concurrency !== null
       ? {
           concurrencyGroups: [
@@ -1015,20 +1245,46 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
   };
 }
 
-export async function listRuns(
-  organizationId: string,
-  opts: { limit: number; status?: CiRunStatus },
-): Promise<CiRun[]> {
+/** Which runs {@link listRuns} answers, newest first. */
+export interface CiRunFilter {
+  limit: number;
+  /** Only runs with this status; a hidden status (`skipped`) is listed only when asked for so. */
+  status?: CiRunStatus;
+  /** List the hidden statuses too, when no `status` is given (the tab's "Show" filter). */
+  includeHidden?: boolean;
+  /** `owner/name`, in any case. */
+  repo?: string;
+  /** The branch a run is for: a pull request's head branch, a push's branch. */
+  branch?: string;
+  event?: CiRun["event"];
+  pullNumber?: number;
+  /** Runs older than this run of the organization's (the last of the previous page). */
+  beforeRunId?: string;
+}
+
+export async function listRuns(organizationId: string, opts: CiRunFilter): Promise<CiRun[]> {
   const rows = await db
     .select()
     .from(ciRuns)
     .where(
       and(
         eq(ciRuns.organizationId, organizationId),
-        opts.status ? eq(ciRuns.status, opts.status) : undefined,
+        opts.status
+          ? eq(ciRuns.status, opts.status)
+          : opts.includeHidden
+            ? undefined
+            : notInArray(ciRuns.status, [...CI_HIDDEN_RUN_STATUSES]),
+        opts.repo ? sql`lower(${ciRuns.repoFullName}) = ${opts.repo.toLowerCase()}` : undefined,
+        opts.branch ? eq(ciRuns.headRef, opts.branch) : undefined,
+        opts.event ? eq(ciRuns.event, opts.event) : undefined,
+        opts.pullNumber !== undefined ? eq(ciRuns.pullNumber, opts.pullNumber) : undefined,
+        // Compared in the database: its timestamps are finer than a `Date`.
+        opts.beforeRunId
+          ? sql`(${ciRuns.createdAt}, ${ciRuns.id}) < (select c.created_at, c.id from ci_runs c where c.id = ${opts.beforeRunId} and c.organization_id = ${organizationId})`
+          : undefined,
       ),
     )
-    .orderBy(desc(ciRuns.createdAt))
+    .orderBy(desc(ciRuns.createdAt), desc(ciRuns.id))
     .limit(opts.limit);
   const retries = await newestRetries(
     organizationId,

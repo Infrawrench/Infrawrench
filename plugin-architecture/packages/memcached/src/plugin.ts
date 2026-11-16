@@ -23,6 +23,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Server(s)",
       description: "host:port, comma-separated for multiple servers.",
       sensitive: false,

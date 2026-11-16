@@ -29,8 +29,6 @@ export const LocalSecretHandlers = LocalSecretRpcs.toLayer(
       LocalSshKeyPublicKey: ({ keyId }) => secrets.sshPublicKey(keyId),
       LocalSshKeyEnsureAgentKey: () => secrets.ensureAgentKey,
       LocalSshKeySave: ({ keyId, name, privateKey }) => secrets.saveSshKey(keyId, name, privateKey),
-      LocalTunnelConfigKeyDecrypt: ({ tunnelConfigId, ciphertext, iv }) =>
-        secrets.decryptTunnelConfigKey(tunnelConfigId, { ciphertext, iv }),
       LocalTunnelConfigKeyEncrypt: ({ tunnelConfigId, privateKey }) =>
         secrets.encryptTunnelConfigKey(tunnelConfigId, privateKey),
       LocalSecretFieldDecrypt: ({ resourceId, fieldKey, ciphertext, iv }) =>

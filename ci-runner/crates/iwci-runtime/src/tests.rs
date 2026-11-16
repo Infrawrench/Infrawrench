@@ -76,6 +76,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         log: None,
         scratch: None,
         commands: Vec::new(),
+        trees: Vec::new(),
         internet: false,
         modes: iwci_vfs::Modes::default(),
         services: Vec::new(),
@@ -2120,9 +2121,12 @@ fn writing_files_behaves_the_same_with_a_write_budget() {
             "limited={limited} {stdout:?}"
         );
         if limited {
+            // Every byte written once, and each of the two new files' entry
+            // (`iwci_vfs::ENTRY_COST` and its name).
+            let entries = 2 * (iwci_vfs::ENTRY_COST + "a.bin".len() as u64);
             assert_eq!(
                 budget.0.load(Ordering::SeqCst),
-                4101 + 4096,
+                4101 + 4096 + entries,
                 "every byte written is counted once"
             );
         }
@@ -3551,6 +3555,74 @@ fn an_accept_timeout_the_program_sets_still_applies() {
 }
 
 #[test]
+fn a_listening_socket_is_a_socket_with_no_peer() {
+    // The C library's `getsockopt(SO_TYPE)` is `fd_fdstat_get`'s file
+    // type, and a listening socket's was "unknown", so it answered
+    // ENOTSOCK and Python could not wrap a listening socket in TLS (#1217).
+    // The exit code is 10 * the check that failed + the type it got. Python
+    // then asks the socket for its peer and tries a receive, and needs
+    // ENOTCONN (53) from each, which a listening socket answers on Linux:
+    // the exit code is 100 (the peer) or 200 (the receive) + what it got.
+    let wat = r#"(module
+  (import "wasix_32v1" "sock_open" (func $open (param i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_bind" (func $bind (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_listen" (func $listen (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_addr_peer" (func $peer (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_recv" (func $recv (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $fdstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  ;; fails with 10 * $check + the file type unless `fd` is of type $want
+  (func $expect (param $check i32) (param $fd i32) (param $want i32)
+    (local $got i32)
+    (if (call $fdstat (local.get $fd) (i32.const 600))
+      (then (call $exit (i32.mul (local.get $check) (i32.const 10)))))
+    (local.set $got (i32.load8_u (i32.const 600)))
+    (if (i32.ne (local.get $got) (local.get $want))
+      (then (call $exit (i32.add (i32.mul (local.get $check) (i32.const 10)) (local.get $got))))))
+  ;; __wasi_addr_port_t at $at: IPv4, `port`, 127.0.0.1
+  (func $addr (param $at i32) (param $port i32)
+    (i32.store8 (local.get $at) (i32.const 1))
+    (i32.store16 (i32.add (local.get $at) (i32.const 2)) (local.get $port))
+    (i32.store (i32.add (local.get $at) (i32.const 4)) (i32.const 0x0100007f)))
+  (func (export "_start")
+    (local $errno i32)
+    ;; an IPv4 (1) stream (1) socket at 400: 6 is a stream socket
+    (if (call $open (i32.const 1) (i32.const 1) (i32.const 0) (i32.const 400))
+      (then (call $exit (i32.const 1))))
+    (call $expect (i32.const 1) (i32.load (i32.const 400)) (i32.const 6))
+    (call $addr (i32.const 500) (i32.const 4463))
+    (if (call $bind (i32.load (i32.const 400)) (i32.const 500))
+      (then (call $exit (i32.const 2))))
+    (call $expect (i32.const 2) (i32.load (i32.const 400)) (i32.const 6))
+    (if (call $listen (i32.load (i32.const 400)) (i32.const 16))
+      (then (call $exit (i32.const 3))))
+    (call $expect (i32.const 3) (i32.load (i32.const 400)) (i32.const 6))
+    (local.set $errno (call $peer (i32.load (i32.const 400)) (i32.const 700)))
+    (if (i32.ne (local.get $errno) (i32.const 53))
+      (then (call $exit (i32.add (i32.const 100) (local.get $errno)))))
+    ;; one 16-byte buffer at 900
+    (i32.store (i32.const 800) (i32.const 900))
+    (i32.store (i32.const 804) (i32.const 16))
+    (local.set $errno (call $recv (i32.load (i32.const 400))
+      (i32.const 800) (i32.const 1) (i32.const 0) (i32.const 820) (i32.const 824)))
+    (if (i32.ne (local.get $errno) (i32.const 53))
+      (then (call $exit (i32.add (i32.const 200) (local.get $errno)))))
+    ;; an IPv4 datagram (2) socket at 404: 5 is a datagram socket (a job
+    ;; has no UDP to bind it to)
+    (if (call $open (i32.const 1) (i32.const 2) (i32.const 0) (i32.const 404))
+      (then (call $exit (i32.const 4))))
+    (call $expect (i32.const 4) (i32.load (i32.const 404)) (i32.const 5))
+    (call $exit (i32.const 0))))"#;
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(&wat_module("sockets", wat), invocation(job.as_dyn(), &[]))
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+}
+
+#[test]
 fn a_service_blocked_in_accept_takes_its_sigterm() {
     // A service waiting for a client that never came is stopped by the
     // SIGTERM that ends it, here through its own handler (exit 115),
@@ -4151,4 +4223,153 @@ fn the_young_generation_a_job_is_charged_is_what_the_v8_flags_allow() {
         wasmer_napi::budget::DEFAULT_YOUNG_GENERATION,
         (3 * semi_space_mib) << 20
     );
+}
+
+/// Opens `work/f.lock` twice (two open file descriptions), then takes and
+/// releases `flock` and record locks through WASIX's file locking calls
+/// (#1216). The exit code is the check that failed + the errno it got.
+const FILE_LOCKS: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $close (param i32) (result i32)))
+  (import "wasix_32v1" "iwci_fd_flock" (func $flock (param i32 i32) (result i32)))
+  (import "wasix_32v1" "iwci_fd_record_lock" (func $lock (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "work/f.lock")
+  ;; work/f.lock, made if need be, its descriptor at $at
+  (func $open_at (param $at i32)
+    (if (call $open (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 11)
+           (i32.const 1) (i64.const -1) (i64.const -1) (i32.const 0) (local.get $at))
+      (then (call $exit (i32.const 1)))))
+  (func $expect (param $check i32) (param $got i32) (param $want i32)
+    (if (i32.ne (local.get $got) (local.get $want))
+      (then (call $exit (i32.add (local.get $check) (local.get $got))))))
+  (func (export "_start")
+    (call $open_at (i32.const 200))
+    (call $open_at (i32.const 204))
+    ;; LOCK_EX (2) on the first; LOCK_EX|LOCK_NB (6) and LOCK_SH|LOCK_NB (5)
+    ;; on the second are refused with EAGAIN (6)
+    (call $expect (i32.const 10) (call $flock (i32.load (i32.const 200)) (i32.const 2)) (i32.const 0))
+    (call $expect (i32.const 20) (call $flock (i32.load (i32.const 204)) (i32.const 6)) (i32.const 6))
+    (call $expect (i32.const 30) (call $flock (i32.load (i32.const 204)) (i32.const 5)) (i32.const 6))
+    ;; closing the first releases its lock
+    (drop (call $close (i32.load (i32.const 200))))
+    (call $expect (i32.const 40) (call $flock (i32.load (i32.const 204)) (i32.const 6)) (i32.const 0))
+    ;; LOCK_UN (8), and an operation that is none (EINVAL, 28)
+    (call $expect (i32.const 50) (call $flock (i32.load (i32.const 204)) (i32.const 8)) (i32.const 0))
+    (call $expect (i32.const 60) (call $flock (i32.load (i32.const 204)) (i32.const 3)) (i32.const 28))
+    ;; F_SETLK (1) a write lock (1) over the whole file, `struct flock` at
+    ;; 300; F_GETLK (0) then finds nothing in the way, the lock being this
+    ;; process's own, and says F_UNLCK (2)
+    (i32.store16 (i32.const 300) (i32.const 1))
+    (call $expect (i32.const 70) (call $lock (i32.load (i32.const 204)) (i32.const 1) (i32.const 300)) (i32.const 0))
+    (call $expect (i32.const 80) (call $lock (i32.load (i32.const 204)) (i32.const 0) (i32.const 300)) (i32.const 0))
+    (call $expect (i32.const 90) (i32.load16_s (i32.const 300)) (i32.const 2))
+    ;; a lock type that is none
+    (i32.store16 (i32.const 300) (i32.const 7))
+    (call $expect (i32.const 100) (call $lock (i32.load (i32.const 204)) (i32.const 1) (i32.const 300)) (i32.const 28))
+    (call $exit (i32.const 0))))
+"#;
+
+#[test]
+fn flock_and_record_locks_are_taken_and_released() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("locks", FILE_LOCKS),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+}
+
+#[test]
+fn record_locks_belong_to_a_process_while_it_runs() {
+    use wasmer_wasix::fs::{Conflict, FileLocks, RecordOwner, RecordType};
+    use wasmer_wasix::os::task::{OwnedTaskStatus, TaskStatus};
+    let owner = |pid: u32| {
+        let status = Arc::new(OwnedTaskStatus::new(TaskStatus::Running));
+        let owner = RecordOwner {
+            pid: pid.into(),
+            alive: Arc::downgrade(&status),
+        };
+        (owner, status)
+    };
+    let locks = FileLocks::default();
+    let file = Path::new("/work/r");
+    let (a, a_status) = owner(1);
+    let (b, _b_status) = owner(2);
+    locks
+        .set_record(file, &a, 0, 100, RecordType::Write)
+        .unwrap();
+    // A process never conflicts with itself, and a lock it takes over part
+    // of one of its own replaces that part.
+    locks
+        .set_record(file, &a, 50, 60, RecordType::Read)
+        .unwrap();
+    assert_eq!(
+        locks.set_record(file, &b, 10, 20, RecordType::Read),
+        Err(wasmer_wasix::wasmer_wasix_types::wasi::Errno::Again)
+    );
+    locks
+        .set_record(file, &a, 0, 50, RecordType::Unlock)
+        .unwrap();
+    locks
+        .set_record(file, &a, 60, 100, RecordType::Unlock)
+        .unwrap();
+    // What is left is a read lock over [50, 60), which another reader shares.
+    locks
+        .set_record(file, &b, 50, 60, RecordType::Read)
+        .unwrap();
+    assert_eq!(
+        locks.conflicting_record(file, b.pid, 0, u64::MAX, true),
+        Some(Conflict {
+            write: false,
+            start: 50,
+            end: 60,
+            pid: a.pid,
+        })
+    );
+    // A process that is gone holds nothing.
+    drop(a_status);
+    assert_eq!(
+        locks.conflicting_record(file, b.pid, 0, u64::MAX, true),
+        None
+    );
+    locks
+        .set_record(file, &b, 0, u64::MAX, RecordType::Write)
+        .unwrap();
+    // Closing any descriptor of the file releases all of a process's locks on it.
+    locks.release_records(file, b.pid);
+    let (c, _c_status) = owner(3);
+    locks
+        .set_record(file, &c, 0, u64::MAX, RecordType::Write)
+        .unwrap();
+}
+
+#[test]
+fn a_flock_is_held_until_its_description_has_no_descriptor() {
+    use wasmer_wasix::fs::{FileLocks, FlockOp};
+    let locks = FileLocks::default();
+    let file = Path::new("/work/f.lock");
+    let again = Err(wasmer_wasix::wasmer_wasix_types::wasi::Errno::Again);
+    let first = Arc::new(AtomicU64::new(0));
+    let second = Arc::new(AtomicU64::new(0));
+    locks.flock(file, &first, FlockOp::Exclusive).unwrap();
+    assert_eq!(locks.flock(file, &second, FlockOp::Shared), again);
+    // A duplicate of the first descriptor (or a forked child's copy of it)
+    // shares its description, and so its lock.
+    let duplicate = first.clone();
+    locks.flock(file, &duplicate, FlockOp::Exclusive).unwrap();
+    drop(first);
+    assert_eq!(locks.flock(file, &second, FlockOp::Shared), again);
+    drop(duplicate);
+    locks.flock(file, &second, FlockOp::Shared).unwrap();
+    let third = Arc::new(AtomicU64::new(0));
+    locks.flock(file, &third, FlockOp::Shared).unwrap();
+    assert_eq!(locks.flock(file, &third, FlockOp::Exclusive), again);
+    locks.flock(file, &second, FlockOp::Unlock).unwrap();
+    locks.flock(file, &third, FlockOp::Exclusive).unwrap();
 }

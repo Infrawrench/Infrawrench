@@ -77,6 +77,12 @@ function isPlainOutput(output: ResourceOutput | undefined): boolean {
   return output !== undefined && !output.sensitive && !output.hidden;
 }
 
+/**
+ * Resources, accounts, DNS, manifests and the other Infrastructure tools,
+ * which cannot be turned off and so carry no `product`, plus the few tools of
+ * other apps that read the same inventory: those name their app on the
+ * definition (`product`), which is all the app policy reads.
+ */
 export function genericTools(): ToolDefinition[] {
   return [
     {
@@ -222,6 +228,7 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       // Mirrors `GET /expiring`: the feed is computed over the org's resource set.
       permission: "resources:read",
+      product: "security",
       handler: async (input, auth) => {
         const severity = input["severity"] as string | undefined;
         const kind = input["kind"] as string | undefined;
@@ -271,6 +278,7 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       // Mirrors `GET /environment-diff`: it reads the same rows as the account pages.
       permission: "resources:read",
+      product: "delivery",
       handler: async (input, auth) => {
         const rows = await db
           .select({ id: accounts.id, displayName: accounts.displayName })
@@ -337,6 +345,7 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       // Mirrors `GET /posture`: the findings are computed over the org's resource set.
       permission: "resources:read",
+      product: "security",
       handler: async (input, auth) => {
         const severity = input["severity"] as string | undefined;
         const category = input["category"] as string | undefined;
@@ -387,6 +396,7 @@ export function genericTools(): ToolDefinition[] {
       // Mirrors `POST /posture/dismissals`: a statement about one resource,
       // the same trust level as changing it.
       permission: "resources:write",
+      product: "security",
       handler: async (input, auth) => {
         const dismissal = await dismissPostureFinding(auth.organizationId, {
           resourceId: input["resourceId"] as string,
@@ -419,6 +429,7 @@ export function genericTools(): ToolDefinition[] {
       },
       risk: "write",
       permission: "resources:write",
+      product: "security",
       handler: async (input, auth) => {
         const resourceId = input["resourceId"] as string;
         const ruleId = input["ruleId"] as string;
@@ -574,6 +585,7 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       // Mirrors `GET /status-pages`.
       permission: "resources:read",
+      product: "incidents",
       handler: async (_input, auth) => {
         const { pages } = await listStatusPages(auth.organizationId);
         return ok({
@@ -1065,6 +1077,11 @@ export function genericTools(): ToolDefinition[] {
       risk: "read",
       openWorld: true,
       permission: "resources:read",
+      // Time series are Observability's (client-core's `capabilityProduct`
+      // counts a `metrics` capability as Observability), so they follow that
+      // app's switch; `get_resource_stats`, the resource page's summary,
+      // stays with Infrastructure.
+      product: "observability",
       handler: async (input, auth) => {
         const {
           pluginId,

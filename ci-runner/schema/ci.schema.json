@@ -37,6 +37,10 @@
               }
             }
           }
+        },
+        "manual": {
+          "description": "Someone may start the pipeline by hand, on a branch they choose: from the CI tab or the API. `manual:` with nothing after it, `{}` and `true` turn it on; `inputs` are what the person fills in, read as ${{ inputs.<name> }}. Jobs see event == 'manual'.",
+          "oneOf": [{ "type": "null" }, { "type": "boolean" }, { "$ref": "#/$defs/manual" }]
         }
       }
     },
@@ -96,6 +100,50 @@
     }
   },
   "$defs": {
+    "githubTokenLevel": {
+      "enum": ["read", "write"],
+      "description": "`read` or `write`."
+    },
+    "manual": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "object",
+          "maxProperties": 32,
+          "description": "By name (letters, digits, _ and -, starting with a letter or _): read as ${{ inputs.<name> }} in env values, names, paths, list args, if: and concurrency groups, never in run: scripts or a one-line args.",
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_-]{0,63}$" },
+          "additionalProperties": { "$ref": "#/$defs/input" }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["string", "boolean", "choice", "number"],
+          "default": "string"
+        },
+        "description": { "type": "string", "maxLength": 1024 },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "A run cannot start without a value. One with a default always has one."
+        },
+        "default": {
+          "type": ["string", "boolean", "number"],
+          "description": "Read when a run gives no value, and on every other event. Without one: false for a boolean, empty otherwise."
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "A choice input's values."
+        }
+      }
+    },
     "cloud": {
       "type": "object",
       "additionalProperties": false,
@@ -364,6 +412,24 @@
           },
           "description": "Resource grants (by their CI name) whose every exported key becomes an environment variable, such as an R2 bucket's S3 endpoint and keys. The job's own `env:` wins. Masked like secrets."
         },
+        "github-token": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "actions": { "$ref": "#/$defs/githubTokenLevel" },
+            "checks": { "$ref": "#/$defs/githubTokenLevel" },
+            "contents": { "$ref": "#/$defs/githubTokenLevel" },
+            "deployments": { "$ref": "#/$defs/githubTokenLevel" },
+            "discussions": { "$ref": "#/$defs/githubTokenLevel" },
+            "issues": { "$ref": "#/$defs/githubTokenLevel" },
+            "packages": { "$ref": "#/$defs/githubTokenLevel" },
+            "pages": { "$ref": "#/$defs/githubTokenLevel" },
+            "pull-requests": { "$ref": "#/$defs/githubTokenLevel" },
+            "statuses": { "$ref": "#/$defs/githubTokenLevel" }
+          },
+          "description": "A GitHub token for the run's own repository with these permissions (GitHub Actions' names), minted for the run from the Infrawrench GitHub App's installation: `GH_TOKEN` and `GITHUB_TOKEN` for gh and the API, `GH_REPO`, and Git credentials so `git push` to the repository works. Lasts an hour from when the run starts. Masked like secrets. Never for a pull request from a fork."
+        },
         "args": {
           "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",
           "oneOf": [
@@ -473,7 +539,7 @@
           "type": "string",
           "pattern": "^([0-9]+[smh])+$",
           "default": "10m",
-          "description": "Up to 60m."
+          "description": "Up to 6h."
         },
         "memory": {
           "type": "string",
@@ -521,7 +587,7 @@
             "type": "string",
             "pattern": "^(builtin|repo):[a-z0-9_-]{1,64}@[0-9][0-9A-Za-z.-]*$"
           },
-          "description": "Tools an `env:` job's script can run by name, such as `builtin:gofmt@1.27`. Each becomes a command named after the tool, first on PATH. Tools with the tsc-host ABI (`builtin:typescript`) cannot run as commands."
+          "description": "Tools an `env:` job's script can run by name, such as `builtin:gofmt@1.27`. Each becomes a command named after the tool, first on PATH. Tools with the tsc-host ABI (`builtin:typescript`) cannot run as commands. A native tool (`builtin:bun@1.4`) runs the whole job in a gVisor sandbox, on a runner that offers one."
         },
         "network": {
           "type": "boolean",

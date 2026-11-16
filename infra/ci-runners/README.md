@@ -107,6 +107,56 @@ carry the runner's name (`ci-1.<id>`), so adding and removing hosts never
 sends a status request to the wrong one. Without `proxy_url`, set the
 proxy's `RUNNERS` variable to `ci-1=https://...,ci-2=https://...`.
 
+## Native jobs (gVisor), off by default
+
+A host with `native_sandbox = true` can run native programs (Bun) in a
+gVisor sandbox per job (`ci-runner/crates/iwci-sandbox`). The install
+script then:
+
+- downloads gVisor `release-20261109.0` for the host's architecture into
+  `/opt/iwci/lib/gvisor-20261109.0`, checked against the SHA-512 pinned in
+  the script (the same pins as `crates/iwci-sandbox/tests/fixtures.sh`);
+- creates the system user `iwci-sandbox`, which every Sentry runs as;
+- installs the sandbox service (`sandbox_service_path`, built by
+  `ci-runner/crates/iwci-sandbox-spawn/build.sh`, and only if it matches
+  the SHA-256 pinned for the host's architecture in
+  `ci-runner/crates/iwci-sandbox-spawn/sha256`; the build is reproducible,
+  and `build.sh --check` compares one; Terraform checks before the upload,
+  `install.sh` on a root-only copy before it installs it) as
+  `/opt/iwci/lib/sandbox/iwci-sandbox-spawn`, with
+  `files/iwci-sandbox-spawn.socket` and `files/iwci-sandbox-spawn@.service`.
+  Ubuntu keeps user namespaces from unprivileged programs, so the runner
+  asks this root service for each sandbox over
+  `/run/iwci-sandbox-spawn.sock` (group `iwci`, mode 0660, one instance per
+  connection). An instance checks the peer is `iwci`, takes a few checked
+  values and the sandbox's descriptors, never a command line or an
+  environment, starts only the Sentry at the pinned path once it and
+  gVisor's unmounter match the SHA-256 pins compiled in, as `iwci-sandbox`
+  with no supplementary group, straight into the job's cgroup (a directory
+  the runner owns), becomes `iwci-sandbox` itself, and kills the Sentry
+  when the runner asks or goes away (`crates/iwci-sandbox-spawn/src/service.rs`).
+  The unit narrows its capabilities to what that takes and filters its
+  system calls and address families; the runner keeps `NoNewPrivileges`.
+  A runner of another service protocol runs no native jobs until the
+  service is replaced, and says so. No AppArmor profile is involved, and
+  those of earlier versions are removed;
+- writes `Delegate=memory cpu pids` into the unit, so the runner has a
+  cgroup subtree of its own: it moves itself into `runner/` and gives each
+  sandbox `jobs/<id>`, with `memory.max` at the job's `memory:`,
+  `memory.swap.max` 0 (gVisor keeps a job's memory in one file the kernel
+  would rather swap than refuse) and `pids.max`;
+- sets `IWCI_SANDBOX_SERVICE` in the unit to the service's socket, and
+  `IWCI_NATIVE_SANDBOX` to that gVisor directory, which
+  is what makes the runner offer native tools (`tools: [builtin:bun@1.4]`;
+  `/v1/capacity` says `native_sandbox: true`).
+
+Turning it off removes the service and the delegation. To check a host
+after applying: `systemctl status iwci-sandbox-spawn.socket` is listening
+on `/run/iwci-sandbox-spawn.sock`; `systemctl show iwci -p Delegate` says
+`memory cpu pids`; and, with the service running,
+`cat /sys/fs/cgroup/system.slice/iwci.service/cgroup.subtree_control`
+lists the three controllers once the runner has made `runner/`.
+
 ## Not covered
 
 TLS and reachability are yours: a tunnel token, or a TLS front that the

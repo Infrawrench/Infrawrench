@@ -17,7 +17,6 @@ sidebar_order: 3
 | SSH terminal / SQL | Yes                    | Yes                    |
 | Audit log          | No                     | Yes                    |
 | Custom graphs      | No                     | Yes                    |
-| Deploy from GitHub | No (CLI deploys free)  | Yes                    |
 | API keys           | No                     | Yes                    |
 | AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
 | Price              | $0                     | $20 / seat / mo        |
@@ -73,7 +72,7 @@ The seats appear as soon as the payment is confirmed, and you get an invoice lik
 
 Good to know:
 
-- **A slot is a paid plan on its own.** An organization with a slot gets every paid feature (audit log, custom graphs, API keys, deploys) with no monthly subscription.
+- **A slot is a paid plan on its own.** An organization with a slot gets every paid feature (audit log, custom graphs, API keys) with no monthly subscription.
 - **Slots add to monthly seats.** Mixing is fine: buy slots for people who'll definitely be around for two years, and rent monthly seats for everyone else.
 - **Each purchase has its own term.** Three slots bought today expire together in two years. One more bought next month gets its own end date. The Billing page lists every purchase with its expiry.
 - **When a term ends, that capacity stops counting.** Nothing is deleted and nobody is removed, but you're over capacity, so invites are refused until you buy more or remove people. If slots were your only paid seats, the organization drops back to the free plan and keeps read-only access to anything over the free limits, just like a cancelled subscription.
@@ -99,16 +98,6 @@ Cancelling the monthly subscription doesn't affect [prepaid capacity slots](#pre
 There's no time-limited trial. The free plan doesn't expire, so you can try Infrawrench for as long as you like and upgrade when you're ready. Starting checkout without finishing payment doesn't change your plan.
 
 If your subscription includes a trial period (for example a promotional offer), the plan shows as a trial and works like the paid plan until the trial ends.
-
-## Hosted build time
-
-Deploys from the web app (including deploy-on-push) build on Infrawrench-hosted machines. If your deployment has build metering set up, that build time is billed per second alongside your seats. Each deploy run records how many seconds it used, and you can see it in the run history.
-
-These are never billed:
-
-- Plan-only previews, which don't build anything.
-- Builds on your own machine (`infrawrench deploy` locally) or on a `buildOn` host you provide.
-- Complimentary organizations.
 
 ## CI
 

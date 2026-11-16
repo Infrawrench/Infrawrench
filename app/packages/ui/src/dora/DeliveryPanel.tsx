@@ -712,7 +712,7 @@ export function DeliveryPanel({ client, onOpenUrl }: DeliveryPanelProps) {
           <p>{gt("No deploys in this range yet.")}</p>
           <p className="text-xs text-on-surface-faint">
             {gt(
-              "Delivery metrics come from Infrawrench deploys, deploys your connected providers already sync (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), CI pipelines named as deploys in the settings (Buildkite, CircleCI, GitLab, Bitbucket), GitHub deployments through the GitHub App, and deploys recorded over the API. Failures come from declared incidents and rollbacks.",
+              "Delivery metrics come from deploys your connected providers already sync (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), CI pipelines named as deploys in the settings (Buildkite, CircleCI, GitLab, Bitbucket), GitHub deployments through the GitHub App, and deploys recorded over the API. Failures come from declared incidents and rollbacks.",
             )}
           </p>
         </div>

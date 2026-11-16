@@ -1289,6 +1289,34 @@
       "when": 1794611568091,
       "tag": "0183_ci_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1794770628896,
+      "tag": "0184_ci_manual_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1794774957125,
+      "tag": "0185_ci_lend_peers",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1794789219121,
+      "tag": "0186_remove_infrafile_deploy",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1794824536132,
+      "tag": "0187_remove_org_features",
+      "breakpoints": true
     }
   ]
 }

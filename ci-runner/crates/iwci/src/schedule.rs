@@ -22,6 +22,10 @@
 //! A run may be shared with other runners (`split:`): see [`Split`] and
 //! the `split` module, which holds everything about it but the few places
 //! below where a job is claimed, deferred or reported.
+//!
+//! A job that misses the task cache while another run computes the same
+//! key waits for that run's entry rather than compute it too: see
+//! [`InFlight`] and the `inflight` module.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -40,6 +44,10 @@ use serde::Serialize;
 #[path = "schedule_split.rs"]
 mod split;
 pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
+
+#[path = "schedule_inflight.rs"]
+mod inflight;
+pub use inflight::{Ended, Holder, InFlight, InFlightTiming, Look, marker_id};
 
 /// Where a job writes its outputs, as `$IWCI_OUTPUT` tells it.
 pub const OUTPUT_PATH: &str = "/iwci/output";
@@ -112,6 +120,21 @@ pub trait Tools: Send + Sync {
     fn env_caches(&self, _tool: &Self::Tool) -> Vec<crate::env_cache::EnvCacheDecl> {
         Vec::new()
     }
+    /// For a native tool (`builtin:bun`), which puts its job in a gVisor
+    /// sandbox: what that sandbox takes beyond the job's `memory:`, which
+    /// the job reserves too. `None` for anything else.
+    fn sandbox_overhead(&self, _tool: &ToolRef) -> Option<u64> {
+        None
+    }
+}
+
+/// What a job reserves beyond its `memory:` for its sandbox, when one of
+/// its `tools:` is native ([`Tools::sandbox_overhead`]).
+fn sandbox_need<T: Tools>(tools: &T, job: &PlannedJob) -> Option<u64> {
+    job.tools
+        .iter()
+        .filter_map(|t| tools.sandbox_overhead(t))
+        .max()
 }
 
 pub struct Invocation<'a> {
@@ -364,6 +387,25 @@ pub struct Execution {
     /// The job was stopped because its run was cancelled.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub cancelled: bool,
+    /// The job ran in a gVisor sandbox (a native tool, `builtin:bun`):
+    /// what the sandbox itself took and what it reserved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<SandboxUsage>,
+}
+
+/// What a job's gVisor sandbox took besides the job: its peak and held
+/// memory above are the job's own share, as for a WASIX job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct SandboxUsage {
+    /// The sandbox's own memory (gVisor's kernel, the runner inside and
+    /// the environment's packages), measured before the job's script
+    /// started.
+    pub overhead_mib: u64,
+    /// What the runner reserved for it on top of the job's `memory:`, and
+    /// bills with it.
+    pub reserved_mib: u64,
+    /// The CPU time the whole sandbox used, gVisor's kernel's included.
+    pub cpu_ms: u64,
 }
 
 pub trait Executor<T>: Send + Sync {
@@ -497,6 +539,11 @@ pub struct JobReport {
     /// billed for it like any other of its jobs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<String>,
+    /// Set on a task cache hit whose entry another run saved while this
+    /// one waited for it, rather than compute the same key too: that run's
+    /// id. `cached` is true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waited_for: Option<String>,
     /// What it kept is not on this runner (a helper that could not be
     /// sent it), so the jobs that need it cannot run here.
     #[serde(skip)]
@@ -592,6 +639,10 @@ pub struct Options {
     /// The helper jobs running on this runner, every run's together, so
     /// its own runs can have their slots and memory back.
     pub helping: Option<Arc<Helping>>,
+    /// Which task cache keys other runs are computing now, so that a job
+    /// that missed waits for theirs rather than compute it too; `None`
+    /// never waits.
+    pub inflight: Option<Arc<dyn InFlight>>,
 }
 
 impl Options {
@@ -1147,24 +1198,34 @@ impl MemoryBudget {
     }
 
     /// Gives a finished job's memory back and wakes every run waiting.
+    ///
+    /// The lease leaves the running list and its bytes leave `used` under
+    /// the one lock [`MemoryBudget::admit`] reads both under. Given back
+    /// after the lock was let go, a run that looked in between saw memory
+    /// held that no running job would give back, so nothing protected the
+    /// first job in its order and a smaller one behind it started instead.
     fn release(&self, lease: &Lease) {
-        let bytes = {
+        {
             let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
             leases.running.retain(|r| r.id != lease.id);
             // Read under the lock a top-up holds, so none is lost.
-            lease.bytes.load(Ordering::SeqCst)
-        };
-        self.give(bytes);
+            self.take_back(lease.bytes.load(Ordering::SeqCst));
+        }
+        self.wake_all();
     }
 
     /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
+        self.take_back(bytes);
+        self.wake_all();
+    }
+
+    fn take_back(&self, bytes: u64) {
         let _ = self
             .used
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
                 Some(used.saturating_sub(bytes))
             });
-        self.wake_all();
     }
 
     fn wake_all(&self) {
@@ -1599,7 +1660,9 @@ struct State<'p> {
     /// Expanded `task-cache:` jobs whose entry has not been looked up yet,
     /// in [`Rank`] order, the next one last. A hit finishes from here;
     /// anything else moves on to `queue`.
-    lookups: Vec<(Rank, (&'p JobTemplate, PlannedJob))>,
+    /// One that waited for another run comes back here with what it
+    /// waited for.
+    lookups: Vec<(Rank, LookupEntry<'p>)>,
     /// Expanded jobs ready to run, each with what its lookup left it, in
     /// [`Rank`] order, the next one last.
     queue: Vec<(Rank, (&'p JobTemplate, PlannedJob, Lookup))>,
@@ -1609,6 +1672,8 @@ struct State<'p> {
     history: HashMap<String, u64>,
     /// What each job is remembered to have held, in MiB, by job id.
     held: HashMap<String, u64>,
+    /// [`sandbox_need`] with the run's tools.
+    sandbox: &'p (dyn Fn(&PlannedJob) -> Option<u64> + Sync),
     /// Cloud jobs ready to hand over: no slot and no memory.
     external: Vec<(&'p JobTemplate, PlannedJob)>,
     /// Per activated key: entries still running and the reports so far.
@@ -1630,7 +1695,13 @@ struct State<'p> {
     arrived: Vec<split::RemoteJob<'p>>,
     /// The keys whose jobs read a secret or are lent something.
     secretive: HashSet<String>,
+    /// Task-cached jobs that missed while another run computes the same
+    /// key, waiting for its entry; counted in `running`.
+    awaiting: Vec<inflight::Awaiting<'p>>,
 }
+
+/// A job on its way to a task cache lookup.
+type LookupEntry<'p> = (&'p JobTemplate, PlannedJob, Option<Box<inflight::Waited>>);
 
 impl<'p> State<'p> {
     fn enqueue(&mut self, rank: Rank, mut entry: (&'p JobTemplate, PlannedJob, Lookup)) {
@@ -1643,13 +1714,17 @@ impl<'p> State<'p> {
                 .map_or(UNKNOWN_DURATION_MS, |p| p.expected_ms)
         });
         entry.2.expected = Duration::from_millis(expected_ms);
+        entry.2.history_ms = self.history.get(&entry.1.id).copied();
         // Its `memory:`, or what it is expected to hold when the budget
-        // admits by that and the job has run before.
+        // admits by that and the job has run before; and a sandbox's own,
+        // which it holds whatever the job does.
+        entry.2.sandbox = (self.sandbox)(&entry.1);
         let limit = entry.1.memory_bytes;
-        entry.2.reserve = match &self.queued.budget {
+        let job = match &self.queued.budget {
             Some(budget) => budget.reserve(limit, self.held.get(&entry.1.id).copied()),
             None => limit,
         };
+        entry.2.reserve = job.saturating_add(entry.2.sandbox.unwrap_or(0));
         self.queued.add(entry.2.reserve);
         enqueue(&mut self.queue, rank, entry);
     }
@@ -1724,6 +1799,18 @@ struct Lookup {
     /// Its reservation once it has one, for its run to keep up to what
     /// the job holds ([`Gauge`]).
     lease: Option<Arc<Lease>>,
+    /// What it reserves beyond its `memory:` for its sandbox, when it has
+    /// one ([`sandbox_need`]). Such a job runs on this runner only.
+    sandbox: Option<u64>,
+    /// It waited for another run computing its key already: it does not
+    /// wait again.
+    waited: bool,
+    /// How long it took last time, when it has run before, set when it
+    /// joins the queue: what its marker tells a run that would wait.
+    history_ms: Option<u64>,
+    /// The run whose marker it waited on and that is gone: a marker of
+    /// that run is taken over as the job starts.
+    replacing: Option<String>,
 }
 
 /// How a task cache lookup went.
@@ -1732,6 +1819,8 @@ enum Looked {
     Done(Box<JobReport>),
     /// A miss, or an entry that could not be used: the job runs.
     Run(Lookup),
+    /// A miss while another run computes the same key: the job waits.
+    Wait(Box<inflight::Waiting>),
 }
 
 /// A key whose entries are running.
@@ -1771,6 +1860,7 @@ impl expr::Env for ConditionEnv<'_> {
             Name::Event => ctx.event.as_str().to_string(),
             Name::PipelineName => ctx.pipeline_name.clone(),
             Name::PullRequestNumber => ctx.pull_request_number(),
+            Name::Input { name } => ctx.inputs.get(name).cloned().unwrap_or_default(),
         }
     }
 
@@ -1829,7 +1919,9 @@ pub fn run<T: Tools>(
         .iter()
         .map(|(id, ms)| (id.clone(), *ms))
         .collect();
+    let sandbox = |job: &PlannedJob| sandbox_need(tools, job);
     let state = Mutex::new(State {
+        sandbox: &sandbox,
         waiting: plan.jobs.iter().collect(),
         finished: HashMap::new(),
         lookups: Vec::new(),
@@ -1855,6 +1947,7 @@ pub fn run<T: Tools>(
         remote: HashMap::new(),
         arrived: Vec::new(),
         secretive: HashSet::new(),
+        awaiting: Vec::new(),
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -1909,15 +2002,15 @@ pub fn run<T: Tools>(
         for _ in 0..if lookups { LOOKUPS } else { 0 } {
             scope.spawn(|| {
                 loop {
-                    let (rank, template, job, inherited) = {
+                    let (rank, template, job, waited, inherited) = {
                         let mut s = state.lock().unwrap();
                         loop {
                             let seen = wake.seen();
-                            if let Some((rank, (template, job))) = s.lookups.pop() {
+                            if let Some((rank, (template, job, waited))) = s.lookups.pop() {
                                 s.running += 1;
                                 let inherited =
                                     inherited_artifacts(plan, &template.key, &s.finished);
-                                break (rank, template, job, inherited);
+                                break (rank, template, job, waited, inherited);
                             }
                             if s.done {
                                 return;
@@ -1937,9 +2030,16 @@ pub fn run<T: Tools>(
                         checkout: &checkouts[job.workspace],
                     };
                     let mut kept = Vec::new();
-                    match look_up(
-                        &job, plan, &workspace, tools, options, &shared, &inherited, &mut kept,
-                    ) {
+                    let looked = match waited {
+                        // Back from waiting for another run: its entry.
+                        Some(waited) => {
+                            inflight::look_again(&job, plan, options, &shared, *waited, &mut kept)
+                        }
+                        None => look_up(
+                            &job, plan, &workspace, tools, options, &shared, &inherited, &mut kept,
+                        ),
+                    };
+                    match looked {
                         // A helper that could not even key the job says
                         // nothing about it: the primary's word is awaited.
                         Looked::Done(report) if helper && !report.cached => {
@@ -1958,7 +2058,29 @@ pub fn run<T: Tools>(
                             );
                         }
                         Looked::Done(report) => {
-                            complete(&state, &wake, plan, options, template, *report, kept)
+                            // A hit for a job a helper of this run ran is
+                            // that helper's: its record says how it went.
+                            let elsewhere = report
+                                .cached
+                                .then(|| sharing.and_then(|sh| sh.ran_elsewhere(&job)))
+                                .flatten();
+                            if let Some(holder) = elsewhere {
+                                let mut s = state.lock().unwrap();
+                                split::defer(
+                                    &mut s,
+                                    options,
+                                    split::RemoteJob {
+                                        template,
+                                        job,
+                                        lookup: Lookup::default(),
+                                        rank,
+                                        holder: Some(holder),
+                                        since: Instant::now(),
+                                    },
+                                );
+                            } else {
+                                complete(&state, &wake, plan, options, template, *report, kept)
+                            }
                         }
                         Looked::Run(lookup) => {
                             let mut s = state.lock().unwrap();
@@ -1967,9 +2089,21 @@ pub fn run<T: Tools>(
                             drop(s);
                             wake.notify_all();
                         }
+                        // Still counted in `running`, holding nothing else.
+                        Looked::Wait(waiting) => {
+                            let mut s = state.lock().unwrap();
+                            inflight::wait(&mut s, options, template, job, rank, *waiting);
+                            drop(s);
+                            wake.notify_all();
+                        }
                     }
                 }
             });
+        }
+        // Jobs waiting for another run's task cache entry: one thread looks
+        // at the store for all of them.
+        if lookups && let Some(inflight) = options.inflight.as_deref() {
+            scope.spawn(|| inflight::watch(inflight, &state, &wake, plan, options));
         }
         // A split run: one thread follows what the other runners write,
         // and a few read in the jobs they finished.
@@ -2049,7 +2183,9 @@ pub fn run<T: Tools>(
                                 Some(budget) => {
                                     let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
                                         bytes: l.reserve,
-                                        limit: j.memory_bytes,
+                                        limit: j
+                                            .memory_bytes
+                                            .saturating_add(l.sandbox.unwrap_or(0)),
                                         expected: l.expected,
                                     });
                                     match budget.admit(asks) {
@@ -2141,6 +2277,51 @@ pub fn run<T: Tools>(
                         complete(&state, &wake, plan, options, template, report, Vec::new());
                         continue;
                     }
+                    // Saved by another run while it queued: replayed, and
+                    // what it was about to start with given back. Not in a
+                    // split run, whose other runner's jobs are in the task
+                    // cache too and come in through their claims.
+                    let mut replayed = Vec::new();
+                    if sharing.is_none()
+                        && let Some(report) = inflight::landed_meanwhile(
+                            &job,
+                            plan,
+                            options,
+                            &shared,
+                            &lookup,
+                            &mut replayed,
+                        )
+                    {
+                        drop(slot);
+                        if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
+                            budget.release(lease);
+                        }
+                        complete(&state, &wake, plan, options, template, report, replayed);
+                        continue;
+                    }
+                    // Another run computing the same task cache key: this
+                    // job waits for its entry instead, giving back the
+                    // memory (and a helper's slot) it was about to start
+                    // with. Otherwise this run's marker says it computes it.
+                    let marker = match inflight::begin(options, &mut lookup) {
+                        inflight::Begun::Run(marker) => marker,
+                        inflight::Begun::Wait(holder) => {
+                            drop(slot);
+                            if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
+                                budget.release(lease);
+                            }
+                            let waiting = inflight::Waiting {
+                                key: lookup.key.clone().unwrap_or_default(),
+                                holder,
+                                lines: lookup.lines,
+                            };
+                            let mut s = state.lock().unwrap();
+                            inflight::wait(&mut s, options, template, job, rank, waiting);
+                            drop(s);
+                            wake.notify_all();
+                            continue;
+                        }
+                    };
                     // A helper's job can be stopped by itself, to give way,
                     // from the moment it holds a slot and memory.
                     let helped = helper
@@ -2152,6 +2333,12 @@ pub fn run<T: Tools>(
                     if let Some(sharing) = sharing
                         && let Err(holder) = sharing.claim(&job, lookup.local)
                     {
+                        // The runner that has the claim computes the key,
+                        // unless its record says it is done already.
+                        if let Some(marker) = marker {
+                            let done = sharing.split.done(&job.id).ok().flatten().is_some();
+                            marker.leave(done);
+                        }
                         drop(helped);
                         drop(slot);
                         if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
@@ -2211,8 +2398,14 @@ pub fn run<T: Tools>(
                     if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
                         budget.release(lease);
                     }
+                    // After its entry was saved, if it was: a run waiting
+                    // for it reads the entry as soon as the marker goes.
+                    let ended = inflight::ended(&report, saved.as_deref());
                     if let Some(sharing) = sharing {
                         if sharing.hands_back(&report) {
+                            if let Some(marker) = marker {
+                                marker.end(Ended::Stopped);
+                            }
                             // Stopped, or not run at all: the primary
                             // takes it, and this run waits for its word.
                             sharing.hand_back(&job.id);
@@ -2233,6 +2426,13 @@ pub fn run<T: Tools>(
                         sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
+                    // After its entry was saved, if it was, and after the
+                    // jobs that need it here are on their way: a run
+                    // waiting for it reads the entry once the marker goes,
+                    // which happens in the background.
+                    if let Some(marker) = marker {
+                        marker.end(ended);
+                    }
                 }
             });
         }
@@ -2446,13 +2646,18 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
             // A helper leaves a job too large for it to the primary.
             Ok(jobs)
                 if !helper
-                    && options
-                        .memory
-                        .as_ref()
-                        .is_some_and(|b| jobs.iter().any(|j| j.memory_bytes > b.total())) =>
+                    && options.memory.as_ref().is_some_and(|b| {
+                        jobs.iter().any(|j| {
+                            j.memory_bytes.saturating_add((s.sandbox)(j).unwrap_or(0)) > b.total()
+                        })
+                    }) =>
             {
                 let total = options.memory.as_ref().map_or(0, |b| b.total());
-                let asks = jobs.iter().map(|j| j.memory_bytes).max().unwrap_or(0);
+                let asks = jobs
+                    .iter()
+                    .map(|j| j.memory_bytes.saturating_add((s.sandbox)(j).unwrap_or(0)))
+                    .max()
+                    .unwrap_or(0);
                 let message = format!(
                     "asks for {} MiB of memory, more than the runner's whole limit of {} MiB (--memory)",
                     asks >> 20,
@@ -2485,8 +2690,11 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         entry: std::cmp::Reverse(i),
                         ..rank
                     };
+                    // A job in a sandbox stays on the runner that has the
+                    // run: a helper may not offer one.
                     if let Some(sharing) = sharing.as_ref().filter(|_| helper)
-                        && !split::runs_here(sharing, template, &job, &s.finished, options)
+                        && (!split::runs_here(sharing, template, &job, &s.finished, options)
+                            || (s.sandbox)(&job).is_some())
                     {
                         // Only the primary runs it; this run waits to hear
                         // how it went.
@@ -2506,7 +2714,7 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                     } else if job.cloud.is_some() {
                         cloud.push((template, job));
                     } else if job.task_cache.is_some() && options.caches.is_some() {
-                        enqueue(&mut s.lookups, rank, (template, job));
+                        enqueue(&mut s.lookups, rank, (template, job, None));
                     } else {
                         s.enqueue(rank, (template, job, Lookup::default()));
                     }
@@ -2596,6 +2804,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         access: template.access.clone(),
         cloud: None,
         remote: None,
+        waited_for: None,
         elsewhere: false,
     }
 }
@@ -2685,7 +2894,18 @@ fn look_up<T: Tools>(
                 )),
             }
         }
-        Ok(None) => lines.push(format!("task cache `{}`: miss", short_key(&key))),
+        Ok(None) => {
+            let line = format!("task cache `{}`: miss", short_key(&key));
+            // Another run is computing it now: wait for its entry.
+            if let Some(holder) = inflight::holder(options, &key) {
+                return Looked::Wait(Box::new(inflight::Waiting {
+                    key,
+                    holder,
+                    lines: vec![line],
+                }));
+            }
+            lines.push(line)
+        }
         Err(e) => lines.push(format!(
             "task cache `{}`: could not read the cache ({e}); running it",
             short_key(&key)
@@ -2736,8 +2956,13 @@ fn run_job<T: Tools>(
     };
     // What the app lent the job, checked before anything is built: a name
     // it did not supply, or refused, fails the job with the reason.
-    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
-    {
+    let lent = match crate::lent::for_job(
+        &options.access.lent,
+        &job.access,
+        options.access.trusted,
+        crate::runner::now_secs(),
+        job.timeout,
+    ) {
         Ok(lent) => lent,
         Err(reason) => return refused(job, shared.mask.mask(&reason), started.elapsed()),
     };
@@ -2787,7 +3012,7 @@ fn run_job<T: Tools>(
         gauge: gauge.clone(),
     });
     let fs = workspace.snapshot.fork_limited(write_budget.clone());
-    if let Err(e) = fs.write(OUTPUT_PATH, b"") {
+    if let Err(e) = fs.create_for_job(OUTPUT_PATH) {
         return errored(
             job,
             format!("could not create {OUTPUT_PATH}: {e}"),
@@ -2939,6 +3164,7 @@ fn run_job<T: Tools>(
     // the run does not have reads as empty, and the report says which; a
     // resource it was not lent fails the job.
     let mut notes = artifact_notes;
+    notes.extend(lent.notes.iter().cloned());
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
         let filled = entry.fill(
@@ -3348,6 +3574,7 @@ fn run_job<T: Tools>(
         access: job.access.clone(),
         cloud: None,
         remote: None,
+        waited_for: None,
         elsewhere: false,
     }
 }
@@ -3436,8 +3663,13 @@ fn run_external(
             None,
         );
     };
-    let lent = match crate::lent::for_job(&options.access.lent, &job.access, options.access.trusted)
-    {
+    let lent = match crate::lent::for_job(
+        &options.access.lent,
+        &job.access,
+        options.access.trusted,
+        crate::runner::now_secs(),
+        job.timeout,
+    ) {
         Ok(lent) => lent,
         Err(reason) => {
             return with_cloud(
@@ -3451,7 +3683,7 @@ fn run_external(
     env.push(("IWCI_JOB".into(), job.id.clone()));
     merge_env(&mut env, &lent.env);
     merge_env(&mut env, &job.env);
-    let mut notes = Vec::new();
+    let mut notes = lent.notes.clone();
     let mut secret_vars = Vec::new();
     for entry in &job.secret_env {
         let filled = entry.fill(
@@ -3673,6 +3905,7 @@ fn run_external(
             claimed_ms: claimed.map_or(0, millis),
         }),
         remote: None,
+        waited_for: None,
         elsewhere: false,
     }
 }
@@ -3995,6 +4228,7 @@ fn replay(
             held_memory_bytes: 0,
             service_failure: None,
             cancelled: false,
+            sandbox: None,
         }),
         changes: Vec::new(),
         commit: None,
@@ -4017,6 +4251,7 @@ fn replay(
         access: job.access.clone(),
         cloud: None,
         remote: None,
+        waited_for: None,
         elsewhere: false,
     })
 }
@@ -4171,6 +4406,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         access: job.access.clone(),
         cloud: None,
         remote: None,
+        waited_for: None,
         elsewhere: false,
     }
 }

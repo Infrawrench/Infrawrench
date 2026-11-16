@@ -479,4 +479,58 @@
 // gains optional `pipelineFile`, and `GET /api/org/:orgId/ci/schedules`
 // (`ci:read`) lists each repository's scheduled pipelines with their next
 // run. Additive (a new enum value, which clients decode leniently).
-export const API_VERSION = "1.108.0";
+// 1.109.0: CI manual runs. `POST /api/org/:orgId/ci/runs` (`ci:approve`)
+// starts a pipeline with `on.manual` on a branch of the repository, with
+// typed inputs, and answers the queued run; `GET /api/org/:orgId/ci/manual`
+// (`ci:read`) lists each repository's manual pipelines and their inputs.
+// `CiRun.event` gains `manual` and `CiRun` gains optional `inputs`.
+// Additive (a new enum value, which clients decode leniently).
+// 1.110.0: Fireworks' `reinforcement-fine-tuning-job`, `evaluator` and
+// `evaluation-job` leave the `resourceTypeId` enum: Fireworks removed managed
+// RFT, evaluators and evaluation jobs. Stored rows of those types are kept.
+// 1.111.0: CI uses resources as their peer. `CiResourceGrantInput` and
+// `CiResourceGrant` gain optional `peer`: the plugin a resource is used as
+// through its type's peer integration (a managed cluster as `kubernetes`),
+// with two separate switches, `lend` (`connections: [<ciName>]`) and
+// `jobKinds` (`cloud:` jobs), plus limits and `jobRegions`. An update of a
+// grant that has a peer must send it (409 otherwise). `CiResourceOutputs`
+// gains optional `peers`, each with what it `lends`, its `reach` and
+// `lifetime`, and why it is `unavailable`. Saving a grant that turns a job
+// kind or region on checks it through the peer and answers 409 when the
+// check fails. Additive.
+// 1.112.0: `CiRunStatus` gains `skipped`: a push or pull request no pipeline
+// runs on (`on:` or `paths:` left every one out) is recorded as `skipped`
+// rather than `passed`, without reaching the runners, and
+// `GET /api/org/:orgId/ci/runs` leaves these out unless `status=skipped`
+// asks for them. Additive (a new enum value, which clients decode leniently).
+// 1.113.0: the Infrafile Deploy feature is removed. Every `/deployments`
+// route goes (repos, envs, plan, runs, a run's cost impact, rollback and the
+// four trigger routes), with their schemas; `deployments` leaves the TabTarget
+// kind enum and the moment feed enum; `deployment` leaves the moment and
+// incident timeline link kinds; `infrafile` leaves the DORA event source enum;
+// `POST /cost-annotations/change-impact` accepts only the `change` subject
+// kind; and `deployments:plan` leaves the permission catalog. By the rule
+// above that is a major, and it is released as a minor deliberately, by the
+// owner's decision: the feature had no production use beyond test runs, and a
+// major would also move the Go SDK's module path. DORA keeps
+// `deployments:read` and `deployments:write`, and its `POST /dora/deployments`.
+// 1.114.0: pull request checks no longer single out a file named `Infrafile`:
+// `infrafile` leaves the `PrCheckReport` file kind enum, and such a file is
+// now skipped like any other file the check does not read. Narrowing a
+// response enum is a major by the rule above; it ships as a minor for the
+// same reason as 1.113.0, and reports stored before it lose those entries
+// when read, so a client never sees the old value.
+// 1.114.1: `GET /api/org/:orgId/audit-logs` and `GET /api/org/:orgId/changes`
+// answer `total` as the integer the spec always said, not a numeric string,
+// and the audit log keeps `page` and `pageSize` within their documented
+// ranges (`pageSize` above 200 reads as 200). Fixes; the audit log's paging
+// parameters gain descriptions.
+// 1.115.0: CI is on for every organization, so its per-organization rollout
+// goes: `GET /api/org/:orgId/features` and the platform admin's
+// `PUT /api/admin/organizations/:orgId/features/:feature` are removed with
+// `OrgFeatureName`, `OrgFeatureList`, `AdminFeatureUpdate` and
+// `AdminFeatureResult`, and `AdminOrganization` loses `features`. CI routes
+// no longer answer 404 for an organization nobody turned CI on for, and
+// `CiStatus.enabled` is always true (kept for clients that hide CI when it is
+// false). Removals ship as a minor by the owner's decision, as in 1.113.0.
+export const API_VERSION = "1.115.0";

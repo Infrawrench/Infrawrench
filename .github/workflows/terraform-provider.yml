@@ -5,8 +5,9 @@ name: Terraform provider (native)
 # because neither runs in a WebAssembly job yet:
 # - go vet: vet compiled for WebAssembly traps in its errorsas and hostport
 #   analyzers on this module's packages (an upstream Go bug: go.dev's own
-#   toolchain does the same under wasmtime), and a `go` process there can
-#   start only 511 children (#1082), fewer than `go vet ./...` needs.
+#   toolchain does the same under wasmtime). Rechecked on runner 0.3.32 with
+#   Go 1.27.4: every other analyzer passes there since #1082 was fixed, so
+#   those two are what keeps vet here.
 # - The docs check: tfplugindocs reads the schema by running a real
 #   Terraform, which loads the provider through go-plugin over a Unix domain
 #   socket, and a WASIX job has no Unix domain sockets (nor a Terraform built

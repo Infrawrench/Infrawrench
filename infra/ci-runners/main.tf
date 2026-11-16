@@ -8,6 +8,24 @@ locals {
 
   update_flags = var.update_channel == "" ? "" : "--update-channel ${var.update_channel}"
 
+  # Each native host's sandbox service binary and its pinned SHA-256: its
+  # own, or the default.
+  service = { for name, h in local.hosts : name => (
+    coalesce(h.native_sandbox, false) ? (h.sandbox_service_path != null && h.sandbox_service_path != "" ? h.sandbox_service_path : var.sandbox_service_path) : ""
+  ) }
+  # The pins are the ones reviewed in git, per architecture, beside the
+  # service's build script (it checks a build against them); a host or the
+  # whole set may name another.
+  service_pins = { for line in split("\n", trimspace(file("${path.module}/../../ci-runner/crates/iwci-sandbox-spawn/sha256"))) :
+    split(" ", line)[0] => split(" ", line)[1] if length(split(" ", line)) == 2
+  }
+  service_sha256 = { for name, h in local.hosts : name => (
+    !coalesce(h.native_sandbox, false) ? "" :
+    h.sandbox_service_sha256 != null && h.sandbox_service_sha256 != "" ? h.sandbox_service_sha256 :
+    var.sandbox_service_sha256 != "" ? var.sandbox_service_sha256 :
+    lookup(local.service_pins, coalesce(h.arch, "x86_64"), "")
+  ) }
+
   # One env file per host. Quoted for systemd's EnvironmentFile.
   env = { for name, h in local.hosts : name => join("\n", compact([
     "IWCI_SERVER_KEY=\"${replace(replace(var.server_key, "\\", "\\\\"), "\"", "\\\"")}\"",
@@ -22,9 +40,10 @@ locals {
   ])) }
 
   unit = { for name, h in local.hosts : name => templatefile("${path.module}/files/iwci.service.tftpl", {
-    listen        = h.listen
-    storage_quota = var.storage_quota
-    update_flags  = local.update_flags
+    listen         = h.listen
+    storage_quota  = var.storage_quota
+    update_flags   = local.update_flags
+    native_sandbox = coalesce(h.native_sandbox, false)
   }) }
 }
 
@@ -39,7 +58,22 @@ resource "terraform_data" "host" {
     file("${path.module}/files/install.sh"),
     each.value.tunnel_token == null ? "" : sha256(each.value.tunnel_token),
     each.value.zram == null ? "" : each.value.zram,
+    # A new sandbox service is installed where it is used.
+    local.service_sha256[each.key],
+    coalesce(each.value.native_sandbox, false) ? file("${path.module}/files/iwci-sandbox-spawn.socket") : "",
+    coalesce(each.value.native_sandbox, false) ? file("${path.module}/files/iwci-sandbox-spawn@.service") : "",
   ]))
+
+  lifecycle {
+    precondition {
+      condition     = !coalesce(each.value.native_sandbox, false) || (local.service[each.key] != "" && can(regex("^[0-9a-f]{64}$", local.service_sha256[each.key])))
+      error_message = "A host with native_sandbox needs the sandbox service: sandbox_service_path (ci-runner/crates/iwci-sandbox-spawn/build.sh), and a pin for its architecture in ci-runner/crates/iwci-sandbox-spawn/sha256 (or sandbox_service_sha256)."
+    }
+    precondition {
+      condition     = local.service[each.key] == "" || filesha256(local.service[each.key]) == local.service_sha256[each.key]
+      error_message = "sandbox_service_path is not the build pinned for this host (ci-runner/crates/iwci-sandbox-spawn/sha256, or sandbox_service_sha256)."
+    }
+  }
 
   # How to reach the host. Read through `self` because the destroy
   # provisioner below may not read anything else.
@@ -78,6 +112,28 @@ resource "terraform_data" "host" {
   provisioner "file" {
     content     = each.value.zram == null ? "" : each.value.zram
     destination = "/tmp/iwci-zram"
+  }
+  provisioner "file" {
+    content     = coalesce(each.value.native_sandbox, false) ? "true" : "false"
+    destination = "/tmp/iwci-native"
+  }
+  # The sandbox service and its pin, where native jobs are on (empty
+  # elsewhere), and its units.
+  provisioner "file" {
+    source      = local.service[each.key] == "" ? "${path.module}/files/empty" : local.service[each.key]
+    destination = "/tmp/iwci-sandbox-spawn.upload"
+  }
+  provisioner "file" {
+    content     = local.service_sha256[each.key]
+    destination = "/tmp/iwci-sandbox-spawn.sha256"
+  }
+  provisioner "file" {
+    source      = "${path.module}/files/iwci-sandbox-spawn.socket"
+    destination = "/tmp/iwci-sandbox-spawn.socket"
+  }
+  provisioner "file" {
+    source      = "${path.module}/files/iwci-sandbox-spawn@.service"
+    destination = "/tmp/iwci-sandbox-spawn@.service"
   }
   provisioner "file" {
     source      = "${path.module}/files/install.sh"

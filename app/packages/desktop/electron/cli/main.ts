@@ -97,6 +97,31 @@ function noColorRequested(argv: ReadonlyArray<string>): boolean {
   return (end === -1 ? argv : argv.slice(0, end)).includes("--no-color");
 }
 
+/**
+ * The status the process exits with: the command's own, or else whatever
+ * code underneath it left in `process.exitCode`. Node exits with that field
+ * when it runs out of work; Electron's `app.exit(code)` exits with its
+ * argument and never reads it, so a failure signalled the Node way would
+ * otherwise reach the shell as success.
+ */
+function cliExitStatus(commandStatus: number): number {
+  if (commandStatus !== 0) return commandStatus;
+  const pending = Number(process.exitCode ?? 0);
+  return Number.isInteger(pending) ? pending : 1;
+}
+
+/**
+ * Resolves once everything written to `stream` has left the process.
+ * `app.exit` ends the process at once, without the flush Node does on its
+ * own way out, and writes to a pipe are asynchronous on macOS: output past
+ * the pipe's 64 KiB buffer that a slower reader had not taken yet was lost.
+ * An empty write's callback runs after every write queued before it.
+ */
+function drained(stream: NodeJS.WriteStream): Promise<void> {
+  if (stream.writableLength === 0 || stream.destroyed) return Promise.resolve();
+  return new Promise((resolve) => stream.write("", () => resolve()));
+}
+
 export async function runCli(): Promise<void> {
   installTerminalGuards();
   // Terminal process: no GPU, no dock icon, as little Chromium as possible.
@@ -123,5 +148,6 @@ export async function runCli(): Promise<void> {
       exitCode = 1;
     }
   }
-  app.exit(exitCode);
+  await Promise.all([drained(process.stdout), drained(process.stderr)]);
+  app.exit(cliExitStatus(exitCode));
 }

@@ -61,15 +61,17 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/patch-module.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/python/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
 
   # The lisafs server (crates/iwci-sandbox) under gVisor's real kernel, on
   # both architectures the runners are: a busybox shell and Bun run in a
   # sandbox whose only file system is a job's, and the test checks what
   # they saw and what they changed. Root, because the sandbox is started
   # in new user namespaces, which Ubuntu's AppArmor keeps from other users
-  # (the runner hosts get a profile for it instead). gVisor and Bun are
-  # pinned by hash in tests/fixtures.sh.
+  # (the runner hosts use the root sandbox service instead, which these
+  # tests go through too, started per connection by systemd-socket-activate
+  # as systemd starts it). gVisor and Bun are pinned by hash in
+  # tests/fixtures.sh, the same release whose SHA-256 the service pins.
   sandbox:
     name: Sandbox under gVisor (${{ matrix.arch }})
     strategy:
@@ -99,15 +101,26 @@ jobs:
       - name: busybox
         run: sudo apt-get install -y --no-install-recommends busybox-static
 
+      # The sandbox service builds the same on any x86_64 Linux machine (a
+      # build on another architecture names its toolchain's host in the
+      # symbols), and the runner hosts install only the builds pinned in
+      # git: a change to it changes the pins in the same commit
+      # (crates/iwci-sandbox-spawn/build.sh).
+      - name: The sandbox service's pinned builds
+        if: matrix.arch == 'x86_64'
+        run: bash crates/iwci-sandbox-spawn/build.sh --check
+
       - name: gVisor and Bun, pinned
         run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"
 
-      # Built as the runner's user, run as root.
+      # Built as the runner's user, run as root in a scope with a cgroup
+      # subtree of its own, as the runner's unit delegates one on the hosts.
       - name: cargo test --test gvisor
         run: |
           bin=$(cargo test -p iwci-sandbox --test gvisor --no-run --message-format=json \
             | jq -r 'select(.profile.test == true and .target.name == "gvisor") | .executable')
-          sudo env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_BUSYBOX=/bin/busybox \
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env IWCI_REQUIRE_FIXTURES=1 IWCI_TEST_CGROUP=1 IWCI_TEST_BUSYBOX=/bin/busybox \
             IWCI_TEST_GVISOR="$IWCI_TEST_GVISOR" IWCI_TEST_BUN_ROOT="$IWCI_TEST_BUN_ROOT" \
             "$bin" --ignored --test-threads=1 --nocapture
 
@@ -162,6 +175,33 @@ jobs:
       # need a built environment skip here and run in ci-runner-builtins.yml.
       - name: cargo test --features node
         run: cargo test -p iwci -p iwci-runtime --features iwci/node
+
+  # The deployment CLIs (builtin:vercel, wrangler, cf and neon) are a tar of
+  # what `npm ci` installs, checked against a SHA-256 pinned per tool. A pin
+  # must hold whichever machine, architecture and npm builds it, or a
+  # publish from one would not match a build on another: build every tool
+  # on both architectures with each runner image's own Node and npm, and
+  # let builtins/npm-cli/build.sh check the pins. Nothing here runs them
+  # (ci-runner-builtins.yml does, on Edge.js).
+  npm-cli-trees:
+    name: npm-cli trees (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Build every tool and check its pin
+        run: |
+          node --version
+          npm --version
+          bash builtins/npm-cli/build.sh
 
   builtins:
     name: Builtins (gofmt, bash, tools)

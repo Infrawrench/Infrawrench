@@ -13,6 +13,7 @@ import {
   type CiCaches,
   type CiDownloadLink,
   type CiLogEvent,
+  type CiManualPipelines,
   type CiRun,
   type CiRunDetail,
   type CiSchedules,
@@ -20,7 +21,7 @@ import {
   type CiUsage,
   type CiValues,
 } from "@infrawrench/client-core";
-import { cloudClient } from "./cloud-client";
+import { cloudClient, withServerMessage } from "./cloud-client";
 import { getCloudGithubInstallUrl } from "./cloud-workflows";
 import { DesktopRpcClient, forkRpc, runRpc } from "./rpc/client";
 
@@ -146,6 +147,23 @@ export function createDesktopCiClient(): CiClient {
       runRpc(ci().retryRun({ params: { orgId: requireOrgId(), runId }, payload: { noTaskCache } })),
     cancelRun: (runId): Promise<CiRun> =>
       runRpc(ci().cancelRun({ params: { orgId: requireOrgId(), runId } })),
+    startRun: (request): Promise<CiRun> =>
+      runRpc(ci().startRun({ params: { orgId: requireOrgId() }, payload: request })),
+    listManual: async (): Promise<CiManualPipelines> => {
+      const { repositories } = await runRpc(ci().listManual({ params: { orgId: requireOrgId() } }));
+      return {
+        repositories: repositories.map((r) => ({
+          ...r,
+          pipelines: r.pipelines.map((p) => ({
+            ...p,
+            inputs: p.inputs.map((i) => ({
+              ...i,
+              ...(i.options ? { options: [...i.options] } : {}),
+            })),
+          })),
+        })),
+      };
+    },
     listCaches: async (): Promise<CiCaches> => {
       const { accounts } = await runRpc(ci().listCaches({ params: { orgId: requireOrgId() } }));
       return { accounts: accounts.map((a) => ({ ...a, repos: [...a.repos] })) };
@@ -198,17 +216,21 @@ export function createDesktopCiClient(): CiClient {
       )) as unknown as CiAccessOverview,
     setConnectionAccess: async (accountId, settings): Promise<CiConnectionAccess> =>
       (await runRpc(
-        ci().setConnectionAccess({
-          params: { orgId: requireOrgId(), accountId },
-          payload: settings,
-        }),
+        ci()
+          .setConnectionAccess({
+            params: { orgId: requireOrgId(), accountId },
+            payload: settings,
+          })
+          .pipe(withServerMessage),
       )) as unknown as CiConnectionAccess,
     preflightConnection: async (accountId, kind): Promise<CiConnectionAccess> =>
       (await runRpc(
-        ci().preflightConnection({
-          params: { orgId: requireOrgId(), accountId },
-          payload: { kind },
-        }),
+        ci()
+          .preflightConnection({
+            params: { orgId: requireOrgId(), accountId },
+            payload: { kind },
+          })
+          .pipe(withServerMessage),
       )) as unknown as CiConnectionAccess,
     searchResources: async (query): Promise<SearchResult[]> => [
       ...(await runRpc(
@@ -224,17 +246,29 @@ export function createDesktopCiClient(): CiClient {
       )) as unknown as CiResourceOutputs,
     createGrant: async (input): Promise<CiResourceGrant> =>
       (await runRpc(
-        ci().createGrant({ params: { orgId: requireOrgId() }, payload: input }),
+        ci()
+          .createGrant({ params: { orgId: requireOrgId() }, payload: input })
+          .pipe(withServerMessage),
       )) as unknown as CiResourceGrant,
     updateGrant: async (grantId, input): Promise<CiResourceGrant> =>
       (await runRpc(
-        ci().updateGrant({ params: { orgId: requireOrgId(), grantId }, payload: input }),
+        ci()
+          .updateGrant({ params: { orgId: requireOrgId(), grantId }, payload: input })
+          .pipe(withServerMessage),
       )) as unknown as CiResourceGrant,
     deleteGrant: async (grantId) => {
-      await runRpc(ci().deleteGrant({ params: { orgId: requireOrgId(), grantId } }));
+      await runRpc(
+        ci()
+          .deleteGrant({ params: { orgId: requireOrgId(), grantId } })
+          .pipe(withServerMessage),
+      );
     },
     revokeSshKeyLending: async (sshKeyId) => {
-      await runRpc(ci().revokeSshKeyLending({ params: { orgId: requireOrgId(), sshKeyId } }));
+      await runRpc(
+        ci()
+          .revokeSshKeyLending({ params: { orgId: requireOrgId(), sshKeyId } })
+          .pipe(withServerMessage),
+      );
     },
     listAllRepos: async () => {
       const orgId = requireOrgId();

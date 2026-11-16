@@ -894,7 +894,12 @@ impl InodeSocket {
     pub fn addr_peer(&self) -> Result<SocketAddr, Errno> {
         let inner = self.inner.protected.read().unwrap();
         match &inner.kind {
-            InodeSocketKind::BoundTcp { .. } => Err(Errno::Notconn),
+            // A listening socket has no peer: `ENOTCONN`, as on Linux, which
+            // is how Python's `ssl` tells a server's socket from a connected
+            // one (#1217). It was `ENOTSUP`, which it raised.
+            InodeSocketKind::BoundTcp { .. } | InodeSocketKind::TcpListener { .. } => {
+                Err(Errno::Notconn)
+            }
             InodeSocketKind::PreSocket { props, .. } => Ok(SocketAddr::new(
                 match props.family {
                     Addressfamily::Inet4 => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
@@ -1521,7 +1526,13 @@ impl InodeSocket {
                                 false => Poll::Pending,
                             };
                         }
-                        InodeSocketKind::PreSocket { .. } => {
+                        // iwci patch (#1217): what is not connected says so,
+                        // as on Linux; Python's `ssl` tries a listening
+                        // socket with a receive and takes ENOTCONN for "not
+                        // connected", but raised the ENOTSUP it got.
+                        InodeSocketKind::PreSocket { .. }
+                        | InodeSocketKind::BoundTcp { .. }
+                        | InodeSocketKind::TcpListener { .. } => {
                             return Poll::Ready(Err(Errno::Notconn));
                         }
                         _ => return Poll::Ready(Err(Errno::Notsup)),
@@ -1612,7 +1623,13 @@ impl InodeSocket {
                                 false => Poll::Pending,
                             };
                         }
-                        InodeSocketKind::PreSocket { .. } => {
+                        // iwci patch (#1217): what is not connected says so,
+                        // as on Linux; Python's `ssl` tries a listening
+                        // socket with a receive and takes ENOTCONN for "not
+                        // connected", but raised the ENOTSUP it got.
+                        InodeSocketKind::PreSocket { .. }
+                        | InodeSocketKind::BoundTcp { .. }
+                        | InodeSocketKind::TcpListener { .. } => {
                             return Poll::Ready(Err(Errno::Notconn));
                         }
                         _ => return Poll::Ready(Err(Errno::Notsup)),

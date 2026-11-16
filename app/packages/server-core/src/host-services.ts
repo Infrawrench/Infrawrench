@@ -508,7 +508,7 @@ function warehouseHostServices(): Pick<HostServices, "instancePricing"> {
 /**
  * `HostServices.ssh` for an account of a `jumpHost` plugin: a script run on
  * its own host, connected the way the terminal connects (pinned host keys,
- * the account's jump hosts). `ssh-exec.ts` holds the socket code and is
+ * the account's jump hosts), and the host's key when it is the pinned one. `ssh-exec.ts` holds the socket code and is
  * loaded on first use, so the edge never imports ssh2.
  */
 function sshHostServices(organizationId: string, accountId: string): SshHostServices {
@@ -522,6 +522,10 @@ function sshHostServices(organizationId: string, accountId: string): SshHostServ
         options?.timeoutMs ?? 300_000,
         accountResolver(organizationId),
       );
+    },
+    async hostKey() {
+      const { accountResolver, hostKeyOfAccountHost } = await import("./ssh-exec");
+      return hostKeyOfAccountHost(organizationId, accountId, accountResolver(organizationId));
     },
   };
 }

@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+iwci-sandbox-spawn.workspace = true
 iwci-vfs.workspace = true
 virtual-fs.workspace = true
 futures.workspace = true
@@ -15,3 +16,15 @@ serde_json.workspace = true
 # Shared memory, futexes, descriptor passing and namespaces. Already in the
 # tree.
 libc = "0.2"
+# The sandbox's network: a user-space TCP/IP stack standing in for every
+# host the job connects to (`net/`). Already in the tree, through
+# virtual-net; only IP-medium IPv4 and IPv6 TCP and UDP sockets are used.
+smoltcp = { version = "0.14", default-features = false, features = ["std", "alloc", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }
+
+# The sandbox service (`iwci-sandbox-spawn`), built here as well so that
+# this crate's gVisor tests start every sandbox through it.
+[[bin]]
+name = "iwci-sandbox-service-for-tests"
+path = "src/bin/service-for-tests.rs"
+test = false
+doc = false

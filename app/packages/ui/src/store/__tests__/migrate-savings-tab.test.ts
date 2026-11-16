@@ -71,11 +71,52 @@ describe("migrateWorkspaceTabs", () => {
   it("leaves already-migrated state untouched", () => {
     const state = persisted([savingsTab], "savings");
 
-    expect(migrateWorkspaceTabs(state, 1)).toBe(state);
+    expect(migrateWorkspaceTabs(state, 2)).toBe(state);
   });
 
   it("survives persisted state with no tab list", () => {
     expect(() => migrateWorkspaceTabs({}, 0)).not.toThrow();
     expect(() => migrateWorkspaceTabs(undefined, 0)).not.toThrow();
+  });
+});
+
+/**
+ * The Deploy page was removed outright. A persisted Deploy tab would be blank,
+ * and its kind would make `validate-tabs` reject the whole restore, so v2
+ * closes it.
+ */
+describe("migrateWorkspaceTabs: retired Deploy tab", () => {
+  const deployTab = { id: "deployments", target: { kind: "deployments" }, title: "Deploy" };
+
+  it("closes a Deploy tab and keeps the rest in order", () => {
+    const result = migrateWorkspaceTabs(persisted([dashboardTab, deployTab, costsTab]), 1);
+
+    expect(result.workspaceTabs).toEqual([dashboardTab, costsTab]);
+  });
+
+  it("moves the active tab off a closed Deploy tab", () => {
+    const result = migrateWorkspaceTabs(persisted([deployTab, costsTab], "deployments"), 1);
+
+    expect(result.activeWorkspaceTabId).toBe("costs");
+  });
+
+  it("leaves no active tab when Deploy was the only one", () => {
+    const result = migrateWorkspaceTabs(persisted([deployTab], "deployments"), 1);
+
+    expect(result.workspaceTabs).toEqual([]);
+    expect(result.activeWorkspaceTabId).toBeNull();
+  });
+
+  it("runs after the savings fold for state older than v1", () => {
+    const result = migrateWorkspaceTabs(persisted([savingsTab, deployTab], "deployments"), 0);
+
+    expect(result.workspaceTabs.map((t) => t.target.kind)).toEqual(["costs"]);
+    expect(result.activeWorkspaceTabId).toBe("costs");
+  });
+
+  it("leaves current state untouched", () => {
+    const state = persisted([deployTab], "deployments");
+
+    expect(migrateWorkspaceTabs(state, 2)).toBe(state);
   });
 });

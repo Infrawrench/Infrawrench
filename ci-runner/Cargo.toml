@@ -8,6 +8,7 @@ members = [
   "crates/iwci-deps",
   "crates/iwci-runtime",
   "crates/iwci-sandbox",
+  "crates/iwci-sandbox-spawn",
   "crates/iwci",
 ]
 # The builtin tools build for wasm32-wasip1 with their own lockfiles, and
@@ -28,6 +29,8 @@ iwci-store = { path = "crates/iwci-store" }
 iwci-git = { path = "crates/iwci-git" }
 iwci-deps = { path = "crates/iwci-deps" }
 iwci-runtime = { path = "crates/iwci-runtime" }
+iwci-sandbox = { path = "crates/iwci-sandbox" }
+iwci-sandbox-spawn = { path = "crates/iwci-sandbox-spawn" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -71,7 +74,8 @@ opt-level = 2
 # for when to remove it.
 #
 # virtual-net 0.705.0 with vendor/virtual-net.patch: closing a loopback
-# listener frees its port, so a job can listen on it again (#1009). See
+# listener frees its port, so a job can listen on it again (#1009), and the
+# first write after the peer closed is taken as Linux takes it (#1245). See
 # vendor/README.md for when to remove it.
 #
 # virtual-fs 0.705.0 with vendor/virtual-fs.patch: the in-memory file

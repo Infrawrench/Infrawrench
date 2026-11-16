@@ -107,6 +107,59 @@ pub struct Triggers {
     /// Cron expressions (UTC); a scheduled run uses the default branch.
     #[serde(default)]
     pub schedule: Vec<ScheduleEntry>,
+    /// Someone may start the pipeline by hand, on a branch they choose,
+    /// with these inputs. `manual:` with nothing after it, `manual: {}`
+    /// and `manual: true` all turn it on.
+    #[serde(default, deserialize_with = "manual_field")]
+    pub manual: Option<Manual>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Manual {
+    /// What the person starting a run fills in, read as
+    /// `${{ inputs.<name> }}`. In file order, which is the form's order.
+    #[serde(default)]
+    pub inputs: IndexMap<String, Input>,
+}
+
+/// One input of a manual run.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Input {
+    /// `string` (the default), `boolean`, `choice` or `number`.
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    /// Shown beside the field.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// A run cannot start without a value. An input with a `default` always
+    /// has one.
+    #[serde(default)]
+    pub required: bool,
+    /// A string, a boolean or a number, as the type takes it.
+    #[serde(default)]
+    pub default: Option<serde_yaml_ng::Value>,
+    /// A `choice` input's values.
+    #[serde(default)]
+    pub options: Vec<String>,
+}
+
+/// `on.manual`: present means on, whatever form it takes, except `false`.
+fn manual_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Manual>, D::Error> {
+    let value = serde_yaml_ng::Value::deserialize(d)?;
+    match value {
+        serde_yaml_ng::Value::Null | serde_yaml_ng::Value::Bool(true) => {
+            Ok(Some(Manual::default()))
+        }
+        serde_yaml_ng::Value::Bool(false) => Ok(None),
+        serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        _ => Err(serde::de::Error::custom(
+            "`manual` is `{}`, `true` or `{ inputs }`",
+        )),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -268,6 +321,11 @@ pub struct Job {
     /// variable, by their CI name. The job's own `env:` wins.
     #[serde(default)]
     pub env_from: Vec<String>,
+    /// A GitHub token for the run's own repository, minted for the run by
+    /// the app with these permissions (`contents: write`, ...), as
+    /// `GH_TOKEN`/`GITHUB_TOKEN` and Git credentials for the repository.
+    #[serde(default)]
+    pub github_token: Option<IndexMap<String, String>>,
     /// Arguments for a tool (`builtin:` / `repo:`), as a list or one string
     /// split like a shell would split it (no expansion).
     #[serde(default)]

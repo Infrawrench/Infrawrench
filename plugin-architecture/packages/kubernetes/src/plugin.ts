@@ -46,6 +46,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "kubeconfig",
+      tunnel: "kubeconfig",
       label: "Kubeconfig",
       description:
         "Paste the contents of your kubeconfig YAML, or link this to a DOKS cluster after adding.",

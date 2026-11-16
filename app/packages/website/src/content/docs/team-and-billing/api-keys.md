@@ -32,7 +32,7 @@ curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
-A key works against every endpoint under `/api/org/<orgId>/`: accounts, resources, costs, dashboards, workflows, deployments, schedules, the audit log and org config. Its scopes decide which of those it can actually call, and a few actions are [off limits to any key](#what-a-key-cannot-do). See the [API reference](./openapi.md) for the full list.
+A key works against every endpoint under `/api/org/<orgId>/`: accounts, resources, costs, dashboards, workflows, schedules, the audit log and org config. Its scopes decide which of those it can actually call, and a few actions are [off limits to any key](#what-a-key-cannot-do). See the [API reference](./openapi.md) for the full list.
 
 ## One key, one organization
 

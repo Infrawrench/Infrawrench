@@ -26,6 +26,7 @@ export const manifest = {
     {
       key: "environmentUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Environment URL",
       description:
         "The address of your Dynatrace environment, as shown in the browser: https://<id>.apps.dynatrace.com or https://<id>.live.dynatrace.com for SaaS, https://<host>/e/<environment-id> for Managed or an Environment ActiveGate.",

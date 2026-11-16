@@ -121,6 +121,9 @@ pub(crate) struct WasixShared {
     /// Edge.js's built-ins cache for each environment (builtins.rs).
     #[cfg_attr(not(feature = "node"), allow(dead_code))]
     pub(crate) builtins: crate::builtins::Builtins,
+    /// Set when this runtime runs a job inside its sandbox (`inside`).
+    #[cfg(target_os = "linux")]
+    pub(crate) sandbox: Option<crate::inside::Sandbox>,
 }
 
 impl WasixShared {
@@ -139,6 +142,8 @@ impl WasixShared {
             containers: Recent::default(),
             outside: None,
             builtins: Default::default(),
+            #[cfg(target_os = "linux")]
+            sandbox: None,
         }
     }
 
@@ -260,8 +265,16 @@ impl JobRuntime {
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
         // public internet when the runtime offers it.
-        let network = crate::network::JobNetwork::new(shared.outside.clone().filter(|_| internet))
-            .with_services(services);
+        let network = crate::network::JobNetwork::new(shared.outside.clone().filter(|_| internet));
+        // Inside its sandbox, a job's network is the sandbox's own.
+        #[cfg(target_os = "linux")]
+        let network = match &shared.sandbox {
+            Some(sandbox) => {
+                crate::network::JobNetwork::in_sandbox(sandbox.stack.clone(), internet)
+            }
+            None => network,
+        };
+        let network = network.with_services(services);
         let listeners = network.listeners();
         inner.set_networking_implementation(network);
         inner.http_client = None;
@@ -568,6 +581,13 @@ fn parse_package(
     Ok(parsed)
 }
 
+/// A job's native programs inside its sandbox (`inside::natives`); nothing
+/// elsewhere.
+#[cfg(target_os = "linux")]
+pub(crate) type Natives = Arc<crate::inside::natives::Natives>;
+#[cfg(not(target_os = "linux"))]
+pub(crate) type Natives = ();
+
 /// Where an environment job finds the runner's support files for Node.
 pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 
@@ -578,6 +598,8 @@ pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
     ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
+    ("pnpm-global.cjs", include_bytes!("../node/pnpm-global.cjs")),
+    ("spawn-path.cjs", include_bytes!("../node/spawn-path.cjs")),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
     ("wasm-util.cjs", include_bytes!("../node/wasm-util.cjs")),
     (
@@ -586,11 +608,23 @@ const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ),
 ];
 
+/// `npx`, for an environment job with `node`: npm's own, which Edge.js
+/// ships (its `npm` command is pnpm) without putting it on `PATH`. A tool of
+/// the same name wins over it.
+const NPX: &[u8] = b"#!/bin/bash\n\
+# npm's npx, from Edge.js's copy of npm (the runner's node support).\n\
+if [[ ! -f /npm/bin/npx-cli.js ]]; then\n\
+  echo 'npx: this environment has no npm to run it from; try pnpm dlx' >&2\n\
+  exit 127\n\
+fi\n\
+exec node /npm/bin/npx-cli.js \"$@\"\n";
+
 /// `NODE_OPTIONS` for an environment job: the support preload first, then
 /// whatever the job set.
 pub(crate) fn node_options(env: &[(String, String)]) -> String {
     let preload = format!("--require {NODE_SUPPORT_DIR}/preload.cjs");
     match env.iter().rev().find(|(k, _)| k == "NODE_OPTIONS") {
+        Some((_, v)) if v.contains(&preload) => v.clone(),
         Some((_, v)) if !v.trim().is_empty() => format!("{preload} {v}"),
         _ => preload,
     }
@@ -617,6 +651,7 @@ fn job_root(
     fs: crate::DynFs,
     scratch: Option<crate::DynFs>,
     commands: &[crate::PathCommand],
+    trees: &[crate::PathTree],
     node_support: bool,
     builtins: Option<&bytes::Bytes>,
     shell: bool,
@@ -624,6 +659,7 @@ fn job_root(
     listeners: &crate::network::Listeners,
     own_dirs: bool,
     package_dirs: &[BinaryPackageMount],
+    natives: Option<&Natives>,
 ) -> Result<MountFileSystem> {
     type Dyn = Arc<dyn FileSystem + Send + Sync>;
     let tracked =
@@ -683,6 +719,8 @@ fn job_root(
             tracked(scratch, crate::SCRATCH_MOUNT),
         ));
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = natives;
     if !commands.is_empty() || shell {
         let bin = TmpFileSystem::new();
         if shell {
@@ -693,15 +731,38 @@ fn job_root(
                 write_command(&bin, name, bytes)?;
             }
         }
+        if node_support {
+            write_command(&bin, "npx", NPX)?;
+        }
+        for tree in trees {
+            for (name, script) in &tree.scripts {
+                write_command(&bin, name, script)?;
+            }
+        }
         // A tool of the same name wins over a mode command.
         for command in commands {
             write_command(&bin, &command.name, &command.module.bytes)?;
+        }
+        // Inside a sandbox, the native programs' trampolines (`inside`).
+        #[cfg(target_os = "linux")]
+        if shell && let Some(natives) = natives {
+            for name in natives.names() {
+                let wasm = crate::inside::natives::trampoline(name).ok_or_else(|| {
+                    Error::Setup(format!("the native program `{name}` has no trampoline"))
+                })?;
+                write_command(&bin, name, &wasm)?;
+            }
         }
         mounts.push((
             "/usr/local/bin",
             "/",
             tracked(Arc::new(bin), "/usr/local/bin"),
         ));
+    }
+    // Each Node tool's files, read only and shared with every job that
+    // uses the same build.
+    for tree in trees {
+        mounts.push((tree.dir.as_str(), "/", tree.fs.clone()));
     }
     if node_support {
         let dir = TmpFileSystem::new();
@@ -744,8 +805,31 @@ fn job_root(
         let ports = crate::services::PortControl::new(listeners.clone());
         root.mount(Path::new(crate::services::PORTS_DIR), Arc::new(ports))
             .map_err(mount_err)?;
+        #[cfg(target_os = "linux")]
+        if let Some(natives) = natives {
+            let control = crate::inside::natives::NativeControl::new(natives.clone());
+            root.mount(
+                Path::new(crate::inside::natives::NATIVE_DIR),
+                Arc::new(control),
+            )
+            .map_err(mount_err)?;
+        }
     }
     Ok(root)
+}
+
+/// Makes the directory `HOME` names in a shell job's file system. The
+/// runner sets `HOME=/root` for every job, and nothing in an environment
+/// made it: `pnpm dlx` failed with "lstat '/root'", and `pnpm add -g` and
+/// npm's caches had nowhere to start from. Best effort: a `HOME` the job set
+/// somewhere it cannot be made is the job's to sort out.
+fn make_home(fs: &(dyn FileSystem + Send + Sync), env: &[(String, String)]) {
+    let Some((_, home)) = env.iter().rev().find(|(k, _)| k == "HOME") else {
+        return;
+    };
+    if home.starts_with('/') && home.len() > 1 {
+        let _ = iwci_vfs::create_dir_all(fs, home);
+    }
 }
 
 /// The user database of an environment job: `root`, who a job runs as
@@ -999,6 +1083,8 @@ pub(crate) struct Starter<'a> {
     pub(crate) node: bool,
     /// Edge.js's built-ins cache, for its `node`s (builtins.rs).
     pub(crate) builtins: Option<&'a bytes::Bytes>,
+    /// Inside a sandbox, the job's native programs (`inside`).
+    pub(crate) natives: Option<&'a Natives>,
 }
 
 /// What a [`Process`] runs.
@@ -1025,8 +1111,12 @@ pub(crate) struct Process<'a> {
     /// `tools:` on `PATH`; a `Command` gets the mode and service commands
     /// there as well.
     pub(crate) commands: &'a [crate::PathCommand],
+    /// Node tools' directories and commands, for a `Command` only.
+    pub(crate) trees: &'a [crate::PathTree],
     pub(crate) stdout: Box<dyn VirtualFile + Send + Sync + 'static>,
     pub(crate) stderr: Box<dyn VirtualFile + Send + Sync + 'static>,
+    /// Empty when `None`.
+    pub(crate) stdin: Option<Box<dyn VirtualFile + Send + Sync + 'static>>,
     /// A service's tree: its `/tmp` and its packages' directories are its
     /// own rather than the job's file system's (see `job_root`).
     pub(crate) own_dirs: bool,
@@ -1047,6 +1137,9 @@ impl Starter<'_> {
             builder.add_env("PWD", process.cwd);
         }
         builder.set_runtime(self.runtime.clone());
+        if shell {
+            make_home(self.fs.as_ref(), &process.env);
+        }
         let (program, package_dirs) = match process.program {
             Program::Command { uses, name } => {
                 let uses = with_user_database(&uses)?;
@@ -1064,6 +1157,7 @@ impl Starter<'_> {
             self.fs.clone(),
             self.scratch.cloned(),
             process.commands,
+            if shell { process.trees } else { &[] },
             self.node && shell,
             self.builtins,
             shell,
@@ -1071,6 +1165,7 @@ impl Starter<'_> {
             self.listeners,
             process.own_dirs,
             &package_dirs,
+            self.natives,
         )?);
         // WASIX programs ask the runtime for their working directory. Plain
         // WASI ones built on wasi-libc cannot be given one: their cwd is
@@ -1082,7 +1177,11 @@ impl Starter<'_> {
         builder
             .add_preopen_dir("/")
             .map_err(|e| Error::Setup(e.to_string()))?;
-        builder.set_stdin(Box::new(NullFile::default()));
+        builder.set_stdin(
+            process
+                .stdin
+                .unwrap_or_else(|| Box::new(NullFile::default())),
+        );
         builder.set_stdout(process.stdout);
         builder.set_stderr(process.stderr);
         builder.capabilities_mut().threading.max_threads = Some(MAX_TASKS);
@@ -1201,6 +1300,24 @@ pub(crate) fn run(
         Some(set) => binary_packages(shared, set, &runtime, tokio)?,
         None => Vec::new(),
     };
+    // A tool that runs on a command the environment lacks (a Node tool in
+    // `env:bash`) says so before anything starts.
+    for tree in &inv.trees {
+        if let Some(needed) = &tree.needs
+            && !uses
+                .iter()
+                .any(|package| package.commands.iter().any(|c| c.name() == needed))
+        {
+            return Err(Error::Setup(format!(
+                "`{}` (tools:) runs on `{needed}`, which this environment does not have: use one that has, such as env:bash-node@24",
+                tree.name
+            )));
+        }
+    }
+    // What a native program's shim starts comes from the same packages,
+    // with its own environment's defaults (`inside::shim`).
+    #[cfg(target_os = "linux")]
+    let shim_uses = uses.clone();
     // An environment job's `node` gets the runner's support files.
     let node_support = node.is_some() && matches!(entry, Entry::Command { .. });
     let mut env = inv.env.clone();
@@ -1221,6 +1338,15 @@ pub(crate) fn run(
         .with_sink(inv.log.clone(), crate::Stream::Stderr)
         .counting(written.clone());
 
+    // Inside a sandbox, the job's native programs and their sessions.
+    #[cfg(target_os = "linux")]
+    let natives: Option<Natives> = shared.sandbox.as_ref().map(|sandbox| {
+        Arc::new(crate::inside::natives::Natives::new(
+            sandbox.natives.clone(),
+        ))
+    });
+    #[cfg(not(target_os = "linux"))]
+    let natives: Option<Natives> = None;
     let starter = Starter {
         shared,
         job_modules,
@@ -1232,6 +1358,7 @@ pub(crate) fn run(
         listeners: &listeners,
         node: node.is_some(),
         builtins: builtins.as_ref(),
+        natives: natives.as_ref(),
     };
     let interrupt = || {
         #[cfg(feature = "node")]
@@ -1241,235 +1368,337 @@ pub(crate) fn run(
         control.interrupt_all();
     };
 
-    // The job's services first, each ready before the job starts
-    // (background.rs).
-    let deadline = started + inv.limits.timeout;
-    let mut services = Services::start(&starter, &inv.services, &stderr, &inv.cwd)?;
-    let cancel = inv.cancel.clone();
-    let cancelled = || cancel.as_ref().is_some_and(|c| c.is_cancelled());
-    if let Err(failure) = services.wait_ready(&starter, deadline, cancel.as_ref()) {
-        services.stop(&interrupt);
-        stderr.push(format!("iwci: {failure}\n").as_bytes());
-        let out = stdout.take();
-        let err = stderr.take();
-        let cancelled = cancelled();
-        return Ok(Outcome {
-            exit_code: if cancelled { TIMEOUT_EXIT_CODE } else { 1 },
-            stdout: out.bytes,
-            stderr: err.bytes,
-            truncated: out.truncated || err.truncated,
-            duration: started.elapsed(),
-            timed_out: false,
-            cancelled,
-            stalled_after: None,
-            out_of_memory: hit_memory.load(Ordering::Acquire),
-            peak_memory_bytes: meter.peak(),
-            held_memory_bytes: meter.held_peak(),
-            error: None,
-            service_failure: (!cancelled).then_some(failure),
-        });
-    }
+    // Inside a sandbox, native programs start the environment's commands
+    // through shims (`inside::shim`).
+    #[cfg(target_os = "linux")]
+    let shim_spawn = |request: crate::inside::natives::Request,
+                      stdio: crate::inside::shim::Stdio| {
+        shim_process(
+            &starter,
+            &shim_uses,
+            &inv.commands,
+            &inv.trees,
+            node.is_some(),
+            request,
+            stdio,
+        )
+    };
+    std::thread::scope(|scope| {
+        #[cfg(target_os = "linux")]
+        let shims = match &natives {
+            Some(_) => Some(
+                crate::inside::shim::Server::start(scope, &shim_spawn, tokio.handle().clone())
+                    .map_err(|e| Error::Setup(format!("listening for native programs: {e}")))?,
+            ),
+            None => None,
+        };
+        #[cfg(not(target_os = "linux"))]
+        let _ = scope;
+        let result = (|| -> Result<Outcome> {
+            // The job's services first, each ready before the job starts
+            // (background.rs).
+            let deadline = started + inv.limits.timeout;
+            let mut services = Services::start(&starter, &inv.services, &stderr, &inv.cwd)?;
+            let cancel = inv.cancel.clone();
+            let cancelled = || cancel.as_ref().is_some_and(|c| c.is_cancelled());
+            if let Err(failure) = services.wait_ready(&starter, deadline, cancel.as_ref()) {
+                services.stop(&interrupt);
+                stderr.push(format!("iwci: {failure}\n").as_bytes());
+                let out = stdout.take();
+                let err = stderr.take();
+                let cancelled = cancelled();
+                return Ok(Outcome {
+                    exit_code: if cancelled { TIMEOUT_EXIT_CODE } else { 1 },
+                    stdout: out.bytes,
+                    stderr: err.bytes,
+                    truncated: out.truncated || err.truncated,
+                    duration: started.elapsed(),
+                    timed_out: false,
+                    cancelled,
+                    stalled_after: None,
+                    out_of_memory: hit_memory.load(Ordering::Acquire),
+                    peak_memory_bytes: meter.peak(),
+                    held_memory_bytes: meter.held_peak(),
+                    error: None,
+                    service_failure: (!cancelled).then_some(failure),
+                    sandbox: None,
+                });
+            }
 
-    let program = match entry {
-        Entry::Module(module) => Program::Module(module),
-        Entry::Command { name, .. } => Program::Command {
-            uses,
-            name: name.to_string(),
-        },
-    };
-    let started_job = starter.start(Process {
-        name: program_name,
-        program,
-        args: inv.args.clone(),
-        env,
-        cwd: &inv.cwd,
-        commands: &inv.commands,
-        stdout: stdout.file(),
-        stderr: stderr.file(),
-        own_dirs: false,
-    });
-    let (mut handle, control_plane) = match started_job {
-        Ok(started) => started,
-        Err(e) => {
-            services.stop(&interrupt);
-            return Err(e);
-        }
-    };
-
-    let kill = || {
-        interrupt();
-        for_each_process(&control_plane, |process| {
-            process.signal_process(Signal::Sigkill)
-        });
-        services.kill();
-    };
-    let (result, stopped) = tokio.block_on(async {
-        let mut finished = Box::pin(handle.wait_finished());
-        let output = || written.load(Ordering::Relaxed);
-        let mut watch = caps
-            .stall_after
-            .and_then(|after| StallWatch::new(after, Instant::now(), output(), cpu.total()));
-        let stopped = loop {
-            let mut wake = match &watch {
-                Some(watch) => deadline.min(Instant::now() + watch.every()),
-                None => deadline,
+            let program = match entry {
+                Entry::Module(module) => Program::Module(module),
+                Entry::Command { name, .. } => Program::Command {
+                    uses,
+                    name: name.to_string(),
+                },
             };
-            if node.is_some() {
-                wake = wake.min(Instant::now() + MEMORY_POLL);
-            }
-            if !services.is_empty() {
-                wake = wake.min(Instant::now() + SERVICE_POLL);
-            }
-            if cancel.is_some() {
-                wake = wake.min(Instant::now() + crate::cancel::CANCEL_POLL);
-            }
-            let wake = tokio::time::Instant::from_std(wake);
-            if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
-                return (Some(result), None);
-            }
+            let started_job = starter.start(Process {
+                name: program_name,
+                program,
+                args: inv.args.clone(),
+                env,
+                cwd: &inv.cwd,
+                commands: &inv.commands,
+                trees: &inv.trees,
+                stdout: stdout.file(),
+                stderr: stderr.file(),
+                stdin: None,
+                own_dirs: false,
+            });
+            let (mut handle, control_plane) = match started_job {
+                Ok(started) => started,
+                Err(e) => {
+                    services.stop(&interrupt);
+                    return Err(e);
+                }
+            };
+
+            let kill = || {
+                interrupt();
+                for_each_process(&control_plane, |process| {
+                    process.signal_process(Signal::Sigkill)
+                });
+                services.kill();
+            };
+            let (result, stopped) = tokio.block_on(async {
+                let mut finished = Box::pin(handle.wait_finished());
+                let output = || written.load(Ordering::Relaxed);
+                let mut watch = caps.stall_after.and_then(|after| {
+                    StallWatch::new(after, Instant::now(), output(), cpu.total())
+                });
+                let stopped = loop {
+                    let mut wake = match &watch {
+                        Some(watch) => deadline.min(Instant::now() + watch.every()),
+                        None => deadline,
+                    };
+                    if node.is_some() {
+                        wake = wake.min(Instant::now() + MEMORY_POLL);
+                    }
+                    if !services.is_empty() {
+                        wake = wake.min(Instant::now() + SERVICE_POLL);
+                    }
+                    if cancel.is_some() {
+                        wake = wake.min(Instant::now() + crate::cancel::CANCEL_POLL);
+                    }
+                    let wake = tokio::time::Instant::from_std(wake);
+                    if let Ok(result) = tokio::time::timeout_at(wake, &mut finished).await {
+                        return (Some(result), None);
+                    }
+                    services.report_exits(&stderr);
+                    if let Some(node) = node {
+                        meter.set_heaps(node.heap_bytes(), node.held_heap_bytes());
+                    }
+                    if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
+                        break Stop::OutOfMemory;
+                    }
+                    if cancelled() {
+                        break Stop::Cancelled;
+                    }
+                    let now = Instant::now();
+                    if now >= deadline {
+                        break Stop::Timeout;
+                    }
+                    if let Some(watch) = &mut watch
+                        && watch.stalled(
+                            now,
+                            output(),
+                            cpu.total(),
+                            cpu.is_busy() || shared.store.is_working(),
+                        )
+                    {
+                        break Stop::Stalled;
+                    }
+                };
+                // An interrupt is best effort (it can land just before a guest
+                // enters wasm, and a process blocked in a syscall only sees the
+                // signal when it wakes), so both are repeated until the job ends.
+                let grace = Instant::now() + KILL_GRACE;
+                while Instant::now() < grace {
+                    kill();
+                    if let Ok(result) = tokio::time::timeout(KILL_POLL, &mut finished).await {
+                        return (Some(result), Some(stopped));
+                    }
+                }
+                // Still running: mark every process finished so the job returns.
+                // A guest stuck inside a host call keeps its pool thread until that
+                // call returns, but the job is over.
+                for_each_process(&control_plane, |process| {
+                    process.terminate(ExitCode::from(TIMEOUT_EXIT_CODE as u16))
+                });
+                let result = tokio::time::timeout(KILL_POLL, &mut finished).await.ok();
+                (result, Some(stopped))
+            });
+            // The job is over, so are its services; what they printed last is
+            // still theirs to say. The signals that stop them, and what the job
+            // left running, are not the job's.
             services.report_exits(&stderr);
+            control.signals.close();
+            if !services.is_empty() {
+                services.stop(&interrupt);
+            }
+            let timed_out = stopped == Some(Stop::Timeout);
+            let stalled = stopped == Some(Stop::Stalled);
+            let was_cancelled = stopped == Some(Stop::Cancelled);
+
+            let result = match result {
+                Some(result) => result,
+                None => Ok(ExitCode::from(TIMEOUT_EXIT_CODE as u16)),
+            };
+            let trap = control
+                .trap
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            let trapped = trap.clone();
+            // After the trap is read: stopping a process that spins in Wasm traps
+            // it, and that is not the job's crash.
+            stop_left_behind(&control_plane, &interrupt);
+            let (exit_code, error) = match result {
+                Ok(code) if code.raw() == ENOEXEC && trap.is_some() => (CRASH_EXIT_CODE, trap),
+                Ok(code) => (code.raw(), None),
+                Err(err) => match err.as_exit_code() {
+                    Some(code) => (code.raw(), None),
+                    None => (
+                        CRASH_EXIT_CODE,
+                        Some(trap.unwrap_or_else(|| err.to_string())),
+                    ),
+                },
+            };
+            let out = stdout.take();
+            let mut err = stderr.take();
+            let exhaustion = node.map(|node| node.exhaustion()).unwrap_or_default();
             if let Some(node) = node {
                 meter.set_heaps(node.heap_bytes(), node.held_heap_bytes());
             }
-            if node.is_some_and(|node| node.exhaustion().stops_the_job()) {
-                break Stop::OutOfMemory;
+            let failed = stopped.is_some() || exit_code != 0;
+            // Memory ran short for the job's Node (#964): a stopped heap ends the
+            // job; a refused isolate or buffer is the program's to handle, and is
+            // the reason only if the job then failed (as with a refused write).
+            let out_of_memory = hit_memory.load(Ordering::Acquire)
+                || exhaustion.stops_the_job()
+                || (failed && exhaustion.any());
+            // What the runner knows of a failure that the job's own output does not
+            // say, added to its log, which is all a one-off like #955 leaves behind.
+            let mut notes = Vec::new();
+            if out_of_memory && let Some(note) = exhaustion.note(inv.limits.memory_bytes) {
+                notes.push(note);
             }
-            if cancelled() {
-                break Stop::Cancelled;
+            if stopped.is_none() && exit_code != 0 {
+                // A trap in a child process or a guest thread: wasmer-wasix prints
+                // it on the runner's stderr and the script carries on, or fails
+                // somewhere else, with nothing to show for it.
+                if error.is_none()
+                    && let Some(trap) = trapped
+                {
+                    notes.push(format!(
+                    "iwci: a process or thread of the job crashed, which its exit status ({exit_code}) does not say:\n  {}\n",
+                    trap.replace('\n', "\n  ")
+                ));
+                }
+                // A job that died of a signal: who sent it.
+                notes.extend(control.signals.report(exit_code, &err.bytes));
             }
-            let now = Instant::now();
-            if now >= deadline {
-                break Stop::Timeout;
+            for note in notes {
+                let newline: &[u8] = if err.bytes.is_empty() || err.bytes.ends_with(b"\n") {
+                    b""
+                } else {
+                    b"\n"
+                };
+                for part in [newline, note.as_bytes()] {
+                    stderr.note(part);
+                    err.bytes.extend_from_slice(part);
+                }
             }
-            if let Some(watch) = &mut watch
-                && watch.stalled(
-                    now,
-                    output(),
-                    cpu.total(),
-                    cpu.is_busy() || shared.store.is_working(),
-                )
-            {
-                break Stop::Stalled;
-            }
-        };
-        // An interrupt is best effort (it can land just before a guest
-        // enters wasm, and a process blocked in a syscall only sees the
-        // signal when it wakes), so both are repeated until the job ends.
-        let grace = Instant::now() + KILL_GRACE;
-        while Instant::now() < grace {
-            kill();
-            if let Ok(result) = tokio::time::timeout(KILL_POLL, &mut finished).await {
-                return (Some(result), Some(stopped));
-            }
-        }
-        // Still running: mark every process finished so the job returns.
-        // A guest stuck inside a host call keeps its pool thread until that
-        // call returns, but the job is over.
-        for_each_process(&control_plane, |process| {
-            process.terminate(ExitCode::from(TIMEOUT_EXIT_CODE as u16))
-        });
-        let result = tokio::time::timeout(KILL_POLL, &mut finished).await.ok();
-        (result, Some(stopped))
-    });
-    // The job is over, so are its services; what they printed last is
-    // still theirs to say. The signals that stop them, and what the job
-    // left running, are not the job's.
-    services.report_exits(&stderr);
-    control.signals.close();
-    if !services.is_empty() {
-        services.stop(&interrupt);
-    }
-    let timed_out = stopped == Some(Stop::Timeout);
-    let stalled = stopped == Some(Stop::Stalled);
-    let was_cancelled = stopped == Some(Stop::Cancelled);
-
-    let result = match result {
-        Some(result) => result,
-        None => Ok(ExitCode::from(TIMEOUT_EXIT_CODE as u16)),
-    };
-    let trap = control
-        .trap
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take();
-    let trapped = trap.clone();
-    // After the trap is read: stopping a process that spins in Wasm traps
-    // it, and that is not the job's crash.
-    stop_left_behind(&control_plane, &interrupt);
-    let (exit_code, error) = match result {
-        Ok(code) if code.raw() == ENOEXEC && trap.is_some() => (CRASH_EXIT_CODE, trap),
-        Ok(code) => (code.raw(), None),
-        Err(err) => match err.as_exit_code() {
-            Some(code) => (code.raw(), None),
-            None => (
-                CRASH_EXIT_CODE,
-                Some(trap.unwrap_or_else(|| err.to_string())),
-            ),
-        },
-    };
-    let out = stdout.take();
-    let mut err = stderr.take();
-    let exhaustion = node.map(|node| node.exhaustion()).unwrap_or_default();
-    if let Some(node) = node {
-        meter.set_heaps(node.heap_bytes(), node.held_heap_bytes());
-    }
-    let failed = stopped.is_some() || exit_code != 0;
-    // Memory ran short for the job's Node (#964): a stopped heap ends the
-    // job; a refused isolate or buffer is the program's to handle, and is
-    // the reason only if the job then failed (as with a refused write).
-    let out_of_memory = hit_memory.load(Ordering::Acquire)
-        || exhaustion.stops_the_job()
-        || (failed && exhaustion.any());
-    // What the runner knows of a failure that the job's own output does not
-    // say, added to its log, which is all a one-off like #955 leaves behind.
-    let mut notes = Vec::new();
-    if out_of_memory && let Some(note) = exhaustion.note(inv.limits.memory_bytes) {
-        notes.push(note);
-    }
-    if stopped.is_none() && exit_code != 0 {
-        // A trap in a child process or a guest thread: wasmer-wasix prints
-        // it on the runner's stderr and the script carries on, or fails
-        // somewhere else, with nothing to show for it.
-        if error.is_none()
-            && let Some(trap) = trapped
+            Ok(Outcome {
+                exit_code: if stopped.is_some() {
+                    TIMEOUT_EXIT_CODE
+                } else {
+                    exit_code
+                },
+                stdout: out.bytes,
+                stderr: err.bytes,
+                truncated: out.truncated || err.truncated,
+                duration: started.elapsed(),
+                timed_out,
+                cancelled: was_cancelled,
+                stalled_after: caps.stall_after.filter(|_| stalled),
+                out_of_memory,
+                peak_memory_bytes: meter.peak(),
+                held_memory_bytes: meter.held_peak(),
+                error: if stopped.is_some() { None } else { error },
+                service_failure: None,
+                sandbox: None,
+            })
+        })();
+        // What native programs and their shims left running is the job's.
+        #[cfg(target_os = "linux")]
         {
-            notes.push(format!(
-                "iwci: a process or thread of the job crashed, which its exit status ({exit_code}) does not say:\n  {}\n",
-                trap.replace('\n', "\n  ")
-            ));
+            if let Some(shims) = &shims {
+                shims.stop();
+            }
+            if let Some(natives) = &natives {
+                natives.stop_all();
+            }
         }
-        // A job that died of a signal: who sent it.
-        notes.extend(control.signals.report(exit_code, &err.bytes));
+        result
+    })
+}
+
+/// Starts the command a native program's shim asked for (`inside::shim`):
+/// a package's command by its name, or anything else on the script's
+/// `PATH` (a tool, a mode command) through the shell.
+#[cfg(target_os = "linux")]
+fn shim_process(
+    starter: &Starter<'_>,
+    uses: &[BinaryPackage],
+    commands: &[crate::PathCommand],
+    trees: &[crate::PathTree],
+    node: bool,
+    request: crate::inside::natives::Request,
+    stdio: crate::inside::shim::Stdio,
+) -> Result<(TaskJoinHandle, WasiControlPlane)> {
+    let argv0 = request.args[0].clone();
+    let name = argv0.rsplit('/').next().unwrap_or(&argv0).to_string();
+    let mut env = request.env;
+    // The isolate's `node` gets the runner's preload, which a native
+    // program was not given (`inside::natives`).
+    if node {
+        let options = node_options(&env);
+        env.retain(|(k, _)| k != "NODE_OPTIONS");
+        env.push(("NODE_OPTIONS".into(), options));
     }
-    for note in notes {
-        let newline: &[u8] = if err.bytes.is_empty() || err.bytes.ends_with(b"\n") {
-            b""
-        } else {
-            b"\n"
-        };
-        for part in [newline, note.as_bytes()] {
-            stderr.note(part);
-            err.bytes.extend_from_slice(part);
-        }
-    }
-    Ok(Outcome {
-        exit_code: if stopped.is_some() {
-            TIMEOUT_EXIT_CODE
-        } else {
-            exit_code
+    let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).chain(["PWD"]).collect();
+    let uses = command_env_as_defaults(uses.to_vec(), &keys);
+    let provided = |n: &str| uses.iter().any(|p| p.get_command(n).is_some());
+    let (program, args) = if provided(&name) {
+        (name.clone(), request.args[1..].to_vec())
+    } else if name == "sh" && provided("bash") {
+        // bash started as `sh` is a POSIX shell, as `/bin/sh` is.
+        ("bash".to_string(), request.args[1..].to_vec())
+    } else {
+        let mut args = vec![
+            "-c".to_string(),
+            "exec \"$0\" \"$@\"".to_string(),
+            name.clone(),
+        ];
+        args.extend(request.args[1..].iter().cloned());
+        ("bash".to_string(), args)
+    };
+    starter.start(Process {
+        name: &name,
+        program: Program::Command {
+            uses,
+            name: program,
         },
-        stdout: out.bytes,
-        stderr: err.bytes,
-        truncated: out.truncated || err.truncated,
-        duration: started.elapsed(),
-        timed_out,
-        cancelled: was_cancelled,
-        stalled_after: caps.stall_after.filter(|_| stalled),
-        out_of_memory,
-        peak_memory_bytes: meter.peak(),
-        held_memory_bytes: meter.held_peak(),
-        error: if stopped.is_some() { None } else { error },
-        service_failure: None,
+        args,
+        env,
+        cwd: &request.cwd,
+        commands,
+        trees,
+        stdout: stdio.stdout,
+        stderr: stdio.stderr,
+        stdin: Some(stdio.stdin),
+        own_dirs: false,
     })
 }
 
@@ -1528,6 +1757,85 @@ pub(crate) fn prepare(
         }
     }
     Ok(())
+}
+
+/// `packages` parsed and loaded as a job of them loads them, held for as
+/// long as the result is (`inside`).
+#[cfg(target_os = "linux")]
+pub(crate) fn preload(
+    shared: &WasixShared,
+    tokio: &tokio::runtime::Runtime,
+    packages: &[WebcPackage],
+    entry: &str,
+) -> Result<PackageSet> {
+    let _enter = tokio.enter();
+    let set = PackageSet::new(shared, packages, true)?;
+    let job_modules = JobModules::new();
+    let runtime = JobRuntime::new(
+        shared,
+        &job_modules,
+        job_modules.engine().clone(),
+        Some(&set),
+        None,
+        false,
+        Arc::default(),
+        &[],
+    );
+    let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
+    // And the entry's module, which the job starts first.
+    for package in binary_packages(shared, &set, &runtime, tokio)? {
+        if let Some(command) = package.get_command(entry) {
+            let input = ModuleInput::Command(Cow::Borrowed(command));
+            if let Ok(key) = input.hash().as_bytes().try_into() {
+                let _ = shared
+                    .store
+                    .get(&job_modules, key, input.wasm(), Some(entry));
+            }
+        }
+    }
+    Ok(set)
+}
+
+/// [`prepare`], and the module keys of every command of `packages`, and
+/// their command names: what a sandboxed job's runner inside loads
+/// (`sandbox.rs`).
+#[cfg(target_os = "linux")]
+pub(crate) fn prepare_listing(
+    shared: &WasixShared,
+    tokio: &tokio::runtime::Runtime,
+    packages: &[WebcPackage],
+) -> Result<(Vec<WasmHash>, Vec<String>)> {
+    prepare(shared, tokio, packages)?;
+    let _enter = tokio.enter();
+    let set = PackageSet::new(shared, packages, true)?;
+    let job_modules = JobModules::new();
+    let runtime = JobRuntime::new(
+        shared,
+        &job_modules,
+        job_modules.engine().clone(),
+        Some(&set),
+        None,
+        false,
+        Arc::default(),
+        &[],
+    );
+    let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
+    let mut keys = Vec::new();
+    let mut names = Vec::new();
+    for package in binary_packages(shared, &set, &runtime, tokio)? {
+        for command in &package.commands {
+            let input = ModuleInput::Command(Cow::Borrowed(command));
+            if let Ok(key) = input.hash().as_bytes().try_into() {
+                keys.push(key);
+            }
+            names.push(command.name().to_string());
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    names.sort();
+    names.dedup();
+    Ok((keys, names))
 }
 
 /// Calls `f` on every process of the job: every one its control plane
@@ -1805,6 +2113,7 @@ mod job_root_tests {
             job.as_dyn(),
             None,
             &[],
+            &[],
             false,
             None,
             false,
@@ -1812,6 +2121,7 @@ mod job_root_tests {
             &crate::network::Listeners::default(),
             own_dirs,
             dirs,
+            None,
         )
         .unwrap()
     }

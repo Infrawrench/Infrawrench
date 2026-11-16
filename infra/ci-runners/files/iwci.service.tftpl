@@ -3,6 +3,10 @@
 Description=Infrawrench CI runner (iwci serve)
 After=network-online.target
 Wants=network-online.target
+%{ if native_sandbox ~}
+After=iwci-sandbox-spawn.socket
+Wants=iwci-sandbox-spawn.socket
+%{ endif ~}
 
 [Service]
 User=iwci
@@ -12,9 +16,9 @@ ExecStart=/opt/iwci/bin/iwci serve --listen ${listen} --cache /var/lib/iwci/cach
 Restart=always
 RestartSec=5
 # SIGTERM drains: no new runs, and running ones finish before it exits. The
-# longest a job may run is 60 minutes.
+# longest a job may run is 6 hours (`MAX_TIMEOUT_SECS` in iwci-spec).
 KillSignal=SIGTERM
-TimeoutStopSec=65min
+TimeoutStopSec=365min
 # An update replaces /opt/iwci/bin/iwci in place and execs it, so that
 # directory is writable; nothing else outside the cache is.
 NoNewPrivileges=yes
@@ -27,6 +31,19 @@ LimitNOFILE=65536
 # Node job runs in this process, so a fault in one is a crash of the runner,
 # and without a core there is no backtrace (#947).
 LimitCORE=infinity
+%{ if native_sandbox ~}
+# Native jobs run in gVisor sandboxes with a cgroup each, made in this
+# unit's subtree: the runner moves itself into runner/ and makes jobs/<id>
+# beside it (crates/iwci-sandbox, cgroup.rs).
+Delegate=memory cpu pids
+# Where gVisor is (install.sh installs this release): the runner offers
+# native tools (`builtin:bun`) only with it.
+Environment=IWCI_NATIVE_SANDBOX=/opt/iwci/lib/gvisor-20261109.0
+# What makes each sandbox's namespaces, which the runner may not: the
+# sandbox service's socket (iwci-sandbox-spawn.socket, install.sh,
+# crates/iwci-sandbox-spawn).
+Environment=IWCI_SANDBOX_SERVICE=/run/iwci-sandbox-spawn.sock
+%{ endif ~}
 
 [Install]
 WantedBy=multi-user.target

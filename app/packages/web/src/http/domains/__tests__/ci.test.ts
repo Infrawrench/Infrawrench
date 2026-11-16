@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
 // The CI store reaches Postgres, the runner pool and GitHub; these tests are
-// about the door: the feature gate, the permissions, the refusals and the
-// audit trail of approvals.
+// about the door: the permissions, the refusals and the audit trail of
+// approvals.
 class FakeCiInputError extends Error {
   constructor(
     message: string,
@@ -12,9 +12,9 @@ class FakeCiInputError extends Error {
     super(message);
   }
 }
-const mockHasFeature = vi.fn();
-vi.mock("@infrawrench/server-core/features", () => ({
-  orgHasFeature: (...a: unknown[]) => mockHasFeature(...a),
+const mockEnsureCiPrices = vi.fn();
+vi.mock("@/http/domains/billing/operations", () => ({
+  ensureCiPrices: (...a: unknown[]) => mockEnsureCiPrices(...a),
 }));
 const mockStatus = vi.fn();
 const mockSetAccount = vi.fn();
@@ -40,7 +40,9 @@ const mockOpenLogs = vi.fn();
 const mockRetry = vi.fn();
 const mockCancel = vi.fn();
 const mockDownloadLink = vi.fn();
+const mockStartManual = vi.fn();
 vi.mock("@infrawrench/server-core/ci/runs", () => ({
+  startManualRun: (...a: unknown[]) => mockStartManual(...a),
   openRunLogs: (...a: unknown[]) => mockOpenLogs(...a),
   CiInputError: FakeCiInputError,
   listRuns: (...a: unknown[]) => mockList(...a),
@@ -84,31 +86,29 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockHasFeature.mockResolvedValue(true);
+  mockEnsureCiPrices.mockResolvedValue([]);
 });
 
 describe("CI routes", () => {
-  it("answers the status whether or not CI is on", async () => {
-    mockHasFeature.mockResolvedValue(false);
+  it("serves every route to any organization, with nothing to turn on first", async () => {
     mockStatus.mockResolvedValue({
-      enabled: false,
+      enabled: true,
       configured: true,
       githubConfigured: true,
       planIncludesCi: true,
       accounts: [],
     });
-    const res = await app().request("/");
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ enabled: false });
-  });
+    const status = await app().request("/");
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({ enabled: true });
 
-  it("is a 404 everywhere else until CI is turned on for the org", async () => {
-    mockHasFeature.mockResolvedValue(false);
+    mockList.mockResolvedValue([]);
     const runs = await app().request("/runs");
-    expect(runs.status).toBe(404);
+    expect(runs.status).toBe(200);
+    mockApprove.mockResolvedValue(undefined);
     const approve = await app().request(`/runs/${RUN}/approve`, { method: "POST" });
-    expect(approve.status).toBe(404);
-    expect(mockApprove).not.toHaveBeenCalled();
+    expect(approve.status).toBe(200);
+    expect(mockApprove).toHaveBeenCalled();
   });
 
   it("reads the list's status and limit as sent", async () => {
@@ -301,6 +301,34 @@ describe("CI routes", () => {
     });
     expect(ok.status).toBe(200);
     expect(mockSetAccount).toHaveBeenLastCalledWith("org-1", 7, true, "user-1");
+    await settle();
+    expect(mockEnsureCiPrices).toHaveBeenCalledWith("org-1");
+  });
+
+  it("adds the CI prices to the subscription only when an account is turned on", async () => {
+    mockSetAccount.mockResolvedValue({
+      installationId: 7,
+      accountLogin: "acme",
+      accountType: "Organization",
+      ciEnabled: false,
+    });
+    const off = await app().request("/accounts/7", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(off.status).toBe(200);
+    await settle();
+    expect(mockEnsureCiPrices).not.toHaveBeenCalled();
+
+    // Best-effort: a Stripe failure does not fail the switch.
+    mockEnsureCiPrices.mockRejectedValueOnce(new Error("stripe down"));
+    const on = await app().request("/accounts/7", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(on.status).toBe(200);
+    await settle();
+    expect(mockEnsureCiPrices).toHaveBeenCalledWith("org-1");
   });
 
   it("retries under ci:approve only, dispatching and auditing the new run", async () => {
@@ -362,6 +390,91 @@ describe("CI routes", () => {
       body: JSON.stringify({}),
     });
     expect(waiting.status).toBe(409);
+    await settle();
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("starts a pipeline by hand under ci:approve only, dispatching and auditing its inputs", async () => {
+    const MANUAL = "44444444-4444-4444-8444-444444444444";
+    const body = {
+      installationId: 7,
+      repoFullName: "acme/web",
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      branch: "feature/x",
+      inputs: { urls: "$(id)\n'x'", force: true, shards: 3 },
+    };
+    const start = (permissions?: string[], payload: unknown = body) =>
+      app(permissions).request("/runs", { method: "POST", body: JSON.stringify(payload) });
+
+    // Watching runs and managing CI's settings is not enough: a manual run
+    // gets the repository's secrets, as a retry does.
+    const denied = await start(["ci:read", "ci:write"]);
+    expect(denied.status).toBe(403);
+    expect(mockStartManual).not.toHaveBeenCalled();
+
+    mockStartManual.mockResolvedValue({
+      id: MANUAL,
+      repoFullName: "acme/web",
+      event: "manual",
+      headRef: "feature/x",
+      sha: "c".repeat(40),
+      pullNumber: null,
+      headRepoFullName: null,
+      fromFork: false,
+      actorLogin: "someone@example.com",
+      status: "queued",
+      statusReason: null,
+      createdAt: "2026-11-15T10:00:00.000Z",
+      startedAt: null,
+      finishedAt: null,
+      jobs: null,
+      vcpuSeconds: null,
+      memoryGibSeconds: null,
+      githubUrl: "https://github.com/acme/web/commit/" + "c".repeat(40),
+      pipelineFile: ".infrawrench/ci/purge.yml",
+      inputs: { urls: "$(id)\n'x'", force: "true", shards: "3" },
+    });
+    const ok = await start(["ci:approve"]);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({
+      id: MANUAL,
+      event: "manual",
+      inputs: { urls: "$(id)\n'x'", force: "true" },
+    });
+    expect(mockStartManual).toHaveBeenCalledWith("org-1", "user-1", expect.any(String), body);
+    await settle();
+    expect(mockDispatch).toHaveBeenCalledWith(MANUAL);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ci.run.start",
+        entityId: MANUAL,
+        metadata: expect.objectContaining({
+          repo: "acme/web",
+          pipeline: ".infrawrench/ci/purge.yml",
+          branch: "feature/x",
+          inputs: { urls: "$(id)\n'x'", force: "true", shards: "3" },
+        }),
+      }),
+    );
+
+    // An input that is not a string, a boolean or a number never reaches it.
+    mockStartManual.mockClear();
+    mockDispatch.mockClear();
+    const nested = await start(undefined, { ...body, inputs: { urls: { $ne: 1 } } });
+    expect(nested.status).toBe(400);
+    const noFile = await start(undefined, { installationId: 7, repoFullName: "acme/web" });
+    expect(noFile.status).toBe(400);
+    expect(mockStartManual).not.toHaveBeenCalled();
+
+    // Its refusals keep their status, and nothing is dispatched.
+    mockStartManual.mockRejectedValueOnce(new FakeCiInputError("note is required.", 400));
+    const missing = await start();
+    expect(missing.status).toBe(400);
+    expect(await missing.text()).toContain("note is required.");
+    mockStartManual.mockRejectedValueOnce(
+      new FakeCiInputError("acme/web has no branch feature/x.", 404),
+    );
+    expect((await start()).status).toBe(404);
     await settle();
     expect(mockDispatch).not.toHaveBeenCalled();
   });

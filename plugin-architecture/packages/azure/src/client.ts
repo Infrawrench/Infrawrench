@@ -81,8 +81,10 @@ import { ARM, type AzureHttpContext } from "./shared.js";
 import { azureRequest } from "./http.js";
 import type {
   CiComputeStatus,
+  CiCredentialRequest,
   CiExecutorKind,
   CiHandle,
+  CiLentMaterial,
   CiPreflightResult,
   CiStartSpec,
   CiTaggedCompute,
@@ -94,6 +96,7 @@ import {
   azureCiStatus,
   azureCiTeardown,
 } from "./ci-executor.js";
+import { lendServicePrincipal } from "./ci-credential.js";
 import type { AzureCiCalls } from "./ci-shared.js";
 import {
   deleteStorageObject,
@@ -365,6 +368,11 @@ export class AzureClient implements PluginClient {
 
   ciListTagged(tagKey: string, regions: readonly string[]): PluginEffect<CiTaggedCompute[]> {
     return attempt(() => azureCiListTagged(this.ciCalls, tagKey, regions));
+  }
+
+  /** The service principal for a CI job (`manifest.ciCredential`, `ci-credential.ts`). */
+  lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendServicePrincipal(this.creds));
   }
 
   // ─── Context builders ──────────────────────────────────────────────────

@@ -105,7 +105,6 @@ export * from "./domains/custom-graphs";
 export * from "./domains/dashboard-notifications";
 export * from "./domains/dashboards";
 export * from "./domains/dependency-graph";
-export * from "./domains/deployments";
 export * from "./domains/digest";
 export * from "./domains/discovery";
 export * from "./domains/dns";
@@ -181,7 +180,6 @@ export * from "./domains/ssh-host-keys";
 export * from "./domains/ssh-keys";
 export * from "./domains/ssh-tunnels";
 export * from "./domains/starred";
-export * from "./domains/org-features";
 export * from "./domains/products";
 export * from "./domains/ci";
 export * from "./domains/status-incidents";
@@ -265,7 +263,6 @@ import { CustomGraphsApi } from "./domains/custom-graphs";
 import { DashboardNotificationsApi } from "./domains/dashboard-notifications";
 import { DashboardsApi } from "./domains/dashboards";
 import { DependencyGraphApi } from "./domains/dependency-graph";
-import { DeploymentsApi } from "./domains/deployments";
 import { DigestApi } from "./domains/digest";
 import { DiscoveryApi } from "./domains/discovery";
 import { DnsApi } from "./domains/dns";
@@ -341,7 +338,6 @@ import { SshHostKeysApi } from "./domains/ssh-host-keys";
 import { SshKeysApi } from "./domains/ssh-keys";
 import { SshTunnelsApi } from "./domains/ssh-tunnels";
 import { StarredApi } from "./domains/starred";
-import { OrgFeaturesApi } from "./domains/org-features";
 import { ProductsApi } from "./domains/products";
 import { CiApi } from "./domains/ci";
 import { StatusIncidentsApi } from "./domains/status-incidents";
@@ -430,7 +426,6 @@ export const API_DEFINITIONS = {
   "dashboard-notifications": DashboardNotificationsApi,
   dashboards: DashboardsApi,
   "dependency-graph": DependencyGraphApi,
-  deployments: DeploymentsApi,
   digest: DigestApi,
   discovery: DiscoveryApi,
   dns: DnsApi,
@@ -506,7 +501,6 @@ export const API_DEFINITIONS = {
   "ssh-keys": SshKeysApi,
   "ssh-tunnels": SshTunnelsApi,
   starred: StarredApi,
-  orgFeatures: OrgFeaturesApi,
   products: ProductsApi,
   ci: CiApi,
   "status-incidents": StatusIncidentsApi,

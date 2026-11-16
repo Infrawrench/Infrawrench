@@ -115,11 +115,9 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
   "bastion.create": "bastions:write",
   "bastion.revoke": "bastions:write",
 
-  // Automations and deploys.
+  // Automations.
   "workflow.run": "workflows:write",
   "workflow.delete": "workflows:write",
-  "deployment.plan": "deployments:plan",
-  "deployment.rollback": "deployments:write",
 
   // On-call and elevation.
   "page.raise": "pages:write",

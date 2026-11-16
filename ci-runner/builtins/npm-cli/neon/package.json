@@ -1,0 +1,8 @@
+{
+  "name": "iwci-builtin-neon",
+  "private": true,
+  "description": "builtin:neon, the Neon CLI pinned by package-lock.json (ci-runner/README.md, Deployment CLIs)",
+  "dependencies": {
+    "neon": "9.5.0"
+  }
+}

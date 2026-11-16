@@ -1,0 +1,60 @@
+# Written by infra/ci-runners (Terraform); edits here are overwritten.
+#
+# One per connection to iwci-sandbox-spawn.socket: checks the request,
+# starts the pinned gVisor Sentry in new namespaces as `iwci-sandbox`,
+# straight into the job's cgroup, becomes `iwci-sandbox` itself, and waits
+# (ci-runner/crates/iwci-sandbox-spawn, src/service.rs). Root only for that
+# start: making the namespaces, mapping the Sentry's user, joining the
+# runner's cgroup.
+#
+# Everything here also holds for the Sentry, which is this instance's child:
+# the system call filter, the address families and the capability bounding
+# set (whose three Sentry capabilities it drops itself before anything of
+# the job's runs). gVisor's systrap platform needs ptrace, and its memory is
+# mapped executable as a job's code (a JIT) needs, so @debug stays allowed
+# and MemoryDenyWriteExecute is off.
+
+[Unit]
+Description=Infrawrench CI runner sandbox %i
+CollectMode=inactive-or-failed
+
+[Service]
+Type=exec
+ExecStart=/opt/iwci/lib/sandbox/iwci-sandbox-spawn serve --peer iwci --sandbox-user iwci-sandbox --require-cgroup
+User=root
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+# Making user, mount, PID, IPC, UTS and network namespaces as root, mapping
+# them to another user (SETUID, SETGID), writing into the runner's cgroup
+# (DAC_OVERRIDE), and the Sentry's own three (SYS_ADMIN, SYS_CHROOT,
+# SETPCAP).
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_CHROOT CAP_SETPCAP CAP_SETUID CAP_SETGID CAP_DAC_OVERRIDE
+AmbientCapabilities=
+# Not here: under no_new_privs the kernel refuses this root service the
+# Sentry's user namespace (EPERM). The Sentry's process sets no_new_privs
+# itself, after its namespaces and before it runs the Sentry, so the
+# Sentry and everything under it run with it (src/spawn.rs).
+NoNewPrivileges=no
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=~@clock @cpu-emulation @module @obsolete @raw-io @reboot @swap
+UMask=0077
+# The instance and the Sentry's first moment only: `--require-cgroup` above
+# is what makes this enough, as every Sentry joins its job's cgroup (and
+# leaves this instance's) before it runs anything. Without it a Sentry
+# would stay here, and 16 tasks would not hold it.
+TasksMax=16
+LimitNOFILE=65536

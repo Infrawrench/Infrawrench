@@ -20,7 +20,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import type { CiEvent } from "@infrawrench/client-core";
+import type { CiEvent, CiInput } from "@infrawrench/client-core";
 
 import { accounts, organizations, users } from "./core-schema.js";
 
@@ -58,7 +58,9 @@ export type CiRunStatus =
   | "failed"
   | "error"
   | "rejected"
-  | "cancelled";
+  | "cancelled"
+  /** Nothing to run: no pipeline runs on the push or pull request. */
+  | "skipped";
 
 /**
  * One pipeline a run triggers, as the runners read it before the run starts
@@ -92,6 +94,8 @@ export interface CiJobAccess {
   /** Grant CI name to the outputs the job reads. */
   resources?: Record<string, string[]>;
   envFrom?: string[];
+  /** `github-token:`: each permission (GitHub Actions' names) and `read` or `write`. */
+  githubToken?: Record<string, string>;
   cloud?: Record<string, string>;
 }
 
@@ -114,10 +118,21 @@ export const ciRuns = pgTable(
     /**
      * A scheduled run's pipeline: the file whose `on.schedule` fired, and
      * its text as read from `sha`, which the runner runs instead of the
-     * commit's other pipelines. Null for pushes and pull requests.
+     * commit's other pipelines. A manual run has the file only: the runner
+     * reads it from `sha`. Null for pushes and pull requests.
      */
     pipelineFile: text("pipeline_file"),
     pipelineText: text("pipeline_text"),
+    /**
+     * A manual run's inputs, by name, as text: what the person starting it
+     * gave, checked against the default branch's declaration (the runner
+     * checks them again against the branch's own). Null for other events.
+     */
+    inputs: jsonb("inputs").$type<Record<string, string>>(),
+    /** Who started a manual run. */
+    startedByUserId: text("started_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     /** The branch, or `pull/<n>` for a pull request (its cache scope). */
     branch: text("branch").notNull(),
     /** The head branch's own name, for display. */
@@ -131,7 +146,7 @@ export const ciRuns = pgTable(
     headRepoFullName: text("head_repo_full_name"),
     /** A pull request from a fork: needs a maintainer's approval and never gets secrets. */
     fromFork: boolean("from_fork").notNull().default(false),
-    /** Who opened the pull request or pushed. */
+    /** Who opened the pull request or pushed (a GitHub login), or who started a manual run. */
     actorLogin: text("actor_login"),
     /** The run this one retries: same commit, branch and event. */
     retryOfRunId: text("retry_of_run_id").references((): AnyPgColumn => ciRuns.id, {
@@ -206,6 +221,13 @@ export interface CiScheduleEntry {
   text: string;
 }
 
+/** One pipeline file with `on.manual`, as the runners read it. */
+export interface CiManualEntry {
+  file: string;
+  name: string;
+  inputs: CiInput[];
+}
+
 /**
  * A repository's `on.schedule` pipelines on its default branch, which the
  * `ci` poller pass fires (the runners keep no clock). A row appears with the
@@ -227,6 +249,12 @@ export const ciSchedules = pgTable(
     /** The default branch's head the pipelines were read from; null before the first read. */
     sha: text("sha"),
     pipelines: jsonb("pipelines").$type<CiScheduleEntry[]>().notNull().default([]),
+    /**
+     * Its pipelines with `on.manual`, read with the scheduled ones: what the
+     * CI tab offers to start by hand. Null until the first read that knew
+     * about them, which makes the row due a read.
+     */
+    manual: jsonb("manual").$type<CiManualEntry[]>(),
     /** Why the last read failed, or which files did not parse. */
     error: text("error"),
     /** When to read the default branch again; a push sets it to now. */
@@ -352,6 +380,48 @@ export const ciResourceGrants = pgTable(
     secretVersion: text("secret_version"),
     repos: jsonb("repos").$type<string[] | null>(),
     branchPattern: text("branch_pattern"),
+    /**
+     * The resource's incarnation when it was granted (`resources.incarnation`).
+     * A resource deleted and created again under the same id has another, and
+     * the grant no longer holds for it.
+     */
+    resourceIncarnation: integer("resource_incarnation").notNull().default(0),
+    /**
+     * The plugin the resource is used as, when it is: one its type has a peer
+     * integration with a CI declaration for (a managed cluster as
+     * `kubernetes`, a managed database as `postgres`). What it may do as that
+     * peer is two separate switches: `peerLendEnabled` and `peerJobKinds`.
+     * Null: only the ticked outputs are granted.
+     */
+    peerPluginId: text("peer_plugin_id"),
+    /** `connections: [<ciName>]` lends the resource as a connection of the peer would be. */
+    peerLendEnabled: boolean("peer_lend_enabled").notNull().default(false),
+    /** The kinds of cloud job (`cluster`, ...) that may run on the peer; empty for none. */
+    peerJobKinds: jsonb("peer_job_kinds").$type<string[]>().notNull().default([]),
+    peerMaxConcurrentJobs: integer("peer_max_concurrent_jobs").notNull().default(2),
+    peerMaxJobMinutes: integer("peer_max_job_minutes").notNull().default(60),
+    /**
+     * Where else, besides where each kind was checked (its preflight's
+     * `region`, a cluster's home namespace), a job may ask to run with
+     * `cloud.region`. Each is checked when it is added.
+     */
+    peerJobRegions: jsonb("peer_job_regions").$type<string[]>().notNull().default([]),
+    /** The last permission check per kind, as the peer plugin answered it. */
+    peerPreflight: jsonb("peer_preflight")
+      .$type<
+        Record<
+          string,
+          {
+            ok: boolean;
+            missing: Array<{ permission: string; label: string }>;
+            problems: string[];
+            region?: string;
+            checkedAt: string;
+          }
+        >
+      >()
+      .notNull()
+      .default({}),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -393,6 +463,12 @@ export const ciCloudJobs = pgTable(
     jobName: text("job_name").notNull(),
     pipeline: text("pipeline").notNull(),
     accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    /**
+     * For a job on a resource granted as its peer (a managed cluster run as
+     * `kubernetes`): the resource, whose peer client (`pluginId`) starts,
+     * follows and tears the job down. Null for a job on the connection itself.
+     */
+    peerResourceId: text("peer_resource_id"),
     pluginId: text("plugin_id").notNull(),
     kind: text("kind").notNull(),
     machine: text("machine"),

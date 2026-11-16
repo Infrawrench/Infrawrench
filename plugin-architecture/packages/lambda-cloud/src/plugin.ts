@@ -10,7 +10,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
 export const manifest = {
   id: "lambda-cloud",
-  egressHosts: ["cloud.lambda.ai"],
+  egressHosts: ["cloud.lambda.com"],
   displayName: "Lambda Cloud",
   description:
     "GPU cloud. On-demand instances with live capacity and price pickers, launch, restart and terminate, persistent filesystems, firewall rulesets and SSH keys.",
@@ -20,10 +20,10 @@ export const manifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A Lambda Cloud API key, from the Lambda Cloud dashboard's API keys page (cloud.lambda.ai/api-keys), Generate API key. Keys are team-wide and carry full access; Lambda shows the key only once.",
+        "A Lambda Cloud API key, from the Lambda Cloud dashboard's API keys page (cloud.lambda.com/api-keys), Generate API key. Keys are team-wide and carry full access; Lambda shows the key only once.",
       sensitive: true,
       placeholder: "secret_…",
-      helpLink: { label: "Lambda Cloud API keys", url: "https://cloud.lambda.ai/api-keys" },
+      helpLink: { label: "Lambda Cloud API keys", url: "https://cloud.lambda.com/api-keys" },
     },
     caCertCredentialField,
   ]),

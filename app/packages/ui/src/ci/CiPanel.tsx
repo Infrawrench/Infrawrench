@@ -14,6 +14,7 @@ import {
 } from "@infrawrench/client-core";
 import type { CiClient } from "./types.js";
 import { CiCachesCard } from "./CiCachesCard.js";
+import { CiManualCard } from "./CiManualCard.js";
 import { CiSchedulesCard } from "./CiSchedulesCard.js";
 import { CiValuesCard } from "./CiValuesCard.js";
 import { CiAccessCard } from "./CiAccessCard.js";
@@ -32,7 +33,7 @@ export interface CiPanelProps {
    * grants, cloud jobs). Defaults to off.
    */
   canManageAccess?: boolean | undefined;
-  /** `ci:approve`: approve or reject forks' pull requests, and retry and cancel runs. */
+  /** `ci:approve`: approve or reject forks' pull requests, retry and cancel runs, and start manual ones. */
   canApprove: boolean;
   /**
    * Open a link (GitHub, the App install page). Desktop passes its
@@ -71,6 +72,8 @@ export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
       return gt("Rejected");
     case "cancelled":
       return gt("Cancelled");
+    case "skipped":
+      return gt("Nothing to run");
   }
 }
 
@@ -536,6 +539,19 @@ function RunSource({ run }: { run: CiRun }) {
       </span>
     );
   }
+  if (run.event === "manual") {
+    return (
+      <span>
+        {run.pipelineFile
+          ? gt("Started by hand: {file} on {branch}", {
+              file: run.pipelineFile,
+              branch: run.headRef,
+            })
+          : gt("Started by hand on {branch}", { branch: run.headRef })}
+        {run.retryOfRunId ? <RetryTag /> : null}
+      </span>
+    );
+  }
   if (run.event === "schedule") {
     return (
       <span>
@@ -560,6 +576,32 @@ function RetryTag() {
     <span className="ml-1 rounded bg-surface-sunken px-1 text-[10px] text-on-surface-faint">
       {gt("retry")}
     </span>
+  );
+}
+
+/** A manual run's inputs, as it was started with them. */
+function RunInputs({ run }: { run: CiRun }) {
+  const gt = useGT();
+  const entries = Object.entries(run.inputs ?? {});
+  if (run.event !== "manual") return null;
+  return (
+    <div className="text-xs text-on-surface-muted">
+      {entries.length === 0 ? (
+        <p>{gt("Started with every input at its default.")}</p>
+      ) : (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          {entries.map(([name, value]) => (
+            <div key={name} className="contents">
+              <dt className="font-mono text-on-surface-faint">{name}</dt>
+              <dd className="font-mono break-all whitespace-pre-wrap text-on-surface">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {run.actorLogin ? (
+        <p className="mt-0.5">{gt("Started by {who}", { who: run.actorLogin })}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -694,6 +736,7 @@ function RunDetailView({
             <RunSource run={run} />
             {run.statusReason ? <span className="ml-2">{run.statusReason}</span> : null}
           </p>
+          <RunInputs run={run} />
           {run.status === "awaiting_approval" ? (
             <Notice tone="warning">
               <p className="mb-2">
@@ -727,7 +770,12 @@ function RunDetailView({
                 : gt("No jobs ran.")}
             </p>
           ) : (detail.jobs ?? run.jobs)!.length === 0 ? (
-            <p className="text-xs text-on-surface-faint">{gt("No pipeline ran for this event.")}</p>
+            // A skipped run's reason above already says so.
+            run.status === "skipped" ? null : (
+              <p className="text-xs text-on-surface-faint">
+                {gt("No pipeline ran for this event.")}
+              </p>
+            )
           ) : (
             <CiRunView
               run={run}
@@ -774,7 +822,6 @@ export function CiPanel({
       .then(async (s) => {
         if (cancelled) return;
         setStatus(s);
-        if (!s.enabled) return;
         const [r, u] = await Promise.all([client.listRuns(filter || undefined), client.usage()]);
         if (cancelled) return;
         setRuns(r);
@@ -791,8 +838,9 @@ export function CiPanel({
   // while something is. Not while a run's detail is open (it follows its own
   // run) or while the window is hidden.
   const anyActive = useMemo(() => (runs ?? []).some((r) => ACTIVE.includes(r.status)), [runs]);
+  const loaded = status !== null;
   useEffect(() => {
-    if (selectedRunId || status?.enabled !== true) return;
+    if (selectedRunId || !loaded) return;
     const timer = setInterval(
       () => {
         if (typeof document === "undefined" || document.visibilityState === "visible") refresh();
@@ -800,7 +848,7 @@ export function CiPanel({
       anyActive ? 5_000 : 15_000,
     );
     return () => clearInterval(timer);
-  }, [anyActive, selectedRunId, status?.enabled, refresh]);
+  }, [anyActive, selectedRunId, loaded, refresh]);
 
   return (
     <div className="space-y-6">
@@ -825,15 +873,7 @@ export function CiPanel({
         </p>
       ) : null}
 
-      {status && !status.enabled ? (
-        <Notice>
-          {gt(
-            "CI is not turned on for this organization yet. It is being rolled out to organizations one at a time.",
-          )}
-        </Notice>
-      ) : null}
-
-      {status?.enabled ? (
+      {status ? (
         <>
           {!status.configured ? (
             <Notice tone="warning">
@@ -875,6 +915,11 @@ export function CiPanel({
                 canNarrow={canWrite}
               />
               {usage ? <UsageCard usage={usage} /> : null}
+              <CiManualCard
+                client={client}
+                canStart={canApprove}
+                onStarted={(run) => onSelectRun(run.id)}
+              />
               <CiSchedulesCard client={client} />
               <CiCachesCard client={client} canWrite={canWrite} />
 

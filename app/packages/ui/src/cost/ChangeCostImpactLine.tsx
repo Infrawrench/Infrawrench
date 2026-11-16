@@ -12,7 +12,7 @@ import {
 import { useDataString } from "../i18n/data-strings.js";
 
 /**
- * The one-line cost verdict on a change or a deploy.
+ * The one-line cost verdict on a change.
  *
  * Everything on the line is there because leaving it off would make the number
  * unreadable: the **basis** (cash and amortized are different questions), the

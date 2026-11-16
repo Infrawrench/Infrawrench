@@ -6,6 +6,7 @@ import type {
   CiConnectionAccessSettings,
   CiExecutorKindId,
   CiResourceGrant,
+  CiResourceGrantPeerInput,
   CiResourceOutputs,
   SearchResult,
   CiAccount,
@@ -13,10 +14,12 @@ import type {
   CiCaches,
   CiDownloadLink,
   CiLogEvent,
+  CiManualPipelines,
   CiRun,
   CiRunDetail,
   CiRunStatus,
   CiSchedules,
+  CiStartRun,
   CiStatus,
   CiUsage,
   CiValues,
@@ -54,6 +57,10 @@ export interface CiClient {
   listCaches(): Promise<CiCaches>;
   /** Each repository's pipelines with `on.schedule`, as last read from its default branch. */
   listSchedules(): Promise<CiSchedules>;
+  /** Each repository's pipelines with `on.manual` and their inputs, as last read from its default branch. */
+  listManual(): Promise<CiManualPipelines>;
+  /** Starts an `on.manual` pipeline by hand on a branch, with inputs, and answers the queued run. */
+  startRun(request: CiStartRun): Promise<CiRun>;
   /** Deletes one repository's caches and answers what went. */
   clearCache(installationId: number, repo: string): Promise<CiCacheCleared>;
   usage(): Promise<CiUsage>;
@@ -106,4 +113,6 @@ export interface CiGrantInput {
   secretVersion: string | null;
   repos: string[] | null;
   branchPattern: string | null;
+  /** What the resource is lent as. Left out of an update: unchanged. */
+  peer?: CiResourceGrantPeerInput | null;
 }

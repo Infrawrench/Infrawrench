@@ -2,8 +2,10 @@
 //!
 //! ```text
 //! iwci run --repo https://github.com/org/repo --sha <commit> --repo-id <id>
-//!          [--branch main] [--event push|pull-request] [--base <sha>]
-//!          [--pipeline <file.yml>] [--cpus <n>] [--memory <size>] [--json]
+//!          [--branch main] [--event push|pull-request|schedule|manual]
+//!          [--base <sha>] [--pipeline <file.yml>]
+//!          [--pipeline-file .infrawrench/ci/<file>.yml] [--input NAME=value]...
+//!          [--cpus <n>] [--memory <size>] [--json]
 //!          [--stall-after 5m | --stall-after 0] [--module-memory 2GiB]
 //!          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB]
 //!          [--default-branch main]
@@ -239,7 +241,71 @@ pub(super) fn open_runner(
         download_limits,
         external: None,
         helping: None,
+        #[cfg(target_os = "linux")]
+        sandbox: native_sandbox(args, &cache, limits.cpus)?,
     })
+}
+
+/// `--native-sandbox <dir>` (or `IWCI_NATIVE_SANDBOX`): gVisor's release,
+/// unpacked, to run jobs with native tools (`builtin:bun`) in. Off by
+/// default: such a job then fails, saying why. The runner needs a delegated
+/// cgroup subtree (`Delegate=` in its unit) to hold each sandbox to its
+/// memory, and refuses to start without one.
+///
+/// `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`): the service
+/// that creates each sandbox's namespaces (`iwci_sandbox::service`), on a
+/// host that keeps them from the runner itself. A service of another
+/// protocol (left from an older release), or none answering, leaves native
+/// jobs off, saying why, rather than stopping the runner.
+#[cfg(target_os = "linux")]
+fn native_sandbox(
+    args: &mut Args,
+    cache: &std::path::Path,
+    cpus: usize,
+) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
+    let service = match args.value("--sandbox-service")? {
+        Some(path) => Some(path),
+        None => std::env::var("IWCI_SANDBOX_SERVICE")
+            .ok()
+            .filter(|p| !p.is_empty()),
+    };
+    let dir = match args.value("--native-sandbox")? {
+        Some(dir) => dir,
+        None => match std::env::var("IWCI_NATIVE_SANDBOX") {
+            Ok(dir) if !dir.is_empty() => dir,
+            _ => return Ok(None),
+        },
+    };
+    let host = iwci_runtime::sandbox::SandboxHost::new(
+        dir.clone().into(),
+        std::path::Path::new("/proc/self/exe"),
+        Vec::new(),
+        cache.join("sandboxes"),
+        true,
+    )
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
+    .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX))
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    let host = match service {
+        None => host,
+        Some(socket) => {
+            use iwci_runtime::sandbox::service::{PROTOCOL, protocol};
+            match protocol(std::path::Path::new(&socket)) {
+                Ok(p) if p == PROTOCOL => host.with_service(socket.into()),
+                Ok(p) => {
+                    eprintln!(
+                        "iwci: native jobs are off: the sandbox service at {socket} speaks protocol {p:?}, this runner {PROTOCOL:?}; install the service of this release (`iwci-sandbox-spawn`)"
+                    );
+                    return Ok(None);
+                }
+                Err(e) => {
+                    eprintln!("iwci: native jobs are off: the sandbox service at {socket}: {e}");
+                    return Ok(None);
+                }
+            }
+        }
+    };
+    Ok(Some(Arc::new(host)))
 }
 
 /// What `downloads:` may keep on this runner.
@@ -298,6 +364,21 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             Some(path) => Some(std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?),
             None => None,
         },
+        pipeline_file: args.value("--pipeline-file")?,
+        // Each as a string: the pipeline's declaration types it.
+        inputs: {
+            let mut inputs = std::collections::BTreeMap::new();
+            while let Some(pair) = args.value("--input")? {
+                let (name, value) = pair
+                    .split_once('=')
+                    .ok_or_else(|| format!("--input takes NAME=value, not `{pair}`"))?;
+                inputs.insert(
+                    name.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
+            inputs
+        },
         storage_quota: None,
         // From the environment only, never a flag (see `Runner::resolve`).
         token: None,
@@ -327,6 +408,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());
     }
+    request.inputs()?;
     let limits = limits(&mut args)?;
     let quota = storage_quota(&mut args)?;
     // One run uses the machine's jobs-per-cpu share too, so a local run
@@ -378,6 +460,11 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             }
         }
     }
+    // What the run left to delete in the store (its signs of life, task
+    // cache markers its jobs did not delete) is deleted in the background
+    // once the result is out; a moment for it before the process exits,
+    // and what is not done by then is left to the servers' sweep.
+    crate::adapters::split::settle(std::time::Duration::from_secs(10));
     Ok(if output.passed {
         ExitCode::SUCCESS
     } else {

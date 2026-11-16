@@ -32,12 +32,12 @@ import { networkCostTools } from "./network-costs";
 import { momentTools } from "./moment";
 import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
-import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
 import { vulnerabilityTools } from "./vulnerabilities";
-import { forProduct, GENERIC_TOOL_PRODUCTS, withProductOverrides } from "./products";
+import { ciTools } from "./ci";
+import { forProduct } from "./products";
 import type { ToolDefinition } from "./types";
 
 let cached: ToolDefinition[] | null = null;
@@ -46,11 +46,11 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
   if (cached) return cached;
   const tools: ToolDefinition[] = [
     // Tagged with the app each belongs to, for the organization's app policy
-    // (`./products`). Untagged modules are always available: connections,
+    // (`./products`); `./generic` tags its own per tool. Untagged modules are always available: connections,
     // SSH keys and host keys, Linux apps and the per-plugin create tools are
     // Infrastructure; sleep/wake schedules act on resources; GitHub issues and
     // IaC pull requests, the moment view and custom graphs cut across apps.
-    ...withProductOverrides(genericTools(), GENERIC_TOOL_PRODUCTS),
+    ...genericTools(),
     ...connectionTools(),
     ...forProduct("costs", costTools()),
     ...forProduct("costs", costAnomalyFeedbackTools()),
@@ -75,11 +75,11 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...momentTools(),
     ...forProduct("automation", workflowTools()),
     ...customGraphTools(),
-    ...forProduct("delivery", deploymentTools()),
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...linuxAppTools(),
     ...forProduct("security", vulnerabilityTools()),
+    ...forProduct("delivery", ciTools()),
     ...(await perPluginCreateTools()),
   ];
   cached = tools;

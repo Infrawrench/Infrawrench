@@ -1,15 +1,21 @@
 /**
  * `/api/org/:orgId/ci`: CI on the organization's GitHub repositories.
  *
- * CI is rolled out per organization (`ORG_FEATURES`): until a platform admin
- * turns it on, the status endpoint says so and everything else is a 404.
  * Runs come from the GitHub App's push and pull request deliveries; a pull
  * request from a fork waits for someone with `ci:approve`, and runs without
- * secrets once approved.
+ * secrets once approved. Someone with `ci:approve` may also start a
+ * pipeline with `on.manual` by hand, on a branch of the repository itself.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
-import { CI_EXECUTOR_KIND_IDS, CI_JOB_STATUSES, CI_RUN_STATUSES } from "@infrawrench/client-core";
+import {
+  CI_EVENTS,
+  CI_EXECUTOR_KIND_IDS,
+  CI_INPUT_TYPES,
+  CI_JOB_STATUSES,
+  CI_MAX_INPUTS,
+  CI_RUN_STATUSES,
+} from "@infrawrench/client-core";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
 import { BadRequest, Conflict, NotFound } from "../http/errors";
@@ -102,9 +108,9 @@ export const CiJobOutputSchema = Schema.Struct({
 export const CiRunSchema = Schema.Struct({
   id: Schema.String,
   repoFullName: Schema.String,
-  event: Schema.Literals(["push", "pull-request", "schedule"]).annotate({
+  event: Schema.Literals(CI_EVENTS).annotate({
     description:
-      "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head.",
+      "What started the run. `schedule`: a pipeline's `on.schedule` cron, on the default branch's head. `manual`: a person, for a pipeline with `on.manual`, on a branch they chose.",
   }),
   headRef: Schema.String,
   sha: Schema.String,
@@ -137,7 +143,13 @@ export const CiRunSchema = Schema.Struct({
   ),
   pipelineFile: Schema.optionalKey(
     Schema.String.annotate({
-      description: "A scheduled run's pipeline file, whose `on.schedule` cron started it.",
+      description: "A scheduled or manual run's pipeline file: the one it runs.",
+    }),
+  ),
+  inputs: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description:
+        "A manual run's inputs as it was started with them, by name, as text (`true`, `4`, `staging`). Inputs left out read as the pipeline's defaults.",
     }),
   ),
   concurrencyGroups: Schema.optionalKey(
@@ -219,47 +231,111 @@ export const CiConnectionAccessSettingsSchema = Schema.Struct({
   lendBranchPattern: BranchPatternSchema,
 }).annotate({ identifier: "CiConnectionAccessSettings" });
 
+const CiExecutorInfoSchema = Schema.Struct({
+  kinds: Schema.Array(
+    Schema.Struct({
+      kind: KindSchema,
+      label: Schema.String,
+      defaults: Schema.Struct({
+        machine: Schema.optionalKey(Schema.String),
+        image: Schema.optionalKey(Schema.String),
+        region: Schema.optionalKey(Schema.String),
+      }),
+      typicalStartSeconds: Schema.optionalKey(Schema.Number),
+      minimumBillingSeconds: Schema.optionalKey(Schema.Number),
+      gpus: Schema.optionalKey(Schema.Boolean),
+      machineSuggestions: Schema.optionalKey(Schema.Array(Schema.String)),
+      regionLabel: Schema.optionalKey(
+        Schema.String.annotate({
+          description: "What `cloud.region` means for this kind, when it is not a region.",
+        }),
+      ),
+    }),
+  ),
+  helpLink: Schema.NullOr(Schema.Struct({ label: Schema.String, url: Schema.String })),
+});
+
+const CiCredentialInfoSchema = Schema.Struct({
+  description: Schema.String,
+  shortLived: Schema.Boolean,
+  namespaces: Schema.Boolean,
+});
+
 export const CiConnectionAccessSchema = Schema.Struct({
   accountId: Schema.String,
   accountName: Schema.String,
   pluginId: Schema.String,
   pluginName: Schema.String,
-  executor: Schema.NullOr(
-    Schema.Struct({
-      kinds: Schema.Array(
-        Schema.Struct({
-          kind: KindSchema,
-          label: Schema.String,
-          defaults: Schema.Struct({
-            machine: Schema.optionalKey(Schema.String),
-            image: Schema.optionalKey(Schema.String),
-            region: Schema.optionalKey(Schema.String),
-          }),
-          typicalStartSeconds: Schema.optionalKey(Schema.Number),
-          minimumBillingSeconds: Schema.optionalKey(Schema.Number),
-          gpus: Schema.optionalKey(Schema.Boolean),
-          machineSuggestions: Schema.optionalKey(Schema.Array(Schema.String)),
-          regionLabel: Schema.optionalKey(
-            Schema.String.annotate({
-              description: "What `cloud.region` means for this kind, when it is not a region.",
-            }),
-          ),
-        }),
-      ),
-      helpLink: Schema.NullOr(Schema.Struct({ label: Schema.String, url: Schema.String })),
-    }),
-  ),
-  credential: Schema.NullOr(
-    Schema.Struct({
-      description: Schema.String,
-      shortLived: Schema.Boolean,
-      namespaces: Schema.Boolean,
-    }),
-  ),
+  executor: Schema.NullOr(CiExecutorInfoSchema),
+  credential: Schema.NullOr(CiCredentialInfoSchema),
   settings: CiConnectionAccessSettingsSchema,
   preflight: Schema.Record(Schema.String, CiPreflightRecordSchema),
   updatedAt: Schema.NullOr(IsoDateTime),
 }).annotate({ identifier: "CiConnectionAccess" });
+
+export const CiResourceGrantPeerSchema = Schema.Struct({
+  pluginId: Schema.String.annotate({
+    description:
+      "The plugin the resource is lent as, one its type has a peer integration with (a managed cluster as `kubernetes`). Pipelines name it in `connections:` by the grant's CI name.",
+  }),
+  pluginName: Schema.String,
+  lend: Schema.Boolean.annotate({
+    description:
+      "`connections: [<ciName>]` lends it. Separate from running jobs on it, which lends nothing.",
+  }),
+  jobKinds: Schema.Array(KindSchema).annotate({
+    description: "Cloud jobs (`cloud: <pluginId>/<kind>`) that may run on it. Empty for none.",
+  }),
+  maxConcurrentJobs: Schema.Int,
+  maxJobMinutes: Schema.Int,
+  jobRegions: Schema.Array(Schema.String).annotate({
+    description:
+      "Where else a job may run with `cloud.region` (a cluster's namespaces), besides where each kind was checked. Empty: only there.",
+  }),
+  preflight: Schema.Record(Schema.String, CiPreflightRecordSchema),
+}).annotate({ identifier: "CiResourceGrantPeer" });
+
+export const CiResourceGrantPeerInputSchema = Schema.Struct({
+  pluginId: Schema.String,
+  lend: Schema.Boolean.annotate({
+    description: "Lend it to jobs that name it in `connections:`.",
+  }),
+  jobKinds: Schema.Array(KindSchema).annotate({
+    description:
+      "Cloud jobs that may run on it. A kind turned on is checked first, through the peer, and refused when the check fails.",
+  }),
+  maxConcurrentJobs: Schema.Int,
+  maxJobMinutes: Schema.Int,
+  jobRegions: Schema.Array(Schema.String).annotate({
+    description:
+      "Where else jobs may run with `cloud.region`, each checked through the peer when added. Empty: only where each kind was checked.",
+  }),
+}).annotate({ identifier: "CiResourceGrantPeerInput" });
+
+export const CiPeerOptionSchema = Schema.Struct({
+  pluginId: Schema.String,
+  pluginName: Schema.String,
+  credential: Schema.NullOr(CiCredentialInfoSchema),
+  executor: Schema.NullOr(CiExecutorInfoSchema),
+  lends: Schema.String.annotate({
+    description: "The credential a job is lent, as the resource's provider declares it.",
+  }),
+  reach: Schema.String.annotate({
+    description: "What that credential reaches beyond the resource.",
+  }),
+  lifetime: Schema.String.annotate({ description: "How long it lasts once lent." }),
+  unavailable: Schema.NullOr(
+    Schema.String.annotate({
+      description:
+        "Why this resource cannot be used as it (and cannot be granted as it), when it cannot.",
+    }),
+  ),
+  unreachable: Schema.NullOr(
+    Schema.String.annotate({
+      description: "Why it cannot be reached from outside its network, when its provider says so.",
+    }),
+  ),
+}).annotate({ identifier: "CiPeerOption" });
 
 export const CiResourceGrantSchema = Schema.Struct({
   id: Schema.String,
@@ -274,6 +350,11 @@ export const CiResourceGrantSchema = Schema.Struct({
   secretVersion: Schema.NullOr(Schema.String),
   repos: ReposSchema,
   branchPattern: BranchPatternSchema,
+  peer: Schema.optionalKey(
+    Schema.NullOr(CiResourceGrantPeerSchema).annotate({
+      description: "What the resource is lent as, or null when only its outputs are granted.",
+    }),
+  ),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "CiResourceGrant" });
 
@@ -292,6 +373,12 @@ export const CiResourceGrantInputSchema = Schema.Struct({
   ),
   repos: ReposSchema,
   branchPattern: BranchPatternSchema,
+  peer: Schema.optionalKey(
+    Schema.NullOr(CiResourceGrantPeerInputSchema).annotate({
+      description:
+        "Use the resource as a peer plugin's connection: lend it (`connections: [<ciName>]`), run cloud jobs on it, or both. Null: neither. An update must send it when the grant has one: a client that cannot show it is refused (409) rather than changing a grant whose lending it cannot see.",
+    }),
+  ),
 }).annotate({ identifier: "CiResourceGrantInput" });
 
 export const CiSshKeyLendingSchema = Schema.Struct({
@@ -328,6 +415,12 @@ export const CiResourceOutputsSchema = Schema.Struct({
       }),
     ),
   ),
+  peers: Schema.optionalKey(
+    Schema.Array(CiPeerOptionSchema).annotate({
+      description:
+        "The plugins it can be lent to CI as, through its type's peer integrations: those that lend a connection or run cloud jobs.",
+    }),
+  ),
 }).annotate({ identifier: "CiResourceOutputs" });
 
 export const CiAccountSchema = Schema.Struct({
@@ -338,7 +431,10 @@ export const CiAccountSchema = Schema.Struct({
 }).annotate({ identifier: "CiAccount" });
 
 export const CiStatusSchema = Schema.Struct({
-  enabled: Schema.Boolean.annotate({ description: "CI is turned on for this organization" }),
+  enabled: Schema.Boolean.annotate({
+    description:
+      "Always true: CI is on for every organization. Kept for clients that predate that, which hide CI when it is false",
+  }),
   configured: Schema.Boolean.annotate({
     description: "The runner pool is configured on this server",
   }),
@@ -424,6 +520,69 @@ export const CiSchedulesSchema = Schema.Struct({
   schedules: Schema.Array(CiRepoScheduleSchema),
 }).annotate({ identifier: "CiSchedules" });
 
+export const CiInputSchema = Schema.Struct({
+  name: Schema.String,
+  type: Schema.Literals(CI_INPUT_TYPES),
+  description: Schema.optionalKey(Schema.String),
+  required: Schema.Boolean.annotate({
+    description: "A run cannot start without a value; an empty one counts as none.",
+  }),
+  default: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "As text: `true` or `false` for a boolean, the number as written.",
+    }),
+  ),
+  options: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({ description: "A `choice` input's values." }),
+  ),
+}).annotate({ identifier: "CiInput" });
+
+export const CiManualPipelineSchema = Schema.Struct({
+  file: Schema.String.annotate({ description: "The pipeline file, under `.infrawrench/ci/`." }),
+  name: Schema.String,
+  inputs: Schema.Array(CiInputSchema),
+}).annotate({ identifier: "CiManualPipeline" });
+
+export const CiRepoManualSchema = Schema.Struct({
+  installationId: Schema.Int,
+  repoFullName: Schema.String,
+  defaultBranch: Schema.String,
+  sha: Schema.NullOr(Schema.String).annotate({
+    description: "The default branch's commit the pipelines were read from.",
+  }),
+  pipelines: Schema.Array(CiManualPipelineSchema),
+  refreshedAt: Schema.NullOr(IsoDateTime),
+}).annotate({ identifier: "CiRepoManual" });
+
+export const CiManualPipelinesSchema = Schema.Struct({
+  repositories: Schema.Array(CiRepoManualSchema),
+}).annotate({ identifier: "CiManualPipelines" });
+
+export const CiStartRunSchema = Schema.Struct({
+  installationId: Schema.Int.annotate({
+    description: "The GitHub App installation of the account that runs CI for the repository.",
+  }),
+  repoFullName: Schema.String.annotate({ description: "`owner/name`." }),
+  pipelineFile: Schema.String.annotate({
+    description:
+      "The pipeline to run, as `GET /ci/manual` lists it (`.infrawrench/ci/deploy.yml`).",
+  }),
+  branch: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "A branch of the repository itself, whose head runs. The default branch when omitted.",
+    }),
+  ),
+  inputs: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Boolean, Schema.Finite]))
+      .check(Schema.isMaxProperties(CI_MAX_INPUTS))
+      .annotate({
+        description:
+          "Values for the pipeline's `on.manual.inputs`, by name: a string, a boolean or a number each. Inputs left out read as their defaults.",
+      }),
+  ),
+}).annotate({ identifier: "CiStartRun" });
+
 export const CiCacheClearedSchema = Schema.Struct({
   installationId: Schema.Int,
   repo: Schema.String,
@@ -476,6 +635,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredPermission, "ci:read")
       .annotate(OpenApi.Summary, "List CI runs, newest first")
+      .annotate(
+        OpenApi.Description,
+        "Runs with nothing to run (`skipped`: no pipeline runs on the push or pull request) are left out unless `status=skipped` asks for them.",
+      )
       .annotate(SuccessDescription, "Runs"),
     HttpApiEndpoint.get("getRun", "/runs/:runId", {
       params: RunParams,
@@ -533,6 +696,31 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredPermission, "ci:approve")
       .annotate(OpenApi.Summary, "Decline to run a fork's pull request commit")
       .annotate(SuccessDescription, "Rejected"),
+    HttpApiEndpoint.post("startRun", "/runs", {
+      params: OrgParams,
+      payload: CiStartRunSchema,
+      success: CiRunSchema,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "ci:approve")
+      .annotate(OpenApi.Summary, "Start a pipeline by hand")
+      .annotate(
+        OpenApi.Description,
+        "Queues a run of one pipeline with `on.manual`, at the head of a branch of the repository itself, with the inputs given. The pipeline must be listed by `GET /ci/manual`, and the inputs are checked against its declaration there; the runner checks them again against the branch's own file. The run is trusted like a push to that branch: it gets the repository's secrets and only what is lent to that branch.",
+      )
+      .annotate(SuccessDescription, "The new run, queued"),
+    HttpApiEndpoint.get("listManual", "/manual", {
+      params: OrgParams,
+      success: CiManualPipelinesSchema,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "ci:read")
+      .annotate(OpenApi.Summary, "Pipelines that can be started by hand")
+      .annotate(
+        OpenApi.Description,
+        "Each repository's pipelines with `on.manual` on its default branch, as last read, with their inputs. They are read again on every push to the default branch.",
+      )
+      .annotate(SuccessDescription, "Manual pipelines per repository"),
     HttpApiEndpoint.post("retryRun", "/runs/:runId/retry", {
       params: RunParams,
       payload: Schema.Struct({
@@ -681,7 +869,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredPermission, "ci-access:write")
       .annotate(OpenApi.Summary, "What a resource can be granted to CI")
-      .annotate(SuccessDescription, "Its outputs and, for a secret, its versions"),
+      .annotate(
+        SuccessDescription,
+        "Its outputs, for a secret its versions, and what it can be lent as",
+      ),
     HttpApiEndpoint.post("createGrant", "/access/grants", {
       params: OrgParams,
       payload: CiResourceGrantInputSchema,
@@ -692,7 +883,7 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(OpenApi.Summary, "Grant CI jobs a resource's outputs")
       .annotate(
         OpenApi.Description,
-        "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. Only for the listed repositories and branches, and never for a fork's pull request.",
+        "Pipelines read them as `${{ resources.<ciName>.<output> }}` in `env:`, or all at once with `env-from: [<ciName>]`, read fresh for every run. With `peer`, the resource is also lent as a connection of a plugin its type has a peer integration with (a managed cluster as `kubernetes`, a managed database as `postgres`): `connections: [<ciName>]`, and `cloud:` jobs of the chosen kinds. Only for the listed repositories and branches, and never for a fork's pull request.",
       )
       .annotate(SuccessDescription, "The grant"),
     HttpApiEndpoint.put("updateGrant", "/access/grants/:grantId", {
@@ -703,6 +894,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredPermission, "ci-access:write")
       .annotate(OpenApi.Summary, "Change a resource grant")
+      .annotate(
+        OpenApi.Description,
+        "Replaces the grant. `peer` must be sent when the grant has one (409 otherwise); a cloud job kind or region newly turned on is checked through the peer first.",
+      )
       .annotate(SuccessDescription, "The grant"),
     HttpApiEndpoint.delete("deleteGrant", "/access/grants/:grantId", {
       params: { orgId: OrgId, grantId: Schema.String },

@@ -59,6 +59,23 @@ describe("renderDetail", () => {
     expect(rows).toContain("per 1M tokens");
   });
 
+  it("reads embedding token prices on the same scale as language models", () => {
+    // xai-proto's `EmbeddingModel` gives these "in 1/100 USD cents" per million
+    // tokens, as for language models, whatever the OpenAPI wording says (#471).
+    const rows = pricing(
+      client().renderDetail(
+        resource("model", {
+          modelId: "grok-embed",
+          kind: "embedding",
+          promptTextTokenPrice: 1000,
+          promptImageTokenPrice: 2000,
+        }),
+      ),
+    );
+    expect(rows).toContain(`"price":"$0.1000","unit":"per 1M tokens"`);
+    expect(rows).toContain(`"price":"$0.2000","unit":"per 1M tokens"`);
+  });
+
   it("prices images per image and search per source, not per million", () => {
     // grok-imagine-image is published at $0.02 an image; live search at $25 per
     // 1,000 sources, i.e. $0.025 each.

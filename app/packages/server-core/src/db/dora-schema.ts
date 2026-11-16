@@ -1,14 +1,13 @@
 /**
  * DORA metrics: the three tables the Delivery page reads beside the ones it
- * joins (`deployment_runs`, `incidents`, `resource_changes`).
+ * joins (`incidents`, `resource_changes`).
  *
  * `deploy_events` is a **record**, not a cache. A provider's listing keeps a
  * handful of recent deploys (Netlify five per site, Render ten per service),
  * so the synced `resources` rows of a deploy type roll over within days; the
  * metrics need months. Each row is written when sync first sees the deploy and
  * updated while it moves (building to ready), and nothing deletes it but the
- * account cascade and retention. Infrafile runs are deliberately **not** copied
- * in: `deployment_runs` is already a durable record and is read directly.
+ * account cascade and retention.
  *
  * Kept in its own module with self-contained imports; re-exported from
  * schema.ts so Drizzle picks it up.

@@ -14,6 +14,10 @@
 #   env:clickhouse the same as env:bash-node plus ClickHouse 26.11
 #                  (CloudHouse for one-thread WebAssembly) behind its HTTP
 #                  interface, `clickhouse-server`, for a job's `services:`
+##   env:aws        the same as env:python plus the AWS CLI (version 1)
+#   env:az         the same as env:python plus the Azure CLI
+#   env:gcloud     the same as env:python plus the Google Cloud CLI
+#                  (cloud-clis/build.sh, README.md "Cloud CLIs")
 #
 # An environment can also set default environment variables, which a job's
 # own `env:` overrides (python's make pip and pytest work here, php's put
@@ -28,11 +32,12 @@
 # changed package cannot slip in under an old pin. The runner never contacts
 # the Wasmer registry: `iwci publish` copies these into R2.
 #
-# Seven packages are not taken from the CDN as they are. `edgejs/build.sh`
+# Eight packages are not taken from the CDN as they are. `edgejs/build.sh`
 # builds Wasmer's Edge.js 0.2.5 from source on a C library without the races
 # behind #937 and #967, which no Wasmer release has yet; `bash/build.sh` and
 # `sed/build.sh` change the one call in Wasmer's bash 1.0.25 and sed 4.9.0
 # that split an argument at its line feeds (#1003, #1022);
+# `python/build.sh` gives Wasmer's CPython the runner's file locks (#1216);
 # `php-cli/build.sh` packages env:php's own `php` and Composer; and
 # `pglite-server/build.sh` env:postgres's server for many connections;
 # `git/build.sh` builds Git, which Wasmer does not publish, from its
@@ -47,6 +52,9 @@
 #                                      macOS on arm64: patch-module.sh's
 #                                      Wasmer CLI)
 #   environments/build.sh python       the same
+#   environments/build.sh aws          the same as python, and the CLI's
+#                                      packages (cloud-clis/build.sh, Linux,
+#                                      x86_64 or ARM64); likewise az, gcloud
 #   environments/build.sh php          every PHP version (Linux, x86_64 or
 #                                      ARM64, to build php-cli)
 #   environments/build.sh go           every Go minor: builds each with
@@ -83,8 +91,10 @@ GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f759
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
 # Git, built by git/build.sh from its release for WASIX; the hash is its
 # output's, as with Edge.js. Every environment has it (README.md, "Git").
-GIT_PKG="iwci/git 2.56.1-iwci.1 f3982909036630fa0d3b3fdbc0ddf4c91ae18ad3d13e35bc3f81b798f5a22f18"
-PYTHON_PKG="python/python 3.13.20 a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
+GIT_PKG="iwci/git 2.56.1-iwci.2 841a8d6b293c94ff2879186dae83989e7b1893c41768532d15cb09c8f415d876"
+# Built by python/build.sh as 3.13.20-iwci.1, keeping Wasmer's version the
+# same way: Wasmer's CPython with file locks (#1216).
+PYTHON_PKG="python/python 3.13.20 d6cd79a53cd7d49798955b1bbc1d9e7c7d4d4e9b10af0acf40d2bc0ff590a9e4 3.13.20-iwci.1"
 PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
 PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
 PHP83_PKG="phpix/phpix-83-64bit 0.3.1 d2ff745903b5c6130662a198d330456daf8cb953438a0d8b8246130a3fb25043"
@@ -158,6 +168,63 @@ PHP_CLI_PKG="iwci/php-cli 1.0.0 83be1308ebb5e9aca02ded9133aec8f6de24c15e763ae056
 PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
     "COMPOSER_ALLOW_SUPERUSER": "1",
     "COMPOSER_NO_INTERACTION": "1"'
+# What global installs need in env:bash-node (README.md, "Global installs"):
+#   PNPM_HOME  where `pnpm add -g` (and `npm i -g`, which Edge.js runs as
+#     pnpm) installs and links commands; pnpm refuses a global install
+#     without it. It is pnpm's own default on Linux.
+#   PATH  the default plus that directory, after the system's, so a
+#     global install cannot shadow a command the environment ships.
+BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
+    "PNPM_HOME": "/root/.local/share/pnpm"'
+# The cloud CLIs, built by cloud-clis/build.sh on env:python's CPython;
+# each hash is its output's, as with Edge.js. The Azure CLI and gcloud are
+# two packages each (the store's 256 MiB per file).
+AWS_CLI_PKG="iwci/aws-cli 1.46.3-iwci.1 542d9c4f0b40cddb158fafdd6a72488a441c6725537143bcb578f76121f336d7"
+AZURE_CLI_PKG="iwci/azure-cli 2.92.0-iwci.2 a34e6ae487c9aca37800c3f18d4a293b9104b17532cba6fc75a97571391b288d"
+AZURE_CLI_MGMT_PKG="iwci/azure-cli-mgmt 2.92.0-iwci.1 59b670548a0b6de0d96378f587405a46d226cfe067c2c15d2dbb03c0eae3c3d8"
+GCLOUD_PKG="iwci/gcloud 593.0.0-iwci.1 47e6d58f2373a27d72d23e62a5b8571c74186410c827fe00f4446e4448fbb8a4"
+GCLOUD_APIS_PKG="iwci/gcloud-apis 593.0.0-iwci.1 74d94ed1d43a7eb1f49ebb23f154f48073f424d84b6bf63efe4920b04cf3a410"
+# What each CLI needs here beyond env:python's defaults (README.md, "Cloud
+# CLIs"): its bin/ on PATH after /usr/local/bin, and:
+#   AWS_PAGER  empty: no pager, the output goes to the log.
+#   AWS_EC2_METADATA_DISABLED  never ask the instance metadata service for
+#     credentials or a region: a job cannot reach it (the network refuses
+#     link-local addresses) and the CLI would wait on it first.
+#   CLOUDSDK_CORE_DISABLE_PROMPTS  no prompts: nobody answers one.
+#   CLOUDSDK_CORE_CHECK_GCE_METADATA, NO_GCE_CHECK  gcloud's and Google's
+#     auth libraries' own metadata server probes, off for the same reason.
+#   CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK  no check for a newer
+#     gcloud, which this one cannot install.
+#   CLOUDSDK_PYTHON  the environment's CPython, for gcloud's own children.
+#   AZURE_CORE_COLLECT_TELEMETRY  the Azure CLI uploads usage data from a
+#     process it leaves behind; off.
+#   AZURE_CORE_SURVEY_MESSAGE, AZURE_CORE_NO_COLOR  no survey prompt, and
+#     plain text in the log.
+# cloud_env <dir>: env:python's defaults with <dir> on PATH right after
+# /usr/local/bin (the job's tools), wherever that sits in PATH (the user
+# site's bin comes first since python 3.13.19). Fails rather than build an
+# environment whose CLI is not on PATH.
+cloud_env() {
+  local env="${PYTHON_ENV/\/usr\/local\/bin:/\/usr\/local\/bin:$1:}"
+  if [[ "$env" == "$PYTHON_ENV" || "$env" != *"\"PATH\": \""*"$1:"* ]]; then
+    echo "error: cannot put $1 on env:python's PATH" >&2
+    exit 1
+  fi
+  printf '%s' "$env"
+}
+AWS_ENV="$(cloud_env /opt/aws-cli/bin)"',
+    "AWS_PAGER": "",
+    "AWS_EC2_METADATA_DISABLED": "true"'
+AZ_ENV="$(cloud_env /opt/azure-cli/bin)"',
+    "AZURE_CORE_COLLECT_TELEMETRY": "no",
+    "AZURE_CORE_SURVEY_MESSAGE": "no",
+    "AZURE_CORE_NO_COLOR": "true"'
+GCLOUD_ENV="$(cloud_env /opt/google-cloud-sdk/bin)"',
+    "CLOUDSDK_CORE_DISABLE_PROMPTS": "1",
+    "CLOUDSDK_CORE_CHECK_GCE_METADATA": "false",
+    "NO_GCE_CHECK": "True",
+    "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
+    "CLOUDSDK_PYTHON": "/usr/bin/python3"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
 EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c454e66abf35c24f02f58fcff"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
@@ -167,11 +234,11 @@ EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c
 # number is now the environment's own revision, as with the others.
 go_pkgs() {
   case "$1" in
-    1.23) echo "1.23.14 1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
-    1.24) echo "1.24.15 1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
-    1.25) echo "1.25.16 1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
-    1.26) echo "1.26.13 1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
-    1.27) echo "1.27.6 1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
+    1.23) echo "1.23.15 1.23.12-iwci.1 44d930abee67f242d273386fb76af0fb66cae73b37bde9e3addd4cff9dd105b0 8de9b4ff060b272b8857d0cef043e46d23ecf481374310eadebfe2cda10b4355" ;;
+    1.24) echo "1.24.16 1.24.13-iwci.1 fc66f7a45ce73e9a4246194147bd68b0294a68024f8d15ba44f6ef28d30f563c f953cbc478c9f52f714e3c58c548b01e2f4ed7a48ce758736f9156151e6c154f" ;;
+    1.25) echo "1.25.17 1.25.14-iwci.1 748fe2d628d8700db3c8977fddb27bbe14622d3729f5664d23e4f7e73d1f7238 b7a89719757bc0c7d050f13d52d13622124aa1c876149cb4e109b6d108d2623d" ;;
+    1.26) echo "1.26.14 1.26.11-iwci.1 0b8375201683a9a00f2e7d9d6593ada7dd10d93b56f3f4da5173d024a6dfb5b8 93147c7f4879f44374f93e414d37ba975d48816c55d28454f7e8583d83bbb767" ;;
+    1.27) echo "1.27.7 1.27.4-iwci.1 16f9793e874e82e85cde25d4e569b7df1b27707cfa42d37c29dc62270e362b97 20f2c885e5b89ec967abd98eed137da2460eab3e33b1b2a3da15bbd5b820f2d5" ;;
     *) return 1 ;;
   esac
 }
@@ -206,13 +273,25 @@ fetch() {
   case "$name" in
     wasmer/bash) ours=bash ;;
     wasmer/sed) ours="sed" ;;
+    python/python) ours=python ;;
     wasmer/edgejs) ours=edgejs ;;
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
     iwci/git) ours=git ;;
     iwci/clickhouse) ours=clickhouse ;;
   esac
-  if [[ -n "$ours" ]]; then
+  local cli=""
+  case "$name" in
+    iwci/aws-cli) cli=aws ;;
+    iwci/azure-cli | iwci/azure-cli-mgmt) cli=az ;;
+    iwci/gcloud | iwci/gcloud-apis) cli=gcloud ;;
+  esac
+  if [[ -n "$cli" ]]; then
+    # Ours: cloud-clis/build.sh makes each CLI's packages.
+    local built="$dist/package/${name#iwci/}/$version/${name#iwci/}.webc"
+    [[ -f "$built" ]] || bash "$here/environments/cloud-clis/build.sh" "$cli" >&2
+    cp "$built" "$file"
+  elif [[ -n "$ours" ]]; then
     # Ours: built here unless a build (or CI's cache of one) is in place.
     local built="$dist/package/$ours/$build/$ours.webc"
     [[ -f "$built" ]] || bash "$here/environments/$ours/build.sh" >&2
@@ -278,7 +357,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG" "$GIT_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php go postgres
+  set -- bash bash-node python php go postgres aws az gcloud
 fi
 for env in "$@"; do
   case "$env" in
@@ -287,7 +366,8 @@ for env in "$@"; do
       # (#1003).
       # 5.1.18: and so does a command sed's `e` runs (#1022).
       # 5.1.19: and Git.
-      build_env bash 5.1.19 "GNU bash 5.1 with coreutils, sed, grep, findutils and Git" "" "${TOOLS[@]}"
+      # 5.1.20: and Git's prompts read /dev/tty, so they end at once (#1264).
+      build_env bash 5.1.20 "GNU bash 5.1 with coreutils, sed, grep, findutils and Git" "" "${TOOLS[@]}"
       ;;
     bash-node)
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
@@ -325,7 +405,9 @@ for env in "$@"; do
       #          (#1141, #1142, #1143).
       # 24.0.18: and `node --version` says what `process.version` does
       #          (#1151).
-      build_env bash-node 24.0.18 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "" \
+      # 24.0.19: and `npm i -g` and `pnpm add -g` put commands on PATH.
+      # 24.0.20: and Git's prompts read /dev/tty, so they end at once (#1264).
+      build_env bash-node 24.0.20 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
@@ -338,6 +420,7 @@ for env in "$@"; do
         fi
         # Go's release plus one: and Git.
         # Plus two: and a job keeps what it adds to its build cache (#1083).
+        # Plus three: and Git's prompts read /dev/tty (#1264).
         read -r env_version version go_sha cache_sha <<<"$pkgs"
         CACHES="$GO_CACHES" build_env go "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Go ${version%-iwci.*} (go, gofmt)" \
           "$GO_ENV" "${TOOLS[@]}" "iwci/go $version $go_sha" "iwci/go-std-cache $version $cache_sha"
@@ -348,8 +431,32 @@ for env in "$@"; do
       # 3.13.17: and so does sed's `e` command (#1022).
       # 3.13.18: and Git.
       # 3.13.19: and `pip install --user`, its commands on PATH.
-      build_env python 3.13.19 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
+      # 3.13.20: and Git's prompts read /dev/tty, so they end at once (#1264).
+      # 3.13.21: and `fcntl.flock` and `fcntl.lockf` lock (#1216).
+      build_env python 3.13.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
+      ;;
+    aws)
+      # Its version is the AWS CLI's major and minor, as python's is
+      # CPython's; its patch number is the environment's own.
+      # 1.46.1: Git's prompts read /dev/tty (#1264).
+      # 1.46.2: and file locks (#1216).
+      build_env aws 1.46.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
+        "$AWS_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AWS_CLI_PKG"
+      ;;
+    az)
+      # 2.92.1: Git's prompts read /dev/tty (#1264).
+      # 2.92.2: and file locks (#1216), so `az` takes its token cache's.
+      build_env az 2.92.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
+        "$AZ_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AZURE_CLI_PKG" "$AZURE_CLI_MGMT_PKG"
+      ;;
+    gcloud)
+      # gcloud's releases are one number (593.0.0); the environment's patch
+      # number is its own revision.
+      # 593.0.1: Git's prompts read /dev/tty (#1264).
+      # 593.0.2: and file locks (#1216).
+      build_env gcloud 593.0.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
+        "$GCLOUD_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$GCLOUD_PKG" "$GCLOUD_APIS_PKG"
       ;;
     php)
       # phpix 0.3.1 holds PHP 8.1.34, 8.2.35, 8.3.36, 8.4.27 and 8.5.12,
@@ -359,8 +466,9 @@ for env in "$@"; do
       # (#1003).
       # +2: and so does sed's `e` command (#1022).
       # +3: and Git.
-      for pkg in "8.1.37 8.1.34 $PHP81_PKG" "8.2.38 8.2.35 $PHP82_PKG" "8.3.39 8.3.36 $PHP83_PKG" \
-        "8.4.30 8.4.27 $PHP84_PKG" "8.5.15 8.5.12 $PHP85_PKG"; do
+      # +4: and Git's prompts read /dev/tty (#1264).
+      for pkg in "8.1.38 8.1.34 $PHP81_PKG" "8.2.39 8.2.35 $PHP82_PKG" "8.3.40 8.3.36 $PHP83_PKG" \
+        "8.4.31 8.4.27 $PHP84_PKG" "8.5.16 8.5.12 $PHP85_PKG"; do
         read -r version php package <<<"$pkg"
         build_env php "$version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git, PHP $php (Wasmer's phpix) and Composer" \
           "$PHP_ENV" "${TOOLS[@]}" "$package" "$SENDMAIL_PKG" "$ICU_DATA_PKG" "$PHP_CLI_PKG"
@@ -370,7 +478,8 @@ for env in "$@"; do
       # Its version is PostgreSQL's, as python's is CPython's.
       # 18.4.1: and pglite-server, for many connections and pgcrypto.
       # 18.4.2: and Git.
-      build_env postgres 18.4.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
+      # 18.4.3: and Git's prompts read /dev/tty (#1264).
+      build_env postgres 18.4.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and PostgreSQL 18.4 (Wasmer's pglite, in memory; pglite-server for many connections)" \
         "" "${TOOLS[@]}" "$PGLITE_PKG" "$PGLITE_SERVER_PKG"
       ;;
     clickhouse)
@@ -379,11 +488,12 @@ for env in "$@"; do
       # 26.11.1: bash-node 24.0.16's Edge.js (#1097).
       # 26.11.2: bash-node 24.0.17's Edge.js (#1141, #1142, #1143).
       # 26.11.3: bash-node 24.0.18's Edge.js (#1151).
-      build_env clickhouse 26.11.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.4: and Git's prompts read /dev/tty (#1264).
+      build_env clickhouse 26.11.4 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres and clickhouse" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
       exit 2
       ;;
   esac

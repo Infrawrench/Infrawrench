@@ -200,6 +200,10 @@ pub struct JobAccess {
     pub resources: BTreeMap<String, std::collections::BTreeSet<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub env_from: Vec<String>,
+    /// `github-token:`: each permission (GitHub Actions' names, such as
+    /// `pull-requests`) and its level, `read` or `write`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub github_token: BTreeMap<String, String>,
 }
 
 impl JobAccess {
@@ -208,8 +212,43 @@ impl JobAccess {
             && self.ssh_keys.is_empty()
             && self.resources.is_empty()
             && self.env_from.is_empty()
+            && self.github_token.is_empty()
+    }
+
+    /// The key a run request's `lent.github-token` has the token for this
+    /// job under: its permissions in order, `name=level` joined by commas
+    /// (`contents=write,pull-requests=write`). Jobs asking for the same
+    /// permissions share a token. `None` when the job asks for none.
+    pub fn github_token_key(&self) -> Option<String> {
+        if self.github_token.is_empty() {
+            return None;
+        }
+        Some(
+            self.github_token
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(","),
+        )
     }
 }
+
+/// The permissions `github-token:` may ask for, by GitHub Actions' names:
+/// a repository's own, write access to which anyone who can push to it
+/// mostly has already. Administration, secrets, workflows and the
+/// organization's permissions are left out on purpose.
+pub const GITHUB_TOKEN_PERMISSIONS: [&str; 10] = [
+    "actions",
+    "checks",
+    "contents",
+    "deployments",
+    "discussions",
+    "issues",
+    "packages",
+    "pages",
+    "pull-requests",
+    "statuses",
+];
 
 /// Which workspace package a job runs for, when a `packages:` job made it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -293,6 +332,54 @@ pub struct Triggers {
     pub pull_request: Option<TriggerFilter>,
     /// When scheduled runs happen, in UTC.
     pub schedule: Vec<crate::cron::Cron>,
+    /// `on.manual`: someone may start the pipeline by hand, with these
+    /// inputs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manual: Option<ManualTrigger>,
+}
+
+/// `on.manual`, checked.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct ManualTrigger {
+    /// In file order.
+    pub inputs: Vec<InputSpec>,
+}
+
+/// One input of a manual run, checked. What the app builds its form from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InputSpec {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: InputKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub required: bool,
+    /// As text: `true`/`false` for a boolean, the number as written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    /// A `choice` input's values; empty for the others.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputKind {
+    String,
+    Boolean,
+    Choice,
+    Number,
+}
+
+impl InputKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InputKind::String => "string",
+            InputKind::Boolean => "boolean",
+            InputKind::Choice => "choice",
+            InputKind::Number => "number",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -308,6 +395,8 @@ pub enum Event {
     Push,
     PullRequest,
     Schedule,
+    /// Started by hand (`on.manual`), on a branch of the repository itself.
+    Manual,
 }
 
 impl Event {
@@ -316,6 +405,7 @@ impl Event {
             Event::Push => "push",
             Event::PullRequest => "pull-request",
             Event::Schedule => "schedule",
+            Event::Manual => "manual",
         }
     }
 }
@@ -336,6 +426,9 @@ impl Triggers {
             // A scheduled run was started because a schedule matched; it
             // has no branch or path filter of its own.
             Event::Schedule => return !self.schedule.is_empty(),
+            // Started by a person for this pipeline: no branch or path
+            // filter, since they chose the branch.
+            Event::Manual => return self.manual.is_some(),
         };
         let Some(filter) = filter else {
             return false;

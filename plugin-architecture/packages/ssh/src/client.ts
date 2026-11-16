@@ -42,7 +42,7 @@ export class SshClient implements PluginClient {
   ) {}
 
   lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
-    return attempt(() => lendSshHost(this.creds, request));
+    return attempt(() => lendSshHost(this.creds, request, this.services?.ssh));
   }
 
   ciPreflight(kind: CiExecutorKind): PluginEffect<CiPreflightResult> {

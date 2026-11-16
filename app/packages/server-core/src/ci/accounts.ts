@@ -8,7 +8,6 @@ import type { CiAccount, CiStatus } from "@infrawrench/client-core";
 import { db } from "../db/client.js";
 import { ciAccounts, githubInstallations } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { orgHasFeature } from "../features.js";
 import { isGithubAppConfigured } from "../github/app.js";
 import { ciProxyConfigured } from "./proxy.js";
 import { CiInputError } from "./runs.js";
@@ -45,13 +44,13 @@ export async function ciAccountsOf(organizationId: string): Promise<CiAccount[]>
 }
 
 export async function ciStatus(organizationId: string): Promise<CiStatus> {
-  const enabled = await orgHasFeature(organizationId, "ci");
   return {
-    enabled,
+    // CI is on for every organization; clients built before that still read it.
+    enabled: true,
     configured: ciProxyConfigured(),
     githubConfigured: isGithubAppConfigured(),
     planIncludesCi: (await planAccess(organizationId)).paid,
-    accounts: enabled ? await ciAccountsOf(organizationId) : [],
+    accounts: await ciAccountsOf(organizationId),
   };
 }
 

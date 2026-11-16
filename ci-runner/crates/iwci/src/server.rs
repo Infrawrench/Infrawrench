@@ -275,7 +275,8 @@ impl Server {
 
     /// Sweeps what split runs left in the store a day ago and more, now
     /// and every hour: a finished run's end marker, and everything of a
-    /// run whose runner died before it could clear it.
+    /// run whose runner died before it could clear it. The same for task
+    /// cache markers (`adapters::inflight`) a runner that died left.
     pub fn sweep_splits(self: &Arc<Self>) {
         let server = self.clone();
         let _ = std::thread::Builder::new()
@@ -286,6 +287,11 @@ impl Server {
                         crate::adapters::split::sweep(server.runner.store.as_ref(), now_secs())
                     {
                         eprintln!("iwci serve: could not sweep split runs: {e}");
+                    }
+                    if let Err(e) =
+                        crate::adapters::inflight::sweep(server.runner.store.as_ref(), now_secs())
+                    {
+                        eprintln!("iwci serve: could not sweep task cache markers: {e}");
                     }
                     std::thread::sleep(std::time::Duration::from_secs(SWEEP_SPLITS_SECS));
                 }
@@ -557,6 +563,14 @@ impl Server {
             });
             capacity["memory_short"] = json!(memory.short());
         }
+        // Whether jobs with native tools (`builtin:bun`) can run here, and
+        // what each reserves for its sandbox beyond its `memory:`.
+        #[cfg(target_os = "linux")]
+        let sandbox = self.runner.sandbox.as_ref().map(|s| s.overhead());
+        #[cfg(not(target_os = "linux"))]
+        let sandbox: Option<u64> = None;
+        capacity["native_sandbox"] = json!(sandbox.is_some());
+        capacity["sandbox_overhead"] = json!(sandbox);
         capacity
     }
 
@@ -669,6 +683,12 @@ impl Server {
             Err(e) => return error(400, e),
         };
         if let Err(e) = req.repo_id() {
+            return error(400, e);
+        }
+        // The event, a manual run's file and its inputs' names and types,
+        // refused before the run is admitted: the values themselves are
+        // checked against the pipeline once its file is read.
+        if let Err(e) = req.inputs() {
             return error(400, e);
         }
         // Helping another runner's run is not a run of this runner's: it
@@ -798,7 +818,12 @@ impl Server {
                                     None if j.execution.is_some() => j.duration_ms,
                                     None => 0,
                                 },
-                                memory_mib: j.memory_mib,
+                                // Billed as reserved: a sandbox's too.
+                                memory_mib: j.memory_mib
+                                    + j.execution
+                                        .as_ref()
+                                        .and_then(|e| e.sandbox)
+                                        .map_or(0, |s| s.reserved_mib),
                                 external: j.cloud.is_some(),
                                 remote: j.remote.is_some(),
                             });
@@ -1369,6 +1394,8 @@ mod tests {
             download_limits: Default::default(),
             external: None,
             helping: Some(Arc::new(crate::schedule::Helping::default())),
+            #[cfg(target_os = "linux")]
+            sandbox: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()

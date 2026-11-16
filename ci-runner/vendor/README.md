@@ -357,9 +357,13 @@ usual state of one being torn down after it ran out, met V8's limit
 there: by then the env's near-heap-limit callback found nothing to grant,
 and the isolate was being disposed, where it cannot be confined, so V8
 aborted the process. `v8/src/unofficial_napi.cc` now swaps the budget's
-callback for one that grants up to 128 MiB more, uncharged, in 32 MiB
-steps, when the env is released: no JavaScript runs after that, so the
-heap only has to finish collecting. The budget's callback also no longer
+callback for one that grants up to 128 MiB more than the larger of the
+heap's limit and its size at release, uncharged, when the env is released:
+no JavaScript runs after that, so the heap only has to finish collecting.
+It grants all of that at its first call. It used to grant it in 32 MiB
+steps, but V8 asks once per limit check (`Heap::CheckHeapLimitReached`)
+before giving up, so a heap further past its limit than one step still
+met it there. The budget's callback also no longer
 outlives its data (its data was the env, freed before the disposal), and
 `src/env.rs` frees an env's heap tracker after the bridge releases the env
 when a store is dropped, as the guest's own release already did, so
@@ -794,6 +798,22 @@ descriptor was a terminal, and each silenced a `node`:
 Upstream main still answers the first two as 0.705.0 does (checked
 November 2026).
 
+**A listening socket is a socket with no peer (#1217).** The same
+`SO_TYPE` answer, from `fd_fdstat_get`'s file type, was "unknown" for every
+socket that was not yet bound or already connected: a bound or listening
+TCP socket and a UDP socket. So `getsockopt(SOL_SOCKET, SO_TYPE)` on a
+server's socket failed with `ENOTSOCK`, and Python's
+`ssl.SSLContext.wrap_socket`, which asks for it first, could not wrap one
+(the usual way to serve HTTPS from Python). `fdstat` now answers stream
+socket for a bound or listening TCP socket, datagram socket for a UDP one,
+and a remote socket's own type. `wrap_socket` then asks the socket for its
+peer and takes `ENOTCONN` for "not connected", as Linux answers for a
+listening socket, but `sock_addr_peer` answered `ENOTSUP` for one, which it
+raised; and then tries a receive, for which the same holds. `src/net/socket.rs`
+answers `ENOTCONN` for both, and for a receive on a socket that is bound
+but neither listening nor connected. Upstream main still answers all of
+them as 0.705.0 does (checked November 2026, at b72787f1be).
+
 **A program can use descriptors 3 and 4 (#1019).** They are the preopens,
 the virtual root and the job's `/`, and `dup2_at` refused to replace one
 with `ENOTSUP`, so bash's `exec 3>&1` (`dup2(1, 3)`) and `exec 4< file`
@@ -1008,6 +1028,18 @@ A builtin command (Wasmer's `/bin/wasmer`) keeps the old ownership, since
 its environment may be dropped before its task ends. Reported upstream as
 wasmerio/wasmer#7174; upstream main is unchanged (checked November 2026).
 
+**A command runs through a symbolic link (#1199).** `BinFactory` read the
+file to run by opening its path, and the file system's `open` does not
+follow symbolic links, so running a link failed with `ENOENT` from bash and
+from `child_process` alike, while the file it points at ran. npm and pnpm
+install every command as one (`bin/tool -> ../lib/node_modules/tool/cli.js`),
+so nothing `npm i -g`, `pnpm add -g` or `npx` installed could run.
+`src/bin_factory/mod.rs` now follows the links along the path first, up to
+40 (a loop fails to run, as with `ELOOP`), the way `execve` resolves a path,
+and still hands a script's interpreter the path the caller spelled, as on
+Linux, so a program finds its own files through the link as it would
+there. Upstream main opens the path the same way (checked November 2026).
+
 **A control plane lists its processes (#1094).** `WasiControlPlane` had
 only `get_process(pid)`, so the runner found a job's processes, to signal
 them on a timeout, a cancel or a service's stop and to wait for them, by
@@ -1098,10 +1130,40 @@ process, as an orphan sees `init` on Linux (in the runner, the job's
 command, pid 1), whose own parent is 0. Upstream main has the same unset
 field and the same `proc_parent` (checked November 2026).
 
+**File locks (#1216).** WASIX has no call for `flock` or `fcntl`'s record
+locks, so a C library has nothing to ask: Wasmer's answers `ENOSYS` for
+`F_GETLK`, `F_SETLK` and `F_SETLKW` and takes every `flock` without asking,
+and Python's `fcntl.flock` and `fcntl.lockf` failed (the Azure CLI's token
+cache, `portalocker`, `filelock`). This adds two calls, in the `wasix_32v1`
+and `wasix_64v1` modules under names of the runner's own so that none can
+meet a later upstream one: `iwci_fd_flock(fd, op)` is `flock(2)`, and
+`iwci_fd_record_lock(fd, cmd, lock)` is `fcntl(2)`'s three record lock
+commands (`cmd` 0, 1 and 2) on a `struct flock` as wasm32 and wasm64 lay it
+out. The locks are kept per control plane (`src/fs/locks.rs`,
+`WasiControlPlane::file_locks`), so they arbitrate between the processes of
+one job's command and nothing else, and a file is known by its path in the
+job's file system. As on Linux, the two kinds are independent: a `flock`
+lock belongs to an open file description (identified by the offset its
+descriptors share, so `dup` and a fork's copies hold it too) and goes when
+it has no descriptor left; a record lock belongs to a process, covers a
+byte range, never conflicts with the same process, and goes when the
+process closes any descriptor of the file (`fd_close`) or exits. A lock
+whose owner is gone is dropped the next time its file's locks are looked
+at, so a blocking lock looks again every 10 ms rather than being woken; a
+signal ends its wait with `EINTR`. No deadlock is detected. A program only
+locks through these if its C library calls them: env:python's CPython is
+rewritten to (`builtins/environments/python/build.sh`). The tests are
+`iwci-runtime`'s `flock_and_record_locks_are_taken_and_released`,
+`record_locks_belong_to_a_process_while_it_runs` and
+`a_flock_is_held_until_its_description_has_no_descriptor`. Upstream has no
+file locking (checked November 2026); a later WASIX defines `flock` and
+`fcntl64` as Linux system calls.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
-still classify as streams, a program can put its own descriptors on the
+still classify as streams, a bound or listening socket has a socket's
+file type and no peer, a program can put its own descriptors on the
 preopens' numbers and keep its paths, a backing or dangling symlink
 can be renamed, a guest's CPU clocks are its own, and a blocking accept
 or receive waits with no timeout of its own and still ends for a signal,
@@ -1114,7 +1176,11 @@ spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
-process, a process's exit signals only its own threads, and once the runner finds a
+process, a process's exit signals only its own threads, a command runs
+through a symbolic link, WASIX has file locks a C library calls (and
+`builtins/environments/python/build.sh` is dropped for a CPython built on
+it, since that module imports the two calls above), and once the runner
+finds a
 renamed file's mode without its new path's inode number: delete
 `vendor/wasmer-wasix*`,
 its `[patch.crates-io]` entry in `../Cargo.toml`, and check
@@ -1130,14 +1196,17 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash-node/rm-recursive-passes`, `bash-node/renamed-modes-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
-`bash-node/unlink-race-passes`,
-`python/idle-server-passes`, `python/idle-server-timeout-fails` and
+`bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
+`python/file-locks-passes`,
+`python/idle-server-passes`, `python/idle-server-timeout-fails`,
+`python/tls-server-passes` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
 `no_descriptor_is_a_terminal`,
 `a_program_can_replace_the_preopens_and_keep_its_paths`,
 `a_bash_script_can_use_descriptors_3_and_4`,
 `a_blocking_accept_or_recv_is_stopped_by_the_timeout`,
 `an_accept_timeout_the_program_sets_still_applies`,
+`a_listening_socket_is_a_socket_with_no_peer`,
 `a_service_blocked_in_accept_takes_its_sigterm`,
 `unlinking_a_directory_fails_and_leaves_it_removable`,
 `a_childs_exit_status_reaches_its_parent_whole`,
@@ -1314,9 +1383,24 @@ closed port were refused; only the address stayed taken.
 adds `test_loopback_closed_listener_releases_its_port` beside upstream's
 loopback tests.
 
+**Also in the patch: a write after the peer closed (#1245).** A connected
+pair's `SocketBuffer::try_send` (`src/tcp_pair.rs`) refused every write once
+the reading end had closed, the first included. Linux takes that first write
+(the peer answers it with a reset) and fails only the ones after it. The
+difference showed in TLS: a client that reads a response to the end of the
+stream finds no close_notify, and OpenSSL then sends a fatal alert before it
+reports the unexpected end; that write failing made Python raise
+`ConnectionResetError` where Linux gives `SSLEOFError`, which `ssl` turns
+into the end of the stream. The buffer now takes one write after its reader
+closed, without storing it, and refuses the rest as before.
+`a_write_after_the_peer_closed_is_taken_once_as_on_linux` in
+`iwci-runtime/src/network.rs` is the check, and the patch adds
+`the_first_write_after_the_reader_closed_is_taken` to the module's tests.
+
 **Remove it** when a virtual-net release after 0.705.0 releases a closed
-listener's address (wasmerio/wasmer `main` still keeps it as of November
-2026): delete `vendor/virtual-net*` and its `[patch.crates-io]` entry.
+listener's address and takes a write after the peer closed (wasmerio/wasmer
+`main` b72787f1be does neither, November 2026): delete `vendor/virtual-net*`
+and its `[patch.crates-io]` entry.
 
 To regenerate after editing: `diff -u` the changed files against the crate
 from crates.io with `a/` and `b/` labels.

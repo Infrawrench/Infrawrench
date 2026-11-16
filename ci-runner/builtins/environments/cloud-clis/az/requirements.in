@@ -1,0 +1,2 @@
+# The Azure CLI. Lock with lock.sh az.
+azure-cli==2.92.0

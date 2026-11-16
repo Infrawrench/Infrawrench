@@ -23,7 +23,7 @@ Each row shows when the change was seen, what kind it was, the resource (click i
 
 You can filter by change kind or account. Results are paginated.
 
-Rows also show a **cost impact**: how the change affected that resource's daily spend. See [Cost per change & cost per deploy](./cost-per-change.md) for how it's measured and when it shows "unknown" instead of "$0".
+Rows also show a **cost impact**: how the change affected that resource's daily spend. See [Cost per change](./cost-per-change.md) for how it's measured and when it shows "unknown" instead of "$0".
 
 ## On your phone
 

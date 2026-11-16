@@ -58,15 +58,40 @@ pub(crate) type Outside = Arc<OutsideNet>;
 
 impl OutsideNet {
     pub(crate) fn new(net: Arc<dyn VirtualNetworking + Send + Sync>, own: HashSet<IpAddr>) -> Self {
+        let own = own.into_iter().map(embedded_v4).collect();
         Self { net, own }
     }
 
     fn allows(&self, ip: IpAddr) -> bool {
-        let canonical = match ip {
-            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
-            v4 => v4,
-        };
-        public(canonical) && !self.own.contains(&canonical)
+        let ip = embedded_v4(ip);
+        public(ip) && !self.own.contains(&ip)
+    }
+}
+
+/// A sandboxed job's way out (`iwci_sandbox::net`) goes through the same
+/// policy as a WASIX job's: the same addresses are allowed, and names
+/// resolve through the host with internal answers dropped. Its connections
+/// are host sockets too, opened only for an allowed address.
+#[cfg(target_os = "linux")]
+impl iwci_sandbox::net::Outside for OutsideNet {
+    fn allows(&self, ip: IpAddr) -> bool {
+        OutsideNet::allows(self, ip)
+    }
+
+    fn connect(&self, to: SocketAddr) -> std::io::Result<std::net::TcpStream> {
+        if !OutsideNet::allows(self, to.ip()) {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
+        std::net::TcpStream::connect_timeout(&to, std::time::Duration::from_secs(30))
+    }
+
+    fn resolve(&self, name: &str) -> std::io::Result<Vec<IpAddr>> {
+        use std::net::ToSocketAddrs;
+        Ok((name, 0)
+            .to_socket_addrs()?
+            .map(|a| a.ip())
+            .filter(|ip| OutsideNet::allows(self, *ip))
+            .collect())
     }
 }
 
@@ -111,6 +136,12 @@ type Result<T> = std::result::Result<T, NetworkError>;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JobNetwork {
     inner: LoopbackNetworking,
+    /// Inside a job's gVisor sandbox (`inside.rs`): the sandbox's own
+    /// network stack, whose loopback is the job's, shared with the native
+    /// programs beside the isolate, and whose way out the runner's gateway
+    /// holds to the same policy (`iwci_sandbox::net`). The in-memory
+    /// loopback is then unused.
+    sandbox: Option<Arc<dyn VirtualNetworking + Send + Sync>>,
     listening: Arc<Mutex<Listening>>,
     /// The public internet, when the runtime offers it.
     outside: Option<Outside>,
@@ -176,11 +207,32 @@ impl JobNetwork {
 
     fn route(&self, peer: SocketAddr) -> Result<Route> {
         if peer.ip().is_loopback() {
+            // The sandbox's loopback is real: its kernel decides.
+            if let Some(stack) = &self.sandbox {
+                return Ok(Route::Outside(stack.clone()));
+            }
             return Ok(Route::Loopback(self.listener_for(peer)?));
         }
         match &self.outside {
             Some(outside) if outside.allows(peer.ip()) => Ok(Route::Outside(outside.net.clone())),
             _ => Err(NetworkError::NetworkUnreachable),
+        }
+    }
+
+    /// A job's network inside its sandbox: the sandbox's own stack, with
+    /// the same refusals as a WASIX job's (listeners on the loopback only,
+    /// connections out to public addresses only, which the sandbox's
+    /// gateway checks again), so a program gets the same errors in both.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn in_sandbox(
+        stack: Arc<dyn VirtualNetworking + Send + Sync>,
+        internet: bool,
+    ) -> Self {
+        let outside = internet.then(|| Arc::new(OutsideNet::new(stack.clone(), host_addresses())));
+        Self {
+            sandbox: Some(stack),
+            outside,
+            ..Self::default()
         }
     }
 
@@ -197,7 +249,10 @@ impl JobNetwork {
 
     /// What the job listens on, for `/proc/iwci/tcp` (services.rs).
     pub(crate) fn listeners(&self) -> Listeners {
-        Listeners(self.listening.clone())
+        Listeners {
+            listening: self.listening.clone(),
+            sandbox: self.sandbox.is_some(),
+        }
     }
 }
 
@@ -218,34 +273,121 @@ impl Listening {
 /// A read-only view of what a job listens on, shared with its
 /// [`JobNetwork`].
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Listeners(Arc<Mutex<Listening>>);
+pub(crate) struct Listeners {
+    listening: Arc<Mutex<Listening>>,
+    /// The job is in its sandbox, where native programs listen too: the
+    /// sandbox's kernel says what is listening (`/proc/net/tcp`).
+    sandbox: bool,
+}
 
 impl Listeners {
     /// Whether a connection to `peer` would reach a listener in the job: a
     /// loopback address something listens on, as a connect would route it.
     /// Nothing is connected to find out.
     pub(crate) fn reaches(&self, peer: SocketAddr) -> bool {
-        peer.ip().is_loopback()
-            && self
-                .0
-                .lock()
-                .expect("listener set")
-                .listener_for(peer)
-                .is_some()
+        if !peer.ip().is_loopback() {
+            return false;
+        }
+        if self.sandbox {
+            return kernel_listening().iter().any(|l| l.reaches(peer));
+        }
+        self.listening
+            .lock()
+            .expect("listener set")
+            .listener_for(peer)
+            .is_some()
     }
 
     /// The addresses something listens on, sorted.
     pub(crate) fn addrs(&self) -> Vec<SocketAddr> {
-        let mut addrs: Vec<_> = self
-            .0
-            .lock()
-            .expect("listener set")
-            .addrs
-            .iter()
-            .copied()
-            .collect();
+        let mut addrs: Vec<_> = if self.sandbox {
+            kernel_listening().into_iter().map(normalise).collect()
+        } else {
+            self.listening
+                .lock()
+                .expect("listener set")
+                .addrs
+                .iter()
+                .copied()
+                .collect()
+        };
         addrs.sort();
+        addrs.dedup();
         addrs
+    }
+}
+
+/// The TCP sockets listening in this network namespace, from
+/// `/proc/net/tcp` and `/proc/net/tcp6` (the sandbox's kernel's view):
+/// each address is as bound, the unspecified ones included.
+fn kernel_listening() -> Vec<SocketAddr> {
+    let mut out = Vec::new();
+    for (file, v6) in [("/proc/net/tcp", false), ("/proc/net/tcp6", true)] {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        out.extend(
+            text.lines()
+                .skip(1)
+                .filter_map(|line| parse_proc_net(line, v6)),
+        );
+    }
+    out
+}
+
+/// One line of `/proc/net/tcp{,6}`: its local address, if it is listening
+/// (state `0A`). Addresses are hex, in 32-bit words of host byte order.
+fn parse_proc_net(line: &str, v6: bool) -> Option<SocketAddr> {
+    let mut fields = line.split_whitespace();
+    let local = fields.nth(1)?;
+    let state = fields.nth(1)?;
+    if state != "0A" {
+        return None;
+    }
+    let (ip, port) = local.split_once(':')?;
+    let port = u16::from_str_radix(port, 16).ok()?;
+    let word = |i: usize| -> Option<[u8; 4]> {
+        let w = u32::from_str_radix(ip.get(i * 8..i * 8 + 8)?, 16).ok()?;
+        Some(w.to_ne_bytes())
+    };
+    let ip: IpAddr = if v6 {
+        if ip.len() != 32 {
+            return None;
+        }
+        let mut bytes = [0u8; 16];
+        for i in 0..4 {
+            bytes[i * 4..i * 4 + 4].copy_from_slice(&word(i)?);
+        }
+        Ipv6Addr::from(bytes).into()
+    } else {
+        if ip.len() != 8 {
+            return None;
+        }
+        Ipv4Addr::from(word(0)?).into()
+    };
+    Some(SocketAddr::new(ip, port))
+}
+
+/// Whether a socket listening on `self` takes a connection to `peer` (a
+/// loopback address): the same address or the unspecified one of its
+/// family, or, for the IPv4 loopback, the IPv6 unspecified one, which
+/// Linux makes dual-stack unless told otherwise.
+trait Reaches {
+    fn reaches(&self, peer: SocketAddr) -> bool;
+}
+
+impl Reaches for SocketAddr {
+    fn reaches(&self, peer: SocketAddr) -> bool {
+        if self.port() != peer.port() {
+            return false;
+        }
+        match (self.ip(), peer.ip()) {
+            (a, b) if a == b => true,
+            (IpAddr::V4(a), IpAddr::V4(_)) => a.is_unspecified(),
+            (IpAddr::V6(a), IpAddr::V6(_)) => a.is_unspecified(),
+            (IpAddr::V6(a), IpAddr::V4(b)) => a.is_unspecified() || a.to_ipv4_mapped() == Some(b),
+            _ => false,
+        }
     }
 }
 
@@ -273,26 +415,34 @@ fn bindable(ip: IpAddr) -> bool {
     ip.is_loopback() || ip.is_unspecified()
 }
 
+/// The IPv4 address an IPv6 address carries, for the forms where its place
+/// is fixed: IPv4-mapped (`::ffff:a.b.c.d`) and NAT64's well-known prefix
+/// (`64:ff9b::a.b.c.d`, RFC 6052, which is only ever used as a /96). Every
+/// address check (public, and not the host's own) is on the result, so
+/// these are judged as the IPv4 address they lead to. Any other address is
+/// returned as it is.
+fn embedded_v4(ip: IpAddr) -> IpAddr {
+    let IpAddr::V6(v6) = ip else {
+        return ip;
+    };
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return IpAddr::V4(v4);
+    }
+    let s = v6.segments();
+    if s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0, 0, 0, 0] {
+        let [.., a, b, c, d] = v6.octets();
+        return IpAddr::V4(Ipv4Addr::new(a, b, c, d));
+    }
+    ip
+}
+
 /// A public unicast address: the only kind a job may connect to outside its
 /// loopback.
 pub(crate) fn public(ip: IpAddr) -> bool {
-    match ip {
+    match embedded_v4(ip) {
         IpAddr::V4(ip) => public_v4(ip),
         IpAddr::V6(ip) => {
-            // IPv4 inside IPv6 (mapped, and NAT64's well-known prefix) is
-            // judged as the IPv4 address it carries.
-            if let Some(v4) = ip.to_ipv4_mapped() {
-                return public_v4(v4);
-            }
             let s = ip.segments();
-            if s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0, 0, 0, 0] {
-                return public_v4(Ipv4Addr::new(
-                    (s[6] >> 8) as u8,
-                    s[6] as u8,
-                    (s[7] >> 8) as u8,
-                    s[7] as u8,
-                ));
-            }
             !(ip.is_unspecified()
                 || ip.is_loopback()
                 || ip.is_multicast()
@@ -302,7 +452,15 @@ pub(crate) fn public(ip: IpAddr) -> bool {
                 || (s[0] == 0x2001 && s[1] == 0x0db8) // documentation
                 || (s[0] == 0x2001 && s[1] < 0x0200) // IETF protocol assignments, Teredo
                 || s[0] == 0x2002 // 6to4, which embeds an IPv4 address
-                || s[0..6] == [0, 0, 0, 0, 0, 0]) // IPv4-compatible
+                || s[0..6] == [0, 0, 0, 0, 0, 0] // IPv4-compatible
+                // The rest of ::/8, reserved, which holds the other forms
+                // that carry IPv4: IPv4-translated (::ffff:0:0/96) and
+                // NAT64's local-use prefix (64:ff9b:1::/48, RFC 8215). In
+                // the latter the operator picks the prefix length, from /48
+                // to /96, so where the IPv4 address sits is not fixed and
+                // it cannot be judged by it; it leads to a translator on
+                // the host's own network, so none of it counts as public.
+                || (s[0] & 0xff00) == 0)
         }
     }
 }
@@ -343,10 +501,18 @@ impl VirtualNetworking for JobNetwork {
         if !bindable(addr.ip()) {
             return Err(NetworkError::AddressNotAvailable);
         }
-        let listener = self
-            .inner
-            .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
-            .await?;
+        let listener = match &self.sandbox {
+            Some(stack) => {
+                stack
+                    .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+            None => {
+                self.inner
+                    .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+        };
         self.register(listener, dual_stack(addr, only_v6))
     }
 
@@ -360,10 +526,18 @@ impl VirtualNetworking for JobNetwork {
         if !bindable(addr.ip()) {
             return Err(NetworkError::AddressNotAvailable);
         }
-        let inner = self
-            .inner
-            .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
-            .await?;
+        let inner = match &self.sandbox {
+            Some(stack) => {
+                stack
+                    .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+            None => {
+                self.inner
+                    .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+        };
         Ok(Box::new(Bound {
             inner,
             dual_stack: dual_stack(addr, only_v6),
@@ -379,6 +553,7 @@ impl VirtualNetworking for JobNetwork {
         if let Route::Outside(outside) = self.route(peer)? {
             return outside.connect_tcp(addr, peer).await;
         }
+        // (Inside a sandbox every route is the sandbox's stack.)
         // A connect without an explicit bind gets an ephemeral port on the
         // loopback of the peer's family.
         let local = if bindable(addr.ip()) && addr.is_ipv4() == peer.is_ipv4() {
@@ -457,7 +632,13 @@ impl VirtualTcpBoundSocket for Bound {
     }
 
     fn connect(&mut self, peer: SocketAddr) -> Result<Box<dyn VirtualTcpSocket + Sync>> {
-        match self.network.route(peer)? {
+        let route = self.network.route(peer)?;
+        // Inside a sandbox the bound socket is the sandbox's own, and
+        // connects where the policy above let it.
+        if self.network.sandbox.is_some() {
+            return self.inner.connect(peer);
+        }
+        match route {
             Route::Loopback(listener) => self.inner.connect(listener),
             // A socket bound first (to the loopback) and then connected
             // outside leaves by a host socket of its own. The host connect
@@ -587,6 +768,35 @@ mod tests {
         // Listening on every interface means the loopback.
         let _all = block_on(net.listen_tcp(addr("0.0.0.0:9000"), false, false, false)).unwrap();
         assert!(block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:9000"))).is_ok());
+    }
+
+    #[test]
+    fn a_write_after_the_peer_closed_is_taken_once_as_on_linux() {
+        // A TLS client that reads a response to the end of the stream sends
+        // an alert then (#1245). Linux takes that write, as the peer's
+        // reset comes only after it; failing it showed as ECONNRESET.
+        let net = JobNetwork::new(None);
+        let mut listener =
+            block_on(net.listen_tcp(addr("127.0.0.1:7445"), false, false, false)).unwrap();
+        for shut_down_first in [false, true] {
+            let mut client = block_on(net.connect_tcp(any_v4(), addr("127.0.0.1:7445"))).unwrap();
+            let (mut server, _) = listener.try_accept().unwrap();
+            assert_eq!(
+                round_trip(server.as_mut(), client.as_mut(), b"over tls"),
+                b"over tls"
+            );
+            if shut_down_first {
+                server.shutdown(std::net::Shutdown::Write).unwrap();
+            }
+            drop(server);
+            let mut buf = vec![MaybeUninit::<u8>::uninit(); 64];
+            assert_eq!(client.try_recv(&mut buf, false).unwrap(), 0, "the end");
+            assert_eq!(client.try_send(b"alert").unwrap(), 5);
+            assert!(matches!(
+                client.try_send(b"more"),
+                Err(NetworkError::ConnectionReset)
+            ));
+        }
     }
 
     #[test]
@@ -764,6 +974,54 @@ mod tests {
         assert!(block_on(b.listen_tcp(addr("127.0.0.1:8080"), false, false, false)).is_ok());
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_sandboxed_jobs_way_out_keeps_to_the_same_policy() {
+        use iwci_sandbox::net::Outside;
+        let own: IpAddr = "198.51.100.1".parse().unwrap();
+        let outside = OutsideNet::new(
+            Arc::new(LoopbackNetworking::new()),
+            [own, "1.2.3.4".parse().unwrap()].into_iter().collect(),
+        );
+        for refused in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "100.64.0.1",
+            "169.254.169.254",
+            "::1",
+            "::ffff:10.0.0.1",
+            "fd00::1",
+            "1.2.3.4",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b::1.2.3.4",
+            "64:ff9b:1::1.1.1.1",
+        ] {
+            assert!(
+                !Outside::allows(&outside, refused.parse().unwrap()),
+                "{refused}"
+            );
+        }
+        assert!(Outside::allows(&outside, "1.1.1.1".parse().unwrap()));
+        assert!(Outside::allows(
+            &outside,
+            "64:ff9b::1.1.1.1".parse().unwrap()
+        ));
+        // A host listener on the loopback is not connected to, even asked
+        // directly.
+        let host = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        host.set_nonblocking(true).unwrap();
+        let err = outside.connect(host.local_addr().unwrap()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(host.accept().is_err());
+        // Names whose answers are internal resolve to nothing.
+        assert_eq!(
+            Outside::resolve(&outside, "localhost").unwrap(),
+            Vec::<IpAddr>::new()
+        );
+    }
+
     #[test]
     fn the_host_loopback_is_neither_reachable_nor_used() {
         // A real server on the host's loopback: the job cannot reach it.
@@ -865,6 +1123,11 @@ mod tests {
             "::ffff:127.0.0.1",
             "::ffff:169.254.169.254",
             "64:ff9b::a00:1",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b:1::8.8.8.8",
+            "64:ff9b:1::169.254.169.254",
+            "64:ff9b:1:a9fe:a9:fe00::",
+            "::ffff:0:169.254.169.254",
             "2002:7f00:1::1",
         ] {
             assert!(!public(no.parse().unwrap()), "{no} is not public");
@@ -953,12 +1216,46 @@ mod tests {
         let fake = Arc::new(FakeOutside::default());
         let own: HashSet<IpAddr> = ["87.86.80.94".parse().unwrap()].into();
         let net = JobNetwork::new(Some(Arc::new(OutsideNet::new(fake.clone(), own))));
-        for peer in ["87.86.80.94:22", "[::ffff:87.86.80.94]:22"] {
+        for peer in [
+            "87.86.80.94:22",
+            "[::ffff:87.86.80.94]:22",
+            "[64:ff9b::87.86.80.94]:22",
+        ] {
             let err =
                 futures::executor::block_on(net.connect_tcp(any_v4(), addr(peer))).unwrap_err();
             assert_eq!(err, NetworkError::NetworkUnreachable, "{peer}");
         }
         assert!(fake.connects.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn nat64_addresses_are_judged_by_the_ipv4_they_carry() {
+        let own: Ipv4Addr = "87.86.80.94".parse().unwrap();
+        let outside = OutsideNet::new(Arc::new(FakeOutside::default()), [IpAddr::V4(own)].into());
+        let allows = |ip: String| outside.allows(ip.parse().unwrap());
+        let refused = [own.to_string(), "10.1.2.3".into(), "169.254.169.254".into()];
+        // The well-known prefix and the IPv4-mapped form carry the address
+        // at a fixed place: judged by it, as the IPv4 address itself is.
+        for prefix in ["64:ff9b::", "::ffff:"] {
+            for v4 in &refused {
+                assert!(!allows(format!("{prefix}{v4}")), "{prefix}{v4}");
+            }
+            assert!(allows(format!("{prefix}8.8.8.8")), "{prefix}8.8.8.8");
+        }
+        // The local-use prefix: none of it, whatever it carries.
+        for v4 in refused.iter().map(String::as_str).chain(["8.8.8.8"]) {
+            assert!(!allows(format!("64:ff9b:1::{v4}")), "64:ff9b:1::{v4}");
+        }
+        // Public IPv6 is unaffected.
+        assert!(allows("2606:4700::1111".into()));
+        assert!(allows("2001:4860:4860::8888".into()));
+        // A host address in an embedding form refuses the IPv4 it carries.
+        let outside = OutsideNet::new(
+            Arc::new(FakeOutside::default()),
+            ["64:ff9b::87.86.80.94".parse::<IpAddr>().unwrap()].into(),
+        );
+        assert!(!outside.allows(IpAddr::V4(own)));
+        assert!(!outside.allows("64:ff9b::87.86.80.94".parse().unwrap()));
     }
 
     #[test]
