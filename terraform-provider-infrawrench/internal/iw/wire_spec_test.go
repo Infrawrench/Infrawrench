@@ -332,9 +332,6 @@ func specChecks() []specCheck {
 		{schema: "BillingProfileBank", value: BillingProfileBank{}},
 		{schema: "BillingProfileTaxRate", value: BillingProfileTaxRate{}},
 
-		{schema: "DeployTrigger", value: DeployTrigger{}},
-		{schema: "DeployTriggerInput", value: DeployTriggerInput{}},
-
 		{schema: "SlackStatus", value: SlackStatus{}},
 		{schema: "SlackInstallation", value: SlackInstallation{}},
 		{schema: "SlackChannel", value: SlackChannel{}},

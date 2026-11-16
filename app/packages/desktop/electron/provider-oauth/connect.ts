@@ -29,7 +29,7 @@ import {
   type ProviderOAuthStatusChange,
 } from "../../shared/rpc/groups/provider-oauth";
 import { cloudFetch } from "../cloud-data/shared";
-import { loadPlugins, getPlugin } from "../infrafile/plugins";
+import { loadPlugins, getPlugin } from "../main-plugins";
 import { getDesktopOAuthClientId } from "./build-env";
 import { localClientPluginIds, localClientSource } from "./client-source";
 import { runLoopbackAuthorization, LoopbackFlowError, LOOPBACK_TIMEOUT_MS } from "./loopback";

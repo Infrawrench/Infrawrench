@@ -84,7 +84,13 @@ export function WorkspaceTabsViewport({
             // `hidden` rather than unmount: the DOM and React state for
             // inactive tabs stay alive, preserving terminal sessions etc.
             style={{ display: isActive ? "flex" : "none" }}
-            className="flex-col flex-1 min-h-0 min-w-0 overflow-auto"
+            // `relative`: the panel is the containing block of what its
+            // content positions absolutely. Without it an `sr-only` caption
+            // or label (absolute, 1px) is placed against the window at its
+            // spot in the panel's scrolled content, below the fold, and the
+            // window itself scrolls by that much: the whole app slides up and
+            // leaves bare background under it.
+            className="relative flex-col flex-1 min-h-0 min-w-0 overflow-auto"
           >
             {mounted ? (
               <WorkspaceTabProvider tabId={tab.id}>

@@ -370,11 +370,11 @@ jobs:
       node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
-| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)). |
-| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its pinned host key in `~/.ssh/known_hosts` and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)); PostgreSQL, MySQL, Redis and MongoDB set `DATABASE_URL` (`REDIS_URL`, `MONGODB_URI`) and what their clients read. A name may also be a resource the app grants as its peer, such as a GKE cluster lent as a Kubernetes connection or a managed database as PostgreSQL, which is lent exactly as that connection would be. |
+| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 `${{ resources.<name>.<output> }}` reads one output of a granted resource,
 such as a database's `connectionString` or a secret manager entry's
@@ -443,7 +443,9 @@ jobs:
 
 `cloud: gcp/build` is the short form. `provider`, `kind` and `connection`
 are literal, so the app can match the job to an opted-in connection before
-the run starts; `machine`, `image`, `region` and `gpu` may use
+the run starts. A cluster the app grants as its peer is a connection here
+too: `cloud: { provider: kubernetes, kind: cluster, connection: gke-prod }`
+runs on the GKE cluster granted as `gke-prod`, through its cloud connection. `machine`, `image`, `region` and `gpu` may use
 `${{ matrix }}`.
 
 - **Like any job:** `run` (bash, with `set -euo pipefail`, on the
@@ -1034,6 +1036,10 @@ Builtins:
 | `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
 | `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
 | `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
+| `vercel@65`        | `node`     | The Vercel CLI 65.16.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
+| `wrangler@4`       | `node`     | Wrangler 4.162.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
+| `cf@1.0.0-beta.32` | `node`     | Cloudflare's CLI, `cf` 1.0.0-beta.32 (a beta: name the exact version). See [Deployment CLIs](#deployment-clis).                              |
+| `neon@9`           | `node`     | The Neon CLI 9.5.0 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
 
 Environments:
 
@@ -1479,7 +1485,9 @@ deploy:
   installs exactly what the lockfile pins and checks every byte against its
   hash, a global install asks the registry for whatever the name and
   version mean at that moment, with its dependencies' ranges resolved fresh.
-  Pin an exact version. A package's install scripts do not run (pnpm's
+  Pin an exact version, or use a [builtin](#tools-and-environments) for the
+  deployment CLIs we publish, which are built from a lockfile and verified
+  like any other builtin. A package's install scripts do not run (pnpm's
   default for dependencies it has not been told to build).
 - **Edge.js's `npm` is pnpm**, so `npm i -g` and `pnpm add -g` are the same
   install: into `PNPM_HOME` (`/root/.local/share/pnpm`, which the
@@ -1536,6 +1544,205 @@ and default environment come with it. Two kinds cannot be commands and are
 refused when the job starts: tools that use the tsc-host ABI
 (`builtin:typescript`, which reads files through its own host interface;
 run it as a job of its own) and tools whose manifest has default arguments.
+
+A tool of the `node` ABI (the [deployment CLIs](#deployment-clis)) is a
+directory rather than a module: its files are mounted read only at
+`/usr/local/lib/iwci/tools/<name>/<version>`, unpacked once per runner and
+shared by every job that uses that build, and its command in
+`/usr/local/bin` is a bash script that runs its script on the
+environment's own `node`. It works only in `tools:`, and only in an
+environment with `node`: in `env:bash` the job fails to start ("`vercel`
+(tools:) runs on `node`, which this environment does not have"), and as a
+job of its own (`using:`) it is refused the same way.
+
+### Deployment CLIs
+
+Four command-line programs from npm are builtins for deploying from a job:
+`builtin:vercel@65`, `builtin:wrangler@4`, `builtin:cf@1.0.0-beta.32`
+(Cloudflare's new CLI, in beta, so only its exact version resolves) and
+`builtin:neon@9`. Each runs on the environment's `node`, so list it in
+`tools:` of a job on `env:bash-node`:
+
+```yaml
+deploy:
+  using: env:bash-node@24
+  tools: [builtin:vercel@65, builtin:wrangler@4, builtin:neon@9]
+  env:
+    VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+  run: |
+    vercel deploy --prebuilt --prod --yes
+    wrangler deploy
+    neon branches create --project-id "$NEON_PROJECT" --name "pr-${{ pull-request.number }}"
+```
+
+- **Built from a lockfile, verified, immutable.** Each is a directory in
+  `builtins/npm-cli/` holding a `package.json` with the program at an exact
+  version and the `package-lock.json` that pins every package under it by
+  integrity hash. `npm-cli/build.sh` installs exactly that (`npm ci`, no
+  install scripts, no optional dependencies: those are the native builds
+  per platform), packs `node_modules` as a tar in a fixed order with fixed
+  owners, times and modes, and checks the tar's SHA-256 against the one
+  pinned in the tool's `builtin.json` before it compresses it. The store
+  publishes the compressed tar by its own hash like any blob, and a version
+  is never republished. Unlike a [global install](#global-installs),
+  nothing is fetched while the job runs.
+- **Tokens from the environment, no prompts.** Each reads its token from a
+  variable: `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` (with
+  `CLOUDFLARE_ACCOUNT_ID`), `NEON_API_KEY`. Set them from secrets, as
+  above, or have a connection lent where its plugin can lend one
+  (`connections:`, see
+  [Connections, SSH keys and resources](#connections-ssh-keys-and-resources));
+  either way the value is masked. No job has a terminal, so none of them
+  prompts; pass `--yes` where a command asks to confirm (`vercel deploy`
+  linking a directory the first time).
+- **No telemetry, no update checks** where the program has a switch: each
+  builtin's default environment sets `VERCEL_TELEMETRY_DISABLED=1` and
+  `NO_UPDATE_NOTIFIER=1` (Vercel), `WRANGLER_SEND_METRICS=false`,
+  `CF_SEND_TELEMETRY=false` and `DO_NOT_TRACK=1` (Cloudflare's), and the
+  Neon CLI runs with `--no-analytics`. A job's own `env:` wins. Wrangler
+  still asks npm's registry for its newest version (three seconds at most,
+  cached for an hour); with `network: false` that fails at once and changes
+  nothing.
+- **Native programs are left out.** A job is a WebAssembly isolate, so a
+  native binary cannot run in it, and npm leaves the per-platform builds out:
+  - The Vercel CLI's own native build (`@vercel/vc-native-*`) gives way to
+    its JavaScript build, which the CLI runs wherever no native one fits.
+    `vercel deploy` (which uploads the source and builds on Vercel) and
+    `vercel deploy --prebuilt` (which uploads `.vercel/output`) work.
+    `vercel build` runs the framework's build in the job, so it works as
+    far as that build does under `node` here (see
+    [Tools and environments](#tools-and-environments)); `vercel dev` is
+    not tested.
+  - Wrangler's esbuild is esbuild-wasm, the same JavaScript API with the
+    compiler as WebAssembly, through an `overrides` entry in its
+    `package.json`, so `wrangler deploy` bundles in the job. `wrangler
+deploy --no-bundle` uploads a Worker built elsewhere as it is, and
+    `wrangler pages deploy <dir>` uploads a directory to Pages.
+  - workerd, Cloudflare's local Workers runtime, is a native program with
+    no build that runs here. Wrangler loads it, through Miniflare, to start
+    at all (the real package throws "Unsupported platform: wasi wasm32 LE"
+    as it loads), so `builtins/npm-cli/stubs/workerd` stands in for it: it
+    exports what the package does, and its `workerd` prints why it cannot
+    run and exits 1. `wrangler dev`, anything with `--local`, `cf dev` and
+    `@cloudflare/vitest-pool-workers` fail, saying so. Use `wrangler dev
+--remote`, which runs the Worker on Cloudflare, or a
+    [cloud job](#cloud-jobs) for the local runtime.
+  - `cf` deploys a directory of static assets as a Worker (`cf deploy
+public`); `--prebuilt` with existing Build Output should too, but is not
+    tested yet. A project with server-side code is built by the project's
+    own Wrangler or Vite, which `cf deploy` delegates to, and only once the project has moved to
+    `cloudflare.config.ts` (`cf migrate`); until then, and for anything `cf`
+    does not cover yet, `builtin:wrangler` deploys a Worker from source.
+  - The Neon CLI's optional esbuild (for Neon Functions) and keyring are
+    left out: `neon branches`, `neon connection-string`, `neon projects`
+    and its other API commands work, `neon psql` needs a `psql` the job does
+    not have, and a keyring does not apply (it reads `NEON_API_KEY`).
+- **What it costs.** The compressed directories are 30 MB (Vercel), 8 MB
+  (Wrangler), 6 MB (`cf`) and 7 MB (Neon); a runner unpacks each once and
+  shares it between jobs. On ci-1, `--version` took 40 ms (Vercel), 120 ms
+  (`cf`), 400 ms (Neon) and 680 ms (Wrangler, which loads Miniflare), and a
+  whole test job (a fake API service started, then the deploy) 1.2 s for
+  `cf deploy`, 3 s for `wrangler deploy` with bundling, and 4.3 s for
+  `vercel deploy`. Bundling 400 modules (2.5 MB of source) took 2.9 s
+  (`wrangler deploy --dry-run`, 0.7 s of it starting Wrangler).
+- **Updating one** is a new version: change the version in its
+  `package.json`, run `npm install --package-lock-only --ignore-scripts
+--install-links` beside it, set the version in `builtin.json`, build with
+  `NPM_CLI_PIN=1 builtins/npm-cli/build.sh <tool>` and pin the hash it
+  prints. A rebuild of a version already published cannot be published.
+- Tested end to end (`builtins/test.sh npm-cli`) against fake
+  Vercel, Cloudflare and Neon APIs on the job's own loopback
+  (`builtins/npm-cli/fake-apis.mjs`, which answers the routes the CLIs use
+  with the shapes the providers' API references give), every job with
+  `network: false`, so nothing can reach a real provider: `vercel deploy`
+  and `--prebuilt --prod`, `wrangler deploy` (bundled, and `--no-bundle`),
+  `wrangler pages deploy`, `cf deploy <dir>`, and a Neon branch made, read
+  and deleted. As failures: a refused Vercel token and Neon key, `wrangler
+dev`, a Node tool in `env:bash`, and one run as a job of its own. The
+  tokens come from lent connections and must come out masked.
+
+### Native tools in a sandbox
+
+A tool whose manifest says `abi: native-gvisor` is a native Linux program,
+not a module (`builtin:bun`, see [Bun](#bun)). A job that names one in
+`tools:` runs whole in a gVisor sandbox of its own, the runner's own
+binary first, which runs the script and the services exactly as a WASIX
+job runs them, beside the native program:
+
+- **Files.** The sandbox's root is the job's own file system, served from
+  the runner (lisafs), so the native program and the WASIX commands see
+  and change the same files, held to the same write budget, and what they
+  write becomes the job's changes, caches and artifacts as for any job.
+  Each file it creates is charged for its entry as in a WASIX job, and
+  each directory and link 128 bytes and its name, all given back when it
+  is removed; a path longer than 4096 bytes is refused (`ENAMETOOLONG`). Modes are real: `chmod` from either side is what the other `stat`s. The
+  native program, its C library, the environment's packages and their
+  compiled modules come in read only, beside it. A native program also
+  finds `/etc/passwd`, `/etc/group`, `/etc/hosts` (with the job's services
+  on the loopback) and `/etc/resolv.conf` in the job's `/etc` where it has
+  none.
+- **Processes.** A script runs the native program by name from `PATH`;
+  the program runs the environment's commands (`bash`, `sh`, `node`,
+  `git`, `#!/usr/bin/env node` scripts) by name from its own, where each
+  is a stand-in that starts the command as a WASIX process of the job,
+  with the caller's arguments, environment, directory and standard
+  streams, and passes signals on.
+- **Network.** One loopback for everything in the job: a `Bun.serve` is
+  reached by a WASIX `curl` or `node` and the other way round, and a
+  service by its name. The way out is the sandbox's only interface, whose
+  other end is the runner, which applies the same policy as for a WASIX
+  job (public addresses only, never the runner's own; names answered only
+  with public addresses); `network: false` leaves only the loopback.
+- **Memory.** The sandbox has a cgroup of its own, with swap off. The
+  sandbox's own memory (gVisor's kernel, the runner inside, the loaded
+  environment), about 170 to 200 MiB with `env:bash-node`, is measured
+  before the script starts, and the job may then use its whole `memory:`
+  on top of it; past that the sandbox is stopped and the job fails as out
+  of memory, with a note. A sandbox that sits at its limit for ten
+  seconds, meeting it again and again and spending CPU time on it, counts
+  as out of memory too: gVisor keeps some memory the kernel can always
+  reclaim a little of, so it may never be killed for it.
+  `peak_memory_mib` and `held_memory_mib` are the
+  job's share, as for a WASIX job, which does not count the runner's own
+  memory either; the report's `execution.sandbox` says what the sandbox
+  itself took (`overhead_mib`), what was reserved for it (`reserved_mib`,
+  384 MiB) and its CPU time (`cpu_ms`, gVisor's kernel's included). Such
+  a job reserves `memory:` and the 384 MiB from the runner's `--memory`,
+  in either admission mode.
+- **Time.** The timeout, a cancel and draining stop the whole sandbox; the
+  stall check reads the sandbox's CPU time. How the job ended (its exit
+  status, a timeout, running out of memory) is what the runner saw of the
+  sandbox, not what the runner inside reports.
+- **CPU.** The runner's sandboxes together may use its `--cpus` worth of
+  CPU time (`cpu.max` on their common cgroup), gVisor's kernel's
+  included, shared by equal weight; each is told it has that many CPUs,
+  as a WASIX job's threads share the runner's.
+- **Billing.** The job is charged its wall time as any job, and the memory
+  it reserved: its `memory:` and the sandbox's 384 MiB.
+- **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
+  the like) does not run beside a native one yet: such a job fails to
+  start, saying so. Use it in a job of its own.
+- **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
+  release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
+  another fails it, saying so. The runner starts each sandbox in new user,
+  mount, PID, IPC, UTS and network namespaces. On a host that keeps user
+  namespaces from unprivileged programs (Ubuntu's AppArmor), it does so
+  through `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`):
+  `iwci-sandbox-spawn` (`crates/iwci-sandbox-spawn`), a small root service
+  that systemd starts once per connection to a socket only the runner may
+  use. It takes a few checked values and the sandbox's descriptors, never
+  a command line or an environment, starts only the Sentry at its pinned
+  path once that and gVisor's unmounter match the SHA-256 pins compiled
+  into it, always as `boot --setup-root`, as the system user
+  `iwci-sandbox` and straight into the job's cgroup, and kills it when the
+  runner asks or goes away (`infra/ci-runners` installs it). A service of
+  another protocol leaves native jobs off, saying why. `/v1/capacity` says `native_sandbox` and
+  `sandbox_overhead`. In a split run the job stays on the runner that has
+  the run. The task cache keys it like any job: the native tool's manifest
+  is pinned by digest.
 
 ### kubectl
 
@@ -1676,6 +1883,12 @@ What works:
 
 What to know:
 
+- **Nobody answers a prompt.** A remote that asks for a user name or
+  password (a private repository without a token, a mistyped URL on a host
+  that answers 401) fails Git at once with "could not read Username ...:
+  terminal prompts disabled" and status 128, because the runner sets
+  `GIT_TERMINAL_PROMPT=0` for every job. A job has no terminal, and without
+  it Git waited for an answer until the stall check stopped the job.
 - **The checkout is not a repository.** The runner writes the commit's
   tree into the job's file system without a `.git`, so `git log` or `git
 describe` in `/app` fails; clone what a job needs to inspect.
@@ -1719,10 +1932,34 @@ jobs:
     run: node --test
 ```
 
-There is no `bun` in a job: jobs run Node (Edge.js), so this is for
-projects that install with Bun and whose scripts run under Node. What a
-job gets is the `node_modules` `bun install --frozen-lockfile` makes, in
-the layout Bun would pick:
+Bun itself is `tools: [builtin:bun@1.4]`, the official release run
+natively in a gVisor sandbox beside the environment (see
+[Native tools in a sandbox](#native-tools-in-a-sandbox)), on a runner
+started with `--native-sandbox`:
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    tools: [builtin:bun@1.4]
+    run: |
+      bun install --frozen-lockfile
+      bun test
+```
+
+`bun` and `bunx` are on the script's `PATH`; from Bun, the environment's
+`bash`, `sh`, `node`, `git` and the rest are on its own, so `bun run` of a
+package script, `Bun.spawn(["node", ...])` and `#!/usr/bin/env node` files
+run them. Bun's JIT, `bun:sqlite`, `bun:ffi`, native addons and
+`bun build --compile` work as they do anywhere, since the program is real.
+The builtin is Bun 1.4.4 for `x86_64-linux` and `aarch64-linux` and
+Ubuntu 24.04's C library and C++ runtime, every file pinned by SHA-256
+(`builtins/bun/build.sh`).
+
+Without it, there is no `bun` in a job: `deps: [bun]` is for projects that
+install with Bun and whose scripts run under Node. What a job gets is the
+`node_modules` `bun install --frozen-lockfile` makes, in the layout Bun
+would pick:
 
 - **hoisted** for a single package: `bun.lock` records that tree itself
   (a package's key is its path in it), so every package is unpacked where
@@ -2637,8 +2874,9 @@ from the environment only. `--base` gives the changed paths that `paths:`
 and `changed()` read. Caches (git, fetched packages, compiled modules,
 objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
-Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
-`IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
+Jobs see `CI=true`, `HOME=/root` and `GIT_TERMINAL_PROMPT=0` (unless they
+set their own), `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and
+`IWCI_OUTPUT`, plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
 [Known limitations](#known-limitations)). A `run:` script and what it starts
@@ -3247,7 +3485,7 @@ it is masked, and an untrusted run is given none of it:
   the same body as a run and resolves it as a run would (the commit, the
   pipeline files or `pipeline`, `base` for `paths:`), without a job slot,
   answering only the pipelines the event triggers:
-  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }] }`,
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
   with `"concurrency": null` for a pipeline without one. `jobs` lists each
   job key that runs on a cloud account or is lent anything, which is what
   the app resolves before it dispatches the run:
@@ -3257,7 +3495,10 @@ it is masked, and an untrusted run is given none of it:
   still in them; `resources` includes what the job's services read). One
   route rather than a second, because the app already calls it before every
   dispatch, and a second would clone and parse the commit again. Files that
-  do not parse are left out (the run reports them). `400` for a bad
+  do not parse are listed in `invalid` instead, with the errors a run
+  reports them with; so an empty `pipelines` beside an empty `invalid`
+  means a run would run nothing, which the app takes as reason not to send
+  one (an older runner leaves `invalid` out, which says nothing). `400` for a bad
   request, `422` when the commit cannot be fetched. `POST
 /v1/schedules/read` carries each scheduled pipeline's `concurrency` the
   same way.
@@ -3325,6 +3566,7 @@ for `build[app/web]`). Every body and answer is JSON unless it says tar.
       "CI",
       "IWCI",
       "HOME",
+      "GIT_TERMINAL_PROMPT",
       "IWCI_COMMIT",
       "IWCI_BRANCH",
       "IWCI_REPO_ID",

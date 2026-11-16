@@ -97,7 +97,6 @@ describe("effect/cli: routing", () => {
       "currency",
       "dashboards",
       "declared-incidents",
-      "deploy",
       "diff",
       "dns",
       "dora",

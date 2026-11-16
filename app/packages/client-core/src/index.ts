@@ -1049,11 +1049,6 @@ export * from "./github-issues";
 export * from "./pr-checks";
 export * from "./cost-exports";
 export * from "./change-cost-impact";
-export {
-  createDeployStopController,
-  type DeployStopController,
-  type DeployStopSender,
-} from "./deploy-stop";
 export * from "./report-notifications";
 export * from "./cost-visibility";
 export * from "./chat/types";

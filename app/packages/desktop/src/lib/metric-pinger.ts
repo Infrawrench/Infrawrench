@@ -3,7 +3,7 @@ import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
 import { METRIC_PINGS_CHANGED_EVENT } from "./metric-pings";
 import { setPingsActive, showNotification } from "./app-shell";
-import { getLocalAccountCredentials } from "./local-credentials";
+import { getLocalAccountCredentials, localConnectionCredentials } from "./local-credentials";
 
 interface PingRow {
   id: string;
@@ -89,8 +89,13 @@ async function tick() {
             if (!pluginId || !typeId || !resourceId) return;
             const loaded = await getPlugin(pluginId);
             if (!loaded?.plugin.createClient) return;
-            const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
-            const client = loaded.plugin.createClient(credentials, services);
+            const connection = await localConnectionCredentials(
+              accountId,
+              loaded.plugin.manifest.credentialFields,
+              credentials,
+            );
+            const services = buildPluginHostServices(loaded.plugin.manifest, connection);
+            const client = loaded.plugin.createClient(connection, services);
             if (!client.fetchMetricSeries) return;
             const series = await client.fetchMetricSeries(typeId, resourceId, accountId);
             const seriesByLabel = new Map(series.map((s) => [s.label, s]));

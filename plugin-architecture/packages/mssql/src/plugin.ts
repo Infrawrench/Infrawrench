@@ -15,6 +15,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "connectionString",
+      tunnel: "address",
       label: "Connection String",
       description: "SQL Server connection URI.",
       sensitive: true,

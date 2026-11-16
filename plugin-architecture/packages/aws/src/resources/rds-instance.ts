@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, o, rt, CI_DATABASE_PASSWORD_LENDING } from "@infrawrench/plugin-base";
 import { RDS_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const RDSInstanceResourceType = rt({
@@ -120,6 +120,8 @@ export const RDSInstanceResourceType = rt({
       pluginId: "postgres",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "PostgreSQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", prefix: "postgres" },
       unreachableWhen: {
         fieldsEmpty: ["endpoint"],
@@ -135,6 +137,8 @@ export const RDSInstanceResourceType = rt({
       pluginId: "mysql",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MySQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "mysql" },
       unreachableWhen: {
         fieldsEmpty: ["endpoint"],
@@ -150,6 +154,8 @@ export const RDSInstanceResourceType = rt({
       pluginId: "mysql",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MariaDB",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "mariadb" },
       unreachableWhen: {
         fieldsEmpty: ["endpoint"],

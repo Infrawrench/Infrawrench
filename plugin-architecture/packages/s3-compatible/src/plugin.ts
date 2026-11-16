@@ -19,6 +19,7 @@ export const manifest = {
     {
       key: "endpoint",
       providerHost: true,
+      tunnel: "address",
       providerHostSubdomains: true,
       label: "Endpoint URL",
       description:

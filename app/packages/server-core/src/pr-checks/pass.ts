@@ -14,9 +14,9 @@
  * part-way is marked failed and is not retried on its own; the next push
  * gets a fresh check.
  *
- * **Never runs code from the pull request.** The Terraform is read as text;
- * an Infrafile is listed but not executed, because a pull request from a
- * fork would otherwise run its author's code with the org's credentials.
+ * **Never runs code from the pull request.** The Terraform is read as text,
+ * because a pull request from a fork would otherwise run its author's code
+ * with the org's credentials.
  */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";

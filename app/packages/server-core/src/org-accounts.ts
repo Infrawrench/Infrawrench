@@ -35,7 +35,16 @@ export async function getOrgAccountClient(accountId: string, organizationId: str
   // before anything reads the credentials.
   const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
 
-  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
+  // True when a rewriter pointed a credential at something only this process
+  // reaches (an SSH tunnel's local end), which CI lending refuses to hand out.
+  const rewritten = await applyCredentialRewriters(
+    {
+      orgId: organizationId,
+      accountId,
+      credentialFields: loaded.plugin.manifest.credentialFields,
+    },
+    credentials,
+  );
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,
@@ -46,5 +55,5 @@ export async function getOrgAccountClient(accountId: string, organizationId: str
     accountId,
     organizationId,
   });
-  return { client, plugin: loaded.plugin, credentials, account };
+  return { client, plugin: loaded.plugin, credentials, account, rewritten };
 }

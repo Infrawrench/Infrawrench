@@ -38,13 +38,13 @@ function pemToDer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-async function makeJwt(key: ServiceAccountKey): Promise<string> {
+async function makeJwt(key: ServiceAccountKey, scope: string = GCP_SCOPE): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64url(
     JSON.stringify({
       iss: key.client_email,
-      scope: GCP_SCOPE,
+      scope,
       aud: "https://oauth2.googleapis.com/token",
       iat: now,
       exp: now + 3600,
@@ -96,8 +96,10 @@ function cacheKey(key: ServiceAccountKey): string {
 export async function fetchAccessTokenRaw(
   key: ServiceAccountKey,
   http: HttpHostServices | undefined,
+  /** Narrower than `cloud-platform`, for a token that must reach less. */
+  scope?: string,
 ): Promise<{ token: string; expiresInSec: number }> {
-  const jwt = await makeJwt(key);
+  const jwt = await makeJwt(key, scope);
   const res = await hostFetch({ http }, "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },

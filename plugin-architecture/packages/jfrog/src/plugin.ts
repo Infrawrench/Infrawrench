@@ -21,6 +21,7 @@ export const manifest = {
     {
       key: "baseUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Platform URL",
       description:
         "The address you open the JFrog Platform at: https://<name>.jfrog.io on JFrog Cloud, or your own host for a self-hosted platform. Paste it from the browser; a trailing /ui or /artifactory is removed.",

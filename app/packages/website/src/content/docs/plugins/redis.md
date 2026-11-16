@@ -31,5 +31,6 @@ Or reference an output from a managed Redis resource (DigitalOcean, ElastiCache,
 
 ## Tips & limits
 
+- **CI jobs:** an admin can lend the connection to [Infrawrench CI](../features/ci.md#connections) jobs as `REDIS_URL`, with the password as `REDISCLI_AUTH` for `redis-cli` and an ACL user's name as `REDIS_USERNAME` (`redis-cli --user "$REDIS_USERNAME"`). A managed Redis in a cloud account can be lent the same way without connecting it here.
 - `rediss://` turns on TLS. Use it for any cloud-managed Redis.
 - Streaming commands (`MONITOR`, `SUBSCRIBE`) hold the connection open until you stop them.

@@ -109,7 +109,7 @@ describe("changeCostImpactAnnotationText", () => {
   it("says when other changes overlapped rather than claiming the whole delta", () => {
     const contested = measured({ overlappingChanges: 2, confidence: "medium" });
     expect(
-      changeCostImpactAnnotationText({ kind: "deployment", label: "acme/web → prod" }, contested),
+      changeCostImpactAnnotationText({ kind: "change", label: "api-prod updated" }, contested),
     ).toContain("(other changes overlapped)");
   });
 

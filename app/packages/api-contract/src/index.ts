@@ -105,7 +105,6 @@ export * from "./domains/custom-graphs";
 export * from "./domains/dashboard-notifications";
 export * from "./domains/dashboards";
 export * from "./domains/dependency-graph";
-export * from "./domains/deployments";
 export * from "./domains/digest";
 export * from "./domains/discovery";
 export * from "./domains/dns";
@@ -265,7 +264,6 @@ import { CustomGraphsApi } from "./domains/custom-graphs";
 import { DashboardNotificationsApi } from "./domains/dashboard-notifications";
 import { DashboardsApi } from "./domains/dashboards";
 import { DependencyGraphApi } from "./domains/dependency-graph";
-import { DeploymentsApi } from "./domains/deployments";
 import { DigestApi } from "./domains/digest";
 import { DiscoveryApi } from "./domains/discovery";
 import { DnsApi } from "./domains/dns";
@@ -430,7 +428,6 @@ export const API_DEFINITIONS = {
   "dashboard-notifications": DashboardNotificationsApi,
   dashboards: DashboardsApi,
   "dependency-graph": DependencyGraphApi,
-  deployments: DeploymentsApi,
   digest: DigestApi,
   discovery: DiscoveryApi,
   dns: DnsApi,

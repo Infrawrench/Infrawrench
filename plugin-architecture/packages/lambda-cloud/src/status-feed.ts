@@ -1,5 +1,5 @@
 /**
- * Lambda public status feed (https://status.lambda.ai, an incident.io status
+ * Lambda public status feed (https://status.lambda.com, an incident.io status
  * page; verified 2026-10). incident.io emulates the Statuspage v2 API but
  * 404s on `/incidents/unresolved.json`, so this reads `/api/v2/incidents.json`
  * (recent history) and keeps the unresolved ones.
@@ -18,9 +18,9 @@ import type {
 import { parseStatuspageIncidents } from "@infrawrench/plugin-base";
 
 export const statusFeed: StatusFeedDeclaration = {
-  url: "https://status.lambda.ai/api/v2/incidents.json",
+  url: "https://status.lambda.com/api/v2/incidents.json",
   format: "statuspage-v2",
-  statusPageUrl: "https://status.lambda.ai",
+  statusPageUrl: "https://status.lambda.com",
 };
 
 export function mapComponent(name: string): StatusComponentMapping | null {

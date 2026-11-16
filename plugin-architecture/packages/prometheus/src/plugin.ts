@@ -18,6 +18,7 @@ export const manifest = {
     {
       key: "url",
       providerHost: true,
+      tunnel: "address",
       label: "Prometheus URL",
       description:
         "The server's base URL with its port: http://prometheus.internal:9090, a Thanos Query URL, Mimir or Cortex with its /prometheus prefix, or VictoriaMetrics (:8428, or vmselect's /select/0/prometheus). For a server on a private network, add an SSH tunnel to this account.",
@@ -53,6 +54,7 @@ export const manifest = {
     {
       key: "alertmanagerUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Alertmanager URL",
       description:
         "Optional. Adds silences, notified alerts and receivers: http://alertmanager.internal:9093, or Mimir's /alertmanager. Uses the same credentials.",

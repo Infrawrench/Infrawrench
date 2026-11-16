@@ -19,6 +19,7 @@ export const manifest = {
     {
       key: "siteUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Instance URL",
       description:
         "https://app.infisical.com for US Cloud, https://eu.infisical.com for EU Cloud, or your self-hosted or dedicated instance URL.",

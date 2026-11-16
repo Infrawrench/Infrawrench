@@ -84,8 +84,18 @@ function withHostKeyVerifier(
   };
 }
 
+/**
+ * What the desktop records on each tunnel: where the bastion forwards to, and the
+ * local account it was opened for (none for one the renderer opened itself).
+ */
+interface DesktopTunnelExtras {
+  remoteHost: string;
+  accountId?: string;
+}
+
 export async function openTunnel(
   config: SshTunnelConfig,
+  { accountId }: { accountId?: string } = {},
 ): Promise<{ tunnelId: string; localPort: number }> {
   await ensureHostKeyCacheLoaded();
   // The ssh-tunnel-core surface doesn't expose the host-key error path
@@ -93,9 +103,35 @@ export async function openTunnel(
   // message we log above. That's acceptable for tunnels because the IPC
   // caller only sees pass/fail; the console log identifies the cause.
   const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
-  return coreOpenTunnel<undefined>(config, undefined, {
+  const extras: DesktopTunnelExtras = {
+    remoteHost: config.remoteHost,
+    ...(accountId === undefined ? {} : { accountId }),
+  };
+  return coreOpenTunnel<DesktopTunnelExtras>(config, extras, {
     configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
   });
+}
+
+/**
+ * The local port of an open tunnel that serves a local account's tunnel config: the
+ * one opened for the account, or else one to the same place through the same bastion
+ * (the tunnel the "Connect to service via SSH" modal opened when it made the account).
+ * Null when there is none.
+ */
+export function findAccountTunnel(
+  accountId: string,
+  config: { sshHost: string; remoteHost: string; remotePort: number },
+): number | null {
+  const entries = getTunnelEntries<DesktopTunnelExtras | undefined>();
+  const own = entries.find((r) => r.extras?.accountId === accountId);
+  if (own) return own.localPort;
+  const same = entries.find(
+    (r) =>
+      r.sshHost === config.sshHost &&
+      r.remotePort === config.remotePort &&
+      r.extras?.remoteHost === config.remoteHost,
+  );
+  return same ? same.localPort : null;
 }
 
 export function closeTunnel(tunnelId: string): void {

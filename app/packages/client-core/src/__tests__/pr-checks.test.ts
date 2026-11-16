@@ -75,7 +75,7 @@ describe("deriveTerraformAttributeFieldMap", () => {
 describe("pull request check helpers", () => {
   it("classifies infrastructure paths", () => {
     expect(classifyPrCheckPath("infra/main.tf")).toBe("terraform");
-    expect(classifyPrCheckPath("Infrafile")).toBe("infrafile");
+    expect(classifyPrCheckPath("Infrafile")).toBeNull();
     expect(classifyPrCheckPath("k8s/app.yaml")).toBeNull();
     expect(classifyPrCheckPath("k8s/app.yaml", "apiVersion: v1\nkind: Service\n")).toBe(
       "kubernetes",

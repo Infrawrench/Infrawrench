@@ -72,13 +72,12 @@ export async function fetchDepotQuotas(
     storageGb,
     "GB",
   );
-  // Sandboxes and Managed Agents share this pool, but their usage is not counted here.
   push(
     "included-sandbox-minutes",
     "depot-ci",
-    "Included sandbox compute minutes used by Depot CI (billing cycle)",
+    "Included sandbox compute minutes used by Depot CI and agent sandboxes (billing cycle)",
     rates.includedSandboxMinutes,
-    used.ci,
+    used.compute,
     "minutes",
   );
   return out;

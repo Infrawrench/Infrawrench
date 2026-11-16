@@ -4,7 +4,7 @@
  * Wire types for `GET /api/org/{orgId}/moment`, plus the pure merge/grouping
  * logic every surface shares (web, desktop, mobile, CLI, MCP). The server
  * unions the feeds the platform already indexes: resource changes, cost
- * anomalies, workflow runs, deployments, provider status incidents, audit
+ * anomalies, workflow runs, provider status incidents, audit
  * entries, change freezes, and the drift/expiry alert claims; into one
  * chronological list of typed events for a timestamp ± window.
  *
@@ -22,7 +22,6 @@ export const MOMENT_FEED_IDS = [
   "statusIncidents",
   "costAnomalies",
   "workflowRuns",
-  "deployments",
   "audit",
   "freezes",
   "driftAlerts",
@@ -37,7 +36,6 @@ export const MOMENT_FEED_LABELS: Record<MomentFeedId, string> = {
   statusIncidents: "Provider incidents",
   costAnomalies: "Cost anomalies",
   workflowRuns: "Workflow runs",
-  deployments: "Deployments",
   audit: "Audit log",
   freezes: "Change freezes",
   driftAlerts: "Drift alerts",
@@ -72,7 +70,6 @@ export interface MomentEventLink {
     | "incident"
     | "costs"
     | "workflow-run"
-    | "deployment"
     | "audit"
     | "freeze"
     | "expiring";
@@ -94,8 +91,7 @@ export interface MomentEvent {
    * `change.updated`, `change.deleted`, `incident.started`,
    * `incident.resolved`, `anomaly.spike`, `anomaly.new_source`,
    * `workflow-run.started`, `workflow-run.succeeded`, `workflow-run.failed`,
-   * `workflow-run.canceled`, `deployment.started`, `deployment.finished`,
-   * `deployment.failed`, `audit.<action>`, `freeze.started`, `freeze.ended`,
+   * `workflow-run.canceled`, `audit.<action>`, `freeze.started`, `freeze.ended`,
    * `drift-alert.sent`, `expiry-alert.sent`. Open set: render unknown kinds
    * generically.
    */

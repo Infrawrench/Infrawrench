@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { MissingScopeError } from "@/auth/scope-error";
 import { buildTestApi } from "@/http/testing";
 
@@ -222,6 +224,42 @@ describe("Sync routes (bearer auth)", () => {
       const body = await res.json();
       expect(body.error).toMatch(/Unknown accountId/);
       expect(body.accountIds).toContain("ghost");
+    });
+
+    it("brings a pushed resource back from a delete as another incarnation", async () => {
+      const where = vi.fn().mockResolvedValue([{ id: "a1" }]);
+      mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+      const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values: vi.fn().mockReturnValue({ onConflictDoUpdate }) });
+      const resource = (deletedAt: string | null) => ({
+        id: "r1",
+        pluginId: "aws",
+        resourceTypeId: "ec2",
+        accountId: "a1",
+        displayName: "vm",
+        fieldsJson: {},
+        outputsJson: {},
+        ...(deletedAt ? { deletedAt } : {}),
+        updatedAt: "2026-01-01T00:00:00Z",
+      });
+      const res = await buildApp().request("/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resources: [resource(null), { ...resource("2026-01-02T00:00:00Z"), id: "r2" }],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const sets = onConflictDoUpdate.mock.calls.map(
+        (c) => (c[0] as { set: Record<string, unknown> }).set,
+      );
+      const rendered = sets.map((set) => new PgDialect().sqlToQuery(set["incarnation"] as SQL).sql);
+      // Live again: one more incarnation if it had been deleted.
+      expect(sets[0]?.["deletedAt"]).toBeNull();
+      expect(rendered[0]).toContain('"resources"."incarnation" + 1');
+      // Pushed as deleted: the incarnation stays.
+      expect(sets[1]?.["deletedAt"]).toEqual(new Date("2026-01-02T00:00:00Z"));
+      expect(rendered[1]).toBe('"resources"."incarnation"');
     });
 
     it("upserts accounts and logs an audit entry", async () => {

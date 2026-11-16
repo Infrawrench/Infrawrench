@@ -1,6 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VercelClient } from "../client.js";
+import { VercelClient, webAnalyticsBucket } from "../client.js";
 
 const ACCOUNT = "acct-1";
 
@@ -2023,6 +2023,28 @@ describe("web analytics metrics", () => {
     );
     expect(series).toEqual([]);
     expect(calls[0]!.url).toContain("by=day");
+  });
+
+  it("asks for the most rows, so no time bucket is folded into Others", async () => {
+    // `limit` defaults to 10 distinct results; 72 hourly buckets need more (#376).
+    installFetch(() => jsonResponse({ data: [] }));
+    await client().fetchMetricSeries("vercel-project", "acct-1:vercel-project:prj_1", ACCOUNT, {
+      startMs: 0,
+      endMs: 3 * 86_400_000,
+    });
+    for (const call of calls) {
+      expect(call.url).toContain("by=hour");
+      expect(call.url).toContain("limit=100");
+    }
+  });
+
+  it("keeps a long range within 100 buckets", () => {
+    const day = 86_400_000;
+    expect(webAnalyticsBucket(3 * day)).toBe("hour");
+    expect(webAnalyticsBucket(3 * day + 1)).toBe("day");
+    expect(webAnalyticsBucket(100 * day)).toBe("day");
+    expect(webAnalyticsBucket(365 * day)).toBe("week");
+    expect(webAnalyticsBucket(3 * 365 * day)).toBe("month");
   });
 
   it("ignores other resource types", async () => {

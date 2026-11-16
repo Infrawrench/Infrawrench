@@ -1,7 +1,10 @@
 import type { Credentials } from "./plugin.js";
+import { lendMysql } from "./ci-credential.js";
 import { attempt } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiCredentialRequest,
+  CiLentMaterial,
   PluginClient,
   HostServices,
   ResourceInstance,
@@ -43,12 +46,20 @@ function isShowDatabasesRefused(err: unknown): boolean {
 export class MySQLClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
+  /** The CA certificate the connection trusts, when it names one: lent with it. */
+  private readonly caCert: string | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("MySQL plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
+    this.caCert = credentials["caCert"] || undefined;
+  }
+
+  /** Lends the connection to a CI job (`connections:`). See `ci-credential.ts`. */
+  lendCiCredential(request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendMysql(this.connectionString, this.caCert, request));
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {

@@ -28,11 +28,6 @@ vi.mock("@/services/workflow-runner", () => ({
   runWorkflowById: (...a: unknown[]) => mockRunWorkflowById(...a),
 }));
 
-const mockRunDeployment = vi.fn();
-vi.mock("@/services/deployments", () => ({
-  runDeployment: (...a: unknown[]) => mockRunDeployment(...a),
-}));
-
 const mockGetSharedConsole = vi.fn();
 vi.mock("@infrawrench/server-core/shared-console/store", () => ({
   getSharedConsole: (...a: unknown[]) => mockGetSharedConsole(...a),
@@ -47,16 +42,10 @@ vi.mock("@/services/shared-console/hub", () => ({ sharedConsoleHub: { attach: vi
 
 const { authenticateWsUpgrade } = await import("../ws-auth");
 const { handleWorkflowSession } = await import("../workflow-ws");
-const { handleDeploymentSession } = await import("../deployment-ws");
 const { handleConsoleAttach } = await import("../shared-console/attach");
 
-/** The owner's role: everything a workflow run or deploy needs. */
-const OWNER_ROLE = [
-  "resources:execute",
-  "workflows:write",
-  "deployments:plan",
-  "deployments:write",
-];
+/** The owner's role: everything a workflow run needs. */
+const OWNER_ROLE = ["resources:execute", "workflows:write"];
 
 function fakeSocket() {
   const emitter = new EventEmitter();
@@ -83,7 +72,6 @@ beforeEach(() => {
   mockValidateWsToken.mockResolvedValue(null);
   mockAuthenticateApiRequest.mockResolvedValue(null);
   mockRunWorkflowById.mockResolvedValue({ runId: "run-1", result: { status: "ok" } });
-  mockRunDeployment.mockResolvedValue({ runId: "dep-1", result: { status: "ok" } });
 });
 
 describe("authenticateWsUpgrade", () => {
@@ -225,54 +213,6 @@ describe("workflow:run over the socket", () => {
     handleWorkflowSession(ws, { organizationId: "org-1", userId: "person" }, "wf-1");
     await settle();
     expect(mockRunWorkflowById).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("deploy:run over the socket", () => {
-  const start = { repo: "acme/app", branch: "main" };
-
-  it("refuses a key scoped to resources:execute, whatever its owner's role", async () => {
-    const { ws, sent } = fakeSocket();
-    handleDeploymentSession(
-      ws,
-      { organizationId: "org-1", userId: "owner", scopes: ["resources:execute"] },
-      start,
-    );
-    await settle();
-    expect(mockRunDeployment).not.toHaveBeenCalled();
-    expect(sent).toEqual([
-      {
-        type: "deploy:error",
-        message: "You do not have permission to deploy in this organization.",
-      },
-    ]);
-  });
-
-  it("lets a plan-only key preview but not deploy", async () => {
-    const principal = {
-      organizationId: "org-1",
-      userId: "owner",
-      scopes: ["resources:execute", "deployments:plan"],
-    };
-    const preview = fakeSocket();
-    handleDeploymentSession(preview.ws, principal, { ...start, planOnly: true });
-    await settle();
-    expect(mockRunDeployment).toHaveBeenCalledTimes(1);
-
-    const deploy = fakeSocket();
-    handleDeploymentSession(deploy.ws, principal, start);
-    await settle();
-    expect(mockRunDeployment).toHaveBeenCalledTimes(1);
-    expect(deploy.sent[0]).toMatchObject({ type: "deploy:error" });
-  });
-
-  it("deploys for a person whose role allows it, as that person", async () => {
-    const { ws } = fakeSocket();
-    handleDeploymentSession(ws, { organizationId: "org-1", userId: "person" }, start);
-    await settle();
-    expect(mockRunDeployment).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: "org-1", userId: "person" }),
-    );
   });
 });
 

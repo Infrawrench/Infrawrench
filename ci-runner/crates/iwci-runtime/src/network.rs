@@ -136,6 +136,12 @@ type Result<T> = std::result::Result<T, NetworkError>;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JobNetwork {
     inner: LoopbackNetworking,
+    /// Inside a job's gVisor sandbox (`inside.rs`): the sandbox's own
+    /// network stack, whose loopback is the job's, shared with the native
+    /// programs beside the isolate, and whose way out the runner's gateway
+    /// holds to the same policy (`iwci_sandbox::net`). The in-memory
+    /// loopback is then unused.
+    sandbox: Option<Arc<dyn VirtualNetworking + Send + Sync>>,
     listening: Arc<Mutex<Listening>>,
     /// The public internet, when the runtime offers it.
     outside: Option<Outside>,
@@ -201,11 +207,32 @@ impl JobNetwork {
 
     fn route(&self, peer: SocketAddr) -> Result<Route> {
         if peer.ip().is_loopback() {
+            // The sandbox's loopback is real: its kernel decides.
+            if let Some(stack) = &self.sandbox {
+                return Ok(Route::Outside(stack.clone()));
+            }
             return Ok(Route::Loopback(self.listener_for(peer)?));
         }
         match &self.outside {
             Some(outside) if outside.allows(peer.ip()) => Ok(Route::Outside(outside.net.clone())),
             _ => Err(NetworkError::NetworkUnreachable),
+        }
+    }
+
+    /// A job's network inside its sandbox: the sandbox's own stack, with
+    /// the same refusals as a WASIX job's (listeners on the loopback only,
+    /// connections out to public addresses only, which the sandbox's
+    /// gateway checks again), so a program gets the same errors in both.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn in_sandbox(
+        stack: Arc<dyn VirtualNetworking + Send + Sync>,
+        internet: bool,
+    ) -> Self {
+        let outside = internet.then(|| Arc::new(OutsideNet::new(stack.clone(), host_addresses())));
+        Self {
+            sandbox: Some(stack),
+            outside,
+            ..Self::default()
         }
     }
 
@@ -222,7 +249,10 @@ impl JobNetwork {
 
     /// What the job listens on, for `/proc/iwci/tcp` (services.rs).
     pub(crate) fn listeners(&self) -> Listeners {
-        Listeners(self.listening.clone())
+        Listeners {
+            listening: self.listening.clone(),
+            sandbox: self.sandbox.is_some(),
+        }
     }
 }
 
@@ -243,34 +273,121 @@ impl Listening {
 /// A read-only view of what a job listens on, shared with its
 /// [`JobNetwork`].
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Listeners(Arc<Mutex<Listening>>);
+pub(crate) struct Listeners {
+    listening: Arc<Mutex<Listening>>,
+    /// The job is in its sandbox, where native programs listen too: the
+    /// sandbox's kernel says what is listening (`/proc/net/tcp`).
+    sandbox: bool,
+}
 
 impl Listeners {
     /// Whether a connection to `peer` would reach a listener in the job: a
     /// loopback address something listens on, as a connect would route it.
     /// Nothing is connected to find out.
     pub(crate) fn reaches(&self, peer: SocketAddr) -> bool {
-        peer.ip().is_loopback()
-            && self
-                .0
-                .lock()
-                .expect("listener set")
-                .listener_for(peer)
-                .is_some()
+        if !peer.ip().is_loopback() {
+            return false;
+        }
+        if self.sandbox {
+            return kernel_listening().iter().any(|l| l.reaches(peer));
+        }
+        self.listening
+            .lock()
+            .expect("listener set")
+            .listener_for(peer)
+            .is_some()
     }
 
     /// The addresses something listens on, sorted.
     pub(crate) fn addrs(&self) -> Vec<SocketAddr> {
-        let mut addrs: Vec<_> = self
-            .0
-            .lock()
-            .expect("listener set")
-            .addrs
-            .iter()
-            .copied()
-            .collect();
+        let mut addrs: Vec<_> = if self.sandbox {
+            kernel_listening().into_iter().map(normalise).collect()
+        } else {
+            self.listening
+                .lock()
+                .expect("listener set")
+                .addrs
+                .iter()
+                .copied()
+                .collect()
+        };
         addrs.sort();
+        addrs.dedup();
         addrs
+    }
+}
+
+/// The TCP sockets listening in this network namespace, from
+/// `/proc/net/tcp` and `/proc/net/tcp6` (the sandbox's kernel's view):
+/// each address is as bound, the unspecified ones included.
+fn kernel_listening() -> Vec<SocketAddr> {
+    let mut out = Vec::new();
+    for (file, v6) in [("/proc/net/tcp", false), ("/proc/net/tcp6", true)] {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        out.extend(
+            text.lines()
+                .skip(1)
+                .filter_map(|line| parse_proc_net(line, v6)),
+        );
+    }
+    out
+}
+
+/// One line of `/proc/net/tcp{,6}`: its local address, if it is listening
+/// (state `0A`). Addresses are hex, in 32-bit words of host byte order.
+fn parse_proc_net(line: &str, v6: bool) -> Option<SocketAddr> {
+    let mut fields = line.split_whitespace();
+    let local = fields.nth(1)?;
+    let state = fields.nth(1)?;
+    if state != "0A" {
+        return None;
+    }
+    let (ip, port) = local.split_once(':')?;
+    let port = u16::from_str_radix(port, 16).ok()?;
+    let word = |i: usize| -> Option<[u8; 4]> {
+        let w = u32::from_str_radix(ip.get(i * 8..i * 8 + 8)?, 16).ok()?;
+        Some(w.to_ne_bytes())
+    };
+    let ip: IpAddr = if v6 {
+        if ip.len() != 32 {
+            return None;
+        }
+        let mut bytes = [0u8; 16];
+        for i in 0..4 {
+            bytes[i * 4..i * 4 + 4].copy_from_slice(&word(i)?);
+        }
+        Ipv6Addr::from(bytes).into()
+    } else {
+        if ip.len() != 8 {
+            return None;
+        }
+        Ipv4Addr::from(word(0)?).into()
+    };
+    Some(SocketAddr::new(ip, port))
+}
+
+/// Whether a socket listening on `self` takes a connection to `peer` (a
+/// loopback address): the same address or the unspecified one of its
+/// family, or, for the IPv4 loopback, the IPv6 unspecified one, which
+/// Linux makes dual-stack unless told otherwise.
+trait Reaches {
+    fn reaches(&self, peer: SocketAddr) -> bool;
+}
+
+impl Reaches for SocketAddr {
+    fn reaches(&self, peer: SocketAddr) -> bool {
+        if self.port() != peer.port() {
+            return false;
+        }
+        match (self.ip(), peer.ip()) {
+            (a, b) if a == b => true,
+            (IpAddr::V4(a), IpAddr::V4(_)) => a.is_unspecified(),
+            (IpAddr::V6(a), IpAddr::V6(_)) => a.is_unspecified(),
+            (IpAddr::V6(a), IpAddr::V4(b)) => a.is_unspecified() || a.to_ipv4_mapped() == Some(b),
+            _ => false,
+        }
     }
 }
 
@@ -384,10 +501,18 @@ impl VirtualNetworking for JobNetwork {
         if !bindable(addr.ip()) {
             return Err(NetworkError::AddressNotAvailable);
         }
-        let listener = self
-            .inner
-            .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
-            .await?;
+        let listener = match &self.sandbox {
+            Some(stack) => {
+                stack
+                    .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+            None => {
+                self.inner
+                    .listen_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+        };
         self.register(listener, dual_stack(addr, only_v6))
     }
 
@@ -401,10 +526,18 @@ impl VirtualNetworking for JobNetwork {
         if !bindable(addr.ip()) {
             return Err(NetworkError::AddressNotAvailable);
         }
-        let inner = self
-            .inner
-            .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
-            .await?;
+        let inner = match &self.sandbox {
+            Some(stack) => {
+                stack
+                    .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+            None => {
+                self.inner
+                    .bind_tcp(addr, only_v6, reuse_port, reuse_addr)
+                    .await?
+            }
+        };
         Ok(Box::new(Bound {
             inner,
             dual_stack: dual_stack(addr, only_v6),
@@ -420,6 +553,7 @@ impl VirtualNetworking for JobNetwork {
         if let Route::Outside(outside) = self.route(peer)? {
             return outside.connect_tcp(addr, peer).await;
         }
+        // (Inside a sandbox every route is the sandbox's stack.)
         // A connect without an explicit bind gets an ephemeral port on the
         // loopback of the peer's family.
         let local = if bindable(addr.ip()) && addr.is_ipv4() == peer.is_ipv4() {
@@ -498,7 +632,13 @@ impl VirtualTcpBoundSocket for Bound {
     }
 
     fn connect(&mut self, peer: SocketAddr) -> Result<Box<dyn VirtualTcpSocket + Sync>> {
-        match self.network.route(peer)? {
+        let route = self.network.route(peer)?;
+        // Inside a sandbox the bound socket is the sandbox's own, and
+        // connects where the policy above let it.
+        if self.network.sandbox.is_some() {
+            return self.inner.connect(peer);
+        }
+        match route {
             Route::Loopback(listener) => self.inner.connect(listener),
             // A socket bound first (to the loopback) and then connected
             // outside leaves by a host socket of its own. The host connect

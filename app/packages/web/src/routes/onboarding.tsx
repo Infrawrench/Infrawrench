@@ -23,7 +23,7 @@ const PRO_FEATURES = [
   msg("Unlimited team members"),
   msg("Unlimited cloud accounts"),
   msg("Full audit trail"),
-  msg("Custom graphs & deploy from GitHub"),
+  msg("Custom graphs"),
   msg("API key management"),
 ];
 

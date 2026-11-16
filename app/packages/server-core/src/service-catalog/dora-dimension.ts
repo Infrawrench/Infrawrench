@@ -10,8 +10,7 @@
  *
  * A deploy is placed by its target (the project or service it shipped), then
  * by its own resource row; a resource change by the changed resource.
- * Infrafile runs and API-recorded deploys that name no resource are "not
- * known". A change can only take one value, so a resource in several services
+ * API-recorded deploys that name no resource are "not known". A change can only take one value, so a resource in several services
  * goes to {@link primaryService}: the most critical tier first, untiered last,
  * then name, then id, so the same change lands in the same row on every report
  * and a change to shared infrastructure counts against the most critical

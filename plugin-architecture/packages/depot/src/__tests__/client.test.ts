@@ -589,6 +589,7 @@ describe("quotas", () => {
         ],
         storage: [{ storageType: "cache", totalGb: 40 }],
         depotCi: [{ repo: "acme/api", vcpuMinutesBilled: 600 }],
+        agentSandbox: [{ agentType: "claude", minutesBilled: 50 }],
       }),
     });
     const quotas = await fetchDepotQuotas(
@@ -601,7 +602,8 @@ describe("quotas", () => {
       ["included-build-minutes", 1200, 5000],
       ["included-actions-minutes", 300, 20000],
       ["included-storage", 40, 250],
-      ["included-sandbox-minutes", 300, 20000],
+      // 600 CI vCPU-minutes at 2 vCPUs, and 50 agent sandbox minutes, from one pool.
+      ["included-sandbox-minutes", 350, 20000],
     ]);
   });
 

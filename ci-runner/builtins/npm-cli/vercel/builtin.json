@@ -1,0 +1,12 @@
+{
+  "name": "vercel",
+  "version": "65.16.0",
+  "entry": "node_modules/vercel/dist/vc.js",
+  "args": [],
+  "env": {
+    "VERCEL_TELEMETRY_DISABLED": "1",
+    "NO_UPDATE_NOTIFIER": "1"
+  },
+  "description": "Vercel CLI 65.16.0 (its JavaScript build, @vercel/cli-support), on the environment's node",
+  "tree_sha256": "cb876ea9509abc8442a0d1bb78afdc9226c3d3cbd9b7d915fbbabba6708e1f3b"
+}

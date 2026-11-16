@@ -1,10 +1,10 @@
 ---
 title: Investigate a moment
-description: Enter a timestamp and see everything that happened around it in one timeline, including changes, incidents, cost anomalies, workflow runs, deployments, audit entries and freezes.
+description: Enter a timestamp and see everything that happened around it in one timeline, including changes, incidents, cost anomalies, workflow runs, audit entries and freezes.
 sidebar_order: 10
 ---
 
-Something broke around 03:14. The change timeline knows a droplet resized, the status feed knows DigitalOcean was having a bad night, the deploy log knows someone shipped at 03:02, and the audit log knows who. Normally that means five tabs and a lot of squinting at timestamps.
+Something broke around 03:14. The change timeline knows a droplet resized, the status feed knows DigitalOcean was having a bad night, the workflow history knows a job ran at 03:02, and the audit log knows who started it. Normally that means five tabs and a lot of squinting at timestamps.
 
 The moment view answers the real question: **"what changed around 03:14?"** Enter a timestamp, pick a window (±15m, ±1h or ±6h), and you get one timeline of everything Infrawrench knows happened in that window.
 
@@ -14,14 +14,13 @@ The moment view answers the real question: **"what changed around 03:14?"** Ente
 - **Provider status incidents:** incidents that started, resolved or were ongoing in the window. See [Provider status](./provider-status.md).
 - **Cost anomalies:** spikes and new spend sources, by when they were detected. See [Cloud costs](./cloud-costs.md).
 - **Workflow runs:** starts, successes, failures and cancellations. See [Workflows](./workflows.md).
-- **Deployments:** deploy starts and finishes, with failures marked. See [Infrafile](./infrafile.md).
 - **Audit log entries:** who created, updated, deleted, froze or unfroze what. See [Audit log](../team-and-billing/audit-log.md).
 - **Change freezes:** freezes that started or ended in the window. See [Change freezes](../team-and-billing/change-freeze.md).
 - **Drift and expiry alerts:** when your drift digest or [expiry radar](./expiry-radar.md) alert went out. Only the most recent delivery of each is kept, so each adds at most one event.
 
-Every event has a severity, and each row links to where it lives: the resource, the workflow, the deploy log or the provider's incident page.
+Every event has a severity, and each row links to where it lives: the resource, the workflow or the provider's incident page.
 
-![Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a deploy failure in red, resource changes, and an incident-started event](https://agent-assets.infrawrench.com/docs-screenshots/features/moment/moment-window.png)
+<insert [Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a failed workflow run in red, resource changes, and an incident-started event] here>
 
 ## Spot provider incidents and bursts
 
@@ -52,8 +51,8 @@ Acme Corp · 2026-08-03 02:14:00 → 2026-08-03 04:14:00 UTC (±60m around 2026-
 Provider incidents overlapping this window
   ▲ DigitalOcean: API errors in NYC3 (active) https://status.digitalocean.com/…
 
-  03:02:11 · [Deployments] Deploy started: acme/api@f3a91c2 → prod
-  03:05:40 ✗ [Deployments] Deploy failed: acme/api@f3a91c2 → prod
+  03:02:11 · [Workflow runs] Workflow "Scale API" started
+  03:05:40 ✗ [Workflow runs] Workflow "Scale API" failed
   03:08:19 · [Resource changes] api-prod-1 changed: size (during DigitalOcean incident)
   03:14:02 ! [Cost anomalies] Cost spike detected: DigitalOcean
 ```

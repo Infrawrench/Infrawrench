@@ -72,6 +72,8 @@ export function ciRunStatusLabel(status: CiRunStatus, gt: Gt): string {
       return gt("Rejected");
     case "cancelled":
       return gt("Cancelled");
+    case "skipped":
+      return gt("Nothing to run");
   }
 }
 
@@ -768,7 +770,12 @@ function RunDetailView({
                 : gt("No jobs ran.")}
             </p>
           ) : (detail.jobs ?? run.jobs)!.length === 0 ? (
-            <p className="text-xs text-on-surface-faint">{gt("No pipeline ran for this event.")}</p>
+            // A skipped run's reason above already says so.
+            run.status === "skipped" ? null : (
+              <p className="text-xs text-on-surface-faint">
+                {gt("No pipeline ran for this event.")}
+              </p>
+            )
           ) : (
             <CiRunView
               run={run}

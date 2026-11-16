@@ -242,102 +242,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/evaluationJobs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_ListEvaluationJobs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/evaluationJobs/{evaluation_job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_GetEvaluationJob"];
-        put?: never;
-        post?: never;
-        delete: operations["Gateway_DeleteEvaluationJob"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/evaluationJobs/{evaluation_job_id}:getExecutionLogEndpoint": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_GetEvaluationJobExecutionLogEndpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/evaluators": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_ListEvaluators"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/evaluators/{evaluator_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_GetEvaluator"];
-        put?: never;
-        post?: never;
-        delete: operations["Gateway_DeleteEvaluator"];
-        options?: never;
-        head?: never;
-        patch: operations["Gateway_UpdateEvaluator"];
-        trace?: never;
-    };
-    "/evaluators/{evaluator_id}:getBuildLogEndpoint": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_GetEvaluatorBuildLogEndpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/models": {
         parameters: {
             query?: never;
@@ -400,70 +304,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["Gateway_UpdateQuota"];
-        trace?: never;
-    };
-    "/reinforcementFineTuningJobs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_ListReinforcementFineTuningJobs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["Gateway_GetReinforcementFineTuningJob"];
-        put?: never;
-        post?: never;
-        delete: operations["Gateway_DeleteReinforcementFineTuningJob"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["Gateway_CancelReinforcementFineTuningJob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["Gateway_ResumeReinforcementFineTuningJob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/routers": {
@@ -773,15 +613,6 @@ export interface components {
          * @enum {string}
          */
         DeploymentPrecision: "PRECISION_UNSPECIFIED" | "FP16" | "FP8" | "FP8_MM" | "FP8_AR" | "FP8_MM_KV_ATTN" | "FP8_KV" | "FP8_MM_V2" | "FP8_V2" | "FP8_MM_KV_ATTN_V2" | "NF4" | "FP4" | "BF16" | "FP4_BLOCKSCALED_MM" | "FP4_MX_MOE";
-        EvaluatorSource: {
-            githubRepositoryName?: string;
-            type?: components["schemas"]["EvaluatorSourceType"];
-        };
-        /**
-         * @default TYPE_UNSPECIFIED
-         * @enum {string}
-         */
-        EvaluatorSourceType: "TYPE_UNSPECIFIED" | "TYPE_UPLOAD" | "TYPE_GITHUB" | "TYPE_TEMPORARY";
         /**
          * @default ACCELERATOR_TYPE_UNSPECIFIED
          * @enum {string}
@@ -936,14 +767,6 @@ export interface components {
          * @enum {string}
          */
         gatewayCode: "OK" | "CANCELLED" | "UNKNOWN" | "INVALID_ARGUMENT" | "DEADLINE_EXCEEDED" | "NOT_FOUND" | "ALREADY_EXISTS" | "PERMISSION_DENIED" | "UNAUTHENTICATED" | "RESOURCE_EXHAUSTED" | "FAILED_PRECONDITION" | "ABORTED" | "OUT_OF_RANGE" | "UNIMPLEMENTED" | "INTERNAL" | "UNAVAILABLE" | "DATA_LOSS";
-        gatewayCodeSnippets: {
-            entryFile?: string;
-            entryFunc?: string;
-            fileContents?: {
-                [key: string]: string;
-            };
-            language?: string;
-        };
         gatewayConstantLRSchedule: Record<string, never>;
         gatewayConversationConfig: {
             style: string;
@@ -956,17 +779,6 @@ export interface components {
             /** Format: float */
             minLrRatio?: number;
         };
-        gatewayCriterion: {
-            codeSnippets?: components["schemas"]["gatewayCodeSnippets"];
-            description?: string;
-            name?: string;
-            type?: components["schemas"]["gatewayCriterionType"];
-        };
-        /**
-         * @default TYPE_UNSPECIFIED
-         * @enum {string}
-         */
-        gatewayCriterionType: "TYPE_UNSPECIFIED" | "CODE_SNIPPETS";
         gatewayDataset: {
             /** Format: float */
             readonly averageTurnCount?: number;
@@ -1140,54 +952,10 @@ export interface components {
          */
         gatewayEncryptionState: "ENCRYPTION_STATE_UNSPECIFIED" | "ENCRYPTION_STATE_PLAINTEXT" | "ENCRYPTION_STATE_CMEK";
         gatewayEvalProtocol: Record<string, never>;
-        gatewayEvaluationJob: {
-            awsS3Config?: components["schemas"]["gatewayAwsS3Config"];
-            readonly createdBy?: string;
-            /** Format: date-time */
-            readonly createTime?: string;
-            displayName?: string;
-            evaluator: string;
-            inputDataset: string;
-            readonly metrics?: {
-                [key: string]: number;
-            };
-            readonly name?: string;
-            outputDataset: string;
-            outputStats?: string;
-            readonly state?: components["schemas"]["gatewayJobState"];
-            readonly status?: components["schemas"]["gatewayStatus"];
-            /** Format: date-time */
-            readonly updateTime?: string;
-        };
         gatewayEvaluationResult: {
             evaluationJobId: string;
         };
-        gatewayEvaluator: {
-            commitHash?: string;
-            readonly createdBy?: string;
-            /** Format: date-time */
-            readonly createTime?: string;
-            criteria?: components["schemas"]["gatewayCriterion"][];
-            defaultDataset?: string;
-            description?: string;
-            displayName?: string;
-            readonly encryptionState?: components["schemas"]["gatewayEncryptionState"];
-            entryPoint?: string;
-            readonly name?: string;
-            requirements?: string;
-            source?: components["schemas"]["EvaluatorSource"];
-            readonly state?: components["schemas"]["gatewayEvaluatorState"];
-            readonly status?: components["schemas"]["gatewayStatus"];
-            /** Format: date-time */
-            readonly updateTime?: string;
-        };
-        /**
-         * @default STATE_UNSPECIFIED
-         * @enum {string}
-         */
-        gatewayEvaluatorState: "STATE_UNSPECIFIED" | "ACTIVE" | "BUILDING" | "BUILD_FAILED";
         gatewayEvenLoadStrategy: Record<string, never>;
-        gatewayGatewayCancelReinforcementFineTuningJobBody: Record<string, never>;
         gatewayGatewayCancelSupervisedFineTuningJobBody: Record<string, never>;
         gatewayGatewayCreateApiKeyBody: {
             apiKey: components["schemas"]["gatewayApiKey"];
@@ -1208,22 +976,12 @@ export interface components {
             startTime?: string;
         };
         gatewayGatewayResumeDpoJobBody: Record<string, never>;
-        gatewayGatewayResumeReinforcementFineTuningJobBody: Record<string, never>;
         gatewayGatewayResumeSupervisedFineTuningJobBody: Record<string, never>;
         gatewayGatewayScaleDeploymentBody: {
             /** Format: int32 */
             replicaCount?: number;
         };
         gatewayGatewayUndeleteDeploymentBody: Record<string, never>;
-        gatewayGetEvaluationJobExecutionLogEndpointResponse: {
-            contentType?: string;
-            executionLogSignedUri?: string;
-            /** Format: date-time */
-            expireTime?: string;
-        };
-        gatewayGetEvaluatorBuildLogEndpointResponse: {
-            buildLogSignedUri?: string;
-        };
         gatewayJobProgress: {
             /** Format: int32 */
             cachedInputTokenCount?: number;
@@ -1304,18 +1062,6 @@ export interface components {
             /** Format: int32 */
             totalSize?: number;
         };
-        gatewayListEvaluationJobsResponse: {
-            evaluationJobs?: components["schemas"]["gatewayEvaluationJob"][];
-            nextPageToken?: string;
-            /** Format: int32 */
-            totalSize?: number;
-        };
-        gatewayListEvaluatorsResponse: {
-            evaluators?: components["schemas"]["gatewayEvaluator"][];
-            nextPageToken?: string;
-            /** Format: int32 */
-            totalSize?: number;
-        };
         gatewayListModelsResponse: {
             models?: components["schemas"]["gatewayModel"][];
             nextPageToken?: string;
@@ -1325,12 +1071,6 @@ export interface components {
         gatewayListQuotasResponse: {
             nextPageToken?: string;
             quotas?: components["schemas"]["gatewayQuota"][];
-            /** Format: int32 */
-            totalSize?: number;
-        };
-        gatewayListReinforcementFineTuningJobsResponse: {
-            nextPageToken?: string;
-            reinforcementFineTuningJobs?: components["schemas"]["gatewayReinforcementFineTuningJob"][];
             /** Format: int32 */
             totalSize?: number;
         };
@@ -1469,60 +1209,6 @@ export interface components {
          * @enum {string}
          */
         gatewayRegion: "REGION_UNSPECIFIED" | "US_IOWA_1" | "US_VIRGINIA_1" | "US_VIRGINIA_2" | "US_ILLINOIS_1" | "AP_TOKYO_1" | "US_ARIZONA_1" | "US_TEXAS_1" | "US_ILLINOIS_2" | "EU_FRANKFURT_1" | "US_TEXAS_2" | "EU_ICELAND_1" | "EU_ICELAND_2" | "US_WASHINGTON_1" | "US_WASHINGTON_2" | "US_WASHINGTON_3" | "AP_TOKYO_2" | "US_CALIFORNIA_1" | "US_UTAH_1" | "US_ARIZONA_3" | "US_GEORGIA_1" | "US_GEORGIA_2" | "US_WASHINGTON_4" | "US_GEORGIA_3" | "NA_BRITISHCOLUMBIA_1" | "US_GEORGIA_4" | "US_OHIO_1" | "US_NEWYORK_1" | "EU_NETHERLANDS_1" | "US_WASHINGTON_5" | "US_MINNESOTA_1" | "US_CALIFORNIA_2" | "NA_BRITISHCOLUMBIA_2" | "AP_MALAYSIA_2" | "US_OREGON_1" | "NA_BRITISHCOLUMBIA_3" | "AP_NEWSOUTHWALES_1" | "AP_TAIWAN_1";
-        gatewayReinforcementFineTuningJob: {
-            readonly acceleratorSeconds?: {
-                [key: string]: string;
-            };
-            awsS3Config?: components["schemas"]["gatewayAwsS3Config"];
-            azureBlobStorageConfig?: components["schemas"]["gatewayAzureBlobStorageConfig"];
-            /** Format: int32 */
-            chunkSize?: number;
-            /** Format: date-time */
-            readonly completedTime?: string;
-            readonly createdBy?: string;
-            /** Format: date-time */
-            readonly createTime?: string;
-            dataset: string;
-            displayName?: string;
-            readonly encryptionState?: components["schemas"]["gatewayEncryptionState"];
-            evalAutoCarveout?: boolean;
-            evaluationDataset?: string;
-            evaluator: string;
-            inferenceParameters?: components["schemas"]["gatewayReinforcementFineTuningJobInferenceParameters"];
-            readonly jobProgress?: components["schemas"]["gatewayJobProgress"];
-            lossConfig?: components["schemas"]["gatewayReinforcementLearningLossConfig"];
-            /** Format: int32 */
-            maxConcurrentEvaluations?: number;
-            /** Format: int32 */
-            maxConcurrentRollouts?: number;
-            /** Format: int32 */
-            maxInferenceReplicaCount?: number;
-            readonly name?: string;
-            /** Format: int32 */
-            nodeCount?: number;
-            readonly outputMetrics?: string;
-            readonly outputStats?: string;
-            purpose?: components["schemas"]["gatewayPurpose"];
-            readonly state?: components["schemas"]["gatewayJobState"];
-            readonly status?: components["schemas"]["gatewayStatus"];
-            readonly trainerLogsSignedUrl?: string;
-            trainingConfig?: components["schemas"]["gatewayBaseTrainingConfig"];
-            useReservation?: boolean;
-            wandbConfig?: components["schemas"]["gatewayWandbConfig"];
-        };
-        gatewayReinforcementFineTuningJobInferenceParameters: {
-            extraBody?: string;
-            /** Format: int32 */
-            maxOutputTokens?: number;
-            /** Format: int32 */
-            responseCandidatesCount?: number;
-            /** Format: float */
-            temperature?: number;
-            /** Format: int32 */
-            topK?: number;
-            /** Format: float */
-            topP?: number;
-        };
         gatewayReinforcementLearningLossConfig: {
             dpo?: components["schemas"]["gatewayDpoConfig"];
             /** Format: float */
@@ -2376,243 +2062,6 @@ export interface operations {
             };
         };
     };
-    Gateway_ListEvaluationJobs: {
-        parameters: {
-            query?: {
-                filter?: string;
-                orderBy?: string;
-                pageSize?: number;
-                pageToken?: string;
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayListEvaluationJobsResponse"];
-                };
-            };
-        };
-    };
-    Gateway_GetEvaluationJob: {
-        parameters: {
-            query?: {
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-                evaluation_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayEvaluationJob"];
-                };
-            };
-        };
-    };
-    Gateway_DeleteEvaluationJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                evaluation_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    Gateway_GetEvaluationJobExecutionLogEndpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                evaluation_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayGetEvaluationJobExecutionLogEndpointResponse"];
-                };
-            };
-        };
-    };
-    Gateway_ListEvaluators: {
-        parameters: {
-            query?: {
-                filter?: string;
-                orderBy?: string;
-                pageSize?: number;
-                pageToken?: string;
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayListEvaluatorsResponse"];
-                };
-            };
-        };
-    };
-    Gateway_GetEvaluator: {
-        parameters: {
-            query?: {
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-                evaluator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayEvaluator"];
-                };
-            };
-        };
-    };
-    Gateway_DeleteEvaluator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                evaluator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    Gateway_UpdateEvaluator: {
-        parameters: {
-            query?: {
-                prepareCodeUpload?: boolean;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-                evaluator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    commitHash?: string;
-                    readonly createdBy?: string;
-                    /** Format: date-time */
-                    readonly createTime?: string;
-                    criteria?: components["schemas"]["gatewayCriterion"][];
-                    defaultDataset?: string;
-                    description?: string;
-                    displayName?: string;
-                    readonly encryptionState?: components["schemas"]["gatewayEncryptionState"];
-                    entryPoint?: string;
-                    requirements?: string;
-                    source?: components["schemas"]["EvaluatorSource"];
-                    readonly state?: components["schemas"]["gatewayEvaluatorState"];
-                    readonly status?: components["schemas"]["gatewayStatus"];
-                    /** Format: date-time */
-                    readonly updateTime?: string;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayEvaluator"];
-                };
-            };
-        };
-    };
-    Gateway_GetEvaluatorBuildLogEndpoint: {
-        parameters: {
-            query?: {
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-                evaluator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayGetEvaluatorBuildLogEndpointResponse"];
-                };
-            };
-        };
-    };
     Gateway_ListModels: {
         parameters: {
             query?: {
@@ -2770,131 +2219,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["gatewayQuota"];
-                };
-            };
-        };
-    };
-    Gateway_ListReinforcementFineTuningJobs: {
-        parameters: {
-            query?: {
-                filter?: string;
-                orderBy?: string;
-                pageSize?: number;
-                pageToken?: string;
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayListReinforcementFineTuningJobsResponse"];
-                };
-            };
-        };
-    };
-    Gateway_GetReinforcementFineTuningJob: {
-        parameters: {
-            query?: {
-                readMask?: string;
-            };
-            header?: never;
-            path: {
-                account_id: string;
-                reinforcement_fine_tuning_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayReinforcementFineTuningJob"];
-                };
-            };
-        };
-    };
-    Gateway_DeleteReinforcementFineTuningJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                reinforcement_fine_tuning_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    Gateway_CancelReinforcementFineTuningJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                reinforcement_fine_tuning_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["gatewayGatewayCancelReinforcementFineTuningJobBody"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    Gateway_ResumeReinforcementFineTuningJob: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                account_id: string;
-                reinforcement_fine_tuning_job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["gatewayGatewayResumeReinforcementFineTuningJobBody"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["gatewayReinforcementFineTuningJob"];
                 };
             };
         };

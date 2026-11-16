@@ -257,6 +257,9 @@ export async function listAKSClusters(
         ].join(","),
         osDiskSizeGb: Number(firstPool?.["osDiskSizeGB"] ?? 0),
         networkPlugin: String(networkProfile?.["networkPlugin"] ?? ""),
+        // AKS-managed Entra ID integration: sign-in through Entra, so a
+        // kubeconfig can carry an Entra token instead of a local account.
+        entraId: props?.["aadProfile"] != null,
         tier: String((cluster["sku"] as Record<string, unknown> | undefined)?.["tier"] ?? "Free"),
         supportPlan: String(props?.["supportPlan"] ?? "KubernetesOfficial"),
         nodeResourceGroup: String(props?.["nodeResourceGroup"] ?? ""),

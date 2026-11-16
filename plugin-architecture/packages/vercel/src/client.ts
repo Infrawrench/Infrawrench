@@ -101,6 +101,25 @@ function fields(
 /** Default Metrics window: Web Analytics reports by hour or day, so a week reads well. */
 const WEB_ANALYTICS_DEFAULT_RANGE_MS = 7 * 86_400_000;
 
+/**
+ * The most rows a Web Analytics aggregate returns: `limit` is "number of distinct
+ * results, default to 10", at most 100, with the rest folded into an "Others" row.
+ */
+const WEB_ANALYTICS_LIMIT = 100;
+
+/**
+ * The finest time bucket that keeps a range within {@link WEB_ANALYTICS_LIMIT} rows,
+ * so no bucket is folded away: hours up to three days (72), days up to 100, weeks up
+ * to 700 days, then months.
+ */
+export function webAnalyticsBucket(rangeMs: number): "hour" | "day" | "week" | "month" {
+  const day = 86_400_000;
+  if (rangeMs <= 3 * day) return "hour";
+  if (rangeMs <= WEB_ANALYTICS_LIMIT * day) return "day";
+  if (rangeMs <= WEB_ANALYTICS_LIMIT * 7 * day) return "week";
+  return "month";
+}
+
 /** Each provider's link names the owner and repository its own way; the rest read as undefined. */
 type ProjectLink = NonNullable<VercelProject["link"]> & {
   org?: string;
@@ -396,10 +415,14 @@ export class VercelClient implements PluginClient {
   /**
    * Project traffic from the Web Analytics API
    * (`GET /v1/query/web-analytics/{visits,events}/aggregate`), bucketed by
-   * hour for ranges up to three days and by day beyond that. The API filters
-   * to production by default and only answers for projects with Web
+   * {@link webAnalyticsBucket} and asking for the most rows the API returns. The
+   * API filters to production by default and only answers for projects with Web
    * Analytics enabled; a disabled project yields no series rather than an
    * error.
+   *
+   * The document's rows name dimensions only, no counts (#376). The counts read
+   * here (`pageviews` and `visitors` on visits, `count` and `visitors` on events)
+   * are the names independent callers of these routes read from real answers.
    */
   fetchMetricSeries(
     resourceTypeId: string,
@@ -414,8 +437,14 @@ export class VercelClient implements PluginClient {
 
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - WEB_ANALYTICS_DEFAULT_RANGE_MS;
-      const bucket = endMs - startMs <= 3 * 86_400_000 ? "hour" : "day";
-      const query = { projectId, by: [bucket], since: startMs, until: endMs };
+      const bucket = webAnalyticsBucket(endMs - startMs);
+      const query = {
+        projectId,
+        by: [bucket],
+        since: startMs,
+        until: endMs,
+        limit: WEB_ANALYTICS_LIMIT,
+      };
 
       const read = async <Row>(request: () => Promise<{ data: Row[] }>): Promise<Row[]> => {
         try {

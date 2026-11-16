@@ -38,6 +38,7 @@ The **Workspace** has a **Metrics** tab that charts, per day: pre-recorded trans
 - **Billed time and audio duration are different numbers**, and every job shows both. Billed time is the one that costs money.
 - **The Speech tab caps clips at 25 MB**, well below what Gladia itself accepts (135 minutes and 1,000 MB). Send anything larger through Gladia's own API.
 - **Solaria-3 requests outside its five languages are refused before upload.** That covers auto-detect too, and it applies whether the request comes from the Speech tab or straight from the API. The error names the five languages and points you to Solaria-1. Nothing is uploaded and no job is created, so nothing is billed.
+- **Wolof isn't in the language picker.** Gladia's languages table lists it, but its API document, SDK and CLI accept it only as a translation target, not as a transcription language.
 - **The Speech tab gives up after two minutes.** Submit long recordings from Gladia's dashboard and read them back from the Transcriptions list here.
 - **Lists show no total count**, because Gladia doesn't report one.
 - **Deleted transcriptions and sessions may linger for a moment** before the next refresh clears them. You can't delete a session that is still streaming (`403`).

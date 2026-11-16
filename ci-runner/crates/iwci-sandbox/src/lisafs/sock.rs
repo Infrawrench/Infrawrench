@@ -163,6 +163,14 @@ fn take_fds(msg: &libc::msghdr, want: usize, fds: &mut Vec<OwnedFd>) {
     }
 }
 
+/// The `SCM_RIGHTS` descriptors `msg` received, up to `want` of them;
+/// the rest are closed.
+pub fn take_rights(msg: &libc::msghdr, want: usize) -> Vec<OwnedFd> {
+    let mut fds = Vec::new();
+    take_fds(msg, want, &mut fds);
+    fds
+}
+
 /// One `sendmsg` of `buf`, with `fds` attached.
 fn send_some(fd: RawFd, buf: &[u8], fds: &[RawFd]) -> io::Result<usize> {
     let mut control = vec![
@@ -201,7 +209,7 @@ fn send_some(fd: RawFd, buf: &[u8], fds: &[RawFd]) -> io::Result<usize> {
 
 /// Points `msg` at `control`, filled with one `SCM_RIGHTS` message
 /// carrying `fds`.
-pub(crate) fn fill_rights(msg: &mut libc::msghdr, control: &mut [u8], fds: &[RawFd]) {
+pub fn fill_rights(msg: &mut libc::msghdr, control: &mut [u8], fds: &[RawFd]) {
     msg.msg_control = control.as_mut_ptr().cast();
     msg.msg_controllen = control.len() as _;
     // SAFETY: `control` is `cmsg_space(fds.len())` bytes, room for one
@@ -218,7 +226,7 @@ pub(crate) fn fill_rights(msg: &mut libc::msghdr, control: &mut [u8], fds: &[Raw
     }
 }
 
-pub(crate) fn cmsg_space(fds: usize) -> usize {
+pub fn cmsg_space(fds: usize) -> usize {
     // SAFETY: a size computation.
     unsafe { libc::CMSG_SPACE((fds * size_of::<RawFd>()) as u32) as usize }
 }

@@ -8,7 +8,7 @@
  * words on it rather than dashboard furniture. The note body is the shared
  * schema the annotation editor validates with (`@infrawrench/api-contract/schemas`).
  *
- * `POST /change-impact` pins a change's or a deploy's measured cost impact
+ * `POST /change-impact` pins a change's measured cost impact
  * onto the charts. It is filed under Costs, beside the impact reads, and its
  * body is checked by hand: its 400s name the field at fault.
  */
@@ -67,7 +67,7 @@ export const CostAnnotation = Schema.Struct({
 export const CostAnnotationList = Schema.Struct({ annotations: Schema.Array(CostAnnotation) });
 
 const ChangeCostImpactAnnotationRequest = Schema.Struct({
-  subjectKind: Schema.Literals(["change", "deployment"]),
+  subjectKind: Schema.Literals(["change"]),
   subjectId: Schema.String.check(minLength(1)),
   windowDays: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 30 }))),
   costBasis: Schema.optionalKey(ChangeCostBasis),
@@ -151,7 +151,7 @@ export class ChangeImpactAnnotationsGroup extends HttpApiGroup.make("changeImpac
       error: [BadRequest, NotFound],
     })
       .annotate(RequiredPermission, "costs:write")
-      .annotate(OpenApi.Summary, "Pin a change's or deploy's cost impact onto the cost charts")
+      .annotate(OpenApi.Summary, "Pin a change's cost impact onto the cost charts")
       .annotate(
         OpenApi.Description,
         "Writes the finding as a cost annotation, so the step in the run rate is explained on the " +

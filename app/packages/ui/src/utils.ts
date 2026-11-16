@@ -297,6 +297,11 @@ export function formatErrorMessage(error: unknown): string {
   }
 
   const normalized = raw.replace(/\s+/g, " ").trim();
+  // A local account's SSH tunnel that did not open (the desktop's
+  // `account-tunnels.ts`): keep the host it goes through, which the generic
+  // sentences below would drop, and explain the reason after it.
+  const tunnel = /^(Could not open the SSH tunnel through \S+): (.+)$/.exec(normalized);
+  if (tunnel) return `${tunnel[1]}. ${formatErrorMessage(tunnel[2])}`;
   const lowered = normalized.toLowerCase();
 
   if (lowered.includes("econnrefused") || lowered.includes("connection refused")) {

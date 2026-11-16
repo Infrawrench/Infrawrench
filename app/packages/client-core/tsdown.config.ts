@@ -8,7 +8,9 @@ export default defineConfig({
   // Consumers still import the package root; only the files behind it change.
   unbundle: true,
   root: "src",
-  entry: { index: "src/index.ts" },
+  // `tunnel-form` is a subpath of its own: it needs the `yaml` parser, which only the
+  // hosts that tunnel accounts (server-core, the desktop main process) should load.
+  entry: { index: "src/index.ts", "tunnel-form": "src/tunnel-form.ts" },
   format: ["esm", "cjs"],
   dts: true,
   outExtensions({ format }) {

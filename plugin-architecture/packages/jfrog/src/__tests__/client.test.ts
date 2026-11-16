@@ -378,6 +378,7 @@ describe("violations past v1's database limit (#849)", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   const row = { issue_id: "XRAY-1", severity: "High", watch_name: "w" };
@@ -426,6 +427,81 @@ describe("violations past v1's database limit (#849)", () => {
       expect((failure as Error).message).toContain("server.api.v2.violations.enabled");
     },
   );
+
+  const v1Calls = (calls: Call[]) =>
+    calls.filter((call) => call.url.pathname === "/xray/api/v1/violations");
+  const createdFrom = (call: Call) =>
+    (call.body as { filters: Record<string, string> }).filters["created_from"];
+
+  it("asks v1 for the last 30 days when v2 is off, and lists what it answers", async () => {
+    const now = Date.parse("2026-11-15T12:00:00Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/xray/api/v2/violations") {
+        return { status: 404, body: { error: "not found" } };
+      }
+      return createdFrom(call)
+        ? { violations: [{ ...row, violation_details_url: "https://x/v/recent" }] }
+        : { status: 429, body: { error: "A database query limitation was reached" } };
+    });
+    const v = await c.listResources("jfrog-xray-violation", ACCOUNT);
+    expect(v.map((r) => r.externalId)).toEqual(["recent"]);
+    expect(paths(calls)).toEqual([
+      "/xray/api/v1/violations",
+      "/xray/api/v2/violations",
+      "/xray/api/v1/violations",
+    ]);
+    expect(calls[2]!.body).toEqual({
+      filters: { created_from: "2026-10-16T12:00:00.000Z" },
+      pagination: { order_by: "created", direction: "desc", limit: 100, offset: 1 },
+    });
+  });
+
+  it("narrows to the last day when 30 days still match too many", async () => {
+    const now = Date.parse("2026-11-15T12:00:00Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/xray/api/v2/violations") {
+        return { status: 404, body: { error: "not found" } };
+      }
+      return createdFrom(call) === "2026-11-14T12:00:00.000Z"
+        ? { violations: [{ ...row, violation_details_url: "https://x/v/today" }] }
+        : { status: 429, body: { error: "limit" } };
+    });
+    const v = await c.listResources("jfrog-xray-violation", ACCOUNT);
+    expect(v.map((r) => r.externalId)).toEqual(["today"]);
+    expect(v1Calls(calls).map(createdFrom)).toEqual([
+      undefined,
+      "2026-10-16T12:00:00.000Z",
+      "2026-11-14T12:00:00.000Z",
+    ]);
+  });
+
+  it("fails with v1's 429 when every window is refused too", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/xray/api/v2/violations"
+        ? { status: 404, body: { error: "not found" } }
+        : { status: 429, body: { error: "limit" } },
+    );
+    const failure = await c
+      .listResources("jfrog-xray-violation", ACCOUNT)
+      .catch((err: unknown) => err);
+    expect(failure).toMatchObject({ status: 429 });
+    expect((failure as Error).message).toContain("the last 30 and the last 1 days too");
+    expect(v1Calls(calls)).toHaveLength(3);
+  });
+
+  it.each([403, 429, 500])("tries no window when v2 answers %i", async (status) => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/xray/api/v1/violations"
+        ? { status: 429, body: { error: "limit" } }
+        : { status, body: { error: "no" } },
+    );
+    await expect(c.listResources("jfrog-xray-violation", ACCOUNT)).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(v1Calls(calls)).toHaveLength(1);
+  });
 
   it("refuses a cursor page that is not a list", async () => {
     const { c } = client((call) =>
