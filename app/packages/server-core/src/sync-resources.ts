@@ -15,6 +15,7 @@ import {
 import { chunksOf } from "./db/chunks";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
+import { deletedAtOnUpsert } from "./resource-revive.js";
 import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { decryptAccountCredentials } from "./provider-oauth";
@@ -153,7 +154,8 @@ async function upsertResources(
           lastSyncedAt: now,
           updatedAt: now,
           syncVersion: version,
-          deletedAt: null,
+          // Coming back from a soft delete: another incarnation of the id.
+          ...deletedAtOnUpsert(null),
         },
       });
   }

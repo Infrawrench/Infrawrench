@@ -1,6 +1,10 @@
 /**
  * Cloud jobs: running a pipeline job with `cloud:` on a connection the
- * organization opted in to cloud jobs (`ci_connection_access.jobs_enabled`).
+ * organization opted in to cloud jobs (`ci_connection_access.jobs_enabled`),
+ * or on a resource granted as its peer with cloud job kinds
+ * (`ci_resource_grants.peer_job_kinds`): a managed cluster run as a
+ * `kubernetes` connection is matched by `cloud: kubernetes/cluster` and the
+ * grant's CI name, and driven through its peer client.
  *
  * The runner keeps the job in the pipeline graph and waits for it as
  * `external`; this module is its executor (`ci-runner/README.md`, "Cloud
@@ -29,7 +33,7 @@
  * Calls plugins for arbitrary accounts: a gateway pass.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   CI_JOB_TAG,
   CI_RUN_TAG,
@@ -41,11 +45,20 @@ import { ciBranchMatches, ciRepoAllowed } from "@infrawrench/client-core";
 
 import { appBaseUrl } from "../app-url.js";
 import { db } from "../db/client.js";
-import { accounts, auditLogs, ciCloudJobs, ciConnectionAccess, ciRuns } from "../db/schema.js";
+import {
+  accounts,
+  auditLogs,
+  ciCloudJobs,
+  ciConnectionAccess,
+  ciResourceGrants,
+  ciRuns,
+  resources,
+} from "../db/schema.js";
 import { buildAad, decrypt, encrypt } from "../encryption.js";
 import { getInstallationToken } from "../github/app.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { bootstrapScript, jobScript, parseFinishBody } from "./bootstrap.js";
+import { ciPeerClient, type PeerUse } from "./peers.js";
 import { CiProxyError, ciProxyConfigured, proxyJson } from "./proxy.js";
 import { attemptDue, dispatchRun } from "./runs.js";
 import { accessOfJob, toolsOfJob } from "./tools.js";
@@ -185,6 +198,8 @@ async function refuseJob(proxyRunId: string, job: string, reason: string): Promi
 interface Candidate {
   accountId: string;
   displayName: string;
+  /** The resource, for a candidate that is a resource granted as its peer. */
+  peerResourceId: string | null;
   maxConcurrentJobs: number;
   maxJobMinutes: number;
 }
@@ -195,8 +210,17 @@ export function matchConnections(
   spec: Pick<CloudJobSpec, "cloud" | "timeout_secs">,
   rows: Array<{
     accountId: string;
+    /** The connection's name, or a peer grant's CI name. */
     displayName: string;
     pluginId: string;
+    /** Set for a resource granted as its peer: `pluginId` is the peer's. */
+    peerResourceId?: string | null;
+    /**
+     * The `cloud.region`s a job may name, by kind; null for any (a
+     * connection's own jobs). A job that names none runs where the kind
+     * runs by default, which is always allowed.
+     */
+    jobRegions?: Record<string, readonly string[]> | null;
     jobsEnabled: boolean;
     jobKinds: string[];
     jobRepos: string[] | null;
@@ -216,6 +240,15 @@ export function matchConnections(
       refuse: `No \`${provider}\` connection${named} is opted in to cloud jobs. Turn one on in CI, CI access.`,
     };
   }
+  if (
+    connection &&
+    ofProvider.some((r) => r.peerResourceId) &&
+    ofProvider.some((r) => !r.peerResourceId)
+  ) {
+    return {
+      refuse: `A connection and a resource granted as one are both called \`${connection}\`; rename one so a pipeline can tell them apart.`,
+    };
+  }
   const enabled = ofProvider.filter((r) => r.jobsEnabled && r.jobKinds.includes(kind));
   if (enabled.length === 0) {
     return {
@@ -230,9 +263,19 @@ export function matchConnections(
   if (scoped.length === 0) {
     return { refuse: `No \`${provider}\` connection${named} runs cloud jobs ${where}.` };
   }
-  const long = scoped.filter((r) => spec.timeout_secs <= r.maxJobMinutes * 60);
+  const region = spec.cloud.region;
+  const placed = scoped.filter(
+    (r) => !region || !r.jobRegions || (r.jobRegions[kind] ?? []).includes(region),
+  );
+  if (placed.length === 0) {
+    const allowed = [...new Set(scoped.flatMap((r) => r.jobRegions?.[kind] ?? []))];
+    return {
+      refuse: `No \`${provider}\` connection${named} may run \`${kind}\` jobs in \`${region}\` (\`cloud.region\`)${allowed.length > 0 ? `; it may in ${allowed.map((a) => `\`${a}\``).join(", ")}` : ""}. Add it to the grant in CI, CI access.`,
+    };
+  }
+  const long = placed.filter((r) => spec.timeout_secs <= r.maxJobMinutes * 60);
   if (long.length === 0) {
-    const most = Math.max(...scoped.map((r) => r.maxJobMinutes));
+    const most = Math.max(...placed.map((r) => r.maxJobMinutes));
     return {
       refuse: `The job's timeout (${Math.ceil(spec.timeout_secs / 60)} minutes) is over what its connection allows a cloud job (${most} minutes). Lower \`timeout:\` or raise the limit in CI, CI access.`,
     };
@@ -240,19 +283,66 @@ export function matchConnections(
   return long.map((r) => ({
     accountId: r.accountId,
     displayName: r.displayName,
+    peerResourceId: r.peerResourceId ?? null,
     maxConcurrentJobs: r.maxConcurrentJobs,
     maxJobMinutes: r.maxJobMinutes,
   }));
 }
 
-async function liveJobsOf(accountIds: string[]): Promise<Map<string, number>> {
-  if (accountIds.length === 0) return new Map();
+/** What a candidate's concurrency limit counts: its connection's own jobs, or its resource's. */
+function slotKey(c: { accountId: string | null; peerResourceId: string | null }): string {
+  return `${c.accountId ?? ""}\u0000${c.peerResourceId ?? ""}`;
+}
+
+async function liveJobsOf(candidates: Candidate[]): Promise<Map<string, number>> {
+  if (candidates.length === 0) return new Map();
   const rows = await db
-    .select({ accountId: ciCloudJobs.accountId, n: sql<number>`count(*)::int` })
+    .select({
+      accountId: ciCloudJobs.accountId,
+      peerResourceId: ciCloudJobs.peerResourceId,
+      n: sql<number>`count(*)::int`,
+    })
     .from(ciCloudJobs)
-    .where(and(inArray(ciCloudJobs.accountId, accountIds), ne(ciCloudJobs.state, "done")))
-    .groupBy(ciCloudJobs.accountId);
-  return new Map(rows.flatMap((r) => (r.accountId ? [[r.accountId, r.n] as const] : [])));
+    .where(
+      and(
+        inArray(ciCloudJobs.accountId, [...new Set(candidates.map((c) => c.accountId))]),
+        ne(ciCloudJobs.state, "done"),
+      ),
+    )
+    .groupBy(ciCloudJobs.accountId, ciCloudJobs.peerResourceId);
+  return new Map(rows.map((r) => [slotKey(r), r.n] as const));
+}
+
+/**
+ * The client that starts, follows and tears down a job's compute: its
+ * connection's, or for a job on a resource granted as its peer, the peer's,
+ * built from the resource rather than the grant, so a job whose grant was
+ * removed while it ran is still torn down. Throws why CI may not use a peer.
+ */
+async function executorClient(
+  row: Pick<JobRow, "accountId" | "organizationId" | "peerResourceId" | "pluginId">,
+  use: PeerUse,
+) {
+  if (!row.accountId) return null;
+  if (row.peerResourceId) {
+    const [resource] = await db
+      .select({ resourceTypeId: resources.resourceTypeId })
+      .from(resources)
+      .where(
+        and(eq(resources.id, row.peerResourceId), eq(resources.organizationId, row.organizationId)),
+      )
+      .limit(1);
+    if (!resource) return null;
+    const peer = await ciPeerClient(
+      row.organizationId,
+      { id: row.peerResourceId, accountId: row.accountId, resourceTypeId: resource.resourceTypeId },
+      row.pluginId,
+      use,
+    );
+    if (peer && "refused" in peer) throw new Error(peer.refused);
+    return peer;
+  }
+  return getOrgAccountClient(row.accountId, row.organizationId);
 }
 
 /** Claims and starts one waiting cloud job, or refuses it. */
@@ -279,13 +369,62 @@ export async function startCloudJob(run: RunRow, spec: CloudJobSpec): Promise<vo
     .innerJoin(accounts, eq(accounts.id, ciConnectionAccess.accountId))
     .where(eq(ciConnectionAccess.organizationId, run.organizationId))
     .orderBy(accounts.displayName);
-  const match = matchConnections(run, spec, rows);
+  // Resources granted as a peer that runs this provider's jobs: only while
+  // the resource the grant was made for is still there, not deleted and
+  // not another one created since under its id.
+  const peers = await db
+    .select({
+      accountId: ciResourceGrants.accountId,
+      displayName: ciResourceGrants.ciName,
+      pluginId: ciResourceGrants.peerPluginId,
+      peerResourceId: ciResourceGrants.resourceId,
+      jobKinds: ciResourceGrants.peerJobKinds,
+      jobRepos: ciResourceGrants.repos,
+      jobBranchPattern: ciResourceGrants.branchPattern,
+      maxConcurrentJobs: ciResourceGrants.peerMaxConcurrentJobs,
+      maxJobMinutes: ciResourceGrants.peerMaxJobMinutes,
+      regions: ciResourceGrants.peerJobRegions,
+      preflight: ciResourceGrants.peerPreflight,
+    })
+    .from(ciResourceGrants)
+    .innerJoin(
+      resources,
+      and(
+        eq(resources.id, ciResourceGrants.resourceId),
+        eq(resources.organizationId, ciResourceGrants.organizationId),
+        isNull(resources.deletedAt),
+        eq(resources.incarnation, ciResourceGrants.resourceIncarnation),
+      ),
+    )
+    .where(
+      and(
+        eq(ciResourceGrants.organizationId, run.organizationId),
+        eq(ciResourceGrants.peerPluginId, spec.cloud.provider),
+      ),
+    )
+    .orderBy(ciResourceGrants.ciName);
+  const match = matchConnections(run, spec, [
+    ...rows,
+    ...peers.map(({ regions, preflight, ...p }) => ({
+      ...p,
+      pluginId: p.pluginId ?? "",
+      jobsEnabled: p.jobKinds.length > 0,
+      // Where each kind was checked by default (a cluster's home namespace),
+      // and the places the grant adds.
+      jobRegions: Object.fromEntries(
+        p.jobKinds.map((k) => {
+          const home = preflight[k]?.region;
+          return [k, [...new Set([...(home ? [home] : []), ...regions])]];
+        }),
+      ),
+    })),
+  ]);
   if (!Array.isArray(match)) {
     await refuseJob(run.proxyRunId, spec.job, match.refuse);
     return;
   }
-  const live = await liveJobsOf(match.map((m) => m.accountId));
-  const chosen = match.find((m) => (live.get(m.accountId) ?? 0) < m.maxConcurrentJobs);
+  const live = await liveJobsOf(match);
+  const chosen = match.find((m) => (live.get(slotKey(m)) ?? 0) < m.maxConcurrentJobs);
   // Every matching connection is busy: the job waits for a slot (the runner
   // fails it as lost if nothing frees one within its timeout).
   if (!chosen) return;
@@ -301,6 +440,7 @@ export async function startCloudJob(run: RunRow, spec: CloudJobSpec): Promise<vo
       jobName: spec.name,
       pipeline: spec.pipeline,
       accountId: chosen.accountId,
+      peerResourceId: chosen.peerResourceId,
       pluginId: spec.cloud.provider,
       kind: spec.cloud.kind,
       machine: spec.cloud.machine ?? null,
@@ -341,14 +481,34 @@ async function lentTools(
               inArray(accounts.displayName, names),
             ),
           );
+  // A resource granted as its peer is named like a connection of the peer.
+  const peers =
+    names.length === 0
+      ? []
+      : await db
+          .select({ displayName: ciResourceGrants.ciName, pluginId: ciResourceGrants.peerPluginId })
+          .from(ciResourceGrants)
+          .where(
+            and(
+              eq(ciResourceGrants.organizationId, run.organizationId),
+              inArray(ciResourceGrants.ciName, names),
+              isNotNull(ciResourceGrants.peerPluginId),
+            ),
+          );
+  const named = [
+    ...rows,
+    ...peers.flatMap((p) =>
+      p.pluginId ? [{ displayName: p.displayName, pluginId: p.pluginId }] : [],
+    ),
+  ];
   const { getPlugin } = await import("../plugin-loader.js");
   const declared = new Map<string, readonly CiToolDeclaration[]>();
-  for (const pluginId of new Set(rows.map((r) => r.pluginId))) {
+  for (const pluginId of new Set(named.map((r) => r.pluginId))) {
     declared.set(pluginId, (await getPlugin(pluginId))?.plugin.manifest.ciCredential?.tools ?? []);
   }
   return toolsOfJob(
     entries,
-    (name) => rows.filter((r) => r.displayName === name).map((r) => r.pluginId),
+    (name) => named.filter((r) => r.displayName === name).map((r) => r.pluginId),
     (pluginId) => declared.get(pluginId) ?? [],
   );
 }
@@ -371,9 +531,11 @@ async function claimAndStart(
   spec: CloudJobSpec,
   connectionName: string,
 ): Promise<void> {
-  const resolved = row.accountId
-    ? await getOrgAccountClient(row.accountId, run.organizationId).catch(() => null)
-    : null;
+  const why = { refusal: "" };
+  const resolved = await executorClient(row, "run").catch((err: unknown) => {
+    why.refusal = message(err);
+    return null;
+  });
   const kindInfo = resolved?.plugin.manifest.ciExecutor?.kinds.find(
     (k) => k.kind === spec.cloud.kind,
   );
@@ -444,7 +606,9 @@ async function claimAndStart(
     await close(row, "error", reason);
   };
   if (!resolved?.client.ciStart || !kindInfo) {
-    await fail(`The connection ${connectionName} can no longer run \`${spec.cloud.kind}\` jobs.`);
+    await fail(
+      `The connection ${connectionName} can no longer run \`${spec.cloud.kind}\` jobs${why.refusal ? `: ${why.refusal}` : ""}.`,
+    );
     return;
   }
   try {
@@ -519,13 +683,30 @@ async function claimFailed(row: JobRow, err: unknown): Promise<void> {
 /** Retries the claims that failed for a passing reason. */
 async function retryClaims(): Promise<void> {
   const due = await db
-    .select({ job: ciCloudJobs, run: ciRuns, accountName: accounts.displayName })
+    .select({
+      job: ciCloudJobs,
+      run: ciRuns,
+      accountName: accounts.displayName,
+      peerName: ciResourceGrants.ciName,
+    })
     .from(ciCloudJobs)
     .innerJoin(ciRuns, eq(ciRuns.id, ciCloudJobs.runId))
     .leftJoin(accounts, eq(accounts.id, ciCloudJobs.accountId))
+    .leftJoin(
+      ciResourceGrants,
+      and(
+        eq(ciResourceGrants.organizationId, ciCloudJobs.organizationId),
+        eq(ciResourceGrants.resourceId, ciCloudJobs.peerResourceId),
+        eq(ciResourceGrants.peerPluginId, ciCloudJobs.pluginId),
+      ),
+    )
     .where(and(eq(ciCloudJobs.state, "claiming"), lte(ciCloudJobs.nextAttemptAt, new Date())))
     .limit(20);
-  for (const { job, run, accountName } of due) {
+  // Two grants of one resource as one peer both match a job's row: once each.
+  const seen = new Set<string>();
+  for (const { job, run, accountName, peerName } of due) {
+    if (seen.has(job.id)) continue;
+    seen.add(job.id);
     // A run that has ended took its jobs with it.
     if (run.status !== "running") {
       await db
@@ -567,7 +748,12 @@ async function retryClaims(): Promise<void> {
         .where(eq(ciCloudJobs.id, job.id));
       continue;
     }
-    await claimAndStart(job, run, spec, accountName ?? job.pluginId);
+    await claimAndStart(
+      job,
+      run,
+      spec,
+      (job.peerResourceId ? peerName : accountName) ?? accountName ?? job.pluginId,
+    );
   }
 }
 
@@ -905,7 +1091,7 @@ async function tearDown(row: JobRow): Promise<void> {
     return;
   }
   try {
-    const resolved = await getOrgAccountClient(row.accountId, row.organizationId);
+    const resolved = await executorClient(row, "teardown");
     if (!resolved?.client.ciTeardown) throw new Error("the connection can no longer tear it down");
     await resolved.client.ciTeardown(row.handle as CiHandle);
     await done(null);
@@ -940,15 +1126,33 @@ export async function reapTagged(): Promise<number> {
     .select({
       accountId: ciCloudJobs.accountId,
       organizationId: ciCloudJobs.organizationId,
+      peerResourceId: ciCloudJobs.peerResourceId,
+      pluginId: ciCloudJobs.pluginId,
       regions: sql<string[]>`array_remove(array_agg(distinct ${ciCloudJobs.region}), null)`,
     })
     .from(ciCloudJobs)
     .where(and(isNotNull(ciCloudJobs.accountId), gte(ciCloudJobs.createdAt, since)))
-    .groupBy(ciCloudJobs.accountId, ciCloudJobs.organizationId);
+    .groupBy(
+      ciCloudJobs.accountId,
+      ciCloudJobs.organizationId,
+      ciCloudJobs.peerResourceId,
+      ciCloudJobs.pluginId,
+    );
   let removed = 0;
-  for (const { accountId, organizationId, regions } of used) {
+  const seen = new Set<string>();
+  for (const { accountId, organizationId, peerResourceId, pluginId, regions } of used) {
     if (!accountId) continue;
-    const resolved = await getOrgAccountClient(accountId, organizationId).catch(() => null);
+    // A connection's own jobs are one group whatever the provider says: its
+    // client lists everything tagged on it once.
+    const group = peerResourceId
+      ? `${accountId}\u0000${peerResourceId}\u0000${pluginId}`
+      : accountId;
+    if (seen.has(group)) continue;
+    seen.add(group);
+    const resolved = await executorClient(
+      { accountId, organizationId, peerResourceId, pluginId },
+      "teardown",
+    ).catch(() => null);
     if (!resolved?.client.ciListTagged || !resolved.client.ciTeardown) continue;
     let tagged;
     try {

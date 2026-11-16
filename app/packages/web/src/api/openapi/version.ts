@@ -488,4 +488,14 @@
 // 1.110.0: Fireworks' `reinforcement-fine-tuning-job`, `evaluator` and
 // `evaluation-job` leave the `resourceTypeId` enum: Fireworks removed managed
 // RFT, evaluators and evaluation jobs. Stored rows of those types are kept.
-export const API_VERSION = "1.110.0";
+// 1.111.0: CI uses resources as their peer. `CiResourceGrantInput` and
+// `CiResourceGrant` gain optional `peer`: the plugin a resource is used as
+// through its type's peer integration (a managed cluster as `kubernetes`),
+// with two separate switches, `lend` (`connections: [<ciName>]`) and
+// `jobKinds` (`cloud:` jobs), plus limits and `jobRegions`. An update of a
+// grant that has a peer must send it (409 otherwise). `CiResourceOutputs`
+// gains optional `peers`, each with what it `lends`, its `reach` and
+// `lifetime`, and why it is `unavailable`. Saving a grant that turns a job
+// kind or region on checks it through the peer and answers 409 when the
+// check fails. Additive.
+export const API_VERSION = "1.111.0";

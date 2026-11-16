@@ -14,6 +14,7 @@ import { db } from "./db/client";
 import { sshTunnelConfigs } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { resolveSafeHost } from "./egress-guard";
+import { applyTunnelToConnectionString } from "./credential-rewriters/tunnel-form";
 
 function findTunnelForAccount(accountId: string): { localPort: number } | null {
   const r = findTunnel<TunnelExtras>((rec) => rec.extras.accountId === accountId);
@@ -113,19 +114,4 @@ async function tryResolveTunnel(accountId: string): Promise<{ localPort: number 
     );
   }
   return null;
-}
-
-function applyTunnelToConnectionString(connectionString: string, localPort: number): string {
-  try {
-    const url = new URL(connectionString);
-    url.hostname = "127.0.0.1";
-    url.port = String(localPort);
-    return url.toString();
-  } catch {
-    // Not a URL: try host:port pattern
-    if (/^(.+):(\d+)$/.test(connectionString)) {
-      return `127.0.0.1:${localPort}`;
-    }
-    return connectionString;
-  }
 }
