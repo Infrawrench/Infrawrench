@@ -83,7 +83,6 @@ export type WorkspaceTabTarget =
    */
   | { kind: "ci"; runId?: string }
   | { kind: "workflows"; workflowId?: string }
-  | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
   | { kind: "chat"; conversationId?: string }
   | {
@@ -262,10 +261,6 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       // the target is remembered state (which editor is open), compared in
       // workspaceTabTargetsEqual so a reload or a tab switch comes back to it.
       return "workflows";
-    case "deployments":
-      // Not keyed by repo: a hotlink to a different repo should retarget the
-      // open Deploy tab rather than pile up a tab per repository.
-      return "deployments";
     case "settings":
       // Not keyed by section: one Settings tab that remembers where you were.
       return "settings";
@@ -371,10 +366,6 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "CI";
     case "workflows":
       return "Workflows";
-    case "deployments":
-      // "Deploy" everywhere the user reads it: the sidebar tile, the panel
-      // heading and the docs all say Deploy; only the tab used to disagree.
-      return "Deploy";
     case "settings":
       return "Settings";
     case "chat":
@@ -468,11 +459,6 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // same reason: comparing the invoice is what records which one the tab is
       // on, so reactivating it comes back to that invoice and not the list.
       return a.invoiceId === (b as { invoiceId?: string }).invoiceId;
-    case "deployments":
-      // Compared even though the tab *id* ignores it: the id keeps a second
-      // hotlink reusing one tab, while this comparison is what makes the route
-      // sync notice the repo changed and actually retarget it.
-      return a.repo === (b as { repo?: string }).repo;
     // Same trick: one Diff tab by id, but comparing the two accounts lets the
     // route sync record which comparison the tab is showing.
     case "environment-diff": {
@@ -528,7 +514,7 @@ function createWorkspaceTab(
 }
 
 /** Bumped whenever a stored tab shape stops being renderable. See migrateWorkspaceTabs. */
-const PERSISTED_TABS_VERSION = 1;
+const PERSISTED_TABS_VERSION = 2;
 
 interface PersistedWorkspaceTabs {
   workspaceTabs: WorkspaceTab[];
@@ -537,12 +523,11 @@ interface PersistedWorkspaceTabs {
 }
 
 /**
- * `savings` was its own tab kind until the panel became a section of Costs.
- * Stored tabs are typed as current targets, so the dead kind needs a widening
- * cast to be recognised at all.
+ * A stored tab whose kind no longer exists. Stored tabs are typed as current
+ * targets, so a dead kind needs a widening cast to be recognised at all.
  */
-function isRetiredSavingsTab(tab: WorkspaceTab): boolean {
-  return (tab.target as { kind: string }).kind === "savings";
+function hasRetiredKind(tab: WorkspaceTab, kind: string): boolean {
+  return (tab.target as { kind: string }).kind === kind;
 }
 
 /**
@@ -550,11 +535,8 @@ function isRetiredSavingsTab(tab: WorkspaceTab): boolean {
  * with a kind no viewport case renders: a permanently blank tab the user can
  * only close.
  */
-export function migrateWorkspaceTabs(persisted: unknown, version: number): PersistedWorkspaceTabs {
-  const state = persisted as PersistedWorkspaceTabs;
-  if (version >= PERSISTED_TABS_VERSION || !Array.isArray(state?.workspaceTabs)) return state;
-
-  const retired = state.workspaceTabs.filter(isRetiredSavingsTab);
+function foldSavingsTabs(state: PersistedWorkspaceTabs): PersistedWorkspaceTabs {
+  const retired = state.workspaceTabs.filter((tab) => hasRetiredKind(tab, "savings"));
   if (retired.length === 0) return state;
 
   // Retarget the first one in place so it keeps its position in the strip, and
@@ -562,7 +544,7 @@ export function migrateWorkspaceTabs(persisted: unknown, version: number): Persi
   // already open there is nothing to retarget onto.
   const hasCosts = state.workspaceTabs.some((tab) => tab.target.kind === "costs");
   const workspaceTabs = state.workspaceTabs.flatMap((tab) => {
-    if (!isRetiredSavingsTab(tab)) return [tab];
+    if (!hasRetiredKind(tab, "savings")) return [tab];
     if (hasCosts || tab !== retired[0]) return [];
     return [createWorkspaceTab({ kind: "costs" })];
   });
@@ -577,6 +559,32 @@ export function migrateWorkspaceTabs(persisted: unknown, version: number): Persi
         null)
       : state.activeWorkspaceTabId,
   };
+}
+
+/**
+ * v2: close any open Deploy tab. The page was removed with nothing to
+ * retarget onto, and the kind is gone from `validate-tabs`, which rejects a
+ * request naming it, so leaving the tab in place would also stop every other
+ * restored tab from being validated.
+ */
+function dropDeployTabs(state: PersistedWorkspaceTabs): PersistedWorkspaceTabs {
+  const workspaceTabs = state.workspaceTabs.filter((tab) => !hasRetiredKind(tab, "deployments"));
+  if (workspaceTabs.length === state.workspaceTabs.length) return state;
+  const stillOpen = workspaceTabs.some((tab) => tab.id === state.activeWorkspaceTabId);
+  return {
+    ...state,
+    workspaceTabs,
+    activeWorkspaceTabId: stillOpen ? state.activeWorkspaceTabId : (workspaceTabs[0]?.id ?? null),
+  };
+}
+
+/** Bring persisted tabs from `version` up to {@link PERSISTED_TABS_VERSION}. */
+export function migrateWorkspaceTabs(persisted: unknown, version: number): PersistedWorkspaceTabs {
+  let state = persisted as PersistedWorkspaceTabs;
+  if (version >= PERSISTED_TABS_VERSION || !Array.isArray(state?.workspaceTabs)) return state;
+  if (version < 1) state = foldSavingsTabs(state);
+  if (version < 2) state = dropDeployTabs(state);
+  return state;
 }
 
 function createWorkspaceTabInstance(target: WorkspaceTabTarget, title?: string): WorkspaceTab {

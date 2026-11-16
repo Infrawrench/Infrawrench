@@ -71,7 +71,7 @@ Each configured repository is an [`infrawrench_pr_check_repository`](./terraform
 
 ## What is not covered
 
-- **Infrafiles are never run.** A pull request may come from a fork, and running someone else's code with your accounts isn't something a check should do. Run `infrawrench deploy --plan` yourself to see an [Infrafile](./infrafile.md)'s planned changes.
+- **Infrafiles are never run.** A pull request may come from a fork, and running someone else's code with your accounts isn't something a check should do, so an Infrafile is listed as changed but not analysed.
 - **Kubernetes manifests are listed, not priced.** Workload cost is [allocated from the cluster's nodes](./kubernetes-costs.md) after it runs.
 - **Modules aren't expanded.** Resources declared inside a module call aren't covered. The check tells you when a changed file calls modules.
 - **Usage-based charges** (requests, data transfer, storage growth) aren't in the estimate, the same as everywhere else estimates appear.

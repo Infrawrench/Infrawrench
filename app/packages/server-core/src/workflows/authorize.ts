@@ -119,22 +119,6 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
   "carbon.estimate": "costs:read",
   "carbon.resource": "costs:read",
 
-  // --- Infrafile deploy stages -------------------------------------------
-  // Unreachable through `runOrgWorkflow` today (deployments build their own
-  // Infrafile host and gate at `deployment-ws.ts`) but mapped so that wiring
-  // this gate into that path later is a one-line change rather than a policy
-  // decision made under time pressure.
-  "infrafile.plan": "deployments:plan",
-  "infrafile.build": "deployments:write",
-  "infrafile.push": "deployments:write",
-  "infrafile.run": "deployments:write",
-  "infrafile.copyTo": "deployments:write",
-  "infrafile.envs": "deployments:read",
-  "infrafile.dockerfile": "deployments:read",
-  "infrafile.select": null,
-  "infrafile.ask": null,
-  "infrafile.note": null,
-
   // --- the run talking to itself -----------------------------------------
   fetch: null,
   // `null` like fetch: an AI call touches nothing in the org (the prompt is

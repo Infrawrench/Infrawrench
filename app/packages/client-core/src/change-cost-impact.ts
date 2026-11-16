@@ -1,5 +1,5 @@
 /**
- * Cost per change / cost per deploy: the shared contract.
+ * Cost per change: the shared contract.
  *
  * "What did this change cost?" is answered by comparing a resource's *per-day*
  * spend over a window before the change against the window after it, and
@@ -135,42 +135,6 @@ export interface ChangeCostImpactEntry {
   impact: ChangeCostImpact;
 }
 
-/** One resource's share of a deployment's impact. */
-export interface DeploymentCostImpactResource {
-  resourceId: string;
-  displayName: string;
-  pluginId: string;
-  resourceTypeId: string;
-  impact: ChangeCostImpact;
-}
-
-export interface DeploymentCostImpact {
-  runId: string;
-  costBasis: CostBasis;
-  windowDays: number;
-  /**
-   * The run's **start** day, UTC: the day every resource's windows are
-   * anchored on. A long build's cost consequences begin when the resources
-   * appear, not when the last step logged.
-   */
-  eventDay: string;
-  /**
-   * Per-resource breakdown. `total` is the sum of exactly these rows, so a
-   * reader can always check the addition.
-   */
-  resources: DeploymentCostImpactResource[];
-  /**
-   * Summed `deltaPerDay` per currency across the *measured* rows only:
-   * an unknown row contributes nothing rather than zero, and
-   * `unknownResources` says how many were left out.
-   */
-  total: Array<{ currency: string; deltaPerDay: number }>;
-  /** Rows whose status was not `measured`; excluded from `total`. */
-  unknownResources: number;
-  /** Weakest confidence among the measured rows: a chain is its weakest link. */
-  confidence: ChangeCostImpactConfidence;
-}
-
 export interface ChangeCostImpactRequest {
   changeIds: string[];
   windowDays?: number | undefined;
@@ -178,7 +142,7 @@ export interface ChangeCostImpactRequest {
 }
 
 /** Which object a written cost annotation is about. */
-export type ChangeCostImpactSubjectKind = "change" | "deployment";
+export type ChangeCostImpactSubjectKind = "change";
 
 export interface ChangeCostImpactAnnotationRequest {
   subjectKind: ChangeCostImpactSubjectKind;
@@ -378,7 +342,7 @@ export function formatSignedPercent(percent: number): string {
  * Monthly-equivalent of a run-rate delta, at 30 days.
  *
  * A deliberate approximation, and it is stated as one wherever it renders: it
- * is the number people actually reason about ("this deploy added $400 a
+ * is the number people actually reason about ("this change added $400 a
  * month"), and quoting a calendar-exact figure would imply the daily rate is
  * known to that precision when it comes from a handful of observed days.
  */
@@ -399,9 +363,8 @@ export function changeCostImpactAnnotationText(
 ): string | null {
   const line = formatChangeCostImpact(impact);
   if (line === null) return null;
-  const noun = subject.kind === "deployment" ? "Deploy" : "Change";
   const caveat = impact.overlappingChanges > 0 ? " (other changes overlapped)" : "";
-  return `${noun} ${subject.label}: ${line}${caveat}`;
+  return `Change ${subject.label}: ${line}${caveat}`;
 }
 
 /** Batched cost impacts for a page of the change feed. */
@@ -424,23 +387,4 @@ export async function fetchChangeCostImpacts(
     { method: "POST", body: JSON.stringify(body) },
   );
   return result?.impacts ?? [];
-}
-
-/** One deployment run's per-resource cost impact. */
-export async function fetchDeploymentCostImpact(
-  api: CloudFetch,
-  orgId: string,
-  runId: string,
-  opts: { windowDays?: number; costBasis?: CostBasis } = {},
-): Promise<DeploymentCostImpact | null> {
-  const params = new URLSearchParams();
-  if (opts.windowDays !== undefined) {
-    params.set("windowDays", String(clampChangeImpactWindowDays(opts.windowDays)));
-  }
-  if (opts.costBasis) params.set("costBasis", opts.costBasis);
-  const query = params.toString();
-  return await api.org<DeploymentCostImpact>(
-    orgId,
-    `/deployments/runs/${encodeURIComponent(runId)}/cost-impact${query ? `?${query}` : ""}`,
-  );
 }

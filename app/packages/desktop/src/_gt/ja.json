@@ -21513,7 +21513,7 @@
   "74af1bb7d60b6db5": "スコープの値",
   "04644a781f24672e": "デリバリーメトリクスを読み込み中…",
   "e722ab7543b09445": "この範囲にはまだデプロイがありません。",
-  "5728c525799ea4fa": "デリバリーメトリクスは、Infrawrench のデプロイ、接続済みプロバイダーが既に同期しているデプロイ(Vercel、Netlify、Render、Railway、Koyeb、Heroku、Pulumi、Spacelift、HCP Terraform)、設定でデプロイとして指定した CI パイプライン(Buildkite、CircleCI、GitLab、Bitbucket)、GitHub App 経由の GitHub デプロイ、API で記録されたデプロイから集計されます。障害は、宣言されたインシデントとロールバックから判定されます。",
+  "f20f4325fda0f969": "デリバリーメトリクスは、接続済みプロバイダーが既に同期しているデプロイ(Vercel、Netlify、Render、Railway、Koyeb、Heroku、Pulumi、Spacelift、HCP Terraform)、設定でデプロイとして指定した CI パイプライン(Buildkite、CircleCI、GitLab、Bitbucket)、GitHub App 経由の GitHub デプロイ、API で記録されたデプロイから集計されます。障害は、宣言されたインシデントとロールバックから判定されます。",
   "ef85252c278cb404": "内訳",
   "393ec1b1ee6dbd91": "{dimension} 別",
   "c7a67255aa9bf97f": "設定の読み込みに失敗しました",

@@ -21528,7 +21528,7 @@
   "74af1bb7d60b6db5": "Bereichswert",
   "04644a781f24672e": "Delivery-Metriken werden geladen…",
   "e722ab7543b09445": "In diesem Zeitraum noch keine Deployments.",
-  "5728c525799ea4fa": "Delivery-Metriken stammen aus Infrawrench-Deployments, aus Deployments, die Ihre verbundenen Anbieter bereits synchronisieren (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), aus CI-Pipelines, die in den Einstellungen als Deployments benannt sind (Buildkite, CircleCI, GitLab, Bitbucket), aus GitHub-Deployments über die GitHub App und aus Deployments, die über die API erfasst werden. Fehler stammen aus deklarierten Vorfällen und Rollbacks.",
+  "f20f4325fda0f969": "Delivery-Metriken stammen aus Deployments, die Ihre verbundenen Anbieter bereits synchronisieren (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), aus CI-Pipelines, die in den Einstellungen als Deployments benannt sind (Buildkite, CircleCI, GitLab, Bitbucket), aus GitHub-Deployments über die GitHub App und aus Deployments, die über die API erfasst werden. Fehler stammen aus deklarierten Vorfällen und Rollbacks.",
   "ef85252c278cb404": "Aufschlüsselung",
   "393ec1b1ee6dbd91": "Nach {dimension}",
   "c7a67255aa9bf97f": "Einstellungen konnten nicht geladen werden",

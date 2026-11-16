@@ -983,21 +983,21 @@ export const costAnnotations = pgTable(
 );
 
 /**
- * Which cost annotation records a given change's or deployment's cost impact.
+ * Which cost annotation records a given change's cost impact.
  *
  * The impact itself is **never stored**: it is recomputed on every read so
  * late-arriving and restated provider cost keeps moving the number (see
  * `cost/change-impact-load.ts`). What is stored is only the fact that someone
  * pinned a finding onto the cost graphs, so that pinning it again *rewords the
  * same note* rather than minting a second one on the same day. That is the
- * anomaly-acknowledgement arrangement, with the link in its own table because
- * the two subject kinds live in two different tables and one fact must not
- * become two columns in two places.
+ * anomaly-acknowledgement arrangement, with the link in its own table so the
+ * subject's own table stays append-only history.
  *
- * `subject_id` is deliberately not a FK: it addresses either a
- * `resource_changes` row (append-only history that the 90-day prune will
- * eventually drop) or a `deployment_runs` row. A dangling link is harmless
- * (the note it points at is still a note) and the org cascade cleans up.
+ * `subject_id` is deliberately not a FK: it addresses a `resource_changes` row
+ * (append-only history that the 90-day prune will eventually drop). A dangling
+ * link is harmless (the note it points at is still a note) and the org cascade
+ * cleans up. Rows written with a `deployment` kind before that subject was
+ * retired are never matched again and are equally harmless.
  */
 export const changeCostImpactAnnotations = pgTable(
   "change_cost_impact_annotations",
@@ -1006,8 +1006,8 @@ export const changeCostImpactAnnotations = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** `"change"` (a `resource_changes` row) or `"deployment"` (a run). */
-    subjectKind: text("subject_kind").$type<"change" | "deployment">().notNull(),
+    /** `"change"`: a `resource_changes` row. */
+    subjectKind: text("subject_kind").$type<"change">().notNull(),
     subjectId: text("subject_id").notNull(),
     /**
      * SET NULL rather than cascade: deleting the note is not a retraction of
@@ -6128,7 +6128,6 @@ export * from "./shared-console-schema.js";
 export * from "./access-schema.js";
 export * from "./credit-schema.js";
 export * from "./custom-graph-schema.js";
-export * from "./deployment-schema.js";
 export * from "./agent-schema.js";
 export * from "./commitment-schema.js";
 export * from "./network-flow-schema.js";

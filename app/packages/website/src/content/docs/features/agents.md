@@ -14,7 +14,7 @@ To start:
 
 ## Local and organization sessions
 
-On the desktop app, Agents follows the org switcher, the same way [Workflows](./workflows.md) and [Deploy](./infrafile.md) do.
+On the desktop app, Agents follows the org switcher, the same way [Workflows](./workflows.md) does.
 
 - **Local-only mode.** Sessions are stored on this machine and VMs are set up from here. You see the accounts you added to the desktop app. This is the only mode where you can use a **local folder** as the repository.
 - **With an organization selected.** You get the organization's sessions, the same ones the web app shows. They use the organization's accounts, and the cloud sets up the VM, so a session keeps going even if your laptop sleeps. The GitHub repository picker is available here. Local folders are not, since the cloud can't reach your machine.

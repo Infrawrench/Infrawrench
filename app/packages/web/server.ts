@@ -21,7 +21,6 @@ import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
 import { handleK9sSession } from "./src/services/k9s-proxy";
 import { handleK8sPfSession } from "./src/services/k8s-pf-proxy";
 import { handleWorkflowSession } from "./src/services/workflow-ws";
-import { handleDeploymentSession } from "./src/services/deployment-ws";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateWsUpgrade, type WsPrincipal } from "./src/services/ws-auth";
 import { handleAppsSession } from "./src/services/apps-proxy";
@@ -322,11 +321,6 @@ async function start() {
           /** Load-balancer affinity hint; see services/shared-console/hub.ts. */
           routingKey?: string;
           sharedConsoleId?: string;
-          repo?: string;
-          branch?: string;
-          env?: string;
-          planOnly?: boolean;
-          answers?: Record<string, string>;
         };
 
         switch (msg.type) {
@@ -521,22 +515,6 @@ async function start() {
           case "workflow:step":
           case "workflow:stop":
           case "workflow:prompt:response":
-            break;
-          case "deploy:run":
-            if (msg.repo && msg.branch) {
-              handleDeploymentSession(ws, auth, {
-                repo: msg.repo,
-                branch: msg.branch,
-                ...(msg.env ? { env: msg.env } : {}),
-                ...(msg.planOnly ? { planOnly: true } : {}),
-                ...(msg.answers ? { answers: msg.answers } : {}),
-              });
-            }
-            break;
-          // Subsequent deploy messages are handled by the session's own
-          // listener registered in handleDeploymentSession.
-          case "deploy:stop":
-          case "deploy:prompt:response":
             break;
         }
       } catch (e) {

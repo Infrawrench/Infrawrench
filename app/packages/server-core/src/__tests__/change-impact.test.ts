@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   changeImpactFetchRange,
   computeChangeCostImpact,
-  sumChangeCostImpacts,
   type ChangeImpactInput,
 } from "../cost/change-impact";
 
@@ -295,52 +294,6 @@ describe("computeChangeCostImpact — late-arriving cost", () => {
     );
     expect(before.series[0]?.deltaPerDay).toBe(3);
     expect(restated.series[0]?.deltaPerDay).toBe(4);
-  });
-});
-
-describe("sumChangeCostImpacts — multi-resource deploys", () => {
-  const measured = (currency: string, delta: number, confidence: "high" | "low" = "high") =>
-    computeChangeCostImpact(
-      input({
-        overlappingChanges: confidence === "low" ? 5 : 0,
-        series: [{ currency, points: flat("2026-06-16", "2026-06-22", delta) }],
-      }),
-    );
-
-  it("sums the breakdown per currency so the rows add up to the total", () => {
-    const { total, unknownResources } = sumChangeCostImpacts([
-      measured("USD", 2),
-      measured("USD", 3),
-      measured("EUR", 1),
-    ]);
-    expect(unknownResources).toBe(0);
-    expect(total).toEqual([
-      { currency: "USD", deltaPerDay: 5 },
-      { currency: "EUR", deltaPerDay: 1 },
-    ]);
-  });
-
-  it("leaves unmeasurable resources out of the total rather than adding zero", () => {
-    const { total, unknownResources } = sumChangeCostImpacts([
-      measured("USD", 4),
-      computeChangeCostImpact(input({ costAddressable: false })),
-      computeChangeCostImpact(input({ series: [] })),
-    ]);
-    expect(total).toEqual([{ currency: "USD", deltaPerDay: 4 }]);
-    expect(unknownResources).toBe(2);
-  });
-
-  it("takes the weakest contributor's confidence", () => {
-    const { confidence } = sumChangeCostImpacts([measured("USD", 4), measured("USD", 1, "low")]);
-    expect(confidence).toBe("medium");
-  });
-
-  it("reports no confidence when nothing could be measured", () => {
-    const { confidence, total } = sumChangeCostImpacts([
-      computeChangeCostImpact(input({ series: [] })),
-    ]);
-    expect(confidence).toBe("none");
-    expect(total).toEqual([]);
   });
 });
 

@@ -14,7 +14,7 @@ export const GcpProjectResourceType = rt({
   ],
   outputs: [
     o("projectId", "Project ID"),
-    // Minted from the account's own credentials on demand, so an Infrafile can
+    // Minted from the account's own credentials on demand, so a workflow can
     // authenticate gcloud/docker without asking the operator to paste the
     // service-account key: `docker login -u oauth2accesstoken`, or
     // CLOUDSDK_AUTH_ACCESS_TOKEN for gcloud. Valid for about an hour.

@@ -82,9 +82,6 @@ export function MomentScreen({ at: atParam, window: windowParam }: MomentScreenP
       case "workflow-run":
         if (link.parentId) router.push(`/org/${orgId}/workflows/${enc(link.parentId)}`);
         break;
-      case "deployment":
-        router.push(`/org/${orgId}/deployments`);
-        break;
       case "costs":
         router.push(`/org/${orgId}/costs`);
         break;

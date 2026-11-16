@@ -21532,7 +21532,7 @@
   "74af1bb7d60b6db5": "Valor del alcance",
   "04644a781f24672e": "Cargando métricas de entrega…",
   "e722ab7543b09445": "Aún no hay despliegues en este rango.",
-  "5728c525799ea4fa": "Las métricas de entrega provienen de los despliegues de Infrawrench, los despliegues que tus proveedores conectados ya sincronizan (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), los pipelines de CI designados como despliegues en los ajustes (Buildkite, CircleCI, GitLab, Bitbucket), los despliegues de GitHub mediante la GitHub App y los despliegues registrados a través de la API. Los fallos provienen de incidentes declarados y reversiones.",
+  "f20f4325fda0f969": "Las métricas de entrega provienen de los despliegues que tus proveedores conectados ya sincronizan (Vercel, Netlify, Render, Railway, Koyeb, Heroku, Pulumi, Spacelift, HCP Terraform), los pipelines de CI designados como despliegues en los ajustes (Buildkite, CircleCI, GitLab, Bitbucket), los despliegues de GitHub mediante la GitHub App y los despliegues registrados a través de la API. Los fallos provienen de incidentes declarados y reversiones.",
   "ef85252c278cb404": "Desglose",
   "393ec1b1ee6dbd91": "Por {dimension}",
   "c7a67255aa9bf97f": "No se pudieron cargar los ajustes",

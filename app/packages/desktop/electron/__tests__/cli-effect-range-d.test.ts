@@ -683,7 +683,7 @@ describe("dora", () => {
     expect(out.stdout).toMatchInlineSnapshot(`
       "Acme · delivery · last 30 days · all production
 
-      No deploys in the range. Metrics come from Infrawrench deploys, synced provider deploys,
+      No deploys in the range. Metrics come from synced provider deploys,
       CI pipelines named in the settings, GitHub deployments and POST /dora/deployments.
       "
     `);

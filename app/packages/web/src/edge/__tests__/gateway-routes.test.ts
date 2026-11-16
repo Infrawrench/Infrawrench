@@ -31,7 +31,6 @@ describe("routeRequest", () => {
       "/api/org/org_1/shared-consoles/abc",
       "/api/org/org_1/apps/start",
       "/api/org/org_1/ssh-tunnels/open",
-      "/api/org/org_1/deployments/run",
       "/api/org/org_1/v1/storage/upload",
       "/api/org/org_1/v1/sftp/list",
     ]) {

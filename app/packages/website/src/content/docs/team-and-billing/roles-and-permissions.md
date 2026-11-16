@@ -118,13 +118,10 @@ Some older custom roles and API keys that granted `dashboards:read` / `dashboard
 
 ### Deploys
 
-[Deploys](../features/infrafile.md) use three permissions:
+[Delivery (DORA metrics)](../features/dora-metrics.md) uses two permissions:
 
-- `deployments:read`: deploy history and a repository's declared environments. Members hold it.
-- `deployments:plan`: runs the repository's `plan()`, which executes its code against your accounts but builds and ships nothing. Members hold it. A custom role can withhold it while keeping history.
-- `deployments:write`: build, deploy and roll back. Admin and Owner only.
-
-A `planOnly` run needs `deployments:plan` and a real deploy needs `deployments:write`.
+- `deployments:read`: view the metrics. Members hold it.
+- `deployments:write`: record a deploy over the API. Admin and Owner only.
 
 ### CI
 

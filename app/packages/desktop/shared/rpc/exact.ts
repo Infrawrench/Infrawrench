@@ -18,8 +18,7 @@
  * object without `note` is assignable to one with `note?:`), so the two key
  * sets are compared as well. That holds for the level `exact` wraps: a nested
  * struct with optional keys gets its own `exact`, against the contract's
- * named type or an indexed access such as
- * `LocalDeployRun["createdResources"][number]`.
+ * named type or an indexed access such as `Contract["items"][number]`.
  */
 import type { Schema } from "effect";
 

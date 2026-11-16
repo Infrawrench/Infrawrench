@@ -68,9 +68,6 @@ const SESSION_ROUTES: readonly RegExp[] = [
         "apps",
         "agents",
         "ssh-tunnels",
-        // Deploys stream over the WebSocket and hosted builds run for up to
-        // 20 minutes, past Lambda's 15.
-        "deployments",
         // Object storage and SFTP: uploads larger than a Lambda request
         // carries, staged on local disk.
         "storage",

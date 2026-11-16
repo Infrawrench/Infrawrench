@@ -1,6 +1,5 @@
 /**
- * Browser-side bridge for `infra.prompt()`, and for an Infrafile's
- * `select(...)`, which routes through the same host method.
+ * Browser-side bridge for `infra.prompt()`.
  *
  * A running workflow's host needs an answer from a human. On the desktop the
  * host runs in the renderer and calls {@link requestWorkflowPrompt} directly;

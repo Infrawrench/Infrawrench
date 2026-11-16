@@ -649,7 +649,6 @@ describe("Dashboard routes", () => {
             { id: "agents", target: { kind: "agents" } },
             { id: "costs", target: { kind: "costs" } },
             { id: "workflows", target: { kind: "workflows" } },
-            { id: "deployments", target: { kind: "deployments" } },
             { id: "chat", target: { kind: "chat" } },
             { id: "dashboard:gone", target: { kind: "dashboard", dashboardId: "gone" } },
           ],
@@ -658,9 +657,7 @@ describe("Dashboard routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(new Set(body.validTabIds)).toEqual(
-        new Set(["agents", "costs", "workflows", "deployments", "chat"]),
-      );
+      expect(new Set(body.validTabIds)).toEqual(new Set(["agents", "costs", "workflows", "chat"]));
     });
   });
 });

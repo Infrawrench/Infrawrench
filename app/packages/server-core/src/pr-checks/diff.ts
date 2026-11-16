@@ -70,7 +70,7 @@ function fileStatus(f: PrCheckSourceFile): PrCheckFile["status"] {
 
 const NOT_ANALYSED: Record<Exclude<PrCheckFileKind, "terraform">, string> = {
   infrafile:
-    "An Infrafile is a program: the check does not run code from a pull request. Run `infrawrench deploy --plan` to see what it would change.",
+    "An Infrafile is a program: the check does not run code from a pull request, so it is listed but not analysed.",
   kubernetes:
     "Kubernetes manifests are listed but not priced; workload cost is allocated from the cluster's nodes after it runs.",
 };

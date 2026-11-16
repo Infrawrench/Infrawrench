@@ -26,15 +26,6 @@ export function getStripeChatPriceId(): string | null {
 }
 
 /**
- * Metered hosted-build price, bound to the billing meter named by
- * INFRAWRENCH_STRIPE_BUILD_METER_EVENT. Optional: without it checkout omits
- * the line item and build time goes unbilled (the flat plan absorbs it).
- */
-export function getStripeBuildPriceId(): string | null {
-  return process.env["STRIPE_BUILD_PRICE_ID"] || null;
-}
-
-/**
  * Metered CI prices, each bound to the meter its env names
  * (`INFRAWRENCH_STRIPE_CI_{VCPU,MEMORY,STORAGE}_METER_EVENT`, see
  * `server-core/src/ci/billing.ts`): vCPU-seconds, memory GiB-seconds and

@@ -318,7 +318,7 @@ export interface IncidentNoteCreate {
 
 /**
  * Where a timeline entry came from. `moment` covers everything the moment
- * union already indexes (resource changes, deploys, cost anomalies, provider
+ * union already indexes (resource changes, cost anomalies, provider
  * incidents, audit, freezes, workflow runs): reusing that one loader is why
  * this feature adds no new feed plumbing.
  */
@@ -355,7 +355,6 @@ export interface IncidentTimelineLink {
     | "provider-incident"
     | "costs"
     | "workflow-run"
-    | "deployment"
     | "audit"
     | "freeze"
     | "expiring"

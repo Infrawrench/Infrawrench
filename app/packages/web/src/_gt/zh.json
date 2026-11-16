@@ -21687,7 +21687,7 @@
   "74af1bb7d60b6db5": "范围值",
   "04644a781f24672e": "正在加载交付指标…",
   "e722ab7543b09445": "此范围内暂无部署。",
-  "5728c525799ea4fa": "交付指标来源包括:Infrawrench 部署、已连接的提供商同步的部署(Vercel、Netlify、Render、Railway、Koyeb、Heroku、Pulumi、Spacelift、HCP Terraform)、在设置中指定为部署的 CI 流水线(Buildkite、CircleCI、GitLab、Bitbucket)、通过 GitHub 应用获取的 GitHub 部署,以及通过 API 记录的部署。失败数据来自已声明的事件和回滚。",
+  "f20f4325fda0f969": "交付指标来源包括:已连接的提供商同步的部署(Vercel、Netlify、Render、Railway、Koyeb、Heroku、Pulumi、Spacelift、HCP Terraform)、在设置中指定为部署的 CI 流水线(Buildkite、CircleCI、GitLab、Bitbucket)、通过 GitHub 应用获取的 GitHub 部署,以及通过 API 记录的部署。失败数据来自已声明的事件和回滚。",
   "ef85252c278cb404": "明细",
   "393ec1b1ee6dbd91": "按{dimension}",
   "c7a67255aa9bf97f": "加载设置失败",

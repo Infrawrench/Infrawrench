@@ -126,8 +126,8 @@ const CostAnnotationsHandlers = HttpApiBuilder.group(
 );
 
 /**
- * One route for both subject kinds, discriminated in the body, because they
- * write the same kind of note through the same link table. Re-posting the
+ * Pin a change's measured cost impact as a note. The subject kind stays in
+ * the body (only `change` is accepted) so the wire shape is stable. Re-posting the
  * same subject **rewords** its existing note rather than adding another. A
  * subject with no measurable impact is a 400 rather than a note reading
  * "$0.00/day": "we cannot say" must never be written down as "nothing".
@@ -140,8 +140,8 @@ const ChangeImpactAnnotationsHandlers = HttpApiBuilder.group(
       Effect.gen(function* () {
         const body = yield* fieldsOf(yield* readJsonOr(request, {}));
         const subjectKind = body["subjectKind"];
-        if (subjectKind !== "change" && subjectKind !== "deployment") {
-          return yield* badRequest("subjectKind must be change or deployment");
+        if (subjectKind !== "change") {
+          return yield* badRequest("subjectKind must be change");
         }
         const subjectId = body["subjectId"];
         if (!Predicate.isString(subjectId) || subjectId.length === 0) {
