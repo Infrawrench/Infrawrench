@@ -1260,8 +1260,9 @@ YAML
       ;;
     openssh)
       # Connections and keys are lent as the app lends them (openssh_lent,
-      # below): a Host entry in ~/.ssh/config, its pinned host key in
-      # ~/.ssh/known_hosts, a key at mode 0600 named as an IdentityFile.
+      # below): a Host entry in ~/.ssh/config with the connection's key and
+      # its pinned host key as a known_hosts file of its own, and a key at
+      # mode 0600 named as an IdentityFile.
       # Servers: `web` on 2222 (Ed25519 host key), `jump` on 2223 (ECDSA),
       # `legacy` on 2224 (RSA). Each job is lent only what it names, so the
       # wrong host key is never next to the right one.
@@ -1328,7 +1329,8 @@ jobs:
       serve web 2222 host_a
       ssh -N -L 127.0.0.1:2290:127.0.0.1:2222 web &
       wait-for-port 2290
-      test "$(ssh -o HostKeyAlias='[127.0.0.1]:2222' -p 2290 deploy@127.0.0.1 echo tunnelled)" = tunnelled
+      test "$(ssh -o UserKnownHostsFile=/root/.ssh/iw_web.known_hosts -o HostKeyAlias='[127.0.0.1]:2222' \
+        -p 2290 deploy@127.0.0.1 echo tunnelled)" = tunnelled
       grep -q 'direct-tcpip to 127.0.0.1:2222' /tmp/web.log
   rsa-passes:
     using: env:bash@5
@@ -1353,8 +1355,8 @@ jobs:
       test "$(stat -c %a /tmp/new)" = 600
       ssh-keygen -l -f /tmp/new.pub | grep -q '(ED25519)$'
       ssh-keyscan -q -p 2222 -t ed25519 127.0.0.1 | grep -v '^#' | cut -d' ' -f2- > /tmp/scanned
-      test "$(cat /tmp/scanned)" = "$(cut -d' ' -f2- ~/.ssh/known_hosts)"
-      ssh-keygen -F '[127.0.0.1]:2222' | grep -q ssh-ed25519
+      test "$(cat /tmp/scanned)" = "$(cut -d' ' -f2- ~/.ssh/iw_web.known_hosts)"
+      ssh-keygen -F '[127.0.0.1]:2222' -f ~/.ssh/iw_web.known_hosts | grep -q ssh-ed25519
   # The server holds another key than the one pinned for it.
   wrong-host-key-fails:
     using: env:bash@5
@@ -1384,7 +1386,7 @@ jobs:
       source /app/ssh/serve.sh
       serve web 2222 host_a
       cat ~/.ssh/id_deploy > /tmp/loose
-      ssh -F none -i /tmp/loose -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/known_hosts \
+      ssh -F none -i /tmp/loose -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/iw_web.known_hosts \
         -p 2222 deploy@127.0.0.1 echo reached
   refused-fails:
     using: env:bash@5
@@ -4879,26 +4881,35 @@ want_stderr() {
   esac
 }
 
-# What the app would lend the openssh pipeline (a run request's `lent`):
-# connections as a Host entry in ~/.ssh/config with its pinned host key in
-# ~/.ssh/known_hosts (and, behind a jump host, both keys and ProxyJump),
-# and keys as a file at mode 0600 named as an IdentityFile.
+# What the app would lend the openssh pipeline (a run request's `lent`), in
+# the shape the `ssh` plugin lends it (plugin-architecture/packages/ssh,
+# `lendSshHost`): a connection is its key at /root/.ssh/iw_<alias>, the
+# host key pinned for it as a line of /root/.ssh/iw_<alias>.known_hosts, and
+# a Host entry in ~/.ssh/config naming both (and, behind a jump host, the
+# jump host's own three and ProxyJump, joined as the app joins them); a key
+# is a file at mode 0600 named as an IdentityFile.
 openssh_lent() {
   local keys="$SCRATCH/ssh-keys"
   pub() { cut -d' ' -f1,2 "$keys/$1.pub"; }
   jq -n --arg a "$(pub host_a)" --arg jump "$(pub host_jump)" --arg rsa "$(pub host_rsa)" \
     --rawfile deploy "$keys/deploy" --rawfile deploy_rsa "$keys/deploy_rsa" '
-    def host($name; $config; $known): { files: [
-      { path: "/root/.ssh/config", mode: "644", content: [{ text: "Host \($name)\n\($config)" }] },
-      { path: "/root/.ssh/known_hosts", mode: "644", content: [{ text: $known }] } ] };
+    def host($alias; $port; $key; $known; $via): [
+      { path: "/root/.ssh/iw_\($alias)", mode: "600", content: $key },
+      { path: "/root/.ssh/iw_\($alias).known_hosts", mode: "600",
+        content: [{ text: "[127.0.0.1]:\($port) \($known)\n" }] },
+      { path: "/root/.ssh/config", mode: "600", content: [{ text: "Host \($alias)\n  HostName 127.0.0.1\n  Port \($port)\n  User deploy\n  IdentityFile /root/.ssh/iw_\($alias)\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /root/.ssh/iw_\($alias).known_hosts\n\($via)" }] } ];
+    def direct($alias; $port; $key; $known): { files: host($alias; $port; $key; $known; "") };
     {
       connections: {
-        web: host("web"; "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n"; "[127.0.0.1]:2222 \($a)\n"),
-        "web-via-jump": host("web-via-jump";
-          "  HostName 127.0.0.1\n  Port 2222\n  User deploy\n  ProxyJump hop@127.0.0.1:2223\n";
-          "[127.0.0.1]:2222 \($a)\n[127.0.0.1]:2223 \($jump)\n"),
-        legacy: host("legacy"; "  HostName 127.0.0.1\n  Port 2224\n  User deploy\n"; "[127.0.0.1]:2224 \($rsa)\n"),
-        closed: host("closed"; "  HostName 127.0.0.1\n  Port 2299\n  User deploy\n"; "[127.0.0.1]:2299 \($a)\n"),
+        web: direct("web"; 2222; $deploy; $a),
+        "web-via-jump": { files:
+          (host("jump"; 2223; $deploy; $jump; "")[0:2]
+            + host("web-via-jump"; 2222; $deploy; $a; "  ProxyJump jump\n")[0:2]
+            + [{ path: "/root/.ssh/config", mode: "600", content:
+                 (host("jump"; 2223; $deploy; $jump; "")[2].content + [{ text: "\n" }]
+                   + host("web-via-jump"; 2222; $deploy; $a; "  ProxyJump jump\n")[2].content) }]) },
+        legacy: direct("legacy"; 2224; $deploy_rsa; $rsa),
+        closed: direct("closed"; 2299; $deploy; $a),
         staging: { refused: "staging is not lent to CI for this fixture" }
       },
       "ssh-keys": {
