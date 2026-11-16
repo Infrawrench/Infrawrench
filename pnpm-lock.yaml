@@ -152,7 +152,7 @@ importers:
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
       yaml:
-        specifier: ^2.9.0
+        specifier: '>=2.8.3'
         version: 2.9.0
     devDependencies:
       tsdown:
