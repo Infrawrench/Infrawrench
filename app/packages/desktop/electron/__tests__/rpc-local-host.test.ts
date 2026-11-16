@@ -166,6 +166,19 @@ vi.mock("../main-utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../main-utils")>()),
   getEncryptionKey: () => Buffer.alloc(32, 7),
 }));
+/** Tunnels the account-tunnel path opened: the SSH layer itself is not under test here. */
+const tunnelOpens = vi.hoisted(() => [] as Array<{ config: unknown; extras: unknown }>);
+vi.mock("../ssh-tunnel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ssh-tunnel")>()),
+  findAccountTunnel: () => null,
+  openTunnel: async (config: { sshHost: string }, extras: unknown) => {
+    if (config.sshHost === "unreachable.example.com") {
+      throw new Error("SSH connection failed: connect ETIMEDOUT");
+    }
+    tunnelOpens.push({ config, extras });
+    return { tunnelId: "tunnel-1", localPort: 47001 };
+  },
+}));
 vi.mock("../../src/plugins/loader", () => ({
   loadPlugins: async () => [],
   getPlugin: async () => undefined,
@@ -335,10 +348,6 @@ describe("LocalSecretRpcs", () => {
           tunnelConfigId: "t1",
           privateKey: "tunnel-key",
         });
-        const tunnelKey = yield* rpc.LocalTunnelConfigKeyDecrypt({
-          tunnelConfigId: "t1",
-          ...tunnel,
-        });
         const field = yield* rpc.LocalSecretFieldEncrypt({
           resourceId: "r1",
           fieldKey: "password",
@@ -349,7 +358,7 @@ describe("LocalSecretRpcs", () => {
           fieldKey: "password",
           ...field,
         });
-        return { readBack, publicKey, agent, agentAgain, tunnel, tunnelKey, field, fieldValue };
+        return { readBack, publicKey, agent, agentAgain, tunnel, field, fieldValue };
       }),
     );
     expect(result.readBack).toBe(privateKey);
@@ -358,7 +367,16 @@ describe("LocalSecretRpcs", () => {
     expect(result.agent.publicKey).toMatch(/^ssh-ed25519 \S+ infrawrench-agent$/);
     // The agent key is made once and found by name after that.
     expect(result.agentAgain).toEqual(result.agent);
-    expect(result.tunnelKey).toBe("tunnel-key");
+    // Only main decrypts a tunnel key (to open the account's tunnel), under the row's AAD.
+    const { buildAad, decryptValue, getEncryptionKey } = await import("../main-utils");
+    expect(
+      decryptValue(
+        result.tunnel.ciphertext,
+        result.tunnel.iv,
+        getEncryptionKey(),
+        buildAad("sshTunnelConfig", "t1", "privateKey"),
+      ),
+    ).toBe("tunnel-key");
     expect(result.tunnel.ciphertext).not.toContain("tunnel-key");
     expect(result.fieldValue).toBe("hunter2");
     expect(result.field.ciphertext).toMatch(/^v2:/);
@@ -387,6 +405,106 @@ describe("LocalSecretRpcs", () => {
       }),
     );
     expect(swapped._tag).toBe("LocalSecretError");
+  });
+});
+
+describe("SshTunnelAccountCredentials", () => {
+  const fields = [{ key: "connectionString", tunnel: "address" as const }];
+
+  /** What "Connect to service via SSH" stores for a PostgreSQL account. */
+  async function connectViaSsh(sshHost: string) {
+    const key = await callDesktopRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        yield* rpc.LocalAccountCreate({
+          accountId: "pg-1",
+          pluginId: "postgres",
+          displayName: "PostgreSQL on bastion",
+          credentials: { connectionString: "postgresql://app:pw@localhost:5432/postgres" },
+        });
+        return yield* rpc.LocalTunnelConfigKeyEncrypt({
+          tunnelConfigId: "cfg-1",
+          privateKey: "tunnel-private-key",
+        });
+      }),
+    );
+    h.sqlite!.run(
+      `INSERT INTO ssh_tunnel_configs
+       (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ["cfg-1", "pg-1", sshHost, 2222, "ubuntu", "127.0.0.1", 5432, key.ciphertext, key.iv],
+    );
+  }
+
+  it("points the marked fields at the tunnel it opens from the stored config", async () => {
+    tunnelOpens.length = 0;
+    await connectViaSsh("bastion.example.com");
+    const result = await callDesktopRpc(
+      Effect.gen(function* () {
+        const rpc = yield* DesktopRpcClient;
+        const stored = yield* rpc.LocalAccountCredentials({ accountId: "pg-1", refresh: false });
+        const connect = yield* rpc.SshTunnelAccountCredentials({
+          accountId: "pg-1",
+          fields,
+          credentials: stored,
+        });
+        const afterwards = yield* rpc.LocalAccountCredentials({
+          accountId: "pg-1",
+          refresh: false,
+        });
+        return { connect, afterwards };
+      }),
+    );
+    expect(result.connect).toEqual({
+      connectionString: "postgresql://app:pw@127.0.0.1:47001/postgres",
+    });
+    // What is stored keeps the address as the bastion sees it.
+    expect(result.afterwards).toEqual({
+      connectionString: "postgresql://app:pw@localhost:5432/postgres",
+    });
+    expect(tunnelOpens).toEqual([
+      {
+        config: {
+          sshHost: "bastion.example.com",
+          sshPort: 2222,
+          sshUser: "ubuntu",
+          privateKey: "tunnel-private-key",
+          remoteHost: "127.0.0.1",
+          remotePort: 5432,
+        },
+        extras: { accountId: "pg-1" },
+      },
+    ]);
+  });
+
+  it("answers an account without a tunnel unchanged, opening nothing", async () => {
+    tunnelOpens.length = 0;
+    const credentials = { connectionString: "postgresql://localhost:5432/postgres" };
+    const answer = await callDesktopRpc(
+      DesktopRpcClient.use((rpc) =>
+        rpc.SshTunnelAccountCredentials({ accountId: "no-tunnel", fields, credentials }),
+      ),
+    );
+    expect(answer).toEqual(credentials);
+    expect(tunnelOpens).toEqual([]);
+  });
+
+  it("fails with the sentence when the tunnel cannot open", async () => {
+    await connectViaSsh("unreachable.example.com");
+    const failure = await failureOf(
+      DesktopRpcClient.use((rpc) =>
+        rpc.SshTunnelAccountCredentials({
+          accountId: "pg-1",
+          fields,
+          credentials: { connectionString: "postgresql://localhost:5432/postgres" },
+        }),
+      ),
+    );
+    expect(failure).toMatchObject({
+      _tag: "SshError",
+      message:
+        "Could not open the SSH tunnel through unreachable.example.com: SSH connection failed: connect ETIMEDOUT",
+    });
   });
 });
 

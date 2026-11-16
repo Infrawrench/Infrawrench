@@ -182,8 +182,8 @@ export function createLocalExecGuard(deps: LocalExecGuardDeps): LocalExecGuard {
 
     async assertDockerHost(host) {
       const port = loopbackPort(normalizeDockerHost(host));
-      // The SSH-tunnelled form: `resolveTunneledHost` rewrites a tunnelled
-      // account's host to the local end of a tunnel main itself opened.
+      // The SSH-tunnelled form: `account-tunnels.ts` points a tunnelled
+      // account's host at the local end of a tunnel main itself opened.
       if (port !== null && deps.activeTunnelPorts().includes(port)) return;
       await gate("dockerHost", normalizeDockerHost(host), describeDockerHost(host));
     },

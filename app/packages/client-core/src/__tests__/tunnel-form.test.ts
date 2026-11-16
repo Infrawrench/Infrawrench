@@ -6,7 +6,7 @@ import {
   rewriteCredentialFields,
   rewriteValueThroughTunnel,
   type TunnelEnds,
-} from "../credential-rewriters/tunnel-form";
+} from "../tunnel-form";
 
 const own = { fallback: true };
 const peer = { fallback: false };

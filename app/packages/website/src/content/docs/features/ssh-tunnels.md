@@ -61,5 +61,6 @@ A tunnel behind an account has no stop button. It opens when something needs it,
 ## Troubleshooting
 
 - **Permission denied (publickey):** wrong key for the host. Reconnect and pick another one in [SSH keys](../team-and-billing/ssh-keys.md).
+- **Could not open the SSH tunnel through `<host>`:** the account couldn't reach the host it goes through (it's down, unreachable from your network, or no longer accepts the key). Nothing connects until the tunnel opens, so the account never falls back to a service on your own machine. Check you can SSH to the host, then reload the account.
 - **Connection refused to target:** nothing is listening on that port on the host's loopback. SSH in and check with `ss -ltn`, then try again.
 - **The key isn't in the list:** on web, you can only use keys **generated** in Infrawrench, because with an imported key the private half stays with you. See [SSH keys](../team-and-billing/ssh-keys.md).

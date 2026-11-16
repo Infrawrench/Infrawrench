@@ -5,6 +5,8 @@
  * token; a write asks for local-exec consent when it adds or changes a
  * kubeconfig or Docker host.
  */
+import type { CredentialField } from "@infrawrench/plugin-base";
+import { applyCredentialRewriters } from "./credential-rewriters";
 import { DesktopRpcClient, runRpc } from "./rpc/client";
 
 /**
@@ -42,4 +44,33 @@ export function createLocalAccount(account: {
   credentials: Record<string, string>;
 }): Promise<void> {
   return runRpc(DesktopRpcClient.use((rpc) => rpc.LocalAccountCreate(account)));
+}
+
+/**
+ * An account's credentials as a plugin client connects with them: a copy run through
+ * the credential rewriters, so an account behind an SSH tunnel reaches its service
+ * through the tunnel rather than this computer's own port. `credentialFields` are the
+ * account's plugin's. For building a client only: never store or show what this
+ * returns, since a tunnel's local port changes every time it opens.
+ */
+export async function localConnectionCredentials(
+  accountId: string,
+  credentialFields: readonly CredentialField[],
+  credentials: Readonly<Record<string, string>>,
+): Promise<Record<string, string>> {
+  const connection = { ...credentials };
+  await applyCredentialRewriters({ accountId, credentialFields }, connection);
+  return connection;
+}
+
+/** {@link getLocalAccountCredentials}, then {@link localConnectionCredentials}. */
+export async function getLocalConnectionCredentials(
+  accountId: string,
+  credentialFields: readonly CredentialField[],
+): Promise<Record<string, string>> {
+  return localConnectionCredentials(
+    accountId,
+    credentialFields,
+    await getLocalAccountCredentials(accountId),
+  );
 }

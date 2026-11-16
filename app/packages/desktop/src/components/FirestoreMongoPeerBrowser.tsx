@@ -8,7 +8,7 @@ import {
 import { kvCommand } from "../lib/sql-drivers";
 import { getDb } from "../db/client";
 import { getPlugin, loadPlugins } from "../plugins/loader";
-import { getLocalAccountCredentials } from "../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../lib/local-credentials";
 
 /**
  * Renders a document browser against a user-picked account for a Firestore
@@ -99,17 +99,18 @@ export function FirestoreMongoPeerBrowser({
     let cancelled = false;
     async function loadCreds(id: string) {
       try {
-        let creds: Record<string, string>;
+        let manifest: PluginManifest;
         let driver: NonNullable<PluginManifest["kvDriver"]>;
         try {
-          creds = await getLocalAccountCredentials(id);
           const db = await getDb();
           const [row] = await db.select<Array<{ plugin_id: string }>>(
             "SELECT plugin_id FROM accounts WHERE id = $1",
             [id],
           );
-          const declared = row && (await getPlugin(row.plugin_id))?.plugin.manifest.kvDriver;
-          if (declared?.browser !== "documents") throw new Error("No document browser");
+          const loaded = row && (await getPlugin(row.plugin_id))?.plugin.manifest;
+          const declared = loaded?.kvDriver;
+          if (!loaded || declared?.browser !== "documents") throw new Error("No document browser");
+          manifest = loaded;
           driver = declared;
         } catch {
           if (!cancelled) {
@@ -119,6 +120,7 @@ export function FirestoreMongoPeerBrowser({
           }
           return;
         }
+        const creds = await getLocalConnectionCredentials(id, manifest.credentialFields);
         const cs = creds[driver.credentialKey] ?? "";
         if (!cs) {
           if (!cancelled) setError("MongoDB account has no connection string set");
