@@ -23589,5 +23589,6 @@
   "b95bc80742eb717a": "Ce cluster ne se connecte qu'avec des comptes locaux, dont l'identifiant est un certificat client de longue durée, souvent administrateur, qu'on ne peut révoquer sans renouveler les certificats du cluster. Activez l'intégration Microsoft Entra ID pour le prêter.",
   "3a277d9bd18447ff": "Jusqu'au changement du mot de passe : c'est le mot de passe enregistré, pas un de courte durée.",
   "6670d929f2a72bef": "Tout ce que cet utilisateur peut faire sur ce serveur de base de données. Rien en dehors.",
-  "59156fa37a426349": "Si les utilisateurs se connectent au cluster avec Microsoft Entra ID (intégration Entra gérée par AKS), plutôt qu'avec les seuls comptes locaux du cluster"
+  "59156fa37a426349": "Si les utilisateurs se connectent au cluster avec Microsoft Entra ID (intégration Entra gérée par AKS), plutôt qu'avec les seuls comptes locaux du cluster",
+  "6db050abb2649520": "Rien à exécuter"
 }

@@ -498,4 +498,9 @@
 // `lifetime`, and why it is `unavailable`. Saving a grant that turns a job
 // kind or region on checks it through the peer and answers 409 when the
 // check fails. Additive.
-export const API_VERSION = "1.111.0";
+// 1.112.0: `CiRunStatus` gains `skipped`: a push or pull request no pipeline
+// runs on (`on:` or `paths:` left every one out) is recorded as `skipped`
+// rather than `passed`, without reaching the runners, and
+// `GET /api/org/:orgId/ci/runs` leaves these out unless `status=skipped`
+// asks for them. Additive (a new enum value, which clients decode leniently).
+export const API_VERSION = "1.112.0";

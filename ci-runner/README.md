@@ -3374,7 +3374,7 @@ it is masked, and an untrusted run is given none of it:
   the same body as a run and resolves it as a run would (the commit, the
   pipeline files or `pipeline`, `base` for `paths:`), without a job slot,
   answering only the pipelines the event triggers:
-  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }] }`,
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
   with `"concurrency": null` for a pipeline without one. `jobs` lists each
   job key that runs on a cloud account or is lent anything, which is what
   the app resolves before it dispatches the run:
@@ -3384,7 +3384,10 @@ it is masked, and an untrusted run is given none of it:
   still in them; `resources` includes what the job's services read). One
   route rather than a second, because the app already calls it before every
   dispatch, and a second would clone and parse the commit again. Files that
-  do not parse are left out (the run reports them). `400` for a bad
+  do not parse are listed in `invalid` instead, with the errors a run
+  reports them with; so an empty `pipelines` beside an empty `invalid`
+  means a run would run nothing, which the app takes as reason not to send
+  one (an older runner leaves `invalid` out, which says nothing). `400` for a bad
   request, `422` when the commit cannot be fetched. `POST
 /v1/schedules/read` carries each scheduled pipeline's `concurrency` the
   same way.

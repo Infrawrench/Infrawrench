@@ -23371,5 +23371,6 @@
   "b95bc80742eb717a": "Este clúster solo inicia sesión con cuentas locales, cuya credencial es un certificado de cliente de larga duración, a menudo con permisos de administrador, que no se puede revocar sin rotar los certificados del clúster. Active la integración con Microsoft Entra ID para prestarlo.",
   "3a277d9bd18447ff": "Hasta que se cambie la contraseña: es la contraseña almacenada, no una de corta duración.",
   "6670d929f2a72bef": "Todo lo que ese usuario puede hacer en este servidor de base de datos. Nada fuera de él.",
-  "59156fa37a426349": "Si los usuarios inician sesión en el clúster con Microsoft Entra ID (integración de Entra administrada por AKS), en lugar de solo con las cuentas locales del clúster"
+  "59156fa37a426349": "Si los usuarios inician sesión en el clúster con Microsoft Entra ID (integración de Entra administrada por AKS), en lugar de solo con las cuentas locales del clúster",
+  "6db050abb2649520": "Nada que ejecutar"
 }

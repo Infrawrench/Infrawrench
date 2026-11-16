@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.111.0",
+    "version": "1.112.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -64222,7 +64222,8 @@
           "failed",
           "error",
           "rejected",
-          "cancelled"
+          "cancelled",
+          "skipped"
         ]
       },
       "CiManualPipelines": {
@@ -127582,10 +127583,10 @@
             }
           }
         },
+        "description": "Runs with nothing to run (`skipped`: no pipeline runs on the push or pull request) are left out unless `status=skipped` asks for them.\n\n_Requires permission: `ci:read`._",
         "summary": "List CI runs, newest first",
         "x-required-permission": "ci:read",
-        "operationId": "getOrgOrgIdCiRuns",
-        "description": "_Requires permission: `ci:read`._"
+        "operationId": "getOrgOrgIdCiRuns"
       },
       "post": {
         "tags": [
