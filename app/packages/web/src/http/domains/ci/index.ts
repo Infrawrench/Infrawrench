@@ -30,7 +30,7 @@ import {
   Ok,
 } from "@infrawrench/api-contract";
 import { CI_RUN_STATUSES } from "@infrawrench/client-core";
-import { ciStatus, setCiAccount } from "@infrawrench/server-core/ci/accounts";
+import { ciStatus, ciTurnedOn, setCiAccount } from "@infrawrench/server-core/ci/accounts";
 import {
   ciAccessOverview,
   createGrant,
@@ -60,7 +60,6 @@ import {
 } from "@infrawrench/server-core/ci/runs";
 import { listCiManualPipelines, listCiSchedules } from "@infrawrench/server-core/ci/schedules";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
-import { orgHasFeature } from "@infrawrench/server-core/features";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
@@ -75,7 +74,7 @@ const refusal = (error: unknown) =>
 /** Everything but the status is a 404 until CI is turned on for the org. */
 const requireCi = Effect.gen(function* () {
   const principal = yield* OrgPrincipal;
-  const enabled = yield* legacy(() => orgHasFeature(principal.organizationId, "ci"));
+  const enabled = yield* legacy(() => ciTurnedOn(principal.organizationId));
   if (!enabled) return yield* notFound("CI is not turned on for this organization.");
   return principal;
 });

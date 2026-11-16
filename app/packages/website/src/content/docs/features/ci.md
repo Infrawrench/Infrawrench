@@ -703,6 +703,17 @@ A job the task cache stood in for did not run, so it uses no vCPU time or memory
 
 Complimentary organizations are never billed. See [Billing and plans](../team-and-billing/billing-and-plans.md#ci).
 
+## From an AI client
+
+The in-app chat and any client connected to the [MCP server](./mcp.md) can work with CI too, with your permissions:
+
+- **Find runs:** `list_ci_runs` lists runs newest first, filtered by repository, branch, status, event or pull request. Runs with nothing to run are left out unless asked for, as in the **Show** filter. Each run counts its jobs by status and names the ones that failed.
+- **Read a run:** `get_ci_run` has the run's jobs, with their status, reason, duration, what they were lent (by name) and their downloads. `get_ci_job_log` reads one job's output a page at a time, the last 200 lines by default: from the finished run's report, or from a running run's live log. It is the output the run page shows, with your secrets masked by the runner. Download links are not handed out; open the run in Infrawrench for those.
+- **Act on a run:** `start_ci_run` starts a [pipeline by hand](#start-a-pipeline-by-hand) with its inputs, `retry_ci_run` [retries a run](#retry-a-run) (with or without the task cache), `cancel_ci_run` [cancels one](#cancel-a-run), and `approve_ci_run` and `reject_ci_run` decide a [fork's pull request](#pull-requests-from-forks). Each takes `ci:approve`, like the buttons. The chat asks you to approve every one of them first, and each is recorded in the audit log.
+- **See the setup:** `list_ci_repositories`, `list_ci_pipelines` (the scheduled and manual pipelines on each default branch), `list_ci_values` (the names of secrets and variables, never their values; it takes `ci:write`, as the card does), `get_ci_access` (what [CI access](#ci-access) allows) and `get_ci_usage`. These only read: change them here, in the CI tab.
+
+Every one of them answers "CI is not turned on for this organization" until CI is on for it.
+
 ## Limits
 
 - CI runs for GitHub repositories, through the Infrawrench GitHub App.

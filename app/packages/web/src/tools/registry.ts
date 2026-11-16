@@ -36,6 +36,7 @@ import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
 import { vulnerabilityTools } from "./vulnerabilities";
+import { ciTools } from "./ci";
 import { forProduct } from "./products";
 import type { ToolDefinition } from "./types";
 
@@ -78,6 +79,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...sshHostKeyTools(),
     ...linuxAppTools(),
     ...forProduct("security", vulnerabilityTools()),
+    ...forProduct("delivery", ciTools()),
     ...(await perPluginCreateTools()),
   ];
   cached = tools;

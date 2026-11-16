@@ -44,6 +44,7 @@ Everything the UI can. Chat uses the same tools as the [MCP server](./mcp.md):
 - **SSH keys:** list, generate (Ed25519), import and delete your org's [SSH keys](../team-and-billing/ssh-keys.md). Generated private keys stay encrypted on the server and are used by id with `ssh_exec`. Deleting a key needs your approval.
 - **Workflows:** read, write, type-check and run [workflows](./workflows.md). Ask for "a workflow that scales the dev cluster to zero when the Production budget goes over 90%". The agent reads your org's `infra` typings, writes the code, type-checks it before saving and can run it once to prove it works. Deleting a workflow needs your approval. See [Writing workflows with an AI client](./workflows.md#writing-workflows-with-an-ai-client).
 - **Workflow secrets:** list secrets, ask you to set or rotate a value securely, delete secrets and assign them to a workflow. Secret values never enter the conversation or the model's inputs.
+- **CI:** find runs, read a run's jobs and a job's output (from the finished report or the live log), start a pipeline by hand, retry, cancel, and approve or reject a fork's pull request, plus read the pipelines, the names of secrets and variables, CI access and usage. Every action on a run needs your approval. See [CI](./ci.md#from-an-ai-client).
 - **The web:** `web_search` and `web_fetch`, so the agent can check current docs. Chat only. See [Look things up on the web](#look-things-up-on-the-web).
 - **Questions:** `ask_question`, so the agent can stop and ask you to pick from a list or type an answer. Chat only. See [Answer the agent's questions](#answer-the-agents-questions).
 - **Costs and budgets:** `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget tools (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These follow your `costs:read` and `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
@@ -88,7 +89,7 @@ One form can mix both. Submit sends all your answers and the chat carries on. Th
 
 ## Approve destructive actions
 
-Every tool has a risk level: `read`, `write` or `destructive`. Read and write tools run on their own. Destructive tools pause the chat until you approve them. These include deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop and restart, adding or destroying a secret version, credential export, typing or pressing keys in a [Linux application](./linux-apps.md) window, and creating a [sleep/wake schedule](./sleep-schedules.md).
+Every tool has a risk level: `read`, `write` or `destructive`. Read and write tools run on their own. Destructive tools pause the chat until you approve them. These include deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop and restart, adding or destroying a secret version, credential export, typing or pressing keys in a [Linux application](./linux-apps.md) window, creating a [sleep/wake schedule](./sleep-schedules.md), and starting, retrying, cancelling, approving or rejecting a [CI run](./ci.md#from-an-ai-client).
 
 Some tools need approval only for certain inputs, when one argument would let them run code, write data or read a secret:
 

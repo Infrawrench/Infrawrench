@@ -19,6 +19,8 @@ vi.mock("@infrawrench/server-core/features", () => ({
 const mockStatus = vi.fn();
 const mockSetAccount = vi.fn();
 vi.mock("@infrawrench/server-core/ci/accounts", () => ({
+  // The rollout gate the routes and the CI tools share, read as the real one does.
+  ciTurnedOn: (organizationId: string) => mockHasFeature(organizationId, "ci"),
   ciStatus: (...a: unknown[]) => mockStatus(...a),
   setCiAccount: (...a: unknown[]) => mockSetAccount(...a),
 }));
