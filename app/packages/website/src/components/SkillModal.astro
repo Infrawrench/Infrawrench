@@ -1,0 +1,57 @@
+---
+// A modal offering one skill, opened by `[data-open-modal="skill-modal-<id>"]`
+// (the docs card that `<skill id="..." />` renders). The same files as the
+// homepage's agent modal, for every harness.
+import { harnessVariantsFor } from "../data/agent-skill";
+import { getSkill } from "../data/skills";
+import SkillFiles from "./SkillFiles.astro";
+
+interface Props {
+  id: string;
+}
+
+const skill = getSkill(Astro.props.id);
+const variants = skill ? harnessVariantsFor(skill.id) : [];
+const tabset = `skill-${Astro.props.id}`;
+---
+
+{
+  skill && (
+    <div class="modal-overlay" id={`skill-modal-${skill.id}`} role="dialog" aria-modal="true" aria-label={skill.title}>
+      <div class="modal-box">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">{skill.title}</h2>
+            <p class="modal-subtitle">{skill.summary}</p>
+          </div>
+          <button class="modal-close" type="button" data-close-modal aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <div>
+            <div class="agent-skill-tabs" role="tablist" aria-label="Agent harness">
+              {variants.map((h) => (
+                <button class="agent-skill-tab" type="button" role="tab" data-tabset={tabset} data-tab={h.id}>
+                  {h.label}
+                </button>
+              ))}
+            </div>
+            {variants.map((h) => (
+              <div class="agent-skill-panel" role="tabpanel" data-tabset={tabset} data-panel={h.id}>
+                <SkillFiles item={h.skill} tabset={`${tabset}-${h.id}`} />
+              </div>
+            ))}
+            <p class="agent-skill-note">
+              Or point any agent at <a href={`/skills/${skill.id}.md`}>{`infrawrench.com/skills/${skill.id}.md`}</a>, every file in one.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+<script>
+  import "../lib/skill-ui";
+</script>

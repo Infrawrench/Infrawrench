@@ -1,0 +1,66 @@
+---
+// One skill's files for one harness: an install command where the harness
+// has one, then the files, one at a time behind tabs when there are several.
+import type { HarnessSkill } from "../data/agent-skill";
+
+interface Props {
+  item: HarnessSkill;
+  /** Unique on the page: the tab set's name. */
+  tabset: string;
+}
+
+const { item, tabset } = Astro.props;
+const many = item.files.length > 1;
+const short = (file: string) => file.split("/").slice(-2).join("/").replace(/^[^/]+\/(SKILL\.md)$/, "$1");
+---
+
+<div class="skill-files">
+  {
+    item.install && (
+      <div class="agent-skill-file">
+        <div class="agent-skill-panel-head">
+          <span class="agent-skill-path">{item.install.file}</span>
+          <button class="agent-skill-copy-btn" type="button" data-skill-copy>
+            Copy
+          </button>
+        </div>
+        <pre class="agent-skill-code skill-file-code"><code set:text={item.install.content} /></pre>
+      </div>
+    )
+  }
+
+  {
+    many && (
+      <div class="skill-file-tabs" role="tablist" aria-label="Files">
+        {item.files.map((f) => (
+          <button class="skill-file-tab" type="button" role="tab" data-tabset={tabset} data-tab={f.file}>
+            {short(f.file)}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    item.files.map((f) => (
+      <div
+        class:list={["agent-skill-file", many && "skill-file-panel"]}
+        role={many ? "tabpanel" : undefined}
+        data-tabset={many ? tabset : undefined}
+        data-panel={many ? f.file : undefined}
+      >
+        <div class="agent-skill-panel-head">
+          <code class="agent-skill-path">{f.file}</code>
+          <button class="agent-skill-copy-btn" type="button" data-skill-copy>
+            Copy
+          </button>
+        </div>
+        <pre class="agent-skill-code skill-file-code"><code set:text={f.content} /></pre>
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  import "../lib/skill-ui";
+</script>

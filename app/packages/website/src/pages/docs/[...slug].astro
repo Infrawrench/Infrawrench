@@ -1,6 +1,7 @@
 ---
 import { getEntry, render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import SkillModal from "../../components/SkillModal.astro";
 
 // Rendered on demand, not prerendered: a static page is served straight from
 // Cloudflare's asset handler and never reaches middleware, so it could not
@@ -25,6 +26,8 @@ if (!entry) {
 const rendered = entry ? await render(entry) : null;
 const tocItems = rendered ? rendered.headings.filter((h) => h.depth === 2 || h.depth === 3) : [];
 const Content = rendered?.Content;
+// The modal for each `<skill id="..." />` card on the page (`lib/remark-docs.mjs`).
+const skillIds = [...new Set([...(entry?.body ?? "").matchAll(/^<skill\s+id="([a-z0-9-]+)"/gm)].map((m) => m[1]!))];
 ---
 
 {
@@ -75,5 +78,6 @@ const Content = rendered?.Content;
       )
     }
   </div>
+  {skillIds.map((id) => <SkillModal id={id} />)}
 </DocsLayout>
 )}

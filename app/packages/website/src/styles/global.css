@@ -349,6 +349,199 @@ main:focus {
   text-align: left;
 }
 
+.agent-skill-note a {
+  color: #9ca3af;
+}
+
+/* A skill's files: an install command, then one file at a time. */
+.skill-files {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skill-file-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-file-tab {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #6b7280;
+  background: transparent;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.skill-file-tab:hover {
+  border-color: #333;
+  color: #e5e7eb;
+}
+
+.skill-file-tab[data-active] {
+  color: #e5e7eb;
+  border-color: #3a3a3a;
+  background: #141414;
+}
+
+.skill-file-panel {
+  display: none;
+}
+
+.skill-file-panel[data-active] {
+  display: block;
+}
+
+.skill-file-code {
+  max-height: 46vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The homepage modal's skills, each collapsed until opened. */
+.agent-skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-skill-details {
+  border: 1px solid #181818;
+  border-radius: 12px;
+  background: #0a0a0a;
+}
+
+.agent-skill-details summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 40px 12px 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-skill-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-skill-details summary::after {
+  content: "+";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 16px;
+}
+
+.agent-skill-details[open] summary::after {
+  content: "\2212";
+}
+
+.agent-skill-details summary:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+.agent-skill-details-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.agent-skill-details-summary {
+  font-size: 12.5px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.agent-skill-details[open] > .skill-files {
+  padding: 0 16px 16px;
+}
+
+/* A skill on a docs page: a card that opens the skill's modal. */
+.skill-card {
+  border: 1px solid #1e1e1e;
+  border-radius: 12px;
+  background: #0b0b0b;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.skill-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin: 0;
+}
+
+.skill-card-summary {
+  font-size: 14px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.skill-card-files {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.skill-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.skill-card-open {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0b0b0b;
+  background: #e5e7eb;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.skill-card-open:hover {
+  background: #fff;
+}
+
+.skill-card-open:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.skill-card-actions a {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
 /* ── Screenshot placeholder ─────────────────────────────── */
 .screenshot {
   border: 1px solid #181818;
@@ -652,6 +845,7 @@ main:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   flex-shrink: 0;
 }
 

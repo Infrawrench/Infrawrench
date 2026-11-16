@@ -12,6 +12,7 @@
  *   broken image to everyone else.
  */
 import type { CollectionEntry } from "astro:content";
+import { getSkill, skillFileUrl, SITE } from "../../data/skills";
 
 /** `<insert Some description here>` on its own line: see CLAUDE.md. */
 const SCREENSHOT_PLACEHOLDER = /^[ \t]*<insert\b[^>]*>[ \t]*$\n?/gim;
@@ -27,8 +28,21 @@ export function stripScreenshotPlaceholders(markdown: string): string {
   );
 }
 
+/** `<skill id="..." />` on its own line: see `lib/remark-docs.mjs`. */
+const SKILL_TAG = /^<skill\s+id="([a-z0-9-]+)"\s*\/?>\s*(?:<\/skill>)?[ \t]*$/gm;
+
+/** A skill card, for readers who are not browsers: where its files are. */
+export function renderSkillTags(markdown: string): string {
+  return markdown.replace(SKILL_TAG, (_, id: string) => {
+    const skill = getSkill(id);
+    if (!skill) return "";
+    const files = skill.files.map((f) => `[${f.path}](${skillFileUrl(skill, f.path)})`).join(", ");
+    return `**Agent skill: ${skill.title}.** ${skill.summary} All of it in one file: ${SITE}/skills/${skill.id}.md. Its files, for a skills folder such as \`.claude/skills/${skill.id}/\`: ${files}.`;
+  });
+}
+
 export function renderDocMarkdown(entry: CollectionEntry<"docs">): string {
-  const body = stripScreenshotPlaceholders(entry.body ?? "");
+  const body = renderSkillTags(stripScreenshotPlaceholders(entry.body ?? ""));
 
   const lede = entry.data.description ? `\n${entry.data.description}\n` : "";
   return `# ${entry.data.title}\n${lede}\n${body}\n`;
