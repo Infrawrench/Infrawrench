@@ -96,6 +96,8 @@ jobs:
       cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       mkdir -p app/packages/mobile/assets/generated
       echo 'export const terminalHtml: string = "";' > app/packages/mobile/assets/generated/terminal-html.ts
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # What each package's dependents read of it apart from its dist/, as one
   # hash in .source-digest (source-digest.mjs). A package with no build ships
@@ -123,9 +125,11 @@ jobs:
     deps: false
     run: node /app/.infrawrench/ci/source-digest.mjs
     artifacts: [.source-digest]
-    task-cache: { root-inputs: [.infrawrench/ci/source-digest.mjs], artifacts: false }
+    task-cache: {root-inputs: [.infrawrench/ci/source-digest.mjs], artifacts: false}
     memory: 1GiB
     timeout: 5m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # The files a package's tests read by path outside the package, as one hash
   # in .reads-digest (outside-reads.mjs). server-core's tests compare a file
@@ -143,13 +147,15 @@ jobs:
   # reads (outside-reads.mjs has what the scan can and cannot see).
   reads:
     name: Outside reads ${{ package.name }}
-    packages: { has: [ci-reads.json] }
+    packages: {has: [ci-reads.json]}
     using: env:bash-node@24.0.18
     deps: false
     run: node /app/.infrawrench/ci/outside-reads.mjs
     artifacts: [.reads-digest]
     memory: 1GiB
     timeout: 5m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # Each library's JavaScript, as `pnpm build` writes it, for the tests of
   # the packages that use it. Declarations are `build`'s.
@@ -162,15 +168,17 @@ jobs:
   # The tests are still keyed on every dist/ they are handed.
   bundle:
     name: Bundle ${{ package.name }}
-    packages: { scripts: { build: "tsdown*" } }
+    packages: {scripts: {build: "tsdown*"}}
     needs: ["^bundle"]
     using: env:bash-node@24.0.18
     run: node node_modules/tsdown/dist/run.mjs --no-dts
     artifacts: [dist]
-    task-cache: { root-inputs: [tsconfig.base.json], artifacts: false }
+    task-cache: {root-inputs: [tsconfig.base.json], artifacts: false}
     # Peak 860 MiB (ui).
     memory: 2GiB
     timeout: 20m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # Each package's `test` script, with the JavaScript of everything it
   # depends on. The runner's installer writes no node_modules/.bin, so
@@ -233,12 +241,13 @@ jobs:
   test:
     name: Test ${{ package.name }}
     packages:
-      scripts: { test: "*vitest run*" }
+      scripts: {test: "*vitest run*"}
       only: ["**", "!app/packages/web", "!app/packages/server-core"]
     needs: &test-needs [prep, bundle, reads, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     env: &test-env
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      IWCI_BENCH_NONCE: cold-1
     run: &test-run |
       cores="$(nproc)"
       case "${{ package.dir }}" in
@@ -261,7 +270,7 @@ jobs:
   test-large:
     name: Test ${{ package.name }}
     packages:
-      scripts: { test: "*vitest run*" }
+      scripts: {test: "*vitest run*"}
       only: [app/packages/web, app/packages/server-core]
     needs: *test-needs
     using: env:bash-node@24.0.18
@@ -274,95 +283,95 @@ jobs:
   # Each library, after the libraries it depends on.
   build:
     name: Library ${{ package.name }}
-    packages: { scripts: { build: "tsdown*" } }
+    packages: {scripts: {build: "tsdown*"}}
     needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
-    args:
-      [
-        --noEmit,
-        "false",
-        --emitDeclarationOnly,
-        --declaration,
-        --declarationMap,
-        "false",
-        --rootDir,
-        src,
-        --outDir,
-        dist,
-      ]
+    args: [--noEmit, "false", --emitDeclarationOnly, --declaration, --declarationMap, "false", --rootDir, src, --outDir, dist]
     artifacts: [dist]
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: {root-inputs: [tsconfig.base.json]}
     # Peak 910 MiB (ui); 190 MiB for a plugin.
     memory: 2GiB
     timeout: 20m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # Every other package whose typecheck is plain `tsc --noEmit`, against the
   # declarations of what it depends on.
   check:
     name: Typecheck ${{ package.name }}
     packages:
-      scripts: { build: "!tsdown*", typecheck: "tsc --noEmit*" }
+      scripts: {build: "!tsdown*", typecheck: "tsc --noEmit*"}
     needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, .]
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: {root-inputs: [tsconfig.base.json]}
     # Peak 2.9 GiB (web), 1.4 GiB (server-core), under 1 GiB for the rest.
     memory: 4GiB
     timeout: 30m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # The Worker entry points (`tsc --noEmit -p edge`).
   edge:
     name: Typecheck ${{ package.name }} (edge)
     packages:
       has: [edge]
-      scripts: { typecheck: "*tsc --noEmit -p edge*" }
+      scripts: {typecheck: "*tsc --noEmit -p edge*"}
     needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, edge]
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: {root-inputs: [tsconfig.base.json]}
     # Peak 2.3 GiB (web).
     memory: 4GiB
     timeout: 30m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # Desktop's typecheck runs ensure-env first (prep does that), then two
   # projects. A `packages:` job of one package, so that `^build` and
   # `^source` follow what desktop depends on (workflow-runtime ships source).
   desktop:
     name: Typecheck desktop (${{ matrix }})
-    packages: { only: [app/packages/desktop] }
+    packages: {only: [app/packages/desktop]}
     matrix: [tsconfig.node.json, tsconfig.web.json]
     needs: [prep, "^build", "^source"]
     using: builtin:typescript@7.1.0
     args: [--noEmit, -p, "${{ matrix }}"]
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: {root-inputs: [tsconfig.base.json]}
     # Peak 1.4 GiB.
     memory: 3GiB
     timeout: 30m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # The packages that pin TypeScript 6 (mobile, plugingen, website) run
   # their own compiler, which is JavaScript, under Node.
   mobile:
     name: Typecheck mobile (TypeScript 6)
-    packages: { only: [app/packages/mobile] }
+    packages: {only: [app/packages/mobile]}
     needs: [prep, "^build", "^source"]
     using: env:bash-node@24.0.18
     # The runner's installer writes no node_modules/.bin, so the package's
     # own entry point, as `tsc6` would run it.
     run: node node_modules/typescript/bin/tsc6 --noEmit
-    task-cache: { root-inputs: [tsconfig.base.json] }
+    task-cache: {root-inputs: [tsconfig.base.json]}
     # Peak 600 MiB.
     memory: 2GiB
     timeout: 30m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   plugingen:
     name: Typecheck plugingen (TypeScript 6)
     using: env:bash-node@24.0.18
     cwd: /app/plugingen
     run: node node_modules/typescript/bin/tsc6 --noEmit
-    task-cache: { inputs: [plugingen/**] }
+    task-cache: {inputs: [plugingen/**]}
     # Peak 580 MiB.
     memory: 2GiB
     timeout: 20m
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # `astro check`: `astro sync` writes the content collections' types into
   # .astro/, then @astrojs/check runs the website's TypeScript over the
@@ -380,6 +389,7 @@ jobs:
       HOME: /tmp
       ASTRO_TELEMETRY_DISABLED: "1"
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      IWCI_BENCH_NONCE: cold-1
     run: node node_modules/astro/bin/astro.mjs check
     task-cache:
       inputs: [app/packages/website/**, app/packages/analytics/**]
@@ -395,7 +405,7 @@ jobs:
     name: Translations audit
     using: env:bash-node@24.0.18
     cwd: /app/app/packages/web
-    env: { HOME: /tmp }
+    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-1}
     run: node scripts/translation-audit.mjs
     # What the audit reads: the sources of the four translated packages.
     # `task-cache: true` would key it on every file in the repository, and
@@ -414,7 +424,7 @@ jobs:
     name: Translations status
     using: env:bash-node@24.0.18
     cwd: /app/app/packages/web
-    env: { HOME: /tmp }
+    env: {HOME: /tmp, IWCI_BENCH_NONCE: cold-1}
     run: node scripts/translation-status.mjs
     # The same packages: their sources, gt.config.json and _gt catalogs.
     task-cache: *translation-inputs
@@ -433,11 +443,12 @@ jobs:
     using: env:bash-node@24.0.18
     cwd: /app
     run: >-
-      node node_modules/prettier/bin/prettier.cjs --check
-      --no-error-on-unmatched-pattern "${{ package.dir }}"
-    task-cache: { root-inputs: [.prettierrc, .prettierignore] }
+      node node_modules/prettier/bin/prettier.cjs --check --no-error-on-unmatched-pattern "${{ package.dir }}"
+    task-cache: {root-inputs: [.prettierrc, .prettierignore]}
     timeout: 10m
     memory: 1GiB
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # The rest of the repository: every top-level path outside the package
   # directories (pnpm-workspace.yaml's globs), named rather than found by
@@ -490,6 +501,8 @@ jobs:
         - "!**/VERSION"
     timeout: 20m
     memory: 2GiB
+    env:
+      IWCI_BENCH_NONCE: cold-1
 
   # `db:migrate` (drizzle-kit migrate) against an empty database, then again:
   # the second run must find nothing to apply. pglite-server stands in for
@@ -509,10 +522,11 @@ jobs:
       postgres:
         using: env:postgres@18.4.2
         run: pglite-server
-        ready: { port: 5432 }
+        ready: {port: 5432}
     env:
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      IWCI_BENCH_NONCE: cold-1
     run: |
       node node_modules/drizzle-kit/bin.cjs migrate
       node node_modules/drizzle-kit/bin.cjs migrate
@@ -533,7 +547,7 @@ jobs:
   # (#1114, #1116).
   clickhouse-db:
     name: ClickHouse tests ${{ package.name }}
-    packages: { only: [app/packages/server-core] }
+    packages: {only: [app/packages/server-core]}
     needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     services:
@@ -543,13 +557,14 @@ jobs:
         env:
           CLICKHOUSE_DB: infrawrench
           CLICKHOUSE_PASSWORD: infrawrench
-        ready: { port: 8123, timeout: 120s }
+        ready: {port: 8123, timeout: 120s}
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       CLICKHOUSE_METRICS_URL: http://clickhouse:8123
       CLICKHOUSE_METRICS_USER: default
       CLICKHOUSE_METRICS_PASSWORD: infrawrench
       CLICKHOUSE_METRICS_DATABASE: infrawrench
+      IWCI_BENCH_NONCE: cold-1
     run: |
       node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts src/__tests__/db/clickhouse.test.ts src/__tests__/db/clickhouse-cost.test.ts
       node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
@@ -589,28 +604,27 @@ jobs:
   # (190 s; 80 s and 115 s apart).
   postgres-db:
     name: Postgres tests ${{ package.name }}
-    packages: { only: [app/packages/server-core] }
+    packages: {only: [app/packages/server-core]}
     needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     services:
       postgres: &postgres-server
         using: env:postgres@18.4.2
         run: pglite-server
-        ready: { port: 5432 }
+        ready: {port: 5432}
       postgres-2:
         using: env:postgres@18.4.2
         run: pglite-server -port 5433 -backend-port 54330
-        ready: { port: 5433 }
+        ready: {port: 5433}
       postgres-3:
         using: env:postgres@18.4.2
         run: pglite-server -port 5434 -backend-port 54331
-        ready: { port: 5434 }
+        ready: {port: 5434}
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       DATABASE_URLS: >-
-        postgres://infrawrench:infrawrench@postgres:5432/infrawrench,
-        postgres://infrawrench:infrawrench@postgres-2:5433/infrawrench,
-        postgres://infrawrench:infrawrench@postgres-3:5434/infrawrench
+        postgres://infrawrench:infrawrench@postgres:5432/infrawrench, postgres://infrawrench:infrawrench@postgres-2:5433/infrawrench, postgres://infrawrench:infrawrench@postgres-3:5434/infrawrench
+      IWCI_BENCH_NONCE: cold-1
     run: |
       IFS=', ' read -ra servers <<< "$DATABASE_URLS"
       migrations=()
@@ -647,13 +661,14 @@ jobs:
   # on ci-2. The ClickHouse shadow run does the same.
   postgres-shadow:
     name: Postgres shadow tests ${{ package.name }}
-    packages: { only: [app/packages/server-core] }
+    packages: {only: [app/packages/server-core]}
     needs: [prep, "^bundle", "^source"]
     using: env:bash-node@24.0.18
-    services: { postgres: *postgres-server }
+    services: {postgres: *postgres-server}
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
+      IWCI_BENCH_NONCE: cold-1
     run: |
       (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
       workers=$(($(nproc) / 4))
@@ -679,7 +694,7 @@ jobs:
   # esbuild-wasm, which node-preload.cjs hands them in its place.
   vscode:
     name: Package the VS Code extension
-    packages: { only: [app/packages/vscode] }
+    packages: {only: [app/packages/vscode]}
     paths:
       - app/packages/vscode/**
       - app/packages/client-core/**
@@ -700,6 +715,7 @@ jobs:
     using: env:bash-node@24.0.18
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      IWCI_BENCH_NONCE: cold-1
     # The package script (esbuild, then `vsce package` on a staged copy in
     # out/stage), and the .vsix moved into a directory of its own so the
     # download is the package alone.
@@ -719,7 +735,7 @@ jobs:
   # environment has no tar, so the package's own node-tar writes the tarball.
   raycast:
     name: Package the Raycast extension
-    packages: { only: [app/packages/raycast] }
+    packages: {only: [app/packages/raycast]}
     paths:
       - app/packages/raycast/**
       - app/packages/client-core/**
@@ -740,6 +756,7 @@ jobs:
     using: env:bash-node@24.0.18
     env:
       NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+      IWCI_BENCH_NONCE: cold-1
     run: |
       script="$(node -p 'require("./package.json").scripts.build')"
       eval "${script//ray /node node_modules/@raycast/api/bin/run.js } --skip-types"
