@@ -45,6 +45,7 @@ import {
   missingOnProject,
   parseTags,
   statusOf,
+  unlessApiDisabled,
   uuidOf,
   type GcpCiCalls,
 } from "./ci-shared.js";
@@ -219,8 +220,10 @@ export async function computePreflight(
   calls: GcpCiCalls,
   region: string,
 ): Promise<CiPreflightResult> {
-  const missing = await missingOnProject(calls, Object.values(COMPUTE_PERMISSIONS));
   const problems: string[] = [];
+  const missing = await unlessApiDisabled(problems, [], () =>
+    missingOnProject(calls, Object.values(COMPUTE_PERMISSIONS)),
+  );
   try {
     await calls.call("GET", `${projectUrl(calls.project)}/global/networks/default`);
   } catch (err) {
