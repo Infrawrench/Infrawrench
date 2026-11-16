@@ -7,13 +7,11 @@ author: The Infrawrench team
 
 Infrawrench CI runs the pipelines in a repository's `.infrawrench/ci/` folder on every push and pull request. It is built around one idea: most of the time a CI job spends is not the job. It is pulling a container, cloning the repository and installing dependencies, again, for every job in the run. Infrawrench CI does each of those once per commit, and then starts every job from the result.
 
-![Infrawrench CI](/blog/infrawrench-ci/01-hero.png)
-
 ## The numbers
 
 Infrawrench's own test pipeline runs on Infrawrench CI. It is 897 jobs: every package's build, typecheck and tests, the desktop, mobile, website and edge Worker typechecks, the VS Code and Raycast extension packages, formatting, translation checks, migrations, and Postgres and ClickHouse suites. Measured on our own runners on 15 November:
 
-- **64 jobs at once** on one 16-vCPU runner: four job slots per vCPU.
+- **64 jobs at once** on one runner, each in its own WebAssembly sandbox.
 - **9.1 seconds** for the whole pipeline when nothing changed: 890 of the 897 jobs come back from the task cache.
 - **About 130 ms** for a cached job to come back, at the median, with its log, outputs and artifacts.
 - **5× faster** full cold runs, with nothing cached, after one day of tuning: 1,337 s down to 262 s.
