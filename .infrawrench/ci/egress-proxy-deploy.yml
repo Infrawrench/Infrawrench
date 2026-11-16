@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Deploys the workflow egress proxy (app/packages/egress-proxy,
+# egress.infrawrench.com). It is the only thing between a workflow's fetch()
+# and the private networks it must never reach, so its own tests gate the
+# deploy.
+#
+# A pull request builds the Worker the way a deploy would and uploads
+# nothing (`wrangler deploy --dry-run`), with no credentials. A push to main
+# deploys it with the Infrawrench CF connection lent to the job
+# (`connections:`, which sets CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID). That connection is lent to this repository's main
+# branch only, so the deploy job cannot run anywhere else.
+#
+# `builtin:wrangler` is Wrangler on the environment's node, bundling with
+# esbuild-wasm (ci-runner/README.md, "Deployment CLIs"): the package's own
+# Wrangler loads workerd, which has no WebAssembly build.
+name: Deploy egress proxy
+
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - app/packages/egress-proxy/**
+      - pnpm-lock.yaml
+      - .infrawrench/ci/egress-proxy-deploy.yml
+  pull-request:
+    paths: *inputs
+
+concurrency:
+  group: egress-proxy-deploy-${{ commit.branch }}
+  cancel-in-progress: true
+
+# The root importer too: it lists rolldown's WebAssembly build, which
+# rolldown (under Vitest) leaves out of its own optional dependencies.
+workspace:
+  deps:
+    - pnpm: { only: [".", app/packages/egress-proxy] }
+
+jobs:
+  # As test.yml runs every package's Vitest: the runner writes no
+  # node_modules/.bin, so `vitest` runs as its entry point, and
+  # node-preload.cjs answers for the native packages Vite loads.
+  test:
+    name: Test
+    using: env:bash-node@24.0.18
+    cwd: /app/app/packages/egress-proxy
+    env:
+      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
+    run: node node_modules/vitest/vitest.mjs run --maxWorkers=2
+    network: false
+    memory: 3GiB
+    timeout: 15m
+
+  dry-run:
+    name: Build (dry run)
+    if: event == 'pull-request'
+    using: env:bash-node@24.0.18
+    tools: [builtin:wrangler@4]
+    cwd: /app/app/packages/egress-proxy
+    run: wrangler deploy --dry-run
+    memory: 2GiB
+    timeout: 10m
+
+  deploy:
+    name: Deploy to Cloudflare
+    if: event == 'push'
+    needs: [test]
+    using: env:bash-node@24.0.18
+    tools: [builtin:wrangler@4]
+    connections: [Infrawrench CF]
+    cwd: /app/app/packages/egress-proxy
+    run: wrangler deploy
+    memory: 2GiB
+    timeout: 10m

@@ -18,7 +18,8 @@ users have to add this one to their build. See
 
 ## Deploying
 
-Pushes to `main` that touch this package deploy it. The first deploy needs the
+Pushes to `main` that touch this package deploy it, from Infrawrench CI
+(`.infrawrench/ci/maven-repository-deploy.yml`). The first deploy needs the
 bucket and the write credentials to exist:
 
 ```sh

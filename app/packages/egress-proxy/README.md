@@ -56,8 +56,9 @@ pnpm --filter @infrawrench/egress-proxy exec wrangler secret put PROXY_TOKEN
 pnpm --filter @infrawrench/egress-proxy deploy
 ```
 
-CI (`.github/workflows/egress-proxy-deploy.yml`) redeploys on any push to
-`app/packages/egress-proxy/**`. The custom domain comes from `wrangler.jsonc`.
+Infrawrench CI (`.infrawrench/ci/egress-proxy-deploy.yml`) redeploys on any push
+to `main` that touches `app/packages/egress-proxy/**`, after the tests pass, and
+dry-runs the deploy on pull requests. The custom domain comes from `wrangler.jsonc`.
 
 The same token goes into the cluster as `WORKFLOW_FETCH_PROXY_TOKEN` (see
 `infra/terraform/terraform.tfvars.example`) alongside

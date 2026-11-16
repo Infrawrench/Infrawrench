@@ -4249,7 +4249,7 @@ A Cloudflare Worker on `maven.infrawrench.com`, in front of the `infrawrench-mav
 - **`maven-metadata.xml` is the release marker.** `maven-deploy-plugin` uploads it last, so a version listed there is complete and its files answer 409 to any further PUT, while a deploy that died halfway can be re-run. Writes are limited to Maven's own file names under `com/infrawrench/`, so the domain cannot be made to serve HTML.
 - **Two POM profiles**: `release` (sources, javadoc, GPG, and this repository as the deploy target) and `central` (adds `central-publishing-maven-plugin`, which takes over the deploy phase). Both authenticate as the `release-target` server, and the workflow step's env picks the credentials.
 - **Central is opt-in**: `publish-sdks.yml` attempts it only when the repository variable `MAVEN_CENTRAL_PUBLISH` is `true`, and a failure there does not stop the `sdk-v*` tag. Do not turn it on without Publisher Pro or an exemption.
-- First-deploy steps (bucket, secrets) are in the package README; `.github/workflows/maven-repository-deploy.yml` deploys on pushes touching the package.
+- First-deploy steps (bucket, secrets) are in the package README; Infrawrench CI (`.infrawrench/ci/maven-repository-deploy.yml`) deploys on pushes to `main` touching the package, with the Infrawrench CF connection lent to the job, and dry-runs the deploy on pull requests.
 
 ## instances-bundles (`@infrawrench/instances-bundles`)
 
@@ -4259,7 +4259,7 @@ A Cloudflare Worker on `instances-bundles.infrawrench.com` that serves `GET`/`HE
 - **The cache does ranges and revalidation.** It strips `Range`, stores the full object and slices; `readObject` still honours a `Range` it does see (under `wrangler dev`, or an object over the cacheable size limit, which is the Free-plan limit for every Workers Caching account at launch). Objects default to `public, max-age=300, stale-while-revalidate=86400` at the edge, revalidated by R2 ETag; an object uploaded with its own `Cache-Control` keeps it, so versioned keys can be `immutable`. No default `Content-Type` is invented: `application/octet-stream` on a `.tar.gz` key would trip Cache Deception Armor and bypass the cache.
 - **Authentication is `GET /api/v1/whoami`** on the web Worker via the `API` service binding (a same-zone `fetch` would not reach it), the one route that accepts every bearer kind without an org in the path or a scope. A yes is remembered for 60 s per data centre in the Cache API under a SHA-256 of the credential, so revocation takes up to a minute to bite here; a no is never cached. An API failure answers 503, never 401, so an outage does not read as "your key is revoked". `whoami` is therefore part of this Worker's contract: changing its path or turning it into a scoped route breaks the downloads.
 - **Every non-handler export breaks startup.** workerd treats each export of the entry module as a handler and refuses to boot on a constant, which `wrangler deploy --dry-run` does not catch (`wrangler dev` does). Helpers live in `src/bundles.ts`; `src/index.ts` exports only the two entrypoints.
-- Deployed by `.github/workflows/instances-bundles-deploy.yml` on pushes touching the package (tests gate it); `infrawrench-web` must already serve `/api/v1/whoami` (API `1.85.0`).
+- Deployed by Infrawrench CI (`.infrawrench/ci/instances-bundles-deploy.yml`) on pushes to `main` touching the package (tests gate it; pull requests dry-run it); `infrawrench-web` must already serve `/api/v1/whoami` (API `1.85.0`).
 
 ## Bulk pricing data (`/api/v1/aws-bulk-pricing`)
 

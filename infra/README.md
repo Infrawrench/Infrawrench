@@ -9,18 +9,18 @@ In front of the pods sit the Cloudflare edge Workers and, optionally, the
 AWS Lambda gateway, which take over most of the web API and the poller; see
 [Cloudflare edge](#cloudflare-edge) and [Lambda gateway](#lambda-gateway).
 
-| Layer                                                                 | Owner                                       |
-| --------------------------------------------------------------------- | ------------------------------------------- |
-| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform` (applied manually)        |
-| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)                 |
-| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`          |
-| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)        |
-| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`      |
-| Workflow egress proxy `egress.infrawrench.com` (CF Worker)            | `.github/workflows/egress-proxy-deploy.yml` |
-| Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`          |
-| Lambda gateway: ECR, functions, VPC, schedule (optional)              | `infra/terraform/lambda.tf`                 |
-| Lambda image `lambda`, tagged `:<commit sha>`                         | `.github/workflows/web-deploy.yml`          |
-| Cloudflare Tunnel connector to ClickHouse (optional)                  | `infra/terraform/edge.tf`                   |
+| Layer                                                                 | Owner                                     |
+| --------------------------------------------------------------------- | ----------------------------------------- |
+| Network, cluster, registry, namespace, secrets, ingress, cert-manager | `infra/terraform` (applied manually)      |
+| Deployments, Service, Ingress, ClusterIssuer                          | `infra/k8s` (applied by CI)               |
+| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`    | `.github/workflows/web-deploy.yml`        |
+| Container registry `registry.infrawrench.com` (CF Worker + R2)        | `infra/registry` (deployed manually)      |
+| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`             | `.github/workflows/bastion-deploy.yml`    |
+| Workflow egress proxy `egress.infrawrench.com` (CF Worker)            | `.infrawrench/ci/egress-proxy-deploy.yml` |
+| Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`        |
+| Lambda gateway: ECR, functions, VPC, schedule (optional)              | `infra/terraform/lambda.tf`               |
+| Lambda image `lambda`, tagged `:<commit sha>`                         | `.github/workflows/web-deploy.yml`        |
+| Cloudflare Tunnel connector to ClickHouse (optional)                  | `infra/terraform/edge.tf`                 |
 
 **The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
 runs in the `web`/`poller` isolates; if those pods made the request, every
