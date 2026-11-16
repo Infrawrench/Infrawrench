@@ -785,11 +785,36 @@ fn a_job_bigger_than_the_whole_budget_is_an_error_not_a_hang() {
     assert_eq!(budget.used(), 1 << 29);
 }
 
-/// Runs every `builtin:gate@1` job only once [`Gated::open`] is called.
-struct Gated {
-    inner: FakeExecutor,
+/// A gate jobs wait at until it is opened.
+#[derive(Default)]
+struct Gate {
     open: Mutex<bool>,
     opened: Condvar,
+}
+
+impl Gate {
+    fn open(&self) {
+        *self.open.lock().unwrap() = true;
+        self.opened.notify_all();
+    }
+
+    fn wait(&self) {
+        let mut open = self.open.lock().unwrap();
+        while !*open {
+            open = self.opened.wait(open).unwrap();
+        }
+    }
+}
+
+/// Runs every `builtin:gate@1` job only once [`Gated::open`] is called,
+/// and every `builtin:latch@1` job only once [`Gated::let_through`] is.
+/// The latch orders what a test sets up: a job that needs a `latch` job
+/// becomes ready only when the test says, not when the threads happen to
+/// get there.
+struct Gated {
+    inner: FakeExecutor,
+    gate: Gate,
+    latch: Gate,
 }
 
 impl Gated {
@@ -802,14 +827,20 @@ impl Gated {
                 running: AtomicUsize::new(0),
                 most_at_once: AtomicUsize::new(0),
             },
-            open: Mutex::new(false),
-            opened: Condvar::new(),
+            gate: Gate::default(),
+            latch: Gate::default(),
         }
     }
 
+    /// Opens the gate, and the latch with it, so that nothing is left
+    /// waiting.
     fn open(&self) {
-        *self.open.lock().unwrap() = true;
-        self.opened.notify_all();
+        self.latch.open();
+        self.gate.open();
+    }
+
+    fn let_through(&self) {
+        self.latch.open();
     }
 
     fn ran(&self) -> Vec<String> {
@@ -839,16 +870,17 @@ impl Executor<String> for Gated {
             if let (Some(watch), true) = (&inv.memory_watch, held != 0) {
                 watch(held);
             }
-            let mut open = self.open.lock().unwrap();
-            while !*open {
-                open = self.opened.wait(open).unwrap();
-            }
-            drop(open);
+            self.gate.wait();
             return Ok(Execution {
                 peak_memory_bytes: held,
                 held_memory_bytes: held,
                 ..Default::default()
             });
+        }
+        if tool.contains(":latch@") {
+            self.inner.order.lock().unwrap().push(inv.job.id.clone());
+            self.latch.wait();
+            return Ok(Execution::default());
         }
         self.inner.execute(tool, path_tools, services, action, inv)
     }
@@ -2654,9 +2686,12 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
     // One job at a time: `a` heads the longest chain so it runs first, `b`
     // waits behind it, and `c` needs `a`. The runner holds its budget to
     // restart while `a` runs (#1135): `a` finishes, nothing else starts,
-    // and the run ends at once instead of waiting for the rest.
+    // and the run ends at once instead of waiting for the rest. `a` waits
+    // at the gate until the budget is held: a job that ran for 50 ms could
+    // start and end before the thread holding the budget saw it, and that
+    // thread then waited for it forever.
     let plan = iwci_spec::parse(
-        "name: x\njobs:\n  b: { using: builtin:ok@1, args: [] }\n  a: { using: builtin:slow@1, args: [] }\n  c: { using: builtin:ok@1, args: [], needs: [a] }\n",
+        "name: x\njobs:\n  b: { using: builtin:ok@1, args: [] }\n  a: { using: builtin:gate@1, args: [] }\n  c: { using: builtin:ok@1, args: [], needs: [a] }\n",
         &Context::default(),
     )
     .unwrap();
@@ -2666,13 +2701,7 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
         fail: false,
         source: "a",
     };
-    let exec = FakeExecutor {
-        seen_env: Mutex::default(),
-        seen_tools: Mutex::default(),
-        order: Mutex::default(),
-        running: AtomicUsize::new(0),
-        most_at_once: AtomicUsize::new(0),
-    };
+    let exec = Gated::new();
     let memory = Arc::new(MemoryBudget::new(8 << 30));
     let options = Options {
         parallelism: 1,
@@ -2693,22 +2722,23 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
     };
     let reason = "the runner is restarting (out-of-memory lost 3 V8 isolates); run it again";
     let report = std::thread::scope(|scope| {
-        scope.spawn(|| {
-            while exec.running.load(Ordering::SeqCst) == 0 {
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            memory.hold(reason);
+        let _unstick = OnPanic(|| exec.open());
+        let running = scope.spawn(|| {
+            run(
+                &plan,
+                &ws,
+                &FakeTools,
+                &exec,
+                &FakeCommitter(Mutex::default()),
+                &options,
+            )
         });
-        run(
-            &plan,
-            &ws,
-            &FakeTools,
-            &exec,
-            &FakeCommitter(Mutex::default()),
-            &options,
-        )
+        eventually("`a` to start", || !exec.ran().is_empty());
+        memory.hold(reason);
+        exec.open();
+        running.join().unwrap()
     });
-    assert_eq!(*exec.order.lock().unwrap(), vec!["a".to_string()]);
+    assert_eq!(exec.ran(), vec!["a".to_string()]);
     assert_eq!(status(&report, "a"), &Status::Passed);
     let held = Status::Cancelled {
         reason: reason.into(),
@@ -3664,12 +3694,18 @@ fn a_job_that_outlasts_its_expected_time_is_expected_to_go_on_as_long_as_it_over
 
 /// `hold` runs until the gate opens, on half of a 2 GiB budget. `big`
 /// needs all of it and is first in the order; the three `small` jobs fit
-/// beside `hold`.
-const STARVED: &str = "name: x\njobs:\n  seed: { using: builtin:ok@1, memory: 16MiB }\n  hold: { using: builtin:gate@1, memory: 1GiB }\n  big: { using: builtin:ok@1, memory: 2GiB, needs: [seed] }\n  small: { using: builtin:ok@1, memory: 1GiB, needs: [seed], matrix: [a, b, c] }\n";
+/// beside `hold`. `seed` ends only once `hold` holds its gigabyte: ended
+/// before, it left `big` the whole budget, which `big` rightly took (#1202).
+const STARVED: &str = "name: x\njobs:\n  seed: { using: builtin:latch@1, memory: 16MiB }\n  hold: { using: builtin:gate@1, memory: 1GiB }\n  big: { using: builtin:ok@1, memory: 2GiB, needs: [seed] }\n  small: { using: builtin:ok@1, memory: 1GiB, needs: [seed], matrix: [a, b, c] }\n";
 
 /// Runs [`STARVED`] with `small` jobs that took `small_ms` last time, and
 /// says what had started while `hold` still ran and what started in all.
-fn run_starved(small_ms: u64) -> (Vec<String>, Vec<String>) {
+/// `settled` says when the jobs after `seed` are ready, or have started
+/// as far as they will before `hold` ends.
+fn run_starved(
+    small_ms: u64,
+    settled: impl Fn(&Gated, &MemoryBudget) -> bool,
+) -> (Vec<String>, Vec<String>) {
     let p = plan(STARVED);
     let history = MemoryDurations::with(
         "x",
@@ -3687,8 +3723,12 @@ fn run_starved(small_ms: u64) -> (Vec<String>, Vec<String>) {
     std::thread::scope(|scope| {
         let _unstick = OnPanic(|| exec.open());
         let run = scope.spawn(|| run_sharing_with(&p, &exec, &budget, Some(history)));
-        eventually("`seed` to finish and `hold` to start", || {
-            exec.ran().len() >= 2 && budget.used() == GIB
+        eventually("`seed` and `hold` to start", || {
+            budget.used() == GIB + 16 * MIB
+        });
+        exec.let_through();
+        eventually("the jobs after `seed` to be ready", || {
+            settled(&exec, &budget)
         });
         // Long enough for a run that held jobs back to have looked again.
         std::thread::sleep(HELD_BACK_RECHECK * 2);
@@ -3710,14 +3750,16 @@ fn a_large_job_at_the_head_of_the_order_is_not_starved_by_small_ones_that_fit() 
     // they wait for `big`, which starts the moment `hold` ends. Started as
     // they fit, they ran one after another in the gigabyte `hold` left
     // and `big` waited for all three.
-    let (before, order) = run_starved(2 * 3_600_000);
+    // Settled once `big` asks for its memory, which it cannot have while
+    // `hold` runs.
+    let (before, order) = run_starved(2 * 3_600_000, |_, budget| budget.waiting() >= 2 * GIB);
     assert_eq!(before, ["hold", "seed"], "nothing passes `big` over");
     assert_eq!(order[2], "big", "{order:?}");
     assert_eq!(order.len(), 6);
 
     // Small jobs that take a second are done long before `hold` is, so
     // they cost `big` nothing and run in the memory it cannot use yet.
-    let (before, order) = run_starved(1000);
+    let (before, order) = run_starved(1000, |exec, _| exec.ran().len() == 5);
     assert_eq!(
         before,
         ["hold", "seed", "small[a]", "small[b]", "small[c]"],
@@ -3996,10 +4038,24 @@ fn run_gated(
     history: Arc<MemoryDurations>,
     settled: impl Fn(&Gated) -> bool,
 ) -> (Vec<String>, u64, u64, RunReport) {
+    run_latched(plan, budget, history, |_| true, settled)
+}
+
+/// [`run_gated`], with its `builtin:latch@1` jobs let through once `ready`
+/// holds.
+fn run_latched(
+    plan: &Plan,
+    budget: &Arc<MemoryBudget>,
+    history: Arc<MemoryDurations>,
+    ready: impl Fn(&Gated) -> bool,
+    settled: impl Fn(&Gated) -> bool,
+) -> (Vec<String>, u64, u64, RunReport) {
     let exec = Gated::new();
     std::thread::scope(|scope| {
         let _unstick = OnPanic(|| exec.open());
         let run = scope.spawn(|| run_sharing_with(plan, &exec, budget, Some(history.clone())));
+        eventually("the latched jobs' turn", || ready(&exec));
+        exec.let_through();
         eventually("the jobs that fit to start", || settled(&exec));
         // Long enough for one that should not have started to have.
         std::thread::sleep(Duration::from_millis(100));
@@ -4056,18 +4112,26 @@ fn a_job_with_no_history_reserves_its_memory_when_others_are_admitted_by_estimat
 #[test]
 fn a_running_jobs_reservation_follows_what_it_comes_to_hold() {
     // `grows` held 100 MiB last time and comes to hold 600 now; `next`
-    // would fit beside what it reserved, not beside what it holds.
+    // would fit beside what it reserved, not beside what it holds. `seed`
+    // ends, and `next` is ready, only once `grows` has said what it holds:
+    // ready before, `next` fit beside the 256 MiB `grows` had reserved
+    // then, and rightly started (#1214).
     let p = plan(
-        "name: x\njobs:\n  grows: { using: builtin:gate-600@1, memory: 1GiB }\n  next: { using: builtin:gate@1, memory: 512MiB, needs: [seed] }\n  seed: { using: builtin:ok@1, memory: 16MiB }\n",
+        "name: x\njobs:\n  grows: { using: builtin:gate-600@1, memory: 1GiB }\n  next: { using: builtin:gate@1, memory: 512MiB, needs: [seed] }\n  seed: { using: builtin:latch@1, memory: 16MiB }\n",
     );
     let history = MemoryDurations::with("x", &[("grows", 60_000), ("next", 10)])
         .holding("x", &[("grows", 100), ("next", 400), ("seed", 1)]);
     let (budget, _) = estimating(GIB);
     let budget = Arc::new(budget);
-    // Settled once `seed` has ended and `next` is queued behind `grows`.
-    let (ran, used, waiting, report) = run_gated(&p, &budget, history.clone(), |exec| {
-        exec.ran().len() == 2 && budget.waiting() != 0 && budget.used() > 512 * MIB
-    });
+    // `seed` goes once `grows` has its 750 MiB, beside `seed`'s 16; settled
+    // once `seed` has ended and `next` is queued behind `grows`.
+    let (ran, used, waiting, report) = run_latched(
+        &p,
+        &budget,
+        history.clone(),
+        |_| budget.used() == 766 * MIB,
+        |exec| exec.ran().len() == 2 && budget.waiting() != 0 && budget.used() == 750 * MIB,
+    );
     assert_eq!(ran, ["grows", "seed"], "`next` waits for the memory");
     assert_eq!(used, 750 * MIB, "600 MiB and a quarter more");
     assert_eq!(waiting, 512 * MIB, "`next` reserves 400 MiB x 1.5, capped");

@@ -352,6 +352,11 @@ fn each_job_runs_once_and_what_it_kept_reaches_the_other_runner() {
         "name: x\nsplit: true\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [a, b, c, d, e, f, g, h]\n    artifacts: [dist]\n    task-cache: true\n  raw:\n    using: builtin:art-write@1\n    artifacts: [dist]\n  check:\n    using: builtin:art-read@1\n    matrix: [a, b, c, d, e, f]\n    needs: [lib, raw]\n",
     );
     let store = Arc::new(SplitStore::default());
+    // The rest go to whoever claims them first, which a busy host can make
+    // the same runner every time (#1233): `raw` is the helper's and one
+    // `check` the primary's, so `raw`'s files cross from one to the other.
+    store.give("raw", "ci-2");
+    store.give("check[a]", "ci-1");
     let caches: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
     let mut first = options(Some(primary(&store, PATIENT)), 1);
     first.caches = Some(caches.clone());
@@ -367,7 +372,8 @@ fn each_job_runs_once_and_what_it_kept_reaches_the_other_runner() {
     let mut all: Vec<String> = one.report.jobs.iter().map(|j| j.id.clone()).collect();
     all.sort();
     assert_eq!(ran, all, "every job ran, and none twice");
-    assert!(!one.ran.is_empty() && !two.ran.is_empty(), "both took part");
+    assert!(two.ran.contains(&"raw".to_string()), "{:?}", two.ran);
+    assert!(one.ran.contains(&"check[a]".to_string()), "{:?}", one.ran);
 
     // Whichever runner ran a `check`, it started with all nine files.
     let files = "lib_a_.txt,lib_b_.txt,lib_c_.txt,lib_d_.txt,lib_e_.txt,lib_f_.txt,lib_g_.txt,lib_h_.txt,raw.txt";
@@ -378,10 +384,17 @@ fn each_job_runs_once_and_what_it_kept_reaches_the_other_runner() {
         assert_eq!(two.stdout(id), files, "{id}");
     }
     // The report of a job the other runner ran says so, and reserves
-    // nothing here.
+    // nothing here. On the helper, a `lib` the primary finished before the
+    // helper looked its key up is a task cache hit instead (#1233): both
+    // runners read the one store. Never on the primary, which bills it.
     for (here, there, name) in [(&one, &two, "ci-2"), (&two, &one, "ci-1")] {
         for id in &there.ran {
             let job = here.job(id);
+            if job.cached && name == "ci-1" {
+                assert!(id.starts_with("lib["), "{id}");
+                assert_eq!(job.remote, None, "{id}");
+                continue;
+            }
             assert_eq!(job.remote.as_deref(), Some(name), "{id}");
             // Billed with the run, at the memory it reserved there.
             assert_eq!(job.memory_mib, 2048, "{id}");
@@ -872,6 +885,9 @@ fn a_helper_only_tries_for_jobs_that_may_run_anywhere() {
         "name: x\nsplit: true\njobs:\n  secret:\n    using: builtin:print@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n  commit:\n    using: builtin:write@1\n    changes: { commit: \"style: format\" }\n  keeps:\n    using: builtin:dl-write@1\n    downloads: [out]\n  plain:\n    using: builtin:print@1\n    matrix: [a, b, c, d]\n",
     );
     let store = Arc::new(SplitStore::default());
+    // One `plain` is the helper's, so it takes part however busy the host
+    // is (#1233).
+    store.give("plain[a]", "ci-2");
     let (one, two) = both(
         &p,
         &options(Some(primary(&store, PATIENT)), 1),
@@ -885,7 +901,7 @@ fn a_helper_only_tries_for_jobs_that_may_run_anywhere() {
         assert_eq!(two.job(id).remote.as_deref(), Some("ci-1"), "{id}");
     }
     assert!(two.ran.iter().all(|id| id.starts_with("plain[")));
-    assert!(!two.ran.is_empty());
+    assert!(two.ran.contains(&"plain[a]".to_string()), "{:?}", two.ran);
 }
 
 #[test]
@@ -932,12 +948,20 @@ fn the_primary_asks_for_help_only_when_jobs_wait() {
         "and says when it is done"
     );
 
-    // Room for all of them at once: nothing waits, nobody is asked.
+    // Room for all of them at once: nothing waits, nobody is asked. A job
+    // still sits in the queue until a worker thread gets to it, which on a
+    // busy host can take longer than `FAST`'s 20 ms (#1233), so this asks
+    // after a second, and every job takes longer than that: one that
+    // waited for a worker would have been asked for.
     let store = Arc::new(SplitStore::default());
+    let patient = Timing {
+        ask_after: Duration::from_secs(1),
+        ..FAST
+    };
     let report = go(
         &busy,
-        &SplitExec::new(),
-        &options(Some(primary(&store, FAST)), 8),
+        &SplitExec::napping(Duration::from_millis(1500)),
+        &options(Some(primary(&store, patient)), 8),
     );
     assert!(report.passed());
     assert!(!store.asked.load(Ordering::SeqCst));
@@ -995,13 +1019,28 @@ fn a_secret_is_in_nothing_the_runners_share() {
                 Claim::Ours
             );
         }
+        // And `clean` is the helper's, so it takes part however busy the
+        // host is (#1233): the rest go to whoever claims them first.
+        let helper = crate::adapters::split::SplitRun::with_timing(
+            objects.clone(),
+            &id("acme"),
+            &id("app"),
+            &id("run1"),
+            "ci-2",
+            true,
+            PATIENT,
+        );
+        assert_eq!(
+            helper.pipeline("test.yml").claim("clean").unwrap(),
+            Claim::Ours
+        );
     }
     let (first_run, first) = side("ci-1", false, 1);
     let (second_run, second) = side("ci-2", true, 4);
     let (one, two) = both(&p, &first, &second);
     assert!(one.report.passed(), "{:#?}", one.report.jobs);
     assert!(two.report.passed(), "{:#?}", two.report.jobs);
-    assert!(!two.ran.is_empty(), "the helper took part");
+    assert!(two.ran.contains(&"clean".to_string()), "{:?}", two.ran);
     // The jobs did see it, and their reports here do not show it.
     assert!(one.stdout("reads").contains("TOKEN=***"));
     assert!(one.stdout("says").contains("COPY=***"));
@@ -1366,6 +1405,15 @@ fn a_run_of_two_pipelines_shares_each_and_keeps_them_apart() {
         )
     };
     let (one, two) = (side("ci-1", false), side("ci-2", true));
+    // `j[a]` of the first is the helper's, so it takes part however busy
+    // the host is (#1233).
+    {
+        use crate::schedule::Split as _;
+        assert_eq!(
+            two.pipeline("first.yml").claim("j[a]").unwrap(),
+            Claim::Ours
+        );
+    }
     let nap = Duration::from_millis(20);
     // A run does its pipelines one after the other, on each runner.
     let run = |split: &Arc<crate::adapters::split::SplitRun>, parallelism: usize| {
@@ -1404,10 +1452,7 @@ fn a_run_of_two_pipelines_shares_each_and_keeps_them_apart() {
             .stdout,
         "j_a_.txt,j_b_.txt,j_c_.txt,j_d_.txt"
     );
-    assert!(
-        !ran_two[0].is_empty() || !ran_two[1].is_empty(),
-        "the helper took part"
-    );
+    assert!(ran_two[0].contains(&"j[a]".to_string()), "{ran_two:?}");
     drop((one, two));
     let _ = std::fs::remove_dir_all(dir);
 }
