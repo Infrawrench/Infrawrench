@@ -38,7 +38,9 @@ import {
   ciCronDue,
   nextCiCronDue,
   type CiInput,
+  type CiManualPipeline,
   type CiManualPipelines,
+  type CiRepoSchedule,
   type CiSchedules,
 } from "@infrawrench/client-core";
 
@@ -377,69 +379,92 @@ export async function fireDueSchedules(now = new Date()): Promise<number> {
   return queued;
 }
 
+/** The organization's repositories that run CI, as the last read of each one's default branch left them. */
+async function ciRepositoryRows(organizationId: string): Promise<ScheduleRow[]> {
+  const rows = await db
+    .select({ schedule: ciSchedules })
+    .from(ciSchedules)
+    .innerJoin(
+      ciAccounts,
+      and(
+        eq(ciAccounts.installationId, ciSchedules.installationId),
+        eq(ciAccounts.organizationId, ciSchedules.organizationId),
+      ),
+    )
+    .where(eq(ciSchedules.organizationId, organizationId))
+    .orderBy(asc(ciSchedules.repoFullName));
+  return rows.map(({ schedule }) => schedule);
+}
+
+function scheduledOf(r: ScheduleRow, now: Date): CiRepoSchedule {
+  return {
+    installationId: r.installationId,
+    repoFullName: r.repoFullName,
+    defaultBranch: r.defaultBranch,
+    sha: r.sha,
+    pipelines: r.pipelines.map((p) => ({
+      file: p.file,
+      name: p.name,
+      cron: p.cron,
+      nextRunAt: nextCiCronDue(p.cron, now)?.toISOString() ?? null,
+    })),
+    refreshedAt: r.refreshedAt?.toISOString() ?? null,
+    error: r.error,
+  };
+}
+
+const manualOf = (r: ScheduleRow): CiManualPipeline[] =>
+  (r.manual ?? []).map((p) => ({ file: p.file, name: p.name, inputs: p.inputs }));
+
 /** The organization's repositories with scheduled pipelines, and those whose last read failed. */
 export async function listCiSchedules(
   organizationId: string,
   now = new Date(),
 ): Promise<CiSchedules> {
-  const rows = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
-    .where(eq(ciSchedules.organizationId, organizationId))
-    .orderBy(asc(ciSchedules.repoFullName));
+  const rows = await ciRepositoryRows(organizationId);
   return {
     schedules: rows
-      .map(({ schedule: r }) => r)
       .filter((r) => r.pipelines.length > 0 || r.error !== null)
-      .map((r) => ({
-        installationId: r.installationId,
-        repoFullName: r.repoFullName,
-        defaultBranch: r.defaultBranch,
-        sha: r.sha,
-        pipelines: r.pipelines.map((p) => ({
-          file: p.file,
-          name: p.name,
-          cron: p.cron,
-          nextRunAt: nextCiCronDue(p.cron, now)?.toISOString() ?? null,
-        })),
-        refreshedAt: r.refreshedAt?.toISOString() ?? null,
-        error: r.error,
-      })),
+      .map((r) => scheduledOf(r, now)),
   };
 }
 
 /** The organization's repositories with pipelines someone may start by hand. */
 export async function listCiManualPipelines(organizationId: string): Promise<CiManualPipelines> {
-  const rows = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
-    .where(eq(ciSchedules.organizationId, organizationId))
-    .orderBy(asc(ciSchedules.repoFullName));
+  const rows = await ciRepositoryRows(organizationId);
   return {
     repositories: rows
-      .map(({ schedule: r }) => r)
       .filter((r) => (r.manual ?? []).length > 0)
       .map((r) => ({
         installationId: r.installationId,
         repoFullName: r.repoFullName,
         defaultBranch: r.defaultBranch,
         sha: r.sha,
-        pipelines: (r.manual ?? []).map((p) => ({ file: p.file, name: p.name, inputs: p.inputs })),
+        pipelines: manualOf(r),
         refreshedAt: r.refreshedAt?.toISOString() ?? null,
       })),
   };
+}
+
+/**
+ * A repository that runs CI, with what its default branch's last read found:
+ * the pipelines it schedules and the ones someone may start by hand. A
+ * pipeline that runs only on pushes and pull requests is in neither; the
+ * read keeps only what the app fires or starts.
+ */
+export interface CiRepository extends CiRepoSchedule {
+  /** `null` until a read that knew about manual runs. */
+  manual: CiManualPipeline[] | null;
+}
+
+/**
+ * Every repository the app has had a delivery for under a GitHub account
+ * that runs CI, whatever its pipelines: the chat and MCP tools' list.
+ */
+export async function listCiRepositories(
+  organizationId: string,
+  now = new Date(),
+): Promise<CiRepository[]> {
+  const rows = await ciRepositoryRows(organizationId);
+  return rows.map((r) => ({ ...scheduledOf(r, now), manual: r.manual ? manualOf(r) : null }));
 }

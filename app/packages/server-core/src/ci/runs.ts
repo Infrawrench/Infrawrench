@@ -1251,10 +1251,24 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
   };
 }
 
-export async function listRuns(
-  organizationId: string,
-  opts: { limit: number; status?: CiRunStatus },
-): Promise<CiRun[]> {
+/** Which runs {@link listRuns} answers, newest first. */
+export interface CiRunFilter {
+  limit: number;
+  /** Only runs with this status; a hidden status (`skipped`) is listed only when asked for so. */
+  status?: CiRunStatus;
+  /** List the hidden statuses too, when no `status` is given (the tab's "Show" filter). */
+  includeHidden?: boolean;
+  /** `owner/name`, in any case. */
+  repo?: string;
+  /** The branch a run is for: a pull request's head branch, a push's branch. */
+  branch?: string;
+  event?: CiRun["event"];
+  pullNumber?: number;
+  /** Runs older than this run of the organization's (the last of the previous page). */
+  beforeRunId?: string;
+}
+
+export async function listRuns(organizationId: string, opts: CiRunFilter): Promise<CiRun[]> {
   const rows = await db
     .select()
     .from(ciRuns)
@@ -1263,10 +1277,20 @@ export async function listRuns(
         eq(ciRuns.organizationId, organizationId),
         opts.status
           ? eq(ciRuns.status, opts.status)
-          : notInArray(ciRuns.status, [...CI_HIDDEN_RUN_STATUSES]),
+          : opts.includeHidden
+            ? undefined
+            : notInArray(ciRuns.status, [...CI_HIDDEN_RUN_STATUSES]),
+        opts.repo ? sql`lower(${ciRuns.repoFullName}) = ${opts.repo.toLowerCase()}` : undefined,
+        opts.branch ? eq(ciRuns.headRef, opts.branch) : undefined,
+        opts.event ? eq(ciRuns.event, opts.event) : undefined,
+        opts.pullNumber !== undefined ? eq(ciRuns.pullNumber, opts.pullNumber) : undefined,
+        // Compared in the database: its timestamps are finer than a `Date`.
+        opts.beforeRunId
+          ? sql`(${ciRuns.createdAt}, ${ciRuns.id}) < (select c.created_at, c.id from ci_runs c where c.id = ${opts.beforeRunId} and c.organization_id = ${organizationId})`
+          : undefined,
       ),
     )
-    .orderBy(desc(ciRuns.createdAt))
+    .orderBy(desc(ciRuns.createdAt), desc(ciRuns.id))
     .limit(opts.limit);
   const retries = await newestRetries(
     organizationId,

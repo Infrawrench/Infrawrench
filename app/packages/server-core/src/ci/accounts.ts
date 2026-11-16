@@ -44,8 +44,18 @@ export async function ciAccountsOf(organizationId: string): Promise<CiAccount[]>
   }));
 }
 
+/**
+ * CI is turned on for the organization. Every CI surface but its status
+ * refuses without it: the HTTP routes (`requireCi`) and the chat and MCP
+ * tools (`web/src/tools/ci.ts`) both ask here, so the rollout gate is one
+ * place to change.
+ */
+export async function ciTurnedOn(organizationId: string): Promise<boolean> {
+  return await orgHasFeature(organizationId, "ci");
+}
+
 export async function ciStatus(organizationId: string): Promise<CiStatus> {
-  const enabled = await orgHasFeature(organizationId, "ci");
+  const enabled = await ciTurnedOn(organizationId);
   return {
     enabled,
     configured: ciProxyConfigured(),

@@ -149,6 +149,11 @@ vi.mock("../vulnerabilities", () => ({
     { name: "vu1", title: "VU1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../ci", () => ({
+  ciTools: () => [
+    { name: "ci1", title: "CI1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 const mockPerPlugin = vi.fn();
 vi.mock("../per-plugin-create", () => ({
   perPluginCreateTools: (...a: unknown[]) => mockPerPlugin(...a),
@@ -197,6 +202,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("h1");
     expect(names).toContain("la1");
     expect(names).toContain("vu1");
+    expect(names).toContain("ci1");
     expect(names).toContain("p1");
 
     // Second call returns the cached result without re-invoking the loader.

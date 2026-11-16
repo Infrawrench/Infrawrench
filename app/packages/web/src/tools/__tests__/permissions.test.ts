@@ -190,6 +190,8 @@ describe("the organization's app policy", () => {
     expect(product("list_invoices")).toBe("costs");
     expect(product("write_workflow")).toBe("automation");
     expect(product("diff_environments")).toBe("delivery");
+    expect(product("list_ci_runs")).toBe("delivery");
+    expect(product("start_ci_run")).toBe("delivery");
     expect(product("dismiss_vulnerability")).toBe("security");
     // `./generic` is mixed: its app tools say so on the definition.
     expect(product("list_posture_findings")).toBe("security");
@@ -384,6 +386,13 @@ describe("chat approval gating", () => {
     ["write_custom_graph", { source: "graph.render({})" }, true],
     ["write_cost_canvas", { name: "New canvas", spec: { version: 1, blocks: [] } }, false],
     ["delete_cost_canvas", { canvasId: "c1" }, true],
+    ["list_ci_runs", { status: "failed" }, false],
+    ["get_ci_job_log", { runId: "r1", jobId: "test" }, false],
+    ["start_ci_run", { installationId: 1, repoFullName: "o/r", pipelineFile: "d.yml" }, true],
+    ["retry_ci_run", { runId: "r1" }, true],
+    ["cancel_ci_run", { runId: "r1" }, true],
+    ["approve_ci_run", { runId: "r1" }, true],
+    ["reject_ci_run", { runId: "r1" }, true],
   ])("%s %j needs approval: %s", async (name, input, expected) => {
     const tool = (await getToolRegistry()).find((t) => t.name === name);
     expect(tool, name).toBeDefined();
