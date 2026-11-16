@@ -233,7 +233,7 @@ export function ChangesPanel({
             onClick={onInvestigateMoment}
             className="ml-auto px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary whitespace-nowrap"
             title={gt(
-              "Merge every feed around one timestamp: changes, incidents, anomalies, runs, deployments, audit entries and freezes.",
+              "Merge every feed around one timestamp: changes, incidents, anomalies, runs, audit entries and freezes.",
             )}
           >
             {gt("Investigate a moment")}

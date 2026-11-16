@@ -75,9 +75,6 @@ function MomentPage() {
       case "workflow-run":
         void navigate({ to: "/workflows" });
         break;
-      case "deployment":
-        void navigate({ to: "/deployments" });
-        break;
       case "costs":
         void navigate({ to: "/costs" });
         break;

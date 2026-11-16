@@ -94,7 +94,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
 
       {timeline.entries.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          {gt("Nothing else was recorded in this window: no changes, deploys or alerts.")}
+          {gt("Nothing else was recorded in this window: no changes or alerts.")}
         </p>
       ) : (
         <ol className="space-y-1.5">

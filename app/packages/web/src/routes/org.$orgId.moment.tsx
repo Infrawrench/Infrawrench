@@ -56,9 +56,6 @@ function MomentPage() {
       case "workflow-run":
         void navigate({ to: "/org/$orgId/workflows", params: { orgId } });
         break;
-      case "deployment":
-        void navigate({ to: "/org/$orgId/deployments", params: { orgId } });
-        break;
       case "costs":
         void navigate({ to: "/org/$orgId/costs", params: { orgId } });
         break;

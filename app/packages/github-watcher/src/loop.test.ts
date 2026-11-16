@@ -39,9 +39,6 @@ vi.mock("drizzle-orm", () => ({
   isNull: (a: unknown) => ({ isNull: a }),
 }));
 const runOrgWorkflow = vi.fn();
-vi.mock("@infrawrench/server-core/infrafile/runner", () => ({
-  runDeployment: vi.fn(),
-}));
 vi.mock("@infrawrench/server-core/workflows/runner", () => ({
   runOrgWorkflow: (a: unknown) => runOrgWorkflow(a),
 }));
@@ -49,10 +46,6 @@ const getBranchHeadSha = vi.fn();
 vi.mock("@infrawrench/server-core/github/app", () => ({
   isGithubAppConfigured: () => true,
   getBranchHeadSha: (...a: unknown[]) => getBranchHeadSha(...a),
-}));
-const claimDueDeploymentTriggers = vi.fn().mockResolvedValue([]);
-vi.mock("@infrawrench/server-core/infrafile/triggers", () => ({
-  claimDueDeploymentTriggers: () => claimDueDeploymentTriggers(),
 }));
 
 const runPrCheckPass = vi.fn().mockResolvedValue(undefined);
@@ -64,7 +57,6 @@ vi.mock("@infrawrench/server-core/dora/github-pass", () => ({
 }));
 
 const { GithubWatcher } = await import("./loop");
-const { runDeployment } = vi.mocked(await import("@infrawrench/server-core/infrafile/runner"));
 
 function gitRow(over: Partial<{ gitLastSha: string | null }> = {}) {
   return {
@@ -76,26 +68,11 @@ function gitRow(over: Partial<{ gitLastSha: string | null }> = {}) {
   };
 }
 
-function dueTrigger(over: Record<string, unknown> = {}) {
-  return {
-    id: "dt1",
-    organizationId: "org1",
-    repo: "acme/app",
-    branch: "main",
-    env: "prod",
-    answers: { region: "lon1" },
-    sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-    ...over,
-  };
-}
-
 describe("GithubWatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     updates.length = 0;
     updateReturning.mockResolvedValue([{ id: "wf1" }]);
-    claimDueDeploymentTriggers.mockResolvedValue([]);
-    runDeployment.mockReset();
     rows.mockResolvedValue([]);
     installs.mockResolvedValue([{ organizationId: "org1", installationId: 42 }]);
   });
@@ -170,39 +147,5 @@ describe("GithubWatcher", () => {
     ]);
     await new GithubWatcher().tick();
     expect(getBranchHeadSha).not.toHaveBeenCalled();
-  });
-
-  it("deploys the claimed commit, not the branch", async () => {
-    const run = runDeployment.mockResolvedValue({ runId: "run1" } as never);
-    claimDueDeploymentTriggers.mockResolvedValue([dueTrigger()]);
-
-    await new GithubWatcher().tick();
-
-    // The claimed commit, not the branch: two pushes must ship two commits
-    // rather than the newer one twice.
-    expect(run).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: "org1",
-        repo: "acme/app",
-        branch: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-        env: "prod",
-        answers: { region: "lon1" },
-        interactive: false,
-      }),
-    );
-  });
-
-  it("keeps deploying the rest when one trigger throws", async () => {
-    const run = runDeployment
-      .mockRejectedValueOnce(new Error("boom"))
-      .mockResolvedValue({ runId: "run2" } as never);
-    claimDueDeploymentTriggers.mockResolvedValue([
-      dueTrigger({ id: "dt1" }),
-      dueTrigger({ id: "dt2", env: "staging" }),
-    ]);
-
-    await new GithubWatcher().tick();
-
-    expect(run).toHaveBeenCalledTimes(2);
   });
 });

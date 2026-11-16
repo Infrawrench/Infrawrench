@@ -292,33 +292,6 @@ app_env = {
   # and says it isn't configured and `web_fetch` is not offered to the model at
   # all; neither falls back to a request from the pod.
   # The token is the Worker's PROXY_TOKEN secret.
-  # --- Hosted Docker builds (Infrafile deploys from the web app) ---
-  # Optional. Without these a web deploy must name a build host via plan().buildOn;
-  # with them, builds run on Cloud Build and no build host is needed. They run on
-  # Google-managed workers rather than in this cluster on purpose: a Dockerfile's
-  # RUN is arbitrary code, and in-cluster it would sit one curl away from the
-  # metadata server and every other pod.
-  # IAM is provisioned by infra/terraform/builds.tf. The one manual step is
-  # removing project Editor from the Compute Engine default service account
-  # once nothing else uses it (see infra/README.md).
-  # Builds run customer code that can mint a token for the account it runs as,
-  # so that account holds no data access: source, staged images and run()
-  # output move through per-object signed URLs, and each per-build secret is
-  # bound to it individually. The pod gets two narrow Secret Manager custom
-  # roles (create + prefix-scoped manage) rather than secretmanager.admin.
-  GCP_BUILD_PROJECT_ID     = "your-gcp-project"
-  GCP_BUILD_STAGING_BUCKET = "your-project-infrawrench-builds"
-  # Required. The dedicated account builds run as: the build_service_account
-  # output. Without it hosted builds report themselves unavailable rather than
-  # running customer Dockerfiles as the project's default account.
-  GCP_BUILD_SERVICE_ACCOUNT = "infrawrench-prod-build@your-gcp-project.iam.gserviceaccount.com"
-  GCP_BUILD_REGION          = "us-east4"
-  # Optional: bill hosted build time through a Stripe meter (seconds, keyed by
-  # customer). Unset = builds absorbed into the flat plan. Existing
-  # subscriptions must have the metered price added by hand — checkout only
-  # attaches it to new ones.
-  INFRAWRENCH_STRIPE_BUILD_METER_EVENT = "hosted_build_seconds"
-  STRIPE_BUILD_PRICE_ID                = "price_..."
 
   # Optional: CI (app/packages/ci-proxy in front of the runners that
   # infra/ci-runners provisions). Without CI_PROXY_URL and CI_PROXY_KEY (the

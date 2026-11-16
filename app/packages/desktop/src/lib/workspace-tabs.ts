@@ -42,7 +42,6 @@ import {
   ciTabTarget,
   chatTabTarget,
   workflowsTabTarget,
-  deploymentsTabTarget,
   settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -96,7 +95,6 @@ export {
   ciTabTarget,
   chatTabTarget,
   workflowsTabTarget,
-  deploymentsTabTarget,
   settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -147,12 +145,6 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/workflows",
         search: target.workflowId ? { workflow: target.workflowId } : {},
-        ...(replace ? { replace: true } : {}),
-      };
-    case "deployments":
-      return {
-        to: "/deployments",
-        ...(target.repo ? { search: { repo: target.repo } } : {}),
         ...(replace ? { replace: true } : {}),
       };
     case "costs":
@@ -418,10 +410,6 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "workflows") {
     const params = new URLSearchParams(search ?? "");
     return workflowsTabTarget(params.get("workflow") ?? undefined);
-  }
-  if (segments[0] === "deployments") {
-    const params = new URLSearchParams(search ?? "");
-    return deploymentsTabTarget(params.get("repo") ?? undefined);
   }
   if (segments[0] === "agents") {
     return agentsTabTarget();

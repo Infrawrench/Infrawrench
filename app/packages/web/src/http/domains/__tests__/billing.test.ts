@@ -28,7 +28,6 @@ vi.mock("@/services/stripe", () => ({
   getStripePriceId: () => "price_123",
   getStripeChatPriceId: () => mockChatPriceId(),
   // Unset by default: the build line item is opt-in, same as chat's.
-  getStripeBuildPriceId: () => null,
   // None by default: CI's metered prices are opt-in too.
   getStripeCiPriceIds: () => mockCiPriceIds(),
   getStripeCapacitySlotPriceId: () => mockCapacityPriceId(),

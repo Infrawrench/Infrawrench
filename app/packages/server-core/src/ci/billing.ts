@@ -1,7 +1,7 @@
 /**
- * Billing for CI through Stripe Billing Meters, the way hosted build time is
- * billed (`billing/build-meter.ts`): usage in its natural unit, the price on
- * the Stripe price object, plain `fetch` (server-core has no Stripe SDK).
+ * Billing for CI through Stripe Billing Meters: usage in its natural unit, the
+ * price on the Stripe price object, plain `fetch` (server-core has no Stripe
+ * SDK).
  *
  * Three meters, each optional (unset means that part is not billed):
  * - `INFRAWRENCH_STRIPE_CI_VCPU_METER_EVENT`: vCPU-seconds per run (a job is

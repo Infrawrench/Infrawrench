@@ -32,7 +32,6 @@ const FEEDS = [
   "statusIncidents",
   "costAnomalies",
   "workflowRuns",
-  "deployments",
   "audit",
   "freezes",
   "driftAlerts",

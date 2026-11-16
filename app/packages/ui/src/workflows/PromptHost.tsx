@@ -15,14 +15,13 @@ export interface PromptHostProps {
 
 /**
  * Mount once at the app root. Renders a modal for each prompt raised by a
- * running workflow or Infrafile. One at a time; additional prompts queue.
+ * running workflow. One at a time; additional prompts queue.
  * Resolving or canceling feeds the answer back through
  * {@link resolveWorkflowPrompt}.
  *
  * Both hosts need this. Electron's `window.prompt` is a no-op, and the
  * browser's is a single-line string box that silently discards `kind` and
- * `options`, so a `select` rendered through it would offer no options at all,
- * which is precisely the interaction an Infrafile's `select(...)` depends on.
+ * `options`, so a `select` rendered through it would offer no options at all.
  */
 export function PromptHost({ title }: PromptHostProps) {
   const gt = useGT();

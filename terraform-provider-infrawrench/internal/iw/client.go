@@ -117,8 +117,8 @@ func (c *Client) Put(ctx context.Context, path string, body, out any) error {
 // Patch sends body as JSON and decodes the response into out. out may be nil.
 //
 // A handful of routes outside cost management are genuine partial updates
-// rather than replaces: accounts, roles, Slack channels, Teams webhooks and
-// deploy triggers. For those the wire struct's omitted keys mean "leave alone",
+// rather than replaces: accounts, roles, Slack channels and Teams webhooks.
+// For those the wire struct's omitted keys mean "leave alone",
 // which is the opposite of what an omitted key means on a PUT, so the two verbs
 // are kept visibly distinct rather than papered over here.
 func (c *Client) Patch(ctx context.Context, path string, body, out any) error {

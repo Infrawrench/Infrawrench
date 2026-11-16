@@ -50,8 +50,7 @@ const PERKS: { title: string; description: string; icon: React.ReactNode }[] = [
   },
   {
     title: "Automate in the cloud",
-    description:
-      "Workflows, deployments, and agents run server-side and keep going after your laptop sleeps.",
+    description: "Workflows and agents run server-side and keep going after your laptop sleeps.",
     icon: <PerkIcon d="M7 17a4 4 0 01-.6-7.95A5.5 5.5 0 0117.2 8.6 3.75 3.75 0 0116.75 17H7z" />,
   },
   {

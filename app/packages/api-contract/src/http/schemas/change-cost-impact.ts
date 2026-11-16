@@ -1,17 +1,14 @@
 /**
- * Cost per change and cost per deploy: what a change, or the resources a
- * deployment run provisioned, did to the run rate.
+ * Cost per change: what a change did to the run rate.
  *
  * One set of components for every surface that reports an impact, because the
  * shape of an impact is the contract and describing it several times is how
- * the descriptions end up disagreeing: `GET /deployments/runs/{id}/cost-impact`
- * (the deployments domain), `POST /cost-annotations/change-impact` (the cost
- * annotations domain) and `POST /changes/cost-impacts` (the resource changes
- * domain).
+ * the descriptions end up disagreeing: `POST /cost-annotations/change-impact`
+ * (the cost annotations domain) and `POST /changes/cost-impacts` (the resource
+ * changes domain).
  */
 import { Schema } from "effect";
 import { COST_BASES } from "@infrawrench/client-core";
-import { ResourceId, Uuid } from "./common";
 
 export const ChangeCostBasis = Schema.Literals(COST_BASES).annotate({
   identifier: "ChangeCostBasis",
@@ -111,41 +108,3 @@ export const ChangeCostImpact = Schema.Struct({
       "never causation; this is the number that says how much else was going on.",
   ),
 }).annotate({ identifier: "ChangeCostImpact" });
-
-const DeploymentCostImpactResource = Schema.Struct({
-  resourceId: ResourceId,
-  displayName: Schema.String,
-  pluginId: Schema.String,
-  resourceTypeId: Schema.String,
-  impact: ChangeCostImpact,
-}).annotate({ identifier: "DeploymentCostImpactResource" });
-
-/** `GET /deployments/runs/{id}/cost-impact`: the impact of what a run provisioned. */
-export const DeploymentCostImpact = Schema.Struct({
-  runId: Uuid,
-  costBasis: ChangeCostBasis,
-  windowDays: Schema.Int,
-  eventDay: Schema.String.annotate({
-    description: "The run's start day, UTC; what both windows hang off.",
-  }),
-  resources: Schema.Array(DeploymentCostImpactResource).annotate({
-    description:
-      "One row per resource the run provisioned through `infra.accounts.*.create(...)`. That is " +
-      "the only set attributable to a run with certainty: a deploy that merely re-shipped an " +
-      "image links to nothing and honestly reports an empty breakdown.",
-  }),
-  total: Schema.Array(
-    Schema.Struct({ currency: Schema.String, deltaPerDay: Schema.Finite }),
-  ).annotate({
-    description:
-      "Summed `deltaPerDay` per currency across the **measured** rows only, so the breakdown " +
-      "always adds up to it. An unmeasurable resource contributes nothing rather than zero.",
-  }),
-  unknownResources: NonNegativeInt(
-    "Rows excluded from `total` because their impact could not be measured.",
-  ),
-  confidence: ChangeCostImpactConfidence.annotateKey({
-    description:
-      "The weakest confidence among the measured rows; a breakdown is only as good as its worst row.",
-  }),
-}).annotate({ identifier: "DeploymentCostImpact" });

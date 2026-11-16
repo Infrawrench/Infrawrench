@@ -1,6 +1,5 @@
 /**
- * Plugin loader for the Electron main process (deploy's plugin host and the
- * CLI peer client).
+ * Plugin loader for the Electron main process (provider OAuth).
  *
  * Deliberately lighter than the renderer's `src/plugins/loader.ts`: it skips
  * manifest validation and the ENABLED_RESOURCE_TYPES filter, and only honours
@@ -12,8 +11,8 @@ import type { HostPlugin, Plugin } from "@infrawrench/plugin-base" with {
 };
 import { hostPlugins } from "@infrawrench/plugin-base/effect";
 
-import { DISABLED_PLUGINS } from "../../env";
-import { PLUGIN_MODULES } from "../../src/plugins/modules";
+import { DISABLED_PLUGINS } from "../env";
+import { PLUGIN_MODULES } from "../src/plugins/modules";
 
 export interface LoadedPlugin {
   /** Contract methods run on call and return Promises; see `hostPlugin`. */

@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 77 resources and 8 data
+accounts and access control, and alert delivery. 84 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -269,7 +269,6 @@ permissions.
 | API keys                                                                                                                                            | `apikeys:read`              | `apikeys:write`                                                            |
 | Roles                                                                                                                                               | `team:read`                 | `team:role:write`                                                          |
 | Role default dashboards                                                                                                                             | `team:read`                 | `org:settings:write`                                                       |
-| Deploy triggers                                                                                                                                     | `deployments:read`          | `deployments:write`                                                        |
 | Workflow schedules                                                                                                                                  | `workflows:read`            | `workflows:write`                                                          |
 | Session recording settings                                                                                                                          | `session-recordings:read`   | `session-recordings:write`                                                 |
 | Jira / Linear connections                                                                                                                           | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
@@ -651,7 +650,6 @@ stored one", leave it out.
 | `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
-| `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
 
 The provider cannot detect drift on any of them. That is a property of the API
 rather than a shortcut here: the values are genuinely not returned, by design.
@@ -762,7 +760,6 @@ secret store that consumes it rather than into an output.
 | `infrawrench_api_key`                | by id                                   | Every attribute replaces; delete is revoke                                                       |
 | `infrawrench_ssh_key`                | by id                                   | Import a public key, or generate and hold the private one                                        |
 | `infrawrench_ssh_snippet`            | by id                                   | Registers a command; does not run it                                                             |
-| `infrawrench_deploy_trigger`         | by id                                   | `enabled` is the only mutable field                                                              |
 | `infrawrench_workflow_schedule`      | by workflow id                          | Attaches a cron to a workflow it does not own                                                    |
 
 ### Alert delivery

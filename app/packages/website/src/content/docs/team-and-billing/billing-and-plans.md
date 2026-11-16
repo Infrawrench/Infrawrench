@@ -100,16 +100,6 @@ There's no time-limited trial. The free plan doesn't expire, so you can try Infr
 
 If your subscription includes a trial period (for example a promotional offer), the plan shows as a trial and works like the paid plan until the trial ends.
 
-## Hosted build time
-
-Deploys from the web app (including deploy-on-push) build on Infrawrench-hosted machines. If your deployment has build metering set up, that build time is billed per second alongside your seats. Each deploy run records how many seconds it used, and you can see it in the run history.
-
-These are never billed:
-
-- Plan-only previews, which don't build anything.
-- Builds on your own machine (`infrawrench deploy` locally) or on a `buildOn` host you provide.
-- Complimentary organizations.
-
 ## CI
 
 [CI](../features/ci.md) is part of paid plans and is billed by what your pipelines use, on the same invoice as your seats:

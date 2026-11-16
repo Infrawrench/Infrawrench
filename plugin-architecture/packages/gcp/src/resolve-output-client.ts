@@ -15,7 +15,7 @@ export async function resolveOutput(
 
   if (typeId === "gcp-project") {
     // The token comes from the account's own credentials: this is what lets
-    // an Infrafile authenticate gcloud (CLOUDSDK_AUTH_ACCESS_TOKEN) and
+    // a workflow authenticate gcloud (CLOUDSDK_AUTH_ACCESS_TOKEN) and
     // Artifact Registry (`docker login -u oauth2accesstoken`) without the
     // operator re-supplying the service-account key.
     if (outputKey === "accessToken") return ctx.token();

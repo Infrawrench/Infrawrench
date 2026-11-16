@@ -234,10 +234,6 @@ export function ciTabTarget(runId?: string): WorkspaceTabTarget {
   return { kind: "ci", ...(runId ? { runId } : {}) };
 }
 
-export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
-  return { kind: "deployments", ...(repo ? { repo } : {}) };
-}
-
 export function agentsTabTarget(): WorkspaceTabTarget {
   return { kind: "agents" };
 }

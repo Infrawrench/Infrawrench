@@ -7,7 +7,6 @@ import { RPC_CONNECT, RPC_DISCONNECT, RPC_FRAME } from "../shared/rpc/channels";
 // Must stay in sync with the ipcMain.handle(...) calls in the electron/ dir.
 const INVOKE_CHANNELS = [
   // shell command (`infrawrench` CLI shim)
-  // what `infrawrench deploy` did on this machine (local mode's Deploy tab)
   // cloud: none; every cloud call rides the `CloudHttp` RPC (`cloud-transport.ts`)
 ] as const;
 

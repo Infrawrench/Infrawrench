@@ -22,7 +22,6 @@ import {
   lazyPanel,
   useUIStore,
   workspaceTabTargetsEqual,
-  type DeploymentClient,
   type WorkspaceTab,
 } from "@infrawrench/ui";
 import { createDesktopSettingsApi } from "@/lib/settings-client";
@@ -61,7 +60,6 @@ import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
 import { createDesktopSeatsClient } from "@/lib/seats-client";
 import { createDesktopSavingsFindingsClient } from "@/lib/savings-findings-client";
 import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
-import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { type LogWorkspaceClient } from "@infrawrench/ui";
 // Static: the sidebar imports this module for its chat client anyway.
@@ -77,9 +75,6 @@ import { openExternalUrl } from "../lib/app-shell";
 // the barrel, or nothing splits; see `lazyPanel`. The dashboard, account and
 // resource panels stay static: they live in route modules the route tree
 // imports anyway.
-const DeploymentsPanel = lazyPanel(() =>
-  import("@infrawrench/ui/deployments/DeploymentsPanel").then((m) => m.DeploymentsPanel),
-);
 const CostsPanel = lazyPanel(() =>
   import("@infrawrench/ui/cost/CostsPanel").then((m) => m.CostsPanel),
 );
@@ -105,9 +100,6 @@ const DesktopWorkflowsPanel = lazyPanel(() =>
 );
 const DesktopGraphPanel = lazyPanel(() =>
   import("@/components/DesktopGraphPanel").then((m) => m.DesktopGraphPanel),
-);
-const LocalDeploymentsPanel = lazyPanel(() =>
-  import("@/components/LocalDeploymentsPanel").then((m) => m.LocalDeploymentsPanel),
 );
 const DesktopChangesPanel = lazyPanel(() =>
   import("@/components/DesktopChangesPanel").then((m) => m.DesktopChangesPanel),
@@ -202,14 +194,6 @@ const DesktopSettingsPanel = lazyPanel(() =>
 const DesktopAgentsPanel = lazyPanel(() =>
   import("@/components/DesktopAgentsPanel").then((m) => m.DesktopAgentsPanel),
 );
-
-// One client for every org: it resolves the active org per call, so switching
-// org under a mounted Deploy tab reaches the new org's repos and history.
-let deploymentClient: DeploymentClient | null = null;
-function getDeploymentClient(): DeploymentClient {
-  if (!deploymentClient) deploymentClient = createDesktopDeploymentClient();
-  return deploymentClient;
-}
 
 let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
@@ -417,22 +401,6 @@ function renderPanel(
 ) {
   const t = tab.target;
   switch (t.kind) {
-    case "deployments":
-      // Deploying from the app needs an org: a GitHub App install to read the
-      // Infrafile at a branch head, and a build host to build on. Without one
-      // the desktop binary is also the CLI, which runs the same three stages
-      // locally, so local mode shows what those runs did.
-      return activeCloudOrgId ? (
-        <DeploymentsPanel
-          // Keyed by org so switching org refetches repos, history and
-          // triggers rather than showing the previous org's.
-          key={activeCloudOrgId}
-          client={getDeploymentClient()}
-          {...(t.repo ? { initialRepo: t.repo } : {})}
-        />
-      ) : (
-        <LocalDeploymentsPanel />
-      );
     case "dashboard":
       return <DashboardPanel dashboardId={t.dashboardId} />;
     case "account":

@@ -5,7 +5,7 @@
  * tree and metric snapshot, transpiling the author's TypeScript, assembling the
  * guest program, and shaping the {@link RunResult}. The isolate itself (limits,
  * the pause-aware execution budget, the interrupt handler) lives in
- * {@link file://./isolate.ts} and is shared with the Infrafile runner.
+ * {@link file://./isolate.ts} and is shared with the custom graph runner.
  */
 import { FLUSH_METRICS_EPILOGUE, REPORT_GUEST_ERROR, runIsolate, toError } from "./isolate.js";
 import type { WorkflowHost, WorkflowRunContext } from "./host.js";

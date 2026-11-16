@@ -13,5 +13,5 @@
     "rootDir": ".",
     "types": ["node", "electron", "sql.js"]
   },
-  "include": ["electron", "src/db/schema.ts", "src/lib/deploy-history-types.ts", "shared"]
+  "include": ["electron", "src/db/schema.ts", "shared"]
 }

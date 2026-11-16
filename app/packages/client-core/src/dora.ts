@@ -142,13 +142,8 @@ export function isProductionEnvironment(
 /* ---------------------------------- inputs --------------------------------- */
 
 /** Where a deploy event was learned from. */
-export type DoraEventSource = "infrafile" | "plugin" | "github" | "api";
-export const DORA_EVENT_SOURCES: readonly DoraEventSource[] = [
-  "infrafile",
-  "plugin",
-  "github",
-  "api",
-];
+export type DoraEventSource = "plugin" | "github" | "api";
+export const DORA_EVENT_SOURCES: readonly DoraEventSource[] = ["plugin", "github", "api"];
 
 export type DoraDeployStatus = "success" | "failure" | "in_progress" | "canceled";
 export const DORA_DEPLOY_STATUSES: readonly DoraDeployStatus[] = [
