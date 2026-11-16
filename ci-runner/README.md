@@ -1297,7 +1297,8 @@ Edge.js's bootstrap has not already loaded: the patch that looks a child's
 command up on the `PATH` it is given (below) is applied to
 `child_process` the first time something asks for it (`require`, `import`
 or `process.getBuiltinModule`), not at every start, where loading it took
-37 more built-ins and about a tenth of a `node -e 0` (#996).
+28 more built-in modules and 9 bindings, about a tenth of a `node -e 0`
+(#996).
 
 The same preload covers one more place where Edge.js and Node differ, until
 a pinned Edge.js fixes it: a blob's stream reads past empty parts, because

@@ -11,8 +11,8 @@
 //
 // `patch()` wraps the module's functions the first time it is called.
 // preload.cjs calls it when something first asks for `child_process`, not
-// at start: loading it loads `net`, `dgram` and the streams too, 37 built-in
-// modules, about a tenth of what a `node -e 0` costs (#996).
+// at start: loading it loads `net`, `dgram` and the streams too, 28 built-in
+// modules and 9 bindings, about a tenth of what a `node -e 0` costs (#996).
 "use strict";
 
 const fs = require("node:fs");
