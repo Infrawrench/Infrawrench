@@ -75,17 +75,6 @@ variable "repository_id" {
   default     = "infrawrench"
 }
 
-variable "build_bucket_name" {
-  description = <<-EOT
-    GCS bucket for hosted-build sources, staged images and run() output.
-    Bucket names are globally unique, so leave this unset unless
-    `<project_id>-infrawrench-builds` is taken. Set GCP_BUILD_STAGING_BUCKET to
-    the build_staging_bucket output.
-  EOT
-  type        = string
-  default     = null
-}
-
 variable "github_repository" {
   description = <<-EOT
     `owner/repo` allowed to impersonate the CI service account through Workload
