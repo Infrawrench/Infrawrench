@@ -6,7 +6,7 @@ use crate::{
     bin_factory::{BinFactory, BinaryPackage, BinaryPackageCommand},
     capabilities::Capabilities,
     fs::{WasiFsRoot, WasiInodes},
-    import_object_for_all_wasi_versions,
+    import_object_for_module_wasi_versions,
     os::task::{
         control_plane::ControlPlaneError,
         process::{WasiProcess, WasiProcessId},
@@ -545,7 +545,7 @@ impl WasiEnv {
 
         // Let's instantiate the module with the imports.
         let mut import_object =
-            import_object_for_all_wasi_versions(&module, &mut store, &func_env.env);
+            import_object_for_module_wasi_versions(&module, &mut store, &func_env.env);
         if let Some(memory) = memory.clone() {
             import_object.define("env", "memory", memory);
         }

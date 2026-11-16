@@ -189,12 +189,13 @@ std::string ToUtf8String(napi_env env, napi_value value, const char* fallback) {
   return std::string(*utf8, static_cast<size_t>(utf8.length()));
 }
 
-bool StartsWithBomHashbang(const std::string& source) {
-  return source.size() >= 5 &&
-         static_cast<unsigned char>(source[0]) == 0xef &&
-         static_cast<unsigned char>(source[1]) == 0xbb &&
-         static_cast<unsigned char>(source[2]) == 0xbf &&
-         source[3] == '#' && source[4] == '!';
+// A byte order mark followed by "#!" (U+FEFF, '#', '!'), read from the
+// string itself rather than from a UTF-8 copy of all of it.
+bool StartsWithBomHashbang(v8::Isolate* isolate, v8::Local<v8::String> source) {
+  if (source.IsEmpty() || source->Length() < 3) return false;
+  uint16_t head[3] = {0, 0, 0};
+  source->WriteV2(isolate, 0, 3, head);
+  return head[0] == 0xfeff && head[1] == '#' && head[2] == '!';
 }
 
 bool SetNamed(v8::Local<v8::Context> context,
@@ -1520,7 +1521,10 @@ v8::MaybeLocal<v8::Function> CompileCjsFunction(v8::Local<v8::Context> context,
 
 struct BytecodeRecord {
   std::vector<uint8_t> bytes;
-  std::string source_utf8;
+  // The source as the caller gave it. Compiles use this string itself: a
+  // copy out to UTF-8 and back in made two more passes over every module's
+  // source and a second V8 string of it (#996).
+  v8::Global<v8::String> source;
   std::string filename_utf8;
   int32_t shape = unofficial_napi_bytecode_shape_script;
   std::vector<std::string> params;
@@ -1591,7 +1595,7 @@ v8::ScriptOrigin BytecodeOrigin(v8::Isolate* isolate,
                           HostDefinedOptions(isolate, host_id_symbol));
 }
 
-// Compiles record->source_utf8 per record->shape and stores the live artifact.
+// Compiles record->source per record->shape and stores the live artifact.
 // consume == true offers record->bytes as a code cache (rejected_out gets
 // V8's verdict); consume == false compiles eagerly and fills record->bytes
 // from the produced code cache. Returns false on a compile error (exception
@@ -1606,10 +1610,7 @@ bool CompileBytecodeRecord(napi_env env,
 
   if (rejected_out != nullptr) *rejected_out = false;
 
-  v8::Local<v8::String> code_str =
-      v8::String::NewFromUtf8(isolate, record->source_utf8.c_str(), v8::NewStringType::kNormal,
-                              static_cast<int>(record->source_utf8.size()))
-          .ToLocalChecked();
+  v8::Local<v8::String> code_str = record->source.Get(isolate);
   v8::Local<v8::String> filename_str =
       v8::String::NewFromUtf8(isolate, record->filename_utf8.c_str(), v8::NewStringType::kNormal,
                               static_cast<int>(record->filename_utf8.size()))
@@ -1871,7 +1872,7 @@ static napi_status BytecodeCompile(
   v8::Context::Scope context_scope(context);
 
   auto record = std::make_unique<BytecodeRecord>();
-  record->source_utf8 = ToUtf8String(env, source_text, "");
+  record->source.Reset(isolate, ToV8String(env, source_text, ""));
   record->filename_utf8 = ToUtf8String(env, filename, "[eval]");
   record->shape = shape;
   record->line_offset = line_offset;
@@ -1890,10 +1891,7 @@ static napi_status BytecodeCompile(
     if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
       if (can_parse_as_module_out != nullptr && shape != unofficial_napi_bytecode_shape_module &&
           !try_catch.Message().IsEmpty()) {
-        v8::Local<v8::String> code_str =
-            v8::String::NewFromUtf8(isolate, record->source_utf8.c_str(), v8::NewStringType::kNormal,
-                                    static_cast<int>(record->source_utf8.size()))
-                .ToLocalChecked();
+        v8::Local<v8::String> code_str = record->source.Get(isolate);
         v8::Local<v8::String> filename_str =
             v8::String::NewFromUtf8(isolate, record->filename_utf8.c_str(), v8::NewStringType::kNormal,
                                     static_cast<int>(record->filename_utf8.size()))
@@ -1939,7 +1937,7 @@ static napi_status BytecodeDeserialize(
 
   auto record = std::make_unique<BytecodeRecord>();
   record->bytes.assign(bytes, bytes + byte_length);
-  record->source_utf8 = ToUtf8String(env, source_text, "");
+  record->source.Reset(isolate, ToV8String(env, source_text, ""));
   record->filename_utf8 = ToUtf8String(env, filename, "[eval]");
   record->shape = shape;
   if (!ReadParamsArray(env, params_or_undefined, &record->params)) return napi_invalid_arg;
@@ -2093,10 +2091,7 @@ napi_status NAPI_CDECL unofficial_napi_contextify_run_script(
 
   v8::Local<v8::String> code =
       bytecode_record != nullptr
-          ? v8::String::NewFromUtf8(isolate, bytecode_record->source_utf8.c_str(),
-                                    v8::NewStringType::kNormal,
-                                    static_cast<int>(bytecode_record->source_utf8.size()))
-                .ToLocalChecked()
+          ? bytecode_record->source.Get(isolate)
           : ToV8String(env, source->text, "");
   v8::Local<v8::String> filename_str = ToV8String(env, filename, "[eval]");
 
@@ -2242,9 +2237,10 @@ napi_status NAPI_CDECL unofficial_napi_contextify_compile_function(
     return napi_invalid_arg;
   }
 
-  std::string source_text = bytecode_record != nullptr ? bytecode_record->source_utf8
-                                                       : ToUtf8String(env, source->text, "");
-  if (StartsWithBomHashbang(source_text)) {
+  v8::Local<v8::String> source_text = bytecode_record != nullptr
+                                          ? bytecode_record->source.Get(isolate)
+                                          : ToV8String(env, source->text, "");
+  if (StartsWithBomHashbang(isolate, source_text)) {
     v8::Local<v8::String> message = v8::String::NewFromUtf8Literal(
         isolate, "Invalid or unexpected token");
     v8::Local<v8::Value> exception = v8::Exception::SyntaxError(message);
@@ -2311,12 +2307,7 @@ napi_status NAPI_CDECL unofficial_napi_contextify_compile_function(
   }
 
   if (fn.IsEmpty()) {
-    v8::Local<v8::String> code_str =
-        v8::String::NewFromUtf8(env->isolate,
-                                source_text.c_str(),
-                                v8::NewStringType::kNormal,
-                                static_cast<int>(source_text.size()))
-            .ToLocalChecked();
+    v8::Local<v8::String> code_str = source_text;
 
     v8::ScriptCompiler::CachedData* cached_data = nullptr;
     if (bytecode_record != nullptr && !bytecode_record->bytes.empty()) {
@@ -2475,10 +2466,7 @@ static napi_status CreateSourceTextModule(
   v8::Local<v8::String> url_str = ToV8String(env, url, "vm:module");
   v8::Local<v8::String> source_str =
       bytecode_record != nullptr
-          ? v8::String::NewFromUtf8(isolate, bytecode_record->source_utf8.c_str(),
-                                    v8::NewStringType::kNormal,
-                                    static_cast<int>(bytecode_record->source_utf8.size()))
-                .ToLocalChecked()
+          ? bytecode_record->source.Get(isolate)
           : ToV8String(env, source->text, "");
 
   v8::Local<v8::Symbol> host_id_symbol;

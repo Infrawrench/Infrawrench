@@ -2626,6 +2626,130 @@
      let mut prop_name_ids: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_types: Vec<u32> = Vec::with_capacity(pc as usize);
      let mut prop_value_ids: Vec<u32> = Vec::with_capacity(pc as usize);
+--- a/src/guest/util.rs
++++ b/src/guest/util.rs
+@@ -135,16 +135,114 @@
+     let (state, store) = env.data_and_store_mut();
+     let memory = state.memory.clone()?;
+     let view = memory.view(&store);
++    scan_c_string(view.data_size(), guest_ptr as u64, |offset, buf| {
++        view.read(offset, buf).is_ok()
++    })
++}
++
++/// iwci patch (#996): the bytes of the NUL-terminated string at `start` in a
++/// memory of `size` bytes, read a chunk at a time with `read`, where they
++/// were read a byte (and a bounds-checked read, and a push) at a time. Every
++/// N-API call that names a property or a function passes one. `None` for a
++/// string that runs past the end of memory or past
++/// `MAX_GUEST_CSTRING_SCAN` bytes, as before.
++fn scan_c_string(
++    size: u64,
++    start: u64,
++    mut read: impl FnMut(u64, &mut [u8]) -> bool,
++) -> Option<Vec<u8>> {
+     let mut out = Vec::new();
+-    let mut offset = guest_ptr as u64;
+-    for _ in 0..super::MAX_GUEST_CSTRING_SCAN {
+-        let mut b = [0u8; 1];
+-        view.read(offset, &mut b).ok()?;
+-        if b[0] == 0 {
++    let mut chunk = [0u8; 256];
++    while out.len() < super::MAX_GUEST_CSTRING_SCAN {
++        let offset = start + out.len() as u64;
++        if offset >= size {
++            return None;
++        }
++        let want = (size - offset)
++            .min(chunk.len() as u64)
++            .min((super::MAX_GUEST_CSTRING_SCAN - out.len()) as u64) as usize;
++        if !read(offset, &mut chunk[..want]) {
++            return None;
++        }
++        if let Some(end) = chunk[..want].iter().position(|&b| b == 0) {
++            out.extend_from_slice(&chunk[..end]);
+             return Some(out);
+         }
+-        out.push(b[0]);
+-        offset += 1;
++        out.extend_from_slice(&chunk[..want]);
+     }
+     None
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::scan_c_string;
++    use super::super::MAX_GUEST_CSTRING_SCAN;
++
++    /// What the byte-at-a-time loop returned.
++    fn bytewise(memory: &[u8], start: u64) -> Option<Vec<u8>> {
++        let mut out = Vec::new();
++        let mut offset = start;
++        for _ in 0..MAX_GUEST_CSTRING_SCAN {
++            let b = *memory.get(usize::try_from(offset).ok()?)?;
++            if b == 0 {
++                return Some(out);
++            }
++            out.push(b);
++            offset += 1;
++        }
++        None
++    }
++
++    fn chunked(memory: &[u8], start: u64) -> Option<Vec<u8>> {
++        scan_c_string(memory.len() as u64, start, |offset, buf| {
++            let at = offset as usize;
++            match memory.get(at..at + buf.len()) {
++                Some(src) => {
++                    buf.copy_from_slice(src);
++                    true
++                }
++                None => false,
++            }
++        })
++    }
++
++    #[test]
++    fn a_c_string_reads_the_same_a_chunk_at_a_time() {
++        let mut memory = vec![b'x'; 3 * MAX_GUEST_CSTRING_SCAN];
++        // From 1001, the next terminator is past the limit.
++        for at in [0, 1, 255, 256, 257, 1000, 70_000, 135_000] {
++            memory[at] = 0;
++        }
++        let starts = [
++            0,
++            1,
++            2,
++            200,
++            255,
++            256,
++            258,
++            999,
++            1001,
++            1001 + MAX_GUEST_CSTRING_SCAN as u64 - 1,
++            70_001,
++            135_001,
++            memory.len() as u64 - 10,
++            memory.len() as u64 - 1,
++            memory.len() as u64,
++            memory.len() as u64 + 5,
++        ];
++        for start in starts {
++            assert_eq!(chunked(&memory, start), bytewise(&memory, start), "from {start}");
++        }
++        // Terminated exactly at the limit, and one byte past it.
++        let mut memory = vec![b'y'; MAX_GUEST_CSTRING_SCAN + 1];
++        memory[MAX_GUEST_CSTRING_SCAN - 1] = 0;
++        assert_eq!(chunked(&memory, 0).map(|s| s.len()), Some(MAX_GUEST_CSTRING_SCAN - 1));
++        let mut memory = vec![b'y'; MAX_GUEST_CSTRING_SCAN + 1];
++        memory[MAX_GUEST_CSTRING_SCAN] = 0;
++        assert_eq!(chunked(&memory, 0), None);
++        assert_eq!(bytewise(&memory, 0), None);
++        // A read that fails is no string.
++        assert_eq!(scan_c_string(10, 0, |_, _| false), None);
++    }
++}
 --- a/src/guest_heap.rs
 +++ b/src/guest_heap.rs
 @@ -133,6 +133,16 @@
@@ -5891,7 +6015,26 @@
  };
  
  std::mutex g_context_mu;
-@@ -198,7 +201,7 @@
+@@ -186,19 +189,20 @@
+   return std::string(*utf8, static_cast<size_t>(utf8.length()));
+ }
+ 
+-bool StartsWithBomHashbang(const std::string& source) {
+-  return source.size() >= 5 &&
+-         static_cast<unsigned char>(source[0]) == 0xef &&
+-         static_cast<unsigned char>(source[1]) == 0xbb &&
+-         static_cast<unsigned char>(source[2]) == 0xbf &&
+-         source[3] == '#' && source[4] == '!';
++// A byte order mark followed by "#!" (U+FEFF, '#', '!'), read from the
++// string itself rather than from a UTF-8 copy of all of it.
++bool StartsWithBomHashbang(v8::Isolate* isolate, v8::Local<v8::String> source) {
++  if (source.IsEmpty() || source->Length() < 3) return false;
++  uint16_t head[3] = {0, 0, 0};
++  source->WriteV2(isolate, 0, 3, head);
++  return head[0] == 0xfeff && head[1] == '#' && head[2] == '!';
+ }
+ 
+ bool SetNamed(v8::Local<v8::Context> context,
                v8::Local<v8::Object> target,
                const char* key,
                v8::Local<v8::Value> value) {
@@ -5900,7 +6043,7 @@
  }
  
  bool SetSymbol(v8::Local<v8::Context> context,
-@@ -218,7 +221,7 @@
+@@ -218,7 +222,7 @@
                     const char* description,
                     v8::Local<v8::Value> value) {
    if (target.IsEmpty() || description == nullptr) return false;
@@ -5909,7 +6052,7 @@
  }
  
  void ResetRef(napi_env env, napi_ref* ref_ptr) {
-@@ -600,11 +603,24 @@
+@@ -600,11 +604,24 @@
    return nullptr;
  }
  
@@ -5935,7 +6078,7 @@
  void RemoveModuleRecord(napi_env env, ModuleWrapRecord* record) {
    if (env == nullptr || record == nullptr) return;
    auto* state = GetModuleWrapState(env);
-@@ -693,6 +709,42 @@
+@@ -693,6 +710,42 @@
    return true;
  }
  
@@ -5978,7 +6121,7 @@
  bool CreateNodeBufferFromBytes(napi_env env, const uint8_t* data, size_t size, napi_value* out) {
    if (out == nullptr) return false;
    *out = nullptr;
-@@ -700,7 +752,10 @@
+@@ -700,7 +753,10 @@
    v8::Isolate* isolate = env->isolate;
    v8::Local<v8::Context> context = env->context();
  
@@ -5990,7 +6133,7 @@
    if (!store) return false;
    if (size > 0 && data != nullptr) {
      std::memcpy(store->Data(), data, size);
-@@ -709,21 +764,15 @@
+@@ -709,21 +765,15 @@
    v8::Local<v8::ArrayBuffer> ab = v8::ArrayBuffer::New(isolate, std::move(store));
    v8::Local<v8::Uint8Array> view = v8::Uint8Array::New(ab, 0, size);
  
@@ -6021,7 +6164,7 @@
    }
  
    *out = napi_v8_wrap_value(env, view);
-@@ -798,7 +847,7 @@
+@@ -798,7 +848,7 @@
        rec.key_ref = nullptr;
      }
      rec.context.Reset();
@@ -6030,7 +6173,7 @@
    }
    g_context_records.erase(it);
  }
-@@ -838,10 +887,13 @@
+@@ -838,10 +888,13 @@
  }
  
  void EnsureModuleWrapCleanupHook(napi_env env) {
@@ -6047,7 +6190,7 @@
    }
  }
  
-@@ -909,15 +961,15 @@
+@@ -909,15 +962,15 @@
  }
  
  void ThrowV8CodeError(v8::Local<v8::Context> context, const char* code, const std::string& message) {
@@ -6067,7 +6210,7 @@
  }
  
  ModuleWrapRecord* FindModuleRecordForModule(napi_env env, v8::Local<v8::Module> module) {
-@@ -1021,7 +1073,7 @@
+@@ -1021,7 +1074,7 @@
    v8::Local<v8::FixedArray> raw_requests = module->GetModuleRequests();
    record->module_requests.reserve(raw_requests->Length());
    for (int i = 0; i < raw_requests->Length(); ++i) {
@@ -6076,7 +6219,7 @@
      if (request_value.IsEmpty() || !request_value->IsModuleRequest()) {
        return false;
      }
-@@ -1032,8 +1084,8 @@
+@@ -1032,8 +1085,8 @@
  
      v8::Local<v8::FixedArray> raw_attributes = request->GetImportAttributes();
      for (int j = 0; j < raw_attributes->Length(); j += 3) {
@@ -6087,7 +6230,7 @@
        if (key_value.IsEmpty() || value_value.IsEmpty()) {
          return false;
        }
-@@ -1054,7 +1106,7 @@
+@@ -1054,7 +1107,7 @@
                                                   v8::Local<v8::String> specifier,
                                                   v8::Local<v8::FixedArray> import_attributes,
                                                   v8::Local<v8::Module> referrer) {
@@ -6096,7 +6239,7 @@
    if (env == nullptr) return v8::MaybeLocal<v8::Module>();
    ModuleWrapRecord* dependent = FindModuleRecordForModule(env, referrer);
    if (dependent == nullptr || dependent->linked_requests.empty()) {
-@@ -1064,8 +1116,8 @@
+@@ -1064,8 +1117,8 @@
  
    std::vector<ModuleImportAttributeRecord> attributes;
    for (int i = 0; i < import_attributes->Length(); i += 3) {
@@ -6107,7 +6250,7 @@
      if (key_value.IsEmpty() || value_value.IsEmpty()) {
        return v8::MaybeLocal<v8::Module>();
      }
-@@ -1079,14 +1131,21 @@
+@@ -1079,14 +1132,21 @@
      ThrowV8CodeError(context, "ERR_VM_MODULE_LINK_FAILURE", "Module request is not cached");
      return v8::MaybeLocal<v8::Module>();
    }
@@ -6131,7 +6274,7 @@
    if (env == nullptr) return v8::MaybeLocal<v8::Object>();
    ModuleWrapRecord* dependent = FindModuleRecordForModule(env, referrer);
    if (dependent == nullptr || dependent->linked_requests.empty()) {
-@@ -1096,8 +1155,8 @@
+@@ -1096,8 +1156,8 @@
  
    std::vector<ModuleImportAttributeRecord> attributes;
    for (int i = 0; i < import_attributes->Length(); i += 3) {
@@ -6142,7 +6285,7 @@
      if (key_value.IsEmpty() || value_value.IsEmpty()) {
        return v8::MaybeLocal<v8::Object>();
      }
-@@ -1133,7 +1192,7 @@
+@@ -1133,7 +1193,7 @@
  
  v8::MaybeLocal<v8::Value> SyntheticModuleEvaluationSteps(v8::Local<v8::Context> context,
                                                           v8::Local<v8::Module> module) {
@@ -6151,7 +6294,7 @@
    if (env == nullptr) return v8::MaybeLocal<v8::Value>();
    ModuleWrapRecord* record = FindModuleRecordForModule(env, module);
    if (record == nullptr) return v8::MaybeLocal<v8::Value>();
-@@ -1148,7 +1207,7 @@
+@@ -1148,7 +1208,7 @@
      if (napi_is_exception_pending(env, &pending) == napi_ok && pending) {
        napi_value error = nullptr;
        if (napi_get_and_clear_last_exception(env, &error) == napi_ok && error != nullptr) {
@@ -6160,7 +6303,7 @@
        }
      }
      return v8::MaybeLocal<v8::Value>();
-@@ -1158,7 +1217,7 @@
+@@ -1158,7 +1218,7 @@
    if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
      return v8::MaybeLocal<v8::Value>();
    }
@@ -6169,7 +6312,7 @@
      return v8::MaybeLocal<v8::Value>();
    }
    return resolver->GetPromise();
-@@ -1174,8 +1233,8 @@
+@@ -1174,8 +1234,8 @@
    names.reserve(import_attributes->Length() / 2);
    values.reserve(import_attributes->Length() / 2);
    for (int i = 0; i < import_attributes->Length(); i += 2) {
@@ -6180,7 +6323,7 @@
      if (key.IsEmpty() || value.IsEmpty() || !key->IsName()) continue;
      names.push_back(key.As<v8::Name>());
      values.push_back(value);
-@@ -1190,7 +1249,7 @@
+@@ -1190,7 +1250,7 @@
      v8::Local<v8::String> specifier,
      v8::ModuleImportPhase phase,
      v8::Local<v8::FixedArray> import_attributes) {
@@ -6189,7 +6332,7 @@
    if (env == nullptr) return v8::MaybeLocal<v8::Promise>();
  
    auto* state = GetModuleWrapState(env);
-@@ -1198,7 +1257,7 @@
+@@ -1198,7 +1258,7 @@
    napi_value callback = GetRefValue(env, state->import_module_dynamically_ref);
    if (callback == nullptr) return v8::MaybeLocal<v8::Promise>();
  
@@ -6198,7 +6341,7 @@
    v8::EscapableHandleScope handle_scope(isolate);
    v8::Context::Scope context_scope(context);
  
-@@ -1207,7 +1266,7 @@
+@@ -1207,7 +1267,7 @@
    if (!host_defined_options.IsEmpty() && host_defined_options->IsFixedArray()) {
      v8::Local<v8::FixedArray> options = host_defined_options.As<v8::FixedArray>();
      if (options->Length() == kHostDefinedOptionsLength) {
@@ -6207,7 +6350,7 @@
        have_host_defined_options = true;
      }
    }
-@@ -1274,14 +1333,19 @@
+@@ -1274,14 +1334,19 @@
  void HostInitializeImportMetaObject(v8::Local<v8::Context> context,
                                      v8::Local<v8::Module> module,
                                      v8::Local<v8::Object> meta) {
@@ -6231,7 +6374,7 @@
    napi_value wrapper = GetRefValue(env, record->wrapper_ref);
    napi_value id_value = GetRefValue(env, record->host_defined_option_ref);
    if (callback == nullptr || wrapper == nullptr || id_value == nullptr) return;
-@@ -1298,23 +1362,23 @@
+@@ -1298,23 +1363,23 @@
                                                        v8::Local<v8::String> specifier,
                                                        v8::Local<v8::FixedArray> /*import_attributes*/,
                                                        v8::Local<v8::Module> /*referrer*/) {
@@ -6259,7 +6402,7 @@
    EnsureContextCleanupHook(env);
  
    ContextRecord record;
-@@ -1341,7 +1405,7 @@
+@@ -1341,7 +1406,7 @@
    v8::Local<v8::Context> context = rec->context.Get(env->isolate);
    if (context.IsEmpty()) return false;
    *context_out = context;
@@ -6268,7 +6411,7 @@
    return true;
  }
  
-@@ -1419,7 +1483,7 @@
+@@ -1419,7 +1484,7 @@
                                                  v8::Local<v8::String> filename,
                                                  bool is_cjs_scope,
                                                  v8::Local<v8::Symbol> host_id_symbol = v8::Local<v8::Symbol>()) {
@@ -6277,7 +6420,40 @@
  
    v8::ScriptOrigin origin(filename,
                            0,
-@@ -1698,11 +1762,12 @@
+@@ -1456,7 +1521,10 @@
+ 
+ struct BytecodeRecord {
+   std::vector<uint8_t> bytes;
+-  std::string source_utf8;
++  // The source as the caller gave it. Compiles use this string itself: a
++  // copy out to UTF-8 and back in made two more passes over every module's
++  // source and a second V8 string of it (#996).
++  v8::Global<v8::String> source;
+   std::string filename_utf8;
+   int32_t shape = unofficial_napi_bytecode_shape_script;
+   std::vector<std::string> params;
+@@ -1527,7 +1595,7 @@
+                           HostDefinedOptions(isolate, host_id_symbol));
+ }
+ 
+-// Compiles record->source_utf8 per record->shape and stores the live artifact.
++// Compiles record->source per record->shape and stores the live artifact.
+ // consume == true offers record->bytes as a code cache (rejected_out gets
+ // V8's verdict); consume == false compiles eagerly and fills record->bytes
+ // from the produced code cache. Returns false on a compile error (exception
+@@ -1542,10 +1610,7 @@
+ 
+   if (rejected_out != nullptr) *rejected_out = false;
+ 
+-  v8::Local<v8::String> code_str =
+-      v8::String::NewFromUtf8(isolate, record->source_utf8.c_str(), v8::NewStringType::kNormal,
+-                              static_cast<int>(record->source_utf8.size()))
+-          .ToLocalChecked();
++  v8::Local<v8::String> code_str = record->source.Get(isolate);
+   v8::Local<v8::String> filename_str =
+       v8::String::NewFromUtf8(isolate, record->filename_utf8.c_str(), v8::NewStringType::kNormal,
+                               static_cast<int>(record->filename_utf8.size()))
+@@ -1698,11 +1763,12 @@
      }
    }
  
@@ -6292,7 +6468,89 @@
    }
  
    std::vector<SavedOwnProperty> saved_properties;
-@@ -2465,7 +2530,9 @@
+@@ -1806,7 +1872,7 @@
+   v8::Context::Scope context_scope(context);
+ 
+   auto record = std::make_unique<BytecodeRecord>();
+-  record->source_utf8 = ToUtf8String(env, source_text, "");
++  record->source.Reset(isolate, ToV8String(env, source_text, ""));
+   record->filename_utf8 = ToUtf8String(env, filename, "[eval]");
+   record->shape = shape;
+   record->line_offset = line_offset;
+@@ -1825,10 +1891,7 @@
+     if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
+       if (can_parse_as_module_out != nullptr && shape != unofficial_napi_bytecode_shape_module &&
+           !try_catch.Message().IsEmpty()) {
+-        v8::Local<v8::String> code_str =
+-            v8::String::NewFromUtf8(isolate, record->source_utf8.c_str(), v8::NewStringType::kNormal,
+-                                    static_cast<int>(record->source_utf8.size()))
+-                .ToLocalChecked();
++        v8::Local<v8::String> code_str = record->source.Get(isolate);
+         v8::Local<v8::String> filename_str =
+             v8::String::NewFromUtf8(isolate, record->filename_utf8.c_str(), v8::NewStringType::kNormal,
+                                     static_cast<int>(record->filename_utf8.size()))
+@@ -1874,7 +1937,7 @@
+ 
+   auto record = std::make_unique<BytecodeRecord>();
+   record->bytes.assign(bytes, bytes + byte_length);
+-  record->source_utf8 = ToUtf8String(env, source_text, "");
++  record->source.Reset(isolate, ToV8String(env, source_text, ""));
+   record->filename_utf8 = ToUtf8String(env, filename, "[eval]");
+   record->shape = shape;
+   if (!ReadParamsArray(env, params_or_undefined, &record->params)) return napi_invalid_arg;
+@@ -2028,10 +2091,7 @@
+ 
+   v8::Local<v8::String> code =
+       bytecode_record != nullptr
+-          ? v8::String::NewFromUtf8(isolate, bytecode_record->source_utf8.c_str(),
+-                                    v8::NewStringType::kNormal,
+-                                    static_cast<int>(bytecode_record->source_utf8.size()))
+-                .ToLocalChecked()
++          ? bytecode_record->source.Get(isolate)
+           : ToV8String(env, source->text, "");
+   v8::Local<v8::String> filename_str = ToV8String(env, filename, "[eval]");
+ 
+@@ -2177,9 +2237,10 @@
+     return napi_invalid_arg;
+   }
+ 
+-  std::string source_text = bytecode_record != nullptr ? bytecode_record->source_utf8
+-                                                       : ToUtf8String(env, source->text, "");
+-  if (StartsWithBomHashbang(source_text)) {
++  v8::Local<v8::String> source_text = bytecode_record != nullptr
++                                          ? bytecode_record->source.Get(isolate)
++                                          : ToV8String(env, source->text, "");
++  if (StartsWithBomHashbang(isolate, source_text)) {
+     v8::Local<v8::String> message = v8::String::NewFromUtf8Literal(
+         isolate, "Invalid or unexpected token");
+     v8::Local<v8::Value> exception = v8::Exception::SyntaxError(message);
+@@ -2246,12 +2307,7 @@
+   }
+ 
+   if (fn.IsEmpty()) {
+-    v8::Local<v8::String> code_str =
+-        v8::String::NewFromUtf8(env->isolate,
+-                                source_text.c_str(),
+-                                v8::NewStringType::kNormal,
+-                                static_cast<int>(source_text.size()))
+-            .ToLocalChecked();
++    v8::Local<v8::String> code_str = source_text;
+ 
+     v8::ScriptCompiler::CachedData* cached_data = nullptr;
+     if (bytecode_record != nullptr && !bytecode_record->bytes.empty()) {
+@@ -2410,10 +2466,7 @@
+   v8::Local<v8::String> url_str = ToV8String(env, url, "vm:module");
+   v8::Local<v8::String> source_str =
+       bytecode_record != nullptr
+-          ? v8::String::NewFromUtf8(isolate, bytecode_record->source_utf8.c_str(),
+-                                    v8::NewStringType::kNormal,
+-                                    static_cast<int>(bytecode_record->source_utf8.size()))
+-                .ToLocalChecked()
++          ? bytecode_record->source.Get(isolate)
+           : ToV8String(env, source->text, "");
+ 
+   v8::Local<v8::Symbol> host_id_symbol;
+@@ -2465,7 +2518,9 @@
                                             v8::ScriptCompiler::NoCacheReason::kNoCacheNoReason)
               .ToLocal(&module)) {
        if (try_catch.HasCaught() && !try_catch.HasTerminated()) {
@@ -6303,7 +6561,7 @@
              isolate, context, try_catch.Exception(), try_catch.Message());
          return ThrowTryCatchException(env, try_catch);
        }
-@@ -2505,7 +2572,7 @@
+@@ -2505,7 +2560,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6312,7 +6570,7 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -2564,7 +2631,7 @@
+@@ -2564,7 +2619,7 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6321,7 +6579,7 @@
    }
    *module_out = ModuleHandle(record);
    return napi_ok;
-@@ -2727,11 +2794,19 @@
+@@ -2727,11 +2782,19 @@
    v8::Local<v8::Context> context = record->context.Get(isolate);
    v8::Context::Scope context_scope(context);
    v8::Local<v8::Module> module = record->module.Get(isolate);
@@ -6341,7 +6599,7 @@
        return ThrowTryCatchException(env, try_catch);
      }
      return napi_generic_failure;
-@@ -2811,8 +2886,11 @@
+@@ -2811,8 +2874,11 @@
    if (module->IsGraphAsync()) {
      auto stalled_messages = std::get<1>(module->GetStalledTopLevelAwaitMessages(isolate));
      for (const auto& message : stalled_messages) {
@@ -6355,7 +6613,7 @@
      }
      ThrowCodeError(env,
                     "ERR_REQUIRE_ASYNC_MODULE",
-@@ -2910,8 +2988,11 @@
+@@ -2910,8 +2976,11 @@
    if (!warnings) return napi_ok;
  
    for (const auto& message : stalled_messages) {
@@ -6369,7 +6627,7 @@
    }
    return napi_ok;
  }
-@@ -3007,7 +3088,7 @@
+@@ -3007,7 +3076,7 @@
  
    EnsureModuleWrapCleanupHook(env);
    std::lock_guard<std::mutex> lock(g_module_wrap_mu);
@@ -6378,7 +6636,7 @@
    ResetRef(env, &state->import_module_dynamically_ref);
    ResetRef(env, &state->initialize_import_meta_ref);
    state->import_module_dynamically_ref = import_ref;
-@@ -3048,12 +3129,12 @@
+@@ -3048,12 +3117,12 @@
  
    {
      std::lock_guard<std::mutex> lock(g_module_wrap_mu);

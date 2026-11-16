@@ -8,11 +8,17 @@
 // name as argv[0], when the child's PATH differs from this process's. A
 // command run through a shell is left to the shell, which already reads the
 // child's PATH.
+//
+// `patch()` wraps the module's functions the first time it is called.
+// preload.cjs calls it when something first asks for `child_process`, not
+// at start: loading it loads `net`, `dgram` and the streams too, 37 built-in
+// modules, about a tenth of what a `node -e 0` costs (#996).
 "use strict";
 
-const cp = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+
+let patched = false;
 
 function resolveOnChildPath(file, options) {
   if (typeof file !== "string" || file === "" || file.includes("/")) return null;
@@ -31,16 +37,34 @@ function resolveOnChildPath(file, options) {
   return null;
 }
 
-for (const name of ["spawn", "spawnSync", "execFile", "execFileSync"]) {
-  const original = cp[name];
-  if (typeof original !== "function") continue;
-  cp[name] = {
-    [name](file, ...rest) {
-      const options = rest.find((r) => r !== null && typeof r === "object" && !Array.isArray(r));
-      const resolved = resolveOnChildPath(file, options);
-      if (resolved === null) return original.call(this, file, ...rest);
-      const named = { ...options, argv0: options.argv0 ?? file };
-      return original.call(this, resolved, ...rest.map((r) => (r === options ? named : r)));
-    },
-  }[name];
+/** Wraps `child_process`'s spawning functions, once. */
+function patch() {
+  if (patched) return;
+  patched = true;
+  // Read without `require`, so that the hooks preload.cjs registers are not
+  // asked again from inside one of them.
+  const cp =
+    typeof process.getBuiltinModule === "function"
+      ? process.getBuiltinModule("node:child_process")
+      : require("node:child_process");
+  for (const name of ["spawn", "spawnSync", "execFile", "execFileSync"]) {
+    const original = cp[name];
+    if (typeof original !== "function") continue;
+    cp[name] = {
+      [name](file, ...rest) {
+        const options = rest.find((r) => r !== null && typeof r === "object" && !Array.isArray(r));
+        const resolved = resolveOnChildPath(file, options);
+        if (resolved === null) return original.call(this, file, ...rest);
+        const named = { ...options, argv0: options.argv0 ?? file };
+        return original.call(this, resolved, ...rest.map((r) => (r === options ? named : r)));
+      },
+    }[name];
+  }
 }
+
+/** Whether a module specifier names `child_process`. */
+function isChildProcess(specifier) {
+  return specifier === "child_process" || specifier === "node:child_process";
+}
+
+module.exports = { patch, isChildProcess };
