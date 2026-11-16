@@ -530,9 +530,9 @@
 +            Ok(Self::virtual_root_fd(self.root_inode.clone()))
 +        } else {
 +            self.get_dir_fd(fd)
-+        }
-+    }
-+
+         }
+     }
+ 
 +    /// The directory a path call given `fd` resolves a relative path from:
 +    /// what is on `fd`, unless that is not a directory and a preopen used to
 +    /// be there, in which case that preopen (#1019).
@@ -550,13 +550,13 @@
 +            && matches!(*entry.inode.read(), Kind::Dir { .. } | Kind::Root { .. })
 +        {
 +            return current;
-         }
++        }
 +        match self.displaced_preopens.read().unwrap().get(&fd) {
 +            Some(preopen) => Ok(preopen.clone()),
 +            None => current,
 +        }
-     }
- 
++    }
++
 +    /// Forgets the preopens `dup2_at` kept, with the descriptors they were
 +    /// kept for.
 +    pub(crate) fn clear_displaced_preopens(&self) {
@@ -566,7 +566,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,57 +1897,83 @@
+@@ -1833,68 +1897,100 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -683,10 +683,31 @@
                  Kind::Symlink { .. } => Filetype::SymbolicLink,
 +                // Only `sock_pair` makes these, and its filestat says the same.
 +                Kind::DuplexPipe { .. } => Filetype::SocketStream,
++                // Every kind of socket is one, whatever state it is in: the
++                // C library's `getsockopt(SO_TYPE)` answers from this, and
++                // took a listening socket for none (#1217).
                  Kind::Socket { socket } => match &socket.inner.protected.read().unwrap().kind {
-                     InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
-                     InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
-@@ -1905,10 +1995,21 @@
+-                    InodeSocketKind::TcpStream { .. } => Filetype::SocketStream,
+-                    InodeSocketKind::Raw { .. } => Filetype::SocketRaw,
+-                    InodeSocketKind::PreSocket { props, .. } => match props.ty {
++                    InodeSocketKind::TcpStream { .. }
++                    | InodeSocketKind::TcpListener { .. }
++                    | InodeSocketKind::BoundTcp { .. } => Filetype::SocketStream,
++                    InodeSocketKind::UdpSocket { .. } => Filetype::SocketDgram,
++                    InodeSocketKind::Raw { .. } | InodeSocketKind::Icmp(_) => Filetype::SocketRaw,
++                    InodeSocketKind::PreSocket { props, .. }
++                    | InodeSocketKind::RemoteSocket { props, .. } => match props.ty {
+                         Socktype::Stream => Filetype::SocketStream,
+                         Socktype::Dgram => Filetype::SocketDgram,
+                         Socktype::Raw => Filetype::SocketRaw,
+                         Socktype::Seqpacket => Filetype::SocketSeqpacket,
+                         _ => Filetype::Unknown,
+                     },
+-                    _ => Filetype::Unknown,
+                 },
+                 _ => Filetype::Unknown,
+             },
+@@ -1905,10 +2001,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -709,7 +730,7 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2127,7 @@
+@@ -2026,6 +2133,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -717,7 +738,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2196,7 @@
+@@ -2094,6 +2202,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -725,7 +746,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2235,7 @@
+@@ -2132,6 +2241,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -733,7 +754,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2275,29 @@
+@@ -2171,18 +2281,29 @@
                  return Ok(None);
              }
  
@@ -766,7 +787,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2714,7 @@
+@@ -2599,6 +2720,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -774,7 +795,7 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,9 +2790,26 @@
+@@ -2674,9 +2796,26 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -864,6 +885,50 @@
                  })))
              },
              _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)
+@@ -895,7 +894,12 @@
+     pub fn addr_peer(&self) -> Result<SocketAddr, Errno> {
+         let inner = self.inner.protected.read().unwrap();
+         match &inner.kind {
+-            InodeSocketKind::BoundTcp { .. } => Err(Errno::Notconn),
++            // A listening socket has no peer: `ENOTCONN`, as on Linux, which
++            // is how Python's `ssl` tells a server's socket from a connected
++            // one (#1217). It was `ENOTSUP`, which it raised.
++            InodeSocketKind::BoundTcp { .. } | InodeSocketKind::TcpListener { .. } => {
++                Err(Errno::Notconn)
++            }
+             InodeSocketKind::PreSocket { props, .. } => Ok(SocketAddr::new(
+                 match props.family {
+                     Addressfamily::Inet4 => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+@@ -1522,7 +1526,13 @@
+                                 false => Poll::Pending,
+                             };
+                         }
+-                        InodeSocketKind::PreSocket { .. } => {
++                        // iwci patch (#1217): what is not connected says so,
++                        // as on Linux; Python's `ssl` tries a listening
++                        // socket with a receive and takes ENOTCONN for "not
++                        // connected", but raised the ENOTSUP it got.
++                        InodeSocketKind::PreSocket { .. }
++                        | InodeSocketKind::BoundTcp { .. }
++                        | InodeSocketKind::TcpListener { .. } => {
+                             return Poll::Ready(Err(Errno::Notconn));
+                         }
+                         _ => return Poll::Ready(Err(Errno::Notsup)),
+@@ -1613,7 +1623,13 @@
+                                 false => Poll::Pending,
+                             };
+                         }
+-                        InodeSocketKind::PreSocket { .. } => {
++                        // iwci patch (#1217): what is not connected says so,
++                        // as on Linux; Python's `ssl` tries a listening
++                        // socket with a receive and takes ENOTCONN for "not
++                        // connected", but raised the ENOTSUP it got.
++                        InodeSocketKind::PreSocket { .. }
++                        | InodeSocketKind::BoundTcp { .. }
++                        | InodeSocketKind::TcpListener { .. } => {
+                             return Poll::Ready(Err(Errno::Notconn));
+                         }
+                         _ => return Poll::Ready(Err(Errno::Notsup)),
 --- a/src/os/task/control_plane.rs
 +++ b/src/os/task/control_plane.rs
 @@ -132,6 +132,18 @@

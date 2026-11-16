@@ -399,7 +399,7 @@ fn run(spec_path: &Path) -> Result<i32, String> {
         .map_err(|e| e.to_string())?;
     std::fs::write(&spec.ready, b"").map_err(|e| format!("{}: {e}", spec.ready.display()))?;
 
-    let base: std::collections::BTreeMap<PathBuf, u32> = spec.modes.iter().cloned().collect();
+    let base: iwci_vfs::tree::PathTree<u32> = spec.modes.iter().cloned().collect();
     let modes = iwci_vfs::Modes::real(Arc::new(base), Arc::new(HostModes));
     let root = runtime.sandbox_dir("/")?;
     let tracked: iwci_vfs::DynFs = Arc::new(iwci_vfs::TrackModes::new(root, modes.clone(), "/"));

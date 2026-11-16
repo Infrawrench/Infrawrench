@@ -61,7 +61,7 @@
 # already in dist/ instead of building. python, php and go need the internet:
 # python and php install packages (from PyPI and Wasmer's wheel index, and
 # from Packagist, in jobs and through `deps:`), and go fetches its fixture's
-# module and an HTTPS page. Needs: git, jq, and
+# module and an HTTPS page. Needs: git, jq, openssl, and
 # whatever the named build scripts need.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
@@ -444,6 +444,12 @@ with zipfile.ZipFile(f"{sys.argv[1]}/{dist}-{version}-py3-none-any.whl", "w") as
     record.append(f"{info}/RECORD,,")
     whl.writestr(f"{info}/RECORD", "\n".join(record) + "\n")
 PY
+# A certificate for `localhost` and its key, for the Python job that serves
+# HTTPS (`tls-server-passes`). Made here, so no key is checked in.
+mkdir -p "$repo/py/tls"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 \
+  -subj /CN=localhost -addext subjectAltName=DNS:localhost \
+  -keyout "$repo/py/tls/key.pem" -out "$repo/py/tls/cert.pem" 2>/dev/null
 # A Python project installed by `deps: [pip]`: requests and what it needs
 # from PyPI, and numpy as Wasmer's WASIX wheel, in pip-compile's format
 # with the WASIX wheel's hash beside PyPI's sdist (README, "WASIX wheels in
@@ -2970,6 +2976,9 @@ jobs:
     needs: [node-passes]
     timeout: 3m
     run: |
+      # A failing step says which it was, and what it got (#1249).
+      trap 'echo "compile-cache-passes: line $LINENO exited $?: $BASH_COMMAND" >&2' ERR
+      same() { [[ "$1" == "$2" ]] || { printf 'got:  %s\nwant: %s\n' "$1" "$2" >&2; return 1; }; }
       mkdir -p /tmp/cc/app && cd /tmp/cc/app
       printf 'module.exports = (a) => a + 1;\n' >dep.js
       printf 'export const twice = (a) => a * 2;\n' >dep.mjs
@@ -2988,9 +2997,12 @@ jobs:
       JS
       # What the engine did with each of this tree's modules, as
       # NODE_DEBUG_NATIVE=COMPILE_CACHE reports it.
+      # `node`'s own errors go to the job's stderr, not into the comparison.
       report() {
-        NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null |
-          sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' |
+        local log
+        log="$(NODE_DEBUG_NATIVE=COMPILE_CACHE node main.js 2>&1 >/dev/null)" ||
+          printf 'node main.js exited %s:\n%s\n' "$?" "$(grep -v '^\[compile cache\]' <<<"$log")" >&2
+        sed -n 's#.*V8 code cache for \([A-Za-z]*\) \(file://\)\{0,1\}/tmp/cc/[a-z]*/\([a-z.]*\) was \([a-z ]*\),.*#\1 \3 \4#p' <<<"$log" |
           sort | tr '\n' ';'
       }
       test "$(node -p 'require("node:module").getCompileCacheDir()')" = undefined
@@ -3000,15 +3012,15 @@ jobs:
       test "$(find "$dir" -type f | wc -l)" -ge 4
       # The worker requires dep.js after the main thread has written it.
       hits="CommonJS dep.js accepted;CommonJS dep.js accepted;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "$hits"
       # A changed module is compiled again and its entry replaced.
       printf 'module.exports = (a) => a + 1; // changed\n' >dep.js
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js accepted;CommonJS worker.js accepted;ESM dep.mjs accepted;"
+      same "$(report)" "$hits"
       # A damaged entry is a miss.
       for f in "$dir"/*; do printf 'garbage' | dd of="$f" bs=1 seek=60 conv=notrunc 2>/dev/null; done
-      test "$(report)" = "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
-      test "$(report)" = "$hits"
+      same "$(report)" "CommonJS dep.js accepted;CommonJS dep.js not initialized;CommonJS main.js not initialized;CommonJS worker.js not initialized;ESM dep.mjs not initialized;"
+      same "$(report)" "$hits"
       # An entry that cannot be written is no error (each is a directory now).
       for f in "$dir"/*; do rm "$f" && mkdir -p "$f/in-the-way"; done
       test "$(node main.js)" = "$dir"
@@ -3019,10 +3031,10 @@ jobs:
       cat >/tmp/cc/many.js <<'JS'
       const { Worker } = require("node:worker_threads");
       const code = 'let s = 0; for (let i = 1; i <= 300; i++) s += require("/tmp/cc/many/m" + i + ".js"); require("node:worker_threads").parentPort.postMessage(s);';
-      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) process.exit(1); });
+      for (let w = 0; w < 4; w++) new Worker(code, { eval: true }).once("message", (s) => { if (s !== 45150) { console.error("worker " + w + " summed " + s); process.exit(1); } });
       JS
       node /tmp/cc/many.js
-      test "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" = 1200
+      same "$(NODE_DEBUG_NATIVE=COMPILE_CACHE node /tmp/cc/many.js 2>&1 | grep -c 'many/m[0-9]*\.js was accepted')" 1200
       # The API.
       unset NODE_COMPILE_CACHE
       node -e '
@@ -3056,7 +3068,7 @@ jobs:
       NODE_COMPILE_CACHE=/tmp/cc/one/.cache NODE_COMPILE_CACHE_PORTABLE=1 node /tmp/cc/one/main.js >/dev/null
       mv /tmp/cc/one /tmp/cc/two
       cd /tmp/cc/two
-      test "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" = "$hits"
+      same "$(NODE_COMPILE_CACHE=/tmp/cc/two/.cache NODE_COMPILE_CACHE_PORTABLE=1 report)" "$hits"
   # CPU time is CPU time (#1038): the C library read the monotonic clock
   # (days, and a sleep counted as work), and the host's clocks would be the
   # whole runner's. Now `process.cpuUsage()` starts near zero, grows with
@@ -3761,6 +3773,46 @@ jobs:
         run: python -c 'import socket; socket.create_server(("127.0.0.1", 7002)).accept()'
         ready: { port: 7002 }
     run: test "$(cat /proc/iwci/tcp/127.0.0.1:7002)" = listening
+  # A listening socket is a stream socket with no peer (#1217):
+  # `getsockopt(SO_TYPE)` answered ENOTSOCK for one and `getpeername`
+  # ENOTSUP, so `ssl.wrap_socket` could not wrap a server's socket, the usual
+  # way to serve HTTPS from Python.
+  tls-server-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python - <<'PY'
+      import socket
+      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      types = [s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)]
+      s.bind(("127.0.0.1", 7004))
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      s.listen()
+      types.append(s.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE))
+      assert types == [socket.SOCK_STREAM] * 3, types
+      s.close()
+      PY
+      python - <<'PY' &
+      import http.server, ssl
+      served = []
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header("Content-Length", "8")
+              self.end_headers()
+              self.wfile.write(b"over tls")
+              served.append(True)
+      server = http.server.HTTPServer(("127.0.0.1", 7443), Handler)
+      context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+      context.load_cert_chain("/app/py/tls/cert.pem", "/app/py/tls/key.pem")
+      server.socket = context.wrap_socket(server.socket, server_side=True)
+      while not served:
+          server.handle_request()
+      PY
+      server=$!
+      wait-for-port 7443 --host localhost --timeout 60s
+      test "$(python -c 'import ssl, urllib.request; print(urllib.request.urlopen("https://localhost:7443/", context=ssl.create_default_context(cafile="/app/py/tls/cert.pem")).read().decode())')" = "over tls"
+      wait "$server"
   # pip's three ways to keep packages apart from the interpreter's own, from
   # the local wheel and with no network: the user site, whose console
   # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
