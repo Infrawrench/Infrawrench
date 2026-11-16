@@ -1126,8 +1126,7 @@ export const budgetAlertEvents = pgTable(
 /**
  * Org-level change freeze windows. While a freeze is in effect (active, started,
  * and not yet past `endsAt`), destructive mutations (resource deletion,
- * destructive plugin actions, secret-version destroys, deployment rollbacks)
- * are refused with a 423 unless the caller holds `freezes:override` and
+ * destructive plugin actions, secret-version destroys) are refused with a 423 unless the caller holds `freezes:override` and
  * explicitly opts in. Both blocks and overrides land in `audit_logs`.
  */
 export const changeFreezes = pgTable(

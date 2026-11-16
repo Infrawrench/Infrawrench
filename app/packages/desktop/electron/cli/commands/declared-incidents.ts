@@ -245,7 +245,7 @@ const printIncidentDetail = Effect.fnUntraced(function* (incident: Incident, tim
   if (timeline.entries.length === 0) {
     return yield* Print.line(
       c.dim(
-        "Nothing else was recorded in this window. The change feed, deploys and alerts were all quiet.",
+        "Nothing else was recorded in this window. The change feed, workflow runs and alerts were all quiet.",
       ),
     );
   }

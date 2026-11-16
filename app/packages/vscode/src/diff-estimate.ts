@@ -74,7 +74,7 @@ export async function estimateWorkingTree(session: Session): Promise<void> {
       const diff = await collectWorkingTreeDiff(git, overrides);
       if (diff.files.length === 0) {
         void vscode.window.showInformationMessage(
-          "Infrawrench: no Terraform, Infrafile or Kubernetes changes against HEAD.",
+          "Infrawrench: no Terraform or Kubernetes changes against HEAD.",
         );
         return;
       }

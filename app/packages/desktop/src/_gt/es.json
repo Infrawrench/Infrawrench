@@ -4649,62 +4649,10 @@
   "aa3b0ed0b39dc4b4": "Añadir un gráfico personalizado",
   "c0fa6b9bfd1c8db9": "Aún no hay gráficos personalizados.",
   "ad4bc9f1d4a58ad8": "Nuevo nombre de gráfico",
-  "9844a6b3a6b08a67": "La GitHub App de esta organización no puede ver {repo}. Conéctela en Ajustes → GitHub, o elija otro repositorio.",
-  "bab3d1a245aaa481": "Elija un repositorio…",
-  "81b75c6fae5fae93": "Cargue primero el Infrafile…",
-  "a19aed062e8cbe12": "No hay entornos declarados",
-  "8aa8364fd5912567": "Elija un entorno…",
-  "6e32ea515ae9b29b": "Cargar Infrafile",
-  "bdafc064abe85b02": "Planificando…",
-  "1bc9e950a90ac82f": "Desplegando…",
-  "9cadb21609d6f2f9": "detenido en {stage}",
-  "b87c0645afed9718": "Dockerfile",
   "066dc86ac3842f0a": "Registros",
-  "b934654291bfb091": "Desplegar en cada push",
-  "407a1625c4bb1ea9": "Aún no se vigila ninguna rama.",
   "1e64c95da299ca6c": "Vigilando",
-  "7081f5e50ebfcde9": "Último commit visto",
-  "24e44947b65cd251": "Última activación",
-  "6bc0ac87914bbf66": "Esperando el próximo push",
-  "fc2fa1295075e51b": "Desplegar {env} cuando {repo} @ {branch} avance",
-  "4d6249e9c0ffb6bc": "Respuesta para {key}",
   "015e44b9685e289c": "valor",
   "548f9db69b69ff04": "Añadiendo…",
-  "222418edd568ed60": "Vigilar esta rama",
-  "2f06d12f9a03754c": "{repo} @ {branch} → {env} ya está vigilada.",
-  "67e71e0b2456fe25": "Desplegar {env} cada vez que {repo} @ {branch} avance.",
-  "d054303453303cc6": "Elija un repositorio, rama y entorno arriba para vigilar uno.",
-  "80f24877c58fbcce": "Historial de despliegues",
-  "45410cc7bf25688a": "Entorno",
-  "f255eb586002080f": "Repositorio",
-  "4cbab12706e559eb": "Qué hizo este despliegue a la tasa de gasto",
-  "ad9e930e9768c021": "Ocultar costo",
-  "e52365b13307bdd0": "Impacto en el costo",
-  "c594aa9a65d767c2": "Revertir",
-  "b2efdc9032edc2eb": "Midiendo…",
-  "9ffab83bb53b3e42": "No se pudo leer el costo de esta ejecución.",
-  "b3066c1c70062ad4": "No hay datos de costo para esta ejecución.",
-  "990e0e26623727a0": "Sin impacto de costo medible",
-  "9a2b666ef6779faa": "{days} d antes/después",
-  "97148c4b2a0f7b56": "{count} recurso{plural} no se pudo medir y no figura en el total",
-  "4ab4ac24a3c7671c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Aún no hay despliegues. Elija un repositorio arriba, o ejecute ",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "infrawrench deploy"
-      },
-      "."
-    ]
-  },
-  "8c1ae12c7f7dbd30": {
-    "t": "p",
-    "i": 1,
-    "c": "Este despliegue no aprovisionó recursos, así que no hay nada que atribuirle. Los recursos que simplemente actualizó no están vinculados a una ejecución."
-  },
   "c09ae75ad7c30e51": "Abrir vista detallada",
   "356df9a5aba25433": "Soltar para fijar",
   "7f3403edf7245d2a": "Soltar",
@@ -7394,13 +7342,6 @@
   "25ff88a3f659f05d": "No se encontró k9s",
   "0c41b5dd440463ec": "Instala `k9s` localmente para usar la vista de terminal de Kubernetes integrada.",
   "b95d581da9ffd890": "Abrir guía de instalación",
-  "3cb7b6d9a5d5729c": "Todavía no se ha implementado nada desde esta máquina.",
-  "c9f77584b12ed9bc": "Implementaciones desde esta máquina",
-  "db629799882cfe27": "Tardó",
-  "1dbf3ddbea5355af": "Compilado a partir de un árbol con cambios sin confirmar",
-  "ad6e9a2f24e27a8a": "en {stage}",
-  "f37ba4a18ade1bf7": "una etapa anterior",
-  "87ad7f215e6a8f91": "También se registra en el historial de implementaciones de la organización.",
   "7a81be359999cc67": "El plugin \"{pluginId}\" no está cargado",
   "fddbf51fa359fd41": "Este plugin no expone series de métricas",
   "1373efea7e2f305e": "Establece al menos un valor mínimo o máximo",
@@ -7632,7 +7573,6 @@
   "7120551a32a0ea21": "Todas las claves de API",
   "7605071489d4ef01": "Mostrar solo esta clave de API",
   "c7d9edb952ec842a": "Propiedad de {owner}",
-  "7161c775bd96511c": "Deteniendo…",
   "0fe46c2c3c0518fa": "Últimas {hours} h",
   "4416d781741b54a0": "Ámbitos ({count} seleccionados)",
   "d9c7b5106e65c3fb": "Filtrar ámbitos",
@@ -13356,7 +13296,6 @@
   "0f1302bb16382461": "Las sondas sintéticas requieren el modo nube: inicia sesión para sincronizar.",
   "c6283e703da59b1d": "El radar de cuotas requiere el modo nube: inicia sesión para sincronizar.",
   "f985ce5291adde3a": "Las páginas de estado requieren el modo nube: inicia sesión para sincronizar.",
-  "b65bb977c019ed50": "Desplegar desde la app, desplegar al hacer push y las reversiones necesitan una organización. Cambia a una en la barra lateral.",
   "c5caaf8de94f53e3": "Infrawrench también funciona sin conexión. Puedes iniciar sesión en cualquier momento desde la barra lateral.",
   "c759a3ab2ae6bd29": "Ya la creé, comprobar de nuevo",
   "4cde315f2aefc3eb": "La clave de host de {host}:{port} no coincide con la fijada anteriormente. Puede que el servidor se haya reconstruido o que alguien esté interceptando la conexión. Acepta solo si esperabas el cambio.",
@@ -13872,39 +13811,6 @@
     "t": "p",
     "i": 1,
     "c": "Un gráfico personalizado es un script que reúne cualquier dato (costos, métricas, API externas) y define su propio gráfico. Escribe uno aquí o pídeselo a la IA por MCP."
-  },
-  "c75607cf9813dfb6": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Una ejecución no informó respuesta para",
-      " ",
-      {
-        "i": 2,
-        "k": "_gt_value_2",
-        "v": "v"
-      },
-      ". Complétalo arriba; un despliegue disparado no puede preguntar."
-    ]
-  },
-  "2bacdcda19b0391c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Los despliegues disparados se ejecutan sin supervisión: responde cada ",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "select(…)"
-      },
-      " aquí o la ejecución falla. Añadir un disparador no despliega ahora; despliega en el ",
-      {
-        "t": "em",
-        "i": 3,
-        "c": "próximo"
-      },
-      " push."
-    ]
   },
   "df0af1ea45a77e04": {
     "t": "span",
@@ -15203,25 +15109,6 @@
     "t": "p",
     "i": 1,
     "c": "El wallboard es una función de la nube. Inicia sesión en una organización para usarlo."
-  },
-  "4dcf6afa6c46ee6c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Los despliegues locales se ejecutan desde el terminal. En el directorio de tu proyecto ejecuta",
-      " ",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "infrawrench deploy"
-      },
-      ". Compila el Infrafile en la raíz de tu repo con tu propio demonio de Docker. Las ejecuciones aparecen aquí."
-    ]
-  },
-  "dd64895f3999884a": {
-    "t": "p",
-    "i": 1,
-    "c": "La vista de momento combina feeds registrados por Infrawrench Cloud, como cambios, incidentes, anomalías de costos y despliegues. Inicia sesión en una organización para usarla."
   },
   "d25dc2def05cd195": "Descargar las filas de este informe como CSV FOCUS 1.4, una fila por recurso y día",
   "839864add416a21f": "Precios por hora de los nodos por plan, más los del plano de control, NodeBalancer y Block Storage, que se pasan al par de Kubernetes para calcular el coste por espacio de nombres y por carga de trabajo",
@@ -23011,7 +22898,6 @@
   "376df5675a1841f8": "Roles concedidos por un tiempo determinado, con un aprobador.",
   "c9fed46f1a1a3933": "Certificados, dominios, tokens y contraseñas a punto de caducar.",
   "01694ce92fa4c4b2": "Qué es recuperable y qué antigüedad tiene la copia de seguridad más reciente.",
-  "ca9e1b5357d58d58": "Desplegar los repositorios y ver qué se publicó.",
   "dfd9ec24ffb59edf": "Pipelines en cada push y pull request.",
   "540a71fd396ffba9": "Con qué frecuencia, qué tan rápido y qué tan seguro se publica.",
   "8b189da9acdd79ab": "Copias efímeras de un entorno, creadas a partir de una plantilla.",
@@ -23036,7 +22922,6 @@
   "0f95daf7be9521c2": "Registros, alertas, sondas y SLOs.",
   "779c9ce43dd72894": "Incidentes, páginas de estado, runbooks y el calendario.",
   "b2add9b502555e53": "Postura, vulnerabilidades, cumplimiento y acceso.",
-  "518ea80327681c9f": "Despliegues, CI, entornos y métricas de entrega.",
   "8f8024ddc34f13f5": "Agentes y flujos de trabajo.",
   "87a159646dd1584d": "Ajustes de {app}",
   "99ccf63da321e0b4": "Solo los propietarios y administradores pueden cambiar qué aplicaciones están activas.",
@@ -23372,5 +23257,11 @@
   "3a277d9bd18447ff": "Hasta que se cambie la contraseña: es la contraseña almacenada, no una de corta duración.",
   "6670d929f2a72bef": "Todo lo que ese usuario puede hacer en este servidor de base de datos. Nada fuera de él.",
   "59156fa37a426349": "Si los usuarios inician sesión en el clúster con Microsoft Entra ID (integración de Entra administrada por AKS), en lugar de solo con las cuentas locales del clúster",
-  "6db050abb2649520": "Nada que ejecutar"
+  "6db050abb2649520": "Nada que ejecutar",
+  "13cbe3684e7192d7": "CI, entornos y métricas de entrega.",
+  "e914963201bf63dd": {
+    "t": "p",
+    "i": 1,
+    "c": "La vista de momento combina feeds registrados por Infrawrench Cloud, como cambios, incidentes, anomalías de costos y ejecuciones de workflow. Inicia sesión en una organización para usarla."
+  }
 }

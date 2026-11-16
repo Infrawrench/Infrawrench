@@ -39,7 +39,7 @@ export function useProductCopy(): Record<ProductId, ProductCopy> {
       },
       delivery: {
         name: gt("Delivery"),
-        tagline: gt("Deploys, CI, environments and delivery metrics."),
+        tagline: gt("CI, environments and delivery metrics."),
       },
       automation: {
         name: gt("Automation"),

@@ -63,7 +63,7 @@ You're never alerted twice about the same anomaly. These rules apply to both kin
 Hints try to tell you why spend went up. When an anomaly fires, Infrawrench looks at the [change timeline](./change-timeline.md) and the [audit log](../team-and-billing/audit-log.md) for that day and the day before, and attaches up to three short facts, most likely first:
 
 - **Resources that appeared, changed or disappeared**, grouped by type, such as "12 gce-instance resources appeared". For a provider anomaly, only that provider's resources count. A service anomaly looks across your whole organization.
-- **Actions that may have cost money**, with who did them where known: a workflow run ("Astrid ran workflow \"Nightly rebuild\""), a change freeze lifted or overridden, a deployment, resources created from Infrawrench, a sleep/wake schedule change. Actions done with an API key say "an API key".
+- **Actions that may have cost money**, with who did them where known: a workflow run ("Astrid ran workflow \"Nightly rebuild\""), a change freeze lifted or overridden, resources created from Infrawrench, a sleep/wake schedule change. Actions done with an API key say "an API key".
 
 Hints appear in Slack messages and Teams cards, as one "likely related" line on push notifications, and under each row of the Anomalies list on web, desktop and mobile. SMS texts don't include them, as there isn't room. Hints are worked out once, when the anomaly is first found, so a change recorded later won't be added.
 

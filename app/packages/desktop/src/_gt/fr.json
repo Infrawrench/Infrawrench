@@ -4649,62 +4649,10 @@
   "aa3b0ed0b39dc4b4": "Ajouter un graphique personnalisé",
   "c0fa6b9bfd1c8db9": "Aucun graphique personnalisé pour l'instant.",
   "ad4bc9f1d4a58ad8": "Nom du nouveau graphique",
-  "9844a6b3a6b08a67": "L'application GitHub de cette organisation ne peut pas voir {repo}. Connectez-la dans Paramètres → GitHub, ou choisissez un autre dépôt.",
-  "bab3d1a245aaa481": "Choisissez un dépôt…",
-  "81b75c6fae5fae93": "Chargez d'abord l'Infrafile…",
-  "a19aed062e8cbe12": "Aucun environnement déclaré",
-  "8aa8364fd5912567": "Choisissez un environnement…",
-  "6e32ea515ae9b29b": "Charger l'Infrafile",
-  "bdafc064abe85b02": "Planification…",
-  "1bc9e950a90ac82f": "Déploiement…",
-  "9cadb21609d6f2f9": "arrêté à {stage}",
-  "b87c0645afed9718": "Dockerfile",
   "066dc86ac3842f0a": "Journaux",
-  "b934654291bfb091": "Déployer au push",
-  "407a1625c4bb1ea9": "Aucune branche surveillée pour l'instant.",
   "1e64c95da299ca6c": "Surveillée",
-  "7081f5e50ebfcde9": "Dernier commit vu",
-  "24e44947b65cd251": "Dernier déclenchement",
-  "6bc0ac87914bbf66": "En attente du prochain push",
-  "fc2fa1295075e51b": "Déployer {env} quand {repo} @ {branch} bouge",
-  "4d6249e9c0ffb6bc": "Réponse pour {key}",
   "015e44b9685e289c": "valeur",
   "548f9db69b69ff04": "Ajout…",
-  "222418edd568ed60": "Surveiller cette branche",
-  "2f06d12f9a03754c": "{repo} @ {branch} → {env} est déjà surveillé.",
-  "67e71e0b2456fe25": "Déployer {env} chaque fois que {repo} @ {branch} bouge.",
-  "d054303453303cc6": "Choisissez un dépôt, une branche et un environnement ci-dessus pour en surveiller un.",
-  "80f24877c58fbcce": "Historique des déploiements",
-  "45410cc7bf25688a": "Env",
-  "f255eb586002080f": "Dépôt",
-  "4cbab12706e559eb": "Effet de ce déploiement sur le rythme de dépense",
-  "ad9e930e9768c021": "Masquer le coût",
-  "e52365b13307bdd0": "Impact sur le coût",
-  "c594aa9a65d767c2": "Revenir en arrière",
-  "b2efdc9032edc2eb": "Mesure en cours…",
-  "9ffab83bb53b3e42": "Impossible de lire le coût de cette exécution.",
-  "b3066c1c70062ad4": "Aucune donnée de coût pour cette exécution.",
-  "990e0e26623727a0": "Aucun impact mesurable sur le coût",
-  "9a2b666ef6779faa": "{days}j avant/après",
-  "97148c4b2a0f7b56": "{count} ressource{plural} n'a pas pu être mesurée et ne figure pas dans le total",
-  "4ab4ac24a3c7671c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Aucun déploiement pour l'instant. Choisissez un dépôt ci-dessus, ou exécutez ",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "infrawrench deploy"
-      },
-      "."
-    ]
-  },
-  "8c1ae12c7f7dbd30": {
-    "t": "p",
-    "i": 1,
-    "c": "Ce déploiement n'a provisionné aucune ressource, il n'y a donc rien à lui attribuer. Les ressources qu'il a seulement mises à jour ne sont pas liées à une exécution."
-  },
   "c09ae75ad7c30e51": "Ouvrir la vue détaillée",
   "356df9a5aba25433": "Déposer pour épingler",
   "7f3403edf7245d2a": "Déposer",
@@ -7394,13 +7342,6 @@
   "25ff88a3f659f05d": "k9s introuvable",
   "0c41b5dd440463ec": "Installez `k9s` localement pour utiliser la vue terminal Kubernetes intégrée.",
   "b95d581da9ffd890": "Ouvrir le guide d'installation",
-  "3cb7b6d9a5d5729c": "Rien n'a encore été déployé depuis cette machine.",
-  "c9f77584b12ed9bc": "Déploiements depuis cette machine",
-  "db629799882cfe27": "A pris",
-  "1dbf3ddbea5355af": "Compilé à partir d'un arbre contenant des modifications non validées",
-  "ad6e9a2f24e27a8a": "à l'étape {stage}",
-  "f37ba4a18ade1bf7": "une étape antérieure",
-  "87ad7f215e6a8f91": "Également enregistré dans l'historique de déploiement de l'organisation.",
   "7a81be359999cc67": "Le plugin « {pluginId} » n'est pas chargé",
   "fddbf51fa359fd41": "Ce plugin n'expose aucune série de métriques",
   "1373efea7e2f305e": "Définissez au moins un minimum ou un maximum",
@@ -7632,7 +7573,6 @@
   "7120551a32a0ea21": "Toutes les clés API",
   "7605071489d4ef01": "Afficher uniquement cette clé API",
   "c7d9edb952ec842a": "Détenue par {owner}",
-  "7161c775bd96511c": "Arrêt en cours…",
   "0fe46c2c3c0518fa": "{hours} dernières heures",
   "4416d781741b54a0": "Portées ({count} sélectionnées)",
   "d9c7b5106e65c3fb": "Filtrer les portées",
@@ -13355,7 +13295,6 @@
   "0f1302bb16382461": "Les sondes synthétiques nécessitent le mode cloud : connectez-vous pour synchroniser.",
   "c6283e703da59b1d": "Le radar des quotas nécessite le mode cloud : connectez-vous pour synchroniser.",
   "f985ce5291adde3a": "Les pages de statut nécessitent le mode cloud : connectez-vous pour synchroniser.",
-  "b65bb977c019ed50": "Le déploiement depuis l'app, le déploiement au push et les rollbacks nécessitent une organisation. Passez à l'une d'elles dans la barre latérale.",
   "c5caaf8de94f53e3": "Infrawrench fonctionne aussi hors ligne. Vous pouvez vous connecter à tout moment depuis la barre latérale.",
   "c759a3ab2ae6bd29": "J'en ai créé un, revérifier",
   "4cde315f2aefc3eb": "La clé d'hôte de {host}:{port} ne correspond pas à celle précédemment épinglée. Le serveur a peut-être été reconstruit, ou quelqu'un intercepte la connexion. N'acceptez que si vous attendiez ce changement.",
@@ -13871,39 +13810,6 @@
     "t": "p",
     "i": 1,
     "c": "Un graphique personnalisé est un script qui rassemble des données quelconques (coûts, métriques, API externes) et définit son propre graphique. Écrivez-en un ici ou demandez à l'IA via MCP."
-  },
-  "c75607cf9813dfb6": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Une exécution n'a reçu aucune réponse pour",
-      " ",
-      {
-        "i": 2,
-        "k": "_gt_value_2",
-        "v": "v"
-      },
-      ". Renseignez-les ci-dessus ; un déploiement déclenché ne peut pas poser la question."
-    ]
-  },
-  "2bacdcda19b0391c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Les déploiements déclenchés s'exécutent sans surveillance : répondez à chaque",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "select(…)"
-      },
-      " ici, sinon l'exécution échoue. Ajouter un déclencheur ne déploie pas maintenant ; il déploie au",
-      {
-        "t": "em",
-        "i": 3,
-        "c": "prochain"
-      },
-      " push."
-    ]
   },
   "df0af1ea45a77e04": {
     "t": "span",
@@ -15202,25 +15108,6 @@
     "t": "p",
     "i": 1,
     "c": "Le wallboard est une fonctionnalité cloud. Connectez-vous à une organisation pour l'utiliser."
-  },
-  "4dcf6afa6c46ee6c": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Les déploiements locaux s'exécutent depuis le terminal. Dans le répertoire de votre projet, exécutez",
-      " ",
-      {
-        "t": "code",
-        "i": 2,
-        "c": "infrawrench deploy"
-      },
-      ". Il construit l'Infrafile à la racine de votre dépôt avec votre propre démon Docker. Les exécutions apparaissent ici."
-    ]
-  },
-  "dd64895f3999884a": {
-    "t": "p",
-    "i": 1,
-    "c": "La vue instant fusionne les flux enregistrés par Infrawrench Cloud, comme changements, incidents, anomalies de coûts et déploiements. Connectez-vous à une organisation pour l'utiliser."
   },
   "d25dc2def05cd195": "Télécharger les lignes de ce rapport au format CSV FOCUS 1.4, une ligne par ressource et par jour",
   "839864add416a21f": "Prix horaires des nœuds par offre, ainsi que ceux du plan de contrôle, de NodeBalancer et de Block Storage, transmis au pair Kubernetes pour calculer le coût par espace de noms et par charge de travail",
@@ -23010,7 +22897,6 @@
   "376df5675a1841f8": "Rôles accordés pour une durée définie, avec un approbateur.",
   "c9fed46f1a1a3933": "Certificats, domaines, jetons et mots de passe qui arrivent à expiration.",
   "01694ce92fa4c4b2": "Ce qui est récupérable, et l'âge de la sauvegarde la plus récente.",
-  "ca9e1b5357d58d58": "Déployez vos dépôts et voyez ce qui a été livré.",
   "dfd9ec24ffb59edf": "Pipelines à chaque push et pull request.",
   "540a71fd396ffba9": "À quelle fréquence, à quelle vitesse et avec quelle sûreté vous livrez.",
   "8b189da9acdd79ab": "Copies éphémères d'un environnement, créées à partir d'un modèle.",
@@ -23035,7 +22921,6 @@
   "0f95daf7be9521c2": "Journaux, alertes, sondes et SLOs.",
   "779c9ce43dd72894": "Incidents, pages d'état, runbooks et calendrier.",
   "b2add9b502555e53": "Posture, vulnérabilités, conformité et accès.",
-  "518ea80327681c9f": "Déploiements, CI, environnements et métriques de livraison.",
   "8f8024ddc34f13f5": "Agents et workflows.",
   "87a159646dd1584d": "Paramètres de {app}",
   "99ccf63da321e0b4": "Seuls les propriétaires et les administrateurs peuvent modifier les applications activées.",
@@ -23371,5 +23256,11 @@
   "3a277d9bd18447ff": "Jusqu'au changement du mot de passe : c'est le mot de passe enregistré, pas un de courte durée.",
   "6670d929f2a72bef": "Tout ce que cet utilisateur peut faire sur ce serveur de base de données. Rien en dehors.",
   "59156fa37a426349": "Si les utilisateurs se connectent au cluster avec Microsoft Entra ID (intégration Entra gérée par AKS), plutôt qu'avec les seuls comptes locaux du cluster",
-  "6db050abb2649520": "Rien à exécuter"
+  "6db050abb2649520": "Rien à exécuter",
+  "13cbe3684e7192d7": "CI, environnements et métriques de livraison.",
+  "e914963201bf63dd": {
+    "t": "p",
+    "i": 1,
+    "c": "La vue instant fusionne les flux enregistrés par Infrawrench Cloud, comme changements, incidents, anomalies de coûts et exécutions de workflow. Connectez-vous à une organisation pour l'utiliser."
+  }
 }

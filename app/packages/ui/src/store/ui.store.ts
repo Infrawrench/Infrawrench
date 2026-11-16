@@ -422,7 +422,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
         a.windowId === (b as { windowId: number }).windowId
       );
     case "incidents":
-      // The deployments/settings trick: one tab by id, but comparing the
+      // The settings trick: one tab by id, but comparing the
       // incident is what makes the route sync record which one the tab is on,
       // so reactivating it lands back on that incident rather than the list.
       return a.incidentId === (b as { incidentId?: string }).incidentId;
@@ -439,7 +439,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.serviceId === other.serviceId && a.view === other.view;
     }
     case "cost-reports":
-      // The deployments/settings trick: one tab by id, but comparing the report
+      // The settings trick: one tab by id, but comparing the report
       // is what makes the route sync record which report the tab is on, so
       // reactivating it restores that report rather than the bare list.
       return a.reportId === (b as { reportId?: string }).reportId;
@@ -471,7 +471,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // it restores that framework rather than the default.
       return a.framework === (b as { framework?: string }).framework;
     case "settings":
-      // Same deployments trick: single tab by id, but comparing the section
+      // The same trick: single tab by id, but comparing the section
       // lets the route sync record which settings page the tab is on.
       return a.section === (b as { section?: string }).section;
     case "workflows":

@@ -42,7 +42,7 @@ turn lenses off, set `infrawrench.codeLens.enabled` to `false`.
 ## Estimate the cost of your changes
 
 Run **Infrawrench: Estimate Cost of Working Tree Changes** (also on the editor title bar of a
-`.tf` file). It checks every changed Terraform, Infrafile and Kubernetes file in
+`.tf` file). It checks every changed Terraform and Kubernetes file in
 the repository against `HEAD`, including unsaved edits, the same way a
 [pull request check](./pr-checks.md) does. You get the monthly cost change per block, the blast
 radius of every existing resource the change touches, and warnings for tag policy and posture
