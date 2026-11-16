@@ -1,112 +1,111 @@
-// The "use with your coding agent" modal: one shared skill body
-// (agent-skill-body.md) wrapped per harness in that harness's
-// instruction-file format, plus the MCP connection snippet for each.
-import body from "./agent-skill-body.md?raw";
+// The "use with your coding agent" modal: per harness, the MCP connection
+// snippet and every skill in `skills/`, written in that harness's
+// instruction-file format. Claude Code takes a skill as a folder (SKILL.md
+// plus its references); the others read one file per rule, so a skill's
+// references are appended to it.
+import { claudeCodeInstall, skillAsOneFile, skillFiles, skills, type Skill } from "./skills";
 
 const MCP_URL = "https://app.infrawrench.com/api/mcp";
 
-const description =
-  "Use the infrawrench CLI to inspect accounts, resources, metrics, and costs from the terminal. Trigger when asked to list or check infrastructure from the shell, script against Infrawrench data (--json), page on-call, or push cost rows.";
-
-const trimmedBody = body.trim();
-
-interface HarnessSnippet {
+export interface HarnessSnippet {
   /** Where the snippet goes: a file path, or a "run this" hint. */
   file: string;
   content: string;
 }
 
+export interface HarnessSkill {
+  skill: Skill;
+  /** A command that installs every file at once, where the harness has one. */
+  install?: HarnessSnippet;
+  files: HarnessSnippet[];
+}
+
 export interface HarnessVariant {
   id: string;
   label: string;
-  skill: HarnessSnippet;
   mcp: HarnessSnippet;
+  skills: HarnessSkill[];
 }
 
-export const harnessVariants: HarnessVariant[] = [
+interface Harness {
+  id: string;
+  label: string;
+  mcp: HarnessSnippet;
+  skill: (skill: Skill) => Omit<HarnessSkill, "skill">;
+}
+
+const HARNESSES: Harness[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    skill: {
-      file: ".claude/skills/infrawrench-cli/SKILL.md",
-      content: `---
-name: infrawrench-cli
-description: ${description}
----
-
-${trimmedBody}
-`,
-    },
     mcp: {
       file: "Run in your terminal",
-      content: `claude mcp add --transport http infrawrench ${MCP_URL}
-`,
+      content: `claude mcp add --transport http infrawrench ${MCP_URL}\n`,
     },
+    skill: (s) => ({
+      install: { file: "Install: run in your repository", content: claudeCodeInstall(s) },
+      files: skillFiles(s).map((f) => ({
+        file: `.claude/skills/${s.id}/${f.path}`,
+        content: f.content,
+      })),
+    }),
   },
   {
     id: "cursor",
     label: "Cursor",
-    skill: {
-      file: ".cursor/rules/infrawrench-cli.mdc",
-      content: `---
-description: ${description}
-alwaysApply: false
----
-
-${trimmedBody}
-`,
-    },
     mcp: {
       file: ".cursor/mcp.json",
-      content: `{
-  "mcpServers": {
-    "infrawrench": {
-      "url": "${MCP_URL}"
-    }
-  }
-}
-`,
+      content: `{\n  "mcpServers": {\n    "infrawrench": {\n      "url": "${MCP_URL}"\n    }\n  }\n}\n`,
     },
+    skill: (s) => ({
+      files: [
+        {
+          file: `.cursor/rules/${s.id}.mdc`,
+          content: `---\ndescription: ${s.description}\nalwaysApply: false\n---\n\n${skillAsOneFile(s)}`,
+        },
+      ],
+    }),
   },
   {
     id: "copilot",
     label: "GitHub Copilot",
-    skill: {
-      file: ".github/instructions/infrawrench-cli.instructions.md",
-      content: `---
-applyTo: '**'
-description: ${description}
----
-
-${trimmedBody}
-`,
-    },
     mcp: {
       file: ".vscode/mcp.json",
-      content: `{
-  "servers": {
-    "infrawrench": {
-      "type": "http",
-      "url": "${MCP_URL}"
-    }
-  }
-}
-`,
+      content: `{\n  "servers": {\n    "infrawrench": {\n      "type": "http",\n      "url": "${MCP_URL}"\n    }\n  }\n}\n`,
     },
+    skill: (s) => ({
+      files: [
+        {
+          file: `.github/instructions/${s.id}.instructions.md`,
+          content: `---\napplyTo: '**'\ndescription: ${s.description}\n---\n\n${skillAsOneFile(s)}`,
+        },
+      ],
+    }),
   },
   {
     id: "agents-md",
     label: "Codex & AGENTS.md",
-    skill: {
-      file: "AGENTS.md (append)",
-      content: `${trimmedBody}
-`,
-    },
     mcp: {
       file: "~/.codex/config.toml",
-      content: `[mcp_servers.infrawrench]
-url = "${MCP_URL}"
-`,
+      content: `[mcp_servers.infrawrench]\nurl = "${MCP_URL}"\n`,
     },
+    skill: (s) => ({ files: [{ file: "AGENTS.md (append)", content: skillAsOneFile(s) }] }),
   },
 ];
+
+export const harnessVariants: HarnessVariant[] = HARNESSES.map((h) => ({
+  id: h.id,
+  label: h.label,
+  mcp: h.mcp,
+  skills: skills.map((skill) => ({ skill, ...h.skill(skill) })),
+}));
+
+/** One skill across every harness, for a modal that offers only that skill. */
+export function harnessVariantsFor(
+  id: string,
+): { id: string; label: string; skill: HarnessSkill }[] {
+  return harnessVariants.flatMap((h) => {
+    const skill = h.skills.find((s) => s.skill.id === id);
+    return skill ? [{ id: h.id, label: h.label, skill }] : [];
+  });
+}

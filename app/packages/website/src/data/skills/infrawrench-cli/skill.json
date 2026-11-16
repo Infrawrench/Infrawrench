@@ -1,0 +1,5 @@
+{
+  "title": "Infrawrench CLI",
+  "summary": "Inspect accounts, resources, metrics and costs from the terminal with the infrawrench CLI.",
+  "description": "Use the infrawrench CLI to inspect accounts, resources, metrics, and costs from the terminal. Trigger when asked to list or check infrastructure from the shell, script against Infrawrench data (--json), page on-call, or push cost rows."
+}

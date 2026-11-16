@@ -6,6 +6,8 @@ sidebar_order: 14
 
 Infrawrench CI runs the pipelines in a repository's `.infrawrench/ci/` folder on every push and pull request. Each job runs in its own WebAssembly sandbox over a snapshot of the commit, so a job starts in the time it takes to load a program that is already compiled: there is no container to pull, no clone per job and no dependency install per job.
 
+Moving from GitHub Actions? [Migrate from GitHub Actions](./ci-migrate-from-github-actions.md) has an agent skill that converts your workflows.
+
 <insert [The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons] here>
 
 ## Turn it on for your repositories

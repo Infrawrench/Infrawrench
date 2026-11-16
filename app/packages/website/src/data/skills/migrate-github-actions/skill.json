@@ -1,0 +1,5 @@
+{
+  "title": "Migrate from GitHub Actions",
+  "summary": "Converts a repository's GitHub Actions workflows into Infrawrench CI pipelines, job by job, and reports what could not move.",
+  "description": "Convert GitHub Actions workflows (.github/workflows/*.yml) into Infrawrench CI pipelines (.infrawrench/ci/*.yml). Use when asked to move a repository's CI from GitHub Actions to Infrawrench CI, or to translate a workflow, job, step or action into Infrawrench CI."
+}
