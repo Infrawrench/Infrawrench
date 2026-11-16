@@ -280,6 +280,7 @@ fn options(split: Option<Arc<dyn Split>>, parallelism: usize) -> Options {
         durations: None,
         split,
         helping: None,
+        inflight: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -459,6 +460,92 @@ fn a_job_a_helper_ran_is_billed_when_the_primary_finds_it_in_the_task_cache() {
     assert!(!lib.cached, "{lib:#?}");
     assert_eq!(crate::runner::usage_of(&one.report, 4).jobs, 3);
     assert_eq!(one.stdout("check"), "lib.txt");
+}
+
+#[test]
+fn the_runners_of_a_split_run_never_wait_for_each_others_task_cache_markers() {
+    use super::inflight_tests::{counted_on, store as marker_store};
+    use iwci_store::ObjectStore;
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [a, b, c, d, e, f, g, h]\n    artifacts: [dist]\n    task-cache: true\n  check:\n    using: builtin:art-read@1\n    matrix: [a, b, c]\n    needs: [lib]\n    task-cache: true\n",
+    );
+    let (markers, dir) = marker_store("split");
+    let store = Arc::new(SplitStore::default());
+    let caches: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    // One run, the primary's, on two runners.
+    let every = Duration::from_millis(20);
+    let one_in = counted_on(&markers, "run-a", "ci-1", "b-main", every, false);
+    let two_in = counted_on(&markers, "run-a", "ci-2", "b-main", every, false);
+    let mut first = options(Some(primary(&store, PATIENT)), 1);
+    first.caches = Some(caches.clone());
+    first.inflight = Some(one_in.clone());
+    let mut second = options(Some(helper(&store, PATIENT)), 4);
+    second.caches = Some(caches.clone());
+    second.inflight = Some(two_in.clone());
+    let (one, two) = both(&p, &first, &second);
+
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(two.report.passed(), "{:#?}", two.report.jobs);
+    let mut ran: Vec<String> = one.ran.iter().chain(&two.ran).cloned().collect();
+    ran.sort();
+    let mut all: Vec<String> = one.report.jobs.iter().map(|j| j.id.clone()).collect();
+    all.sort();
+    assert_eq!(ran, all, "every job ran, and none twice");
+    // Whichever runner took which (a busy host can leave the helper with
+    // none), neither waited for the other's markers.
+    assert_eq!((one_in.waits(), two_in.waits()), (0, 0));
+    assert!(one.report.jobs.iter().all(|j| j.waited_for.is_none()));
+    drop((first, second, one_in, two_in));
+    let left: Vec<String> = markers
+        .list("inflight/")
+        .unwrap()
+        .into_iter()
+        .filter(|k| k.contains("/keys/"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_job_the_helper_ran_is_billed_as_its_even_when_the_primary_queued_it_long() {
+    use super::inflight_tests::{counted_on, store as marker_store};
+    // Forty entries; the primary runs one at a time, so most of them queue
+    // for longer than the task cache re-check waits, while the helper runs
+    // four at a time and saves their entries.
+    let matrix: Vec<String> = (0..40).map(|i| format!("m{i}")).collect();
+    let p = plan(&format!(
+        "name: x\nsplit: true\njobs:\n  lib:\n    using: builtin:art-write@1\n    matrix: [{}]\n    artifacts: [dist]\n    task-cache: true\n",
+        matrix.join(", ")
+    ));
+    let (markers, dir) = marker_store("split-billing");
+    let store = Arc::new(SplitStore::default());
+    let caches: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    let every = Duration::from_millis(20);
+    let one_in = counted_on(&markers, "run-a", "ci-1", "b-main", every, false);
+    let two_in = counted_on(&markers, "run-a", "ci-2", "b-main", every, false);
+    let mut first = options(Some(primary(&store, FAST)), 1);
+    first.caches = Some(caches.clone());
+    first.inflight = Some(one_in.clone());
+    let mut second = options(Some(helper(&store, FAST)), 4);
+    second.caches = Some(caches.clone());
+    second.inflight = Some(two_in.clone());
+    let (one, two) = both(&p, &first, &second);
+
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(!two.ran.is_empty(), "the helper took part");
+    for id in &two.ran {
+        let job = one.job(id);
+        assert_eq!(job.remote.as_deref(), Some("ci-2"), "{id}: {job:#?}");
+        assert!(!job.cached, "{id}");
+    }
+    let mut ran: Vec<String> = one.ran.iter().chain(&two.ran).cloned().collect();
+    ran.sort();
+    ran.dedup();
+    assert_eq!(ran.len(), 40);
+    // Every entry billed once, by the primary.
+    assert_eq!(crate::runner::usage_of(&one.report, 4).jobs, 40);
+    drop((first, second, one_in, two_in));
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

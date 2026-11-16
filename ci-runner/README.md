@@ -745,6 +745,57 @@ task-cache:
   its `memory:` only then, and after it passes its kept artifacts, outputs
   and log are saved under the key it was looked up by. Its `duration_ms`
   is the run's, without the lookup. Failures are never cached.
+- **Another run computing the same key is waited for, not repeated.** Two
+  pushes a minute apart both miss for every job the first one changed,
+  because the second looks its entries up before the first has saved
+  them. So a job that misses while another run is computing the same key
+  waits for that run's entry and replays it when it lands: its report
+  says `cached`, with `waited_for` naming that run, `queued_ms` the wait
+  and a note saying so, and it is not billed. A waiting job is not queued,
+  holds no slot and no memory, and does not count as work in
+  `/v1/capacity`.
+- **When it runs the job after all**, and does not wait again, its report
+  says why:
+  - that run's job did not pass, was stopped, or passed but the store
+    would not take its entry (that run says which);
+  - that run's sign of life is older than this run's own by more than
+    45 s by the store's own clock (a runner that died), or this run has
+    not seen it move for 45 s since the job began to wait (a listing that
+    does not show it at all counts as not moving: one can miss an object
+    renamed while it is read); the dead run's marker is then taken over;
+  - that run has not finished the job within twice the time it took last
+    time plus a minute (with no time recorded, the job's `timeout:` plus
+    90 s, which also caps the other).
+- **How a run knows.** A job that missed marks its key in the store just
+  before it starts, with a write only one run can make, and the marker
+  goes, in the background, once its entry is saved or the job ends
+  without one. A waiting job follows that run's own marker: one written
+  in another scope, or written again after it went, does not keep it
+  waiting. Markers are scoped as entries are: a run waits only for runs
+  whose entries it would read, so a pull request waits for runs of its
+  own branch and of the default branch, and a push to the default branch
+  never waits for a pull request. The runners of a
+  [split run](#split-runs) count as one run and never wait for each
+  other. Waiting cannot go round in a circle: only a job that has started
+  holds a marker, and a started job waits for nothing, so two runs each
+  waiting on keys the other computes both finish.
+- **A job that queued reads its entry again.** One that missed and then
+  queued for more than five seconds reads its entry again just before it
+  starts, since another run may have started and finished it in between
+  without this run ever seeing its marker. Not in a split run, where the
+  other runner's jobs come in through their claims and are billed as
+  theirs. A run that skips the task cache (below) waits for nobody, but
+  still marks what it computes.
+- **What it costs.** For each job that misses: one conditional write just
+  before it starts and, after it ends, one read and one delete in the
+  background (plus one small write when it saved no entry). A pull
+  request also reads the default branch's marker before that write, when
+  the latest listing shows one. A job that queued for more than five
+  seconds costs one more read of its entry. A run lists its scopes at
+  most twice a second while it looks keys up and once a second while a
+  job of it waits, reads a marker its lookup finds, and writes a sign of
+  life every ten seconds (a write and a delete) from its first marker or
+  wait to its end.
 - Entries are kept with the [job caches](#job-caches), scoped and counted
   the same way: a pull request's entries are never read by a push to the
   default branch.
@@ -3480,7 +3531,9 @@ it is masked, and an untrusted run is given none of it:
   stream) and `job-finished` events; then `run-finished`. A finished job's
   report carries its `needs` too. A job another runner of a split run ran
   has `remote`, that runner's name, on its `job-finished` event, in
-  `progress` and on its report. A client that connects late
+  `progress` and on its report. A task cache hit that waited for another
+  run computing the same key has `waited_for`, that run's id, on its
+  report (see [The task cache](#the-task-cache)). A client that connects late
   gets the backlog first. Up to 8 MiB of output is kept per run; past that a
   `truncated` event says so and job events still flow. A finished run's log
   is kept for five minutes after it ends; its report is read from the store
@@ -3878,7 +3931,9 @@ will write to. Job caches, and environment caches (keyed
 downloads under `artifacts/<owner>/<repo-id>/<run-id>/` (see
 [Downloads](#downloads)), billing records under `usage/<owner>/`, run reports under
 `runs/<owner>/`, what the runners of a [split run](#split-runs) share under
-`splits/<owner>/<repo-id>/<run-id>/` (below), and releases of `iwci` itself under
+`splits/<owner>/<repo-id>/<run-id>/` (below), which task cache keys
+runs are computing now under `inflight/<owner>/<repo-id>/<scope>/` (below),
+and releases of `iwci` itself under
 `releases/iwci/<version>/<target>` (immutable) with signed channel
 manifests at `releases/iwci/channels/<channel>.json`. CI's builds of
 builtins and packages are under `build-cache/main/` and
@@ -3919,6 +3974,25 @@ mask with, writes its records as its jobs printed them (the primary
 masks them when it reads them). A helper's jobs were given no secret, so
 its records hold a secret's value only where the repository or the
 pipeline itself spells it out.
+
+What [the task cache](#the-task-cache) keeps of the keys runs are
+computing, under `inflight/<owner>/<repo-id>/<scope>/`, `<scope>` being the
+scope a run saves its entries in (a run writes only there, and looks in
+every scope it reads entries from), `<run>` a run's id (a split run's
+primary's, for all of its runners):
+
+| Key                       | What                                                                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keys/<hash>`             | A run computes the key that hashes to `<hash>`: JSON with the run, its runner and how long the job took last time. Written only if absent.                                                        |
+| `ended/<hash>`            | How the last job that held `<hash>` ended when it saved no entry (failed, stopped, or its entry refused): JSON with the run.                                                                      |
+| `runs/<run>/<runner>.<n>` | That runner of the run is alive; `<n>` moves every ten seconds from its first marker or wait to the end of the run. A reader times it on its own clock, and by the store's against its own run's. |
+
+A marker is deleted in the background when its job ends, and only while
+it still names the run; a run deletes what is left of its markers, and
+its sign of life, in the background when it ends (`iwci run` gives that
+up to ten seconds before it exits). Every server sweeps what is older
+than a day, which is what a runner that died left. They hold no
+job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 

@@ -460,6 +460,11 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             }
         }
     }
+    // What the run left to delete in the store (its signs of life, task
+    // cache markers its jobs did not delete) is deleted in the background
+    // once the result is out; a moment for it before the process exits,
+    // and what is not done by then is left to the servers' sweep.
+    crate::adapters::split::settle(std::time::Duration::from_secs(10));
     Ok(if output.passed {
         ExitCode::SUCCESS
     } else {

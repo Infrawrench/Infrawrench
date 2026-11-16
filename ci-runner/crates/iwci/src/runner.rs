@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapters::caches::{StoreCaches, owner_from_url};
 use crate::adapters::downloads::{DownloadLimits, StoreDownloads};
+use crate::adapters::inflight::StoreInFlight;
 use crate::adapters::split::{Asked, SplitRun, runner_name};
 use crate::adapters::tools::{RuntimeExecutor, StoreTools};
 use crate::adapters::workspace::{GitCommitter, GitWorkspaces};
@@ -829,6 +830,10 @@ impl Runner {
         };
         let split = split.map(Finishing);
         let helping = req.split.as_ref().and_then(|s| s.of.clone());
+        let inflight_run = match &helping {
+            Some(of) => RepoId::new(of.as_str()).map_err(|e| format!("split.of: {e}"))?,
+            None => run.clone(),
+        };
         // A helper's run counts as one this runner helps from when it
         // joins, not from when it was offered.
         let joined: std::sync::Mutex<Option<schedule::Joined>> = Default::default();
@@ -907,6 +912,17 @@ impl Runner {
             r.event,
             quota,
         ));
+        // Task cache keys this run computes, and the ones other runs do,
+        // in the same scopes as the entries. The runners of a split run
+        // count as one run, the primary's.
+        let inflight = Arc::new(StoreInFlight::new(
+            self.store.clone(),
+            &r.owner,
+            &r.repo_id,
+            caches.scopes(),
+            &inflight_run,
+            &runner_name(req.split.as_ref().and_then(|s| s.runner.as_deref())),
+        ));
         let mut options = schedule::Options {
             // With shared slots the slots are the limit; without, `cpus`.
             parallelism: self.slots.as_ref().map_or(self.cpus, |s| s.total()),
@@ -945,6 +961,7 @@ impl Runner {
             cancel: None,
             split: None,
             helping: self.helping.clone(),
+            inflight: Some(inflight),
             access: schedule::RunAccess {
                 // An untrusted run is lent nothing, whatever the request
                 // carries; its jobs that name anything fail.
