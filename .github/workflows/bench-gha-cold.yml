@@ -1,0 +1,235 @@
+# Benchmark only, on the bench/* branches: the GitHub Actions test workflow as it
+# was on 2026-10-28 (before its jobs moved to Infrawrench CI), run against
+# current commits to compare with Infrawrench CI on the same commits. Never merged.
+# Cold: dependencies restored, no Turbo cache, so every task runs.
+name: Bench (GitHub Actions, cold)
+
+on:
+  push:
+    branches: [bench/gha-cold]
+
+jobs:
+  vitest:
+    name: Vitest
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+
+      - run: pnpm test
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+
+      - run: pnpm typecheck
+
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+
+  translations:
+    name: Translations
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Gate: every user-facing string is marked for translation or carries an
+      # `i18n-ignore: <reason>` marker. Fails on unmarked strings, reasonless
+      # markers, and stale markers.
+      - run: pnpm --filter @infrawrench/web translations:audit
+
+      # Non-gating on catalog lag (missing entries just render English), but
+      # fails on gt extraction errors — a broken <T> site is a real bug.
+      - run: pnpm --filter @infrawrench/web translations:status
+
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Match docker-compose.dev.yml (Postgres 16). Multi-arch image works on
+        # ubuntu-24.04-arm. pgcrypto (used by migration 0010) is built in.
+        image: postgres:16
+        env:
+          POSTGRES_USER: infrawrench
+          POSTGRES_PASSWORD: infrawrench
+          POSTGRES_DB: infrawrench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U infrawrench -d infrawrench"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply drizzle migrations
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+      - name: Re-apply migrations (idempotent no-op)
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+  db-tests:
+    name: Database tests
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Match docker-compose.dev.yml (Postgres 16). Multi-arch image works on
+        # ubuntu-24.04-arm. pgcrypto (used by migration 0010) is built in.
+        image: postgres:16
+        env:
+          POSTGRES_USER: infrawrench
+          POSTGRES_PASSWORD: infrawrench
+          POSTGRES_DB: infrawrench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U infrawrench -d infrawrench"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # Not a service container: those start before checkout, and ClickHouse
+      # needs the repo's listen.xml (the image's default "::" listen leaves it
+      # not listening at all on IPv6-less Docker networks — see
+      # docker-compose.dev.yml).
+      - name: Start ClickHouse
+        run: |
+          docker run -d --name clickhouse -p 8123:8123 \
+            -e CLICKHOUSE_DB=infrawrench \
+            -e CLICKHOUSE_PASSWORD=infrawrench \
+            -v "$PWD/infra/docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro" \
+            clickhouse/clickhouse-server:24.8-alpine
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-bench-cold-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply drizzle migrations
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+      - name: Wait for ClickHouse
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8123/ping && exit 0
+            sleep 2
+          done
+          docker logs clickhouse
+          exit 1
+
+      - name: Run database tests
+        run: pnpm test:db
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+          CLICKHOUSE_METRICS_URL: http://localhost:8123
+          CLICKHOUSE_METRICS_USER: default
+          CLICKHOUSE_METRICS_PASSWORD: infrawrench
+          CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked ClickHouse suites
+        run: pnpm test:clickhouse:shadow
+        env:
+          CLICKHOUSE_METRICS_URL: http://localhost:8123
+          CLICKHOUSE_METRICS_USER: default
+          CLICKHOUSE_METRICS_PASSWORD: infrawrench
+          CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked Postgres suites
+        run: pnpm test:postgres:shadow
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
