@@ -53,7 +53,7 @@ use virtual_fs::{FileSystem, TmpFileSystem};
 
 use crate::capture::Capture;
 use crate::inside::{
-    JobResult, JobSpec, SpecModule, SpecPackage, SpecProgram, SpecReady, SpecService,
+    JobResult, JobSpec, SpecModule, SpecPackage, SpecProgram, SpecReady, SpecService, SpecTree,
 };
 use crate::{Error, Invocation, Outcome, Result, Runtime, WebcPackage};
 
@@ -361,13 +361,6 @@ impl Runtime {
         budget: Option<Arc<dyn iwci_vfs::WriteBudget>>,
     ) -> Result<Outcome> {
         let started = Instant::now();
-        // A Node tool's directory is not one the sandbox is given yet.
-        if let Some(tree) = inv.trees.first() {
-            return Err(Error::Setup(format!(
-                "`{}` (tools:) is a Node tool, which does not run beside a native one (such as builtin:bun) yet: use it in a job of its own",
-                tree.name
-            )));
-        }
 
         // What the runner inside loads: every package's commands compiled
         // (here, where the cache can be written), the tools' and services'.
@@ -528,6 +521,16 @@ impl Runtime {
             services,
             modes: inv.modes.recorded(),
             natives: native_commands.clone(),
+            trees: inv
+                .trees
+                .iter()
+                .map(|t| SpecTree {
+                    name: t.name.clone(),
+                    dir: t.dir.clone(),
+                    scripts: t.scripts.clone(),
+                    needs: t.needs.clone(),
+                })
+                .collect(),
             builtins: builtins
                 .as_ref()
                 .map(|_| PathBuf::from(IWCI_DIR).join("job/builtins")),
@@ -561,7 +564,13 @@ impl Runtime {
             placed.push(shim("/usr/bin", name));
             placed.push(shim("/bin", name));
         }
-        let mut local: Vec<String> = inv.commands.iter().map(|c| c.name.clone()).collect();
+        // A Node tool's command too, so a native program can run it.
+        let mut local: Vec<String> = inv
+            .trees
+            .iter()
+            .flat_map(|t| t.scripts.iter().map(|(name, _)| name.clone()))
+            .chain(inv.commands.iter().map(|c| c.name.clone()))
+            .collect();
         local.extend(
             crate::modes::MODE_COMMANDS
                 .iter()
@@ -578,6 +587,17 @@ impl Runtime {
             }
         }
         let points = mount_points(&placed);
+        // Each Node tool's directory is a mount of its own, read only, so it
+        // cannot be under another one.
+        for tree in &inv.trees {
+            let dir = Path::new(&tree.dir);
+            if !dir.is_absolute() || points.iter().any(|p| dir.starts_with(p)) {
+                return Err(Error::Setup(format!(
+                    "`{}` (tools:): its directory {} cannot be mounted in the sandbox",
+                    tree.name, tree.dir
+                )));
+            }
+        }
 
         // The job's root, with somewhere to mount each of those and what
         // a native program reads in /etc.
@@ -586,6 +606,7 @@ impl Runtime {
             .iter()
             .map(PathBuf::as_path)
             .chain([Path::new(IWCI_DIR)])
+            .chain(inv.trees.iter().map(|t| Path::new(t.dir.as_str())))
             .chain(
                 inv.scratch
                     .is_some()
@@ -634,6 +655,22 @@ impl Runtime {
             served.push(s);
             mounts.push(Mount {
                 destination: point.to_string_lossy().into_owned(),
+                read_only: true,
+                gofer,
+            });
+        }
+        // Node tools' directories, read only and shared as outside.
+        for tree in &inv.trees {
+            let (s, gofer) = serve(Export {
+                fs: tree.fs.clone(),
+                modes: Modes::default(),
+                root: "/".into(),
+                read_only: true,
+                budget: None,
+            })?;
+            served.push(s);
+            mounts.push(Mount {
+                destination: tree.dir.clone(),
                 read_only: true,
                 gofer,
             });

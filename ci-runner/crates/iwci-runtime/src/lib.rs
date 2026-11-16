@@ -614,11 +614,11 @@ impl Runtime {
         wasix::preload(&self.wasix, &self.tokio, packages, entry)
     }
 
-    /// The sandbox's own files, from its root.
+    /// The sandbox's own files, from `dir` (`/` for all of them).
     #[cfg(target_os = "linux")]
-    pub(crate) fn sandbox_root(&self) -> std::result::Result<DynFs, String> {
-        let fs = virtual_fs::host_fs::FileSystem::new(self.tokio.handle().clone(), "/")
-            .map_err(|e| format!("the sandbox's files: {e}"))?;
+    pub(crate) fn sandbox_dir(&self, dir: &str) -> std::result::Result<DynFs, String> {
+        let fs = virtual_fs::host_fs::FileSystem::new(self.tokio.handle().clone(), dir)
+            .map_err(|e| format!("the sandbox's files at {dir}: {e}"))?;
         Ok(Arc::new(fs))
     }
 
