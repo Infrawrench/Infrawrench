@@ -1664,6 +1664,86 @@ public`); `--prebuilt` with existing Build Output should too, but is not
 dev`, a Node tool in `env:bash`, and one run as a job of its own. The
   tokens come from lent connections and must come out masked.
 
+### Native tools in a sandbox
+
+A tool whose manifest says `abi: native-gvisor` is a native Linux program,
+not a module (`builtin:bun`, see [Bun](#bun)). A job that names one in
+`tools:` runs whole in a gVisor sandbox of its own, the runner's own
+binary first, which runs the script and the services exactly as a WASIX
+job runs them, beside the native program:
+
+- **Files.** The sandbox's root is the job's own file system, served from
+  the runner (lisafs), so the native program and the WASIX commands see
+  and change the same files, held to the same write budget, and what they
+  write becomes the job's changes, caches and artifacts as for any job.
+  Each file it creates is charged for its entry as in a WASIX job, and
+  each directory and link 128 bytes and its name, all given back when it
+  is removed; a path longer than 4096 bytes is refused (`ENAMETOOLONG`). Modes are real: `chmod` from either side is what the other `stat`s. The
+  native program, its C library, the environment's packages and their
+  compiled modules come in read only, beside it. A native program also
+  finds `/etc/passwd`, `/etc/group`, `/etc/hosts` (with the job's services
+  on the loopback) and `/etc/resolv.conf` in the job's `/etc` where it has
+  none.
+- **Processes.** A script runs the native program by name from `PATH`;
+  the program runs the environment's commands (`bash`, `sh`, `node`,
+  `git`, `#!/usr/bin/env node` scripts) by name from its own, where each
+  is a stand-in that starts the command as a WASIX process of the job,
+  with the caller's arguments, environment, directory and standard
+  streams, and passes signals on.
+- **Network.** One loopback for everything in the job: a `Bun.serve` is
+  reached by a WASIX `curl` or `node` and the other way round, and a
+  service by its name. The way out is the sandbox's only interface, whose
+  other end is the runner, which applies the same policy as for a WASIX
+  job (public addresses only, never the runner's own; names answered only
+  with public addresses); `network: false` leaves only the loopback.
+- **Memory.** The sandbox has a cgroup of its own, with swap off. The
+  sandbox's own memory (gVisor's kernel, the runner inside, the loaded
+  environment), about 170 to 200 MiB with `env:bash-node`, is measured
+  before the script starts, and the job may then use its whole `memory:`
+  on top of it; past that the sandbox is stopped and the job fails as out
+  of memory, with a note. A sandbox that sits at its limit for ten
+  seconds, meeting it again and again and spending CPU time on it, counts
+  as out of memory too: gVisor keeps some memory the kernel can always
+  reclaim a little of, so it may never be killed for it.
+  `peak_memory_mib` and `held_memory_mib` are the
+  job's share, as for a WASIX job, which does not count the runner's own
+  memory either; the report's `execution.sandbox` says what the sandbox
+  itself took (`overhead_mib`), what was reserved for it (`reserved_mib`,
+  384 MiB) and its CPU time (`cpu_ms`, gVisor's kernel's included). Such
+  a job reserves `memory:` and the 384 MiB from the runner's `--memory`,
+  in either admission mode.
+- **Time.** The timeout, a cancel and draining stop the whole sandbox; the
+  stall check reads the sandbox's CPU time. How the job ended (its exit
+  status, a timeout, running out of memory) is what the runner saw of the
+  sandbox, not what the runner inside reports.
+- **CPU.** The runner's sandboxes together may use its `--cpus` worth of
+  CPU time (`cpu.max` on their common cgroup), gVisor's kernel's
+  included, shared by equal weight; each is told it has that many CPUs,
+  as a WASIX job's threads share the runner's.
+- **Billing.** The job is charged its wall time as any job, and the memory
+  it reserved: its `memory:` and the sandbox's 384 MiB.
+- **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
+  the like) does not run beside a native one yet: such a job fails to
+  start, saying so. Use it in a job of its own.
+- **Where.** Only a runner started with `--native-sandbox <dir>` (gVisor's
+  release, or `IWCI_NATIVE_SANDBOX`; off by default) runs such a job;
+  another fails it, saying so. The runner starts each sandbox in new user,
+  mount, PID, IPC, UTS and network namespaces. On a host that keeps user
+  namespaces from unprivileged programs (Ubuntu's AppArmor), it does so
+  through `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`):
+  `iwci-sandbox-spawn` (`crates/iwci-sandbox-spawn`), a small root service
+  that systemd starts once per connection to a socket only the runner may
+  use. It takes a few checked values and the sandbox's descriptors, never
+  a command line or an environment, starts only the Sentry at its pinned
+  path once that and gVisor's unmounter match the SHA-256 pins compiled
+  into it, always as `boot --setup-root`, as the system user
+  `iwci-sandbox` and straight into the job's cgroup, and kills it when the
+  runner asks or goes away (`infra/ci-runners` installs it). A service of
+  another protocol leaves native jobs off, saying why. `/v1/capacity` says `native_sandbox` and
+  `sandbox_overhead`. In a split run the job stays on the runner that has
+  the run. The task cache keys it like any job: the native tool's manifest
+  is pinned by digest.
+
 ### kubectl
 
 `tools: [builtin:kubectl@1.37]` puts kubectl on an environment's `PATH`.
@@ -1803,6 +1883,12 @@ What works:
 
 What to know:
 
+- **Nobody answers a prompt.** A remote that asks for a user name or
+  password (a private repository without a token, a mistyped URL on a host
+  that answers 401) fails Git at once with "could not read Username ...:
+  terminal prompts disabled" and status 128, because the runner sets
+  `GIT_TERMINAL_PROMPT=0` for every job. A job has no terminal, and without
+  it Git waited for an answer until the stall check stopped the job.
 - **The checkout is not a repository.** The runner writes the commit's
   tree into the job's file system without a `.git`, so `git log` or `git
 describe` in `/app` fails; clone what a job needs to inspect.
@@ -2764,8 +2850,9 @@ from the environment only. `--base` gives the changed paths that `paths:`
 and `changed()` read. Caches (git, fetched packages, compiled modules,
 objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
-Jobs see `CI=true`, `HOME=/root` (unless they set their own), `IWCI_COMMIT`,
-`IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and `IWCI_OUTPUT`, plus `PWD` set
+Jobs see `CI=true`, `HOME=/root` and `GIT_TERMINAL_PROMPT=0` (unless they
+set their own), `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and
+`IWCI_OUTPUT`, plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
 [Known limitations](#known-limitations)). A `run:` script and what it starts
@@ -3455,6 +3542,7 @@ for `build[app/web]`). Every body and answer is JSON unless it says tar.
       "CI",
       "IWCI",
       "HOME",
+      "GIT_TERMINAL_PROMPT",
       "IWCI_COMMIT",
       "IWCI_BRANCH",
       "IWCI_REPO_ID",

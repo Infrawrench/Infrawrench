@@ -1,0 +1,23 @@
+# Written by infra/ci-runners (Terraform); edits here are overwritten.
+#
+# The sandbox service's socket: one root instance of
+# iwci-sandbox-spawn@.service per connection, which starts one gVisor
+# Sentry for the runner and watches it (ci-runner/crates/iwci-sandbox-spawn).
+# Only the runner's group may connect, and each instance checks the peer is
+# the runner's user as well.
+
+[Unit]
+Description=Infrawrench CI runner sandbox service socket
+
+[Socket]
+ListenSequentialPacket=/run/iwci-sandbox-spawn.sock
+SocketUser=root
+SocketGroup=iwci
+SocketMode=0660
+Accept=yes
+# As many sandboxes at once as a runner could start, and then some.
+MaxConnections=256
+MaxConnectionsPerSource=256
+
+[Install]
+WantedBy=sockets.target

@@ -16,7 +16,7 @@ use super::{Export, MAX_MESSAGE, Serving, serve, socket_pair};
 struct Client {
     sock: Sock,
     channel: Option<Endpoint>,
-    _serving: Serving,
+    serving: Serving,
 }
 
 type Reply = Result<(Vec<u8>, Vec<OwnedFd>), i32>;
@@ -41,7 +41,7 @@ impl Client {
         Self {
             sock: Sock::new(theirs),
             channel: None,
-            _serving: serving,
+            serving,
         }
     }
 
@@ -269,6 +269,14 @@ impl WriteBudget for Budget {
 /// A snapshot like a checkout: files, a directory, a symlink, an
 /// executable.
 fn job(budget: Option<u64>) -> JobFs {
+    job_with(budget.map(|bytes| {
+        Arc::new(Budget {
+            left: AtomicU64::new(bytes),
+        })
+    }))
+}
+
+fn job_with(budget: Option<Arc<Budget>>) -> JobFs {
     let b = SnapshotBuilder::new();
     b.write("/work/a.txt", b"hello").unwrap();
     b.write("/work/sub/b.txt", b"bee").unwrap();
@@ -278,9 +286,7 @@ fn job(budget: Option<u64>) -> JobFs {
     b.mkdir_all("/tmp").unwrap();
     let snapshot = b.freeze();
     match budget {
-        Some(bytes) => snapshot.fork_limited(Arc::new(Budget {
-            left: AtomicU64::new(bytes),
-        })),
+        Some(budget) => snapshot.fork_limited(budget),
         None => snapshot.fork(),
     }
 }
@@ -291,6 +297,7 @@ fn export(job: &JobFs) -> Export {
         modes: job.modes(),
         root: PathBuf::from("/"),
         read_only: false,
+        budget: None,
     }
 }
 
@@ -663,4 +670,151 @@ fn an_open_fd_outlives_its_control_fd() {
     assert_eq!(client.pread(file, 0, 5), b"hello");
     assert_eq!(client.fstat(dir).ino, work.stat.ino);
     assert_eq!(client.getdents(dir, -65536).len(), 4);
+}
+
+fn mkdir(client: &Client, dir: u64, name: &str) -> Result<Inode, i32> {
+    let mut w = Writer::default();
+    create_common(&mut w, dir, 0o755);
+    w.string(name.as_bytes());
+    client
+        .call(mid::MKDIR_AT, &w.buf)
+        .map(|(reply, _)| read_inode(&mut Reader::new(&reply)))
+}
+
+/// What the server keeps for the sandbox stays small and bounded whatever
+/// the sandbox does with paths: a path past `PATH_MAX` is refused, a file
+/// no FD names leaves nothing behind, and nothing outlives the connection.
+#[test]
+fn what_the_server_keeps_stays_bounded() {
+    let job = job(None);
+    let client = Client::new(export(&job));
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+
+    // A chain of long names stops at PATH_MAX, not at the runner's memory.
+    let name = "d".repeat(255);
+    let mut dir = work;
+    let mut depth = 0;
+    let errno = loop {
+        match mkdir(&client, dir.fd, &name) {
+            Ok(inode) => {
+                dir = inode;
+                depth += 1;
+            }
+            Err(errno) => break errno,
+        }
+        assert!(depth < 100, "PATH_MAX holds");
+    };
+    assert_eq!(errno, libc::ENAMETOOLONG);
+    assert!((14..=16).contains(&depth), "{depth}");
+    let (fds, _, bytes) = client.serving.kept();
+    assert!(bytes < 256 << 10, "{fds} FDs, {bytes} bytes");
+
+    // Thousands of files, each opened and closed as the sandbox's kernel
+    // does: nothing of them stays once their FDs are closed.
+    let (_, _, before) = client.serving.kept();
+    for i in 0..3000 {
+        let (inode, open) = client.create(dir.fd, &format!("f{i:05}"), 0o644, libc::O_WRONLY);
+        client.close(&[open, inode.fd]);
+    }
+    let (_, inos, after) = client.serving.kept();
+    assert!(
+        after <= before + 1024,
+        "{before} -> {after} bytes, {inos} numbers"
+    );
+    // Listing them keeps no number for each either.
+    let names = client.list(dir.fd);
+    assert_eq!(
+        names.iter().filter(|(n, _, _)| n.starts_with('f')).count(),
+        3000
+    );
+    let (_, _, listed) = client.serving.kept();
+    assert!(listed <= after + 1024, "{after} -> {listed} bytes");
+}
+
+/// Every directory and link the sandbox creates is charged to the job's
+/// budget, and given back when it removes it: an empty directory is not
+/// free. A file is charged once, by the job's file system, never by the
+/// server as well.
+#[test]
+fn entries_are_charged_to_the_jobs_budget() {
+    let budget = Arc::new(Budget {
+        left: AtomicU64::new(10_000),
+    });
+    let job = job(None);
+    let mut export = export(&job);
+    export.budget = Some(budget.clone());
+    let client = Client::new(export);
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+    let mut made = 0;
+    let errno = loop {
+        match mkdir(&client, work.fd, &format!("e{made:04}")) {
+            Ok(_) => made += 1,
+            Err(errno) => break errno,
+        }
+        assert!(made < 1000, "the budget holds");
+    };
+    assert_eq!(errno, libc::ENOSPC);
+    // 128 bytes and its five-byte name each.
+    assert_eq!(made, 10_000 / 133);
+    // Removing one gives its share back, so another fits.
+    client.unlink(work.fd, "e0000", libc::AT_REMOVEDIR).unwrap();
+    assert!(budget.left.load(Ordering::SeqCst) >= 133);
+    mkdir(&client, work.fd, "again").unwrap();
+
+    // A file in a job held to the same budget: its entry and its bytes,
+    // once.
+    let budget = Arc::new(Budget {
+        left: AtomicU64::new(1 << 20),
+    });
+    let job = job_with(Some(budget.clone()));
+    let mut limited = self::export(&job);
+    limited.budget = Some(budget.clone());
+    let client = Client::new(limited);
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+    let (_, fd) = client.create(work.fd, "f", 0o644, libc::O_WRONLY);
+    client.pwrite(fd, 0, b"0123456789");
+    assert_eq!(
+        (1 << 20) - budget.left.load(Ordering::SeqCst),
+        iwci_vfs::ENTRY_COST + 1 + 10
+    );
+}
+
+/// A listing and a `stat` give a file the same inode number, before and
+/// after the sandbox has looked it up, and a file made where another was
+/// moved from does not get the moved one's number.
+#[test]
+fn listings_and_stats_agree_on_inode_numbers() {
+    let job = job(None);
+    let client = Client::new(export(&job));
+    let root = client.mount();
+    let work = client.walk_to(root.fd, "work");
+    for i in 0..20 {
+        let (inode, open) = client.create(work.fd, &format!("n{i}"), 0o644, libc::O_WRONLY);
+        client.close(&[open, inode.fd]);
+    }
+    let listed = client.list(work.fd);
+    for (name, ino, _) in &listed {
+        let walked = client.walk_to(root.fd, &format!("work/{name}"));
+        assert_eq!(walked.stat.ino, *ino, "{name}");
+        // Listed again while the sandbox holds it: the same.
+        let again = client.list(work.fd);
+        let (_, listed_again, _) = again.iter().find(|(n, _, _)| n == name).unwrap();
+        assert_eq!(listed_again, ino, "{name}");
+        client.close(&[walked.fd]);
+    }
+    // `mv n0 m; touch n0`: two files, two numbers.
+    let n0 = client.walk_to(root.fd, "work/n0");
+    client.rename(work.fd, "n0", work.fd, "m").unwrap();
+    let (fresh, open) = client.create(work.fd, "n0", 0o644, libc::O_WRONLY);
+    let m = client.walk_to(root.fd, "work/m");
+    assert_eq!(m.stat.ino, n0.stat.ino);
+    assert_ne!(fresh.stat.ino, m.stat.ino);
+    let listed = client.list(work.fd);
+    let number = |name: &str| listed.iter().find(|(n, _, _)| n == name).unwrap().1;
+    assert_eq!(number("n0"), fresh.stat.ino);
+    assert_eq!(number("m"), m.stat.ino);
+    client.close(&[open, fresh.fd, m.fd, n0.fd]);
 }

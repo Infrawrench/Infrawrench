@@ -52,6 +52,10 @@ pub struct Runner {
     /// The helper jobs running here, which give way to this runner's own
     /// runs (`iwci serve`); `None` for a single `iwci run`.
     pub helping: Option<Arc<schedule::Helping>>,
+    /// Where jobs with native tools run (`--native-sandbox`); `None`
+    /// refuses them.
+    #[cfg(target_os = "linux")]
+    pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
 }
 
 /// One run: a repository at a commit or a branch.
@@ -745,9 +749,15 @@ impl Runner {
         let tools = StoreTools {
             catalog: iwci_store::Catalog::new(self.store.clone()),
             repo: r.repo_id.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox_overhead: self.sandbox.as_ref().map_or(0, |s| s.overhead()),
+            #[cfg(not(target_os = "linux"))]
+            sandbox_overhead: 0,
         };
         let executor = RuntimeExecutor {
             runtime: self.runtime.clone(),
+            #[cfg(target_os = "linux")]
+            sandbox: self.sandbox.clone(),
         };
         let workspaces = GitWorkspaces {
             remote: r.remote.clone(),
@@ -907,6 +917,12 @@ impl Runner {
                 // Tools that read `os.homedir()` or `~` fail without one, and
                 // CI systems commonly set it. A job's own `HOME` wins.
                 ("HOME".into(), "/root".into()),
+                // A job has no terminal to answer Git's prompt for a user
+                // name or password, so a remote that asks for them left Git
+                // waiting until the stall check stopped the job (#1231).
+                // This makes it fail at once with its own error, as it does
+                // on a machine without a terminal. A job's own value wins.
+                ("GIT_TERMINAL_PROMPT".into(), "0".into()),
                 ("IWCI_COMMIT".into(), r.sha.clone()),
                 ("IWCI_BRANCH".into(), r.branch.clone()),
                 ("IWCI_REPO_ID".into(), r.repo_id.as_str().to_string()),
@@ -1114,7 +1130,14 @@ pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
         usage.jobs += 1;
         usage.wall_seconds += secs;
         usage.vcpu_seconds += secs / share;
-        usage.memory_gib_seconds += secs * job.memory_mib as f64 / 1024.0;
+        // A job in a sandbox holds what it reserved for the sandbox too.
+        let reserved = job.memory_mib
+            + job
+                .execution
+                .as_ref()
+                .and_then(|e| e.sandbox)
+                .map_or(0, |s| s.reserved_mib);
+        usage.memory_gib_seconds += secs * reserved as f64 / 1024.0;
     }
     usage
 }

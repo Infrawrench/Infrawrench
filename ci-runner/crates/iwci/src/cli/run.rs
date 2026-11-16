@@ -241,7 +241,71 @@ pub(super) fn open_runner(
         download_limits,
         external: None,
         helping: None,
+        #[cfg(target_os = "linux")]
+        sandbox: native_sandbox(args, &cache, limits.cpus)?,
     })
+}
+
+/// `--native-sandbox <dir>` (or `IWCI_NATIVE_SANDBOX`): gVisor's release,
+/// unpacked, to run jobs with native tools (`builtin:bun`) in. Off by
+/// default: such a job then fails, saying why. The runner needs a delegated
+/// cgroup subtree (`Delegate=` in its unit) to hold each sandbox to its
+/// memory, and refuses to start without one.
+///
+/// `--sandbox-service <socket>` (or `IWCI_SANDBOX_SERVICE`): the service
+/// that creates each sandbox's namespaces (`iwci_sandbox::service`), on a
+/// host that keeps them from the runner itself. A service of another
+/// protocol (left from an older release), or none answering, leaves native
+/// jobs off, saying why, rather than stopping the runner.
+#[cfg(target_os = "linux")]
+fn native_sandbox(
+    args: &mut Args,
+    cache: &std::path::Path,
+    cpus: usize,
+) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
+    let service = match args.value("--sandbox-service")? {
+        Some(path) => Some(path),
+        None => std::env::var("IWCI_SANDBOX_SERVICE")
+            .ok()
+            .filter(|p| !p.is_empty()),
+    };
+    let dir = match args.value("--native-sandbox")? {
+        Some(dir) => dir,
+        None => match std::env::var("IWCI_NATIVE_SANDBOX") {
+            Ok(dir) if !dir.is_empty() => dir,
+            _ => return Ok(None),
+        },
+    };
+    let host = iwci_runtime::sandbox::SandboxHost::new(
+        dir.clone().into(),
+        std::path::Path::new("/proc/self/exe"),
+        Vec::new(),
+        cache.join("sandboxes"),
+        true,
+    )
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
+    .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX))
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    let host = match service {
+        None => host,
+        Some(socket) => {
+            use iwci_runtime::sandbox::service::{PROTOCOL, protocol};
+            match protocol(std::path::Path::new(&socket)) {
+                Ok(p) if p == PROTOCOL => host.with_service(socket.into()),
+                Ok(p) => {
+                    eprintln!(
+                        "iwci: native jobs are off: the sandbox service at {socket} speaks protocol {p:?}, this runner {PROTOCOL:?}; install the service of this release (`iwci-sandbox-spawn`)"
+                    );
+                    return Ok(None);
+                }
+                Err(e) => {
+                    eprintln!("iwci: native jobs are off: the sandbox service at {socket}: {e}");
+                    return Ok(None);
+                }
+            }
+        }
+    };
+    Ok(Some(Arc::new(host)))
 }
 
 /// What `downloads:` may keep on this runner.
