@@ -171,11 +171,12 @@ const tunnelOpens = vi.hoisted(() => [] as Array<{ config: unknown; extras: unkn
 vi.mock("../ssh-tunnel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ssh-tunnel")>()),
   findAccountTunnel: () => null,
-  openTunnel: async (config: { sshHost: string }, extras: unknown) => {
+  ensureAccountTunnel: async (accountId: string, plan: () => { sshHost: string }) => {
+    const config = plan();
     if (config.sshHost === "unreachable.example.com") {
       throw new Error("SSH connection failed: connect ETIMEDOUT");
     }
-    tunnelOpens.push({ config, extras });
+    tunnelOpens.push({ config, extras: { accountId } });
     return { tunnelId: "tunnel-1", localPort: 47001 };
   },
 }));

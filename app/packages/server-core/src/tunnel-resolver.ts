@@ -4,13 +4,14 @@
  * the account has an SSH tunnel config and transparently rewrites the
  * service's address to route through a server-side tunnel. What is rewritten,
  * and how, is `credential-rewriters/tunnel-form.ts`.
+ *
+ * The tunnel is the shared core's (`ensureTunnel`), so a tunnel whose SSH
+ * connection ends is forgotten and the next request opens a new one, waiting
+ * a little between attempts while the bastion stays unreachable (#1276).
  */
+import * as net from "node:net";
 import { eq } from "drizzle-orm";
-import {
-  openTunnel as coreOpenTunnel,
-  findTunnel,
-  type TunnelExtras,
-} from "@infrawrench/ssh-tunnel-core";
+import { ensureTunnel, findTunnel, type TunnelExtras } from "@infrawrench/ssh-tunnel-core";
 import { db } from "./db/client";
 import { sshTunnelConfigs } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
@@ -27,6 +28,28 @@ function findTunnelForAccount(accountId: string): { localPort: number } | null {
   return r ? { localPort: r.localPort } : null;
 }
 
+/** How long dialling the bastion may take before the attempt counts as failed. */
+const BASTION_DIAL_TIMEOUT_MS = 20_000;
+
+function dialBastion(address: string, port: number): Promise<net.Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({ host: address, port });
+    const fail = (err: Error) => {
+      socket.destroy();
+      reject(err);
+    };
+    socket.setTimeout(BASTION_DIAL_TIMEOUT_MS, () =>
+      fail(new Error(`connecting to ${address}:${port} timed out`)),
+    );
+    socket.once("error", fail);
+    socket.once("connect", () => {
+      socket.setTimeout(0);
+      socket.removeListener("error", fail);
+      resolve(socket);
+    });
+  });
+}
+
 export type TunnelResolution =
   { status: "ok"; tunnel: TunnelEnds } | { status: "none" } | { status: "error"; cause: unknown };
 
@@ -35,7 +58,8 @@ export type TunnelResolution =
  * and returns `{ status: "ok", tunnel }`: its local port and the remote end the
  * config names, which the rewriter matches addresses against. If the account
  * has no tunnel config, returns `{ status: "none" }`. If tunnel resolution
- * itself fails (DB lookup, decryption, openTunnel), returns
+ * itself fails (DB lookup, decryption, the bastion refusing or still in its
+ * wait after failing), returns
  * `{ status: "error", cause }`: callers can disambiguate "no tunnel configured"
  * from "tunnel resolution exploded" instead of treating both as null.
  */
@@ -53,25 +77,52 @@ async function resolveTunnelForAccount(accountId: string): Promise<TunnelResolut
     const existing = findTunnelForAccount(accountId);
     if (existing) return { status: "ok", tunnel: { localPort: existing.localPort, ...remote } };
 
-    const privateKey = await decrypt(
-      config.encryptedPrivateKey,
-      config.privateKeyIv,
-      buildAad("sshTunnelConfig", config.id, "privateKey"),
-    );
-    // The bastion endpoint is the one hop this process dials itself; vet it
-    // like every other tenant-supplied destination. `remoteHost` is reached
-    // from the bastion, so a private address there is the point.
-    await resolveSafeHost(config.sshHost);
-    const { localPort } = await coreOpenTunnel<TunnelExtras>(
-      {
-        sshHost: config.sshHost,
-        sshPort: config.sshPort,
-        sshUser: config.sshUser,
-        privateKey,
-        remoteHost: config.remoteHost,
-        remotePort: config.remotePort,
+    const { organizationId } = config;
+    const refused = { value: null as Error | null };
+    const { localPort } = await ensureTunnel<TunnelExtras>(
+      `${organizationId}:${accountId}:${config.id}`,
+      async () => {
+        const privateKey = await decrypt(
+          config.encryptedPrivateKey,
+          config.privateKeyIv,
+          buildAad("sshTunnelConfig", config.id, "privateKey"),
+        );
+        // The bastion endpoint is the one hop this process dials itself; vet it
+        // like every other tenant-supplied destination, and dial the address
+        // that cleared rather than letting ssh2 resolve the name again.
+        // `remoteHost` is reached from the bastion, so a private address there
+        // is the point.
+        const { databasePins, pinnedKeyVerifier } = await import("./ssh-exec");
+        const address = await resolveSafeHost(config.sshHost);
+        const sock = await dialBastion(address, config.sshPort);
+        return {
+          config: {
+            sshHost: config.sshHost,
+            sshPort: config.sshPort,
+            sshUser: config.sshUser,
+            privateKey,
+            remoteHost: config.remoteHost,
+            remotePort: config.remotePort,
+          },
+          extras: { organizationId, accountId },
+          options: {
+            // Unattended, so only a key the organization already trusts (the
+            // pin made when the tunnel was set up) is accepted; the host stays
+            // the configured name, which the pins are keyed by.
+            configureConnect: (opts) => ({
+              ...opts,
+              sock,
+              hostVerifier: pinnedKeyVerifier(
+                databasePins(organizationId),
+                config.sshHost,
+                config.sshPort,
+                refused,
+              ),
+            }),
+            connectError: () => refused.value,
+          },
+        };
       },
-      { organizationId: config.organizationId, accountId },
     );
 
     return { status: "ok", tunnel: { localPort, ...remote } };

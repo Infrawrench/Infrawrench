@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
+import * as net from "node:net";
+import type { TunnelPlan } from "@infrawrench/ssh-tunnel-core";
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
@@ -39,10 +41,17 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 
 // --- mock ssh-tunnel-core (real module pulls in ssh2 which breaks ESM import) ---
 const findTunnel = vi.fn();
-const openTunnel = vi.fn();
+const ensureTunnel = vi.fn();
 vi.mock("@infrawrench/ssh-tunnel-core", () => ({
   findTunnel: (...a: unknown[]) => findTunnel(...a),
-  openTunnel: (...a: unknown[]) => openTunnel(...a),
+  ensureTunnel: (...a: unknown[]) => ensureTunnel(...a),
+}));
+
+// The organization's pinned host keys, read from the database by the real one.
+const pinnedKeyVerifier = vi.fn(() => "pinned-verifier");
+vi.mock("../ssh-exec", () => ({
+  databasePins: (organizationId: string) => `pins:${organizationId}`,
+  pinnedKeyVerifier: (...a: unknown[]) => pinnedKeyVerifier(...(a as [])),
 }));
 
 // The bastion host check resolves DNS; these tests are about what is rewritten.
@@ -79,7 +88,7 @@ describe("rewriteConnectionForTunnel", () => {
     findTunnel.mockReturnValue({ localPort: 15432, extras: { accountId: "acct1" } });
     const out = await rewriteConnectionForTunnel("acct1", "postgres://u:p@db.example.com:5432/app");
     expect(out).toBe("postgres://u:p@127.0.0.1:15432/app");
-    expect(openTunnel).not.toHaveBeenCalled();
+    expect(ensureTunnel).not.toHaveBeenCalled();
   });
 
   it("rewrites a tcp:// URL to 127.0.0.1:<localPort>", async () => {
@@ -113,24 +122,64 @@ describe("rewriteConnectionForTunnel", () => {
   });
 
   it("opens the tunnel the config describes when none is open", async () => {
+    // A local stand-in for the bastion, so the plan's dial lands somewhere.
+    const bastion = net.createServer((socket) => socket.destroy());
+    await new Promise<void>((r) => bastion.listen(0, "127.0.0.1", r));
+    const bastionPort = (bastion.address() as net.AddressInfo).port;
     const { encrypt, buildAad } = await import("../encryption");
     const sealed = await encrypt("KEY", buildAad("sshTunnelConfig", "t1", "privateKey"));
     pg.queueRows([
       {
         ...tunnelConfig("10.0.0.5", 6379),
+        sshHost: "127.0.0.1",
+        sshPort: bastionPort,
         encryptedPrivateKey: sealed.ciphertext,
         privateKeyIv: sealed.iv,
       },
     ]);
     findTunnel.mockReturnValue(null);
-    openTunnel.mockResolvedValue({ tunnelId: "x", localPort: 17000 });
-    const out = await rewriteConnectionForTunnel("acct1", "redis://:pw@10.0.0.5:6379");
-    expect(out).toBe("redis://:pw@127.0.0.1:17000");
-    expect(openTunnel.mock.calls[0]![0]).toMatchObject({
-      privateKey: "KEY",
-      remoteHost: "10.0.0.5",
-      remotePort: 6379,
-    });
+    let planned: TunnelPlan<unknown> | undefined;
+    ensureTunnel.mockImplementation(
+      async (_key: string, plan: () => Promise<TunnelPlan<unknown>>) => {
+        planned = await plan();
+        return { tunnelId: "x", localPort: 17000 };
+      },
+    );
+    try {
+      const out = await rewriteConnectionForTunnel("acct1", "redis://:pw@10.0.0.5:6379");
+      expect(out).toBe("redis://:pw@127.0.0.1:17000");
+      // One tunnel per account and config, which the core reopens when it drops.
+      expect(ensureTunnel.mock.calls[0]![0]).toBe("org1:acct1:t1");
+      expect(planned!.config).toMatchObject({
+        privateKey: "KEY",
+        remoteHost: "10.0.0.5",
+        remotePort: 6379,
+      });
+      expect(planned!.extras).toEqual({ organizationId: "org1", accountId: "acct1" });
+      // Dialled to the vetted address, verified against the organization's pins.
+      const connect = planned!.options!.configureConnect!({ host: "127.0.0.1", port: bastionPort });
+      expect(connect.sock).toBeInstanceOf(net.Socket);
+      expect(connect.hostVerifier).toBe("pinned-verifier");
+      expect(pinnedKeyVerifier).toHaveBeenCalledWith(
+        "pins:org1",
+        "127.0.0.1",
+        bastionPort,
+        expect.any(Object),
+      );
+      (connect.sock as net.Socket).destroy();
+    } finally {
+      await new Promise((r) => bastion.close(r));
+    }
+  });
+
+  it("returns the original string while the tunnel cannot open", async () => {
+    pg.queueRows([tunnelConfig("10.0.0.5", 6379)]);
+    findTunnel.mockReturnValue(null);
+    ensureTunnel.mockRejectedValue(new Error("The SSH tunnel is unavailable (refused)"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await rewriteConnectionForTunnel("acct1", "redis://10.0.0.5:6379");
+    expect(out).toBe("redis://10.0.0.5:6379");
+    expect(spy.mock.calls[0]).toContain("The SSH tunnel is unavailable (refused)");
   });
 
   it("swallows resolution errors and returns the original string", async () => {
