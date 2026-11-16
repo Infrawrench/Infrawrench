@@ -59,6 +59,7 @@ export const manifest = {
     {
       key: "hostname",
       providerHost: true,
+      tunnel: "address",
       label: "Hostname",
       description:
         "app.terraform.io for HCP Terraform, app.eu.terraform.io for HCP Europe, or your Terraform Enterprise hostname.",

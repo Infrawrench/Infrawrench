@@ -81,6 +81,7 @@ export const manifest = {
     {
       key: "baseUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Self-hosted URL",
       description:
         "Only for a self-hosted Sentry: the address you open Sentry at, e.g. https://sentry.example.com. Leave empty on sentry.io.",

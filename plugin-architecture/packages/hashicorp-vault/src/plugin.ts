@@ -36,6 +36,7 @@ export const manifest = {
     {
       key: "address",
       providerHost: true,
+      tunnel: "address",
       label: "Vault Address",
       description:
         "The address you reach Vault at, including the port: https://vault.example.com:8200, or the public or private address of an HCP Vault Dedicated cluster (HCP portal, Vault Dedicated, the cluster's Overview page).",

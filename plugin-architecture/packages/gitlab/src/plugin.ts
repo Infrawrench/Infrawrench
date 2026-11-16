@@ -79,6 +79,7 @@ export const manifest = {
     {
       key: "url",
       providerHost: true,
+      tunnel: "address",
       label: "GitLab URL",
       description:
         "https://gitlab.com, or the address of your self-managed or Dedicated instance, such as https://gitlab.example.com.",
