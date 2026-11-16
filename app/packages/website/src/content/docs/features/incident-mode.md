@@ -52,7 +52,7 @@ The timeline pulls together everything Infrawrench recorded between the incident
 It includes:
 
 - resource changes from the [change timeline](./change-timeline.md)
-- deployments and workflow runs
+- workflow runs
 - [cost anomalies](./cost-anomaly-alerts.md)
 - [provider status incidents](./provider-status.md) during the window
 - audit entries and change freezes starting or ending
@@ -65,7 +65,7 @@ You can set a note's time separately from when you wrote it, so a note written a
 
 If one of these sources is unavailable, or you don't have permission to see it, a small chip says so and the rest of the timeline still shows.
 
-![An incident detail view showing the merged timeline with a note, a deploy, a probe going down and a failed Slack artefact](https://agent-assets.infrawrench.com/docs-screenshots/features/incident-mode/incident-detail-timeline.png)
+<insert [An incident detail view showing the merged timeline with a note, a workflow run, a probe going down and a failed Slack artefact] here>
 
 ## Resolve and write the postmortem
 

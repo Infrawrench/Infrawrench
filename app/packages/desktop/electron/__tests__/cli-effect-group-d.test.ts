@@ -349,7 +349,7 @@ describe("declared-incidents", () => {
 
         · slack: closed (#incidents)
 
-      Nothing else was recorded in this window. The change feed, deploys and alerts were all quiet.
+      Nothing else was recorded in this window. The change feed, workflow runs and alerts were all quiet.
       "
     `);
   });

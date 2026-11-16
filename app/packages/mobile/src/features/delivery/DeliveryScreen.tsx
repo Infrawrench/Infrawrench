@@ -85,9 +85,8 @@ export function DeliveryScreen() {
       <TabStrip tabs={RANGES} value={range} onChange={setRange} />
       {empty ? (
         <Text style={styles.footnote}>
-          No deploys in this range yet. Delivery metrics come from Infrawrench deploys, deploys your
-          providers already sync, CI pipelines named as deploys, GitHub deployments and deploys
-          recorded over the API.
+          No deploys in this range yet. Delivery metrics come from deploys your providers already
+          sync, CI pipelines named as deploys, GitHub deployments and deploys recorded over the API.
         </Text>
       ) : (
         <>

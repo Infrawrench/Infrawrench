@@ -23,10 +23,16 @@ mod builtins;
 mod cache;
 mod cancel;
 mod capture;
+/// The runner inside a job's gVisor sandbox (Linux only).
+#[cfg(target_os = "linux")]
+pub mod inside;
 mod limits;
 mod modes;
 mod network;
 mod node;
+/// Running a job in a gVisor sandbox (Linux only).
+#[cfg(target_os = "linux")]
+pub mod sandbox;
 mod services;
 mod signals;
 mod stall;
@@ -298,6 +304,10 @@ pub struct Invocation {
     /// Wasm commands a script can run by name, written to `/usr/local/bin`
     /// (first on the default `PATH`). Only scripts use them.
     pub commands: Vec<PathCommand>,
+    /// Read-only directories a script's tools run from, with the commands
+    /// that start them (`tools:` that are Node programs). Only scripts use
+    /// them.
+    pub trees: Vec<PathTree>,
     /// Whether the job may reach the public internet, when the runtime
     /// offers it (`Runtime::with_internet`). Off leaves only its loopback.
     pub internet: bool,
@@ -390,6 +400,25 @@ pub struct PathCommand {
     pub module: WasmModule,
 }
 
+/// A tool that is a directory of files rather than one module: a pinned
+/// npm CLI (`builtin:vercel`), which the environment's `node` runs. Its
+/// files are mounted read-only at `dir` and shared by every job that uses
+/// the same build; its command is a script written to `/usr/local/bin`.
+#[derive(Clone)]
+pub struct PathTree {
+    /// The tool's name, for errors.
+    pub name: String,
+    /// Absolute guest path the files are mounted at.
+    pub dir: String,
+    pub fs: DynFs,
+    /// Scripts written to `/usr/local/bin` by name, after the mode commands
+    /// and before `commands` (a module tool of the same name wins).
+    pub scripts: Vec<(String, Vec<u8>)>,
+    /// A command one of the environment's packages must provide, such as
+    /// `node`: a job whose environment has none fails to start, saying so.
+    pub needs: Option<String>,
+}
+
 impl std::fmt::Debug for Invocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Invocation")
@@ -471,6 +500,21 @@ pub struct Outcome {
     /// Why the job never started: a service exited, or was not ready in
     /// time. Its exit code is 1 then.
     pub service_failure: Option<String>,
+    /// For a job run in a gVisor sandbox (`sandbox.rs`): what the sandbox
+    /// itself took. The memory figures above are then the job's share.
+    pub sandbox: Option<SandboxUsage>,
+}
+
+/// What a job's gVisor sandbox took besides the job.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SandboxUsage {
+    /// The sandbox's own memory, measured once the runner inside had
+    /// loaded the environment and before the job's script started.
+    pub overhead_bytes: u64,
+    /// What the runner reserved for it on top of the job's `memory:`.
+    pub reserved_bytes: u64,
+    /// The CPU time of the whole sandbox, gVisor's kernel's included.
+    pub cpu_usec: u64,
 }
 
 impl Outcome {
@@ -548,6 +592,34 @@ impl Runtime {
             network::host_addresses(),
         )));
         self
+    }
+
+    /// Runs jobs inside their gVisor sandbox (`inside`): over the sandbox's
+    /// own network stack, with `natives` (command name and path) on a
+    /// script's `PATH`.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn in_sandbox(mut self, natives: Vec<(String, PathBuf)>) -> Self {
+        let _enter = self.tokio.enter();
+        self.wasix.sandbox = Some(inside::Sandbox {
+            stack: Arc::new(virtual_net::host::LocalNetworking::new()),
+            natives,
+        });
+        self
+    }
+
+    /// Parses and loads `packages` as a job of them will, keeping them for
+    /// as long as the result is held.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn preload(&self, packages: &[WebcPackage], entry: &str) -> Result<impl Sized> {
+        wasix::preload(&self.wasix, &self.tokio, packages, entry)
+    }
+
+    /// The sandbox's own files, from its root.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn sandbox_root(&self) -> std::result::Result<DynFs, String> {
+        let fs = virtual_fs::host_fs::FileSystem::new(self.tokio.handle().clone(), "/")
+            .map_err(|e| format!("the sandbox's files: {e}"))?;
+        Ok(Arc::new(fs))
     }
 
     /// Changes what each of stdout and stderr keeps (default 8 MiB).
@@ -694,7 +766,46 @@ impl Runtime {
         packages: &[WebcPackage],
         entry: &str,
         script: &str,
+        inv: Invocation,
+    ) -> Result<Outcome> {
+        self.run_script_with(packages, entry, script, inv, None)
+    }
+
+    /// [`Runtime::run_script`] with Edge.js's built-ins cache made by
+    /// another runtime (the runner outside a sandbox, which keeps it).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn run_script_with_builtins(
+        &self,
+        packages: &[WebcPackage],
+        entry: &str,
+        script: &str,
+        inv: Invocation,
+        builtins: Option<bytes::Bytes>,
+    ) -> Result<Outcome> {
+        self.run_script_with(packages, entry, script, inv, Some(builtins))
+    }
+
+    /// Edge.js's built-ins cache for `packages`, made once per process
+    /// (`builtins.rs`): for a sandboxed job's runner inside, which has none
+    /// of its own.
+    pub fn node_builtins(&self, packages: &[WebcPackage]) -> Option<bytes::Bytes> {
+        let job_modules = cache::JobModules::new();
+        wasix::builtins(
+            &self.wasix,
+            &self.tokio,
+            &job_modules,
+            packages,
+            self.output_cap,
+        )
+    }
+
+    fn run_script_with(
+        &self,
+        packages: &[WebcPackage],
+        entry: &str,
+        script: &str,
         mut inv: Invocation,
+        given_builtins: Option<Option<bytes::Bytes>>,
     ) -> Result<Outcome> {
         let mut args = script_args(entry, script);
         args.append(&mut inv.args);
@@ -710,15 +821,18 @@ impl Runtime {
         // Made before the first job of the environment in this process,
         // which waits for it, as do any that start meanwhile.
         let job_modules = cache::JobModules::new();
-        let builtins = node.as_ref().and_then(|_| {
-            wasix::builtins(
-                &self.wasix,
-                &self.tokio,
-                &job_modules,
-                packages,
-                self.output_cap,
-            )
-        });
+        let builtins = match given_builtins {
+            Some(given) => given,
+            None => node.as_ref().and_then(|_| {
+                wasix::builtins(
+                    &self.wasix,
+                    &self.tokio,
+                    &job_modules,
+                    packages,
+                    self.output_cap,
+                )
+            }),
+        };
         wasix::run(
             &self.wasix,
             &self.tokio,

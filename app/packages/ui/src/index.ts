@@ -186,23 +186,6 @@ export type {
   WorkflowTrigger,
 } from "./workflows/index.js";
 
-export { DeploymentsPanel, DeployIcon } from "./deployments/index.js";
-export type {
-  DeployEnvs,
-  DeployRepo,
-  DeployTrigger,
-  DeployTriggerInput,
-  DeployRunResult,
-  DeploySession,
-  DeployStage,
-  DeployStartOptions,
-  DeployStatus,
-  DeploymentClient,
-  DeploymentRunRow,
-  DeploymentsPanelProps,
-} from "./deployments/index.js";
-export { DEPLOY_STAGES } from "./deployments/index.js";
-
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
 export { MetricChart } from "./components/charts/MetricChart.js";
@@ -518,7 +501,6 @@ export {
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
-  deploymentsTabTarget,
   settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,

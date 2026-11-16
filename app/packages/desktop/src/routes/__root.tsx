@@ -89,7 +89,7 @@ import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
 import { resolveDefaultDashboard } from "../lib/default-dashboard";
 import { useAppSettingsShortcut } from "../lib/app-settings";
 import { useOrgTools } from "../lib/org-tools";
-import { getLocalAccountCredentials } from "../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../lib/local-credentials";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -184,7 +184,6 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "delivery" ||
     target.kind === "ci" ||
     target.kind === "workflows" ||
-    target.kind === "deployments" ||
     target.kind === "chat" ||
     target.kind === "settings"
   ) {
@@ -205,9 +204,12 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   if (!account) return null;
 
   try {
-    const credentials = await getLocalAccountCredentials(account.id);
     const loaded = await getPlugin(account.plugin_id);
     if (!loaded) return tab;
+    const credentials = await getLocalConnectionCredentials(
+      account.id,
+      loaded.plugin.manifest.credentialFields,
+    );
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
     const client = loaded.plugin.createClient(credentials, services);
     const typeId = normalizeResourceId(target.resourceId).split(":")[1];

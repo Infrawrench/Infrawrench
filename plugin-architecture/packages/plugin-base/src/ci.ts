@@ -164,6 +164,14 @@ export interface CiTaggedCompute {
   live: boolean;
 }
 
+/**
+ * How long what a run is lent must keep working: a run's jobs may start well
+ * after it is dispatched (behind `needs:`) and one may run for six hours.
+ * The host mints for this long, and a plugin minting for CI outside
+ * `lendCiCredential` (an output a peer integration names for CI) uses it too.
+ */
+export const CI_LEND_SECONDS = 7 * 60 * 60;
+
 /** The tag every CI compute carries. Its value is the organization's CI scope. */
 export const CI_TAG = "infrawrench-ci";
 /** The run's id, on everything a CI job starts. */

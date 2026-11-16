@@ -115,6 +115,8 @@ export function SshEnvDeployModal({
         throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: source.pluginId }));
       }
 
+      // As stored, not through an SSH tunnel: the values leave this computer, and a
+      // tunnel's local end means nothing anywhere else.
       const sourceCreds = await getLocalAccountCredentials(source.accountId);
       const sourceServices = buildPluginHostServices(sourceLoaded.plugin.manifest, sourceCreds);
       const sourceClient = sourceLoaded.plugin.createClient(sourceCreds, sourceServices);

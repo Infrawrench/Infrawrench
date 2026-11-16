@@ -117,6 +117,14 @@ const MANAGEMENT_KEY_HELP = {
  * $0.02 an image, so the same 1e8 scale covers tokens, images and search
  * sources. Divide by 1e4 for dollars per million, by 1e10 for dollars apiece.
  *
+ * Embedding models use the same scale (#471, checked 2026-11-15). The OpenAPI
+ * document's `EmbeddingModel` says "USD cents per million token", but xAI's own
+ * protocol definition (`EmbeddingModel` in `xai/api/v1/models.proto` on
+ * xai-org/xai-proto) gives its token prices "in 1/100 USD cents" per one million
+ * tokens, word for word what it says of `LanguageModel`, and the management API
+ * documents `embeddingModels.promptTextTokenPrice` per 100 million. No embedding
+ * price is published to check against.
+ *
  * Docs: https://docs.x.ai/openapi.json, https://docs.x.ai/docs/models
  */
 const PRICE_PER_MILLION = 1e4;

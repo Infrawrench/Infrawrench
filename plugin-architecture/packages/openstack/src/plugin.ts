@@ -29,6 +29,7 @@ export const manifest = {
     {
       key: "authUrl",
       providerHost: true,
+      tunnel: "address",
       label: "Keystone URL",
       description:
         "The Identity (Keystone) v3 endpoint, shown as auth_url in your clouds.yaml or OS_AUTH_URL in the openrc file (Horizon: Project, API Access).",

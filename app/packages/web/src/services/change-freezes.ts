@@ -12,8 +12,8 @@ import { logAudit } from "./audit";
  *
  * A freeze is "in effect" when it is active, has started, and has not passed
  * its end time. While one is in effect, the destructive mutation paths
- * (resource delete, destructive plugin actions, secret-version destroy,
- * deployment rollback) call {@link evaluateChangeFreeze} (through
+ * (resource delete, destructive plugin actions, secret-version destroy)
+ * call {@link evaluateChangeFreeze} (through
  * `http/change-freeze.ts` on the API) before touching the provider. Callers holding `freezes:override` can bypass a freeze by sending
  * the `x-change-freeze-override: true` header; both blocks and overrides are
  * written to the audit trail.

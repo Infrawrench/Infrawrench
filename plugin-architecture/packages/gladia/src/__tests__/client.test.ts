@@ -613,6 +613,13 @@ describe("Speech panel options", () => {
     }
   });
 
+  it("offers only languages Gladia's transcription enum lists, so not Wolof", () => {
+    // `wo` is in `TranslationLanguageCodeEnum` only (#553).
+    const offered = GLADIA_LANGUAGE_OPTIONS.map((option) => option.id);
+    expect(offered).not.toContain("wo");
+    expect(offered).toHaveLength(100);
+  });
+
   it("says auto-detect is not documented for Solaria-3", () => {
     const auto = GLADIA_LANGUAGE_OPTIONS.find((option) => option.id === "auto");
     expect(auto?.description).toContain("Solaria-3");

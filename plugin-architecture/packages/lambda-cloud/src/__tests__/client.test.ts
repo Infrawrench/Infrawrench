@@ -1,7 +1,8 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LambdaCloudClient } from "../client.js";
-import { LambdaApiError } from "../api.js";
+import { API_BASE, LambdaApiError } from "../api.js";
+import { manifest } from "../plugin.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
 import { formatRules, parseRules, sshOpenToInternet } from "../firewall.js";
 import { imageOptions, regionOptions, sizeOption } from "../create-config.js";
@@ -89,6 +90,16 @@ describe("api", () => {
     const keys = await client().listResources("ssh-key", "acct");
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer secret_k");
     expect(keys[0]!.displayName).toBe("laptop");
+  });
+
+  it("calls the production host, which is the one egress allows", async () => {
+    // Lambda's OpenAPI document (1.10.0) lists cloud.lambda.com as the
+    // production server and cloud.lambda.ai as deprecated.
+    route("GET", "/ssh-keys", { data: [] });
+    await client().listResources("ssh-key", "acct");
+    expect(calls[0]!.url.host).toBe("cloud.lambda.com");
+    expect(new URL(API_BASE).host).toBe("cloud.lambda.com");
+    expect(manifest.egressHosts).toEqual(["cloud.lambda.com"]);
   });
 
   it("maps the error envelope and keeps the status", async () => {
@@ -444,7 +455,7 @@ describe("create helpers", () => {
 describe("status feed", () => {
   it("keeps unresolved incidents and lifts regions from titles", () => {
     const body = JSON.stringify({
-      page: { id: "p", name: "Lambda", url: "https://status.lambda.ai" },
+      page: { id: "p", name: "Lambda", url: "https://status.lambda.com" },
       incidents: [
         {
           id: "a",

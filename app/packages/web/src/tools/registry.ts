@@ -32,7 +32,6 @@ import { networkCostTools } from "./network-costs";
 import { momentTools } from "./moment";
 import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
-import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
@@ -75,7 +74,6 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...momentTools(),
     ...forProduct("automation", workflowTools()),
     ...customGraphTools(),
-    ...forProduct("delivery", deploymentTools()),
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...linuxAppTools(),

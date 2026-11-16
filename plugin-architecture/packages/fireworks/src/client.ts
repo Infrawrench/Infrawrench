@@ -45,13 +45,10 @@ import {
   type DeployedModel,
   type Deployment,
   type DpoJob,
-  type EvaluationJob,
-  type Evaluator,
   type FireworksResponse,
   type Model,
   type Money,
   type Quota,
-  type ReinforcementFineTuningJob,
   type Router,
   type Secret,
   type SupervisedFineTuningJob,
@@ -212,7 +209,7 @@ function mapDeploymentState(state: string | undefined): {
   }
 }
 
-/** The 20-value `gatewayJobState` shared by batch, SFT, DPO and RFT jobs. */
+/** The 20-value `gatewayJobState` shared by batch, SFT and DPO jobs. */
 function mapJobState(state: string | undefined): { status: ResourceStatus; label: string } {
   const short = (state ?? "").replace(/^JOB_STATE_/, "");
   switch (short) {
@@ -254,19 +251,6 @@ function mapReadyState(state: string | undefined): { status: ResourceStatus; lab
       return { status: "provisioning", label: titleCase(state) };
     case "UNDEPLOYING":
       return { status: "degraded", label: "Undeploying" };
-    default:
-      return { status: "info", label: prettyEnum(state, "STATE_") || "Unknown" };
-  }
-}
-
-function mapEvaluatorState(state: string | undefined): { status: ResourceStatus; label: string } {
-  switch (state) {
-    case "ACTIVE":
-      return { status: "healthy", label: "Active" };
-    case "BUILDING":
-      return { status: "provisioning", label: "Building" };
-    case "BUILD_FAILED":
-      return { status: "error", label: "Build failed" };
     default:
       return { status: "info", label: prettyEnum(state, "STATE_") || "Unknown" };
   }
@@ -349,9 +333,8 @@ export class FireworksClient implements PluginClient {
   }
 
   /**
-   * A plain-text GET: the Prometheus exposition, or a signed log-file URL.
-   * Signed URLs carry their own authorization, so the API key is only sent
-   * to Fireworks' own host.
+   * A plain-text GET: the Prometheus exposition. The API key is only ever
+   * sent to Fireworks' own host.
    */
   private async fetchText(url: string): Promise<string> {
     const ours = isSameOrigin(url, HOST);
@@ -366,7 +349,7 @@ export class FireworksClient implements PluginClient {
       },
     );
     if (!res.ok) {
-      const label = ours ? new URL(url, HOST).pathname : "signed log URL";
+      const label = ours ? new URL(url, HOST).pathname : new URL(url).host;
       throw new FireworksApiError(
         res.status,
         `Fireworks API error ${res.status} for ${label}: ${await res.text()}`,
@@ -426,21 +409,6 @@ export class FireworksClient implements PluginClient {
         case "dpo-job": {
           const items = await this.api.getAll("/dpoJobs", "dpoJobs");
           return items.map((item) => this.mapDpoJob(item, accountId));
-        }
-        case "reinforcement-fine-tuning-job": {
-          const items = await this.api.getAll(
-            "/reinforcementFineTuningJobs",
-            "reinforcementFineTuningJobs",
-          );
-          return items.map((item) => this.mapRftJob(item, accountId));
-        }
-        case "evaluator": {
-          const items = await this.api.getAll("/evaluators", "evaluators");
-          return items.map((item) => this.mapEvaluator(item, accountId));
-        }
-        case "evaluation-job": {
-          const items = await this.api.getAll("/evaluationJobs", "evaluationJobs");
-          return items.map((item) => this.mapEvaluationJob(item, accountId));
         }
         case "user": {
           const items = await this.api.getAll("/users", "users");
@@ -851,7 +819,7 @@ export class FireworksClient implements PluginClient {
     };
   }
 
-  /** Fields DPO and RFT jobs share through `trainingConfig` / `lossConfig`. */
+  /** DPO's `trainingConfig` / `lossConfig` fields. */
   private trainingFields(job: DpoJob): Record<string, string | number> {
     const config = job.trainingConfig ?? {};
     const loss = job.lossConfig ?? {};
@@ -895,111 +863,6 @@ export class FireworksClient implements PluginClient {
       externalId: id,
       createdAt,
       updatedAt: job.completedTime ?? createdAt,
-    };
-  }
-
-  private mapRftJob(job: ReinforcementFineTuningJob, accountId: string): ResourceInstance {
-    const id = lastSegment(job.name);
-    const outputModel = job.trainingConfig?.outputModel ?? "";
-    const displayName = job.displayName || outputModel || id;
-    const createdAt = job.createTime ?? nowIso();
-    const progress = job.jobProgress ?? {};
-    const inputTokens = toNumber(progress.inputTokens);
-    const outputTokens = toNumber(progress.outputTokens);
-    return {
-      id: `${accountId}:reinforcement-fine-tuning-job:${id}`,
-      pluginId: "fireworks",
-      resourceTypeId: "reinforcement-fine-tuning-job",
-      accountId,
-      displayName,
-      fields: {
-        displayName,
-        jobId: id,
-        ...this.trainingFields(job),
-        ...(job.evaluator ? { evaluator: job.evaluator } : {}),
-        ...(job.evaluationDataset ? { evaluationDataset: job.evaluationDataset } : {}),
-        ...(progress.percent != null ? { progressPercent: progress.percent } : {}),
-        ...(progress.epoch != null ? { epoch: progress.epoch } : {}),
-        ...(inputTokens != null ? { inputTokens } : {}),
-        ...(outputTokens != null ? { outputTokens } : {}),
-        ...(job.nodeCount != null ? { nodeCount: job.nodeCount } : {}),
-        createTime: createdAt,
-      },
-      resolvedOutputs: { jobName: job.name ?? "", outputModel },
-      secretStates: [],
-      externalId: id,
-      createdAt,
-      updatedAt: job.completedTime ?? createdAt,
-    };
-  }
-
-  private mapEvaluator(evaluator: Evaluator, accountId: string): ResourceInstance {
-    const id = lastSegment(evaluator.name);
-    const displayName = evaluator.displayName || id;
-    const createdAt = evaluator.createTime ?? nowIso();
-    const sourceType = evaluator.source?.type;
-    return {
-      id: `${accountId}:evaluator:${id}`,
-      pluginId: "fireworks",
-      resourceTypeId: "evaluator",
-      accountId,
-      displayName,
-      fields: {
-        displayName,
-        evaluatorId: id,
-        ...(evaluator.description ? { description: evaluator.description } : {}),
-        ...(evaluator.state ? { state: evaluator.state } : {}),
-        ...(evaluator.status?.message ? { statusMessage: evaluator.status.message } : {}),
-        ...(evaluator.defaultDataset ? { defaultDataset: evaluator.defaultDataset } : {}),
-        ...(evaluator.entryPoint ? { entryPoint: evaluator.entryPoint } : {}),
-        ...(sourceType && sourceType !== "TYPE_UNSPECIFIED"
-          ? { sourceType: prettyEnum(sourceType, "TYPE_") }
-          : {}),
-        ...(evaluator.source?.githubRepositoryName
-          ? { githubRepository: evaluator.source.githubRepositoryName }
-          : {}),
-        ...(evaluator.commitHash ? { commitHash: evaluator.commitHash } : {}),
-        ...(evaluator.createdBy ? { createdBy: evaluator.createdBy } : {}),
-        createTime: createdAt,
-        ...(evaluator.updateTime ? { updateTime: evaluator.updateTime } : {}),
-      },
-      resolvedOutputs: { evaluatorName: evaluator.name ?? "", evaluatorId: id },
-      secretStates: [],
-      externalId: id,
-      createdAt,
-      updatedAt: evaluator.updateTime ?? createdAt,
-    };
-  }
-
-  private mapEvaluationJob(job: EvaluationJob, accountId: string): ResourceInstance {
-    const id = lastSegment(job.name);
-    const displayName = job.displayName || id;
-    const createdAt = job.createTime ?? nowIso();
-    const metrics = job.metrics && Object.keys(job.metrics).length ? job.metrics : null;
-    return {
-      id: `${accountId}:evaluation-job:${id}`,
-      pluginId: "fireworks",
-      resourceTypeId: "evaluation-job",
-      accountId,
-      displayName,
-      fields: {
-        displayName,
-        jobId: id,
-        ...(job.state ? { state: job.state } : {}),
-        ...(job.status?.message ? { statusMessage: job.status.message } : {}),
-        ...(job.evaluator ? { evaluator: job.evaluator } : {}),
-        ...(job.inputDataset ? { inputDataset: job.inputDataset } : {}),
-        ...(job.outputDataset ? { outputDataset: job.outputDataset } : {}),
-        ...(metrics ? { metrics: JSON.stringify(metrics) } : {}),
-        ...(job.createdBy ? { createdBy: job.createdBy } : {}),
-        createTime: createdAt,
-        ...(job.updateTime ? { updateTime: job.updateTime } : {}),
-      },
-      resolvedOutputs: { jobName: job.name ?? "", outputDataset: job.outputDataset ?? "" },
-      secretStates: [],
-      externalId: id,
-      createdAt,
-      updatedAt: job.updateTime ?? createdAt,
     };
   }
 
@@ -1068,15 +931,6 @@ export class FireworksClient implements PluginClient {
           return this.mapRouter(await this.api.get(`/routers/${encoded}`), accountId);
         case "dpo-job":
           return this.mapDpoJob(await this.api.get(`/dpoJobs/${encoded}`), accountId);
-        case "reinforcement-fine-tuning-job":
-          return this.mapRftJob(
-            await this.api.get(`/reinforcementFineTuningJobs/${encoded}`),
-            accountId,
-          );
-        case "evaluator":
-          return this.mapEvaluator(await this.api.get(`/evaluators/${encoded}`), accountId);
-        case "evaluation-job":
-          return this.mapEvaluationJob(await this.api.get(`/evaluationJobs/${encoded}`), accountId);
         case "user":
           return this.mapUser(await this.api.get(`/users/${encoded}`), accountId);
         default: {
@@ -1417,7 +1271,6 @@ export class FireworksClient implements PluginClient {
         case "deployment":
           break;
         case "router":
-        case "evaluator":
         case "user":
         case "quota":
           await this.patchSimple(typeId, resourceId, accountId, fields);
@@ -1463,15 +1316,14 @@ export class FireworksClient implements PluginClient {
   }
 
   /**
-   * Ordinary PATCHes for routers, evaluators, users and quotas. Each body
+   * Ordinary PATCHes for routers, users and quotas. Each body
    * carries only the fields the user changed.
    * https://docs.fireworks.ai/api-reference/update-router
-   * https://docs.fireworks.ai/api-reference/update-evaluator
    * https://docs.fireworks.ai/api-reference/update-user
    * https://docs.fireworks.ai/api-reference/update-quota
    */
   private async patchSimple(
-    typeId: "router" | "evaluator" | "user" | "quota",
+    typeId: "router" | "user" | "quota",
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
@@ -1503,14 +1355,6 @@ export class FireworksClient implements PluginClient {
             ...(fields["strategy"] ? strategyBody(fields["strategy"]) : {}),
           },
         });
-        return;
-      }
-      case "evaluator": {
-        const patch: ApiBody<operations["Gateway_UpdateEvaluator"]> = {
-          displayName: fields["displayName"],
-          description: fields["description"],
-        };
-        if (hasValues(patch)) await this.api.patch(`/evaluators/${encoded}`, { body: patch });
         return;
       }
       case "user": {
@@ -1586,15 +1430,6 @@ export class FireworksClient implements PluginClient {
         case "dpo-job":
           await this.api.delete(`/dpoJobs/${encoded}`);
           return;
-        case "reinforcement-fine-tuning-job":
-          await this.api.delete(`/reinforcementFineTuningJobs/${encoded}`);
-          return;
-        case "evaluator":
-          await this.api.delete(`/evaluators/${encoded}`);
-          return;
-        case "evaluation-job":
-          await this.api.delete(`/evaluationJobs/${encoded}`);
-          return;
         case "api-key": {
           // Deletion is a POST custom verb keyed on `keyId`, not an HTTP DELETE.
           const resource = await runPluginEffect(
@@ -1614,7 +1449,6 @@ export class FireworksClient implements PluginClient {
 
   /**
    * `POST .../supervisedFineTuningJobs/{id}:cancel` and `:resume`,
-   * `POST .../reinforcementFineTuningJobs/{id}:cancel` and `:resume`,
    * `POST .../dpoJobs/{id}:resume` (DPO has no cancel), and
    * `POST .../deployments/{id}:undelete`.
    */
@@ -1631,13 +1465,6 @@ export class FireworksClient implements PluginClient {
         (actionId === "cancel" || actionId === "resume")
       ) {
         await this.api.post(`/supervisedFineTuningJobs/${encoded}:${actionId}`);
-        return;
-      }
-      if (
-        typeId === "reinforcement-fine-tuning-job" &&
-        (actionId === "cancel" || actionId === "resume")
-      ) {
-        await this.api.post(`/reinforcementFineTuningJobs/${encoded}:${actionId}`);
         return;
       }
       if (typeId === "dpo-job" && actionId === "resume") {
@@ -1848,13 +1675,8 @@ export class FireworksClient implements PluginClient {
 
   /**
    * Logs tabs:
-   * - evaluation jobs: the execution log, via a short-lived signed URL from
-   *   `GET …/evaluationJobs/{id}:getExecutionLogEndpoint`
-   * - evaluators: the build log, via `GET …/evaluators/{id}:getBuildLogEndpoint`
    * - deployments and users: the account audit log (`GET …/auditLogs`),
    *   filtered to the deployment's resource name or the user's email
-   * https://docs.fireworks.ai/api-reference/get-evaluation-job-log-endpoint
-   * https://docs.fireworks.ai/api-reference/get-evaluator-build-log-endpoint
    * https://docs.fireworks.ai/api-reference/list-audit-logs
    */
   getLogs(
@@ -1864,24 +1686,9 @@ export class FireworksClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
       const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : 500;
       let lines: string[];
       switch (typeId) {
-        case "evaluation-job": {
-          const res = await this.api.get(`/evaluationJobs/${id}:getExecutionLogEndpoint`);
-          lines = res.executionLogSignedUri
-            ? splitLines(await this.fetchText(res.executionLogSignedUri))
-            : ["No execution log yet: the job has not started writing one."];
-          break;
-        }
-        case "evaluator": {
-          const res = await this.api.get(`/evaluators/${id}:getBuildLogEndpoint`);
-          lines = res.buildLogSignedUri
-            ? splitLines(await this.fetchText(res.buildLogSignedUri))
-            : ["No build log yet."];
-          break;
-        }
         case "deployment":
           lines = await this.auditLogLines(
             `resource:"deployments/${externalIdOf(resourceId)}"`,
@@ -2043,9 +1850,7 @@ export class FireworksClient implements PluginClient {
         }
         case "batch-inference-job":
         case "supervised-fine-tuning-job":
-        case "dpo-job":
-        case "reinforcement-fine-tuning-job":
-        case "evaluation-job": {
+        case "dpo-job": {
           const mapped = mapJobState(String(fields["state"] ?? ""));
           stats.push({
             label: "State",
@@ -2078,20 +1883,6 @@ export class FireworksClient implements PluginClient {
             .split(",")
             .filter((value) => value.trim()).length;
           stats.push({ label: "Deployments", value: String(count) });
-          break;
-        }
-        case "evaluator": {
-          const mapped = mapEvaluatorState(String(fields["state"] ?? ""));
-          stats.push({
-            label: "State",
-            value: mapped.label,
-            variant:
-              mapped.status === "healthy"
-                ? "status-healthy"
-                : mapped.status === "error"
-                  ? "status-error"
-                  : "default",
-          });
           break;
         }
         case "user": {
@@ -2142,12 +1933,7 @@ export class FireworksClient implements PluginClient {
       case "router":
         return this.renderRouterDetail(resource);
       case "dpo-job":
-      case "reinforcement-fine-tuning-job":
-        return this.renderTrainingJobDetail(resource);
-      case "evaluator":
-        return this.renderEvaluatorDetail(resource);
-      case "evaluation-job":
-        return this.renderEvaluationJobDetail(resource);
+        return this.renderDpoJobDetail(resource);
       case "user":
         return this.renderUserDetail(resource);
       default:
@@ -2169,9 +1955,7 @@ export class FireworksClient implements PluginClient {
       }
       case "batch-inference-job":
       case "supervised-fine-tuning-job":
-      case "dpo-job":
-      case "reinforcement-fine-tuning-job":
-      case "evaluation-job": {
+      case "dpo-job": {
         const mapped = mapJobState(state);
         return {
           id: resource.id,
@@ -2182,14 +1966,6 @@ export class FireworksClient implements PluginClient {
       case "router":
       case "user": {
         const mapped = mapDeploymentState(state);
-        return {
-          id: resource.id,
-          label: resource.displayName,
-          status: { kind: "status-dot", status: mapped.status, label: mapped.label },
-        };
-      }
-      case "evaluator": {
-        const mapped = mapEvaluatorState(state);
         return {
           id: resource.id,
           label: resource.displayName,
@@ -2996,14 +2772,11 @@ export class FireworksClient implements PluginClient {
     };
   }
 
-  /** DPO and RFT jobs share `trainingConfig`, states and the resume verb. */
-  private renderTrainingJobDetail(resource: ResourceInstance): DetailViewSchema {
+  /** DPO jobs can be resumed but, unlike SFT jobs, not cancelled. */
+  private renderDpoJobDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
-    const isRft = resource.resourceTypeId === "reinforcement-fine-tuning-job";
     const mapped = mapJobState(String(fields["state"] ?? ""));
     const short = String(fields["state"] ?? "").replace(/^JOB_STATE_/, "");
-    const cancellable =
-      isRft && ["RUNNING", "PENDING", "CREATING", "VALIDATING", "IDLE"].includes(short);
     const resumable = ["PAUSED", "EARLY_STOPPED", "FAILED", "CANCELLED"].includes(short);
     const sections: SectionNode[] = [
       {
@@ -3018,9 +2791,7 @@ export class FireworksClient implements PluginClient {
               ...kvItems(fields, [
                 ["Status", "statusMessage"],
                 ["Base Model", "baseModel"],
-                ["Evaluator", "evaluator"],
                 ["Dataset", "dataset"],
-                ["Evaluation Dataset", "evaluationDataset"],
                 ["Output Model", "outputModel", true],
                 ["Created By", "createdBy"],
                 ["Created", "createTime"],
@@ -3043,33 +2814,11 @@ export class FireworksClient implements PluginClient {
               ["Learning Rate", "learningRate"],
               ["LoRA Rank", "loraRank"],
               ["Batch Size", "batchSizeSamples"],
-              ["Nodes", "nodeCount"],
             ]),
           },
         ],
       },
     ];
-    if (isRft) {
-      sections.push({
-        kind: "section",
-        title: "Progress",
-        children: [
-          {
-            kind: "key-value-list",
-            items: [
-              ...(fields["progressPercent"] != null
-                ? [{ key: "Percent", value: `${Number(fields["progressPercent"]).toFixed(0)}%` }]
-                : []),
-              ...kvItems(fields, [
-                ["Current Epoch", "epoch"],
-                ["Input Tokens", "inputTokens"],
-                ["Output Tokens", "outputTokens"],
-              ]),
-            ],
-          },
-        ],
-      });
-    }
     if (fields["wandbUrl"]) {
       sections.push({
         kind: "section",
@@ -3081,26 +2830,10 @@ export class FireworksClient implements PluginClient {
     }
     return {
       title: resource.displayName,
-      subtitle: isRft ? "Reinforcement fine-tuning job" : "DPO job",
+      subtitle: "DPO job",
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections,
       headerActions: [
-        ...(cancellable
-          ? [
-              {
-                kind: "action" as const,
-                label: "Cancel",
-                variant: "danger" as const,
-                action: {
-                  type: "plugin-action" as const,
-                  actionId: "cancel",
-                  confirmMessage:
-                    "Cancel this reinforcement fine-tuning job? You are billed for the accelerator time already used.",
-                  successMessage: "Cancellation requested.",
-                },
-              },
-            ]
-          : []),
         ...(resumable
           ? [
               {
@@ -3116,104 +2849,6 @@ export class FireworksClient implements PluginClient {
           : []),
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       ],
-    };
-  }
-
-  private renderEvaluatorDetail(resource: ResourceInstance): DetailViewSchema {
-    const fields = resource.fields;
-    const mapped = mapEvaluatorState(String(fields["state"] ?? ""));
-    return {
-      logs: { defaultTailLines: 500 },
-      title: resource.displayName,
-      subtitle: "Evaluator",
-      status: { kind: "status-dot", status: mapped.status, label: mapped.label },
-      sections: [
-        {
-          kind: "section",
-          title: "Evaluator",
-          children: [
-            {
-              kind: "key-value-list",
-              items: [
-                ...kvItems(fields, [["Evaluator ID", "evaluatorId", true]]),
-                { key: "State", value: mapped.label },
-                ...kvItems(fields, [
-                  ["Status", "statusMessage"],
-                  ["Description", "description"],
-                  ["Default Dataset", "defaultDataset"],
-                  ["Entry Point", "entryPoint", true],
-                  ["Source", "sourceType"],
-                  ["GitHub Repository", "githubRepository"],
-                  ["Commit", "commitHash", true],
-                  ["Created By", "createdBy"],
-                  ["Created", "createTime"],
-                  ["Updated", "updateTime"],
-                ]),
-              ],
-            },
-            {
-              kind: "text",
-              variant: "muted",
-              content:
-                "New evaluators and code changes go through Fireworks' upload-and-build flow (the firectl CLI or Eval Protocol SDK). Display name and description can be edited here.",
-            },
-          ],
-        },
-      ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
-    };
-  }
-
-  private renderEvaluationJobDetail(resource: ResourceInstance): DetailViewSchema {
-    const fields = resource.fields;
-    const mapped = mapJobState(String(fields["state"] ?? ""));
-    let metrics: Array<{ key: string; value: string }> = [];
-    try {
-      const parsed: Record<string, number | object> = JSON.parse(String(fields["metrics"] ?? "{}"));
-      metrics = Object.entries(parsed).map(([key, value]) => ({
-        key,
-        value: typeof value === "object" ? JSON.stringify(value) : String(value),
-      }));
-    } catch {
-      metrics = [];
-    }
-    return {
-      logs: { defaultTailLines: 500 },
-      title: resource.displayName,
-      subtitle: "Evaluation job",
-      status: { kind: "status-dot", status: mapped.status, label: mapped.label },
-      sections: [
-        {
-          kind: "section",
-          title: "Job",
-          children: [
-            {
-              kind: "key-value-list",
-              items: [
-                ...kvItems(fields, [["Job ID", "jobId", true]]),
-                { key: "State", value: mapped.label },
-                ...kvItems(fields, [
-                  ["Status", "statusMessage"],
-                  ["Evaluator", "evaluator"],
-                  ["Input Dataset", "inputDataset"],
-                  ["Output Dataset", "outputDataset"],
-                  ["Created By", "createdBy"],
-                  ["Created", "createTime"],
-                  ["Updated", "updateTime"],
-                ]),
-              ],
-            },
-          ],
-        },
-        {
-          kind: "section",
-          title: "Metrics",
-          children: metrics.length
-            ? [{ kind: "key-value-list", items: metrics }]
-            : [{ kind: "text", variant: "muted", content: "No metrics reported yet." }],
-        },
-      ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -3399,7 +3034,7 @@ function getSecretCreateConfig(): CreateResourceConfig {
         kind: "text",
         required: true,
         placeholder: "WANDB_API_KEY",
-        description: "The name jobs and evaluators reference the secret by.",
+        description: "The name jobs reference the secret by.",
       },
       {
         key: "value",

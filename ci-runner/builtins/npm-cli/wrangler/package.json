@@ -1,0 +1,12 @@
+{
+  "name": "iwci-builtin-wrangler",
+  "private": true,
+  "description": "builtin:wrangler, Wrangler pinned by package-lock.json, bundling with esbuild-wasm (ci-runner/README.md, Deployment CLIs)",
+  "dependencies": {
+    "wrangler": "4.162.0"
+  },
+  "overrides": {
+    "esbuild": "npm:esbuild-wasm@0.28.2",
+    "workerd": "file:../stubs/workerd"
+  }
+}

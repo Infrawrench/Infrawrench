@@ -15,6 +15,7 @@ import {
 import { chunksOf } from "./db/chunks";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
+import { deletedAtOnUpsert } from "./resource-revive.js";
 import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { decryptAccountCredentials } from "./provider-oauth";
@@ -74,7 +75,11 @@ export async function loadAccountClient(accountId: string, organizationId: strin
 
   // Refreshes an expiring OAuth access token (and persists the rotation).
   const credentials = await decryptAccountCredentials(account, loaded.plugin.manifest);
-  await rewriteCredentialsThroughTunnel(accountId, credentials);
+  await rewriteCredentialsThroughTunnel(
+    accountId,
+    loaded.plugin.manifest.credentialFields,
+    credentials,
+  );
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,
@@ -153,7 +158,8 @@ async function upsertResources(
           lastSyncedAt: now,
           updatedAt: now,
           syncVersion: version,
-          deletedAt: null,
+          // Coming back from a soft delete: another incarnation of the id.
+          ...deletedAtOnUpsert(null),
         },
       });
   }

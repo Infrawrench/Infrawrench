@@ -10,8 +10,8 @@
  * at all (see `billing/capacity-slots.ts`), which is exactly why every caller
  * should come through {@link planAccess} rather than query `subscriptions`.
  *
- * In server-core rather than web because the deployment runner needs it, and
- * that runner is shared with `github-watcher`, which cannot import web.
+ * In server-core rather than web because CI (`ci/`) and trial claims
+ * (`trials/`) read it too, and they run outside web.
  */
 import { eq } from "drizzle-orm";
 
@@ -23,9 +23,9 @@ import { activeCapacitySeats } from "./billing/capacity-slots.js";
  * Stripe statuses that still count as paid.
  *
  * `past_due` is deliberately included. Stripe is still retrying the card, and
- * cutting off deploys the moment a payment bounces would take someone's
- * shipping ability away during exactly the window they are least able to notice
- * why: often mid-incident. Losing access should follow a cancellation, not a
+ * cutting off paid features the moment a payment bounces would take them away
+ * during exactly the window someone is least able to notice why: often
+ * mid-incident. Losing access should follow a cancellation, not a
  * transient billing failure.
  *
  * `trialing` is NOT here unconditionally: the checkout route stamps `trialing`

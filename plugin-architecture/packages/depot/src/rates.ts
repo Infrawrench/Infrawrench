@@ -21,15 +21,26 @@
  *
  * Overage: Docker builds $0.04/min, GitHub Actions $0.006/min (per *billed*
  * minute: the API's `minutes_billed` already applies the runner-size
- * multiplier, 1x for a 2-CPU Linux runner up to 64x), agent sandboxes
- * $0.01/min, cache and registry storage $0.20/GB/month. macOS runners are
+ * multiplier, 1x for a 2-CPU Linux runner up to 64x), cache and registry
+ * storage $0.20/GB/month. macOS runners are
  * listed at a flat $0.08/min with no multiplier; they are priced from elapsed
  * minutes at that rate and kept out of the included-minutes pool.
  *
  * Depot CI is sandbox compute, $0.00005 per vCPU-second ($0.003 per vCPU-minute,
  * the unit the API's `vcpuMinutesBilled` counts). Its included minutes, 2,000 on
  * Developer and 20,000 on Startup, are measured at 2 vCPUs and shared with Depot
- * Sandboxes and Managed Agents (https://depot.dev/pricing, November 2026).
+ * Sandboxes and Managed Agents (https://depot.dev/pricing, November 2026). The
+ * pricing page's FAQ: "Depot CI, Depot Sandboxes, and Depot Managed Agents all run
+ * on Depot sandbox compute, so they share one rate", and the included minutes "are
+ * a single pool shared by all three products ... measured at 2 vCPUs, so larger
+ * sizes draw down the pool proportionally faster".
+ *
+ * Agent sandboxes (#897) therefore draw on that pool and are priced at that rate.
+ * `AgentSandboxUsage.minutes_billed` is read as minutes measured at 2 vCPUs, so one
+ * is $0.006: no document states its unit, but the SDK's usage report describes it
+ * as "Billable sandbox time, in minutes", word for word as GitHub Actions'
+ * `minutes_billed`, which the same SDK says "counts 2-vCPU-equivalent minutes".
+ * Only the open cycle is estimated; an invoiced cycle takes the invoice's line.
  */
 
 export interface DepotRates {
@@ -46,7 +57,10 @@ export interface DepotRates {
   actionsMinute: number;
   /** USD per elapsed macOS runner minute. */
   macosMinute: number;
-  /** USD per billed agent sandbox minute. */
+  /**
+   * USD per billed agent sandbox minute (2-vCPU-equivalent) beyond the allowance:
+   * the sandbox compute rate for 2 vCPUs.
+   */
   sandboxMinute: number;
   /** USD per billed Depot CI vCPU-minute beyond the allowance. */
   ciVcpuMinute: number;
@@ -76,7 +90,7 @@ export const LIST_RATES = {
   buildMinute: 0.04,
   actionsMinute: 0.006,
   macosMinute: 0.08,
-  sandboxMinute: 0.01,
+  sandboxMinute: 0.006,
   ciVcpuMinute: 0.003,
   storageGbMonth: 0.2,
 } as const;

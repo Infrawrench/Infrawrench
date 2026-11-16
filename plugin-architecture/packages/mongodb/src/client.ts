@@ -1,7 +1,10 @@
 import type { Credentials } from "./plugin.js";
+import { lendMongo } from "./ci-credential.js";
 import { attempt } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  CiCredentialRequest,
+  CiLentMaterial,
   PluginClient,
   HostServices,
   ResourceInstance,
@@ -51,6 +54,11 @@ export class MongoDBClient implements PluginClient {
     if (!cs) throw new Error("MongoDB plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
+  }
+
+  /** Lends the connection to a CI job (`connections:`). See `ci-credential.ts`. */
+  lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
+    return attempt(async () => lendMongo(this.connectionString));
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {

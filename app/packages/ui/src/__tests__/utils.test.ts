@@ -94,6 +94,14 @@ describe("formatErrorMessage", () => {
   });
   it("maps ECONNREFUSED to a friendly message", () => {
     expect(formatErrorMessage("connect ECONNREFUSED 1.2.3.4")).toMatch(/Connection refused/);
+    // A tunnel that did not open keeps the host it goes through.
+    expect(
+      formatErrorMessage(
+        "Could not open the SSH tunnel through bastion.example.com: SSH connection failed: connect ECONNREFUSED 10.0.0.5:22",
+      ),
+    ).toBe(
+      "Could not open the SSH tunnel through bastion.example.com. Connection refused. Check the host, port, and that the service is reachable.",
+    );
   });
   it("maps ENOTFOUND to host not found", () => {
     expect(formatErrorMessage("getaddrinfo ENOTFOUND host")).toMatch(/Host not found/);

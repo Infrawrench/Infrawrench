@@ -25,7 +25,7 @@ import {
   type DoraBandChange,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { deployEvents, deploymentRuns, eventSubscriptions } from "../db/schema";
+import { deployEvents, eventSubscriptions } from "../db/schema";
 import { orgAppUrl } from "../app-url";
 import { publishEvent } from "../events/publish";
 import { getDoraSummaries, type DoraWindow } from "./load";
@@ -97,7 +97,7 @@ async function subscribedOrgs(): Promise<string[]> {
   return rows.map((r) => r.organizationId);
 }
 
-/** Any deploy, from a plugin, CI or an Infrafile run, since `since`. */
+/** Any deploy, from a plugin, CI, GitHub or the API, since `since`. */
 async function hasDeploysSince(organizationId: string, since: Date): Promise<boolean> {
   const [event] = await db
     .select({ id: deployEvents.id })
@@ -106,15 +106,7 @@ async function hasDeploysSince(organizationId: string, since: Date): Promise<boo
       and(eq(deployEvents.organizationId, organizationId), gte(deployEvents.deployedAt, since)),
     )
     .limit(1);
-  if (event) return true;
-  const [run] = await db
-    .select({ id: deploymentRuns.id })
-    .from(deploymentRuns)
-    .where(
-      and(eq(deploymentRuns.organizationId, organizationId), gte(deploymentRuns.startedAt, since)),
-    )
-    .limit(1);
-  return Boolean(run);
+  return Boolean(event);
 }
 
 /** Compare one org's windows and raise an event per metric that changed band. */

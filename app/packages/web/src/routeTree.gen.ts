@@ -13,7 +13,6 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ClaimRouteImport } from './routes/claim'
 import { Route as LinkAgentsRouteImport } from './routes/link-agents'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as ShareTokenRouteImport } from './routes/share.$token'
@@ -31,7 +30,6 @@ import { Route as OrgOrgIdCostCanvasesRouteImport } from './routes/org.$orgId.co
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdDeliveryRouteImport } from './routes/org.$orgId.delivery'
-import { Route as OrgOrgIdDeploymentsRouteImport } from './routes/org.$orgId.deployments'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdEnvironmentsRouteImport } from './routes/org.$orgId.environments'
@@ -135,11 +133,6 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DeploySplatRoute = DeploySplatRouteImport.update({
-  id: '/deploy/$',
-  path: '/deploy/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -223,11 +216,6 @@ const OrgOrgIdCostsRoute = OrgOrgIdCostsRouteImport.update({
 const OrgOrgIdDeliveryRoute = OrgOrgIdDeliveryRouteImport.update({
   id: '/delivery',
   path: '/delivery',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdDeploymentsRoute = OrgOrgIdDeploymentsRouteImport.update({
-  id: '/deployments',
-  path: '/deployments',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdDnsRoute = OrgOrgIdDnsRouteImport.update({
@@ -679,7 +667,6 @@ export interface FileRoutesByFullPath {
   '/claim': typeof ClaimRoute
   '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
-  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/share/$token': typeof ShareTokenRoute
@@ -696,7 +683,6 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
-  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
@@ -786,7 +772,6 @@ export interface FileRoutesByTo {
   '/claim': typeof ClaimRoute
   '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
-  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
@@ -801,7 +786,6 @@ export interface FileRoutesByTo {
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
-  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
@@ -891,7 +875,6 @@ export interface FileRoutesById {
   '/claim': typeof ClaimRoute
   '/link-agents': typeof LinkAgentsRoute
   '/onboarding': typeof OnboardingRoute
-  '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/share/$token': typeof ShareTokenRoute
@@ -908,7 +891,6 @@ export interface FileRoutesById {
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
-  '/org/$orgId/deployments': typeof OrgOrgIdDeploymentsRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
@@ -1000,7 +982,6 @@ export interface FileRouteTypes {
     | '/claim'
     | '/link-agents'
     | '/onboarding'
-    | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
     | '/share/$token'
@@ -1017,7 +998,6 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
-    | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
@@ -1107,7 +1087,6 @@ export interface FileRouteTypes {
     | '/claim'
     | '/link-agents'
     | '/onboarding'
-    | '/deploy/$'
     | '/invite/$token'
     | '/share/$token'
     | '/status/$slug'
@@ -1122,7 +1101,6 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
-    | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
@@ -1211,7 +1189,6 @@ export interface FileRouteTypes {
     | '/claim'
     | '/link-agents'
     | '/onboarding'
-    | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
     | '/share/$token'
@@ -1228,7 +1205,6 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
-    | '/org/$orgId/deployments'
     | '/org/$orgId/dns'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
@@ -1319,7 +1295,6 @@ export interface RootRouteChildren {
   ClaimRoute: typeof ClaimRoute
   LinkAgentsRoute: typeof LinkAgentsRoute
   OnboardingRoute: typeof OnboardingRoute
-  DeploySplatRoute: typeof DeploySplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OrgOrgIdRoute: typeof OrgOrgIdRouteWithChildren
   ShareTokenRoute: typeof ShareTokenRoute
@@ -1354,13 +1329,6 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/deploy/$': {
-      id: '/deploy/$'
-      path: '/deploy/$'
-      fullPath: '/deploy/$'
-      preLoaderRoute: typeof DeploySplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite/$token': {
@@ -1480,13 +1448,6 @@ declare module '@tanstack/react-router' {
       path: '/delivery'
       fullPath: '/org/$orgId/delivery'
       preLoaderRoute: typeof OrgOrgIdDeliveryRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/deployments': {
-      id: '/org/$orgId/deployments'
-      path: '/deployments'
-      fullPath: '/org/$orgId/deployments'
-      preLoaderRoute: typeof OrgOrgIdDeploymentsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/dns': {
@@ -2315,7 +2276,6 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeliveryRoute: typeof OrgOrgIdDeliveryRoute
-  OrgOrgIdDeploymentsRoute: typeof OrgOrgIdDeploymentsRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdEnvironmentsRoute: typeof OrgOrgIdEnvironmentsRoute
@@ -2365,7 +2325,6 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeliveryRoute: OrgOrgIdDeliveryRoute,
-  OrgOrgIdDeploymentsRoute: OrgOrgIdDeploymentsRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdEnvironmentsRoute: OrgOrgIdEnvironmentsRoute,
@@ -2412,7 +2371,6 @@ const rootRouteChildren: RootRouteChildren = {
   ClaimRoute: ClaimRoute,
   LinkAgentsRoute: LinkAgentsRoute,
   OnboardingRoute: OnboardingRoute,
-  DeploySplatRoute: DeploySplatRoute,
   InviteTokenRoute: InviteTokenRoute,
   OrgOrgIdRoute: OrgOrgIdRouteWithChildren,
   ShareTokenRoute: ShareTokenRoute,

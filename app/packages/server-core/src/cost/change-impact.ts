@@ -1,5 +1,5 @@
 /**
- * Cost per change / cost per deploy: the arithmetic. **Pure**: no db, no
+ * Cost per change: the arithmetic. **Pure**: no db, no
  * ClickHouse, no clock of its own (callers pass "today"), which is what makes
  * every rule below exhaustively testable. The gathering lives beside it in
  * `change-impact-load.ts`; the wire contract and phrasing live in
@@ -323,44 +323,4 @@ export function changeImpactFetchRange(
     if (to === undefined || hi > to) to = hi;
   }
   return from === undefined || to === undefined ? null : { from, to };
-}
-
-/**
- * Sum a set of per-resource impacts into a deployment total.
- *
- * Only `measured` rows contribute: an unknown resource adds nothing rather
- * than zero, and is counted separately so the total can never quietly claim to
- * cover resources it could not price. The confidence is the **weakest** among
- * the contributors: a breakdown is only as trustworthy as its worst row.
- */
-export function sumChangeCostImpacts(impacts: readonly ChangeCostImpact[]): {
-  total: Array<{ currency: string; deltaPerDay: number }>;
-  unknownResources: number;
-  confidence: ChangeCostImpactConfidence;
-} {
-  const byCurrency = new Map<string, number>();
-  let unknownResources = 0;
-  let confidence: ChangeCostImpactConfidence | null = null;
-  const rank: Record<ChangeCostImpactConfidence, number> = { none: 0, low: 1, medium: 2, high: 3 };
-
-  for (const impact of impacts) {
-    if (impact.status !== "measured") {
-      unknownResources += 1;
-      continue;
-    }
-    for (const s of impact.series) {
-      byCurrency.set(s.currency, round6((byCurrency.get(s.currency) ?? 0) + s.deltaPerDay));
-    }
-    if (confidence === null || rank[impact.confidence] < rank[confidence]) {
-      confidence = impact.confidence;
-    }
-  }
-
-  return {
-    total: [...byCurrency.entries()]
-      .map(([currency, deltaPerDay]) => ({ currency, deltaPerDay }))
-      .sort((a, b) => Math.abs(b.deltaPerDay) - Math.abs(a.deltaPerDay)),
-    unknownResources,
-    confidence: confidence ?? "none",
-  };
 }

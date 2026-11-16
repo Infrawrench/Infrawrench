@@ -2,11 +2,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@infrawrench/server-core/db/client";
 import { githubInstallations, workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
-import { runDeployment } from "@infrawrench/server-core/infrafile/runner";
-import {
-  claimDueDeploymentTriggers,
-  type DueTrigger,
-} from "@infrawrench/server-core/infrafile/triggers";
 import { getBranchHeadSha, isGithubAppConfigured } from "@infrawrench/server-core/github/app";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { runPrCheckPass } from "@infrawrench/server-core/pr-checks/pass";
@@ -47,12 +42,10 @@ interface LoopOptions {
  * workflow when the head SHA changes. First sight of a SHA is recorded without
  * running, so connecting a repo doesn't fire immediately.
  *
- * Deploy-on-push triggers ride the same tick: two independent passes over the
- * same installations, so one slow deploy never delays a workflow (or the
- * reverse) beyond the tick it is in. Pull request checks are the third pass:
- * cost and blast radius posted as a check run on each new head commit of an
- * open pull request in a repository the org enabled them on. The fourth pass
- * feeds DORA metrics: commit times and GitHub deployments (`dora/github-pass`).
+ * Pull request checks are the second pass: cost and blast radius posted as a
+ * check run on each new head commit of an open pull request in a repository
+ * the org enabled them on. The third pass feeds DORA metrics: commit times and
+ * GitHub deployments (`dora/github-pass`).
  */
 export class GithubWatcher extends TickLoop {
   constructor(options: LoopOptions = {}) {
@@ -63,7 +56,6 @@ export class GithubWatcher extends TickLoop {
     if (!isGithubAppConfigured()) return;
 
     await this.workflowPass();
-    await this.deploymentPass();
     await runPrCheckPass().catch((e) => console.error("[github-watcher] pr-check pass failed:", e));
     // DORA: commit times for lead time, and deployments other tools made.
     await runDoraGithubPass();
@@ -106,47 +98,6 @@ export class GithubWatcher extends TickLoop {
 
     for (const w of watches) {
       await this.checkOne(w);
-    }
-  }
-
-  /**
-   * Deploy-on-push. The claim (first sight, and the conditional UPDATE that
-   * stops replicas double-firing) lives in server-core; this pass only runs
-   * what it hands back.
-   */
-  private async deploymentPass(): Promise<void> {
-    // Claiming *consumes* the push: the claim advances `last_sha` as it hands
-    // the trigger over. With no runner wired that commit would be recorded as
-    // deployed and never deployed, so don't claim at all until there is one.
-    const runner = runDeployment;
-    if (!runner) return;
-
-    const due = await claimDueDeploymentTriggers();
-    // One failure must not strand the rest: every org's deploys are unrelated.
-    await Promise.allSettled(due.map((t) => this.deployOne(t, runner)));
-  }
-
-  private async deployOne(t: DueTrigger, runner: typeof runDeployment): Promise<void> {
-    const at = `${t.repo}@${t.sha.slice(0, 7)}`;
-    try {
-      // Deploy the commit that was claimed, not the branch name: by now the
-      // branch may have moved again, and two pushes must ship two commits
-      // rather than the newer one twice.
-      const { runId } = await runner({
-        organizationId: t.organizationId,
-        repo: t.repo,
-        branch: t.sha,
-        env: t.env,
-        answers: t.answers,
-        interactive: false,
-        // Recorded as `trigger`, not `web`: the audit trail has to say a
-        // push fired this, and the paid-plan refusal has to name the feature
-        // that was refused rather than a screen nobody was on.
-        origin: "trigger",
-      });
-      console.log(`[github-watcher] deployed ${at} to ${t.env} (run ${runId})`);
-    } catch (e) {
-      console.error(`[github-watcher] deploy failed for trigger ${t.id} (${at} → ${t.env}):`, e);
     }
   }
 

@@ -69,11 +69,6 @@ import { QueryBuilder } from "drizzle-orm/clickhouse-core";
 import { amortizedAmountExpr } from "../clickhouse/cost-readers";
 import { costDaily } from "../clickhouse/schema";
 import {
-  DEPLOYMENT_COST_PLUGIN_ID,
-  DEPLOYMENT_COST_PROVIDER_LABEL,
-  deploymentCostAccountLabels,
-} from "../cost/deployment-cost-ids";
-import {
   EXTERNAL_COST_PLUGIN_ID,
   EXTERNAL_COST_TAG,
   sourceFromCostAccountId,
@@ -244,7 +239,6 @@ export async function loadFocusLookups(organizationId: string): Promise<FocusLoo
   for (const [id, name] of [
     [WORKFLOW_COST_PLUGIN_ID, "Workflow"],
     [EXTERNAL_COST_PLUGIN_ID, "External"],
-    [DEPLOYMENT_COST_PLUGIN_ID, DEPLOYMENT_COST_PROVIDER_LABEL],
   ] as const) {
     lookups.providers.set(id, {
       name,
@@ -461,17 +455,15 @@ function chargeDescription(service: string, chargeType: string, provider: string
 }
 
 /**
- * The account's display name. Synthetic accounts (rows pushed over the API,
- * deployment builds) have a readable label derived from the id; a workflow
+ * The account's display name. Synthetic accounts (rows pushed over the API)
+ * have a readable label derived from the id; a workflow
  * account and any account deleted since are left null, which the
  * specification allows when no display name is available.
  */
 function accountName(accountId: string, lookups: FocusLookups): string | null {
   const known = lookups.accountNames.get(accountId);
   if (known) return known;
-  const source = sourceFromCostAccountId(accountId);
-  if (source) return source;
-  return deploymentCostAccountLabels([accountId]).get(accountId) ?? null;
+  return sourceFromCostAccountId(accountId);
 }
 
 /**

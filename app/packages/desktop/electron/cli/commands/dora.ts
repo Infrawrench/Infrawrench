@@ -478,9 +478,7 @@ export const dora = Command.make(
     yield* Print.line();
     if (report.eventCount === 0 && report.summary.changeFailureRate.changes === 0) {
       yield* Print.line(
-        c.dim(
-          "No deploys in the range. Metrics come from Infrawrench deploys, synced provider deploys,",
-        ),
+        c.dim("No deploys in the range. Metrics come from synced provider deploys,"),
       );
       return yield* Print.line(
         c.dim("CI pipelines named in the settings, GitHub deployments and POST /dora/deployments."),

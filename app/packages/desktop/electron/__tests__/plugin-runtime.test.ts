@@ -33,6 +33,12 @@ vi.mock("../main-utils", () => ({
   UserFacingError: class UserFacingError extends Error {},
 }));
 
+// The tunnel itself is `account-tunnels.test.ts`'s; here, that the runtime asks for it.
+const tunnelAccountCredentials = vi.fn();
+vi.mock("../account-tunnels", () => ({
+  tunnelAccountCredentials: (...args: unknown[]) => tunnelAccountCredentials(...args),
+}));
+
 import { createServer, type Server } from "node:http";
 import {
   buildPluginHostServices,
@@ -49,7 +55,13 @@ const dockerDriver = dockerDrivers.get("docker") as unknown as { command: Mock }
 const k8sDriver = k8sDrivers.get("k8s") as unknown as { command: Mock };
 
 const manifest = (extra: Partial<PluginManifest> = {}): PluginManifest =>
-  ({ id: "p", name: "P", resourceTypes: [], ...extra }) as unknown as PluginManifest;
+  ({
+    id: "p",
+    name: "P",
+    resourceTypes: [],
+    credentialFields: [],
+    ...extra,
+  }) as unknown as PluginManifest;
 
 /** A sql.js prepared statement that yields one row then stops. */
 function stubRow(row: Record<string, unknown> | null): void {
@@ -252,6 +264,32 @@ describe("listAccountResourcesLive", () => {
     getPlugin.mockResolvedValue(plugin([{ id: "droplet" }, { id: "volume" }], vi.fn()));
     await expect(listAccountResourcesLive(account, { typeId: "nope" })).rejects.toThrow(
       /no resource type "nope"\. Known types: droplet, volume\./,
+    );
+  });
+
+  it("connects an account behind an SSH tunnel through it", async () => {
+    tunnelAccountCredentials.mockImplementationOnce(
+      async (_id: string, _fields: unknown, credentials: Record<string, string>) => {
+        credentials["apiToken"] = "through-the-tunnel";
+        return ["apiToken"];
+      },
+    );
+    const fields = [
+      { key: "apiToken", label: "Token", sensitive: true, tunnel: "address" as const },
+    ];
+    const createClient = vi.fn(() => ({ listResources: vi.fn().mockResolvedValue([]) }));
+    getPlugin.mockResolvedValue({
+      plugin: {
+        manifest: manifest({ credentialFields: fields }),
+        resourceTypes: [{ id: "droplet" }],
+        createClient,
+      },
+    });
+    await listAccountResourcesLive(account);
+    expect(tunnelAccountCredentials).toHaveBeenCalledWith("acc-1", fields, expect.anything());
+    expect(createClient).toHaveBeenCalledWith(
+      { apiToken: "through-the-tunnel" },
+      expect.anything(),
     );
   });
 

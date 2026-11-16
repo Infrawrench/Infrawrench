@@ -1,8 +1,8 @@
 /**
  * Decrypting a local account's credentials, with provider OAuth applied: the
  * one path every main-process decrypt site goes through (the
- * `LocalAccountCredentials` RPC, `plugin-runtime.ts`, the CLI's
- * `infrafile/plugin-host.ts`). An OAuth-connected account comes back with a
+ * `LocalAccountCredentials` RPC and `plugin-runtime.ts`). An OAuth-connected
+ * account comes back with a
  * valid access token, refreshed and written back here when it was about to
  * expire; a pasted credential comes back exactly as stored.
  *
@@ -95,7 +95,7 @@ async function writeStatus(accountId: string, status: LocalOAuthStatus): Promise
 export async function getOAuthProvider(
   pluginId: string,
 ): Promise<{ declaration: OAuthDeclaration; displayName: string } | null> {
-  const { getPlugin } = await import("../infrafile/plugins.js");
+  const { getPlugin } = await import("../main-plugins.js");
   const loaded = await getPlugin(pluginId);
   const declaration = loaded?.plugin.manifest.oauth;
   if (!loaded || !declaration) return null;

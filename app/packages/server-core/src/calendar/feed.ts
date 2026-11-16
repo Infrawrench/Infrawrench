@@ -136,7 +136,7 @@ async function freezeEvents(organizationId: string, window: TimeWindow): Promise
       ...span,
       allDay: false,
       // A freeze in effect is the single most consequential thing on the
-      // calendar: it is what makes a deploy 423 rather than ship.
+      // calendar: it is what makes a destructive action 423 rather than run.
       severity: row.active ? "warning" : "info",
       link: { target: "tab", tab: "settings" },
     });

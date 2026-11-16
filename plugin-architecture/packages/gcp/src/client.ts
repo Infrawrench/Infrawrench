@@ -55,7 +55,7 @@ import {
   revokeGcpJitAccess,
   type GcpJitContext,
 } from "./jit-access.js";
-import { hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
+import { CI_LEND_SECONDS, hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
 import type {
@@ -76,7 +76,7 @@ import {
   gcpCiTeardown,
 } from "./ci-executor.js";
 import type { GcpCiCalls } from "./ci-shared.js";
-import { lendGcpToken, tokenFromGenerate } from "./ci-credential.js";
+import { gkeCiToken, lendGcpToken, tokenFromGenerate } from "./ci-credential.js";
 import {
   buildCostEstimate,
   fetchInstanceOnDemandRates,
@@ -297,7 +297,44 @@ export class GcpClient implements PluginClient {
       id: this.id.bind(this),
       now: this.now.bind(this),
       getResource: (...args) => runPluginEffect(this.getResource(...args)),
+      gkeCiToken: () =>
+        gkeCiToken(
+          {
+            exchange: () => this.freshToken(),
+            generate: (bearer, seconds, scopes) => this.generateToken(bearer, seconds, scopes),
+            exchangeScoped: (scope) => this.freshToken(scope),
+          },
+          CI_LEND_SECONDS,
+        ),
     };
+  }
+
+  /** A token straight from the key, past the cache, optionally with a narrower scope. */
+  private async freshToken(scope?: string): Promise<{ token: string; expiresAt: string }> {
+    const { token, expiresInSec } = await fetchAccessTokenRaw(
+      this.key,
+      this.hostServices?.http,
+      scope,
+    );
+    return { token, expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString() };
+  }
+
+  /** `generateAccessToken` for the connection's own service account. */
+  private async generateToken(
+    bearer: string,
+    seconds: number,
+    scopes: readonly string[],
+  ): Promise<{ token: string; expiresAt: string }> {
+    const url = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(
+      this.key.client_email,
+    )}:generateAccessToken`;
+    const res = await this.request(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: scopes, lifetime: `${seconds}s` }),
+    });
+    if (!res.ok) throw gcpApiError(res.status, url, await res.text(), this.project);
+    return tokenFromGenerate(await res.json());
   }
 
   /**
@@ -1373,28 +1410,9 @@ export class GcpClient implements PluginClient {
     return attempt(() =>
       lendGcpToken(
         {
-          exchange: async () => {
-            const { token, expiresInSec } = await fetchAccessTokenRaw(
-              this.key,
-              this.hostServices?.http,
-            );
-            return { token, expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString() };
-          },
-          generate: async (bearer, seconds) => {
-            const url = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${encodeURIComponent(
-              this.key.client_email,
-            )}:generateAccessToken`;
-            const res = await this.request(url, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                scope: ["https://www.googleapis.com/auth/cloud-platform"],
-                lifetime: `${seconds}s`,
-              }),
-            });
-            if (!res.ok) throw gcpApiError(res.status, url, await res.text(), this.project);
-            return tokenFromGenerate(await res.json());
-          },
+          exchange: () => this.freshToken(),
+          generate: (bearer, seconds) =>
+            this.generateToken(bearer, seconds, ["https://www.googleapis.com/auth/cloud-platform"]),
         },
         this.project,
         request,

@@ -11,7 +11,4 @@ export { SecretResourceType } from "./resources/secret.js";
 export { QuotaResourceType } from "./resources/quota.js";
 export { RouterResourceType } from "./resources/router.js";
 export { DpoJobResourceType } from "./resources/dpo-job.js";
-export { ReinforcementFineTuningJobResourceType } from "./resources/reinforcement-fine-tuning-job.js";
-export { EvaluatorResourceType } from "./resources/evaluator.js";
-export { EvaluationJobResourceType } from "./resources/evaluation-job.js";
 export { UserResourceType } from "./resources/user.js";

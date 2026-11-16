@@ -33,7 +33,7 @@ import { reconnectProviderAccount, resolveOAuthInfo } from "../lib/provider-oaut
 import { SidebarResourceItem } from "./SidebarAccounts/SidebarResourceItem";
 import { AccountDraggableRow } from "./SidebarAccounts/AccountDraggableRow";
 import type { Account, PluginGroup } from "./SidebarAccounts/types";
-import { getLocalAccountCredentials } from "../lib/local-credentials";
+import { getLocalConnectionCredentials } from "../lib/local-credentials";
 
 interface SidebarAccountsProps {
   /** Increment this to force a refresh */
@@ -294,11 +294,14 @@ export function SidebarAccounts({ refreshKey, onGroupsChange }: SidebarAccountsP
           updatedAt: "",
         }));
       } else {
-        const credentials = await getLocalAccountCredentials(account.id);
         const loaded = await getPlugin(account.pluginId);
         if (!loaded)
           throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.pluginId }));
         const { plugin } = loaded;
+        const credentials = await getLocalConnectionCredentials(
+          account.id,
+          plugin.manifest.credentialFields,
+        );
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
         const topLevelTypes = getListableResourceTypes(plugin.resourceTypes);
@@ -497,7 +500,12 @@ export function SidebarAccounts({ refreshKey, onGroupsChange }: SidebarAccountsP
         if (account.cloudManaged) return;
         void (async () => {
           try {
-            const creds = await getLocalAccountCredentials(account.id);
+            const loaded = await getPlugin(account.pluginId);
+            if (!loaded) return;
+            const creds = await getLocalConnectionCredentials(
+              account.id,
+              loaded.plugin.manifest.credentialFields,
+            );
             setSecretExportDrop({
               source,
               targetPluginId: "kubernetes",
@@ -544,9 +552,12 @@ export function SidebarAccounts({ refreshKey, onGroupsChange }: SidebarAccountsP
         if (ownerAccount.cloudManaged) return;
         void (async () => {
           try {
-            const ownerCreds = await getLocalAccountCredentials(ownerAccount.id);
             const loaded = await getPlugin(ownerAccount.pluginId);
             if (!loaded) return;
+            const ownerCreds = await getLocalConnectionCredentials(
+              ownerAccount.id,
+              loaded.plugin.manifest.credentialFields,
+            );
             const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
             const client = loaded.plugin.createClient(ownerCreds, services);
             const kubeconfig = await client.resolveOutput(

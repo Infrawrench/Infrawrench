@@ -193,13 +193,52 @@ describe("SHOW lists past 10,000 records", () => {
     expect(list).toHaveLength(500 * 30);
   });
 
-  it("still throws at 10,000 pipes, which SHOW PIPES cannot page", async () => {
-    mockSnowflake((s) =>
+  it("throws at 10,000 pipes where the host keeps no track, since SHOW PIPES cannot page", async () => {
+    const { statements } = mockSnowflake((s) =>
       s === "SHOW PIPES IN ACCOUNT" ? rows(named("P_", 0, 10_000)) : undefined,
     );
     await expect(
       hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.pipe, "acc"),
     ).rejects.toThrow("has more than Infrawrench reads");
+    expect(statements).toEqual(["SHOW PIPES IN ACCOUNT"]);
+  });
+
+  it("reads pipes past 10,000 one schema at a time and keeps every stored pipe (#876)", async () => {
+    const noted: Array<{ idPrefixes?: readonly string[] }> = [];
+    Reflect.set(globalThis, UNREAD, (part: { idPrefixes?: readonly string[] }) => noted.push(part));
+    const { statements } = mockSnowflake((s) => {
+      // SHOW PIPES stops at 10,000 with no error, in any scope.
+      if (s === "SHOW PIPES IN ACCOUNT") return rows(named("P_", 0, 10_000), "A", "S1");
+      if (s === "SHOW DATABASES") return rows(["A", "B"]);
+      if (s === 'SHOW PIPES IN DATABASE "A"') return rows(named("P_", 0, 10_000), "A", "S1");
+      if (s === 'SHOW SCHEMAS IN DATABASE "A"')
+        return rows(["INFORMATION_SCHEMA", "S1", "S2"], "A");
+      if (s === 'SHOW PIPES IN SCHEMA "A"."S1"') return rows(named("P_", 0, 6_000), "A", "S1");
+      if (s === 'SHOW PIPES IN SCHEMA "A"."S2"') return rows(named("Q_", 0, 10_000), "A", "S2");
+      if (s === 'SHOW PIPES IN DATABASE "B"') return rows(named("R_", 0, 700), "B", "S");
+      return undefined;
+    });
+    const list = await hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.pipe, "acc");
+    expect(list).toHaveLength(6_000 + 10_000 + 700);
+    expect(new Set(list.map((r) => r.id)).size).toBe(list.length);
+    expect(list.map((r) => r.id)).toContain("acc:snowflake-pipe:B.S.R_00699");
+    // The whole type first, since no answer proves itself whole, then the schema
+    // that stopped at the limit.
+    expect(noted).toEqual([{ idPrefixes: [""] }, { idPrefixes: ["acc:snowflake-pipe:A.S2."] }]);
+    expect(statements).not.toContain('SHOW PIPES IN SCHEMA "A"."INFORMATION_SCHEMA"');
+    expect(statements.some((s) => s.includes("LIMIT"))).toBe(false);
+  });
+
+  it("reads pipes under 10,000 in one statement and prunes as usual", async () => {
+    const noted: unknown[] = [];
+    Reflect.set(globalThis, UNREAD, (part: unknown) => noted.push(part));
+    const { statements } = mockSnowflake((s) =>
+      s === "SHOW PIPES IN ACCOUNT" ? rows(named("P_", 0, 9_999)) : undefined,
+    );
+    const list = await hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.pipe, "acc");
+    expect(list).toHaveLength(9_999);
+    expect(statements).toEqual(["SHOW PIPES IN ACCOUNT"]);
+    expect(noted).toEqual([]);
   });
 
   it("reads what fits in one poll and names the databases past it", async () => {

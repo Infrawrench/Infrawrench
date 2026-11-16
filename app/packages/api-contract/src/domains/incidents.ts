@@ -218,7 +218,7 @@ const IncidentTimelineEntry = Schema.Struct({
   ]).annotate({
     description:
       "`moment` covers everything the moment union already indexes; resource changes, " +
-      "deployments, cost anomalies, provider status incidents, audit entries, change freezes " +
+      "cost anomalies, provider status incidents, audit entries, change freezes " +
       "and workflow runs. Nothing is copied into the incident's own tables; the timeline is a " +
       "join, so re-reading it reflects the record as it stands today.",
   }),
@@ -243,7 +243,6 @@ const IncidentTimelineEntry = Schema.Struct({
           "provider-incident",
           "costs",
           "workflow-run",
-          "deployment",
           "audit",
           "freeze",
           "expiring",
@@ -399,7 +398,7 @@ export class IncidentsGroup extends HttpApiGroup.make("incidents")
       .annotate(
         OpenApi.Description,
         "Merged on read from what is already recorded between the incident's start and its " +
-          "resolution: resource changes, deployments, cost anomalies, provider status incidents, " +
+          "resolution: resource changes, cost anomalies, provider status incidents, " +
           "audit entries, change freezes and workflow runs (all via the same union the Moment " +
           "screen uses), plus probe state transitions, metric-alert firings, the incident's own " +
           "life events, its artefacts and its operator notes. Nothing is copied; a correction " +

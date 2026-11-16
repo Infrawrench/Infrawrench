@@ -1,5 +1,5 @@
 import type { CreateFieldConfig, PeerGuidanceAction } from "@infrawrench/plugin-base";
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, o, rt, CI_DATABASE_PASSWORD_LENDING } from "@infrawrench/plugin-base";
 import { MANAGED_DATABASE_EXTENDED_SUPPORT } from "../extended-support.js";
 
 // Kafka's `/users` endpoint requires a `settings.acl` block or DO 422s with
@@ -131,6 +131,8 @@ export const ManagedDatabaseResourceType = rt({
         { outputKey: "caCertificate", credentialKey: "caCert" },
       ],
       tabLabel: "PostgreSQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "pg" },
     },
     {
@@ -140,6 +142,8 @@ export const ManagedDatabaseResourceType = rt({
         { outputKey: "caCertificate", credentialKey: "caCert" },
       ],
       tabLabel: "MySQL",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "mysql" },
     },
     {
@@ -149,6 +153,8 @@ export const ManagedDatabaseResourceType = rt({
       pluginId: "redis",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "Valkey",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "valkey" },
       credentialSetupAction: makeConnectionUserAction,
     },
@@ -156,6 +162,8 @@ export const ManagedDatabaseResourceType = rt({
       pluginId: "redis",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "Redis",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "redis" },
       credentialSetupAction: makeConnectionUserAction,
     },
@@ -163,6 +171,8 @@ export const ManagedDatabaseResourceType = rt({
       pluginId: "mongodb",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MongoDB",
+      // What a CI job is lent through it, shown before it is granted.
+      ci: CI_DATABASE_PASSWORD_LENDING,
       showWhen: { fieldKey: "engine", equals: "mongodb" },
       credentialSetupAction: makeConnectionUserAction,
     },

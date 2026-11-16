@@ -11,7 +11,6 @@ import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
-  DeployIcon,
   ChangesIcon,
   IacIcon,
   GraphIcon,
@@ -89,12 +88,6 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Workflows"),
       icon: <WorkflowIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } }),
-    },
-    {
-      key: "deploy",
-      label: gt("Deploy"),
-      icon: <DeployIcon />,
-      onClick: () => void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } }),
     },
     {
       key: "costs",

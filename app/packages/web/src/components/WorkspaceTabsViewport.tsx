@@ -18,8 +18,6 @@ import {
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
-import { type DeploymentClient } from "@infrawrench/ui";
-import { createWebDeploymentClient } from "@/lib/deployment-client";
 import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
@@ -99,9 +97,6 @@ const InvoicesPanel = lazyPanel(() =>
 );
 const LogWorkspacePanel = lazyPanel(() =>
   import("@infrawrench/ui/logs/LogWorkspacePanel").then((m) => m.LogWorkspacePanel),
-);
-const WebDeploymentsPanel = lazyPanel(() =>
-  import("./WebDeploymentsPanel").then((m) => m.WebDeploymentsPanel),
 );
 const WebWorkflowsPanel = lazyPanel(() =>
   import("./WebWorkflowsPanel").then((m) => m.WebWorkflowsPanel),
@@ -244,15 +239,6 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
 const workflowClients = new Map<string, WorkflowClient>();
 const agentClients = new Map<string, AgentClient>();
 const costsClients = new Map<string, CostsClient>();
-const deploymentClients = new Map<string, DeploymentClient>();
-function getDeploymentClient(orgId: string): DeploymentClient {
-  let client = deploymentClients.get(orgId);
-  if (!client) {
-    client = createWebDeploymentClient(orgId);
-    deploymentClients.set(orgId, client);
-  }
-  return client;
-}
 function getWorkflowClient(orgId: string): WorkflowClient {
   let client = workflowClients.get(orgId);
   if (!client) {
@@ -437,14 +423,6 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           onSelectWorkflow={(workflowId) =>
             void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId ?? undefined)))
           }
-        />
-      );
-    case "deployments":
-      return (
-        <WebDeploymentsPanel
-          client={getDeploymentClient(orgId)}
-          orgId={orgId}
-          {...(t.repo ? { initialRepo: t.repo } : {})}
         />
       );
     case "costs":

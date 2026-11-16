@@ -91,7 +91,7 @@ export class ChangeFreezesGroup extends HttpApiGroup.make("changeFreezes")
       .annotate(OpenApi.Summary, "Declare a change freeze window")
       .annotate(
         OpenApi.Description,
-        "While the freeze is in effect, destructive actions (resource deletion, destructive plugin actions, secret-version destroys, deployment rollbacks) return `423` unless explicitly overridden by a caller with `freezes:override`.",
+        "While the freeze is in effect, destructive actions (resource deletion, destructive plugin actions, secret-version destroys) return `423` unless explicitly overridden by a caller with `freezes:override`.",
       )
       .annotate(SuccessDescription, "Created")
       .annotate(InvalidRequestMessage, "Invalid freeze window")

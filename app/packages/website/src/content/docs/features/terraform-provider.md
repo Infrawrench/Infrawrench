@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration as Terraform resources, incl
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 77 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
+The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 84 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
 
 Use it if your team already keeps infrastructure in Terraform and wants the rest of its platform setup to go through the same pull requests and reviews, with a plan that shows exactly what will change.
 
@@ -430,7 +430,6 @@ Some resources hold secrets that can never be read back. You can import them, bu
 | `infrawrench_event_subscription` | `signing_secret`, returned once   | `secret_hint`                        |
 | `infrawrench_jira_integration`   | `api_token`                       | `token_hint`                         |
 | `infrawrench_linear_integration` | `api_key`                         | `key_hint`                           |
-| `infrawrench_deploy_trigger`     | `answers`                         | nothing                              |
 
 Since these values are never returned, Terraform can't detect drift on them.
 
@@ -536,7 +535,6 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | `infrawrench_api_key`                | [API keys](../team-and-billing/api-keys.md)                                                                                         |
 | `infrawrench_ssh_key`                | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                                  |
 | `infrawrench_ssh_snippet`            | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                                       |
-| `infrawrench_deploy_trigger`         | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                                  |
 | `infrawrench_workflow_schedule`      | The cron on an existing [workflow](./workflows.md)                                                                                  |
 
 ### Alert delivery
@@ -587,7 +585,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 
 **Some deletes are refused.** Saved filters and scenario models that something still uses can't be deleted, and the error names what's using them. The same goes for a role members still hold and a managed account with invoices against it. Repoint or reassign first.
 
-**Some things can't be changed in place.** A probe's linked resource, a schedule's resource and account, a Slack channel's workspace, and a deploy trigger's repo and branch can't be updated, so Terraform replaces the object instead. The plan says so. Read it before applying to a bastion: replacing one means a new enrollment token, and the agent has to be restarted with it.
+**Some things can't be changed in place.** A probe's linked resource, a schedule's resource and account, and a Slack channel's workspace can't be updated, so Terraform replaces the object instead. The plan says so. Read it before applying to a bastion: replacing one means a new enrollment token, and the agent has to be restarted with it.
 
 **Credentials are marked sensitive.** Export keys, account credentials, API keys, SSH private keys, bastion tokens and webhook URLs never show in plan output in plaintext. They are in state, though (see above).
 

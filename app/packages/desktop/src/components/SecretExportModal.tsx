@@ -143,6 +143,8 @@ export function SecretExportModal({
       const sourceRow = sourceRows[0];
       if (!sourceRow) throw new Error(gt("Source account not found"));
 
+      // As stored, not through an SSH tunnel: the values leave this computer, and a
+      // tunnel's local end means nothing anywhere else.
       const sourceCreds = await getLocalAccountCredentials(sourceRow.id);
       const sourcePlugin = await getPlugin(sourceRow.plugin_id);
       if (!sourcePlugin)

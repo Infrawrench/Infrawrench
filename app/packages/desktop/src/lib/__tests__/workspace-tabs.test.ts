@@ -7,7 +7,6 @@ import {
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
-  deploymentsTabTarget,
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
@@ -265,10 +264,6 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.replace).toBeUndefined();
   });
 
-  it("returns deployments route args", () => {
-    expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
-  });
-
   it("returns home and product route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "home" })).toEqual({ to: "/home" });
     expect(getWorkspaceNavigateArgs({ kind: "home", productId: "costs" })).toEqual({
@@ -356,13 +351,6 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
-  it("carries a hotlinked repo through as a search param", () => {
-    expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
-      to: "/deployments",
-      search: { repo: "owner/name" },
-    });
-  });
-
   it("returns cost-reports route args, clearing the report param for the list", () => {
     // Same reason as settings/chat: navigating back to the list must CLEAR
     // ?report=, or the route resolves straight back into the open report.
@@ -442,8 +430,8 @@ describe("syncWorkspaceRouteFromPath", () => {
     });
   });
 
-  it("parses the deployments path", () => {
-    expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  it("no longer resolves the retired deployments path to a tab", () => {
+    expect(syncWorkspaceRouteFromPath("/deployments")?.kind).not.toBe("deployments");
   });
 
   it("parses the home path and its product", () => {
@@ -628,15 +616,6 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/settings", undefined, "section=billing")).toEqual({
       kind: "settings",
       section: "billing",
-    });
-  });
-
-  // Under hash history the query lives inside the fragment, so the repo a
-  // /deploy/... hotlink carries only arrives via the router's search string.
-  it("parses a deployments path with a repo", () => {
-    expect(syncWorkspaceRouteFromPath("/deployments", undefined, "?repo=owner%2Fname")).toEqual({
-      kind: "deployments",
-      repo: "owner/name",
     });
   });
 

@@ -1,4 +1,4 @@
-import { f, o, rt } from "@infrawrench/plugin-base";
+import { f, o, rt, CI_DATABASE_PASSWORD_LENDING } from "@infrawrench/plugin-base";
 import { CLOUDSQL_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const CloudSqlInstanceResourceType = rt({
@@ -91,6 +91,8 @@ export const CloudSqlInstanceResourceType = rt({
       {
         pluginId: "postgres",
         tabLabel: "PostgreSQL",
+        // What a CI job is lent through it, shown before it is granted.
+        ci: CI_DATABASE_PASSWORD_LENDING,
         credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
         showWhen: { fieldKey: "databaseVersion", prefix: "POSTGRES_" },
         unreachableWhen,
@@ -98,6 +100,8 @@ export const CloudSqlInstanceResourceType = rt({
       {
         pluginId: "mysql",
         tabLabel: "MySQL",
+        // What a CI job is lent through it, shown before it is granted.
+        ci: CI_DATABASE_PASSWORD_LENDING,
         credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
         showWhen: { fieldKey: "databaseVersion", prefix: "MYSQL_" },
         unreachableWhen,

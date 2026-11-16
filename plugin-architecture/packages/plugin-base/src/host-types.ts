@@ -8,6 +8,7 @@
  * AND has zero runtime dependencies: making it safe to import from any
  * Node.js or browser context.
  */
+import type { CredentialField } from "./manifest.js";
 
 /** SSH/SFTP connection configuration. */
 export interface SftpConfig {
@@ -80,6 +81,17 @@ export interface RewriterContext {
   orgId?: string | undefined;
   /** Account whose credentials are being rewritten. Always present. */
   accountId: string;
+  /**
+   * The credential fields of the plugin the credentials are for: the account's own plugin,
+   * or the peer plugin's for a peer client. A rewriter that changes only what a plugin
+   * declared (the SSH tunnel's `tunnel` flag) reads them here.
+   */
+  credentialFields: readonly CredentialField[];
+  /**
+   * Set when the credentials are a peer plugin's, resolved from a resource's outputs
+   * (`resourcePluginId` is then the account's own plugin), not the account's own.
+   */
+  peerPluginId?: string | undefined;
   /**
    * The resource the credentials will be used against. Set for rewriters
    * that need resource-level context, e.g. Cloud SQL Auth Proxy needs the

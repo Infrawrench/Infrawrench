@@ -58,6 +58,42 @@ pub enum Abi {
     Wasix,
     /// The TypeScript compiler host interface.
     TscHost,
+    /// A Node program, such as a deployment CLI from npm: the module is a
+    /// zstd-compressed tar of the program's directory (its `node_modules`,
+    /// installed from a lockfile), which a job's environment runs on its own
+    /// `node` (`tools:` only). `args[0]` is the script to run, relative to
+    /// that directory, and the rest come before the job's own arguments.
+    /// A runner older than this variant refuses such a manifest, so publish
+    /// one only once every runner reads it.
+    Node,
+    /// A native Linux program (Bun), which a job runs in a gVisor sandbox
+    /// beside its environment's WASIX commands. Its program and the files
+    /// it needs are per target ([`ToolManifest::targets`]); it has no
+    /// `module`.
+    NativeGvisor,
+}
+
+impl Abi {
+    /// Whether tools of this ABI are native programs, not wasm modules.
+    pub fn is_native(self) -> bool {
+        self == Abi::NativeGvisor
+    }
+}
+
+/// A native tool's program and files for one target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeTarget {
+    /// The program, run as `/usr/local/bin/<name>` and every alias.
+    pub program: BlobRef,
+    /// What it needs beside it (its C library), read only, at these paths.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<ToolFile>,
+}
+
+/// The target this runner is: `x86_64-linux` or `aarch64-linux`.
+pub fn host_target() -> String {
+    format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
 }
 
 /// A data file mounted read-only into the guest.
@@ -84,8 +120,9 @@ pub struct ToolManifest {
     pub version: Version,
     /// How to host the module.
     pub abi: Abi,
-    /// The wasm module.
-    pub module: BlobRef,
+    /// The wasm module; none for a native tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<BlobRef>,
     /// Data files mounted read-only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<ToolFile>,
@@ -98,6 +135,13 @@ pub struct ToolManifest {
     /// Free text for humans.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// A native tool's program and files, by target (`x86_64-linux`,
+    /// `aarch64-linux`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub targets: BTreeMap<String, NativeTarget>,
+    /// Other names a native tool's program runs under (`bunx`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
 }
 
 /// One webc package of an environment.
@@ -297,38 +341,48 @@ impl ToolManifest {
             });
         }
         check_name("name", &self.name)?;
-        check_blob("module", &self.module.sha256, self.module.size, 1)?;
-        if self.files.len() > MAX_FILES {
-            return Err(invalid("files", format!("more than {MAX_FILES} files")));
-        }
-        let mut total = self.module.size;
-        let mut paths = BTreeSet::new();
-        for (i, f) in self.files.iter().enumerate() {
-            let field = format!("files[{i}]");
-            if !is_valid_guest_path(&f.path) {
+        let mut total = 0;
+        if self.abi.is_native() {
+            if self.module.is_some() || !self.files.is_empty() || !self.args.is_empty() {
                 return Err(invalid(
-                    format!("{field}.path"),
-                    "must be an absolute, normalised guest path",
+                    "module",
+                    "a native tool has its program and files under `targets`",
                 ));
             }
-            check_blob(&field, &f.sha256, f.size, 0)?;
-            if !paths.insert(f.path.as_str()) {
-                return Err(invalid(format!("{field}.path"), "listed twice"));
+            if self.targets.is_empty() {
+                return Err(invalid("targets", "a native tool needs at least one"));
             }
-            total += f.size;
-        }
-        // A file at `/a` and another at `/a/b` cannot both be mounted.
-        let sorted: Vec<&str> = paths.into_iter().collect();
-        for pair in sorted.windows(2) {
-            if pair[1]
-                .strip_prefix(pair[0])
-                .is_some_and(|r| r.starts_with('/'))
-            {
+            for (target, t) in &self.targets {
+                if !matches!(target.as_str(), "x86_64-linux" | "aarch64-linux") {
+                    return Err(invalid(
+                        "targets",
+                        format!("unknown target {target}; x86_64-linux or aarch64-linux"),
+                    ));
+                }
+                let field = format!("targets.{target}");
+                check_blob(
+                    &format!("{field}.program"),
+                    &t.program.sha256,
+                    t.program.size,
+                    1,
+                )?;
+                total += t.program.size + check_files(&field, &t.files)?;
+            }
+            for (i, alias) in self.aliases.iter().enumerate() {
+                check_name(&format!("aliases[{i}]"), alias)?;
+            }
+        } else {
+            let Some(module) = &self.module else {
+                return Err(invalid("module", "a wasm tool needs its module"));
+            };
+            if !self.targets.is_empty() || !self.aliases.is_empty() {
                 return Err(invalid(
-                    "files",
-                    format!("{} is a file and also a directory of {}", pair[0], pair[1]),
+                    "targets",
+                    "only a native tool has targets or aliases",
                 ));
             }
+            check_blob("module", &module.sha256, module.size, 1)?;
+            total = module.size + check_files("files", &self.files)?;
         }
         if total > MAX_TOTAL_SIZE {
             return Err(invalid(
@@ -347,15 +401,68 @@ impl ToolManifest {
                 ));
             }
         }
+        if self.abi == Abi::Node {
+            let entry = self.args.first().map(String::as_str).unwrap_or("");
+            if !is_valid_guest_path(&format!("/{entry}")) {
+                return Err(invalid(
+                    "args[0]",
+                    "a node tool's first argument is its script, a relative, normalised path inside it",
+                ));
+            }
+        }
         check_env("env", &self.env)?;
         check_description(&self.description)
     }
 
-    /// Every blob the manifest references, module first.
+    /// Every blob the manifest references, module (or each target's
+    /// program) first.
     pub fn blobs(&self) -> impl Iterator<Item = (&str, u64)> {
-        std::iter::once((self.module.sha256.as_str(), self.module.size))
+        self.module
+            .iter()
+            .map(|m| (m.sha256.as_str(), m.size))
             .chain(self.files.iter().map(|f| (f.sha256.as_str(), f.size)))
+            .chain(self.targets.values().flat_map(|t| {
+                std::iter::once((t.program.sha256.as_str(), t.program.size))
+                    .chain(t.files.iter().map(|f| (f.sha256.as_str(), f.size)))
+            }))
     }
+}
+
+/// Checks a list of data files; their total size.
+fn check_files(name: &str, files: &[ToolFile]) -> Result<u64, ManifestError> {
+    if files.len() > MAX_FILES {
+        return Err(invalid(name, format!("more than {MAX_FILES} files")));
+    }
+    let mut total = 0;
+    let mut paths = BTreeSet::new();
+    for (i, f) in files.iter().enumerate() {
+        let field = format!("{name}[{i}]");
+        if !is_valid_guest_path(&f.path) {
+            return Err(invalid(
+                format!("{field}.path"),
+                "must be an absolute, normalised guest path",
+            ));
+        }
+        check_blob(&field, &f.sha256, f.size, 0)?;
+        if !paths.insert(f.path.as_str()) {
+            return Err(invalid(format!("{field}.path"), "listed twice"));
+        }
+        total += f.size;
+    }
+    // A file at `/a` and another at `/a/b` cannot both be mounted.
+    let sorted: Vec<&str> = paths.into_iter().collect();
+    for pair in sorted.windows(2) {
+        if pair[1]
+            .strip_prefix(pair[0])
+            .is_some_and(|r| r.starts_with('/'))
+        {
+            return Err(invalid(
+                name,
+                format!("{} is a file and also a directory of {}", pair[0], pair[1]),
+            ));
+        }
+    }
+    Ok(total)
 }
 
 /// Checks a webc package name: `name` or `namespace/name`.
@@ -550,6 +657,76 @@ mod tests {
         assert!(ToolManifest::from_json(bad_version.as_bytes()).is_err());
         let empty_module = tool_json("").replace("\"size\":10", "\"size\":0");
         assert!(ToolManifest::from_json(empty_module.as_bytes()).is_err());
+    }
+
+    fn native_json(extra: &str) -> String {
+        format!(
+            r#"{{"schema":1,"name":"bun","version":"1.4.4","abi":"native-gvisor",
+               "targets":{{"x86_64-linux":{{"program":{{"sha256":"{H}","size":10}},
+                 "files":[{{"path":"/lib64/ld-linux-x86-64.so.2","sha256":"{H}","size":5}}]}},
+                 "aarch64-linux":{{"program":{{"sha256":"{H}","size":11}}}}}},
+               "aliases":["bunx"]{extra}}}"#
+        )
+    }
+
+    /// A native tool has its program and files per target, and nothing a
+    /// wasm tool has; a wasm tool has no targets.
+    #[test]
+    fn a_native_tool_has_a_program_per_target() {
+        let m = ToolManifest::from_json(native_json("").as_bytes()).unwrap();
+        assert!(m.abi.is_native());
+        assert!(m.module.is_none());
+        assert_eq!(m.targets.len(), 2);
+        assert_eq!(m.aliases, ["bunx"]);
+        assert_eq!(ToolManifest::from_json(&m.to_json()).unwrap(), m);
+        assert_eq!(m.blobs().count(), 3);
+        let err = |json: String| {
+            ToolManifest::from_json(json.as_bytes())
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(
+            err(native_json(&format!(
+                r#","module":{{"sha256":"{H}","size":1}}"#
+            )))
+            .contains("targets")
+        );
+        assert!(err(native_json(r#","args":["x"]"#)).contains("targets"));
+        assert!(
+            err(native_json("").replace("x86_64-linux", "x86_64-darwin"))
+                .contains("unknown target")
+        );
+        assert!(err(native_json("").replace("\"bunx\"", "\"Bunx\"")).contains("aliases[0]"));
+        assert!(err(tool_json(r#","aliases":["x"]"#)).contains("only a native tool"));
+        let no_targets = r#"{"schema":1,"name":"bun","version":"1.4.4","abi":"native-gvisor"}"#;
+        assert!(err(no_targets.into()).contains("at least one"));
+        let no_module = r#"{"schema":1,"name":"tsc","version":"7.1.3","abi":"wasi"}"#;
+        assert!(err(no_module.into()).contains("needs its module"));
+    }
+
+    #[test]
+    fn node_tools_name_their_script() {
+        let node =
+            |args: &str| tool_json(&format!(r#","args":{args}"#)).replace("tsc-host", "node");
+        let m = ToolManifest::from_json(node(r#"["node_modules/x/cli.js","--quiet"]"#).as_bytes())
+            .unwrap();
+        assert_eq!(m.abi, Abi::Node);
+        assert_eq!(ToolManifest::from_json(&m.to_json()).unwrap(), m);
+        for bad in [
+            r#"[]"#,
+            r#"["/abs/cli.js"]"#,
+            r#"["../cli.js"]"#,
+            r#"["a//b.js"]"#,
+            r#"[""]"#,
+        ] {
+            let err = ToolManifest::from_json(node(bad).as_bytes())
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("args[0]"), "{bad}: {err}");
+        }
+        // Without args at all.
+        let none = tool_json("").replace("tsc-host", "node");
+        assert!(ToolManifest::from_json(none.as_bytes()).is_err());
     }
 
     #[test]

@@ -19,7 +19,7 @@ Infrawrench is one application made of several apps. Each app covers one job, ha
 | Observability     | Logs, Alerts, Probes, SLOs, Query monitors, Wallboard                                       |
 | Incident response | Incidents, Status pages, Runbooks, Calendar                                                 |
 | Security          | Posture, Vulnerabilities, Compliance, Access review, Just-in-time access, Expiring, Backups |
-| Delivery          | Deploy, CI, Delivery, Environments, Env diff                                                |
+| Delivery          | CI, Delivery, Environments, Env diff                                                        |
 | Automation        | Agents, Workflows                                                                           |
 
 Some tools need a cloud organization. In the desktop app without one, an app whose tools all need an organization still shows what it offers, and says that you need to sign in to use it. CI shows once it is turned on for your organization.
@@ -78,7 +78,6 @@ Each app opens in its own tab, so you can keep several open side by side. **Home
 
 ### Delivery
 
-- Deploys from your repositories, with history per service
 - Pipelines on every push and pull request, each job in its own sandbox
 - Deployment frequency, lead time, failure rate and time to restore
 - Environments from a template that delete themselves when time runs out

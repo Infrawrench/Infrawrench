@@ -43,7 +43,7 @@ function MomentPage() {
         <T>
           <p className="text-sm text-on-surface-muted">
             The moment view merges feeds recorded by Infrawrench Cloud, such as changes, incidents,
-            cost anomalies and deployments. Sign in to an organization to use it.
+            cost anomalies and workflow runs. Sign in to an organization to use it.
           </p>
         </T>
       </div>
@@ -74,9 +74,6 @@ function MomentPage() {
         break;
       case "workflow-run":
         void navigate({ to: "/workflows" });
-        break;
-      case "deployment":
-        void navigate({ to: "/deployments" });
         break;
       case "costs":
         void navigate({ to: "/costs" });

@@ -216,10 +216,10 @@ const MOMENT = {
       detail: "size",
     }),
     momentEvent("d", "2026-11-08T03:20:00.000Z", {
-      feed: "deployments",
-      kind: "deployment.failed",
+      feed: "freezes",
+      kind: "freeze.started",
       severity: "warning",
-      title: "Deploy api failed",
+      title: "Change freeze started",
     }),
   ],
   incidents: [
@@ -253,7 +253,7 @@ describe("moment", () => {
           03:00:00 · [Resource changes] a changed
           03:02:00 · [Resource changes] b changed
           03:04:00 ✗ [Resource changes] c changed (size)
-        03:20:00 ! [Deployments] Deploy api failed (during AWS incident)
+        03:20:00 ! [Change freezes] Change freeze started (during AWS incident)
 
       4 events. Recentre with \`infrawrench moment <timestamp>\`, zoom with --window 15m|1h|6h.
       "

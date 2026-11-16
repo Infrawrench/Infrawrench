@@ -25,9 +25,10 @@
  * Dispatch claims the row first (one UPDATE that only one caller can win),
  * because both the webhook and the poller pass dispatch.
  */
-import { and, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import {
   CI_CANCELLABLE_STATUSES,
+  CI_HIDDEN_RUN_STATUSES,
   CI_RETRYABLE_STATUSES,
   checkCiInputs,
   ciInputText,
@@ -241,7 +242,7 @@ async function load(id: string): Promise<CiRunRow | null> {
 
 async function finish(
   row: CiRunRow,
-  status: "passed" | "failed" | "error" | "rejected" | "cancelled",
+  status: "passed" | "failed" | "error" | "rejected" | "cancelled" | "skipped",
   reason: string | null,
   extra: Partial<typeof ciRuns.$inferInsert> = {},
 ): Promise<void> {
@@ -405,6 +406,12 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     const { entries } = resolved;
+    if (resolved.nothing && skipsWhenEmpty(row)) {
+      // No pipeline runs on this push or pull request: nothing is sent to
+      // the runners, and the run leaves the list (see `skipRun`).
+      await skipRun(row);
+      return;
+    }
     access = resolved.access;
     await db.update(ciRuns).set({ access }).where(eq(ciRuns.id, row.id));
     if (entries.some((e) => e.group !== null)) {
@@ -471,10 +478,49 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   // Pipelines a newer run cancelled before this one started.
   await resendCancels(started);
+  // A run the runners listed no pipeline for (one from before they could
+  // say a file is broken) most likely runs nothing: its check waits for the
+  // result, so a push that runs nothing shows nothing on GitHub.
+  if (skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0) return;
   await upsertCheck(row, {
     status: "in_progress",
     title: "Running",
     summary: row.fromFork ? "Running a fork's pull request, without secrets." : "Running.",
+  });
+}
+
+/**
+ * Whether a run that runs no pipeline is `skipped` (and left out of the run
+ * list) rather than `passed`: a push or a pull request, which every commit
+ * of a branch makes whatever its pipelines' `on:` says. A scheduled or
+ * manual run was asked for by name, so it stays in the list.
+ */
+export function skipsWhenEmpty(row: Pick<CiRunRow, "event">): boolean {
+  return row.event === "push" || row.event === "pull-request";
+}
+
+/** Why a run is `skipped`, in its event's words. */
+export function skippedReason(row: Pick<CiRunRow, "event">): string {
+  return `No pipeline runs on this ${row.event === "pull-request" ? "pull request" : "push"}.`;
+}
+
+/**
+ * Ends a run with nothing to run as `skipped`. A push shows nothing on
+ * GitHub, as a workflow that does not run shows nothing. A pull request gets
+ * a `skipped` check, which a branch protection rule requiring it accepts, so
+ * a pull request whose `paths:` leave out every pipeline can still merge. A
+ * check the run already has (a runner that could not say beforehand, a
+ * fork's approval) is closed as skipped either way.
+ */
+async function skipRun(row: CiRunRow, extra: Partial<typeof ciRuns.$inferInsert> = {}) {
+  const reason = skippedReason(row);
+  await finish(row, "skipped", reason, { concurrency: [], access: [], jobs: [], ...extra });
+  if (row.event !== "pull-request" && row.checkRunId === null) return;
+  await upsertCheck(row, {
+    status: "completed",
+    conclusion: "skipped",
+    title: reason.replace(/\.$/, ""),
+    summary: reason.replace(/^No pipeline/, "No pipeline in `.infrawrench/ci`"),
   });
 }
 
@@ -736,6 +782,11 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     failedCount === 0 &&
     (run.result?.cancelled === true || jobs.some((j) => j.status === "cancelled"));
   const cancelReason = cancelled ? cancelledReason(row) : null;
+  if (passed && jobs.length === 0 && skipsWhenEmpty(row)) {
+    // Ran, and nothing in it did: a runner that could not say beforehand.
+    await skipRun(row, runUsage(run));
+    return;
+  }
   await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
     jobs,
     ...runUsage(run),
@@ -1202,7 +1253,9 @@ export async function listRuns(
     .where(
       and(
         eq(ciRuns.organizationId, organizationId),
-        opts.status ? eq(ciRuns.status, opts.status) : undefined,
+        opts.status
+          ? eq(ciRuns.status, opts.status)
+          : notInArray(ciRuns.status, [...CI_HIDDEN_RUN_STATUSES]),
       ),
     )
     .orderBy(desc(ciRuns.createdAt))

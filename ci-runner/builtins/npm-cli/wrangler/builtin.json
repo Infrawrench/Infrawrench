@@ -1,0 +1,12 @@
+{
+  "name": "wrangler",
+  "version": "4.162.0",
+  "entry": "node_modules/wrangler/bin/wrangler.js",
+  "args": [],
+  "env": {
+    "WRANGLER_SEND_METRICS": "false",
+    "DO_NOT_TRACK": "1"
+  },
+  "description": "Wrangler 4.162.0, on the environment's node, bundling with esbuild-wasm; workerd is a stand-in that explains itself",
+  "tree_sha256": "6a21685c0b9d1515d5a12e0696b8352b7977e47dd60bde61d91accdc44c88930"
+}

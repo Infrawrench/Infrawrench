@@ -851,9 +851,13 @@ export function ResourcePanel({
               );
               peerCredentials[mapping.credentialKey] = value;
             }
+            const peerLoaded = await getPlugin(integration.pluginId);
+            if (!peerLoaded) return;
             await applyCredentialRewriters(
               {
                 accountId,
+                credentialFields: peerLoaded.plugin.manifest.credentialFields,
+                peerPluginId: integration.pluginId,
                 resourcePluginId: localCtx.parentPluginId,
                 resourceTypeId: localCtx.parentResourceTypeId,
                 resourceId: localCtx.parentResourceId,
@@ -862,8 +866,6 @@ export function ResourcePanel({
               },
               peerCredentials,
             );
-            const peerLoaded = await getPlugin(integration.pluginId);
-            if (!peerLoaded) return;
             const peerServices = buildPluginHostServices(
               peerLoaded.plugin.manifest,
               peerCredentials,

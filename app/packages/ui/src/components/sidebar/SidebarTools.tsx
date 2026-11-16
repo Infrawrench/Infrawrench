@@ -3,7 +3,7 @@ import { useGT } from "gt-react";
 import { ToolsIcon } from "../icons/ToolsIcon.js";
 
 /**
- * The org-level tools: Agents, Workflows, Deploy, and friends. They used to
+ * The org-level tools: Agents, Workflows, CI, and friends. They used to
  * render as an icon grid pinned above the dashboard list (SidebarNavGrid),
  * but the grid stopped scaling past twenty tiles: every tool cost sidebar
  * height whether or not it was wanted. Now the sidebar carries a single

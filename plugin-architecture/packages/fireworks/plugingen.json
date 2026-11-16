@@ -29,16 +29,6 @@
       "why": "Its body is an object with no properties, and the plugin sends none."
     },
     {
-      "pointer": "/paths/~1reinforcementFineTuningJobs~1{reinforcement_fine_tuning_job_id}:cancel/post/requestBody/required",
-      "value": false,
-      "why": "Its body is an object with no properties, and the plugin sends none."
-    },
-    {
-      "pointer": "/paths/~1reinforcementFineTuningJobs~1{reinforcement_fine_tuning_job_id}:resume/post/requestBody/required",
-      "value": false,
-      "why": "Its body is an object with no properties, and the plugin sends none."
-    },
-    {
       "pointer": "/paths/~1dpoJobs~1{dpo_job_id}:resume/post/requestBody/required",
       "value": false,
       "why": "Its body is an object with no properties, and the plugin sends none."
@@ -65,20 +55,10 @@
     "/dpoJobs": ["get"],
     "/dpoJobs/{dpo_job_id}": ["get", "delete"],
     "/dpoJobs/{dpo_job_id}:resume": ["post"],
-    "/evaluationJobs": ["get"],
-    "/evaluationJobs/{evaluation_job_id}": ["get", "delete"],
-    "/evaluationJobs/{evaluation_job_id}:getExecutionLogEndpoint": ["get"],
-    "/evaluators": ["get"],
-    "/evaluators/{evaluator_id}": ["get", "patch", "delete"],
-    "/evaluators/{evaluator_id}:getBuildLogEndpoint": ["get"],
     "/models": ["get"],
     "/models/{model_id}": ["get", "delete"],
     "/quotas": ["get"],
     "/quotas/{quota_id}": ["get", "patch"],
-    "/reinforcementFineTuningJobs": ["get"],
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}": ["get", "delete"],
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:cancel": ["post"],
-    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:resume": ["post"],
     "/routers": ["get", "post"],
     "/routers/{router_id}": ["get", "patch", "delete"],
     "/secrets": ["get", "post"],

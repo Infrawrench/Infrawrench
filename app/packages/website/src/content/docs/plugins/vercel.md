@@ -38,7 +38,7 @@ If you're on a Team, enter the team ID so you see team-owned projects.
 
 - **See deploys** with status badges and links to the Vercel inspector.
 - **Read build logs**: a deployment's Logs tab shows its build output (commands, stdout, stderr).
-- **See traffic**: a project's Metrics tab charts its [Web Analytics](https://vercel.com/docs/analytics) traffic: page views, visitors, custom events (from `track()`), and the visitors behind those events. Ranges up to three days are hourly, longer ones daily. The default is the last week.
+- **See traffic**: a project's Metrics tab charts its [Web Analytics](https://vercel.com/docs/analytics) traffic: page views, visitors, custom events (from `track()`), and the visitors behind those events. Ranges up to three days are hourly, up to 100 days daily, up to about two years weekly, and longer ones monthly. The default is the last week.
 - **Act on deployments**: **Cancel** a build in progress, **Redeploy** from the same source and settings (production deploys stay production), **Promote to Production** for a ready preview, and **Instant Rollback** to a previous production deployment Vercel marks as a rollback candidate. Every action asks you to confirm first.
 - **Change project settings**: **Edit** sets the framework preset, Node.js version (24.x, 22.x, 20.x), default function region, and the build, install, development, output and root directory settings. Clearing a command field resets it to the framework default.
 - **Pause / Resume** a project (a paused project answers every request with a 503), and toggle **Attack Challenge Mode**, which puts a browser challenge in front of every visitor during an attack.

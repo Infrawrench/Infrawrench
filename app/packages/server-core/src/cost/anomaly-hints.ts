@@ -97,8 +97,6 @@ export const HINT_AUDIT_ACTIONS = [
   "change_freeze.end",
   "change_freeze.delete",
   "change_freeze.override",
-  "deployment.plan",
-  "deployment.rollback",
   "resource.create",
   "resource.apply_manifest",
   "resource.attach",
@@ -189,13 +187,6 @@ function auditHint(entry: AuditHintEntry, count: number): ScoredHint | null {
         score: 350 + count,
         text: `${actor} ran ${entry.entityName ? `workflow "${entry.entityName}"` : "a workflow"}${times}`,
       };
-    case "deployment.plan":
-      return {
-        score: 300 + count,
-        text: `${actor} ran ${count === 1 ? "a deployment" : `${count} deployments`}`,
-      };
-    case "deployment.rollback":
-      return { score: 300 + count, text: `${actor} rolled back a deployment` };
     case "resource.create":
       return {
         score: 200 + count,
