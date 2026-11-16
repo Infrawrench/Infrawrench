@@ -28,7 +28,6 @@ export {
   type OrgRoleSummary,
 } from "./permissions";
 export { ALL_PERMISSIONS } from "./permission-catalog";
-export * from "./org-features";
 export * from "./products";
 export * from "./ci";
 export * from "./ci-access";

@@ -10,9 +10,6 @@
  *   start, a retry and an approval all run code with the repository's
  *   secrets, or a fork's code); `ci:write` to list secret and variable names,
  *   as `GET /ci/values` takes.
- * - **The rollout gate** is `ciTurnedOn`, which `requireCi` asks too: every
- *   tool refuses while CI is off for the organization, as every route but
- *   the status answers 404.
  * - **Audit** actions are the routes' (`ci.run.start`, `ci.run.retry`,
  *   `ci.run.cancel`, `ci.run.approve`, `ci.run.reject`) with `source`.
  *
@@ -37,7 +34,7 @@ import {
   type CiLogEvent,
   type CiRun,
 } from "@infrawrench/client-core";
-import { ciStatus, ciTurnedOn } from "@infrawrench/server-core/ci/accounts";
+import { ciStatus } from "@infrawrench/server-core/ci/accounts";
 import { ciAccessOverview } from "@infrawrench/server-core/ci/access";
 import { ciUsage } from "@infrawrench/server-core/ci/billing";
 import {
@@ -58,9 +55,6 @@ import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { logAudit } from "../services/audit";
 import { err, ok, type ToolAuthContext, type ToolDefinition, type ToolResult } from "./types";
 
-/** What a tool answers while CI is off for the organization (the routes' 404). */
-export const CI_OFF_MESSAGE = "CI is not turned on for this organization.";
-
 const DEFAULT_RUN_LIMIT = 25;
 const MAX_RUN_LIMIT = 100;
 /** Log lines per stream per call: enough for a stack trace, little enough for a model's context. */
@@ -75,11 +69,6 @@ const LIVE_IDLE_MS = 750;
 const LIVE_MAX_BYTES = 8 * 1024 * 1024;
 
 const runIdSchema = z.string().describe("The run's `id`, from list_ci_runs.");
-
-/** Refuses while CI is off for the organization, as `requireCi` does on the routes. */
-async function ciOff(auth: ToolAuthContext): Promise<ToolResult | null> {
-  return (await ciTurnedOn(auth.organizationId)) ? null : err(CI_OFF_MESSAGE);
-}
 
 /** A refusal the CI modules mean for the caller (not found, conflict, bad input) as a tool error. */
 function ciError(e: unknown): ToolResult {
@@ -314,8 +303,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (_input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const [status, repos] = await Promise.all([
           ciStatus(auth.organizationId),
           listCiRepositories(auth.organizationId),
@@ -362,8 +349,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const repo = stringInput(input["repoFullName"])?.toLowerCase();
         const repos = (await listCiRepositories(auth.organizationId)).filter(
           (r) => repo === undefined || r.repoFullName.toLowerCase() === repo,
@@ -432,8 +417,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const limit = Math.min(
           Math.max(intInput(input["limit"]) ?? DEFAULT_RUN_LIMIT, 1),
           MAX_RUN_LIMIT,
@@ -480,8 +463,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         try {
           const detail = await getRun(auth.organizationId, String(input["runId"]));
           const { jobs: summaries, ...run } = detail.run;
@@ -543,8 +524,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const runId = String(input["runId"]);
         const jobId = String(input["jobId"]);
         const pipeline = stringInput(input["pipeline"]);
@@ -660,8 +639,6 @@ export function ciTools(): ToolDefinition[] {
       permission: "ci:approve",
       openWorld: true,
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const installationId = intInput(input["installationId"]);
         if (installationId === undefined) return err("installationId must be a number.");
         const branch = stringInput(input["branch"]);
@@ -714,8 +691,6 @@ export function ciTools(): ToolDefinition[] {
       permission: "ci:approve",
       openWorld: true,
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const runId = String(input["runId"]);
         const noTaskCache = input["noTaskCache"] === true;
         try {
@@ -746,8 +721,6 @@ export function ciTools(): ToolDefinition[] {
       permission: "ci:approve",
       openWorld: true,
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const runId = String(input["runId"]);
         try {
           const run = await cancelRun(auth.organizationId, runId);
@@ -771,8 +744,6 @@ export function ciTools(): ToolDefinition[] {
       permission: "ci:approve",
       openWorld: true,
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const runId = String(input["runId"]);
         try {
           await approveRun(auth.organizationId, runId, auth.userId);
@@ -797,8 +768,6 @@ export function ciTools(): ToolDefinition[] {
       permission: "ci:approve",
       openWorld: true,
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const runId = String(input["runId"]);
         try {
           await rejectRun(auth.organizationId, runId, auth.userId);
@@ -834,8 +803,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:write",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const installationId = intInput(input["installationId"]);
         if (installationId === undefined || installationId <= 0) {
           return err("installationId must be a GitHub App installation id.");
@@ -873,8 +840,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (_input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const { connections, grants, sshKeys } = await ciAccessOverview(
           auth.organizationId,
           auth.agentRegistrationId ? null : auth.userId,
@@ -900,8 +865,6 @@ export function ciTools(): ToolDefinition[] {
       risk: "read",
       permission: "ci:read",
       handler: async (input, auth) => {
-        const off = await ciOff(auth);
-        if (off) return off;
         const month = stringInput(input["month"]);
         return ok(await ciUsage(auth.organizationId, month));
       },

@@ -165,7 +165,10 @@ export interface CiAccount {
 }
 
 export interface CiStatus {
-  /** CI is turned on for this organization (a platform admin decides). */
+  /**
+   * Always `true`: CI is on for every organization. The server still sends
+   * it for clients built before that, which hide CI when it is `false`.
+   */
   enabled: boolean;
   /** The runner pool is configured on this server. */
   configured: boolean;

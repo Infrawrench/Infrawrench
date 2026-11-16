@@ -22808,7 +22808,6 @@
   "3c90939990664d77": "Échec du chargement de la CI",
   "ec0ed1ca24372801": "CI",
   "8ed6827da4c2a1f0": "Les pipelines de .infrawrench/ci s'exécutent à chaque push et pull request, chaque job dans son propre bac à sable WebAssembly. Les pull requests issues de forks attendent un mainteneur et n'ont jamais accès aux secrets.",
-  "032606f77a5b7fb2": "La CI n'est pas encore activée pour cette organisation. Elle est déployée organisation par organisation.",
   "2d53b34194963500": "Le pool de runners CI n'est pas configuré sur ce serveur, aucune exécution ne démarrera.",
   "c1ff5bab3cf868fa": "La CI nécessite un forfait payant. Les exécutions sont enregistrées mais ne démarrent pas tant que vous n'avez pas mis à niveau.",
   "946abc507faceec1": "Aucune exécution pour l'instant. Faites un push vers un dépôt d'un compte qui exécute la CI.",

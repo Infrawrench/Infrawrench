@@ -54,7 +54,6 @@ import {
   githubInstallations,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { orgHasFeature } from "../features.js";
 import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
 import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
@@ -158,13 +157,12 @@ async function ciOrganization(installationId: number): Promise<string | null> {
     )
     .where(eq(ciAccounts.installationId, installationId))
     .limit(1);
-  if (!row) return null;
-  return (await orgHasFeature(row.organizationId, "ci")) ? row.organizationId : null;
+  return row?.organizationId ?? null;
 }
 
 /**
  * Records the run a webhook delivery asks for. Returns it, or `null` when
- * the delivery starts nothing (CI off, account not chosen, a redelivery).
+ * the delivery starts nothing (account not chosen, a redelivery).
  */
 export async function acceptCiEvent(
   ev: CiEvent,
@@ -366,10 +364,6 @@ export async function dispatchRun(id: string): Promise<void> {
     .returning();
   if (!row) return;
 
-  if (!(await orgHasFeature(row.organizationId, "ci"))) {
-    await finish(row, "error", "CI is not turned on for this organization.");
-    return;
-  }
   if (!(await planAccess(row.organizationId)).paid) {
     await finish(row, "error", "CI needs a paid plan.");
     await upsertCheck(row, {

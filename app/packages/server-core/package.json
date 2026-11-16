@@ -342,7 +342,6 @@
     "./push/dispatch": "./src/push/dispatch.ts",
     "./push/types": "./src/push/types.ts",
     "./entitlements": "./src/entitlements.ts",
-    "./features": "./src/features.ts",
     "./products/settings": "./src/products/settings.ts",
     "./ci/access": "./src/ci/access.ts",
     "./ci/accounts": "./src/ci/accounts.ts",

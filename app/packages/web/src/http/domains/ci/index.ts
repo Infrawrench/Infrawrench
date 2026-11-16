@@ -1,7 +1,7 @@
 /**
  * `/api/org/:orgId/ci`: CI on the organization's GitHub repositories. The
- * logic lives in `server-core/src/ci/`; these handlers gate on the
- * organization's `ci` feature, map its errors and audit the decisions.
+ * logic lives in `server-core/src/ci/`; these handlers map its errors and
+ * audit the decisions.
  */
 import { Effect, Schema } from "effect";
 import { HttpServerResponse } from "effect/http";
@@ -30,7 +30,7 @@ import {
   Ok,
 } from "@infrawrench/api-contract";
 import { CI_RUN_STATUSES } from "@infrawrench/client-core";
-import { ciStatus, ciTurnedOn, setCiAccount } from "@infrawrench/server-core/ci/accounts";
+import { ciStatus, setCiAccount } from "@infrawrench/server-core/ci/accounts";
 import {
   ciAccessOverview,
   createGrant,
@@ -62,6 +62,7 @@ import { listCiManualPipelines, listCiSchedules } from "@infrawrench/server-core
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { logAudit } from "../../../services/audit";
+import { ensureCiPrices } from "../billing/operations";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
@@ -70,14 +71,6 @@ import { respond } from "../../response";
 
 const refusal = (error: unknown) =>
   error instanceof CiInputError ? inputRefusal(error) : undefined;
-
-/** Everything but the status is a 404 until CI is turned on for the org. */
-const requireCi = Effect.gen(function* () {
-  const principal = yield* OrgPrincipal;
-  const enabled = yield* legacy(() => ciTurnedOn(principal.organizationId));
-  if (!enabled) return yield* notFound("CI is not turned on for this organization.");
-  return principal;
-});
 
 /** A grant as the audit log records it: what was granted, never a value. */
 const grantAudit = (grant: {
@@ -178,7 +171,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("setAccount", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const account = yield* legacyTry(
           () =>
             setCiAccount(
@@ -199,12 +192,34 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
             metadata: { accountLogin: account.accountLogin },
           }),
         );
+        // CI is billed by metered prices that subscriptions made before CI
+        // existed lack. Adding them is best-effort: the account still runs
+        // CI, and the log says what to fix by hand.
+        if (payload.enabled) {
+          yield* fireAndForget(() =>
+            keepAlive(
+              ensureCiPrices(organizationId).then(
+                (added) => {
+                  if (added.length > 0)
+                    console.log(
+                      `[ci] added CI prices ${added.join(", ")} to org ${organizationId}`,
+                    );
+                },
+                (err: unknown) =>
+                  console.error(
+                    `[ci] could not add CI prices to org ${organizationId}'s subscription:`,
+                    err,
+                  ),
+              ),
+            ),
+          );
+        }
         return yield* respond(CiAccountSchema)(account);
       }),
     )
     .handle("listRuns", ({ query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         // Read as sent: a limit that is not a number is the default, and a
         // status that is not one lists every run.
         const asked = Number(query.limit);
@@ -218,14 +233,14 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("getRun", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const detail = yield* legacyTry(() => getRun(organizationId, params.runId), refusal);
         return yield* respond(CiRunDetailSchema)(detail);
       }),
     )
     .handle("downloadLink", ({ params, query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const link = yield* legacyTry(
           () => getDownloadLink(organizationId, params.runId, query.job, query.path),
           refusal,
@@ -235,7 +250,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("runLogs", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const body = yield* legacyTry(() => relayRunLogs(organizationId, params.runId), refusal);
         return HttpServerResponse.raw(
           new Response(body, {
@@ -250,7 +265,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("approveRun", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         yield* legacyTry(
           () => approveRun(organizationId, params.runId, session.userId ?? ""),
           refusal,
@@ -271,7 +286,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("rejectRun", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         yield* legacyTry(
           () => rejectRun(organizationId, params.runId, session.userId ?? ""),
           refusal,
@@ -290,7 +305,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("startRun", ({ payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const run = yield* legacyTry(
           () =>
             startManualRun(organizationId, session.userId ?? "", session.email || null, {
@@ -327,14 +342,14 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("listManual", () =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const manual = yield* legacy(() => listCiManualPipelines(organizationId));
         return yield* respond(CiManualPipelinesSchema)(manual);
       }),
     )
     .handle("retryRun", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const noTaskCache = payload.noTaskCache === true;
         const run = yield* legacyTry(
           () => retryRun(organizationId, params.runId, session.userId ?? "", { noTaskCache }),
@@ -357,7 +372,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("cancelRun", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const run = yield* legacyTry(() => cancelRun(organizationId, params.runId), refusal);
         yield* fireAndForget(() =>
           logAudit({
@@ -374,21 +389,21 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("listCaches", () =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const caches = yield* legacy(() => listCiCaches(organizationId));
         return yield* respond(CiCachesSchema)(caches);
       }),
     )
     .handle("listSchedules", () =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const schedules = yield* legacy(() => listCiSchedules(organizationId));
         return yield* respond(CiSchedulesSchema)(schedules);
       }),
     )
     .handle("clearCache", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const cleared = yield* legacyTry(
           () => clearCiCache(organizationId, params.installationId, params.repo),
           refusal,
@@ -413,7 +428,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("listValues", ({ query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const scope = yield* valueScope(query);
         const values = yield* legacyTry(
           () => listCiValues(organizationId, scope.installationId, scope.repo),
@@ -424,7 +439,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("setValue", ({ params, query, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const scope = yield* valueScope(query);
         yield* legacyTry(
           () =>
@@ -454,7 +469,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("deleteValue", ({ params, query }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const scope = yield* valueScope(query);
         yield* legacyTry(
           () =>
@@ -482,7 +497,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("access", () =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const overview = yield* legacy(() =>
           ciAccessOverview(organizationId, session.userId ?? null),
         );
@@ -491,7 +506,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("setConnectionAccess", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const access = yield* legacyTry(
           () =>
             setConnectionAccess(
@@ -522,7 +537,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("preflightConnection", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         // One `legacy` call around the plugin call, so the egress scope covers it.
         const access = yield* legacyTry(
           () => preflightConnection(organizationId, params.accountId, payload.kind, payload.region),
@@ -548,7 +563,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("resourceOutputs", ({ query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         if (!query.resourceId) return yield* badRequest("resourceId is required");
         const outputs = yield* legacyTry(
           () => resourceOutputs(organizationId, query.resourceId),
@@ -559,7 +574,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("createGrant", ({ payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const grant = yield* legacyTry(
           () => createGrant(organizationId, grantInput(payload), session.userId ?? null),
           refusal,
@@ -579,7 +594,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("updateGrant", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const grant = yield* legacyTry(
           () =>
             updateGrant(
@@ -605,7 +620,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("deleteGrant", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const grant = yield* legacyTry(() => deleteGrant(organizationId, params.grantId), refusal);
         yield* fireAndForget(() =>
           logAudit({
@@ -622,7 +637,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("setSshKeyLending", ({ params, payload }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         if (!session.userId) return yield* notFound("Only a person can lend their SSH key.");
         const userId = session.userId;
         const lending = yield* legacyTry(
@@ -658,7 +673,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("revokeSshKeyLending", ({ params }) =>
       Effect.gen(function* () {
-        const { organizationId, session } = yield* requireCi;
+        const { organizationId, session } = yield* OrgPrincipal;
         const revoked = yield* legacyTry(
           () => revokeSshKeyLending(organizationId, params.sshKeyId),
           refusal,
@@ -678,7 +693,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
     )
     .handle("usage", ({ query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* requireCi;
+        const { organizationId } = yield* OrgPrincipal;
         const usage = yield* legacy(() => ciUsage(organizationId, query.month));
         return yield* respond(CiUsageSchema)(usage);
       }),

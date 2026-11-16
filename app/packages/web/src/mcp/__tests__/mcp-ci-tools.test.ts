@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from "vitest";
 // The CI tools as the MCP server lists them: real definitions, with the CI
 // modules they call stubbed (they read Postgres and the CI proxy).
 vi.mock("@infrawrench/server-core/ci/accounts", () => ({
-  ciTurnedOn: vi.fn(async () => true),
   ciStatus: vi.fn(),
 }));
 vi.mock("@infrawrench/server-core/ci/access", () => ({ ciAccessOverview: vi.fn() }));

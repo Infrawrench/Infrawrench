@@ -1,7 +1,7 @@
 /**
  * The CI proxy (`app/packages/ci-proxy`), which places runs on the runner
  * pool and holds secrets and variables. Configured by `CI_PROXY_URL` and
- * `CI_PROXY_KEY`; without them CI stays off, whatever the feature flags say.
+ * `CI_PROXY_KEY`; without them CI stays off.
  */
 
 import type { ProxyDownload } from "./downloads.js";

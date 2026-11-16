@@ -22,7 +22,7 @@ Infrawrench is one application made of several apps. Each app covers one job, ha
 | Delivery          | CI, Delivery, Environments, Env diff                                                        |
 | Automation        | Agents, Workflows                                                                           |
 
-Some tools need a cloud organization. In the desktop app without one, an app whose tools all need an organization still shows what it offers, and says that you need to sign in to use it. CI shows once it is turned on for your organization.
+Some tools need a cloud organization. In the desktop app without one, an app whose tools all need an organization still shows what it offers, and says that you need to sign in to use it.
 
 ## Open an app
 
