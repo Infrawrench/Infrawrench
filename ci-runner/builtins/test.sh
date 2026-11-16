@@ -3931,6 +3931,55 @@ jobs:
       wait-for-port 7443 --host localhost --timeout 60s
       test "$(python -c 'import ssl, urllib.request; print(urllib.request.urlopen("https://localhost:7443/", context=ssl.create_default_context(cafile="/app/py/tls/cert.pem")).read().decode())')" = "over tls"
       wait "$server"
+  # File locks (#1216): `fcntl.flock` and `fcntl.lockf` failed with
+  # ENOSYS. Another process's lock is refused without waiting, a blocking
+  # one waits for its holder to exit, which releases it, and a second open
+  # of a file in one process is a description of its own for flock (and
+  # the same process for lockf), as on Linux.
+  file-locks-passes:
+    using: env:python@3.13
+    timeout: 3m
+    run: |
+      python -u - > /tmp/holder.log <<'PY' &
+      import fcntl, time
+      f = open("/tmp/flock", "w")
+      fcntl.flock(f, fcntl.LOCK_EX)
+      g = open("/tmp/lockf", "w")
+      fcntl.lockf(g, fcntl.LOCK_EX)
+      print("held")
+      time.sleep(2)
+      PY
+      holder=$!
+      wait-for-log /tmp/holder.log held --timeout 60s
+      python - <<'PY'
+      import errno, fcntl, time
+      f = open("/tmp/flock", "w")
+      g = open("/tmp/lockf", "w")
+      for lock, file in ((fcntl.flock, f), (fcntl.lockf, g)):
+          try:
+              lock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+              raise SystemExit(f"{lock.__name__} took a lock another process holds")
+          except OSError as e:
+              assert e.errno in (errno.EAGAIN, errno.EACCES), e
+      start = time.monotonic()
+      fcntl.flock(f, fcntl.LOCK_EX)
+      fcntl.lockf(g, fcntl.LOCK_EX)
+      assert time.monotonic() - start > 0.5, "the blocking locks did not wait"
+      again = open("/tmp/flock", "w")
+      try:
+          fcntl.flock(again, fcntl.LOCK_SH | fcntl.LOCK_NB)
+          raise SystemExit("flock shared a lock between two opens of one file")
+      except BlockingIOError:
+          pass
+      fcntl.lockf(open("/tmp/lockf", "w"), fcntl.LOCK_EX | fcntl.LOCK_NB)
+      fcntl.flock(f, fcntl.LOCK_UN)
+      fcntl.flock(again, fcntl.LOCK_SH | fcntl.LOCK_NB)
+      PY
+      wait "$holder"
+      # SQLite in CPython locks its database file with the same record
+      # locks; a database on disk still works from two processes.
+      python -c 'import sqlite3; c = sqlite3.connect("/tmp/t.db"); c.execute("create table t (x)"); c.execute("insert into t values (42)"); c.commit()'
+      test "$(python -c 'import sqlite3; print(sqlite3.connect("/tmp/t.db").execute("select x from t").fetchone()[0])')" = 42
   # pip's three ways to keep packages apart from the interpreter's own, from
   # the local wheel and with no network: the user site, whose console
   # scripts are on PATH; a target directory on PYTHONPATH; and a virtual
