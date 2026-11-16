@@ -722,6 +722,11 @@ impl JobFs {
     }
 
     /// The job's file modes: the snapshot's, and what the job changed.
+    /// What the job's writes are charged to, when it has a limit.
+    pub fn budget(&self) -> Option<Arc<dyn WriteBudget>> {
+        self.overlay.budget.clone()
+    }
+
     pub fn modes(&self) -> Modes {
         self.overlay.modes.clone()
     }

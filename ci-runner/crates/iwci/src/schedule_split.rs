@@ -1176,6 +1176,7 @@ pub(super) fn watch<'p>(
                 ask = !asked
                     && s.queue.iter().any(|(_, (_, job, lookup))| {
                         shareable(job)
+                            && lookup.sandbox.is_none()
                             && lookup
                                 .queued
                                 .is_some_and(|at| at.elapsed() >= timing.ask_after)

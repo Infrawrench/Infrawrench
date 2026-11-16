@@ -58,6 +58,10 @@ impl Tools for FakeTools {
         self.resolve(tool)?;
         Ok(format!("{}@1.0.0", tool.name()))
     }
+    /// `native` tools put their job in a sandbox that takes 256 MiB.
+    fn sandbox_overhead(&self, tool: &ToolRef) -> Option<u64> {
+        tool.name().starts_with("native").then_some(256 << 20)
+    }
     /// `envcache` tools have one environment cache, of 64 bytes at most.
     fn env_caches(&self, tool: &String) -> Vec<crate::env_cache::EnvCacheDecl> {
         if !tool.contains(":envcache") {
@@ -783,6 +787,46 @@ fn a_job_bigger_than_the_whole_budget_is_an_error_not_a_hang() {
         matches!(status(&report, "big"), Status::Error { message } if message.contains("more than the runner's whole limit"))
     );
     assert_eq!(budget.used(), 1 << 29);
+}
+
+/// A job with a native tool reserves its sandbox's memory on top of its
+/// own `memory:`, so two that fit by `memory:` alone run one after the
+/// other, and one whose sandbox does not fit the runner is an error.
+#[test]
+fn a_job_with_a_native_tool_reserves_its_sandbox_too() {
+    let p = plan(
+        "name: x\njobs:\n  t:\n    using: env:slow@1\n    tools: [builtin:native-bun@1]\n    run: echo hi\n    matrix: [a, b]\n    memory: 600MiB\n",
+    );
+    let budget = Arc::new(MemoryBudget::new(3 << 29)); // 1.5 GiB
+    let (report, exec, _, _) = run_limited(&p, None, false, Some(budget.clone()));
+    assert!(report.passed(), "{report:?}");
+    assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 1);
+    assert_eq!(budget.used(), 0, "every reservation is given back");
+    // Without the native tool, both fit at once.
+    let plain = plan(
+        "name: x\njobs:\n  t:\n    using: env:slow@1\n    run: echo hi\n    matrix: [a, b]\n    memory: 600MiB\n",
+    );
+    let (_, exec, _, _) = run_limited(
+        &plain,
+        None,
+        false,
+        Some(Arc::new(MemoryBudget::new(3 << 29))),
+    );
+    assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
+
+    let big = plan(
+        "name: x\njobs:\n  t:\n    using: env:slow@1\n    tools: [builtin:native-bun@1]\n    run: echo hi\n    memory: 900MiB\n",
+    );
+    let (report, _, _, _) = run_limited(
+        &big,
+        None,
+        false,
+        Some(Arc::new(MemoryBudget::new(1 << 30))),
+    );
+    assert!(
+        matches!(status(&report, "t"), Status::Error { message } if message.contains("1156 MiB")),
+        "{report:?}"
+    );
 }
 
 /// A gate jobs wait at until it is opened.

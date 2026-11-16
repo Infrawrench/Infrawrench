@@ -412,15 +412,38 @@ impl Catalog {
         Ok((version.clone(), loaded))
     }
 
+    /// How the tool `reference` names is hosted, from its manifest alone
+    /// (nothing else is fetched); `None` for an environment.
+    pub fn abi(&self, reference: &ToolRef, repo: &RepoId) -> Result<Option<crate::Abi>, Error> {
+        Ok(match self.pick(reference, repo)?.1 {
+            Loaded::Tool(manifest, _) => Some(manifest.abi),
+            Loaded::Env(..) => None,
+        })
+    }
+
     /// Resolves `reference` for a job of repository `repo`: picks the highest
     /// matching version, loads and validates its manifest, and fetches and
     /// verifies every blob it names.
     pub fn resolve(&self, reference: &ToolRef, repo: &RepoId) -> Result<Resolved, Error> {
         match self.pick(reference, repo)?.1 {
             Loaded::Tool(manifest, manifest_sha256) => {
-                let module = self.blob(&manifest.module.sha256, manifest.module.size)?;
-                let files = manifest
-                    .files
+                // A native tool's program and files are this runner's
+                // target's; a wasm tool's are its module and files.
+                let (program, file_refs) = match &manifest.module {
+                    Some(module) => (module.clone(), manifest.files.as_slice()),
+                    None => {
+                        let target = crate::manifest::host_target();
+                        let t = manifest
+                            .targets
+                            .get(&target)
+                            .ok_or_else(|| Error::NotFound {
+                                reference: format!("{reference} for {target}"),
+                            })?;
+                        (t.program.clone(), t.files.as_slice())
+                    }
+                };
+                let module = self.blob(&program.sha256, program.size)?;
+                let files = file_refs
                     .iter()
                     .map(|f| Ok((f.path.clone(), self.blob(&f.sha256, f.size)?)))
                     .collect::<Result<_, Error>>()?;
