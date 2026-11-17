@@ -30,13 +30,16 @@
 //! (`bundle lock --add-platform ruby`), as Bundler in the job would insist
 //! too, with a `ruby` build of every gem.
 //!
-//! **Native extensions.** A gem's C extension cannot be compiled here. A
-//! [`PrebuiltExtensions`] may supply a build for the job's Ruby; without
-//! one the gem's Ruby files are installed and marked built anyway, so the
-//! bundle loads and only requiring that gem's compiled part fails (with a
-//! `LoadError`), and the report names it. A Rails lock carries gems like
-//! that which a test suite never loads (kamal's `ed25519`).
+//! **Native extensions.** A gem's C extension cannot be compiled here, so
+//! its build for the job's Ruby comes from a [`PrebuiltExtensions`] (the
+//! runner's are built by `builtins/environments/ruby/gems/build.sh`). A gem
+//! with an extension and no build fails the install, naming the versions
+//! that have one, rather than a job later with a `LoadError`. A gem the
+//! pipeline lists in `without-extensions` (one the jobs never load) is
+//! installed with its Ruby files and marked built, and the report names
+//! it.
 
+mod builds;
 mod gemspec;
 mod lockfile;
 
@@ -52,6 +55,7 @@ use crate::fetch::{FetchError, Fetcher, Integrity};
 pub use crate::git::{GitTrees, NoGit, TreeFile};
 use crate::go::parallel;
 
+pub use builds::{ArchivedBuilds, BuildArchive, BuildPin};
 use gemspec::Gemspec;
 use lockfile::{LockedSpec, Lockfile, SourceKind};
 
@@ -170,9 +174,14 @@ pub trait PrebuiltExtensions: Send + Sync {
         &self,
         gem: &ExtensionRequest<'_>,
     ) -> std::result::Result<Option<Vec<TreeFile>>, String>;
+
+    /// The versions of `name` there is a build of for `abi`, oldest first,
+    /// for the message that says a locked version has none.
+    fn versions(&self, name: &str, abi: &RubyAbi) -> std::result::Result<Vec<String>, String>;
 }
 
-/// No prebuilt extensions: every gem with one is installed without it.
+/// No prebuilt extensions: a gem with one fails the install unless
+/// `without-extensions` lists it.
 pub struct NoPrebuilt;
 
 impl PrebuiltExtensions for NoPrebuilt {
@@ -186,6 +195,10 @@ impl PrebuiltExtensions for NoPrebuilt {
     ) -> std::result::Result<Option<Vec<TreeFile>>, String> {
         Ok(None)
     }
+
+    fn versions(&self, _name: &str, _abi: &RubyAbi) -> std::result::Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +207,9 @@ pub struct BundlerOptions {
     /// it. Otherwise the lock's `RUBY VERSION`, then `.ruby-version`, then
     /// the newest supported.
     pub ruby: Option<String>,
+    /// Gems whose native extension the job never loads, installed without
+    /// it when there is no build of it rather than failing the install.
+    pub without_extensions: Vec<String>,
     /// Gems fetched at once.
     pub parallelism: usize,
     /// One `.gem` download.
@@ -209,6 +225,7 @@ impl Default for BundlerOptions {
     fn default() -> Self {
         Self {
             ruby: None,
+            without_extensions: Vec::new(),
             parallelism: 8,
             max_gem_bytes: 512 << 20,
             max_unpacked_bytes: 1 << 30,
@@ -226,6 +243,33 @@ pub fn env() -> Vec<(String, String)> {
         // or reaches a gem server.
         ("BUNDLE_FROZEN".to_string(), "true".to_string()),
     ]
+}
+
+/// [`env`], and what a Rails app's tests need here when the lock in `dir`
+/// installs Rails (`activesupport`): `PARALLEL_WORKERS=1`. Rails runs a
+/// suite of more than 50 tests in forked workers, one per processor, and a
+/// job's Ruby has no `fork`; one worker runs them in the process instead.
+/// A job's own `env:` wins, for a suite that runs its workers in threads
+/// (`parallelize(with: :threads)`).
+pub fn env_for(builder: &SnapshotBuilder, dir: &str) -> Vec<(String, String)> {
+    let mut vars = env();
+    let rails = normalise(dir).ok().and_then(|base| {
+        let path = LOCKFILES
+            .iter()
+            .map(|name| base.join(name))
+            .find(|path| builder.is_file(path))?;
+        let text = String::from_utf8(builder.read(&path).ok()?).ok()?;
+        let lock = lockfile::parse(&text).ok()?;
+        Some(
+            lock.sources
+                .iter()
+                .any(|source| source.specs.iter().any(|spec| spec.name == "activesupport")),
+        )
+    });
+    if rails == Some(true) {
+        vars.push(("PARALLEL_WORKERS".to_string(), "1".to_string()));
+    }
+    vars
 }
 
 /// How one gem's bytes were checked.
@@ -253,7 +297,8 @@ pub struct BundlerReport {
     /// The Ruby installed for (`major.minor`).
     pub ruby: String,
     pub installed: Vec<InstalledGem>,
-    /// Gems with a native extension installed without it.
+    /// Gems with a native extension installed without it (those the
+    /// pipeline lists in `without-extensions` and there is no build of).
     pub missing_extensions: Vec<String>,
     /// Problems that did not stop the install.
     pub warnings: Vec<String>,
@@ -419,14 +464,13 @@ pub fn install(
                         }
                     }
                     None => {
+                        // Only a gem `without-extensions` names gets here.
                         report.missing_extensions.push(full_name.clone());
                         report.warnings.push(format!(
-                            "bundler: {full_name} has a native extension ({}) and no build of it \
-                             for Ruby {} on {}; it is installed without it, so requiring its \
-                             compiled part fails with a LoadError",
+                            "bundler: {full_name} is installed without its native extension \
+                             ({}), as `without-extensions` asks: requiring its compiled part \
+                             fails with a LoadError",
                             prepared.spec.extensions().join(", "),
-                            abi.version,
-                            abi.platform
                         ));
                     }
                 }
@@ -527,6 +571,27 @@ pub fn install(
                 binstub(abi, &spec.name, &exe).as_bytes(),
                 true,
             )?;
+        }
+    }
+
+    for name in &options.without_extensions {
+        let listed = gems.iter().find(|(spec, _)| &spec.name == name);
+        match listed {
+            None => report.warnings.push(format!(
+                "bundler: `without-extensions` names {name}, which the lock does not install \
+                 from a gem server"
+            )),
+            Some((spec, _)) if spec.extensions().is_empty() => report.warnings.push(format!(
+                "bundler: `without-extensions` names {name}, which has no native extension"
+            )),
+            Some((spec, _)) if !report.missing_extensions.contains(&spec.full_name()) => {
+                report.warnings.push(format!(
+                    "bundler: `without-extensions` names {name}, and there is a build of {}, \
+                     which was installed",
+                    spec.full_name()
+                ))
+            }
+            Some(_) => {}
         }
     }
 
@@ -971,9 +1036,19 @@ fn prepare_gem(
         let files = prebuilt
             .files(&request)
             .map_err(|e| fail(format!("its prebuilt extension: {e}")))?;
-        if let Some(files) = &files {
-            for f in files {
-                check_path(&f.path).map_err(|e| fail(format!("its prebuilt extension: {e}")))?;
+        match &files {
+            Some(files) => {
+                for f in files {
+                    check_path(&f.path)
+                        .map_err(|e| fail(format!("its prebuilt extension: {e}")))?;
+                }
+            }
+            None if options.without_extensions.contains(&spec.name) => {}
+            None => {
+                let versions = prebuilt
+                    .versions(&spec.name, abi)
+                    .map_err(|e| fail(format!("its prebuilt extension: {e}")))?;
+                return Err(fail(no_build(&spec.name, &extensions, abi, &versions)));
             }
         }
         files
@@ -983,6 +1058,32 @@ fn prepare_gem(
         files: gem.data,
         extension,
     })
+}
+
+/// Why a gem with a native extension and no build stops the install: a job
+/// cannot compile it, and installing it without would only move the
+/// failure to whichever test first requires it.
+fn no_build(name: &str, extensions: &[String], abi: &RubyAbi, versions: &[String]) -> String {
+    let have = if versions.is_empty() {
+        format!(
+            "there is no build of any version of {name} for Ruby {}",
+            abi.version
+        )
+    } else {
+        format!(
+            "there are builds for Ruby {} of {name} {}; lock one of those (`gem \"{name}\", \
+             \"{}\"` in the Gemfile, then `bundle lock`)",
+            abi.version,
+            versions.join(", "),
+            versions[versions.len() - 1]
+        )
+    };
+    format!(
+        "has a native extension ({}), which a job cannot compile, and {have}. If the job never \
+         loads it, list {name} in this install's `without-extensions` to install it without \
+         (README.md, \"Ruby gems\")",
+        extensions.join(", ")
+    )
 }
 
 /// A `.gem`'s parts: the YAML of `metadata.gz` and the entries of

@@ -101,7 +101,8 @@ impl GitTrees for FakeGit {
     }
 }
 
-/// Prebuilt extensions for the gems it names.
+/// Prebuilt extensions for the gems it names (`<name>-<version>`), for
+/// every Ruby.
 struct FakePrebuilt(HashMap<String, Vec<TreeFile>>);
 
 impl PrebuiltExtensions for FakePrebuilt {
@@ -114,7 +115,29 @@ impl PrebuiltExtensions for FakePrebuilt {
         gem: &ExtensionRequest<'_>,
     ) -> std::result::Result<Option<Vec<TreeFile>>, String> {
         assert_eq!(gem.platform, "ruby");
-        Ok(self.0.get(gem.name).cloned())
+        Ok(self
+            .0
+            .get(&format!("{}-{}", gem.name, gem.version))
+            .cloned())
+    }
+
+    fn versions(&self, name: &str, _abi: &RubyAbi) -> std::result::Result<Vec<String>, String> {
+        let mut versions: Vec<String> = self
+            .0
+            .keys()
+            .filter_map(|k| k.strip_prefix(&format!("{name}-")).map(str::to_string))
+            .collect();
+        versions.sort();
+        Ok(versions)
+    }
+}
+
+/// What the fixture installs with: its `native` gem has no build, and the
+/// pipeline says the job never loads it.
+fn options() -> BundlerOptions {
+    BundlerOptions {
+        without_extensions: vec!["native".to_string()],
+        ..BundlerOptions::default()
     }
 }
 
@@ -226,7 +249,7 @@ fn run(f: &Fixture) -> Result<BundlerReport> {
         &f.fetcher,
         &f.git,
         &NoPrebuilt,
-        &BundlerOptions::default(),
+        &options(),
     )
 }
 
@@ -335,16 +358,17 @@ fn installs_the_bundle_as_bundler_lays_it_out() {
     assert!(stub.starts_with("#!/usr/bin/env ruby\n"));
     assert!(stub.contains("Gem.activate_and_load_bin_path('tool', 'tool', version)"));
 
-    // A native extension with no build: installed, marked built, reported.
+    // A native extension with no build that `without-extensions` names:
+    // installed, marked built, reported.
     assert!(b.is_file(format!("{ROOT}/gems/native-0.3.1/ext/native/native.c")));
     assert!(b.is_file(format!(
         "{ROOT}/extensions/wasm32-wasi/4.0.0-static/native-0.3.1/gem.build_complete"
     )));
     assert_eq!(report.missing_extensions, ["native-0.3.1"]);
     assert!(
-        report.warnings.iter().any(|w| w
-            .contains("native-0.3.1 has a native extension (ext/native/extconf.rb)")
-            && w.contains("LoadError")),
+        report.warnings.iter().any(|w| w.contains(
+            "native-0.3.1 is installed without its native extension (ext/native/extconf.rb)"
+        ) && w.contains("LoadError")),
         "{:?}",
         report.warnings
     );
@@ -403,7 +427,7 @@ fn installs_the_bundle_as_bundler_lays_it_out() {
 fn a_prebuilt_extension_goes_in_the_extension_directory() {
     let f = fixture();
     let prebuilt = FakePrebuilt(HashMap::from([(
-        "native".to_string(),
+        "native-0.3.1".to_string(),
         vec![TreeFile {
             path: "native/native.so".into(),
             data: b"\0asm".to_vec(),
@@ -426,6 +450,106 @@ fn a_prebuilt_extension_goes_in_the_extension_directory() {
     );
     assert!(f.builder.is_file(format!("{dir}/gem.build_complete")));
     assert!(report.missing_extensions.is_empty());
+    assert!(
+        report.warnings.iter().all(|w| !w.contains("native")),
+        "{:?}",
+        report.warnings
+    );
+}
+
+#[test]
+fn a_gem_with_no_build_fails_naming_the_versions_there_are() {
+    let f = fixture();
+    let so = || {
+        vec![TreeFile {
+            path: "native/native.so".into(),
+            data: b"\0asm".to_vec(),
+            executable: false,
+        }]
+    };
+    let prebuilt = FakePrebuilt(HashMap::from([
+        ("native-0.3.2".to_string(), so()),
+        ("native-0.2.0".to_string(), so()),
+        ("other-1.0".to_string(), so()),
+    ]));
+    let err = install(
+        &f.builder,
+        "/app",
+        &f.fetcher,
+        &f.git,
+        &prebuilt,
+        &BundlerOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.starts_with("native-0.3.1: has a native extension (ext/native/extconf.rb)"),
+        "{err}"
+    );
+    assert!(
+        err.contains("there are builds for Ruby 4.0 of native 0.2.0, 0.3.2; lock one of those"),
+        "{err}"
+    );
+    assert!(err.contains("`without-extensions`"), "{err}");
+
+    // With none at all, it says so.
+    let err = install(
+        &f.builder,
+        "/app",
+        &f.fetcher,
+        &f.git,
+        &NoPrebuilt,
+        &BundlerOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.contains("there is no build of any version of native for Ruby 4.0"),
+        "{err}"
+    );
+}
+
+#[test]
+fn without_extensions_names_that_do_not_apply_are_warnings() {
+    let f = fixture();
+    let prebuilt = FakePrebuilt(HashMap::from([(
+        "native-0.3.1".to_string(),
+        vec![TreeFile {
+            path: "native/native.so".into(),
+            data: b"\0asm".to_vec(),
+            executable: false,
+        }],
+    )]));
+    let report = install(
+        &f.builder,
+        "/app",
+        &f.fetcher,
+        &f.git,
+        &prebuilt,
+        &BundlerOptions {
+            without_extensions: vec!["native".into(), "tool".into(), "absent".into()],
+            ..BundlerOptions::default()
+        },
+    )
+    .unwrap();
+    // The build there is wins.
+    assert!(report.missing_extensions.is_empty());
+    let warned = |what: &str| report.warnings.iter().any(|w| w.contains(what));
+    assert!(
+        warned("names native, and there is a build of native-0.3.1"),
+        "{:?}",
+        report.warnings
+    );
+    assert!(
+        warned("names tool, which has no native extension"),
+        "{:?}",
+        report.warnings
+    );
+    assert!(
+        warned("names absent, which the lock does not install"),
+        "{:?}",
+        report.warnings
+    );
 }
 
 #[test]
@@ -573,9 +697,18 @@ fn install_with_data(data: &[u8], options: &BundlerOptions) -> String {
     f.builder
         .write("/app/Gemfile.lock", text.as_bytes())
         .unwrap();
-    install(&f.builder, "/app", &f.fetcher, &f.git, &NoPrebuilt, options)
-        .unwrap_err()
-        .to_string()
+    let mut options = options.clone();
+    options.without_extensions.push("native".to_string());
+    install(
+        &f.builder,
+        "/app",
+        &f.fetcher,
+        &f.git,
+        &NoPrebuilt,
+        &options,
+    )
+    .unwrap_err()
+    .to_string()
 }
 
 #[test]
@@ -892,6 +1025,27 @@ impl GitTrees for DirTree {
     }
 }
 
+/// An empty build for every gem with an extension, which leaves the
+/// directory with only `gem.build_complete`.
+struct AllWithout;
+
+impl PrebuiltExtensions for AllWithout {
+    fn key(&self) -> String {
+        String::new()
+    }
+
+    fn files(
+        &self,
+        _gem: &ExtensionRequest<'_>,
+    ) -> std::result::Result<Option<Vec<TreeFile>>, String> {
+        Ok(Some(Vec::new()))
+    }
+
+    fn versions(&self, _name: &str, _abi: &RubyAbi) -> std::result::Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+}
+
 /// Installs `IWCI_TEST_BUNDLER_DIR`'s Gemfile.lock from rubygems.org into
 /// that directory's `vendor/bundle`, for checking with the host's
 /// Bundler:
@@ -902,6 +1056,8 @@ impl GitTrees for DirTree {
 /// cd /path/to/app && BUNDLE_PATH=vendor/bundle BUNDLE_FROZEN=true bundle exec rspec
 /// ```
 ///
+/// Gems with native extensions are installed without them (the host's
+/// Bundler would compile them; this checks the layout, not the builds).
 /// `IWCI_TEST_BUNDLER_RUBY` names the ABI to install for (the host's
 /// `ruby -v`); its platform and extension directory are the host's own
 /// (`IWCI_TEST_BUNDLER_PLATFORM`, `IWCI_TEST_BUNDLER_EXT_API`) so the
@@ -937,7 +1093,7 @@ fn installs_a_real_lock() {
         "/app",
         &fetcher,
         trees,
-        &NoPrebuilt,
+        &AllWithout,
         &BundlerOptions {
             ruby: std::env::var("IWCI_TEST_BUNDLER_RUBY").ok(),
             ..BundlerOptions::default()
@@ -978,4 +1134,25 @@ fn installs_a_real_lock() {
         }
     }
     assert!(!report.installed.is_empty());
+}
+
+#[test]
+fn a_rails_lock_runs_its_tests_in_one_worker() {
+    let f = fixture();
+    let plain = env_for(&f.builder, "/app");
+    assert!(
+        plain.iter().all(|(k, _)| k != "PARALLEL_WORKERS"),
+        "{plain:?}"
+    );
+    assert!(plain.contains(&("BUNDLE_FROZEN".to_string(), "true".to_string())));
+    f.builder
+        .write(
+            "/app/Gemfile.lock",
+            fixture_file("rails-8.1.lock").as_bytes(),
+        )
+        .unwrap();
+    let rails = env_for(&f.builder, "/app");
+    assert!(rails.contains(&("PARALLEL_WORKERS".to_string(), "1".to_string())));
+    // No lock: just the bundle's.
+    assert_eq!(env_for(&f.builder, "/elsewhere"), env());
 }

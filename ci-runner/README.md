@@ -131,7 +131,8 @@ or `bundler`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm 
 `only: [app/packages/web]` to install just those importers' closure, pip
 `file: requirements/ci.txt` to read another lock than `pylock.toml` or
 `requirements.txt`, and bundler `ruby: "3.4"` to name the Ruby gems are
-installed for. [Bun](#bun), [Python](#python), [PHP](#php) and
+installed for and `without-extensions: [redcarpet]` for gems whose C
+extension the jobs never load. [Bun](#bun), [Python](#python), [PHP](#php) and
 [Ruby gems](#ruby-gems) say what the Bun, pip, Composer and Bundler
 installers read and check.
 
@@ -2612,7 +2613,7 @@ before the job instead, the way the pip and Composer installers do:
 workspace:
   deps:
     - bundler # Gemfile.lock at the root
-    - bundler: { dir: api, ruby: "3.4" }
+    - bundler: { dir: api, ruby: "3.4", without-extensions: [redcarpet] }
 jobs:
   test:
     using: env:ruby@4.0
@@ -2673,16 +2674,181 @@ The Ruby is `ruby:` when the pipeline names one, else the lock's
 `RUBY VERSION` is refused, since Bundler in the job would refuse it.
 
 **Native extensions.** A gem with a C extension (`extensions:` in its
-gemspec) cannot be compiled before a job, and a job has no compiler.
-Such a gem is installed with its Ruby files, and its extension directory
-(`extensions/wasm32-wasi/<api>/<gem>/`) gets the `gem.build_complete` marker
-without the compiled part. Bundler then counts the gem as installed and the
-bundle loads; only requiring the compiled part fails, with a `LoadError`
-that names it. The install warns once per gem. A Rails lock has gems like
-that which a test suite never loads (kamal's `ed25519` and
-`bcrypt_pbkdf`), and those cost nothing; a test that does load one (a
-database driver, nokogiri) fails until a build of it for the job's Ruby is
-placed there.
+gemspec) cannot be compiled before a job (the installer runs no gem's
+code), and a job has no compiler. Its extension comes from the runner's
+builds instead: `builtins/environments/ruby/gems/` builds the extensions of
+the gem versions [Rails](#rails) lists for each Ruby, as WASIX side modules
+the way [Ruby](#ruby) says to build one, into one archive per Ruby that
+the runner pins by SHA-256 (`crates/iwci/src/gem_builds.rs`) and reads from
+its store. The installer puts a gem's build in its extension directory
+(`extensions/wasm32-wasi/<api>/<gem>-<version>/`), where RubyGems looks for
+it, with the `gem.build_complete` marker that makes Bundler count the gem
+as installed, and the install is cached with the archive's digest in its
+key.
+
+A gem with an extension and no build of that version for the job's Ruby
+stops the install before the job, naming the gem and the versions there
+are builds of:
+
+```text
+bundler in /app: nokogiri-1.19.6: has a native extension (ext/nokogiri/extconf.rb), which a job cannot compile, and there are builds for Ruby 4.0 of nokogiri 1.19.7; lock one of those (`gem "nokogiri", "1.19.7"` in the Gemfile, then `bundle lock`). If the job never loads it, list nokogiri in this install's `without-extensions` to install it without (README.md, "Ruby gems")
+```
+
+Failing there, rather than installing the gem without its compiled part,
+keeps the failure where it is caused: otherwise the bundle would load and
+the first test to require the gem would fail with a `LoadError`, possibly
+far into the run. A gem the jobs never load is listed in
+`without-extensions`, and is installed with its Ruby files and the marker
+only, so requiring its compiled part raises a `LoadError`: a Markdown
+renderer that only a release script uses, say. A name there that has a
+build gets the build, and a name the lock does not install, or one without
+an extension, is a warning.
+
+**The job's environment.** Besides `BUNDLE_PATH` and `BUNDLE_FROZEN`, a
+lock that installs Rails (`activesupport`) gets `PARALLEL_WORKERS=1`; see
+[Rails](#rails).
+
+### Rails
+
+A Rails app's tests run with `deps: [bundler]` and `bin/rails test`, with
+no network in the job:
+
+```yaml
+workspace:
+  deps: [bundler]
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false
+    run: bin/rails test
+```
+
+`builtins/test.sh`'s `ruby@*/rails-passes` runs the tests of a `rails new`
+app (Rails 8.1, SQLite, minitest; `builtins/environments/ruby/apps/rails`)
+that way, and `rails-fails` the same app with a test that must fail. The
+app is `rails new`'s with two lines changed in its Gemfile, both below:
+selenium-webdriver is `require: false`, and tzinfo-data is on every
+platform (then `bundle lock`, which adds it).
+
+What works:
+
+- **The default stack's native gems**, each with its extension built for
+  the job's Ruby (the table below): SQLite through `sqlite3`, HTML and
+  `assert_select` through `nokogiri`, bootsnap's cache, and the rest of a
+  `rails new` lock, which the Rails job loads one by one and checks each
+  came from the runner's build.
+- **Models, fixtures, controller and integration tests** against the
+  app's SQLite database in `storage/`, which `bin/rails test` prepares from
+  `db/schema.rb`.
+- **Tests run in one process.** Rails runs a suite of more than 50 tests in
+  forked workers, one per processor (the `parallelize` line in
+  `test_helper.rb`), and a job's Ruby has no `fork`. The installer sets `PARALLEL_WORKERS=1` in the jobs' environment
+  when the lock installs Rails (`activesupport`), which turns the workers
+  off; a job's own `env:` wins over it, so a suite that wants workers can
+  run them as threads, `parallelize(workers: 4, with: :threads)` with
+  `PARALLEL_WORKERS: 4`.
+- **bootsnap** caches compiled Ruby under `tmp/cache`, which is the job's
+  and goes when it ends. Spring, which `rails new` stopped adding in 7.1,
+  forks its server and does not run; `DISABLE_SPRING=1` in an older app.
+
+What does not:
+
+- **System tests** (`test/system`, Capybara with Selenium) drive a browser,
+  which a job does not have. Run `bin/rails test:system` as a
+  [cloud job](#cloud-jobs).
+- **No zoneinfo.** A job has no `/usr/share/zoneinfo`, so Active Support's
+  time zones need the tzinfo-data gem, as on Windows: `rails new` adds it
+  for `platforms: %i[ windows jruby ]` only, and Rails fails at boot with
+  "tzinfo-data is not present". Drop the `platforms:` and lock again
+  (`bundle lock`).
+- **selenium-webdriver raises when it is loaded** ("unknown os: wasix": it
+  knows Windows, macOS, Linux and the BSDs by `RbConfig::CONFIG["host_os"]`),
+  and `rails new` puts it in the Gemfile's `test` group, which
+  `Bundler.require` loads before any test runs. Give it `require: false`,
+  which changes nothing for system tests on a developer's machine
+  (Capybara requires it when a system test drives a browser).
+- **puma and nio4r load, and a server is not tested.** puma's cluster mode
+  forks and cannot run; single mode starts threads, but stopping it with a
+  signal while its main thread waits on its socket ends the process at once
+  rather than gracefully ([Ruby](#ruby), signals). puma is built without
+  TLS.
+- **`bundle exec ruby`** runs Ruby without the bundle ([Ruby](#ruby),
+  `exec`); `bin/rails`, `bundle exec rake` and `ruby -rbundler/setup` load
+  it.
+- **ffi loads, and attaching a C function aborts the process.** Active
+  Storage loads ffi at boot (through ruby-vips), and `ffi_lib` failing to
+  find libvips is the `LoadError` it expects, so the app boots. But
+  `attach_function` needs a closure (WASIX `closure_prepare`), which the
+  runner's Wasmer fails to load, so a gem that calls C through ffi does not
+  run; nor does image processing, with no libvips or ImageMagick anyway.
+- **nokogiri reads no gzipped documents**: its libxml2 is built without
+  zlib, which the interpreter has but does not offer to extensions.
+- **Other databases' drivers** (`pg`, `mysql2`, `trilogy`) have no build
+  yet; each would be a line in `gems.txt` and its client library in
+  `gems/build.sh`.
+
+**The builds.** `builtins/environments/ruby/gems/gems.txt` lists them,
+one line per gem version, with the SHA-256 of its `.gem`:
+
+| Gem              | Version | Notes                                                                                |
+| ---------------- | ------- | ------------------------------------------------------------------------------------ |
+| bcrypt           | 3.1.22  | `has_secure_password`; commented out in `rails new`'s Gemfile                        |
+| bcrypt_pbkdf     | 1.1.2   | kamal, through net-ssh                                                               |
+| bigdecimal       | 4.1.3   | the lock's, in place of the interpreter's own                                        |
+| bindex           | 0.8.1   | web-console                                                                          |
+| bootsnap         | 1.26.1  |                                                                                      |
+| date             | 3.6.0   |                                                                                      |
+| debug            | 1.11.1  |                                                                                      |
+| ed25519          | 1.4.0   | kamal, through net-ssh                                                               |
+| erb              | 6.0.7   |                                                                                      |
+| ffi              | 1.17.4  | libffi from wasix-org's port; loads, but `attach_function` aborts (above)            |
+| io-console       | 0.9.5   | its extconf.rb skips any platform matching `wasi`; built as the interpreter's own is |
+| json             | 3.1.0   |                                                                                      |
+| msgpack          | 1.8.7   | bootsnap                                                                             |
+| nio4r            | 2.7.5   | Action Cable, puma                                                                   |
+| nokogiri         | 1.19.7  | libxml2 2.13.9 and libxslt 1.1.43 from the gem's own archives, with its patches      |
+| prism            | 2.1.0   |                                                                                      |
+| puma             | 8.1.2   | without TLS                                                                          |
+| racc             | 1.8.1   |                                                                                      |
+| rbs              | 4.2.0   |                                                                                      |
+| sqlite3          | 2.10.2  | SQLite 3.54.1 from the gem's own archive, with its packaged build's options          |
+| websocket-driver | 0.9.0   | Action Cable                                                                         |
+
+These are the versions Rails 8.1.4.1's `rails new` locks
+(`crates/iwci-deps/src/bundler/fixtures/rails-8.1.lock`), and bcrypt. A lock with
+another version of one of them fails the install, naming the versions in
+the table, until that version is added.
+
+**Adding a gem or a version** is one line in `gems.txt` (name, version,
+and the SHA-256 rubygems.org serves for its `ruby`-platform `.gem`, which
+is the lock's `CHECKSUMS` entry), and a case in `gems/build.sh`'s
+`prepare` if its extension needs a library or an `extconf.rb` flag. Then,
+on x86_64 or aarch64 Linux, for each Ruby:
+
+```sh
+bash builtins/environments/ruby/gems/build.sh 4.0
+bash builtins/environments/ruby/gems/build.sh 3.4
+```
+
+Each prints the archive's SHA-256 and size; those go in `GEM_BUILDS`
+(`crates/iwci/src/gem_builds.rs`), which is what runners read. The build
+is reproducible (source paths mapped away, the archive sorted and dated),
+so the build cache and the other architecture check the same digest, and a
+changed build of the same gems is a new `GEMS_BUILD` number in the script.
+`builtins/publish.sh` uploads the archive as a blob beside env:ruby
+(`dist/blobs/ruby-gems/`), and a runner whose store lacks it fails an
+install that needs it, naming the archive.
+
+How each is built, and why the installer places them rather than
+env:ruby carrying them: the extensions are built against the environment's
+own package (unpacked from the webc environments/build.sh pins) the way
+[Ruby](#ruby) says to build one, with the libraries a gem links compiled
+into its module from the source the gem ships. Keeping them out of the
+environment lets the install fail early, naming what is missing, before a
+job starts; puts each gem's build where RubyGems already looks, with no
+hook in the interpreter; ties the install's cache key to the builds; and
+lets a new build of the gems ship without a new version of the
+environment, since every `env:ruby@4.0.x` has the same extension ABI.
 
 ### Go
 
@@ -2837,7 +3003,9 @@ What works, each in `builtins/test.sh`'s `ruby@*` jobs:
   and `readline` (`irb` uses Reline).
 - **`gem install` and `bundle install`** from rubygems.org, into the
   job's `GEM_HOME`, with installed commands on `PATH`. A gem with a C
-  extension does not install: a job has no C compiler.
+  extension does not install: a job has no C compiler. `deps: [bundler]`
+  installs one with a build made ahead of time ([Ruby gems](#ruby-gems),
+  [Rails](#rails)).
 
 What does not, or differs:
 
@@ -2853,6 +3021,13 @@ What does not, or differs:
   its default action, and a child ended by a signal reports an exit status
   rather than `termsig`. `IO#wait_priority` and `IO.select` with an error
   set fail with `ENOSYS`: WASIX cannot wait for exceptional conditions.
+- **`exec` passes the environment the process started with**, not one
+  changed through `ENV` since (`system`, `spawn`, backticks and an `exec`
+  given an environment hash pass the current one). So `bundle exec ruby
+script.rb`, which sets `RUBYOPT` and then execs Ruby, runs the script
+  without the bundle; `bundle exec rake`, `rspec` or `rails`, Ruby scripts
+  that Bundler loads in its own process, are not affected. Use `ruby
+-rbundler/setup script.rb`.
 - **No JIT** (YJIT and ZJIT generate native code), and each process has at
   most 4 GiB of memory (wasm32).
 - `spawn`'s `rlimit_*:`, `uid:` and `gid:` raise `Errno::ENOTSUP`.
@@ -2919,7 +3094,11 @@ compiler), so one is built outside and brought in, the way
    `ruby --disable-gems -I pkg/ruby/lib/ruby/<ruby_version>/wasm32-wasix -r rbconfig extconf.rb && make`.
    `mkmf`'s `have_func` and `have_library` checks link against the
    package's `lib/libruby-static.a` and work; checks that run a program
-   (`try_run`) do not, as in any cross build. Built this way from the
+   (`try_run`) do not, as in any cross build. An `extconf.rb` that loads
+   RubyGems (nio4r's) would then load the package's `monitor.so`, which is
+   WebAssembly, into the native Ruby: give `-I` a directory holding only a
+   copy of `rbconfig.rb` with its `TOPDIR` set to `pkg/ruby`'s absolute
+   path, as `gems/build.sh` does. Built this way from the
    unpacked package, `check-ext` comes out byte for byte as `build.sh`
    makes it.
 4. Put the `.so` where `require` finds it: on `$LOAD_PATH` (`-I`,

@@ -239,6 +239,7 @@ impl Workspaces for GitWorkspaces {
                 Ecosystem::Bundler => {
                     let mut options = iwci_deps::bundler::BundlerOptions {
                         ruby: dep.ruby.clone(),
+                        without_extensions: dep.without_extensions.clone().unwrap_or_default(),
                         parallelism: 0,
                         ..Default::default()
                     };
@@ -251,7 +252,7 @@ impl Workspaces for GitWorkspaces {
                         prebuilt.key()
                     );
                     options.parallelism = threads;
-                    env.extend(iwci_deps::bundler::env());
+                    env.extend(iwci_deps::bundler::env_for(&builder, &dep.dir));
                     let git = self.trees();
                     let git: &dyn iwci_deps::git::GitTrees = match &git {
                         Some(g) => g,

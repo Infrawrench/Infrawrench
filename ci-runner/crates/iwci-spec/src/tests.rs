@@ -93,7 +93,8 @@ fn the_example_pipeline_expands() {
             dir: "/app/terraform-provider-infrawrench".into(),
             only: None,
             file: None,
-            ruby: None
+            ruby: None,
+            without_extensions: None,
         }]
     );
 
@@ -2346,6 +2347,7 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
         only: None,
         file: None,
         ruby: None,
+        without_extensions: None,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2371,6 +2373,7 @@ fn bundler_takes_a_directory_and_a_ruby() {
         only: None,
         file: None,
         ruby: ruby.map(str::to_string),
+        without_extensions: None,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2387,6 +2390,28 @@ fn bundler_takes_a_directory_and_a_ruby() {
     // A workspace that names no Ruby keeps the key it had.
     let no_ruby = serde_json::to_value(dep("/app", None)).unwrap();
     assert!(no_ruby.get("ruby").is_none());
+    assert!(no_ruby.get("without_extensions").is_none());
+}
+
+#[test]
+fn bundler_takes_gems_to_install_without_extensions() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [{ bundler: { without-extensions: [ffi, ed25519, ffi] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps[0].without_extensions,
+        Some(vec!["ed25519".to_string(), "ffi".to_string()])
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ pip: { without-extensions: [ffi] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "without-extensions applies only to bundler",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ bundler: { without-extensions: [\"../x\"] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "is not a gem name",
+    );
 }
 
 const MANUAL: &str = r#"name: Deploy

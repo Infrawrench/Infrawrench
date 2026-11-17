@@ -158,7 +158,13 @@ for name in "$@"; do
       if [[ "$name" == go@* ]]; then
         dirs=("$dist"/environment/go/"${name#go@}".*)
       elif [[ "$name" == ruby@* ]]; then
-        dirs=("$dist"/environment/ruby/"${name#ruby@}".*)
+        # With the gems' extensions built for it (environments/ruby/gems),
+        # which `deps: [bundler]` reads from the store as a blob.
+        minor="${name#ruby@}"
+        if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/blobs/ruby-gems/$minor.*" >/dev/null; then
+          bash "$here/environments/ruby/gems/build.sh" "$minor"
+        fi
+        dirs=("$dist"/environment/ruby/"$minor".* "$dist"/blobs/ruby-gems/"$minor".*)
       else
         dirs=("$dist"/environment/"$name"/*)
       fi
@@ -541,6 +547,22 @@ class GreeterTest < Minitest::Test
 end
 RUBY
 done
+# A `rails new` app (Rails 8.1, SQLite, minitest; environments/ruby/apps/
+# rails, made with a native Ruby 4.0.9 and `rails new blog --skip-bundle
+# --skip-git` on the lock of crates/iwci-deps/src/bundler/fixtures/
+# rails-8.1.lock, a model, a controller and their tests added, then pruned
+# of what its tests do not read), whose tests load the gems' extensions
+# built for env:ruby. Its Gemfile has the two changes README.md ("Rails")
+# asks of an app: tzinfo-data on every platform, selenium-webdriver
+# `require: false`. The bad copy's model test expects the wrong title. And a lock of two gems with extensions: msgpack,
+# which has a build, and redcarpet, which has none.
+cp -R "$here/environments/ruby/apps/rails" "$repo/ruby/rails"
+cp -R "$here/environments/ruby/apps/rails" "$repo/ruby/rails-bad"
+sed -i.orig 's/assert_equal "Third", Article.find(article.id).title/assert_equal "Fourth", Article.find(article.id).title/' \
+  "$repo/ruby/rails-bad/test/models/article_test.rb"
+rm "$repo/ruby/rails-bad/test/models/article_test.rb.orig"
+grep -q Fourth "$repo/ruby/rails-bad/test/models/article_test.rb"
+cp -R "$here/environments/ruby/apps/gems" "$repo/ruby/gems"
 # The C extension each Ruby's build makes with README.md's recipe
 # (environments/ruby/check-ext), loaded in a job by `require`.
 for ext in "$dist"/test/ruby/*/wasix_check.so; do
@@ -4104,6 +4126,85 @@ jobs:
       printf 'source "https://rubygems.org"\ngem "rack"\ngem "rainbow"\n' > Gemfile
       bundle install
       bundle exec ruby -e 'require "rack"; require "rainbow"; puts Rack.release'
+  # A lock with gems that have C extensions, installed before the job
+  # (`deps: [bundler]`): msgpack's extension is the one built for this Ruby
+  # (environments/ruby/gems), placed where RubyGems looks; redcarpet has
+  # none, and the pipeline says the job never loads it. `ruby
+  # -rbundler/setup` rather than `bundle exec ruby`, whose exec of a
+  # binary loses Bundler's changes to the environment in this Ruby.
+  bundler-extension-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/gems
+    deps: [{ bundler: { dir: ruby/gems, ruby: "@MINOR@", without-extensions: [redcarpet] } }]
+    network: false
+    timeout: 5m
+    run: |
+      ruby -rbundler/setup -e '
+        require "msgpack"
+        packed = MessagePack.pack({ "a" => [1, 2.5, "three", nil] })
+        raise "round trip" unless MessagePack.unpack(packed) == { "a" => [1, 2.5, "three", nil] }
+        so = $LOADED_FEATURES.grep(/msgpack\.so$/).first or raise "no msgpack.so"
+        raise "loaded #{so}" unless so.include?("/vendor/bundle/ruby/") && so.include?("/extensions/wasm32-wasi/")
+        begin
+          require "redcarpet"
+          raise "redcarpet loaded"
+        rescue LoadError => e
+          puts "redcarpet: #{e.message}"
+        end
+        puts "msgpack #{MessagePack::VERSION} from #{so}"'
+  # The same lock without that: the install stops before the job, naming
+  # the gem, rather than a test failing later on its LoadError.
+  bundler-unbuilt-errors:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/gems
+    deps: [{ bundler: { dir: ruby/gems, ruby: "@MINOR@" } }]
+    network: false
+    run: ruby -rbundler/setup -e 'require "msgpack"'
+  # The `rails new` app's tests, through bin/rails test: SQLite (sqlite3),
+  # the controller tests' HTML (nokogiri, through rails-dom-testing),
+  # bootsnap's cache (bootsnap, msgpack) and the rest of the bundle's
+  # extensions. No fork, so Rails' workers are off (PARALLEL_WORKERS, set by
+  # the installer for a lock with Rails), which a suite this size would not
+  # use anyway: it has to run more than 50 tests to parallelize.
+  rails-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/rails
+    deps: [{ bundler: { dir: ruby/rails, ruby: "@MINOR@" } }]
+    network: false
+    timeout: 15m
+    run: |
+      test "$PARALLEL_WORKERS" = 1
+      # Every extension the bundle has a build of loads, and from that build.
+      cat > /tmp/extensions.rb <<'RUBY'
+      %w[bcrypt_pbkdf bigdecimal bindex bootsnap date debug/frame_info ed25519 erb/escape ffi io/console json msgpack
+         nio nokogiri prism puma racc/cparse rbs sqlite3 websocket_mask].each { |f| require f }
+      loaded = $LOADED_FEATURES.grep(%r{/vendor/bundle/ruby/[^/]+/extensions/wasm32-wasi/}).map { File.basename(_1) }
+      wanted = %w[bcrypt_pbkdf_ext.so bigdecimal.so cruby.so bootsnap.so date_core.so debug.so ed25519_ref10.so
+                  escape.so ffi_c.so console.so generator.so parser.so msgpack.so nio4r_ext.so nokogiri.so prism.so
+                  puma_http11.so cparse.so rbs_extension.so sqlite3_native.so websocket_mask.so]
+      raise "not loaded from the gems' builds: #{wanted - loaded}" unless (wanted - loaded).empty?
+      puts Nokogiri::VERSION_INFO.slice("libxml", "libxslt").inspect
+      puts "SQLite #{SQLite3::SQLITE_VERSION}, NIO #{NIO::Selector.backends.inspect}"
+      # What Active Storage needs of ffi at boot (through ruby-vips): a
+      # library that is not there is a LoadError that names it.
+      begin
+        Module.new { extend FFI::Library; ffi_lib "libvips.so.42" }
+        raise "libvips loaded"
+      rescue LoadError => e
+        raise unless e.message.include?("libvips")
+      end
+      puts "ffi #{FFI::VERSION} on #{FFI::Platform::NAME}"
+      RUBY
+      ruby -rbundler/setup /tmp/extensions.rb
+      bin/rails test 2>&1 | tee /tmp/test.log
+      grep -q '^4 runs, 11 assertions, 0 failures, 0 errors, 0 skips$' /tmp/test.log
+  rails-fails:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/rails-bad
+    deps: [{ bundler: { dir: ruby/rails-bad, ruby: "@MINOR@" } }]
+    network: false
+    timeout: 15m
+    run: bin/rails test
 YAML
       ;;
     python)
@@ -5183,7 +5284,8 @@ want_reason() {
     npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
-    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails) echo "exited with 1" ;;
+    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails | ruby@*/rails-fails) echo "exited with 1" ;;
+    ruby@*/bundler-unbuilt-errors) echo "redcarpet-3.6.1: has a native extension (ext/redcarpet/extconf.rb), which a job cannot compile, and there is no build of any version of redcarpet" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;
     clickhouse/rejected-fails) echo "exited with 1" ;;

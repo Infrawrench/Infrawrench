@@ -44,6 +44,11 @@ on:
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
       - "ci-runner/crates/iwci/src/cli/publish.rs"
+      # The gem builds the runner pins, and the installer that places them,
+      # which env:ruby's Rails jobs run.
+      - "ci-runner/crates/iwci/src/gem_builds.rs"
+      - "ci-runner/crates/iwci-deps/src/bundler/**"
+      - "ci-runner/crates/iwci-deps/src/bundler.rs"
       - "ci-runner/Cargo.lock"
       - "ci-runner/rust-toolchain.toml"
       - ".github/workflows/ci-runner-builtins.yml"
@@ -59,6 +64,11 @@ on:
       # (a V8 flag, a platform fix) must run bash-node on Edge.js too.
       - "ci-runner/vendor/**"
       - "ci-runner/crates/iwci/src/cli/publish.rs"
+      # The gem builds the runner pins, and the installer that places them,
+      # which env:ruby's Rails jobs run.
+      - "ci-runner/crates/iwci/src/gem_builds.rs"
+      - "ci-runner/crates/iwci-deps/src/bundler/**"
+      - "ci-runner/crates/iwci-deps/src/bundler.rs"
       - "ci-runner/Cargo.lock"
       - "ci-runner/rust-toolchain.toml"
       - ".github/workflows/ci-runner-builtins.yml"
@@ -634,11 +644,13 @@ jobs:
 
       # The native Ruby the cross build runs is built first, with its own
       # zlib, OpenSSL and libyaml extensions (RubyGems unpacks the bundled
-      # gems with them).
+      # gems with them). The gems' build reads pkg-config files and makes
+      # libffi's configure script (autoconf, automake, libtool).
       - name: Install a native Ruby's build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends libyaml-dev libssl-dev zlib1g-dev libffi-dev
+          sudo apt-get install -y -qq --no-install-recommends libyaml-dev libssl-dev zlib1g-dev libffi-dev \
+            pkg-config autoconf automake libtool libltdl-dev
 
       # CRuby from its release tarball with wasixcc (ten to twenty minutes):
       # the toolchain, the C library objects, zlib, OpenSSL and libyaml, a
@@ -654,10 +666,24 @@ jobs:
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/build-cache.sh build ruby@${{ matrix.minor }}
 
+      # The native extensions of gems.txt's gems for that Ruby (five to ten
+      # minutes, libxml2 and libxslt the longest), with the same toolchain
+      # and native Ruby: one archive, checked against the digest
+      # crates/iwci/src/gem_builds.rs pins, after a restore as after a build.
+      # Key: environments/ruby/gems/, toolchain.sh, lib.sh and the platform.
+      - name: Gem extensions, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build ruby-gems@${{ matrix.minor }}
+
       - name: Build the environment
         run: bash builtins/environments/build.sh ruby@${{ matrix.minor }}
 
-      # Its jobs install gems from rubygems.org.
+      # Its jobs install gems from rubygems.org, and a `rails new` app's
+      # lock through `deps: [bundler]`.
       - name: Publish and run it through iwci
         run: |
           cargo build -p iwci
@@ -672,7 +698,7 @@ jobs:
           IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
-        run: bash builtins/publish.sh dist/environment/ruby/*
+        run: bash builtins/publish.sh dist/environment/ruby/* dist/blobs/ruby-gems/*
 
   kubectl:
     name: kubectl (Go for WASIX)

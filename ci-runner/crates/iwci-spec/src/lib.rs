@@ -996,12 +996,37 @@ impl Validator<'_> {
                 }
                 ruby => ruby,
             };
+            let without_extensions = match options.without_extensions {
+                Some(_) if ecosystem != Ecosystem::Bundler => {
+                    self.error(
+                        format!("{dep_path}.without-extensions"),
+                        "without-extensions applies only to bundler",
+                    );
+                    None
+                }
+                Some(names) => {
+                    for name in &names {
+                        if !is_gem_name(name) {
+                            self.error(
+                                format!("{dep_path}.without-extensions"),
+                                format!("{name:?} is not a gem name"),
+                            );
+                        }
+                    }
+                    let mut names = names;
+                    names.sort();
+                    names.dedup();
+                    Some(names)
+                }
+                None => None,
+            };
             let spec = DepSpec {
                 ecosystem,
                 dir,
                 only: options.only,
                 file,
                 ruby,
+                without_extensions,
             };
             if specs.contains(&spec) {
                 self.error(&dep_path, "listed twice");
@@ -2434,6 +2459,16 @@ fn normalise_abs(path: &str) -> Option<String> {
 }
 
 /// `3.4`, `4.0`: digits, one dot, digits.
+/// What RubyGems accepts as a gem's name.
+fn is_gem_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+        && name.bytes().any(|b| b.is_ascii_alphanumeric())
+}
+
 fn is_major_minor(v: &str) -> bool {
     v.split_once('.').is_some_and(|(major, minor)| {
         !major.is_empty()

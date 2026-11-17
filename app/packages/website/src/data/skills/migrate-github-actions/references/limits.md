@@ -27,7 +27,8 @@ Check each migrated job against this list before handing back.
 - **Native Node addons** load only when the package ships a WebAssembly (`wasm32-wasi`) build: Vite 8, Vitest, Rolldown, tsdown, oxc and the Astro compiler do. A dependency with only native binaries (some image, database and crypto libraries) needs a cloud job.
 - **npm and Yarn lockfiles** are not installed by `workspace.deps` (it supports pnpm, Bun, Go, Cargo, pip, Composer and Bundler). Convert with `pnpm import` and commit `pnpm-lock.yaml`, or run `npm ci` in the job's script (slower: it downloads on every run and is not checked against the lockfile).
 - **Bun**: dependencies install from `bun.lock`, but scripts run with Node; there is no `bun` command.
-- **Rust, Java, .NET, Ruby, Swift**: no environment yet. Cloud jobs.
+- **Ruby** (`env:ruby@3.4`, `@4.0`): gems with C extensions install only through `deps: [bundler]`, which has builds of the ones a `rails new` app locks (nokogiri, sqlite3, puma, bootsnap and the rest) at those versions; another one, or another version, fails the install naming the versions that have a build, and `- bundler: { without-extensions: [name] }` installs a gem the jobs never load without it. A Rails app needs `gem "tzinfo-data"` on every platform (no zoneinfo here; drop `platforms:`, then `bundle lock`) and `gem "selenium-webdriver", require: false` (it refuses to load here). No `fork`: Rails tests run in one process (`PARALLEL_WORKERS=1` is set), and system tests need a browser, so a cloud job. `bundle exec ruby` loses the bundle's settings; use `bin/rails`, `bundle exec rake` or `ruby -rbundler/setup`.
+- **Rust, Java, .NET, Swift**: no environment yet. Cloud jobs.
 
 ## Services and containers
 

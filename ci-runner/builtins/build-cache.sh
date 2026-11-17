@@ -15,8 +15,8 @@
 #   build-cache.sh key <name>...    print each key and what went into it
 #
 # Names, and what each builds (spec below): clickhouse, edgejs, git,
-# go@<minor>, ruby@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript,
-# oxfmt.
+# go@<minor>, ruby@<minor>, ruby-gems@<minor>, kubectl@<minor>, gh@<minor>,
+# openssh, typescript, oxfmt.
 #
 # The key is the SHA-256 of a listing, stored beside each entry as
 # inputs.txt:
@@ -108,10 +108,20 @@ spec() {
       # And the C library patches it shares with Edge.js. The check
       # extension test.sh loads is built with it.
       minor="${1#ruby@}"
-      INPUTS+=(builtins/environments/ruby builtins/environments/edgejs/wasix-libc-*.patch)
+      INPUTS+=(builtins/environments/ruby/{build.sh,toolchain.sh,stack-anchor.c,check-ext}
+        builtins/environments/ruby/*.patch builtins/environments/edgejs/wasix-libc-*.patch)
       OUTPUTS=("dist/package/ruby/$minor.*" "dist/test/ruby/$minor")
       BUILD=(bash builtins/environments/ruby/build.sh "$minor")
       VERIFY=(verify_ruby "$minor")
+      ;;
+    ruby-gems@*)
+      # Built against ruby@<minor>'s package (restored or built first, and
+      # checked against its pin by the build), with the same toolchain.
+      minor="${1#ruby-gems@}"
+      INPUTS+=(builtins/environments/ruby/gems builtins/environments/ruby/toolchain.sh)
+      OUTPUTS=("dist/blobs/ruby-gems/$minor.*")
+      BUILD=(bash builtins/environments/ruby/gems/build.sh "$minor")
+      VERIFY=(verify_ruby_gems "$minor")
       ;;
     kubectl@*)
       # And env:go's build script, pins and patch series, which it builds with.
@@ -155,7 +165,7 @@ spec() {
       REFRESH=1
       ;;
     *)
-      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, ruby@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript and oxfmt" >&2
+      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, ruby@<minor>, ruby-gems@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript and oxfmt" >&2
       exit 2
       ;;
   esac
@@ -369,6 +379,15 @@ verify_ruby() {
   local version sha
   read -r _ version sha _ <<<"$(sed -n "/^ruby_pkgs() {/,/^}/s/^    ${1//./\\.}) echo \"\(.*\)\" ;;\$/\1/p" builtins/environments/build.sh)"
   check "dist/package/ruby/$version/ruby.webc" "$sha"
+}
+
+# verify_ruby_gems <minor>: the archive, against the digest the runner pins
+# (crates/iwci/src/gem_builds.rs, GEM_BUILDS).
+verify_ruby_gems() {
+  local sha archive
+  sha="$(sed -n "/ruby: \"${1//./\\.}\",/{n;s/^ *sha256: \"\([0-9a-f]\{64\}\)\",\$/\1/p;}" crates/iwci/src/gem_builds.rs)"
+  archive="$(compgen -G "dist/blobs/ruby-gems/$1.*/ruby-gems-$1.tar.gz" | head -n 1)"
+  check "${archive:-dist/blobs/ruby-gems/$1.*/ruby-gems-$1.tar.gz}" "$sha"
 }
 
 # verify_kubectl <minor>: the module, against kubectl/build.sh's release().

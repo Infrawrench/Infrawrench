@@ -69,7 +69,21 @@ In `env:python@3.13`, `pip install` works for pure Python packages and for packa
 
 In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
 
-A Ruby project lists `bundler` under `workspace.deps` (`- bundler: { dir: api }` for a Gemfile below the root). Its gems are installed from `Gemfile.lock` into `vendor/bundle` before the jobs start, each checked against the lock's checksums, and a job runs `bundle exec rspec` (or `rails test`, `rake`) with no network. The lock needs a `CHECKSUMS` section, which Bundler 2.6 and later write (`bundle lock --add-checksums` adds one to an older lock), and the `ruby` platform, which a lock from `rails new` lacks: run `bundle lock --add-platform ruby` on its own and commit the result. Gems from a git repository are fetched by the commit the lock names. Gems with a C extension are installed without their compiled part, so the bundle loads and a test that requires one of them fails with a `LoadError` that names it; the run's warnings name each such gem.
+A Ruby project lists `bundler` under `workspace.deps` (`- bundler: { dir: api }` for a Gemfile below the root). Its gems are installed from `Gemfile.lock` into `vendor/bundle` before the jobs start, each checked against the lock's checksums, and a job runs `bundle exec rspec` (or `rails test`, `rake`) with no network. The lock needs a `CHECKSUMS` section, which Bundler 2.6 and later write (`bundle lock --add-checksums` adds one to an older lock), and the `ruby` platform, which a lock from `rails new` lacks: run `bundle lock --add-platform ruby` on its own and commit the result. Gems from a git repository are fetched by the commit the lock names. A job cannot compile C extensions, so gems that have one come with a build Infrawrench CI makes ahead of time: those of a `rails new` app (nokogiri, sqlite3, puma, bootsnap, msgpack and the rest) at the versions Rails 8.1 locks, for Ruby 3.4 and 4.0. A gem with a C extension and no build of the locked version stops the install before the jobs start, and the message names the versions that have one. If your jobs never load a gem's compiled part, list it to install it without one: `- bundler: { without-extensions: [redcarpet] }`.
+
+A Rails app's tests run with `bin/rails test`:
+
+```yaml
+workspace:
+  deps: [bundler]
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false
+    run: bin/rails test
+```
+
+Tests run in one process: there is no `fork`, so Rails' parallel workers are turned off for you (`PARALLEL_WORKERS=1`), and a suite that wants them in threads can use `parallelize(with: :threads)` and set `PARALLEL_WORKERS` in the job's `env:`. Two lines of a `rails new` Gemfile need changing: `gem "tzinfo-data"` on every platform (drop its `platforms:`, then `bundle lock`), since a job has no system time zone files, and `gem "selenium-webdriver", require: false`, since Rails loads it with the other test gems and it refuses to load on a platform it does not know. System tests need a browser, which a job does not have; run them as a [cloud job](#cloud-jobs). Use `bin/rails`, `bundle exec rake` or `ruby -rbundler/setup` rather than `bundle exec ruby`, which loses the bundle's settings in this Ruby.
 
 A project that installs with Bun lists `bun` under `workspace.deps` instead of `pnpm`. Its `node_modules` is installed from `bun.lock` before the jobs start, laid out the way `bun install` lays it out and checked against the lockfile's hashes, and the jobs run its scripts with `node`. There is no `bun` command in a job, so `bun test` and the `Bun` APIs need a [cloud job](#cloud-jobs) on a machine that has Bun. Commit the text lockfile: a repository with only the older binary `bun.lockb` is told to run `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`.
 
@@ -109,7 +123,7 @@ jobs:
       go test ./...
 ```
 
-In `env:ruby`, `bundle install`, `gem install`, `rake` and `ruby` work as on a developer's machine, with the gems that ship with Ruby (minitest, test-unit, rake and the rest) already there. Gems install into the job's own `GEM_HOME`, with their commands on the `PATH`, and download while the job runs, so leave the job's network on. Threads, sockets, TLS and child processes (`system`, backticks, `Open3`) work, with real exit statuses; `fork` raises `NotImplementedError`, and a gem with a C extension that has to be compiled while it installs does not install.
+In `env:ruby`, `bundle install`, `gem install`, `rake` and `ruby` work as on a developer's machine, with the gems that ship with Ruby (minitest, test-unit, rake and the rest) already there. Gems install into the job's own `GEM_HOME`, with their commands on the `PATH`, and download while the job runs, so leave the job's network on. Threads, sockets, TLS and child processes (`system`, backticks, `Open3`) work, with real exit statuses; `fork` raises `NotImplementedError`, and a gem with a C extension that has to be compiled while it installs does not install: install those through `deps: [bundler]`, which brings a build of the common ones.
 
 ```yaml
 jobs:

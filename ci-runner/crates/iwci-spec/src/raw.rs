@@ -296,6 +296,11 @@ pub struct DepOptions {
     /// is read as its text, so `4.0` works unquoted.
     #[serde(default, deserialize_with = "version_text")]
     pub ruby: Option<String>,
+    /// bundler only: gems whose native extension the jobs never load,
+    /// installed without it when the runner has no build of it, rather
+    /// than failing the install.
+    #[serde(default)]
+    pub without_extensions: Option<Vec<String>>,
 }
 
 /// A `major.minor` written as a string or as a YAML number.

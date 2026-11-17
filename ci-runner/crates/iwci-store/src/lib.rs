@@ -143,7 +143,7 @@ pub use manifest::{
 };
 pub use publish::{
     EnvDraft, FileSource, ManifestOutcome, PackageSource, PublishReport, TargetSource, ToolDraft,
-    publish_env, publish_tool,
+    publish_blobs, publish_env, publish_tool,
 };
 pub use r2::{Credentials, R2Options, R2Store, RetryPolicy, UrlStyle, account_endpoint};
 pub use store::{LayeredStore, LocalStore, MAX_OBJECT_SIZE, ObjectInfo, ObjectMeta, ObjectStore};

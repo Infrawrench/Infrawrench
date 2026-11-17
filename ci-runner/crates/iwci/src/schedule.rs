@@ -4064,6 +4064,11 @@ fn task_cache_key(
             },
             iwci_spec::Ecosystem::Composer => vec!["composer.lock", "composer.json"],
             iwci_spec::Ecosystem::Bundler => {
+                // The extensions built for the job's Ruby, which the
+                // install places beside the gems.
+                hash.update(b"gem builds\0");
+                hash.update(crate::gem_builds::key().as_bytes());
+                hash.update([0]);
                 // The gemspecs of `PATH` sources, which Bundler reads when
                 // the bundle loads and the lock does not pin.
                 let lock = iwci_deps::bundler::LOCKFILES

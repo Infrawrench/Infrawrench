@@ -483,6 +483,10 @@ pub struct DepSpec {
     /// pipeline names it. Left out of the serialised form when unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ruby: Option<String>,
+    /// bundler: gems installed without their native extension when there
+    /// is no build of it. Left out of the serialised form when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub without_extensions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

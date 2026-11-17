@@ -4,6 +4,7 @@ pub mod adapters;
 pub mod cli;
 pub mod env_cache;
 pub mod external;
+pub mod gem_builds;
 pub mod lent;
 pub mod memory;
 pub mod runner;
