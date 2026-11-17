@@ -4333,7 +4333,13 @@ fn a_package_job_is_keyed_on_its_part_of_a_pnpm_lockfile() {
         }
         let job = p
             .static_jobs()
-            .find(|j| j.key == job && j.package.as_ref().map(|p| p.dir.as_str()) == dir)
+            // A package's job is keyed `<job>[<dir>]`; its `packages:` key
+            // is on the package.
+            .find(|j| match (&j.package, dir) {
+                (Some(p), Some(dir)) => p.job == job && p.dir == dir,
+                (None, None) => j.key == job,
+                _ => false,
+            })
             .unwrap();
         let locks = LockIndexes::new(ws);
         task_cache_key(job, &p, &snapshot.freeze(), &locks, &[], &[]).unwrap()
