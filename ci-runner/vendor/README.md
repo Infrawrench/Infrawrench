@@ -1246,7 +1246,8 @@ write of the index, puts the slot back and answers the memory error. A
 backing function `closure_prepare` is given is not checked: the trampoline
 calls it, so a bad one traps in the guest like any bad function pointer.
 `iwci-runtime`'s `closure_calls_refuse_bad_input_with_an_errno` is the check.
-Upstream main has the same panics (checked November 2026, at 65f18f0054).
+Upstream main has the same panics (checked November 2026, at 65f18f0054);
+reported as wasmerio/wasmer#7194.
 
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
