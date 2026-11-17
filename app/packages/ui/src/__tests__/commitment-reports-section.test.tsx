@@ -100,7 +100,7 @@ describe("CommitmentReportsSection", () => {
     expect(screen.queryByText("New report")).toBeNull();
   });
 
-  it("offers New report when creating is wired, with pickers for every filter", async () => {
+  it("offers New report when creating is wired, with a picker behind every filter", async () => {
     render(<CommitmentReportsSection client={client({ createReport: vi.fn() })} />);
     fireEvent.click(await screen.findByText("New report"));
     expect(
@@ -114,6 +114,9 @@ describe("CommitmentReportsSection", () => {
       "Regions",
       "Commitments",
     ]) {
+      // Filters wait behind their "add" pill; adding one shows its picker.
+      expect(screen.queryByLabelText(label)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: label }));
       expect(screen.getAllByLabelText(label).length).toBeGreaterThan(0);
     }
   });
@@ -130,7 +133,7 @@ describe("CommitmentReportsSection", () => {
     fireEvent.change(await screen.findByLabelText("Name"), {
       target: { value: "  Coverage by account  " },
     });
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("Create report"));
     await waitFor(() => expect(createReport).toHaveBeenCalled());
     // Trimmed, with no empty filter lists and no blank description.
     expect(createReport.mock.calls[0]![0]).toEqual({
@@ -145,7 +148,7 @@ describe("CommitmentReportsSection", () => {
     const createReport = vi.fn();
     render(<CommitmentReportsSection client={client({ createReport })} />);
     fireEvent.click(await screen.findByText("New report"));
-    fireEvent.click(await screen.findByText("Save"));
+    fireEvent.click(await screen.findByText("Create report"));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(createReport).not.toHaveBeenCalled();
   });

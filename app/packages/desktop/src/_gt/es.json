@@ -23265,14 +23265,10 @@
   "b8cecdf7ef0084c3": "Se factura en la factura de su plan: $0.00008 por vCPU-segundo, $0.000008 por GiB-segundo de memoria y $0.0002 por GiB-hora de almacenamiento (cachés y descargas).",
   "8097a79f0e893a96": "Editar informe de compromisos",
   "4980a00364474434": "Nuevo informe de compromisos",
-  "a274c2690c4d0966": "p. ej., Cobertura de Savings Plans por cuenta",
-  "d541963b24113385": "Sin opción por horas: el gasto se recopila en una fila por día.",
   "5ee8256ae1242be5": "Métrica del gráfico",
   "14a9c51ea5170864": "{provider} (solo compromisos listados, no medible)",
   "b8c82f4b399f08d2": "Tipos de compromiso",
-  "4a87c7000b93c8e2": "Todos los tipos de compromiso",
   "fe05cc6381743ec9": "Todos los compromisos",
-  "863d6c7a9c1f96b5": "Un filtro por tipo de compromiso o por compromiso solo acota el lado de los compromisos; el uso no cubierto se mantiene como el resto del denominador de la cobertura. El uso cubierto de AWS no está vinculado a un compromiso concreto, así que no coincide con ningún filtro de compromiso.",
   "27f3cf6d0b17de2e": "Medido a partir de datos de costes: {providers}",
   "34f5ec56d451af6d": "No medido: {providers}. Sus compromisos se listan abajo, pero sus datos de costes no separan el uso cubierto del no cubierto, así que se excluyen en lugar de mostrarse con un 0 % de cobertura.",
   "7716d6ad86cd26d4": "El gráfico muestra los {count} grupos más grandes; la tabla lista los {total}.",
@@ -23352,5 +23348,9 @@
       },
       "."
     ]
-  }
+  },
+  "2cd7ac0befac4616": "Nombre del informe",
+  "775aa120cca44531": "Añadir una descripción",
+  "22e745b7db60e52f": "Visualización",
+  "a64f8c72a2ed2778": "Quitar el filtro {filter}"
 }

@@ -23451,14 +23451,10 @@
   "b8cecdf7ef0084c3": "Facturé sur la facture de votre forfait : $0.00008 par vCPU-seconde, $0.000008 par Gio-seconde de mémoire et $0.0002 par Gio-heure de stockage (caches et téléchargements).",
   "8097a79f0e893a96": "Modifier le rapport d’engagements",
   "4980a00364474434": "Nouveau rapport d’engagements",
-  "a274c2690c4d0966": "ex. Couverture des Savings Plans par compte",
-  "d541963b24113385": "Pas d’option horaire : les dépenses sont collectées à raison d’une ligne par jour.",
   "5ee8256ae1242be5": "Métrique du graphique",
   "14a9c51ea5170864": "{provider} (engagements listés uniquement, non mesurable)",
   "b8c82f4b399f08d2": "Types d’engagement",
-  "4a87c7000b93c8e2": "Tous les types d’engagement",
   "fe05cc6381743ec9": "Tous les engagements",
-  "863d6c7a9c1f96b5": "Un filtre par type d’engagement ou par engagement ne restreint que le côté engagements ; l’utilisation non couverte reste incluse comme reste du dénominateur de la couverture. L’utilisation AWS couverte n’est rattachée à aucun engagement précis, elle ne correspond donc à aucun filtre d’engagement.",
   "27f3cf6d0b17de2e": "Mesuré à partir des données de coûts : {providers}",
   "34f5ec56d451af6d": "Non mesuré : {providers}. Leurs engagements sont listés ci-dessous, mais leurs données de coûts ne séparent pas l’utilisation couverte de l’utilisation non couverte ; ils sont donc exclus plutôt qu’affichés comme couverts à 0 %.",
   "7716d6ad86cd26d4": "Le graphique affiche les {count} groupes les plus importants ; le tableau les liste tous les {total}.",
@@ -23537,5 +23533,9 @@
       },
       "."
     ]
-  }
+  },
+  "2cd7ac0befac4616": "Nom du rapport",
+  "775aa120cca44531": "Ajouter une description",
+  "22e745b7db60e52f": "Affichage",
+  "a64f8c72a2ed2778": "Supprimer le filtre {filter}"
 }

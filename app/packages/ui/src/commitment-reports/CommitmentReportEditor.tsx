@@ -8,7 +8,6 @@ import {
   COMMITMENT_REPORT_METRICS,
   COST_RANGE_PRESETS,
   flattenCostReportFolderTree,
-  type CommitmentKind,
   type CommitmentReport,
   type CommitmentReportConfig,
   type CommitmentReportFilters,
@@ -23,13 +22,26 @@ import {
 } from "@infrawrench/api-contract/schemas";
 
 import { Modal } from "../components/Modal.js";
+import { CloseIcon, PlusIcon } from "../components/icons/ChromeIcons.js";
 import { MultiSelect, type MultiSelectOption } from "../components/MultiSelect.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { useCommitmentReportLabels } from "./labels.js";
 
-const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
-const fieldClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+const sectionClass = "text-[11px] font-semibold uppercase tracking-wider text-on-surface-faint";
+const labelClass = "block text-xs text-on-surface-tertiary mb-1.5";
+const controlClass =
+  "h-9 rounded-lg border border-border bg-surface-sunken px-2.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+const fieldClass = `w-full ${controlClass}`;
+
+type FilterKey = keyof CommitmentReportFilters;
+const FILTER_KEYS: readonly FilterKey[] = [
+  "providers",
+  "commitmentTypes",
+  "accountIds",
+  "services",
+  "regions",
+  "commitmentIds",
+];
 
 export interface CommitmentReportEditorProps {
   /** The report being edited; null creates one from `initialConfig`. */
@@ -102,6 +114,10 @@ export function CommitmentReportEditor({
   const [config, setConfig] = useState<CommitmentReportConfig>(report?.config ?? initialConfig);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [describing, setDescribing] = useState(Boolean(report?.description));
+  const [openFilters, setOpenFilters] = useState<FilterKey[]>(() =>
+    FILTER_KEYS.filter((k) => (report?.config ?? initialConfig).filters[k]?.length),
+  );
   const folderRows = useMemo(() => flattenCostReportFolderTree(folders), [folders]);
 
   const presetLabel = (p: CostRangePreset): string => {
@@ -168,75 +184,131 @@ export function CommitmentReportEditor({
     (values ?? []).map((v) => ({ value: v, label: v }));
   const accountName = new Map((options?.accounts ?? []).map((a) => [a.id, a.name]));
 
-  return (
-    <Modal
-      onClose={onClose}
-      ariaLabel={report ? gt("Edit commitment report") : gt("New commitment report")}
-    >
-      <div className="w-[36rem] max-w-[92vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[88vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-on-surface mb-4">
-          {report ? gt("Edit commitment report") : gt("New commitment report")}
-        </h2>
+  // Every filter the report can carry, in the order they are offered. Only
+  // the ones in use get a row; the rest wait behind their "add" pill, so a
+  // new report opens as five decisions rather than eleven fields.
+  const filterDefs: Array<{
+    key: FilterKey;
+    label: string;
+    options: MultiSelectOption[];
+    status?: typeof loading;
+  }> = [
+    {
+      key: "providers",
+      label: gt("Providers"),
+      options: withSaved(
+        (options?.providers ?? []).map((p) => ({
+          value: p.pluginId,
+          label:
+            p.status === "measured"
+              ? gtData(p.displayName)
+              : gt("{provider} (holdings only, not measurable)", {
+                  provider: gtData(p.displayName),
+                }),
+        })),
+        config.filters.providers,
+      ),
+      status: loading,
+    },
+    {
+      key: "commitmentTypes",
+      label: gt("Commitment types"),
+      options: COMMITMENT_REPORT_KINDS.map((k) => ({ value: k, label: labels.kind(k) })),
+    },
+    {
+      key: "accountIds",
+      label: gt("Accounts"),
+      options: withSaved(
+        (options?.accounts ?? []).map((a) => ({ value: a.id, label: a.name })),
+        config.filters.accountIds,
+      ),
+      status: loading,
+    },
+    {
+      key: "services",
+      label: gt("Services"),
+      options: withSaved(plain(options?.services), config.filters.services),
+      status: loading,
+    },
+    {
+      key: "regions",
+      label: gt("Regions"),
+      options: withSaved(plain(options?.regions), config.filters.regions),
+      status: loading,
+    },
+    {
+      key: "commitmentIds",
+      label: gt("Commitments"),
+      options: withSaved(
+        (options?.commitments ?? []).map((c) => ({
+          value: c.commitmentId,
+          label: `${c.description} · ${accountName.get(c.accountId) ?? c.pluginId} · ${labels.kind(c.kind)}`,
+        })),
+        config.filters.commitmentIds,
+      ),
+      status: loading,
+    },
+  ];
+  const shownFilters = filterDefs.filter((f) => openFilters.includes(f.key));
+  const hiddenFilters = filterDefs.filter((f) => !openFilters.includes(f.key));
+  const title = report ? gt("Edit commitment report") : gt("New commitment report");
 
-        <div className="space-y-4">
-          <div>
-            <label htmlFor={`${uid}-name`} className={labelClass}>
-              {gt("Name")}
-            </label>
+  return (
+    <Modal onClose={onClose} ariaLabel={title}>
+      <div className="w-[40rem] max-w-[94vw] max-h-[88vh] flex flex-col rounded-2xl border border-border bg-surface-raised shadow-2xl overflow-hidden">
+        <header className="flex items-start gap-3 px-6 pt-5 pb-4">
+          <div className="flex-1 min-w-0">
+            <h2 className={sectionClass}>{title}</h2>
             <input
               id={`${uid}-name`}
-              className={fieldClass}
+              aria-label={gt("Name")}
+              className="mt-1.5 w-full bg-transparent text-xl font-semibold text-on-surface placeholder:text-on-surface-faint focus:outline-none"
               value={name}
               maxLength={COMMITMENT_REPORT_LIMITS.maxNameLength}
-              placeholder={gt("e.g. Savings plan coverage by account")}
+              placeholder={gt("Report name")}
+              autoFocus
               onChange={(e) => setName(e.target.value)}
             />
+            {describing ? (
+              <textarea
+                id={`${uid}-description`}
+                aria-label={gt("Description")}
+                className="mt-1 w-full resize-none bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none [field-sizing:content]"
+                rows={1}
+                value={description}
+                maxLength={COMMITMENT_REPORT_LIMITS.maxDescriptionLength}
+                placeholder={gt("Description")}
+                autoFocus={!description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDescribing(true)}
+                className="mt-1 text-sm text-on-surface-faint hover:text-on-surface-secondary transition-colors"
+              >
+                {gt("Add a description")}
+              </button>
+            )}
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={gt("Close")}
+            className="-mr-2 rounded-lg p-1.5 text-on-surface-tertiary hover:bg-surface-overlay hover:text-on-surface transition-colors"
+          >
+            <CloseIcon size={18} />
+          </button>
+        </header>
 
-          <div>
-            <label htmlFor={`${uid}-description`} className={labelClass}>
-              {gt("Description")}
-            </label>
-            <textarea
-              id={`${uid}-description`}
-              className={fieldClass}
-              rows={2}
-              value={description}
-              maxLength={COMMITMENT_REPORT_LIMITS.maxDescriptionLength}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label htmlFor={`${uid}-folder`} className={labelClass}>
-              {gt("Folder")}
-            </label>
-            <select
-              id={`${uid}-folder`}
-              className={fieldClass}
-              value={folderId}
-              onChange={(e) => setFolderId(e.target.value)}
-            >
-              <option value="">{gt("Top level")}</option>
-              {folderRows.map((row) => (
-                <option key={row.folder.id} value={row.folder.id}>
-                  {row.path}
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] text-on-surface-faint mt-1">
-              {gt("The same folders as cost reports. Create and rename folders under Reports.")}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`${uid}-range`} className={labelClass}>
-                {gt("Date range")}
-              </label>
+        <div className="flex-1 overflow-y-auto border-t border-border px-6 py-5 space-y-6">
+          <section className="space-y-3">
+            <h3 className={sectionClass}>{gt("Period")}</h3>
+            <div className="flex flex-wrap items-center gap-3">
               <select
                 id={`${uid}-range`}
-                className={fieldClass}
+                aria-label={gt("Date range")}
+                className={`${controlClass} min-w-[11rem]`}
                 value={rangeValue}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -260,44 +332,39 @@ export function CommitmentReportEditor({
                 ))}
                 <option value="custom">{gt("Custom dates")}</option>
               </select>
-            </div>
-            <div>
-              <label htmlFor={`${uid}-granularity`} className={labelClass}>
-                {gt("Granularity")}
-              </label>
-              <select
-                id={`${uid}-granularity`}
-                className={fieldClass}
-                value={config.granularity}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    granularity: e.target.value as CommitmentReportConfig["granularity"],
-                  })
-                }
+              <div
+                role="radiogroup"
+                aria-label={gt("Granularity")}
+                className="inline-flex rounded-lg bg-surface-sunken p-0.5"
               >
-                {COMMITMENT_REPORT_GRANULARITIES.map((g) => (
-                  <option key={g} value={g}>
-                    {labels.granularity(g)}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-on-surface-faint mt-1">
-                {gt("No hourly option: spend is collected one row per day.")}
-              </p>
+                {COMMITMENT_REPORT_GRANULARITIES.map((g) => {
+                  const on = config.granularity === g;
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => setConfig({ ...config, granularity: g })}
+                      className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                        on
+                          ? "bg-surface-raised text-on-surface shadow-sm"
+                          : "text-on-surface-tertiary hover:text-on-surface"
+                      }`}
+                    >
+                      {labels.granularity(g)}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-
-          {config.dateRange.kind === "absolute" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor={`${uid}-from`} className={labelClass}>
-                  {gt("From")}
-                </label>
+            {config.dateRange.kind === "absolute" && (
+              <div className="flex items-center gap-2">
                 <input
                   id={`${uid}-from`}
                   type="date"
-                  className={fieldClass}
+                  aria-label={gt("From")}
+                  className={controlClass}
                   value={config.dateRange.from}
                   max={today}
                   onChange={(e) =>
@@ -308,15 +375,12 @@ export function CommitmentReportEditor({
                     })
                   }
                 />
-              </div>
-              <div>
-                <label htmlFor={`${uid}-to`} className={labelClass}>
-                  {gt("To")}
-                </label>
+                <span className="text-sm text-on-surface-faint">{gt("to")}</span>
                 <input
                   id={`${uid}-to`}
                   type="date"
-                  className={fieldClass}
+                  aria-label={gt("To")}
+                  className={controlClass}
                   value={config.dateRange.to}
                   onChange={(e) =>
                     config.dateRange.kind === "absolute" &&
@@ -324,158 +388,151 @@ export function CommitmentReportEditor({
                   }
                 />
               </div>
-            </div>
-          )}
+            )}
+          </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`${uid}-group`} className={labelClass}>
-                {gt("Group by")}
-              </label>
-              <select
-                id={`${uid}-group`}
-                className={fieldClass}
-                value={config.groupBy}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    groupBy: e.target.value as CommitmentReportConfig["groupBy"],
-                  })
-                }
-              >
-                {COMMITMENT_REPORT_GROUP_BYS.map((g) => (
-                  <option key={g} value={g}>
-                    {labels.groupBy(g)}
-                  </option>
-                ))}
-              </select>
+          <section className="space-y-3">
+            <h3 className={sectionClass}>{gt("Display")}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor={`${uid}-metric`} className={labelClass}>
+                  {gt("Chart metric")}
+                </label>
+                <select
+                  id={`${uid}-metric`}
+                  className={fieldClass}
+                  value={config.metric}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      metric: e.target.value as CommitmentReportConfig["metric"],
+                    })
+                  }
+                >
+                  {COMMITMENT_REPORT_METRICS.map((m) => (
+                    <option key={m} value={m}>
+                      {labels.metric(m)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor={`${uid}-group`} className={labelClass}>
+                  {gt("Group by")}
+                </label>
+                <select
+                  id={`${uid}-group`}
+                  className={fieldClass}
+                  value={config.groupBy}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      groupBy: e.target.value as CommitmentReportConfig["groupBy"],
+                    })
+                  }
+                >
+                  {COMMITMENT_REPORT_GROUP_BYS.map((g) => (
+                    <option key={g} value={g}>
+                      {labels.groupBy(g)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label htmlFor={`${uid}-metric`} className={labelClass}>
-                {gt("Chart metric")}
-              </label>
-              <select
-                id={`${uid}-metric`}
-                className={fieldClass}
-                value={config.metric}
-                onChange={(e) =>
-                  setConfig({
-                    ...config,
-                    metric: e.target.value as CommitmentReportConfig["metric"],
-                  })
-                }
-              >
-                {COMMITMENT_REPORT_METRICS.map((m) => (
-                  <option key={m} value={m}>
-                    {labels.metric(m)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          </section>
 
-          <fieldset className="space-y-3 border-t border-border pt-3">
-            <legend className="text-xs font-semibold text-on-surface-secondary">
-              {gt("Filters")}
-            </legend>
-            <MultiSelect
-              label={gt("Providers")}
-              placeholder={gt("All providers")}
-              value={config.filters.providers ?? []}
-              onChange={(v) => setFilter("providers", v)}
-              options={withSaved(
-                (options?.providers ?? []).map((p) => ({
-                  value: p.pluginId,
-                  label:
-                    p.status === "measured"
-                      ? gtData(p.displayName)
-                      : gt("{provider} (holdings only, not measurable)", {
-                          provider: gtData(p.displayName),
-                        }),
-                })),
-                config.filters.providers,
-              )}
-              status={loading}
-            />
-            <MultiSelect
-              label={gt("Commitment types")}
-              placeholder={gt("All commitment types")}
-              value={config.filters.commitmentTypes ?? []}
-              onChange={(v) => setFilter("commitmentTypes", v as CommitmentKind[])}
-              options={COMMITMENT_REPORT_KINDS.map((k) => ({ value: k, label: labels.kind(k) }))}
-            />
-            <MultiSelect
-              label={gt("Accounts")}
-              placeholder={gt("All accounts")}
-              value={config.filters.accountIds ?? []}
-              onChange={(v) => setFilter("accountIds", v)}
-              options={withSaved(
-                (options?.accounts ?? []).map((a) => ({ value: a.id, label: a.name })),
-                config.filters.accountIds,
-              )}
-              status={loading}
-            />
-            <MultiSelect
-              label={gt("Services")}
-              placeholder={gt("All services")}
-              value={config.filters.services ?? []}
-              onChange={(v) => setFilter("services", v)}
-              options={withSaved(plain(options?.services), config.filters.services)}
-              status={loading}
-            />
-            <MultiSelect
-              label={gt("Regions")}
-              placeholder={gt("All regions")}
-              value={config.filters.regions ?? []}
-              onChange={(v) => setFilter("regions", v)}
-              options={withSaved(plain(options?.regions), config.filters.regions)}
-              status={loading}
-            />
-            <MultiSelect
-              label={gt("Commitments")}
-              placeholder={gt("All commitments")}
-              value={config.filters.commitmentIds ?? []}
-              onChange={(v) => setFilter("commitmentIds", v)}
-              options={withSaved(
-                (options?.commitments ?? []).map((c) => ({
-                  value: c.commitmentId,
-                  label: `${c.description} · ${accountName.get(c.accountId) ?? c.pluginId} · ${labels.kind(c.kind)}`,
-                })),
-                config.filters.commitmentIds,
-              )}
-              status={loading}
-            />
-            <p className="text-[11px] text-on-surface-faint">
-              {gt(
-                "A commitment type or commitment filter narrows the commitment side only; uncovered usage stays in as the rest of the coverage denominator. AWS covered usage is not tied to a specific commitment, so it matches no commitment filter.",
-              )}
-            </p>
-          </fieldset>
+          <section className="space-y-3">
+            <h3 className={sectionClass}>{gt("Filters")}</h3>
+            {shownFilters.length > 0 && (
+              <div className="space-y-2">
+                {shownFilters.map((f) => (
+                  <div key={f.key} className="flex items-start gap-3">
+                    <span className="w-36 shrink-0 pt-2 text-sm text-on-surface-secondary">
+                      {f.label}
+                    </span>
+                    <MultiSelect
+                      className="flex-1"
+                      label={f.label}
+                      placeholder={gt("Choose…")}
+                      value={config.filters[f.key] ?? []}
+                      onChange={(v) => setFilter(f.key, v as never)}
+                      options={f.options}
+                      status={f.status}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilter(f.key, undefined);
+                        setOpenFilters(openFilters.filter((k) => k !== f.key));
+                      }}
+                      aria-label={gt("Remove the {filter} filter", { filter: f.label })}
+                      className="mt-1 rounded-lg p-1.5 text-on-surface-faint hover:bg-surface-overlay hover:text-on-surface transition-colors"
+                    >
+                      <CloseIcon size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {hiddenFilters.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {hiddenFilters.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setOpenFilters([...openFilters, f.key])}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1 text-sm text-on-surface-tertiary hover:border-accent-subtle hover:text-on-surface transition-colors"
+                  >
+                    <PlusIcon size={12} />
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
 
           {error && (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
               {error}
             </p>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
+        <footer className="flex items-center gap-3 border-t border-border bg-surface px-6 py-3.5">
+          <label htmlFor={`${uid}-folder`} className="text-sm text-on-surface-tertiary">
+            {gt("Folder")}
+          </label>
+          <select
+            id={`${uid}-folder`}
+            className={`${controlClass} max-w-[14rem]`}
+            value={folderId}
+            onChange={(e) => setFolderId(e.target.value)}
           >
-            {gt("Cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
-          >
-            {saving ? gt("Saving…") : gt("Save")}
-          </button>
-        </div>
+            <option value="">{gt("Top level")}</option>
+            {folderRows.map((row) => (
+              <option key={row.folder.id} value={row.folder.id}>
+                {row.path}
+              </option>
+            ))}
+          </select>
+          <div className="ml-auto flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+            >
+              {gt("Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
+            >
+              {saving ? gt("Saving…") : report ? gt("Save changes") : gt("Create report")}
+            </button>
+          </div>
+        </footer>
       </div>
     </Modal>
   );
