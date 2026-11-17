@@ -215,7 +215,10 @@ pub(super) fn open_runner(
         .with_internet()
         .with_stall_after(limits.stall_after)
         .with_module_limits(limits.modules);
-    let slots = limits.cpus * limits.jobs_per_cpu;
+    // The server shares each vCPU among `--jobs-per-cpu` jobs; `iwci run`
+    // runs a job per vCPU, as many at once as `--cpus`. Either way a job
+    // with `cpus:` holds that many vCPUs' slots.
+    let per_cpu = if shared_slots { limits.jobs_per_cpu } else { 1 };
     Ok(Runner {
         runtime: Arc::new(runtime),
         store,
@@ -227,7 +230,7 @@ pub(super) fn open_runner(
         ),
         cpus: limits.cpus,
         jobs_per_cpu: limits.jobs_per_cpu,
-        slots: shared_slots.then(|| Arc::new(schedule::Slots::new(slots))),
+        slots: Some(Arc::new(schedule::Slots::for_cpus(limits.cpus, per_cpu))),
         memory: limits.memory.map(|m| {
             let budget = schedule::MemoryBudget::new(m);
             Arc::new(if limits.admit_by_estimate {
@@ -242,7 +245,7 @@ pub(super) fn open_runner(
         external: None,
         helping: None,
         #[cfg(target_os = "linux")]
-        sandbox: native_sandbox(args, &cache, limits.cpus)?,
+        sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
     })
 }
 
@@ -262,6 +265,7 @@ fn native_sandbox(
     args: &mut Args,
     cache: &std::path::Path,
     cpus: usize,
+    jobs_per_cpu: usize,
 ) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
     let service = match args.value("--sandbox-service")? {
         Some(path) => Some(path),
@@ -285,7 +289,8 @@ fn native_sandbox(
     )
     .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
     .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX))
-    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
+    .with_jobs_per_cpu(u32::try_from(jobs_per_cpu).unwrap_or(u32::MAX));
     let host = match service {
         None => host,
         Some(socket) => {

@@ -283,6 +283,9 @@ pub struct Limits {
     /// The most any one linear memory of the job may grow to. Each process
     /// a script spawns has its own memory, each under this cap.
     pub memory_bytes: u64,
+    /// The whole vCPUs the job holds (`cpus:`), which is how many it is
+    /// told it has; `None` tells it the runner's.
+    pub cpus: Option<u32>,
 }
 
 impl Default for Limits {
@@ -290,6 +293,7 @@ impl Default for Limits {
         Self {
             timeout: Duration::from_secs(600),
             memory_bytes: 4 << 30,
+            cpus: None,
         }
     }
 }

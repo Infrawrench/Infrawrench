@@ -561,6 +561,12 @@
           "default": "2GiB",
           "description": "16MiB to 16GiB."
         },
+        "cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Whole vCPUs the job holds, and is billed for, instead of its default share of one. A runner with fewer gives the job all of its own."
+        },
         "cache": {
           "description": "Files kept between runs: restored before the job, saved after it passes unless key was an exact hit. Pushes read and write their branch's caches and fall back on the default branch's; pull requests never write where the default branch reads. Saves count against the owner's storage quota.",
           "oneOf": [

@@ -96,6 +96,7 @@ impl Executor<Resolved> for RuntimeExecutor {
         let limits = Limits {
             timeout: inv.job.timeout,
             memory_bytes: inv.job.memory_bytes,
+            cpus: inv.job.cpus,
         };
         let manifest_env = match tool {
             Resolved::Tool { manifest, .. } => &manifest.env,

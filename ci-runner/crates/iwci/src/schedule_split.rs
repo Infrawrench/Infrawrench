@@ -163,6 +163,9 @@ pub struct Done {
     /// What it held of that runner's memory (`JobReport::held_memory_mib`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub held_memory_mib: u64,
+    /// The vCPUs of its `cpus:` it held there (`JobReport::cpus`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     pub queued_ms: u64,
     pub kept: Kept,
 }
@@ -211,6 +214,7 @@ impl Done {
             duration_ms: report.duration_ms,
             peak_memory_mib: report.peak_memory_mib,
             held_memory_mib: report.held_memory_mib,
+            cpus: report.cpus,
             queued_ms: report.queued_ms,
             kept,
         }
@@ -258,18 +262,21 @@ struct HelpingState {
 struct HelpedJob {
     id: u64,
     bytes: u64,
+    /// The slots it holds: more than one for a job with `cpus:`.
+    slots: usize,
     cancel: iwci_runtime::Cancel,
     /// Stopped to give way; its slot and memory are on their way back.
     yielding: bool,
 }
 
 impl HelpingState {
-    /// Stops the newest job not already giving way.
-    fn stop_one(&mut self) -> Option<u64> {
+    /// Stops the newest job not already giving way: the memory and the
+    /// slots it gives back.
+    fn stop_one(&mut self) -> Option<(u64, usize)> {
         let job = self.jobs.iter_mut().rev().find(|j| !j.yielding)?;
         job.yielding = true;
         job.cancel.cancel();
-        Some(job.bytes)
+        Some((job.bytes, job.slots))
     }
 }
 
@@ -298,9 +305,9 @@ impl Helping {
         Some(Joined(self.clone()))
     }
 
-    /// Helper jobs running now: the slots they hold.
+    /// The slots helper jobs running now hold.
     pub fn running(&self) -> usize {
-        self.lock().jobs.len()
+        self.lock().jobs.iter().map(|j| j.slots).sum()
     }
 
     /// The memory helper jobs hold.
@@ -314,11 +321,13 @@ impl Helping {
         self.lock().wanted_slots > 0
     }
 
-    /// A helper job starting with `bytes` of memory. Its `cancel` is set
-    /// when `run`'s is, and when the job has to give way.
+    /// A helper job starting with `bytes` of memory and `slots` slots.
+    /// Its `cancel` is set when `run`'s is, and when the job has to give
+    /// way.
     pub(super) fn start(
         self: &Arc<Self>,
         bytes: u64,
+        slots: usize,
         run: Option<&iwci_runtime::Cancel>,
     ) -> Helped {
         let cancel = iwci_runtime::Cancel::new();
@@ -334,6 +343,7 @@ impl Helping {
         state.jobs.push(HelpedJob {
             id,
             bytes,
+            slots,
             cancel: cancel.clone(),
             yielding: false,
         });
@@ -344,17 +354,25 @@ impl Helping {
         }
     }
 
-    /// An own run's worker is about to wait for a slot: as many helper
-    /// jobs give way as there are such workers.
-    pub(super) fn want_slot(self: &Arc<Self>) -> SlotWant {
+    /// An own run's worker is about to wait for `slots` slots: helper
+    /// jobs give way until as many slots are coming back as such workers
+    /// wait for.
+    pub(super) fn want_slot(self: &Arc<Self>, slots: usize) -> SlotWant {
         let mut state = self.lock();
-        state.wanted_slots += 1;
-        while state.jobs.iter().filter(|j| j.yielding).count() < state.wanted_slots {
-            if state.stop_one().is_none() {
-                break;
+        state.wanted_slots += slots;
+        let mut coming: usize = state
+            .jobs
+            .iter()
+            .filter(|j| j.yielding)
+            .map(|j| j.slots)
+            .sum();
+        while coming < state.wanted_slots {
+            match state.stop_one() {
+                Some((_, freed)) => coming += freed,
+                None => break,
             }
         }
-        SlotWant(self.clone())
+        SlotWant(self.clone(), slots)
     }
 
     /// An own run's next job is `short` bytes short of fitting: helper
@@ -369,7 +387,7 @@ impl Helping {
             .sum();
         while coming < short {
             match state.stop_one() {
-                Some(bytes) => coming = coming.saturating_add(bytes),
+                Some((bytes, _)) => coming = coming.saturating_add(bytes),
                 None => break,
             }
         }
@@ -389,13 +407,13 @@ impl Drop for Helped {
     }
 }
 
-/// An own run's worker waiting for a slot.
-pub(super) struct SlotWant(Arc<Helping>);
+/// An own run's worker waiting for that many slots.
+pub(super) struct SlotWant(Arc<Helping>, usize);
 
 impl Drop for SlotWant {
     fn drop(&mut self) {
         let mut state = self.0.lock();
-        state.wanted_slots = state.wanted_slots.saturating_sub(1);
+        state.wanted_slots = state.wanted_slots.saturating_sub(self.1);
     }
 }
 
@@ -783,6 +801,8 @@ impl<'a> Sharing<'a> {
             // What it reserved where it ran: the same plan, so the same
             // `memory:`. It is billed with the run, like any of its jobs.
             memory_mib: job.memory_bytes >> 20,
+            // The vCPUs it held there, billed with the run likewise.
+            cpus: done.cpus,
             peak_memory_mib: done.peak_memory_mib,
             held_memory_mib: done.held_memory_mib,
             queued_ms: done.queued_ms,
@@ -933,11 +953,11 @@ fn requeue<'p>(s: &mut State<'p>, mut remote: RemoteJob<'p>, why: String) {
     s.enqueue(remote.rank, (remote.template, remote.job, remote.lookup));
 }
 
-/// The queued job a helper may start now, with its memory and the slot
+/// The queued job a helper may start now, with its memory and the slots
 /// for it: only when none of this runner's own runs waits for a slot or
-/// for memory, a slot is free and the job's memory fits. Never waits for
-/// either, and never has the claim on memory coming back that the first
-/// job of a run has.
+/// for memory, the job's slots are free (one, or those of its `cpus:`)
+/// and its memory fits. Never waits for either, and never has the claim
+/// on memory coming back that the first job of a run has.
 pub(super) fn spare(
     sharing: &Sharing<'_>,
     options: &Options,
@@ -950,11 +970,11 @@ pub(super) fn spare(
     if options.helping.as_ref().is_some_and(|h| h.wanted()) {
         return None;
     }
-    let taken = match &options.slots {
-        Some(slots) => Some(slots.try_acquire()?),
-        None => None,
-    };
-    let found = match &options.memory {
+    // Not even one slot: no job fits, whatever its memory.
+    if options.slots.as_ref().is_some_and(|s| s.free() == 0) {
+        return None;
+    }
+    let (pos, lease) = match &options.memory {
         None => (queue.len() - 1, None),
         Some(budget) => {
             let asks = queue.iter().rev().map(|(_, (_, j, l))| Ask {
@@ -966,18 +986,29 @@ pub(super) fn spare(
             (queue.len() - 1 - nth, Some(lease))
         }
     };
-    *slot = taken;
-    Some(found)
+    if let Some(slots) = &options.slots {
+        let job = &queue[pos].1.1;
+        match slots.try_acquire(slots.for_job(job.cpus)) {
+            Some(taken) => *slot = Some(taken),
+            None => {
+                if let (Some(lease), Some(budget)) = (&lease, &options.memory) {
+                    budget.release(lease);
+                }
+                return None;
+            }
+        }
+    }
+    Some((pos, lease))
 }
 
-/// A slot for a job of one of this runner's own runs: a free one, or else
-/// one a helper job gives up for it.
-pub(super) fn own_slot(options: &Options, slots: &Arc<Slots>) -> SlotGuard {
-    if let Some(slot) = slots.try_acquire() {
+/// The slots for a job of one of this runner's own runs (one, or those of
+/// its `cpus:`): free ones, or else those helper jobs give up for it.
+pub(super) fn own_slot(options: &Options, slots: &Arc<Slots>, n: usize) -> SlotGuard {
+    if let Some(slot) = slots.try_acquire(n) {
         return slot;
     }
-    let _want = options.helping.as_ref().map(|h| h.want_slot());
-    slots.acquire()
+    let _want = options.helping.as_ref().map(|h| h.want_slot(n));
+    slots.acquire(n)
 }
 
 /// An own run's next job does not fit the runner's memory: helper jobs
@@ -998,13 +1029,13 @@ pub(super) fn reclaim_memory(
     }
 }
 
-/// A helper job as it starts: on the runner's list of them, with a
-/// cancel of its own that the run's also sets.
-pub(super) fn helped(options: &Options, reserved: u64) -> Option<Helped> {
+/// A helper job as it starts, holding `slots` slots: on the runner's list
+/// of them, with a cancel of its own that the run's also sets.
+pub(super) fn helped(options: &Options, reserved: u64, slots: usize) -> Option<Helped> {
     options
         .helping
         .as_ref()
-        .map(|h| h.start(reserved, options.cancel.as_ref()))
+        .map(|h| h.start(reserved, slots, options.cancel.as_ref()))
 }
 
 /// Follows what the other runners of the run write, once every

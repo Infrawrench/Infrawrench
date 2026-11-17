@@ -491,11 +491,18 @@ impl Clock {
 pub(crate) struct JobTasks {
     inner: Arc<dyn VirtualTaskManager>,
     meter: Arc<CpuMeter>,
+    /// The vCPUs the job holds (`cpus:`), which is what it is told it has;
+    /// `None` passes on the runner's.
+    cpus: Option<u32>,
 }
 
 impl JobTasks {
-    pub(crate) fn new(inner: Arc<dyn VirtualTaskManager>, meter: Arc<CpuMeter>) -> Self {
-        Self { inner, meter }
+    pub(crate) fn new(
+        inner: Arc<dyn VirtualTaskManager>,
+        meter: Arc<CpuMeter>,
+        cpus: Option<u32>,
+    ) -> Self {
+        Self { inner, meter, cpus }
     }
 }
 
@@ -570,7 +577,10 @@ impl VirtualTaskManager for JobTasks {
     }
 
     fn thread_parallelism(&self) -> Result<usize, WasiThreadError> {
-        self.inner.thread_parallelism()
+        match self.cpus {
+            Some(cpus) => Ok(cpus.max(1) as usize),
+            None => self.inner.thread_parallelism(),
+        }
     }
 
     fn spawn_with_module(

@@ -6,6 +6,7 @@ Check each migrated job against this list before handing back.
 
 - **Timeout: 10 minutes**, not 6 hours. Set `timeout:` (`30m`, `2h`, at most `6h`) on any job that can run longer. A job that prints nothing and uses no CPU for 5 minutes is stopped as stuck.
 - **Memory: 2 GiB** per job, up to `16GiB` with `memory:`. Large test suites and bundlers usually want `4GiB` or more; a job over its limit fails and its report says so.
+- **CPU: a share of one vCPU** per job, not a machine of its own. A job that builds or tests in parallel (`make -j`, `go test -p`, `cargo`, a test runner's workers) and ran on a larger runner gets `cpus:` (1 to 64), and reads the count from `$IWCI_CPUS` instead of a hard-coded number. Billing follows: a job with `cpus: 4` is charged four vCPUs for as long as it runs.
 - **One environment per job.** There is no image with everything installed. Pick the `using:` environment for the job's language, and add other tools with `tools: [builtin:...]`.
 
 ## Scripts

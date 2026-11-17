@@ -38,8 +38,9 @@ pub struct Runner {
     /// vCPUs, and how many jobs share each one.
     pub cpus: usize,
     pub jobs_per_cpu: usize,
-    /// Shared by every run in the process (the server); `None` for a
-    /// single `iwci run`, which is limited by `cpus` alone.
+    /// Shared by every run in the process: `cpus × jobs_per_cpu` for the
+    /// server, `cpus` (a job each) for `iwci run`. `None` is limited by
+    /// `cpus` alone, and a job's `cpus:` holds nothing more.
     pub slots: Option<Arc<Slots>>,
     pub memory: Option<Arc<MemoryBudget>>,
     pub author: Identity,
@@ -424,8 +425,9 @@ impl RunControl {
 }
 
 /// What a run used, for billing. A job is charged for its wall time at
-/// `1 / jobs_per_cpu` of a vCPU (the share of a core its slot is), and for
-/// the memory it reserved over that time.
+/// `1 / jobs_per_cpu` of a vCPU (the share of a core its slot is), or at
+/// the whole vCPUs of its `cpus:` that it held, and for the memory it
+/// reserved over that time.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Usage {
     pub jobs: u64,
@@ -1147,7 +1149,10 @@ pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
         let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
         usage.jobs += 1;
         usage.wall_seconds += secs;
-        usage.vcpu_seconds += secs / share;
+        usage.vcpu_seconds += match job.cpus {
+            Some(cpus) => secs * f64::from(cpus),
+            None => secs / share,
+        };
         // A job in a sandbox holds what it reserved for the sandbox too.
         let reserved = job.memory_mib
             + job

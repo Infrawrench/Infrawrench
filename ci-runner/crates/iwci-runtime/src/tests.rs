@@ -72,6 +72,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         limits: Limits {
             timeout: Duration::from_secs(30),
             memory_bytes: 64 << 20,
+            cpus: None,
         },
         log: None,
         scratch: None,

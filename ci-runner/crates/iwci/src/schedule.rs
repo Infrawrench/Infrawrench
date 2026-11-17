@@ -592,6 +592,11 @@ pub struct JobReport {
     /// The memory the job reserved while it ran (its `memory:`), for
     /// billing; 0 for a job that never ran.
     pub memory_mib: u64,
+    /// The whole vCPUs the job held while it ran (its `cpus:`, at most the
+    /// runner's), for billing; `None` for a job that held its share of
+    /// one, or never ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     /// The most memory the job held at once, to size its `memory:` by:
     /// the linear memories of its programs and services, the room its V8
     /// heaps had reserved, and the files it wrote, each at its own peak.
@@ -790,23 +795,44 @@ pub trait Durations: Send + Sync {
 
 /// The runner's job slots: how many jobs may run at once across every run.
 ///
-/// A vCPU is shared by `jobs_per_cpu` jobs. Most CI work is not CPU-bound
-/// all the way through (a job waits on its own subprocesses, reads its
-/// snapshot, starts up), so a core interleaves several jobs better than it
-/// runs one; the operating system time-slices them. Billing charges each
-/// job its share, `1 / jobs_per_cpu` of a vCPU for its wall time.
+/// A vCPU is shared by `per_cpu` jobs (`--jobs-per-cpu`). Most CI work is
+/// not CPU-bound all the way through (a job waits on its own subprocesses,
+/// reads its snapshot, starts up), so a core interleaves several jobs
+/// better than it runs one; the operating system time-slices them. Billing
+/// charges each job its share, `1 / per_cpu` of a vCPU for its wall time.
+///
+/// A job with `cpus:` holds `cpus × per_cpu` slots instead, every slot of
+/// that many vCPUs, and is billed for them. While it waits for them, no
+/// other job takes a slot, so jobs of one slot coming and going cannot
+/// keep it waiting for good; one such job gathers at a time.
 #[derive(Debug)]
 pub struct Slots {
     total: usize,
-    used: Mutex<usize>,
+    per_cpu: usize,
+    state: Mutex<SlotState>,
     freed: Condvar,
 }
 
+#[derive(Debug, Default)]
+struct SlotState {
+    used: usize,
+    /// A job waits for more than one slot: the others wait behind it.
+    gathering: bool,
+}
+
 impl Slots {
+    /// `total` slots, each a whole vCPU.
     pub fn new(total: usize) -> Self {
+        Self::for_cpus(total, 1)
+    }
+
+    /// `cpus` vCPUs, each shared by `per_cpu` jobs.
+    pub fn for_cpus(cpus: usize, per_cpu: usize) -> Self {
+        let per_cpu = per_cpu.max(1);
         Self {
-            total: total.max(1),
-            used: Mutex::new(0),
+            total: cpus.max(1) * per_cpu,
+            per_cpu,
+            state: Mutex::new(SlotState::default()),
             freed: Condvar::new(),
         }
     }
@@ -816,42 +842,105 @@ impl Slots {
     }
 
     pub fn in_use(&self) -> usize {
-        *self.used.lock().unwrap()
+        self.lock().used
     }
 
     pub fn free(&self) -> usize {
         self.total - self.in_use()
     }
 
-    /// Waits for a slot.
-    pub fn acquire(self: &Arc<Self>) -> SlotGuard {
-        let mut used = self.used.lock().unwrap();
-        while *used >= self.total {
-            used = self.freed.wait(used).unwrap();
-        }
-        *used += 1;
-        SlotGuard(self.clone())
+    /// The whole vCPUs the slots are.
+    pub fn cpus(&self) -> u32 {
+        u32::try_from(self.total / self.per_cpu)
+            .unwrap_or(u32::MAX)
+            .max(1)
     }
 
-    /// A slot if one is free now.
-    pub fn try_acquire(self: &Arc<Self>) -> Option<SlotGuard> {
-        let mut used = self.used.lock().unwrap();
-        if *used >= self.total {
+    /// The vCPUs a job asking for `cpus` holds here: all of the runner's
+    /// when it asks for more than there are.
+    pub fn held_cpus(&self, cpus: u32) -> u32 {
+        cpus.clamp(1, self.cpus())
+    }
+
+    /// The slots a job holds: one, or every slot of its `cpus:`.
+    pub fn for_job(&self, cpus: Option<u32>) -> usize {
+        match cpus {
+            None => 1,
+            Some(n) => self.held_cpus(n) as usize * self.per_cpu,
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, SlotState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether a job waits to gather slots of its own.
+    #[cfg(test)]
+    pub(crate) fn gathering(&self) -> bool {
+        self.lock().gathering
+    }
+
+    /// Waits for `n` slots (at most all of them).
+    pub fn acquire(self: &Arc<Self>, n: usize) -> SlotGuard {
+        let n = n.clamp(1, self.total);
+        let mut state = self.lock();
+        while state.gathering || (n == 1 && state.used >= self.total) {
+            state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner());
+        }
+        if state.used + n > self.total {
+            // More than one slot, not free yet: the slots that come back
+            // are this job's, so no job of one slot can keep it waiting.
+            state.gathering = true;
+            while state.used + n > self.total {
+                state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+            state.gathering = false;
+            // Whoever waited behind it looks again.
+            self.freed.notify_all();
+        }
+        state.used += n;
+        SlotGuard {
+            slots: self.clone(),
+            held: n,
+        }
+    }
+
+    /// `n` slots (at most all of them) if they are free now and no job
+    /// waits to gather slots of its own.
+    pub fn try_acquire(self: &Arc<Self>, n: usize) -> Option<SlotGuard> {
+        let n = n.clamp(1, self.total);
+        let mut state = self.lock();
+        if state.gathering || state.used + n > self.total {
             return None;
         }
-        *used += 1;
-        Some(SlotGuard(self.clone()))
+        state.used += n;
+        Some(SlotGuard {
+            slots: self.clone(),
+            held: n,
+        })
     }
 }
 
-/// A held slot, given back on drop.
+/// Held slots, given back on drop.
 #[derive(Debug)]
-pub struct SlotGuard(Arc<Slots>);
+pub struct SlotGuard {
+    slots: Arc<Slots>,
+    held: usize,
+}
+
+impl SlotGuard {
+    /// How many slots it holds.
+    pub fn held(&self) -> usize {
+        self.held
+    }
+}
 
 impl Drop for SlotGuard {
     fn drop(&mut self) {
-        *self.0.used.lock().unwrap() -= 1;
-        self.0.freed.notify_one();
+        self.slots.lock().used -= self.held;
+        // Every waiter: a job gathering slots wants more than the one a
+        // single wake would hand on.
+        self.slots.freed.notify_all();
     }
 }
 
@@ -2423,7 +2512,13 @@ pub fn run<T: Tools>(
                     // A helper's job can be stopped by itself, to give way,
                     // from the moment it holds a slot and memory.
                     let helped = helper
-                        .then(|| split::helped(options, lookup.reserve))
+                        .then(|| {
+                            split::helped(
+                                options,
+                                lookup.reserve,
+                                slot.as_ref().map_or(1, SlotGuard::held),
+                            )
+                        })
                         .flatten();
                     // In a split run, whoever writes the job's claim runs
                     // it. A job another runner has stays in this run's
@@ -2457,15 +2552,23 @@ pub fn run<T: Tools>(
                         );
                         continue;
                     }
-                    // A slot shared with every other run on this runner;
-                    // held for the job's workspace build and its run. One
-                    // of this runner's own runs gets a helper job's.
+                    // Slots shared with every other run on this runner;
+                    // held for the job's workspace build and its run: one,
+                    // or those of its `cpus:`. One of this runner's own
+                    // runs gets a helper job's.
                     let slot = slot.or_else(|| {
                         options
                             .slots
                             .as_ref()
-                            .map(|slots| split::own_slot(options, slots))
+                            .map(|slots| split::own_slot(options, slots, slots.for_job(job.cpus)))
                     });
+                    // What it holds of its `cpus:`, which is what it is
+                    // told it has and billed for: at most the runner's
+                    // own vCPUs.
+                    let mut job = job;
+                    if let (Some(cpus), Some(slots)) = (job.cpus, &options.slots) {
+                        job.cpus = Some(slots.held_cpus(cpus));
+                    }
                     let cancel = helped
                         .as_ref()
                         .map(|h| h.cancel.clone())
@@ -2489,6 +2592,7 @@ pub fn run<T: Tools>(
                         &inherited, lookup, cancel, &mut kept, &mut saved,
                     );
                     report.queued_ms = queued_ms;
+                    report.cpus = job.cpus;
                     if let Some(sharing) = sharing {
                         sharing.running.fetch_sub(1, Ordering::SeqCst);
                     }
@@ -2893,6 +2997,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -3256,6 +3361,9 @@ fn run_job<T: Tools>(
     env.push(("IWCI_JOB".into(), job.id.clone()));
     env.push(("IWCI_OUTPUT".into(), OUTPUT_PATH.into()));
     env.push(("IWCI_SCRATCH".into(), iwci_spec::SCRATCH_PATH.into()));
+    if let Some(cpus) = job.cpus {
+        env.push(("IWCI_CPUS".into(), cpus.to_string()));
+    }
     merge_env(&mut env, &workspace.env);
     merge_env(&mut env, &lent.env);
     merge_env(&mut env, &job.env);
@@ -3663,6 +3771,7 @@ fn run_job<T: Tools>(
         downloads,
         notes,
         memory_mib: job.memory_bytes >> 20,
+        cpus: None,
         peak_memory_mib,
         held_memory_mib,
         queued_ms: 0,
@@ -3991,6 +4100,7 @@ fn run_external(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -4406,6 +4516,7 @@ fn replay(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -4560,6 +4671,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,

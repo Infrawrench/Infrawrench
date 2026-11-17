@@ -392,6 +392,10 @@ pub struct Job {
     pub timeout: Option<String>,
     #[serde(default)]
     pub memory: Option<String>,
+    /// Whole vCPUs the job holds, instead of its share of one (the
+    /// runner's `--jobs-per-cpu`).
+    #[serde(default)]
+    pub cpus: Option<u32>,
     /// Files kept between runs: restored before the job, saved after it
     /// passes. One entry, or a list.
     #[serde(default)]

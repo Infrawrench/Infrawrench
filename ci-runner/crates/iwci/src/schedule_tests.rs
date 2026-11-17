@@ -1505,11 +1505,114 @@ fn runs_share_the_runners_slots() {
     });
     assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
     assert_eq!(slots.in_use(), 0);
-    let held = slots.try_acquire().unwrap();
-    let _second = slots.try_acquire().unwrap();
-    assert!(slots.try_acquire().is_none(), "full is full");
+    let held = slots.try_acquire(1).unwrap();
+    let _second = slots.try_acquire(1).unwrap();
+    assert!(slots.try_acquire(1).is_none(), "full is full");
     drop(held);
     assert_eq!(slots.free(), 1);
+}
+
+/// Runs `p` on `slots`, a run at a time with room for every job.
+fn run_on_slots(p: &Plan, slots: &Arc<Slots>) -> (RunReport, FakeExecutor) {
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let commits = FakeCommitter(Mutex::default());
+    let options = Options {
+        parallelism: 8,
+        changed_paths: None,
+        base_env: vec![],
+        memory: None,
+        caches: None,
+        logs: None,
+        slots: Some(slots.clone()),
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: None,
+        split: None,
+        helping: None,
+        inflight: None,
+        downloads: None,
+        cancel: None,
+        access: Default::default(),
+    };
+    let report = run(p, &ws, &FakeTools, &exec, &commits, &options);
+    (report, exec)
+}
+
+#[test]
+fn a_job_with_cpus_holds_that_many_vcpus_of_slots() {
+    // Two vCPUs, four jobs to each: eight slots. A job of `cpus: 1` holds
+    // four of them, so two run at once where eight jobs of a share would.
+    let slots = Arc::new(Slots::for_cpus(2, 4));
+    let p = plan(
+        "name: x\njobs:\n  t:\n    using: builtin:slow@1\n    matrix: [a, b, c, d]\n    cpus: 1\n",
+    );
+    let (report, exec) = run_on_slots(&p, &slots);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
+    assert!(report.jobs.iter().all(|j| j.cpus == Some(1)));
+    assert_eq!(slots.in_use(), 0);
+    let env = exec.seen_env.lock().unwrap()["t[a]"].clone();
+    assert!(env.contains(&("IWCI_CPUS".into(), "1".into())), "{env:?}");
+}
+
+#[test]
+fn a_job_asking_for_more_vcpus_than_the_runner_has_gets_them_all() {
+    let slots = Arc::new(Slots::for_cpus(2, 4));
+    let p = plan(
+        "name: x\njobs:\n  big:\n    using: builtin:ok@1\n    cpus: 8\n  small:\n    using: builtin:ok@1\n",
+    );
+    let (report, exec) = run_on_slots(&p, &slots);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    let big = report.jobs.iter().find(|j| j.id == "big").unwrap();
+    assert_eq!(big.cpus, Some(2), "told and billed what it held");
+    let small = report.jobs.iter().find(|j| j.id == "small").unwrap();
+    assert_eq!(small.cpus, None);
+    let seen = exec.seen_env.lock().unwrap();
+    assert!(seen["big"].contains(&("IWCI_CPUS".into(), "2".into())));
+    assert!(!seen["small"].iter().any(|(k, _)| k == "IWCI_CPUS"));
+    drop(seen);
+    // Billed at the whole vCPUs it held, against a quarter of one.
+    let usage = crate::runner::usage_of(&report, 4);
+    let secs = |j: &JobReport| j.duration_ms as f64 / 1000.0;
+    let want = secs(big) * 2.0 + secs(small) / 4.0;
+    assert!((usage.vcpu_seconds - want).abs() < 1e-9, "{usage:?}");
+}
+
+#[test]
+fn a_job_gathering_slots_is_not_passed_by_jobs_of_one() {
+    let slots = Arc::new(Slots::for_cpus(2, 2));
+    assert_eq!(slots.for_job(None), 1);
+    assert_eq!(slots.for_job(Some(1)), 2);
+    assert_eq!(slots.for_job(Some(9)), 4, "at most every slot");
+    let one = slots.acquire(1);
+    let waiting = slots.clone();
+    let big = std::thread::spawn(move || waiting.acquire(4).held());
+    while !slots.gathering() {
+        std::thread::yield_now();
+    }
+    // Three slots are free, but they are the gathering job's to wait for.
+    assert_eq!(slots.free(), 3);
+    assert!(slots.try_acquire(1).is_none());
+    let behind = slots.clone();
+    let single = std::thread::spawn(move || behind.acquire(1).held());
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!single.is_finished(), "a job of one waits behind it");
+    drop(one);
+    assert_eq!(big.join().unwrap(), 4);
+    assert_eq!(single.join().unwrap(), 1);
+    assert_eq!(slots.in_use(), 0);
 }
 
 #[test]
@@ -2225,7 +2328,7 @@ fn a_hit_takes_no_slot_and_no_memory() {
     // Every slot of the runner is taken by other runs, and so is all of
     // its memory: a job that had to run would wait for ever. Hits do not.
     let slots = Arc::new(Slots::new(1));
-    let _held = slots.acquire();
+    let _held = slots.acquire(1);
     let budget = Arc::new(MemoryBudget::new(1 << 30));
     assert!(budget.try_take(1 << 30));
     let (second, ran, _) = run_looked_up(&p, &store, 4, Some(slots.clone()), Some(budget.clone()));

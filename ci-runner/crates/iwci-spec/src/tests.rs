@@ -439,6 +439,36 @@ fn needs_limits_and_policies() {
     .unwrap();
     assert_eq!(first(&plan).timeout.as_secs(), 3600);
     assert_eq!(first(&plan).memory_bytes, 512 << 20);
+    assert_eq!(first(&plan).cpus, None);
+}
+
+#[test]
+fn cpus_gives_a_job_whole_vcpus() {
+    let plan = parse(
+        "name: x
+jobs:
+  a:
+    using: builtin:t@1
+    cpus: 4
+",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(first(&plan).cpus, Some(4));
+    for bad in ["0", "65"] {
+        assert_error(
+            &format!("name: x\njobs:\n  a:\n    using: builtin:t@1\n    cpus: {bad}\n"),
+            "jobs.a.cpus: must be a whole number of vCPUs from 1 to 64",
+        );
+    }
+    // Not a whole number: the YAML itself does not fit.
+    assert!(
+        parse(
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    cpus: 1.5\n",
+            &ctx()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -2033,6 +2063,7 @@ fn a_cloud_job_refuses_what_only_means_something_on_the_runner() {
             "    memory: 4GiB\n",
             "jobs.a.memory: sizes a job on the runner",
         ),
+        ("    cpus: 2\n", "jobs.a.cpus: sizes a job on the runner"),
         (
             "    network: false\n",
             "jobs.a.network: keeps a job off the internet",
