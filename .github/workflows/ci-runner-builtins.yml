@@ -681,11 +681,12 @@ jobs:
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/build-cache.sh build ruby-gems@${{ matrix.minor }}
 
-      - name: Build the environment
-        run: bash builtins/environments/build.sh ruby@${{ matrix.minor }}
+      # And env:postgres, which the pg jobs use as a service.
+      - name: Build the environments
+        run: bash builtins/environments/build.sh ruby@${{ matrix.minor }} postgres
 
       # Its jobs install gems from rubygems.org, and a `rails new` app's
-      # lock through `deps: [bundler]`.
+      # lock and the database drivers' through `deps: [bundler]`.
       - name: Publish and run it through iwci
         run: |
           cargo build -p iwci
