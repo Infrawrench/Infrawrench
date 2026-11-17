@@ -2893,6 +2893,8 @@ dependencies = [
  "iwci-spec",
  "iwci-store",
  "iwci-vfs",
+ "iwci-vm",
+ "iwci-vm-proto",
  "libc",
  "rayon",
  "serde",
@@ -2940,6 +2942,16 @@ dependencies = [
  "rustls",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "iwci-guest"
+version = "0.1.0"
+dependencies = [
+ "iwci-vm-proto",
+ "libc",
+ "tar",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3038,6 +3050,33 @@ dependencies = [
  "shared-buffer",
  "thiserror",
  "virtual-fs",
+]
+
+[[package]]
+name = "iwci-vm"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "iwci-guest",
+ "iwci-sandbox",
+ "iwci-vfs",
+ "iwci-vm-proto",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+]
+
+[[package]]
+name = "iwci-vm-proto"
+version = "0.1.0"
+dependencies = [
+ "bstr",
+ "gix-glob",
+ "gix-ignore",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

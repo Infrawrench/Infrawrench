@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // builder touches neither.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { dispatchBody, inputProblemText, manualBranchRefusal, retryRefusal } =
+const { dispatchBody, inputProblemText, manualBranchRefusal, retryRefusal, withPlatforms } =
   await import("../runs");
 
 const base = {
@@ -226,5 +226,34 @@ describe("retryRefusal", () => {
     expect(retryRefusal({ status: "rejected" })).toMatch(/rejected/);
     expect(retryRefusal({ status: "queued" })).toMatch(/not finished/);
     expect(retryRefusal({ status: "running" })).toMatch(/not finished/);
+  });
+});
+
+describe("withPlatforms", () => {
+  const push = {
+    ...base,
+    event: "push",
+    branch: "main",
+    pullNumber: null,
+    fromFork: false,
+  } as const;
+  const entry = { group: null, cancelInProgress: false };
+
+  it("sends the union of its pipelines' platforms, for the proxy to place it by", () => {
+    const body = withPlatforms(dispatchBody(push, TOKEN), [
+      { ...entry, file: "a.yml", pipeline: "A", platforms: ["windows"] },
+      { ...entry, file: "b.yml", pipeline: "B", platforms: ["linux"] },
+      { ...entry, file: "c.yml", pipeline: "C" },
+    ]);
+    expect(body["platforms"]).toEqual(["linux", "windows"]);
+  });
+
+  it("sends nothing new when every job runs on wasm, or the row predates platforms", () => {
+    const plain = dispatchBody(push, TOKEN);
+    expect(withPlatforms(dispatchBody(push, TOKEN), [])).toEqual(plain);
+    expect(
+      withPlatforms(dispatchBody(push, TOKEN), [{ ...entry, file: "c.yml", pipeline: "C" }]),
+    ).toEqual(plain);
+    expect("platforms" in plain).toBe(false);
   });
 });

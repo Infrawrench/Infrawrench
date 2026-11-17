@@ -159,6 +159,11 @@ export interface ResolvedPipelines {
     concurrency?: { group?: unknown; "cancel-in-progress"?: unknown } | null;
     /** Jobs that name something to be lent, or run in the cloud (runners from 0.3.16). */
     jobs?: unknown;
+    /**
+     * The platforms other than `wasm` its jobs run on, sorted; empty or
+     * absent when all run on `wasm`, and from runners before platforms.
+     */
+    platforms?: unknown;
   }>;
   /**
    * Pipeline files that do not parse, which `pipelines` leaves out and the
@@ -245,19 +250,43 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
   return out;
 }
 
+/**
+ * A platform list as the app keeps and sends it: the names, sorted, once
+ * each, without `wasm` (every runner has it). Anything but a string is left
+ * out; a name the app does not know passes through, for the runners to say
+ * what it is.
+ */
+function platformList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set((value as unknown[]).filter(isString))]
+    .filter((p) => p.length > 0 && p !== "wasm")
+    .sort();
+}
+
 export function entriesFrom(answer: ResolvedPipelines): CiConcurrencyEntry[] {
   const out: CiConcurrencyEntry[] = [];
   for (const p of answer.pipelines ?? []) {
     if (typeof p.file !== "string") continue;
     const group = p.concurrency?.group;
+    const platforms = platformList(p.platforms);
     out.push({
       file: p.file,
       pipeline: typeof p.name === "string" ? p.name : p.file,
       group: typeof group === "string" && group.length > 0 ? group : null,
       cancelInProgress: p.concurrency?.["cancel-in-progress"] === true,
+      ...(platforms.length > 0 ? { platforms } : {}),
     });
   }
   return out;
+}
+
+/**
+ * The platforms a run needs a runner to have (see `CiConcurrencyEntry`):
+ * those of every pipeline it will run, a pipeline a newer run cancelled
+ * left out. The proxy places the run on a runner that has them all.
+ */
+export function runPlatforms(entries: readonly CiConcurrencyEntry[]): string[] {
+  return platformList(entries.flatMap((e) => (e.cancelled ? [] : (e.platforms ?? []))));
 }
 
 /**

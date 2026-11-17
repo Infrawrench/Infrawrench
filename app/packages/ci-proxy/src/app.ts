@@ -6,15 +6,15 @@
 // | `GET /healthz` | `200 ok`, unauthenticated |
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
-// | `GET /v1/capacity` | every runner's slots and job memory, and the pool's total slots |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, and offers it to the others as helpers (`placeRun`); a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
+// | `GET /v1/capacity` | every runner's slots, job memory and platforms, and the pool's total slots |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
 // | `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish` | the executor's side of a cloud job, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs/{job}/inputs?claim=`, `PUT .../artifacts?claim=` | a cloud job's artifacts, for its machine: the claim token, no bearer key |
 // | `POST /v1/concurrency` | a request's pipelines and their concurrency groups, from any runner; runs nothing |
-// | `POST /v1/prepare` | warms a runner for a request |
+// | `POST /v1/prepare` | warms a runner for a request, placed like a run (`platforms` included) |
 // | `GET /v1/storage/{owner}`, `GET /v1/usage/{owner}` | from any runner (they share the store) |
 // | `DELETE /v1/storage/{owner}/{repo-id}` | clears a repository's caches, on any runner |
 // | `POST /v1/schedules/read` | a branch's `on.schedule` pipelines and its `on.manual` ones (`manual`), from any runner; stores nothing (the app's schedules and manual runs) |
@@ -108,6 +108,52 @@ function full(): Response {
   );
 }
 
+/** The most platforms a request may name, and the longest name. */
+const MAX_PLATFORMS = 8;
+const MAX_PLATFORM_CHARS = 32;
+
+/**
+ * Takes `platforms` out of a run or prepare request: the platforms other
+ * than `wasm` its jobs run on (`linux`, `windows`), which the app reads from
+ * `/v1/concurrency`. The proxy places by it and never sends it on, since a
+ * runner refuses a request with a field it does not know. Names are not
+ * checked against a list, so a platform added to the runners needs no
+ * change here; a runner that does not list it is simply not preferred.
+ * Absent means none; anything but up to 8 strings of 1 to 32 characters is
+ * a 400.
+ */
+export function takePlatforms(request: Record<string, unknown>): string[] | Response {
+  const value = request.platforms;
+  delete request.platforms;
+  if (value === undefined || value === null) return [];
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_PLATFORMS ||
+    !value.every((p) => typeof p === "string" && p.length > 0 && p.length <= MAX_PLATFORM_CHARS)
+  ) {
+    return error(
+      400,
+      `\`platforms\` is a list of up to ${MAX_PLATFORMS} platform names, each up to ${MAX_PLATFORM_CHARS} characters`,
+    );
+  }
+  return [...new Set(value as string[])];
+}
+
+/**
+ * The platforms a registered schedule's pipeline needs, as the runner read
+ * it: the names it lists other than `wasm`, as `takePlatforms` would take
+ * them. A row stored before runners said has none.
+ */
+export function schedulePlatforms(pipeline: ScheduledPipeline): string[] {
+  const value = pipeline.platforms;
+  if (!Array.isArray(value)) return [];
+  const names = value.filter(
+    (p): p is string =>
+      typeof p === "string" && p.length > 0 && p.length <= MAX_PLATFORM_CHARS && p !== "wasm",
+  );
+  return [...new Set(names)].slice(0, MAX_PLATFORMS);
+}
+
 /** The most runners a run is offered to as helpers. */
 export const MAX_HELPERS = 3;
 /** How long a runner gets to answer an offer to help. */
@@ -139,22 +185,30 @@ const HELP_TIMEOUT_MS = 5000;
  * A run a caller waits for (`?wait=true`) is not shared: its id is only
  * known when it is over. A caller's own `split` is dropped; how a run is
  * shared is the proxy's to say.
+ *
+ * `platforms` (from `takePlatforms`) narrows where the run is placed, not
+ * who is offered it: which jobs a helper may take is the runners' to say.
  */
 async function placeRun(
   deps: Deps,
   search: string,
   request: Record<string, unknown>,
+  platforms: readonly string[] = [],
 ): Promise<Placed | null> {
-  const { split: _split, ...rest } = request;
+  // `platforms` is the proxy's alone: no runner is ever sent it.
+  const { split: _split, platforms: _platforms, ...rest } = request;
   // What a helper is sent: nothing secret but the token to fetch with.
   const { secrets: _secrets, lent: _lent, ...offer } = rest;
   const waits = new URLSearchParams(search).get("wait") === "true";
   const helpers = (runner: Capacity, others: Capacity[]) =>
     waits || !runner.split ? [] : others.filter((o) => o.split).slice(0, MAX_HELPERS);
-  const placed = await deps.pool.place(`/v1/runs${search}`, (runner, others) =>
-    JSON.stringify(
-      helpers(runner, others).length > 0 ? { ...rest, split: { runner: runner.name } } : rest,
-    ),
+  const placed = await deps.pool.place(
+    `/v1/runs${search}`,
+    (runner, others) =>
+      JSON.stringify(
+        helpers(runner, others).length > 0 ? { ...rest, split: { runner: runner.name } } : rest,
+      ),
+    platforms,
   );
   if (!placed?.response.ok) return placed;
   const offered = helpers(placed.capacity, placed.others);
@@ -402,6 +456,8 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         // Whether it can share a run or help one, and how many it helps.
         split: r.split,
         runs_helping: r.runsHelping,
+        // What it runs jobs on (`wasm`, and `linux` or `windows` with VMs).
+        platforms: r.platforms,
         // What placement ranks by: the cores a new run could expect here,
         // and how long a typical pull request's run would then take.
         run_cores: r.up ? runCores(r) : null,
@@ -417,18 +473,23 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     const body = await readBody(request);
     if (body instanceof Response) return body;
     let text = body.text;
+    const named = "platforms" in body.value;
+    const platforms = takePlatforms(body.value);
+    if (platforms instanceof Response) return platforms;
     if (path === "/v1/runs") {
       const withValues = await withStoredValues(deps, body.value);
       if (withValues instanceof Response) return withValues;
-      const placed = await placeRun(deps, url.search, withValues);
+      const placed = await placeRun(deps, url.search, withValues, platforms);
       if (!placed) return full();
       return relay(placed.runner, placed.response);
-    } else if ("trusted" in body.value || "lent" in body.value) {
-      // Preparing runs no job, so it needs neither.
+    }
+    if (named || "trusted" in body.value || "lent" in body.value) {
+      // Preparing runs no job, so it needs neither `trusted` nor `lent`;
+      // `platforms` was the proxy's and is already out.
       const { trusted: _, lent: _lent, ...rest } = body.value;
       text = JSON.stringify(rest);
     }
-    const placed = await deps.pool.place(`${path}${url.search}`, text);
+    const placed = await deps.pool.place(`${path}${url.search}`, text, platforms);
     if (!placed) return full();
     return relay(placed.runner, placed.response);
   }
@@ -442,7 +503,14 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     // read variables, never secrets, so only variables are added.
     const body = await readBody(request);
     if (body instanceof Response) return body;
-    const { trusted: _trusted, secrets: _secrets, lent: _lent, ...rest } = body.value;
+    // They place nothing, so `platforms` is dropped too.
+    const {
+      trusted: _trusted,
+      secrets: _secrets,
+      lent: _lent,
+      platforms: _platforms,
+      ...rest
+    } = body.value;
     const { owner, repoId } = identify(rest);
     if (isId(owner) && isId(repoId)) {
       const stored = await forRun(deps.values, deps.secretsKey, owner, repoId, false);
@@ -853,7 +921,9 @@ export async function tick(deps: Deps, minuteStart: number): Promise<TickResult>
         );
         return;
       }
-      const placed = await placeRun(deps, "", withValues);
+      // Placed like a run the app sends, on a runner with the virtual
+      // machines the pipeline's jobs run in.
+      const placed = await placeRun(deps, "", withValues, schedulePlatforms(pipeline));
       if (!placed) {
         result.skipped.push(label);
         await deps.store.settleFire(

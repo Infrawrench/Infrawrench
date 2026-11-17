@@ -1,0 +1,29 @@
+[package]
+name = "iwci-vm"
+description = "Runs a job in a virtual machine: QEMU, the machine's network and the agent conversation (`platform: linux`, `platform: windows`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iwci-vm-proto.workspace = true
+iwci-vfs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+# The job's files go to the machine, and come back, as tar archives.
+# Already in the tree through iwci-deps.
+tar = { version = "0.4.46", default-features = false }
+
+# Machines run on Linux hosts only (KVM). The machine's network is the
+# gVisor sandbox's gateway, so both go through the runner's one policy.
+[target.'cfg(target_os = "linux")'.dependencies]
+iwci-sandbox.workspace = true
+libc = "0.2"
+
+[dev-dependencies]
+# The conversation is tested against the real agent, over pipes.
+iwci-guest = { path = "../iwci-guest" }

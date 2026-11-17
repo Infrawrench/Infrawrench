@@ -6,6 +6,7 @@ pub mod env_cache;
 pub mod external;
 pub mod gem_builds;
 pub mod lent;
+pub mod machines;
 pub mod memory;
 pub mod runner;
 pub mod schedule;

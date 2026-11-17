@@ -80,6 +80,12 @@ export interface CiConcurrencyEntry {
   cancelled?: boolean;
   /** The runner has been told (or a run that never started needs no telling). */
   cancelSent?: boolean;
+  /**
+   * The platforms other than `wasm` its jobs run on (`linux`, `windows`),
+   * sorted; absent when every job runs on `wasm`, and from a row read before
+   * runners said.
+   */
+  platforms?: string[];
 }
 
 /**

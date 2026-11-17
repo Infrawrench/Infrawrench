@@ -34,6 +34,7 @@ function capacity(c: Partial<Capacity> & { name: string }): Capacity {
     v8LostHeap: null,
     split: false,
     runsHelping: 0,
+    platforms: ["wasm"],
     ...c,
   };
 }
@@ -328,6 +329,8 @@ class Runner {
   legacyHeapSpace: { total: number; used: number } | null = null;
   /** The cores it reports; a runner in the older tests reports none. */
   cpus: number | null = null;
+  /** The platforms it reports; a runner in the older tests reports none. */
+  platforms: string[] | null = null;
   constructor(
     readonly url: string,
     readonly slotsTotal: number,
@@ -353,6 +356,7 @@ class Runner {
         slots_free: this.slotsTotal - this.runs,
         runs_active: this.runs,
         ...(this.cpus === null ? {} : { cpus: this.cpus }),
+        ...(this.platforms === null ? {} : { platforms: this.platforms }),
         memory_total: this.memory.total,
         memory_used: this.memory.used,
         ...(this.memory.waiting === undefined ? {} : { memory_waiting: this.memory.waiting }),
@@ -405,10 +409,11 @@ function proxy(runners: Record<string, Runner>) {
       }),
       deps,
     );
-  const run = async () => {
+  const run = async (platforms?: string[]) => {
     const res = await call("POST", "/v1/runs", {
       repo: "https://github.com/acme/web",
       branch: "main",
+      ...(platforms === undefined ? {} : { platforms }),
     });
     return res.status === 202
       ? ((await res.json()) as { id: string }).id.split(".")[0]
@@ -646,5 +651,65 @@ describe("placement", () => {
         v8_lost_heap: 1.5 * GiB,
       }),
     ]);
+  });
+});
+
+describe("placement by platform", () => {
+  const idle = (url: string, cpus: number) => {
+    const r = new Runner(
+      url,
+      32,
+      { total: 24 * GiB, used: 0, waiting: 0 },
+      { used: 0, waiting: 0 },
+    );
+    r.cpus = cpus;
+    return r;
+  };
+
+  it("reads a runner's platforms, and `wasm` alone from one that does not say", async () => {
+    const bodies: Record<string, unknown> = {
+      new: { slots_total: 4, slots_free: 4, runs_active: 0, platforms: ["wasm", "linux", null] },
+      old: { slots_total: 4, slots_free: 4, runs_active: 0 },
+      odd: { slots_total: 4, slots_free: 4, runs_active: 0, platforms: "linux" },
+    };
+    const pool = Pool.fromList(
+      "new=http://new.test,old=http://old.test,odd=http://odd.test,gone=http://gone.test",
+      RUNNER_KEY,
+      async (input) => {
+        const host = new URL(input).hostname.split(".")[0] ?? "";
+        const body = bodies[host];
+        if (body === undefined) throw new Error("connection refused");
+        return new Response(JSON.stringify(body), {
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    expect((await pool.capacity()).map((c) => [c.name, c.platforms])).toEqual([
+      ["new", ["wasm", "linux"]],
+      ["old", ["wasm"]],
+      ["odd", ["wasm"]],
+      // A runner that did not answer runs nothing.
+      ["gone", []],
+    ]);
+  });
+
+  it("puts a run that needs a VM on the runner with it, though another would finish sooner", async () => {
+    const ci1 = idle("http://ci-1.test", 8);
+    const ci2 = idle("http://ci-2.test", 16);
+    ci1.platforms = ["wasm", "linux"];
+    const { run } = proxy({ "ci-1": ci1, "ci-2": ci2 });
+    expect(await run()).toBe("ci-2");
+    expect(await run(["linux"])).toBe("ci-1");
+    // Among the runners that have it, the usual order holds.
+    ci2.platforms = ["wasm", "linux"];
+    expect(await run(["linux"])).toBe("ci-2");
+  });
+
+  it("places it as usual when no runner has the platform", async () => {
+    const { run } = proxy({
+      "ci-1": idle("http://ci-1.test", 8),
+      "ci-2": idle("http://ci-2.test", 16),
+    });
+    expect(await run(["windows"])).toBe("ci-2");
   });
 });

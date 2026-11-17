@@ -24,7 +24,7 @@ token routes needs `Authorization: Bearer <PROXY_KEY>`.
 | `GET /healthz`                                                            | `200 ok`, unauthenticated.                                                         |
 | `GET`, `HEAD /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=`     | A job's download, for a link the app signed (below); no bearer key.                |
 | `GET`, `PUT /v1/runners`                                                  | The runners runs go to (below).                                                    |
-| `GET /v1/capacity`                                                        | Each runner's cores, slots, job memory, V8 losses, whether it answered; totals.    |
+| `GET /v1/capacity`                                                        | Each runner's cores, slots, job memory, platforms, whether it answered; totals.    |
 | `POST /v1/runs[?wait=true]`                                               | A run on the best placed runner (below). `429` only when every runner refuses.     |
 | `GET /v1/runs/{id}`, `GET /v1/runs/{id}/logs`                             | From the runner that has the run. Logs stream through as Server-Sent Events.       |
 | `POST /v1/runs/{id}/cancel`                                               | Cancels the run, or the pipelines the body names, on the runner that has it.       |
@@ -144,6 +144,31 @@ refused for the app to retry. Refusing would let it go to whichever runner
 frees up first, but the proxy cannot see what a run's jobs ask for, so it
 would also hold back runs small enough to start at once, and a schedule's
 fire that finds the pool full is skipped, not queued.
+
+### Platforms
+
+A job runs on `wasm` (an isolate, the default), `linux` (a micro VM) or
+`windows` (Windows 11 on Arm in a VM), its `platform:`. Only a runner with
+KVM and the machine images runs the last two, and it lists what it runs in
+`/v1/capacity` as `"platforms": ["wasm", "linux", "windows"]`; a runner
+from before the field runs `wasm` only. `GET /v1/capacity` passes each
+runner's list on.
+
+The app reads which platforms a run's pipelines use from
+`POST /v1/concurrency` and sends them with the run as `"platforms":
+["linux"]` (sorted, without `wasm`; absent when every job runs on `wasm`).
+A run or prepare that names some is placed, in the order above, only on
+the runners that are up, not draining and list every one of them; when
+no such runner is up, it is placed over every runner as usual, and the
+runner fails just the jobs it has no machines for, saying so, while the
+rest of the run goes on. Helpers are offered the run as before; which jobs
+a helper may take is the runners' to decide. The field is the proxy's alone and is
+taken out before any runner sees the request, since a runner refuses a
+field it does not know. It is checked loosely, so a new platform needs no
+change here: up to 8 names of up to 32 characters, or `400`. A schedule
+registered with the proxy is placed the same way, by the `platforms` the
+runner lists for each pipeline in `/v1/schedules/read` (none for a row
+read before runners said).
 
 ## Split runs
 

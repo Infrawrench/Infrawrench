@@ -1,0 +1,848 @@
+//! Running one job in one machine, start to finish.
+//!
+//! 1. Make the machine's directory: its sockets (the runner listens, QEMU
+//!    connects), its console log, and for Windows its disk overlay and its
+//!    copy of UEFI's variables.
+//! 2. Linux: make (or reuse) the workspace's erofs image.
+//! 3. Start QEMU, accept the agent's port and the network link, start the
+//!    link's bridge to the runner's gateway.
+//! 4. The conversation: hello, setup, the job's files in (on Linux only
+//!    what it starts with beyond the workspace image; on Windows all of
+//!    them), the script, and back what it left under the paths asked for
+//!    and in the run's `/tmp/workflow`.
+//! 5. Stop the machine and remove its directory, whatever happened.
+//!
+//! The job's timeout, a cancel, and a hang (no output and the machine's
+//! CPU time standing still for `stall_after`) stop the machine at once;
+//! a job stopped like that sends nothing back.
+
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+#[cfg(target_os = "linux")]
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use iwci_vfs::{JobFs, Snapshot};
+use iwci_vm_proto::{Collect, Exec, Exited, Network, PROTOCOL, Setup, Shell};
+
+use crate::agent::{Agent, Failed, Ran, Tick, Watch};
+use crate::archive::{self, Moded};
+use crate::images::{LinuxImage, WindowsImage, Workspaces};
+use crate::qemu::{self, Arch, Sockets};
+
+/// The kind of machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Os {
+    Linux,
+    Windows,
+}
+
+/// What a runner's machines are made from.
+pub struct Config {
+    /// `--machines`: `linux/` and `windows/` images (see [`crate::images`]).
+    pub dir: PathBuf,
+    /// Where workspace images and each machine's own files go.
+    pub cache: PathBuf,
+    /// The emulator; default `qemu-system-<host arch>` on `PATH`.
+    pub qemu: Option<PathBuf>,
+    /// For Windows disk overlays; default `qemu-img` on `PATH`.
+    pub qemu_img: Option<PathBuf>,
+    /// For workspace images; default `mkfs.erofs` on `PATH`.
+    pub mkfs_erofs: Option<PathBuf>,
+    /// Virtual CPUs a Linux machine gets (a Windows machine gets what its
+    /// saved state was made with, or this).
+    pub cpus: u32,
+    /// The most disk the workspace images keep.
+    pub workspace_cache_bytes: u64,
+    /// The runner's network policy, the one every job's network goes
+    /// through; `None` gives machines no network at all.
+    #[cfg(target_os = "linux")]
+    pub outside: Option<Arc<dyn iwci_sandbox::net::Outside>>,
+}
+
+/// Where a job's output goes as it is written: `true` for stderr.
+pub type OutputSink = dyn Fn(bool, &[u8]) + Sync;
+
+/// One job for [`Host::run`].
+pub struct Job<'a> {
+    pub id: &'a str,
+    pub os: Os,
+    /// The machine's memory: the job's `memory:`.
+    pub memory_bytes: u64,
+    pub timeout: Duration,
+    pub network: bool,
+    pub shell: Shell,
+    pub script: &'a str,
+    pub env: Vec<(String, String)>,
+    /// A Unix path.
+    pub cwd: &'a str,
+    /// The workspace's files and a key naming them (commit and workspace).
+    pub workspace: Option<(&'a str, &'a Snapshot)>,
+    /// The job's files: the workspace's, and what it starts with.
+    pub fs: &'a JobFs,
+    /// The run's `/tmp/workflow`, rooted at `/`, and where the job sees it.
+    pub scratch: &'a JobFs,
+    pub scratch_at: &'a str,
+    /// Unix paths whose contents come back.
+    pub collect: &'a [String],
+    /// The job's clone, which comes back without what git ignores in it.
+    pub repository: Option<&'a str>,
+    pub output: Option<&'a OutputSink>,
+    pub cancelled: &'a (dyn Fn() -> bool + Sync),
+    pub stall_after: Option<Duration>,
+    /// What each of stdout and stderr keeps for the report.
+    pub output_cap: usize,
+}
+
+/// What a machine sent back for one file system.
+#[derive(Debug, Default)]
+pub struct Collected {
+    pub deleted: Vec<PathBuf>,
+    pub entries: Vec<Moded>,
+}
+
+/// How a job's machine went.
+#[derive(Debug, Default)]
+pub struct Outcome {
+    /// How the script ended, when it ran to its end.
+    pub exited: Option<Exited>,
+    pub stdout: String,
+    pub stderr: String,
+    pub timed_out: bool,
+    pub stalled_after: Option<u64>,
+    pub cancelled: bool,
+    /// As the agent named them.
+    pub image: String,
+    pub arch: String,
+    pub boot_ms: u64,
+    pub transfer_ms: u64,
+    pub cpu_ms: u64,
+    /// For the job's files.
+    pub files: Collected,
+    /// For the run's `/tmp/workflow`, rooted at `/`.
+    pub scratch: Collected,
+    pub notes: Vec<String>,
+}
+
+/// How long a machine has to answer once started: a Linux micro VM boots
+/// in about a second; Windows, from a saved state, in seconds, and
+/// booting without one takes a minute or more.
+const LINUX_BOOT: Duration = Duration::from_secs(60);
+const WINDOWS_RESTORE: Duration = Duration::from_secs(120);
+const WINDOWS_BOOT: Duration = Duration::from_secs(600);
+/// Each of setup, writing the files and reading them back.
+const STEP: Duration = Duration::from_secs(600);
+/// What the emulator takes beyond the machine's memory.
+const LINUX_OVERHEAD: u64 = 160 << 20;
+const WINDOWS_OVERHEAD: u64 = 512 << 20;
+
+/// A runner's machines.
+pub struct Host {
+    config: Config,
+    arch: Option<Arch>,
+    qemu: Option<PathBuf>,
+    linux: Option<LinuxImage>,
+    windows: Option<WindowsImage>,
+    qemu_img: Option<PathBuf>,
+    workspaces: Option<Workspaces>,
+    problems: Vec<String>,
+}
+
+/// `name` on `PATH`, or `path` when given and present.
+fn find(path: Option<&Path>, name: &str) -> Option<PathBuf> {
+    if let Some(path) = path {
+        return path.is_file().then(|| path.to_path_buf());
+    }
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(name))
+            .find(|p| p.is_file())
+    })
+}
+
+fn kvm() -> Result<(), String> {
+    std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/kvm")
+        .map(drop)
+        .map_err(|e| {
+            format!("/dev/kvm: {e} (KVM: on x86_64 a host with VT-x or AMD-V, on Graviton a `.metal` instance; the runner's user in the `kvm` group)")
+        })
+}
+
+impl Host {
+    /// Looks at what the host and `config.dir` have. A kind of machine that
+    /// cannot run is left off, and [`Host::problems`] says why.
+    pub fn open(config: Config) -> Host {
+        let mut problems = Vec::new();
+        let arch = Arch::host();
+        let mut host = Host {
+            arch,
+            qemu: None,
+            linux: None,
+            windows: None,
+            qemu_img: None,
+            workspaces: None,
+            problems: Vec::new(),
+            config,
+        };
+        if !cfg!(target_os = "linux") {
+            problems.push("virtual machines need a Linux host with KVM".into());
+            host.problems = problems;
+            return host;
+        }
+        let Some(arch) = arch else {
+            problems.push(format!(
+                "no machines for this host's architecture ({})",
+                std::env::consts::ARCH
+            ));
+            host.problems = problems;
+            return host;
+        };
+        if let Err(e) = kvm() {
+            problems.push(e);
+            host.problems = problems;
+            return host;
+        }
+        host.qemu = find(host.config.qemu.as_deref(), arch.qemu());
+        if host.qemu.is_none() {
+            problems.push(format!(
+                "{} is not installed (QEMU 8.2 or later)",
+                arch.qemu()
+            ));
+            host.problems = problems;
+            return host;
+        }
+        match LinuxImage::open(&host.config.dir.join("linux"), arch.name()) {
+            Ok(image) => match find(host.config.mkfs_erofs.as_deref(), "mkfs.erofs") {
+                Some(mkfs) => {
+                    host.workspaces = Some(Workspaces::new(
+                        host.config.cache.join("workspaces"),
+                        mkfs,
+                        host.config.workspace_cache_bytes,
+                    ));
+                    host.linux = Some(image);
+                }
+                None => problems
+                    .push("Linux: mkfs.erofs is not installed (erofs-utils 1.7 or later)".into()),
+            },
+            Err(e) => problems.push(format!("Linux: {e}")),
+        }
+        match WindowsImage::open(&host.config.dir.join("windows"), arch.name()) {
+            Ok(image) => match find(host.config.qemu_img.as_deref(), "qemu-img") {
+                Some(img) => {
+                    host.qemu_img = Some(img);
+                    host.windows = Some(image);
+                }
+                None => problems.push("Windows: qemu-img is not installed".into()),
+            },
+            Err(e) => problems.push(format!("Windows: {e}")),
+        }
+        host.problems = problems;
+        host
+    }
+
+    /// The kinds of machine it can start.
+    pub fn platforms(&self) -> Vec<Os> {
+        let mut out = Vec::new();
+        if self.linux.is_some() {
+            out.push(Os::Linux);
+        }
+        if self.windows.is_some() {
+            out.push(Os::Windows);
+        }
+        out
+    }
+
+    /// Why a kind of machine is not offered, for the runner's log.
+    pub fn problems(&self) -> &[String] {
+        &self.problems
+    }
+
+    /// What a machine of `os` takes beyond its memory.
+    pub fn overhead(&self, os: Os) -> u64 {
+        match os {
+            Os::Linux => LINUX_OVERHEAD,
+            Os::Windows => WINDOWS_OVERHEAD,
+        }
+    }
+
+    /// Runs `job` in a fresh machine. An `Err` is the runner's failure
+    /// (the machine did not start, the agent broke off): the job is not
+    /// to blame and its report says so.
+    pub fn run(&self, job: Job<'_>) -> Result<Outcome, String> {
+        let dir =
+            self.config
+                .cache
+                .join("machines")
+                .join(format!("{}-{}", sanitise(job.id), unique()));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let result = self.run_in(&dir, job);
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    fn run_in(&self, dir: &Path, job: Job<'_>) -> Result<Outcome, String> {
+        let arch = self.arch.ok_or("no machines on this host")?;
+        let qemu_bin = self.qemu.as_ref().ok_or("QEMU is not installed")?;
+        let started = Instant::now();
+        let memory_mib = job.memory_bytes.div_ceil(1 << 20);
+        let sockets = Sockets {
+            agent: dir.join("agent.sock"),
+            // A Windows machine's saved state has a network device, so it
+            // always gets a link; one without a network gets a dead end.
+            net: (job.network || job.os == Os::Windows).then(|| dir.join("net.sock")),
+            console: dir.join("console.log"),
+        };
+        let agent_listener = listen(&sockets.agent)?;
+        let net_listener = sockets.net.as_deref().map(listen).transpose()?;
+
+        let (args, boot): (Vec<OsString>, Duration) = match job.os {
+            Os::Linux => {
+                let image = self
+                    .linux
+                    .as_ref()
+                    .ok_or("this runner has no Linux image")?;
+                let workspace = match job.workspace {
+                    Some((key, snapshot)) => self
+                        .workspaces
+                        .as_ref()
+                        .ok_or("no workspace images")?
+                        .image(key, snapshot)?,
+                    None => None,
+                };
+                let args = qemu::linux_args(&qemu::Linux {
+                    arch,
+                    kernel: &image.kernel,
+                    rootfs: &image.rootfs,
+                    workspace: workspace.as_deref(),
+                    memory_mib,
+                    cpus: self.config.cpus,
+                    sockets: &sockets,
+                });
+                (args, LINUX_BOOT)
+            }
+            Os::Windows => {
+                let image = self
+                    .windows
+                    .as_ref()
+                    .ok_or("this runner has no Windows image")?;
+                let cpus = self.config.cpus.max(2);
+                let restore = image.state(memory_mib, cpus);
+                // A restored machine's disk goes on its state's own disk,
+                // which holds what that boot wrote; a cold boot's on the
+                // installed system.
+                let base = restore.as_ref().map_or(&image.disk, |r| &r.disk);
+                let disk = dir.join("disk.qcow2");
+                let made = Command::new(self.qemu_img.as_ref().ok_or("qemu-img is missing")?)
+                    .args(["create", "-q", "-f", "qcow2", "-F", "qcow2", "-b"])
+                    .arg(base)
+                    .arg(&disk)
+                    .stdin(Stdio::null())
+                    .output()
+                    .map_err(|e| format!("qemu-img: {e}"))?;
+                if !made.status.success() {
+                    return Err(format!(
+                        "qemu-img: {}",
+                        String::from_utf8_lossy(&made.stderr).trim()
+                    ));
+                }
+                let vars = dir.join("efi-vars.fd");
+                std::fs::copy(&image.vars, &vars).map_err(|e| format!("UEFI variables: {e}"))?;
+                let args = qemu::windows_args(&qemu::Windows {
+                    machine: image.machine(),
+                    firmware: &image.firmware,
+                    vars: &vars,
+                    disk: &disk,
+                    memory_mib,
+                    cpus,
+                    sockets: &sockets,
+                    incoming: restore.as_ref().map(|r| r.state.as_path()),
+                });
+                (
+                    args,
+                    if restore.is_some() {
+                        WINDOWS_RESTORE
+                    } else {
+                        WINDOWS_BOOT
+                    },
+                )
+            }
+        };
+
+        let log = std::fs::File::create(dir.join("qemu.log"))
+            .map_err(|e| format!("the emulator's log: {e}"))?;
+        let child = Command::new(qemu_bin)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().map_err(|e| e.to_string())?)
+            .stderr(log)
+            .spawn()
+            .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
+        let mut machine = Machine {
+            child,
+            dir: dir.to_path_buf(),
+            bridge: Vec::new(),
+            #[cfg(target_os = "linux")]
+            gateway: None,
+        };
+        let deadline = started + boot.min(job.timeout + boot);
+        let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
+        if let Some(listener) = &net_listener {
+            let stream = machine.accept(listener, deadline, job.cancelled)?;
+            self.connect_link(&mut machine, stream, job.network)?;
+        }
+
+        let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
+        let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
+        let left = deadline.saturating_duration_since(Instant::now());
+        let hello = agent
+            .hello(left.max(Duration::from_secs(5)))
+            .map_err(|e| machine.failed(e))?;
+        if hello.protocol != PROTOCOL {
+            return Err(format!(
+                "the machine's agent speaks protocol {}, this runner {PROTOCOL}: the image needs rebuilding with this runner's agent",
+                hello.protocol
+            ));
+        }
+        let mut outcome = Outcome {
+            image: hello.image.clone(),
+            arch: hello.arch.clone(),
+            boot_ms: started.elapsed().as_millis() as u64,
+            ..Default::default()
+        };
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        agent
+            .setup(
+                Setup {
+                    protocol: PROTOCOL,
+                    time_ms: now_ms,
+                    hostname: "iwci".into(),
+                    network: job.network.then(Network::standard),
+                },
+                STEP,
+            )
+            .map_err(|e| machine.failed(e))?;
+
+        // The job's files: on Linux what it has beyond the workspace image
+        // (artifacts it was handed, what it is lent, caches it restored),
+        // on Windows everything. The run's scratch either way.
+        let transfer = Instant::now();
+        let files = match job.os {
+            Os::Linux => archive::own(job.fs),
+            Os::Windows => archive::whole(job.fs),
+        };
+        let scratch = archive::whole(job.scratch);
+        agent
+            .put(&[("/", &files), (job.scratch_at, &scratch)], STEP)
+            .map_err(|e| machine.failed(e))?;
+        let mut transfer_ms = transfer.elapsed().as_millis() as u64;
+
+        // The script, until it ends or is stopped.
+        let env = match job.os {
+            Os::Linux => job.env.clone(),
+            Os::Windows => windows_env(job.env.clone()),
+        };
+        let run_started = Instant::now();
+        let run_deadline = run_started + job.timeout;
+        let pid = machine.child.id();
+        let mut last_progress = Instant::now();
+        let mut last_cpu = qemu::cpu_ms(pid).unwrap_or(0);
+        let mut last_cpu_at = Instant::now();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut stop: Option<&'static str> = None;
+        let ran = agent.exec(
+            Exec {
+                shell: job.shell,
+                script: job.script.into(),
+                env,
+                cwd: job.cwd.into(),
+            },
+            Duration::from_millis(500),
+            &mut |tick| {
+                if let Tick::Output(err, data) = tick {
+                    let buf = if err { &mut stderr } else { &mut stdout };
+                    let room = job.output_cap.saturating_sub(buf.len());
+                    buf.extend_from_slice(&data[..data.len().min(room)]);
+                    if let Some(out) = job.output {
+                        out(err, data);
+                    }
+                    last_progress = Instant::now();
+                }
+                if (job.cancelled)() {
+                    stop = Some("cancelled");
+                    return Watch::Stop;
+                }
+                if Instant::now() >= run_deadline {
+                    stop = Some("timeout");
+                    return Watch::Stop;
+                }
+                if let Some(stall) = job.stall_after {
+                    // The machine's CPU time moving counts as progress: a
+                    // compile prints nothing for minutes. An idle machine
+                    // still spends a little on its timers, so it has to
+                    // move by more than 2% of the time that passed.
+                    if last_cpu_at.elapsed() >= Duration::from_secs(5) {
+                        let cpu = qemu::cpu_ms(pid).unwrap_or(last_cpu);
+                        let wall = last_cpu_at.elapsed().as_millis() as u64;
+                        if cpu.saturating_sub(last_cpu) * 50 > wall {
+                            last_progress = Instant::now();
+                        }
+                        last_cpu = cpu;
+                        last_cpu_at = Instant::now();
+                    }
+                    if last_progress.elapsed() >= stall {
+                        stop = Some("stalled");
+                        return Watch::Stop;
+                    }
+                }
+                Watch::Continue
+            },
+        );
+        outcome.cpu_ms = qemu::cpu_ms(pid).unwrap_or(0);
+        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        outcome.stdout = text(&stdout);
+        outcome.stderr = text(&stderr);
+        match ran.map_err(|e| machine.failed(e))? {
+            Ran::Stopped => {
+                match stop {
+                    Some("cancelled") => outcome.cancelled = true,
+                    Some("stalled") => {
+                        outcome.stalled_after = job.stall_after.map(|d| d.as_secs());
+                    }
+                    _ => outcome.timed_out = true,
+                }
+                outcome.notes.push(
+                    "the machine was stopped, so nothing it wrote was kept (artifacts, downloads, caches and `/tmp/workflow`)"
+                        .into(),
+                );
+                outcome.transfer_ms = transfer_ms;
+                return Ok(outcome);
+            }
+            Ran::Exited(exited) => outcome.exited = Some(exited),
+        }
+
+        // What it left, for the scheduler to read as any job's files.
+        let back = Instant::now();
+        let mut paths: Vec<String> = job.collect.to_vec();
+        paths.push(job.scratch_at.to_string());
+        let (collected, entries, done) = agent
+            .collect(
+                Collect {
+                    paths,
+                    repository: job.repository.map(str::to_owned),
+                    // Its files are held to its memory, as any job's are,
+                    // and the scratch to the run's room on top.
+                    max_bytes: job.memory_bytes.saturating_mul(2),
+                },
+                STEP,
+            )
+            .map_err(|e| machine.failed(e))?;
+        if done.truncated {
+            outcome
+                .notes
+                .push("what the job left was cut short at twice its memory".into());
+        }
+        let scratch_at = Path::new(job.scratch_at);
+        for path in collected.deleted {
+            let path = PathBuf::from(path);
+            match path.strip_prefix(scratch_at) {
+                Ok(rest) => outcome.scratch.deleted.push(Path::new("/").join(rest)),
+                Err(_) => outcome.files.deleted.push(path),
+            }
+        }
+        for (entry, mode) in entries {
+            match rebase(&entry, scratch_at) {
+                Some(inside) => outcome.scratch.entries.push((inside, mode)),
+                None if is_parent(&entry, scratch_at) => {}
+                None => outcome.files.entries.push((entry, mode)),
+            }
+        }
+        if !hello.modes {
+            // Windows has no Unix modes to give: each file keeps its own.
+            for (_, mode) in outcome
+                .files
+                .entries
+                .iter_mut()
+                .chain(outcome.scratch.entries.iter_mut())
+            {
+                *mode = None;
+            }
+        }
+        transfer_ms += back.elapsed().as_millis() as u64;
+        outcome.transfer_ms = transfer_ms;
+        agent.shutdown();
+        Ok(outcome)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn connect_link(
+        &self,
+        machine: &mut Machine,
+        stream: std::os::unix::net::UnixStream,
+        network: bool,
+    ) -> Result<(), String> {
+        match (&self.config.outside, network) {
+            (Some(outside), true) => {
+                let (gateway, link) =
+                    iwci_sandbox::net::Gateway::start(iwci_sandbox::net::Network {
+                        outside: outside.clone(),
+                        services: Vec::new(),
+                    })
+                    .map_err(|e| format!("the machine's network: {e}"))?;
+                machine.gateway = Some(gateway);
+                machine.bridge = crate::link::bridge::start(stream, link)
+                    .map_err(|e| format!("the machine's network: {e}"))?;
+            }
+            _ => {
+                machine.bridge = vec![
+                    crate::link::bridge::sink(stream)
+                        .map_err(|e| format!("the machine's network: {e}"))?,
+                ];
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn connect_link(
+        &self,
+        _machine: &mut Machine,
+        _stream: std::os::unix::net::UnixStream,
+        _network: bool,
+    ) -> Result<(), String> {
+        Err("virtual machines need a Linux host".into())
+    }
+}
+
+/// A running emulator, stopped and cleaned up when dropped.
+struct Machine {
+    child: Child,
+    dir: PathBuf,
+    bridge: Vec<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "linux")]
+    gateway: Option<iwci_sandbox::net::Gateway>,
+}
+
+impl Machine {
+    /// Accepts QEMU's connection to `listener` by `deadline`, giving up as
+    /// soon as QEMU exits or the job is cancelled.
+    fn accept(
+        &mut self,
+        listener: &std::os::unix::net::UnixListener,
+        deadline: Instant,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Result<std::os::unix::net::UnixStream, String> {
+        listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+        loop {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    stream.set_nonblocking(false).map_err(|e| e.to_string())?;
+                    return Ok(stream);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) => return Err(e.to_string()),
+            }
+            if let Ok(Some(status)) = self.child.try_wait() {
+                return Err(format!(
+                    "the emulator exited ({status}) before the machine started{}",
+                    self.tail()
+                ));
+            }
+            if cancelled() {
+                return Err("the run was cancelled while the machine started".into());
+            }
+            if Instant::now() >= deadline {
+                return Err(format!("the machine did not start in time{}", self.tail()));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The end of the emulator's and the console's logs, for an error.
+    fn tail(&self) -> String {
+        let mut out = String::new();
+        for name in ["qemu.log", "console.log"] {
+            let Ok(text) = std::fs::read_to_string(self.dir.join(name)) else {
+                continue;
+            };
+            let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+            let start = lines.len().saturating_sub(12);
+            if start < lines.len() {
+                out.push_str(&format!("\n{name}:\n{}", lines[start..].join("\n")));
+            }
+        }
+        out
+    }
+
+    /// An agent failure as the runner's error, with the logs.
+    fn failed(&mut self, e: Failed) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        format!("{e}{}", self.tail())
+    }
+}
+
+impl Drop for Machine {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        #[cfg(target_os = "linux")]
+        if let Some(mut gateway) = self.gateway.take() {
+            gateway.stop();
+        }
+        for pump in self.bridge.drain(..) {
+            let _ = pump.join();
+        }
+    }
+}
+
+fn listen(path: &Path) -> Result<std::os::unix::net::UnixListener, String> {
+    let _ = std::fs::remove_file(path);
+    std::os::unix::net::UnixListener::bind(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The job's variables as a Windows job sees them: its two runner paths
+/// on the system drive, and no `HOME` (the runner's `/root`); Windows has
+/// its own.
+pub fn windows_env(env: Vec<(String, String)>) -> Vec<(String, String)> {
+    env.into_iter()
+        .filter(|(k, _)| k != "HOME")
+        .map(|(k, v)| {
+            if (k == "IWCI_OUTPUT" || k == "IWCI_SCRATCH") && v.starts_with('/') {
+                let mapped = iwci_vm_proto::windows_path(&v);
+                (k, mapped)
+            } else {
+                (k, v)
+            }
+        })
+        .collect()
+}
+
+/// `entry` moved from under `at` to under `/`, or `None` when it is not
+/// under `at`.
+fn rebase(entry: &iwci_vfs::Entry, at: &Path) -> Option<iwci_vfs::Entry> {
+    use iwci_vfs::Entry;
+    let moved = |path: &Path| path.strip_prefix(at).ok().map(|r| Path::new("/").join(r));
+    Some(match entry {
+        Entry::Dir { path } => Entry::Dir { path: moved(path)? },
+        Entry::File { path, data } => Entry::File {
+            path: moved(path)?,
+            data: data.clone(),
+        },
+        Entry::Symlink { path, target } => Entry::Symlink {
+            path: moved(path)?,
+            target: target.clone(),
+        },
+    })
+}
+
+/// A directory on the way to `at` (`/tmp` for `/tmp/workflow`).
+fn is_parent(entry: &iwci_vfs::Entry, at: &Path) -> bool {
+    matches!(entry, iwci_vfs::Entry::Dir { path } if at.starts_with(path))
+}
+
+fn sanitise(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .take(48)
+        .collect()
+}
+
+fn unique() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_windows_job_sees_its_runner_paths_on_the_system_drive() {
+        let env = windows_env(vec![
+            ("HOME".into(), "/root".into()),
+            ("IWCI_OUTPUT".into(), "/iwci/output".into()),
+            ("IWCI_SCRATCH".into(), "/tmp/workflow".into()),
+            ("OTHER".into(), "/app".into()),
+        ]);
+        assert_eq!(
+            env,
+            [
+                ("IWCI_OUTPUT".to_string(), "C:\\iwci\\output".to_string()),
+                ("IWCI_SCRATCH".to_string(), "C:\\tmp\\workflow".to_string()),
+                ("OTHER".to_string(), "/app".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn scratch_entries_are_rebased_and_their_parents_dropped() {
+        use iwci_vfs::Entry;
+        let at = Path::new("/tmp/workflow");
+        let file = Entry::File {
+            path: "/tmp/workflow/a/b".into(),
+            data: b"x".to_vec().into(),
+        };
+        assert_eq!(
+            rebase(&file, at),
+            Some(Entry::File {
+                path: "/a/b".into(),
+                data: b"x".to_vec().into()
+            })
+        );
+        assert_eq!(
+            rebase(
+                &Entry::Dir {
+                    path: "/app".into()
+                },
+                at
+            ),
+            None
+        );
+        assert!(is_parent(
+            &Entry::Dir {
+                path: "/tmp".into()
+            },
+            at
+        ));
+        assert!(!is_parent(
+            &Entry::Dir {
+                path: "/app".into()
+            },
+            at
+        ));
+    }
+
+    #[test]
+    fn a_host_without_kvm_offers_nothing_and_says_why() {
+        let host = Host::open(Config {
+            dir: "/nonexistent".into(),
+            cache: std::env::temp_dir(),
+            qemu: None,
+            qemu_img: None,
+            mkfs_erofs: None,
+            cpus: 2,
+            workspace_cache_bytes: 1 << 30,
+            #[cfg(target_os = "linux")]
+            outside: None,
+        });
+        if std::path::Path::new("/dev/kvm").exists() {
+            // A host with KVM still has no images under /nonexistent.
+            assert!(host.platforms().is_empty());
+        } else {
+            assert!(host.platforms().is_empty());
+            assert!(!host.problems().is_empty());
+        }
+    }
+}

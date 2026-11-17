@@ -340,6 +340,16 @@ pub struct Job {
     /// app. See [`Cloud`].
     #[serde(default)]
     pub cloud: Option<CloudField>,
+    /// What the job runs on: `wasm` (the default, a Wasmer isolate on the
+    /// runner), `linux` or `windows` (a virtual machine the runner starts
+    /// for it), or `{ os, image }`. See [`PlatformField`].
+    #[serde(default)]
+    pub platform: Option<PlatformField>,
+    /// The interpreter of a `platform: linux` or `platform: windows` job's
+    /// `run:` script: `bash`, `sh` or `pwsh` on Linux (default `bash`),
+    /// `pwsh`, `powershell`, `cmd` or `bash` on Windows (default `pwsh`).
+    #[serde(default)]
+    pub shell: Option<String>,
     /// Infrawrench connections whose credentials are lent to the job (a
     /// kubeconfig, an SSH host entry): names, or `{ name, namespace }`.
     #[serde(default)]
@@ -483,6 +493,41 @@ impl<'de> Deserialize<'de> for CloudField {
                 .map_err(serde::de::Error::custom),
             _ => Err(serde::de::Error::custom(
                 "`cloud` is `<provider>/<kind>` or `{ provider, kind, ... }`",
+            )),
+        }
+    }
+}
+
+/// `platform: linux`, or `platform: { os: linux, image: ubuntu-24.04 }`.
+/// Deserialised by hand, like [`CloudField`], so an unknown key in the map
+/// form is reported as such.
+#[derive(Debug, Clone)]
+pub enum PlatformField {
+    Short(String),
+    Full(Platform),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Platform {
+    /// `wasm`, `linux` or `windows`.
+    #[serde(default)]
+    pub os: Option<String>,
+    /// The machine image; each `os` has a default.
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for PlatformField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(PlatformField::Short(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(PlatformField::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`platform` is `wasm`, `linux`, `windows` or `{ os, image }`",
             )),
         }
     }

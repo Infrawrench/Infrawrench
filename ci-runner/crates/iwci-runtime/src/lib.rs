@@ -607,6 +607,19 @@ impl Runtime {
         self
     }
 
+    /// Where jobs may connect and how names resolve, as one policy object
+    /// for anything else that gives a job a network: a virtual machine's
+    /// link goes through the same gateway a sandbox's does, so every kind
+    /// of job reaches exactly the same places. `None` until
+    /// [`Runtime::with_internet`].
+    #[cfg(target_os = "linux")]
+    pub fn outside(&self) -> Option<Arc<dyn iwci_sandbox::net::Outside>> {
+        self.wasix
+            .outside
+            .clone()
+            .map(|o| o as Arc<dyn iwci_sandbox::net::Outside>)
+    }
+
     /// Runs jobs inside their gVisor sandbox (`inside`): over the sandbox's
     /// own network stack, with `natives` (command name and path) on a
     /// script's `PATH`.

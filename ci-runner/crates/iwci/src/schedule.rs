@@ -27,6 +27,7 @@
 //! key waits for that run's entry rather than compute it too: see
 //! [`InFlight`] and the `inflight` module.
 
+use iwci_vm_proto::gitignore::GitIgnore;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -487,6 +488,29 @@ pub struct Execution {
     /// what the sandbox itself took and what it reserved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxUsage>,
+    /// The job ran in a virtual machine (`platform: linux` or `windows`):
+    /// which, how long it took to start, and what it reserved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<MachineUsage>,
+}
+
+/// What a job's virtual machine was and took.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct MachineUsage {
+    /// `linux` or `windows`.
+    pub os: String,
+    /// The image, as the machine's agent names it (`ubuntu-24.04`).
+    pub image: String,
+    /// `x86_64` or `aarch64`.
+    pub arch: String,
+    /// From starting the emulator to the agent answering.
+    pub boot_ms: u64,
+    /// Writing the job's files into it, and reading back what it left.
+    pub transfer_ms: u64,
+    /// What the runner reserved for it on top of the job's `memory:`.
+    pub reserved_mib: u64,
+    /// The CPU time the whole machine used, as the host saw it.
+    pub cpu_ms: u64,
 }
 
 /// What a job's gVisor sandbox took besides the job: its peak and held
@@ -744,6 +768,9 @@ pub struct Options {
     /// that missed waits for theirs rather than compute it too; `None`
     /// never waits.
     pub inflight: Option<Arc<dyn InFlight>>,
+    /// The runner's virtual machines, for `platform: linux` and
+    /// `platform: windows` jobs; `None` fails such jobs, saying so.
+    pub machines: Option<Arc<dyn crate::machines::Machines>>,
 }
 
 impl Options {
@@ -2105,7 +2132,13 @@ pub fn run<T: Tools>(
         .iter()
         .map(|(id, ms)| (id.clone(), *ms))
         .collect();
-    let sandbox = |job: &PlannedJob| sandbox_need(tools, job);
+    // A virtual machine is reserved like a sandbox: its own overhead on
+    // top of the job's `memory:`, and it stays with the runner that has
+    // the run.
+    let sandbox = |job: &PlannedJob| match &job.vm {
+        Some(vm) => Some(options.machines.as_ref().map_or(0, |m| m.overhead(vm.os))),
+        None => sandbox_need(tools, job),
+    };
     let state = Mutex::new(State {
         sandbox: &sandbox,
         waiting: plan.jobs.iter().collect(),
@@ -3180,9 +3213,24 @@ fn run_job<T: Tools>(
             );
         }
     };
-    let tool = match tools.resolve(&job.tool) {
-        Ok(t) => t,
-        Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
+    // A job in a virtual machine has no tool on the runner: the machine's
+    // image is its environment. A runner without such machines fails it
+    // before anything is built for it.
+    let tool = match &job.vm {
+        Some(vm) => {
+            if !options
+                .machines
+                .as_ref()
+                .is_some_and(|m| m.platforms().contains(&vm.os))
+            {
+                return errored(job, crate::machines::missing(vm.os), started.elapsed());
+            }
+            None
+        }
+        None => match tools.resolve(&job.tool) {
+            Ok(t) => Some(t),
+            Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
+        },
     };
     let mut path_tools = Vec::with_capacity(job.tools.len());
     for t in &job.tools {
@@ -3338,9 +3386,9 @@ fn run_job<T: Tools>(
         cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
     }
     // The environment's own caches, which `env-cache:` can turn off.
-    let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
-        Some(store) => tools
-            .env_caches(&tool)
+    let env_caches: Vec<crate::env_cache::Active> = match (&options.caches, &tool) {
+        (Some(store), Some(tool)) => tools
+            .env_caches(tool)
             .into_iter()
             .filter(|c| job.env_cache.keeps(&c.name))
             .map(|c| {
@@ -3354,7 +3402,7 @@ fn run_job<T: Tools>(
                 )
             })
             .collect(),
-        None => Vec::new(),
+        _ => Vec::new(),
     };
 
     let mut env = options.base_env.clone();
@@ -3442,25 +3490,55 @@ fn run_job<T: Tools>(
         let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
         sink
     });
-    let executed = executor.execute(
-        &tool,
-        &path_tools,
-        &services,
-        &job.action,
-        Invocation {
+    let executed = match (&job.vm, &tool, &options.machines) {
+        (Some(vm), _, Some(machines)) => machines.run(crate::machines::MachineRun {
             job,
+            vm,
+            workspace: &workspace.snapshot,
+            workspace_key: format!(
+                "{}:{}",
+                plan.context().commit_sha,
+                plan.workspaces[job.workspace].key
+            ),
             fs: &fs,
             scratch: shared.scratch,
             env,
-            path: &workspace.path,
+            cwd: job.cwd.clone(),
+            collect: crate::machines::collect_paths(
+                job,
+                root.as_deref(),
+                OUTPUT_PATH,
+                options.caches.is_some(),
+            ),
             log,
             cancel,
-            memory_watch: gauge.map(|gauge| {
-                let watch: iwci_runtime::MemoryWatch = Arc::new(move |bytes| gauge.program(bytes));
-                watch
-            }),
-        },
-    );
+        }),
+        (None, Some(tool), _) => executor.execute(
+            tool,
+            &path_tools,
+            &services,
+            &job.action,
+            Invocation {
+                job,
+                fs: &fs,
+                scratch: shared.scratch,
+                env,
+                path: &workspace.path,
+                log,
+                cancel,
+                memory_watch: gauge.map(|gauge| {
+                    let watch: iwci_runtime::MemoryWatch =
+                        Arc::new(move |bytes| gauge.program(bytes));
+                    watch
+                }),
+            },
+        ),
+        // Checked when the tool was: a job in a machine on a runner
+        // without machines never gets here.
+        _ => Err(crate::machines::missing(
+            job.vm.as_ref().map_or(iwci_spec::VmOs::Linux, |v| v.os),
+        )),
+    };
     if let Some(sink) = &line_sink {
         sink.flush();
     }
@@ -3489,11 +3567,21 @@ fn run_job<T: Tools>(
             .any(|c| path == std::path::Path::new(c) || path.starts_with(c))
     };
     let changes: Vec<Change> = match &root {
-        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => fs
-            .changes(root)
-            .into_iter()
-            .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()))
-            .collect(),
+        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => {
+            // What git ignores is no change to the repository either: a job
+            // that installs `node_modules` or builds `target` changed
+            // nothing, as `git status` would say. A file the clone had is
+            // still one, whatever its rules say now.
+            let rules = GitIgnore::new(root, |path: &str| fs.read(path).ok());
+            let ignored = |c: &Change| {
+                matches!(c, Change::Added { .. })
+                    && c.path().to_str().is_some_and(|p| rules.ignored(p, false))
+            };
+            fs.changes(root)
+                .into_iter()
+                .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()) && !ignored(c))
+                .collect()
+        }
         _ => Vec::new(),
     };
     let changed: Vec<ChangedFile> = changes
@@ -4503,6 +4591,7 @@ fn replay(
             service_failure: None,
             cancelled: false,
             sandbox: None,
+            machine: None,
         }),
         changes: Vec::new(),
         commit: None,

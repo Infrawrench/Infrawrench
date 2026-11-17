@@ -219,6 +219,7 @@ pub(super) fn open_runner(
     // runs a job per vCPU, as many at once as `--cpus`. Either way a job
     // with `cpus:` holds that many vCPUs' slots.
     let per_cpu = if shared_slots { limits.jobs_per_cpu } else { 1 };
+    let machines = machines(args, &cache, limits.stall_after, &runtime)?;
     Ok(Runner {
         runtime: Arc::new(runtime),
         store,
@@ -246,7 +247,42 @@ pub(super) fn open_runner(
         helping: None,
         #[cfg(target_os = "linux")]
         sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
+        machines,
     })
+}
+
+/// `--machines <dir>` (or `IWCI_MACHINES`): the virtual machine images
+/// `platform: linux` and `platform: windows` jobs run in, as
+/// `ci-runner/images/` builds them. `--machine-cpus <n>` (default 2) is
+/// what each machine gets. Off by default: such jobs then fail, saying so.
+fn machines(
+    args: &mut Args,
+    cache: &std::path::Path,
+    stall_after: Option<Duration>,
+    runtime: &iwci_runtime::Runtime,
+) -> Result<Option<Arc<dyn crate::machines::Machines>>, String> {
+    let cpus = match args.value("--machine-cpus")? {
+        None => 2,
+        Some(text) => text
+            .parse::<u32>()
+            .ok()
+            .filter(|n| (1..=64).contains(n))
+            .ok_or_else(|| format!("--machine-cpus takes 1 to 64, not `{text}`"))?,
+    };
+    let dir = match args.value("--machines")? {
+        Some(dir) => dir,
+        None => match std::env::var("IWCI_MACHINES") {
+            Ok(dir) if !dir.is_empty() => dir,
+            _ => return Ok(None),
+        },
+    };
+    Ok(crate::adapters::machines::open(
+        dir.into(),
+        cache.join("machines"),
+        cpus,
+        stall_after,
+        runtime,
+    ))
 }
 
 /// `--native-sandbox <dir>` (or `IWCI_NATIVE_SANDBOX`): gVisor's release,

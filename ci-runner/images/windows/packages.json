@@ -1,0 +1,179 @@
+{
+  "$comment": "The toolset of the windows-11-arm machine image, read by setup.ps1 inside the machine (and listed in images/README.md). Every entry is native ARM64. `winget` entries install that exact version with winget, which checks the installer against the sha256 in the winget-pkgs manifest for it; `msi` and `exe` entries are downloaded from the publisher and checked against the sha256 here. `path` entries (wildcards allowed) are added to the machine PATH and `env` entries set as machine environment variables, after the install. A changed entry is a new image version. `check` commands run in a fresh cmd.exe at the end of setup; any that fails fails the build.",
+  "winget": {
+    "$comment": "winget itself, installed before anything else rather than trusting whichever App Installer the ISO carries (a fresh install registers it only asynchronously, after the Store runs). From https://github.com/microsoft/winget-cli/releases/tag/v1.29.380; the sums are the release's published ones.",
+    "version": "1.29.380",
+    "bundle": {
+      "url": "https://github.com/microsoft/winget-cli/releases/download/v1.29.380/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle",
+      "sha256": "65DEA9C01CE08EE7B763366B27C0E651F97DB857C11CA9B9C301826C10092F2E"
+    },
+    "dependencies": {
+      "url": "https://github.com/microsoft/winget-cli/releases/download/v1.29.380/DesktopAppInstaller_Dependencies.zip",
+      "sha256": "BA875AFE9D190F61218985AC0292A99D1DB710BF93E13C68944CA9D89F0D82D1",
+      "folder": "arm64"
+    }
+  },
+  "packages": [
+    {
+      "name": "Git for Windows (with Git LFS and Git Bash)",
+      "source": "winget",
+      "id": "Git.Git",
+      "version": "2.56.0.4",
+      "path": ["C:\\Program Files\\Git\\cmd", "C:\\Program Files\\Git\\bin"],
+      "check": ["git --version", "git lfs version", "bash --version"]
+    },
+    {
+      "name": "PowerShell 7 (7.6, the LTS line)",
+      "source": "msi",
+      "version": "7.6.10",
+      "url": "https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-arm64.msi",
+      "sha256": "732AF00C51162ECB6826BA630F19BF6536C3CE7C3B740160660DDCFB51606780",
+      "arguments": "ADD_PATH=1 REGISTER_MANIFEST=1 ENABLE_PSREMOTING=0 DISABLE_TELEMETRY=1 USE_MU=0 ENABLE_MU=0",
+      "path": ["C:\\Program Files\\PowerShell\\7"],
+      "check": ["pwsh --version"]
+    },
+    {
+      "name": "7-Zip (also reads and writes xz)",
+      "source": "winget",
+      "id": "7zip.7zip",
+      "version": "26.06",
+      "path": ["C:\\Program Files\\7-Zip"],
+      "check": ["7z i"]
+    },
+    {
+      "name": "jq",
+      "source": "winget",
+      "id": "jqlang.jq",
+      "version": "1.8.2",
+      "check": ["jq --version"]
+    },
+    {
+      "name": "yq",
+      "source": "winget",
+      "id": "MikeFarah.yq",
+      "version": "4.54.3",
+      "check": ["yq --version"]
+    },
+    {
+      "name": "wget",
+      "source": "winget",
+      "id": "JernejSimoncic.Wget",
+      "version": "1.21.4",
+      "check": ["wget --version"]
+    },
+    {
+      "name": "SQLite command-line tools",
+      "source": "winget",
+      "id": "SQLite.SQLite",
+      "version": "3.54.1",
+      "check": ["sqlite3 --version"]
+    },
+    {
+      "name": "CMake",
+      "source": "winget",
+      "id": "Kitware.CMake",
+      "version": "4.4.4",
+      "installerType": "wix",
+      "path": ["C:\\Program Files\\CMake\\bin"],
+      "check": ["cmake --version"]
+    },
+    {
+      "name": "Ninja",
+      "source": "winget",
+      "id": "Ninja-build.Ninja",
+      "version": "1.13.2",
+      "check": ["ninja --version"]
+    },
+    {
+      "name": "llvm-mingw (clang, lld and a MinGW-w64 UCRT sysroot: the C and C++ toolchain, and Rust's linker)",
+      "source": "winget",
+      "id": "MartinStorsjo.LLVM-MinGW.UCRT",
+      "version": "23.1.4-20261020",
+      "path": [
+        "C:\\Program Files\\WinGet\\Packages\\MartinStorsjo.LLVM-MinGW.UCRT_*\\llvm-mingw-*\\bin"
+      ],
+      "check": ["clang --version", "aarch64-w64-mingw32-clang --version"]
+    },
+    {
+      "name": "Python 3.13",
+      "source": "winget",
+      "id": "Python.Python.3.13",
+      "version": "3.13.17",
+      "path": ["C:\\Program Files\\Python313*", "C:\\Program Files\\Python313*\\Scripts"],
+      "check": ["python --version", "python -m pip --version"]
+    },
+    {
+      "name": "Node.js 24 LTS (corepack enabled for pnpm and yarn)",
+      "source": "msi",
+      "version": "24.22.3",
+      "url": "https://nodejs.org/dist/v24.22.3/node-v24.22.3-arm64.msi",
+      "sha256": "6F36BFD098E103DC221EF9632C470A0879BE88096C542D93C8802146D028DA77",
+      "path": ["C:\\Program Files\\nodejs"],
+      "corepack": ["pnpm", "yarn"],
+      "check": ["node --version", "npm --version", "pnpm --version", "yarn --version"]
+    },
+    {
+      "name": "Go",
+      "source": "winget",
+      "id": "GoLang.Go",
+      "version": "1.27.4",
+      "path": ["C:\\Program Files\\Go\\bin"],
+      "check": ["go version"]
+    },
+    {
+      "name": "Rust (rustup, the stable toolchain for aarch64-pc-windows-gnullvm, minimal profile plus rustfmt and clippy; links with llvm-mingw, so it needs no Visual Studio)",
+      "source": "rustup",
+      "version": "1.29.3",
+      "url": "https://static.rust-lang.org/rustup/archive/1.29.3/aarch64-pc-windows-gnullvm/rustup-init.exe",
+      "sha256": "6055A192E5E47E50D354F41D236163E463B1CD858E55DC86380C5090A47E4D19",
+      "toolchain": "1.100.0",
+      "host": "aarch64-pc-windows-gnullvm",
+      "components": ["rustfmt", "clippy"],
+      "env": {
+        "RUSTUP_HOME": "C:\\iwci\\tools\\rustup",
+        "CARGO_HOME": "C:\\iwci\\tools\\cargo"
+      },
+      "path": ["C:\\iwci\\tools\\cargo\\bin"],
+      "check": [
+        "rustc --version",
+        "cargo --version",
+        "cargo fmt --version",
+        "cargo clippy --version"
+      ]
+    },
+    {
+      "name": "Microsoft Build of OpenJDK 21",
+      "source": "winget",
+      "id": "Microsoft.OpenJDK.21",
+      "version": "21.0.13.21",
+      "env": {
+        "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-21*"
+      },
+      "path": ["C:\\Program Files\\Microsoft\\jdk-21*\\bin"],
+      "check": ["java -version"]
+    },
+    {
+      "name": "Ruby 4.0 (RubyInstaller, without the MSYS2 devkit)",
+      "source": "winget",
+      "id": "RubyInstallerTeam.Ruby.4.0",
+      "version": "4.0.9-1",
+      "path": ["C:\\Ruby40*\\bin"],
+      "check": ["ruby --version"]
+    },
+    {
+      "name": "GitHub CLI",
+      "source": "winget",
+      "id": "GitHub.cli",
+      "version": "2.104.0",
+      "path": ["C:\\Program Files\\GitHub CLI"],
+      "check": ["gh --version"]
+    },
+    {
+      "name": "kubectl",
+      "source": "winget",
+      "id": "Kubernetes.kubectl",
+      "version": "1.37.2",
+      "check": ["kubectl version --client"]
+    }
+  ]
+}

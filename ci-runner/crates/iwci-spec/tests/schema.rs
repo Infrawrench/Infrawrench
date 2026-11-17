@@ -63,6 +63,10 @@ fn schema_matches_the_structs() {
         ),
         ("name: x\nsplit: { zzz: 1 }\njobs: {}\n", "/$defs/split"),
         (
+            "name: x\njobs:\n  a:\n    run: x\n    platform: { zzz: 1 }\n",
+            "/$defs/platform",
+        ),
+        (
             "name: x\non:\n  push: { zzz: 1 }\njobs: {}\n",
             "/$defs/triggerFilter",
         ),
