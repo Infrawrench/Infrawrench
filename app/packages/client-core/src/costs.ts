@@ -640,8 +640,8 @@ export interface BudgetThreshold {
 }
 
 /**
- * Create/update payload for a budget (POST/PUT /budgets). `ui/src/cost/config.ts`
- * asserts `budgetInputSchema` still parses to exactly this.
+ * Create/update payload for a budget (POST/PUT /budgets). `BudgetInput` in
+ * `@infrawrench/api-contract/schemas` is asserted to decode to exactly this.
  */
 export interface BudgetInput {
   name: string;

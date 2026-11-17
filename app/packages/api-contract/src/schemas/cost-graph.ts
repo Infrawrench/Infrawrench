@@ -146,7 +146,7 @@ export const costGraphConfigCheck = Schema.makeFilter(
   },
 );
 
-/** zod's `costGraphConfigSchema`. */
+/** A cost graph's stored config: a report's, a `cost_graph` widget's, a canvas chart's. */
 export const CostGraphConfig = Schema.Struct(costGraphConfigFields)
   // Described before the check: a description annotated after one lands on
   // the check, which the JSON Schema drops.

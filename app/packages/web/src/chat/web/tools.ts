@@ -24,7 +24,8 @@
  * organization data. Reaching them at all still requires `chat:write` on the
  * endpoint, which is where the human gate for this surface lives.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import { asc, eq } from "drizzle-orm";
 import type { ChatContentBlock } from "@infrawrench/ui";
 import { db } from "../../db/client";
@@ -259,11 +260,9 @@ function available(): WebTool[] {
         title: "Search the web",
         description: SEARCH_DESCRIPTION,
         inputSchema: {
-          query: z
-            .string()
-            .min(2)
-            .max(400)
-            .describe("What to search for, as a natural-language question"),
+          query: Schema.String.check(minLength(2), maxLength(400)).annotate({
+            description: "What to search for, as a natural-language question",
+          }),
         },
         risk: "read",
         permission: null,
@@ -278,7 +277,12 @@ function available(): WebTool[] {
         name: "web_fetch",
         title: "Fetch a web page",
         description: FETCH_DESCRIPTION,
-        inputSchema: { url: z.string().url().describe("Absolute http(s) URL to fetch") },
+        inputSchema: {
+          url: Schema.String.annotate({
+            format: "uri",
+            description: "Absolute http(s) URL to fetch",
+          }),
+        },
         risk: "read",
         permission: null,
       },

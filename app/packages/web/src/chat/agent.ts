@@ -345,7 +345,7 @@ async function approvalSummaryFor(
 
 function toolToProvider(t: Omit<ToolDefinition, "handler">): ProviderTool {
   // Both providers take JSON Schema (draft 2020-12) for tool input, converted
-  // from the same Zod shapes MCP uses; see `toolInputJsonSchema`.
+  // from the same Effect Schema fields MCP uses; see `toolInputJsonSchema`.
   return {
     name: t.name,
     description: t.description,

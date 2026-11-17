@@ -116,7 +116,7 @@ const VENDOR_CHUNKS: ReadonlyArray<readonly [chunk: string, packages: RegExp]> =
     "vendor-charts",
     /^(recharts|victory-vendor|d3-(array|color|format|interpolate|path|scale|shape|time|time-format)|internmap|decimal\.js-light|@reduxjs\/toolkit|redux|react-redux|reselect|immer|es-toolkit|eventemitter3|tiny-invariant)$/,
   ],
-  ["vendor-effect", /^(effect|zod)$/],
+  ["vendor-effect", /^effect$/],
   ["vendor-router", /^@tanstack\/(react-router|router-core|history|store|react-store)$/],
   ["vendor-i18n", /^(gt-react|gt-i18n|generaltranslation|@generaltranslation\/.+)$/],
 ];

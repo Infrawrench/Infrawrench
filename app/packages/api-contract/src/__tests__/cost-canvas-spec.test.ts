@@ -1,9 +1,15 @@
+import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
-  costCanvasSpecSchema,
-  formatCostCanvasSpecIssues,
-  widgetConfigSchemaFor,
-} from "../../cost/config.js";
+  CostCanvasSpec,
+  STRICT_PARSE_OPTIONS,
+  formatCostCanvasSpecSchemaIssues,
+  widgetConfigFor,
+} from "../schemas";
+
+/** A spec decoded as the route and the agent's tool decode one: strict, every problem. */
+const decodeSpec = (spec: unknown) =>
+  Schema.decodeUnknownResult(CostCanvasSpec)(spec, { ...STRICT_PARSE_OPTIONS, errors: "all" });
 
 const kpi = {
   id: "mtd",
@@ -12,9 +18,9 @@ const kpi = {
   metric: { type: "spend", dateRange: { kind: "relative", preset: "mtd" } },
 };
 
-describe("costCanvasSpecSchema", () => {
+describe("CostCanvasSpec", () => {
   it("accepts a typical model-written spec and applies defaults", () => {
-    const parsed = costCanvasSpecSchema.parse({
+    const parsed = Schema.decodeUnknownSync(CostCanvasSpec)({
       version: 1,
       blocks: [
         { id: "intro", kind: "text", text: "## AI spend\nThis month: {{mtd}} ({{mtd.change}})" },
@@ -41,33 +47,33 @@ describe("costCanvasSpecSchema", () => {
   });
 
   it("rejects unknown keys anywhere, so a model cannot smuggle in a query string", () => {
-    const res = costCanvasSpecSchema.safeParse({
+    const res = decodeSpec({
       version: 1,
       blocks: [{ ...kpi, sql: "SELECT 1" }],
     });
-    expect(res.success).toBe(false);
-    const nested = costCanvasSpecSchema.safeParse({
+    expect(Result.isFailure(res)).toBe(true);
+    const nested = decodeSpec({
       version: 1,
       blocks: [{ ...kpi, metric: { ...kpi.metric, query: "provider = 'aws'" } }],
     });
-    expect(nested.success).toBe(false);
+    expect(Result.isFailure(nested)).toBe(true);
   });
 
   it("checks cross-block references and ids", () => {
-    const res = costCanvasSpecSchema.safeParse({
+    const res = decodeSpec({
       version: 1,
       blocks: [kpi, { ...kpi }, { id: "t", kind: "text", text: "{{missing}}" }],
     });
-    expect(res.success).toBe(false);
-    if (!res.success) {
-      const msg = formatCostCanvasSpecIssues(res.error);
+    expect(Result.isFailure(res)).toBe(true);
+    if (Result.isFailure(res)) {
+      const msg = formatCostCanvasSpecSchemaIssues(res.failure.issue);
       expect(msg).toContain('duplicate block id "mtd"');
       expect(msg).toContain("{{missing}} does not name a kpi block");
     }
   });
 
   it("requires a tag key when grouping or filtering by tag", () => {
-    const res = costCanvasSpecSchema.safeParse({
+    const res = decodeSpec({
       version: 1,
       blocks: [
         {
@@ -82,17 +88,15 @@ describe("costCanvasSpecSchema", () => {
         },
       ],
     });
-    expect(res.success).toBe(false);
+    expect(Result.isFailure(res)).toBe(true);
   });
 
   it("bounds the number of blocks", () => {
     const blocks = Array.from({ length: 25 }, (_, i) => ({ ...kpi, id: `k${i}` }));
-    expect(costCanvasSpecSchema.safeParse({ version: 1, blocks }).success).toBe(false);
+    expect(Result.isFailure(decodeSpec({ version: 1, blocks }))).toBe(true);
   });
 
   it("validates the dashboard widget config", () => {
-    expect(
-      widgetConfigSchemaFor("cost_canvas").safeParse({ version: 1, canvasId: "c1" }).success,
-    ).toBe(true);
+    expect(Schema.is(widgetConfigFor("cost_canvas"))({ version: 1, canvasId: "c1" })).toBe(true);
   });
 });

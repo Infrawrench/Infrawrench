@@ -67,9 +67,7 @@
     "tar": "^7.5.22",
     "uuid": "^11.1.1",
     "ws": "^8.21.3",
-    "xz-decompress": "^0.2.3",
-    "zod": "^3.25.76",
-    "zod-to-json-schema": "^3.25.2"
+    "xz-decompress": "^0.2.3"
   },
   "devDependencies": {
     "@babel/parser": "^7.29.8",

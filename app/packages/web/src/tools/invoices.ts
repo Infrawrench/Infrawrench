@@ -12,7 +12,8 @@
  * rate was read. That is exactly what "why is this customer being billed this"
  * needs, and it is the question worth answering here.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, pattern } from "@infrawrench/api-contract/schemas";
 import {
   MANAGED_INVOICE_STATUSES,
   maskBillingProfileBank,
@@ -59,7 +60,7 @@ export function invoiceTools(): ToolDefinition[] {
         "One customer in full, including contact details, billing currency, cost basis, whether " +
         "the organization's billing rules apply to their invoices, and the exact scope their " +
         "invoices are drawn over.",
-      inputSchema: { managedAccountId: z.string().min(1) },
+      inputSchema: { managedAccountId: Schema.String.check(minLength(1)) },
       risk: "read",
       permission: "invoices:read",
       handler: async (input, auth) => {
@@ -85,8 +86,8 @@ export function invoiceTools(): ToolDefinition[] {
         "superseded by a corrective invoice, which is why you may see two invoices for one " +
         "period with `supersedesInvoiceId` linking them.",
       inputSchema: {
-        managedAccountId: z.string().min(1).optional(),
-        status: z.enum(MANAGED_INVOICE_STATUSES).optional(),
+        managedAccountId: Schema.optionalKey(Schema.String.check(minLength(1))),
+        status: Schema.optionalKey(Schema.Literals(MANAGED_INVOICE_STATUSES)),
       },
       risk: "read",
       permission: "invoices:read",
@@ -118,7 +119,7 @@ export function invoiceTools(): ToolDefinition[] {
         "`derivation.rates`, the rules in `derivation.rules` and the names in `derivation.scope` " +
         "are the ones that applied at issue time, not the ones that apply now. Never describe a " +
         "frozen invoice as out of date; it is a document, not a query.",
-      inputSchema: { invoiceId: z.string().min(1) },
+      inputSchema: { invoiceId: Schema.String.check(minLength(1)) },
       risk: "read",
       permission: "invoices:read",
       handler: async (input, auth) => {
@@ -172,14 +173,8 @@ export function invoiceTools(): ToolDefinition[] {
         "accounts that are no longer connected or uploaded costs with no account; they cannot " +
         "be assigned. Suggest assigning rows in the Invoices tab; this tool does not assign.",
       inputSchema: {
-        from: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
-        to: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
+        from: Schema.optionalKey(Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/))),
+        to: Schema.optionalKey(Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/))),
       },
       risk: "read",
       permission: "invoices:read",

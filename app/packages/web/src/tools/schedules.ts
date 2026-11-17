@@ -5,7 +5,8 @@
  * schedule is a standing instruction to invoke the same lifecycle actions
  * that permission gates on `/resources/invoke-action`).
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength, pattern } from "@infrawrench/api-contract/schemas";
 import { listSchedules, previewSchedule } from "@infrawrench/server-core/schedules/feed";
 import { ScheduleInputError, createScheduleRecord } from "@infrawrench/server-core/schedules/store";
 import { logAudit } from "../services/audit";
@@ -13,22 +14,20 @@ import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
 
 const timingShape = {
-  daysOfWeek: z
-    .array(z.number().int().min(1).max(7))
-    .min(1)
-    .max(7)
-    .describe("ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday."),
-  stopTime: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
-    .describe('Wall-clock 24-hour "HH:MM" at which the resource is stopped, e.g. "19:00".'),
-  startTime: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
-    .describe('Wall-clock 24-hour "HH:MM" at which the resource is started, e.g. "08:00".'),
-  timezone: z
-    .string()
-    .describe('IANA timezone the times are computed in (DST-safe), e.g. "Europe/London".'),
+  daysOfWeek: Schema.Array(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(7)),
+  )
+    .check(minLength(1), maxLength(7))
+    .annotate({ description: "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday." }),
+  stopTime: Schema.String.check(pattern(/^([01]\d|2[0-3]):[0-5]\d$/)).annotate({
+    description: 'Wall-clock 24-hour "HH:MM" at which the resource is stopped, e.g. "19:00".',
+  }),
+  startTime: Schema.String.check(pattern(/^([01]\d|2[0-3]):[0-5]\d$/)).annotate({
+    description: 'Wall-clock 24-hour "HH:MM" at which the resource is started, e.g. "08:00".',
+  }),
+  timezone: Schema.String.annotate({
+    description: 'IANA timezone the times are computed in (DST-safe), e.g. "Europe/London".',
+  }),
 };
 
 export function scheduleTools(): ToolDefinition[] {
@@ -60,8 +59,8 @@ export function scheduleTools(): ToolDefinition[] {
         "starts the resource on that window. One schedule per resource. Returns the created " +
         "schedule plus a savings preview. Audit-logged.",
       inputSchema: {
-        resourceId: z.string().describe("Infrawrench resource id to schedule."),
-        accountId: z.string().describe("The account the resource belongs to."),
+        resourceId: Schema.String.annotate({ description: "Infrawrench resource id to schedule." }),
+        accountId: Schema.String.annotate({ description: "The account the resource belongs to." }),
         ...timingShape,
       },
       // Arms the poller to stop the resource on a timer, unattended.

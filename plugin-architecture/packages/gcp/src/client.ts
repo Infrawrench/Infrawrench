@@ -88,7 +88,7 @@ import {
   fetchAccessToken,
   fetchAccessTokenRaw,
   invalidateAccessToken,
-  serviceAccountKeySchema,
+  decodeServiceAccountKey,
   type ServiceAccountKey,
 } from "./auth.js";
 import { detectMyPublicIp } from "./cloudsql-create-handlers.js";
@@ -244,7 +244,7 @@ export class GcpClient implements PluginClient {
     this.hostServices = services;
     const raw = credentials["serviceAccountJson"];
     if (!raw) throw new Error("GCP plugin: missing serviceAccountJson credential");
-    this.key = serviceAccountKeySchema.parse(JSON.parse(raw));
+    this.key = decodeServiceAccountKey(JSON.parse(raw));
     this.project = credentials["project"]?.trim() || this.key.project_id;
     if (!this.project) throw new Error("GCP plugin: could not determine project ID");
     this.billingExportTable = credentials["billingExportTable"]?.trim() ?? "";

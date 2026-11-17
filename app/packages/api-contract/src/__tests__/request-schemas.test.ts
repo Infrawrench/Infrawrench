@@ -1,15 +1,14 @@
 /**
- * Each Effect request schema in `src/schemas/` against the zod schema it
- * replaces: the same inputs are accepted and refused, and an accepted input
- * decodes to the same value (defaults filled, strings trimmed, numbers
- * rounded, unknown keys dropped).
+ * The decisions the request schemas in `src/schemas/` make: which inputs each
+ * accepts and refuses, and what an accepted input decodes to (defaults
+ * filled, strings trimmed, numbers rounded, unknown keys dropped).
  *
- * Inputs are JSON values, what the API receives. Two deliberate differences
- * are tested on their own below: an `undefined`-valued key (which only an
- * in-process caller can send) and the first-issue wording the forms show.
+ * These began as a parity suite against the zod schemas the Effect ones
+ * replaced; the fixtures are that suite's, the decoded values in the
+ * snapshot are the ones both libraries agreed on, and the form messages are
+ * the sentences zod wrote. Inputs are JSON values, what the API receives.
  */
 import { Result, Schema, type SchemaAST } from "effect";
-import type { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   BUDGET_LIMITS,
@@ -25,16 +24,9 @@ import {
   DEFAULT_METRIC_ALERT_INPUT,
   DEFAULT_RESOURCE_REPORT_CONFIG,
 } from "@infrawrench/client-core";
-import * as E from "@infrawrench/api-contract/schemas";
-import * as Z from "../cost/config.js";
-import * as MZ from "../metric-alerts/config.js";
+import * as E from "../schemas";
 
 type Outcome = { ok: true; value: unknown } | { ok: false };
-
-function viaZod(schema: z.ZodTypeAny, input: unknown): Outcome {
-  const parsed = schema.safeParse(input);
-  return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
-}
 
 function viaEffect(
   schema: Schema.ConstraintDecoder<unknown>,
@@ -47,7 +39,6 @@ function viaEffect(
 
 interface Pair {
   readonly name: string;
-  readonly zod: z.ZodTypeAny;
   readonly effect: Schema.ConstraintDecoder<unknown>;
   /** Decode options for the Effect side: the strict bodies' `STRICT_PARSE_OPTIONS`. */
   readonly options?: SchemaAST.ParseOptions;
@@ -105,7 +96,6 @@ const STRICT = E.STRICT_PARSE_OPTIONS;
 const pairs: ReadonlyArray<Pair> = [
   {
     name: "costFilter",
-    zod: Z.costFilterSchema,
     effect: E.CostFilter,
     accept: [
       F,
@@ -122,7 +112,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costDateRange",
-    zod: Z.costDateRangeSchema,
     effect: E.CostDateRange,
     accept: [RANGE, { kind: "absolute", from: DAY, to: "2026-07-31" }],
     reject: [
@@ -133,7 +122,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costGraphConfig",
-    zod: Z.costGraphConfigSchema,
     effect: E.CostGraphConfig,
     accept: [
       GRAPH,
@@ -168,7 +156,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costReportRunOverrides",
-    zod: Z.costReportRunOverridesSchema,
     effect: E.CostReportRunOverrides,
     accept: [
       {},
@@ -179,21 +166,18 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "budgetWidgetConfig",
-    zod: Z.budgetWidgetConfigSchema,
     effect: E.BudgetWidgetConfig,
     accept: [{ version: 1, budgetId: "b1" }],
     reject: [{ version: 1, budgetId: "" }, { version: 2, budgetId: "b1" }, { version: 1 }],
   },
   {
     name: "costReportWidgetConfig",
-    zod: Z.costReportWidgetConfigSchema,
     effect: E.CostReportWidgetConfig,
     accept: [{ version: 1, reportId: "r1" }],
     reject: [{ version: 1, reportId: "" }, { version: 1 }],
   },
   {
     name: "costReportInput",
-    zod: Z.costReportInputSchema,
     effect: E.CostReportInput,
     accept: [
       { name: "Spend", config: GRAPH },
@@ -210,7 +194,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costReportFolderInput",
-    zod: Z.costReportFolderInputSchema,
     effect: E.CostReportFolderInput,
     accept: [
       { name: "Finance" },
@@ -221,7 +204,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costReportBulkRequest",
-    zod: Z.costReportBulkRequestSchema,
     effect: E.CostReportBulkRequest,
     accept: [
       { action: "delete", reportIds: ["r1"], folderIds: [] },
@@ -242,7 +224,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAnnotationInput",
-    zod: Z.costAnnotationInputSchema,
     effect: E.CostAnnotationInput,
     accept: [
       { startDate: DAY, text: "Migrated" },
@@ -258,21 +239,18 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAnomalyAcknowledge",
-    zod: Z.costAnomalyAcknowledgeSchema,
     effect: E.CostAnomalyAcknowledge,
     accept: [{ explanation: "Planned load test" }],
     reject: [{ explanation: "" }, { explanation: s(501) }, {}],
   },
   {
     name: "budgetAlertNote",
-    zod: Z.budgetAlertNoteSchema,
     effect: E.BudgetAlertNoteInput,
     accept: [{ note: "Expected" }],
     reject: [{ note: "" }, { note: s(501) }],
   },
   {
     name: "budgetThreshold",
-    zod: Z.budgetThresholdSchema,
     effect: E.BudgetThreshold,
     accept: [
       { type: "actual", percent: 1 },
@@ -287,14 +265,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "alertEmailRecipients",
-    zod: Z.alertEmailRecipientsSchema,
     effect: E.AlertEmailRecipients,
     accept: [RECIPIENTS, { userIds: [], addresses: [] }],
     reject: [{ userIds: [""], addresses: [] }, { userIds: [], addresses: ["ab"] }, { userIds: [] }],
   },
   {
     name: "budgetPeriod",
-    zod: Z.budgetPeriodSchema,
     effect: E.BudgetPeriod,
     accept: [
       { kind: "recurring", unit: "month", interval: 3, startDate: DAY },
@@ -309,7 +285,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "budgetInput",
-    zod: Z.budgetInputSchema,
     effect: E.BudgetInput,
     accept: [
       BUDGET,
@@ -334,7 +309,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAlertInput",
-    zod: Z.costAlertInputSchema,
     effect: E.CostAlertInput,
     accept: [
       ALERT,
@@ -353,7 +327,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAnomalySettings",
-    zod: Z.costAnomalySettingsSchema,
     effect: E.CostAnomalySettings,
     accept: [
       ANOMALY,
@@ -370,7 +343,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAnomalySuppressionInput",
-    zod: Z.costAnomalySuppressionInputSchema,
     effect: E.CostAnomalySuppressionInput,
     accept: [
       {
@@ -417,7 +389,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costAnomalyFeedback",
-    zod: Z.costAnomalyFeedbackSchema,
     effect: E.CostAnomalyFeedbackInput,
     accept: [
       { verdict: "expected" },
@@ -435,7 +406,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costEfficiencySettings",
-    zod: Z.costEfficiencySettingsSchema,
     effect: E.CostEfficiencySettings,
     accept: [
       EFFICIENCY,
@@ -452,21 +422,18 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "customGraphWidgetConfig",
-    zod: Z.customGraphWidgetConfigSchema,
     effect: E.CustomGraphWidgetConfig,
     accept: [{ version: 1, graphId: "g1" }],
     reject: [{ version: 1, graphId: "" }],
   },
   {
     name: "costCanvasWidgetConfig",
-    zod: Z.costCanvasWidgetConfigSchema,
     effect: E.CostCanvasWidgetConfig,
     accept: [{ version: 1, canvasId: "c1" }],
     reject: [{ version: 1, canvasId: "" }],
   },
   {
     name: "realizedSavingsWidgetConfig",
-    zod: Z.realizedSavingsWidgetConfigSchema,
     effect: E.RealizedSavingsWidgetConfig,
     accept: [{ version: 1, grouping: "kind", months: 6 }],
     reject: [
@@ -476,7 +443,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "kpiWidgetConfigObject",
-    zod: Z.kpiWidgetConfigObjectSchema,
     effect: E.KpiWidgetConfigObject,
     accept: [
       KPI,
@@ -489,7 +455,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "kpiWidgetConfig",
-    zod: Z.kpiWidgetConfigSchema,
     effect: E.KpiWidgetConfig,
     accept: [
       KPI,
@@ -504,7 +469,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "textWidgetConfig",
-    zod: Z.textWidgetConfigSchema,
     effect: E.TextWidgetConfig,
     accept: [
       { version: 1, markdown: "" },
@@ -514,14 +478,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "dashboardKpiRequest",
-    zod: Z.dashboardKpiRequestSchema,
     effect: E.DashboardKpiRequest,
     accept: [{ config: KPI }],
     reject: [{ config: DEFAULT_KPI_WIDGET_CONFIG }, {}],
   },
   {
     name: "realizedSavingsSettings",
-    zod: Z.realizedSavingsSettingsSchema,
     effect: E.RealizedSavingsSettings,
     accept: [{ horizonMonths: 12, shortfallThresholdPercent: 70, baselineWindowDays: 14 }],
     reject: [
@@ -531,7 +493,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "savingsEventInput",
-    zod: Z.savingsEventInputSchema,
     effect: E.SavingsEventInput,
     accept: [
       {
@@ -563,28 +524,24 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "savingsEventAnnotation",
-    zod: Z.savingsEventAnnotationSchema,
     effect: E.SavingsEventAnnotation,
     accept: [{}, { note: null, costCentreId: "c1", horizonMonths: 6, endedOn: DAY }],
     reject: [{ horizonMonths: 0 }, { endedOn: "soon" }, { costCentreId: "" }],
   },
   {
     name: "requiredTag",
-    zod: Z.requiredTagSchema,
     effect: E.RequiredTag,
     accept: [{ key: "owner" }, { key: "env", allowedValues: ["prod", "dev"] }],
     reject: [{ key: "" }, { key: "env", allowedValues: [""] }],
   },
   {
     name: "tagPolicy",
-    zod: Z.tagPolicySchema,
     effect: E.TagPolicy,
     accept: [{ requiredTags: [{ key: "owner" }], enforceOnCreate: true }],
     reject: [{ requiredTags: [] }, { requiredTags: [{ key: "" }], enforceOnCreate: false }],
   },
   {
     name: "tagKeySettings",
-    zod: Z.tagKeySettingsSchema,
     effect: E.TagKeySettings,
     accept: [
       { hidden: ["  aws:cloudformation:*  ", "Name"], preferred: [" team ", "env"] },
@@ -600,7 +557,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costCentreInput",
-    zod: Z.costCentreInputSchema,
     effect: E.CostCentreInput,
     accept: [
       { name: "Platform" },
@@ -615,7 +571,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "allocationRuleMatch",
-    zod: Z.allocationRuleMatchSchema,
     effect: E.AllocationRuleMatch,
     accept: [
       {},
@@ -627,7 +582,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "allocationRuleInput",
-    zod: Z.allocationRuleInputSchema,
     effect: E.AllocationRuleInput,
     accept: [
       { costCentreId: "c1", priority: 0, match: {} },
@@ -641,7 +595,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costQueryRequest",
-    zod: Z.costQueryRequestSchema,
     effect: E.CostQueryRequest,
     accept: [
       { from: DAY, to: "2026-07-31", binning: "daily", groupBy: "none" },
@@ -678,7 +631,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "focusExportRequest",
-    zod: Z.focusExportRequestSchema,
     effect: E.FocusExportRequest,
     accept: [
       { from: DAY, to: DAY },
@@ -688,7 +640,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costExportJobRequest",
-    zod: Z.costExportJobRequestSchema,
     effect: E.CostExportJobRequest,
     accept: [
       { format: "csv", reportId: "r1" },
@@ -708,14 +659,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "billingRuleMatch",
-    zod: Z.billingRuleMatchSchema,
     effect: E.BillingRuleMatch,
     accept: [{}, { tagKey: "team", tagValue: "web", chargeType: "usage" }],
     reject: [{ tagValue: "web" }, { chargeType: "gift" }],
   },
   {
     name: "billingRuleAdjustment",
-    zod: Z.billingRuleAdjustmentSchema,
     effect: E.BillingRuleAdjustment,
     accept: [
       { kind: "percentage", percent: 15 },
@@ -749,7 +698,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "billingRuleInput",
-    zod: Z.billingRuleInputSchema,
     effect: E.BillingRuleInput,
     accept: [
       BILLING_RULE,
@@ -763,14 +711,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "billingRuleReorder",
-    zod: Z.billingRuleReorderSchema,
     effect: E.BillingRuleReorder,
     accept: [{ ids: ["a", "b"] }],
     reject: [{ ids: [] }, { ids: [""] }],
   },
   {
     name: "managedAccountPricing",
-    zod: Z.managedAccountPricingSchema,
     effect: E.ManagedAccountPricing,
     accept: [
       PRICING,
@@ -793,7 +739,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "pricingPreviewRequest",
-    zod: Z.pricingPreviewRequestSchema,
     effect: E.PricingPreviewRequest,
     accept: [
       {},
@@ -804,7 +749,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "virtualTagSource",
-    zod: Z.virtualTagSourceSchema,
     effect: E.VirtualTagSource,
     accept: [
       { tagKey: "Environment" },
@@ -814,14 +758,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "virtualTagAllocation",
-    zod: Z.virtualTagAllocationSchema,
     effect: E.VirtualTagAllocation,
     accept: [{ value: "web" }, { value: "web", percent: 100, metricId: null }],
     reject: [{ value: "web", percent: 0 }, { value: "web", percent: 101 }, { value: "" }],
   },
   {
     name: "virtualTagRule",
-    zod: Z.virtualTagRuleSchema,
     effect: E.VirtualTagRule,
     accept: [
       VT_RULE,
@@ -843,7 +785,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "virtualTagInput",
-    zod: Z.virtualTagInputSchema,
     effect: E.VirtualTagInput,
     accept: [
       { key: "team", name: "Team", rules: [VT_RULE] },
@@ -858,7 +799,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "currencySettings",
-    zod: Z.currencySettingsSchema,
     effect: E.CurrencySettingsInput,
     accept: [
       { displayCurrency: null },
@@ -868,7 +808,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "exchangeRateInput",
-    zod: Z.exchangeRateInputSchema,
     effect: E.ExchangeRateInput,
     accept: [
       { fromCurrency: "eur", toCurrency: " usd ", rate: " 1.0850 ", effectiveFrom: DAY },
@@ -889,14 +828,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "exchangeRateImportRequest",
-    zod: Z.exchangeRateImportRequestSchema,
     effect: E.ExchangeRateImportRequest,
     accept: [{ csv: "from,to,rate\n" }, { csv: "", dryRun: true, skipInvalid: false }],
     reject: [{ csv: s(512 * 1024 + 1) }, {}],
   },
   {
     name: "savedCostFilterInput",
-    zod: Z.savedCostFilterInputSchema,
     effect: E.SavedCostFilterInput,
     accept: [
       { name: "Prod" },
@@ -911,7 +848,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costScenarioAdjustment",
-    zod: Z.costScenarioAdjustmentSchema,
     effect: E.CostScenarioAdjustment,
     accept: [
       SCENARIO_ADJ,
@@ -925,7 +861,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costScenarioModelInput",
-    zod: Z.costScenarioModelInputSchema,
     effect: E.CostScenarioModelInput,
     accept: [
       { name: "Q4", currency: "USD" },
@@ -938,7 +873,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "businessMetricInput",
-    zod: Z.businessMetricInputSchema,
     effect: E.BusinessMetricInput,
     accept: [
       { key: "  Active-Customers ", name: "Customers", unit: "customer", kind: "count" },
@@ -988,7 +922,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "businessMetricValueInput",
-    zod: Z.businessMetricValueInputSchema,
     effect: E.BusinessMetricValueInput,
     accept: [
       { date: DAY, value: 0 },
@@ -1002,14 +935,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "businessMetricValuesBody",
-    zod: Z.businessMetricValuesBodySchema,
     effect: E.BusinessMetricValuesBody,
     accept: [{ values: [] }, { values: [{ date: DAY, value: 1 }] }],
     reject: [{}, { values: [{ date: DAY }] }],
   },
   {
     name: "unitCostQueryRequest",
-    zod: Z.unitCostQueryRequestSchema,
     effect: E.UnitCostQueryRequest,
     accept: [
       { from: DAY, to: DAY, binning: "daily" },
@@ -1033,14 +964,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "unitCostExportRequest",
-    zod: Z.unitCostExportRequestSchema,
     effect: E.UnitCostExportRequest,
     accept: [{ from: DAY, to: DAY, binning: "daily", format: "ndjson" }],
     reject: [{ from: DAY, to: DAY, binning: "daily", format: "pdf" }],
   },
   {
     name: "businessMetricImporterInput",
-    zod: Z.businessMetricImporterInputSchema,
     effect: E.BusinessMetricImporterInput,
     accept: [
       { accountId: "a1", params: {} },
@@ -1068,28 +997,24 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "businessMetricImportRunRequest",
-    zod: Z.businessMetricImportRunRequestSchema,
     effect: E.BusinessMetricImportRunRequest,
     accept: [{}, { from: DAY, to: DAY }],
     reject: [{ from: "now" }],
   },
   {
     name: "businessMetricImportPreviewRequest",
-    zod: Z.businessMetricImportPreviewRequestSchema,
     effect: E.BusinessMetricImportPreviewRequest,
     accept: [{ accountId: "a1", params: { q: "x" }, dryRun: true }],
     reject: [{ accountId: "a1", params: { q: "x" }, timezone: "" }, { accountId: "a1" }],
   },
   {
     name: "businessMetricSourceOptionsRequest",
-    zod: Z.businessMetricSourceOptionsRequestSchema,
     effect: E.BusinessMetricSourceOptionsRequest,
     accept: [{ accountId: "a1", fieldKey: "table", params: {} }],
     reject: [{ accountId: "a1", fieldKey: "", params: {} }],
   },
   {
     name: "costForecastInput",
-    zod: Z.costForecastInputSchema,
     effect: E.CostForecastInput,
     accept: [
       { name: "Plan" },
@@ -1109,7 +1034,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costForecastRunRequest",
-    zod: Z.costForecastRunRequestSchema,
     effect: E.CostForecastRunRequest,
     accept: [
       {},
@@ -1127,21 +1051,18 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "businessMetricForecastValueInput",
-    zod: Z.businessMetricForecastValueInputSchema,
     effect: E.BusinessMetricForecastValueInput,
     accept: [{ date: DAY, value: 0 }],
     reject: [{ date: DAY, value: -1 }],
   },
   {
     name: "businessMetricForecastValuesBody",
-    zod: Z.businessMetricForecastValuesBodySchema,
     effect: E.BusinessMetricForecastValuesBody,
     accept: [{ values: [{ date: DAY, value: 1 }] }],
     reject: [{ values: [] }],
   },
   {
     name: "managedAccountInput",
-    zod: Z.managedAccountInputSchema,
     effect: E.ManagedAccountInput,
     accept: [
       { name: "Northwind", billingCurrency: "GBP" },
@@ -1166,7 +1087,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "managedInvoiceInput",
-    zod: Z.managedInvoiceInputSchema,
     effect: E.ManagedInvoiceInput,
     accept: [
       { managedAccountId: "m1", periodFrom: DAY, periodTo: "2026-07-31" },
@@ -1185,28 +1105,24 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "managedInvoiceUpdate",
-    zod: Z.managedInvoiceUpdateSchema,
     effect: E.ManagedInvoiceUpdate,
     accept: [{ periodFrom: DAY, periodTo: DAY, notes: "x" }],
     reject: [{ periodFrom: DAY, periodTo: DAY, notes: s(4001) }],
   },
   {
     name: "managedInvoiceVoid",
-    zod: Z.managedInvoiceVoidSchema,
     effect: E.ManagedInvoiceVoid,
     accept: [{ reason: "Wrong period" }, { reason: "Wrong period", supersede: true }],
     reject: [{ reason: "" }, {}],
   },
   {
     name: "managedInvoiceSend",
-    zod: Z.managedInvoiceSendSchema,
     effect: E.ManagedInvoiceSend,
     accept: [{}, { resend: true }],
     reject: [{ resend: "yes" }],
   },
   {
     name: "billingProfileInput",
-    zod: Z.billingProfileInputSchema,
     effect: E.BillingProfileInput,
     accept: [
       { name: "EU" },
@@ -1233,7 +1149,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "managedAccountAssignment",
-    zod: Z.managedAccountAssignmentSchema,
     effect: E.ManagedAccountAssignment,
     accept: [
       { managedAccountId: null },
@@ -1243,14 +1158,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "managedAccountAssignmentPreview",
-    zod: Z.managedAccountAssignmentPreviewSchema,
     effect: E.ManagedAccountAssignmentPreview,
     accept: [{ managedAccountId: "m1", periodFrom: DAY, periodTo: DAY }],
     reject: [{ managedAccountId: "m1", periodFrom: "last month" }],
   },
   {
     name: "costCanvasBlock",
-    zod: Z.costCanvasBlockSchema,
     effect: E.CostCanvasBlock,
     options: STRICT,
     accept: [
@@ -1276,7 +1189,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costCanvasSpec",
-    zod: Z.costCanvasSpecSchema,
     effect: E.CostCanvasSpec,
     options: STRICT,
     accept: [CANVAS_SPEC, { version: 1, blocks: [] }],
@@ -1332,7 +1244,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costCanvasInput",
-    zod: Z.costCanvasInputSchema,
     effect: E.CostCanvasInput,
     options: STRICT,
     accept: [
@@ -1346,7 +1257,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "costCanvasDraftInput",
-    zod: Z.costCanvasDraftInputSchema,
     effect: E.CostCanvasDraftInput,
     options: STRICT,
     accept: [{ prompt: "  spend by team  " }, { prompt: "x", name: " N ", model: "claude" }],
@@ -1354,7 +1264,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "kubernetesEfficiencyConfig",
-    zod: Z.kubernetesEfficiencyConfigSchema,
     effect: E.KubernetesEfficiencyConfig,
     accept: [
       K8S,
@@ -1375,7 +1284,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "kubernetesEfficiencyReportInput",
-    zod: Z.kubernetesEfficiencyReportInputSchema,
     effect: E.KubernetesEfficiencyReportInput,
     accept: [
       { name: " Clusters ", config: K8S },
@@ -1388,14 +1296,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "kubernetesEfficiencyQuery",
-    zod: Z.kubernetesEfficiencyQuerySchema,
     effect: E.KubernetesEfficiencyQuery,
     accept: [{ config: K8S }],
     reject: [{}],
   },
   {
     name: "resourceReportTagFilter",
-    zod: Z.resourceReportTagFilterSchema,
     effect: E.ResourceReportTagFilter,
     options: STRICT,
     accept: [
@@ -1410,7 +1316,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "resourceReportFilters",
-    zod: Z.resourceReportFiltersSchema,
     effect: E.ResourceReportFilters,
     options: STRICT,
     accept: [
@@ -1429,7 +1334,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "resourceReportSort",
-    zod: Z.resourceReportSortSchema,
     effect: E.ResourceReportSort,
     options: STRICT,
     accept: [{ column: "core:name", direction: "asc" }],
@@ -1440,7 +1344,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "resourceReportConfig",
-    zod: Z.resourceReportConfigSchema,
     effect: E.ResourceReportConfig,
     options: STRICT,
     accept: [RR, { ...RR, sort: { column: "cost:range", direction: "desc" }, pageSize: 500 }],
@@ -1453,7 +1356,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "resourceReportInput",
-    zod: Z.resourceReportInputSchema,
     effect: E.ResourceReportInput,
     options: STRICT,
     accept: [
@@ -1467,7 +1369,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "resourceReportQueryRequest",
-    zod: Z.resourceReportQueryRequestSchema,
     effect: E.ResourceReportQueryRequest,
     options: STRICT,
     accept: [{ config: RR }, { config: RR, offset: 0, limit: 500 }],
@@ -1479,14 +1380,12 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "metricAlertComparator",
-    zod: MZ.metricAlertComparatorSchema,
     effect: E.MetricAlertComparator,
     accept: [">", "<="],
     reject: ["==", ""],
   },
   {
     name: "metricAlertSelector",
-    zod: MZ.metricAlertSelectorSchema,
     effect: E.MetricAlertSelector,
     accept: [
       { pluginId: null, resourceTypeId: null, tagKey: null, tagValue: null },
@@ -1499,7 +1398,6 @@ const pairs: ReadonlyArray<Pair> = [
   },
   {
     name: "metricAlertRuleInput",
-    zod: MZ.metricAlertRuleInputSchema,
     effect: E.MetricAlertRuleInput,
     accept: [
       METRIC_RULE,
@@ -1515,26 +1413,25 @@ const pairs: ReadonlyArray<Pair> = [
   },
 ];
 
-describe("Effect request schemas decode as their zod twins did", () => {
+describe("request schemas", () => {
   for (const pair of pairs) {
     describe(pair.name, () => {
       pair.accept.forEach((input, i) => {
-        it(`accepts #${i} the same way`, () => {
-          const expected = viaZod(pair.zod, input);
-          expect(expected.ok, "fixture should be valid for zod").toBe(true);
-          expect(viaEffect(pair.effect, input, pair.options)).toEqual(expected);
+        it(`accepts #${i}`, () => {
+          const decoded = viaEffect(pair.effect, input, pair.options);
+          expect(decoded.ok).toBe(true);
+          expect(decoded).toMatchSnapshot();
         });
       });
       pair.reject.forEach((input, i) => {
-        it(`refuses #${i} the same way`, () => {
-          expect(viaZod(pair.zod, input).ok, "fixture should be invalid for zod").toBe(false);
+        it(`refuses #${i}`, () => {
           expect(viaEffect(pair.effect, input, pair.options).ok).toBe(false);
         });
       });
     });
   }
 
-  it("widgetConfigFor picks the same kind as widgetConfigSchemaFor", () => {
+  it("widgetConfigFor picks each kind's schema", () => {
     const inputs = {
       cost_graph: GRAPH,
       cost_report: { version: 1, reportId: "r1" },
@@ -1546,22 +1443,20 @@ describe("Effect request schemas decode as their zod twins did", () => {
       text: { version: 1, markdown: "hi" },
     } as const;
     for (const kind of Object.keys(inputs) as Array<keyof typeof inputs>) {
-      const expected = viaZod(Z.widgetConfigSchemaFor(kind), inputs[kind]);
-      expect(expected.ok).toBe(true);
-      expect(viaEffect(E.widgetConfigFor(kind), inputs[kind])).toEqual(expected);
+      const decoded = viaEffect(E.widgetConfigFor(kind), inputs[kind]);
+      expect(decoded.ok).toBe(true);
+      expect(decoded).toMatchSnapshot(kind);
       expect(viaEffect(E.widgetConfigFor(kind), { version: 2 }).ok).toBe(false);
     }
   });
 
-  it("formats a canvas spec failure as the zod formatter did", () => {
+  it("formats a canvas spec failure as one line per problem", () => {
     const spec = { version: 1, blocks: [{ id: "t", kind: "text", text: "{{nope}}" }] };
-    const zod = Z.costCanvasSpecSchema.safeParse(spec);
     const effect = Schema.decodeUnknownResult(E.CostCanvasSpec)(spec, { ...STRICT, errors: "all" });
-    expect(zod.success).toBe(false);
     expect(Result.isFailure(effect)).toBe(true);
-    if (!zod.success && Result.isFailure(effect)) {
+    if (Result.isFailure(effect)) {
       expect(E.formatCostCanvasSpecSchemaIssues(effect.failure.issue)).toBe(
-        Z.formatCostCanvasSpecIssues(zod.error),
+        "blocks.0.text: {{nope}} does not name a kpi block",
       );
     }
   });
@@ -1579,101 +1474,136 @@ describe("decodeForm, the editors' safeParse", () => {
     expect(viaEffect(E.CostGraphConfig, input).ok).toBe(false);
     const decoded = E.decodeForm(E.CostGraphConfig, input);
     expect(decoded.success).toBe(true);
-    if (decoded.success) expect(decoded.data).toEqual(Z.costGraphConfigSchema.parse(input));
+    if (decoded.success) {
+      expect(decoded.data).toEqual({
+        version: 1,
+        chartType: "stacked_bar",
+        binning: "daily",
+        dateRange: { kind: "relative", preset: "30d" },
+        groupBy: "provider",
+        filters: [{ dimension: "service", op: "in", values: ["AmazonEC2"] }],
+        topN: 5,
+        comparePreviousPeriod: false,
+        showForecast: false,
+      });
+    }
   });
 
-  const firstMessage = (schema: z.ZodTypeAny, input: unknown) => {
-    const parsed = schema.safeParse(input);
-    return parsed.success ? undefined : parsed.error.issues[0]?.message;
-  };
-
-  const cases: ReadonlyArray<[string, z.ZodTypeAny, Schema.ConstraintDecoder<unknown>, unknown]> = [
-    ["empty budget name", Z.budgetInputSchema, E.BudgetInput, { ...BUDGET, name: "" }],
-    ["long budget name", Z.budgetInputSchema, E.BudgetInput, { ...BUDGET, name: s(121) }],
-    ["no thresholds", Z.budgetInputSchema, E.BudgetInput, { ...BUDGET, thresholds: [] }],
+  const cases: ReadonlyArray<[string, string, Schema.ConstraintDecoder<unknown>, unknown]> = [
+    [
+      "empty budget name",
+      "String must contain at least 1 character(s)",
+      E.BudgetInput,
+      { ...BUDGET, name: "" },
+    ],
+    [
+      "long budget name",
+      "String must contain at most 120 character(s)",
+      E.BudgetInput,
+      { ...BUDGET, name: s(121) },
+    ],
+    [
+      "no thresholds",
+      "Array must contain at least 1 element(s)",
+      E.BudgetInput,
+      { ...BUDGET, thresholds: [] },
+    ],
     [
       "threshold out of range",
-      Z.budgetInputSchema,
+      "Number must be greater than or equal to 1",
       E.BudgetInput,
       { ...BUDGET, thresholds: [{ type: "actual", percent: 0 }] },
     ],
     [
       "threshold above range",
-      Z.budgetInputSchema,
+      "Number must be less than or equal to 1000",
       E.BudgetInput,
       { ...BUDGET, thresholds: [{ type: "actual", percent: 2000 }] },
     ],
     [
       "fractional threshold",
-      Z.budgetInputSchema,
+      "Expected integer, received float",
       E.BudgetInput,
       { ...BUDGET, thresholds: [{ type: "actual", percent: 1.5 }] },
     ],
-    ["filter without values", Z.budgetInputSchema, E.BudgetInput, { ...BUDGET, filters: [BAD_F] }],
-    ["missing name", Z.budgetInputSchema, E.BudgetInput, { thresholds: BUDGET.thresholds }],
-    ["mistyped name", Z.budgetInputSchema, E.BudgetInput, { ...BUDGET, name: 7 }],
+    [
+      "filter without values",
+      "A filter needs at least one value.",
+      E.BudgetInput,
+      { ...BUDGET, filters: [BAD_F] },
+    ],
+    ["missing name", "Required", E.BudgetInput, { thresholds: BUDGET.thresholds }],
+    ["mistyped name", "Expected string, received number", E.BudgetInput, { ...BUDGET, name: 7 }],
     [
       "usage without a unit",
-      Z.costGraphConfigSchema,
+      "Pick a usage unit: quantities in different units (hours, gigabytes, requests) cannot be added together.",
       E.CostGraphConfig,
       { ...GRAPH, measure: "usage" },
     ],
     [
       "axis with a forecast",
-      Z.costGraphConfigSchema,
+      "Forecasts project over time, so they need the date X axis.",
       E.CostGraphConfig,
       { ...GRAPH, xAxis: "service", showForecast: true },
     ],
     [
       "bad chart type",
-      Z.costGraphConfigSchema,
+      "Invalid enum value. Expected 'stacked_bar' | 'multi_bar' | 'line' | 'area' | 'pie' | 'donut' | 'table', received 'radar'",
       E.CostGraphConfig,
       { ...GRAPH, chartType: "radar" },
     ],
-    ["topN too large", Z.costGraphConfigSchema, E.CostGraphConfig, { ...GRAPH, topN: 16 }],
+    [
+      "topN too large",
+      "Number must be less than or equal to 15",
+      E.CostGraphConfig,
+      { ...GRAPH, topN: 16 },
+    ],
     [
       "no threshold",
-      Z.costAlertInputSchema,
+      "Set a percent threshold, an amount threshold, or both",
       E.CostAlertInput,
       { ...ALERT, thresholdPercent: null, thresholdAmountCents: null },
     ],
     [
       "tag group without key",
-      Z.costAlertInputSchema,
+      "groupByTagKey is required when groupBy is tag or virtual_tag",
       E.CostAlertInput,
       { ...ALERT, groupBy: "tag" },
     ],
-    ["empty alert name", Z.costAlertInputSchema, E.CostAlertInput, { ...ALERT, name: "" }],
+    [
+      "empty alert name",
+      "String must contain at least 1 character(s)",
+      E.CostAlertInput,
+      { ...ALERT, name: "" },
+    ],
     [
       "blank rule name",
-      MZ.metricAlertRuleInputSchema,
+      "String must contain at least 1 character(s)",
       E.MetricAlertRuleInput,
       { ...METRIC_RULE, name: "   " },
     ],
     [
       "window too short",
-      MZ.metricAlertRuleInputSchema,
+      "Number must be greater than or equal to 5",
       E.MetricAlertRuleInput,
       { ...METRIC_RULE, forMinutes: 1 },
     ],
     [
       "blank metric",
-      MZ.metricAlertRuleInputSchema,
+      "String must contain at least 1 character(s)",
       E.MetricAlertRuleInput,
       { ...METRIC_RULE, metricKey: "" },
     ],
     [
       "bad comparator",
-      MZ.metricAlertRuleInputSchema,
+      "Invalid enum value. Expected '>' | '>=' | '<' | '<=', received '=='",
       E.MetricAlertRuleInput,
       { ...METRIC_RULE, comparator: "==" },
     ],
   ];
 
-  for (const [name, zodSchema, effectSchema, input] of cases) {
+  for (const [name, expected, effectSchema, input] of cases) {
     it(`words the first problem as zod did: ${name}`, () => {
-      const expected = firstMessage(zodSchema, input);
-      expect(expected).toBeDefined();
       const decoded = E.decodeForm(effectSchema, input);
       expect(decoded.success).toBe(false);
       if (!decoded.success) expect(decoded.message).toBe(expected);

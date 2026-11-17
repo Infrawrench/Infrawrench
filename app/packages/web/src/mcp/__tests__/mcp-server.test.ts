@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { z } from "zod";
+import { Schema } from "effect";
 
 const handler = vi.fn(async (_input: Record<string, unknown>, _auth: unknown) => ({
   content: [{ type: "text" as const, text: "done" }],
@@ -21,7 +21,7 @@ vi.mock("@/tools/registry", () => ({
       name: "list_resources",
       title: "List resources",
       description: "Lists resources.",
-      inputSchema: { limit: z.number().optional() },
+      inputSchema: { limit: Schema.optionalKey(Schema.Finite) },
       risk: "read" as const,
       permission: "resources:read",
       handler,

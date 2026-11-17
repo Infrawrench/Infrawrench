@@ -9,7 +9,8 @@
  * permissions and the same audit actions, so a dismissal made through chat is
  * indistinguishable from one made in the UI except for its `source`.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import {
   filterVulnerabilityFindings,
   type VulnerabilityFilter,
@@ -55,65 +56,71 @@ export function vulnerabilityTools(): ToolDefinition[] {
         "being exploited in the wild. Findings dismissed as accepted risks are excluded " +
         "unless you ask for them.",
       inputSchema: {
-        severity: z
-          .array(z.enum(SEVERITIES))
-          .optional()
-          .describe(
-            "Only return findings of these severities. `unknown` is a finding the scanner did not score.",
-          ),
-        running: z
-          .boolean()
-          .optional()
-          .describe(
-            "true: only findings whose artifact is running on a synced resource; false: only those that are not. Omit for both.",
-          ),
-        fixAvailable: z
-          .boolean()
-          .optional()
-          .describe("true: only findings the scanner says have a fixed version."),
-        kev: z
-          .boolean()
-          .optional()
-          .describe("true: only findings in the CISA Known Exploited Vulnerabilities catalog."),
-        pluginId: z
-          .string()
-          .optional()
-          .describe("Only findings reported by this plugin (e.g. `aws`, `github`)."),
-        accountId: z
-          .string()
-          .optional()
-          .describe("Only findings reported by this connected account (see list_accounts)."),
-        serviceId: z
-          .string()
-          .optional()
-          .describe(
-            "Only findings running on a resource of this service (an id from a finding's " +
+        severity: Schema.optionalKey(
+          Schema.Array(Schema.Literals(SEVERITIES)).annotate({
+            description:
+              "Only return findings of these severities. `unknown` is a finding the scanner did not score.",
+          }),
+        ),
+        running: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "true: only findings whose artifact is running on a synced resource; false: only those that are not. Omit for both.",
+          }),
+        ),
+        fixAvailable: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "true: only findings the scanner says have a fixed version.",
+          }),
+        ),
+        kev: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "true: only findings in the CISA Known Exploited Vulnerabilities catalog.",
+          }),
+        ),
+        pluginId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only findings reported by this plugin (e.g. `aws`, `github`).",
+          }),
+        ),
+        accountId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only findings reported by this connected account (see list_accounts).",
+          }),
+        ),
+        serviceId: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Only findings running on a resource of this service (an id from a finding's " +
               "`services`).",
-          ),
-        resourceId: z
-          .string()
-          .optional()
-          .describe("Only findings running on this Infrawrench resource id."),
-        search: z
-          .string()
-          .optional()
-          .describe(
-            "Case-insensitive substring over advisory id, aliases, package, artifact name and title.",
-          ),
-        includeDismissed: z
-          .boolean()
-          .optional()
-          .describe(
-            "Also return the findings the organization has dismissed (filtered the same way), " +
+          }),
+        ),
+        resourceId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only findings running on this Infrawrench resource id.",
+          }),
+        ),
+        search: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Case-insensitive substring over advisory id, aliases, package, artifact name and title.",
+          }),
+        ),
+        includeDismissed: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "Also return the findings the organization has dismissed (filtered the same way), " +
               "each with who accepted it, when, and why. They stay out of `findings` either way.",
-          ),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_LIMIT)
-          .optional()
-          .describe(`Maximum findings to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`),
+          }),
+        ),
+        limit: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(MAX_LIMIT),
+          ).annotate({
+            description: `Maximum findings to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`,
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /vulnerabilities`.
@@ -184,21 +191,18 @@ export function vulnerabilityTools(): ToolDefinition[] {
         // `.min(1)` so a blank id is a tool-input error rather than the plain
         // `Error` `dismissVulnerability` throws past the handler: the HTTP
         // route guards this, and this second entry point has to as well.
-        advisoryId: z
-          .string()
-          .trim()
-          .min(1)
-          .describe("The finding's `advisoryId`, e.g. CVE-2024-3094 or GHSA-…."),
-        artifactKey: z
-          .string()
-          .trim()
-          .min(1)
-          .describe("The finding's `artifact.key`, or `*` for every artifact in the organization."),
-        reason: z
-          .string()
-          .max(MAX_VULNERABILITY_DISMISSAL_REASON_LENGTH)
-          .optional()
-          .describe("Why this vulnerability is acceptable, recorded with the dismissal."),
+        advisoryId: Schema.String.check(minLength(1)).annotate({
+          description: "The finding's `advisoryId`, e.g. CVE-2024-3094 or GHSA-….",
+        }),
+        artifactKey: Schema.String.check(minLength(1)).annotate({
+          description:
+            "The finding's `artifact.key`, or `*` for every artifact in the organization.",
+        }),
+        reason: Schema.optionalKey(
+          Schema.String.check(maxLength(MAX_VULNERABILITY_DISMISSAL_REASON_LENGTH)).annotate({
+            description: "Why this vulnerability is acceptable, recorded with the dismissal.",
+          }),
+        ),
       },
       risk: "write",
       // Mirrors `POST /vulnerabilities/dismissals`: the same trust level as
@@ -244,12 +248,12 @@ export function vulnerabilityTools(): ToolDefinition[] {
         "dismissed by mistake. Pass the same advisoryId and artifactKey (or `*`) the " +
         "dismissal was recorded with; list_vulnerabilities with includeDismissed shows them.",
       inputSchema: {
-        advisoryId: z.string().trim().min(1).describe("The dismissed advisory id."),
-        artifactKey: z
-          .string()
-          .trim()
-          .min(1)
-          .describe("The dismissal's artifact key, or `*` for an organization-wide dismissal."),
+        advisoryId: Schema.String.check(minLength(1)).annotate({
+          description: "The dismissed advisory id.",
+        }),
+        artifactKey: Schema.String.check(minLength(1)).annotate({
+          description: "The dismissal's artifact key, or `*` for an organization-wide dismissal.",
+        }),
       },
       risk: "write",
       permission: "resources:write",

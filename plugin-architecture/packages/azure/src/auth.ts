@@ -11,7 +11,7 @@
  * subsequent ARM call succeeded, which is a confusing failure to debug.
  */
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { z } from "zod";
+import { Schema } from "effect";
 import { azureRequest } from "./http.js";
 
 export interface AzureCredentials {
@@ -24,11 +24,13 @@ export interface AzureCredentials {
 /** Host HTTP service, when the host supplied one. Omitted → direct `fetch`. */
 export type AzureAuthHttp = HttpHostServices | undefined;
 
-const tokenResponseSchema = z.object({
-  access_token: z.string(),
-  expires_in: z.number(),
-  token_type: z.string(),
-});
+const decodeTokenResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    access_token: Schema.String,
+    expires_in: Schema.Finite,
+    token_type: Schema.String,
+  }),
+);
 
 async function exchangeAadToken(
   creds: AzureCredentials,
@@ -51,7 +53,7 @@ async function exchangeAadToken(
   if (!res.ok) {
     throw new Error(`${label} failed: ${res.status} ${await res.text()}`);
   }
-  const data = tokenResponseSchema.parse(await res.json());
+  const data = decodeTokenResponse(await res.json());
   return data.access_token;
 }
 

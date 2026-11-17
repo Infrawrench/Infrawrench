@@ -138,7 +138,7 @@ export const DashboardKpiRequest = Schema.Struct({ config: KpiWidgetConfig }).an
   identifier: "DashboardKpiRequest",
 });
 
-/** zod's `widgetConfigSchemaFor`'s table: each widget kind's stored config. */
+/** Each widget kind's stored config. */
 export const WIDGET_CONFIG_SCHEMAS = {
   cost_graph: CostGraphConfig,
   cost_report: CostReportWidgetConfig,

@@ -18,7 +18,7 @@
  * exactly like `ssh_exec`. Launching a desktop entry, looking, clicking,
  * scrolling and closing stay `write`.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import type { A11yNode } from "@infrawrench/appstream-core";
 
 import { getHeadlessSession, endHeadlessSession, AppsHostError } from "@/services/apps-headless";
@@ -76,14 +76,18 @@ function trimTree(node: A11yNode): Record<string, unknown> {
 }
 
 const targetShape = {
-  resourceId: z.string().describe("The resource whose host runs the applications."),
-  sshKeyId: z
-    .string()
-    .optional()
-    .describe(
-      "Org SSH key id (see list_ssh_keys). Required for VM resources; omit for hosts whose plugin supplies SSH natively (Fly, Hetzner).",
-    ),
-  username: z.string().optional().describe("SSH login, if not the resource's default."),
+  resourceId: Schema.String.annotate({
+    description: "The resource whose host runs the applications.",
+  }),
+  sshKeyId: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Org SSH key id (see list_ssh_keys). Required for VM resources; omit for hosts whose plugin supplies SSH natively (Fly, Hetzner).",
+    }),
+  ),
+  username: Schema.optionalKey(
+    Schema.String.annotate({ description: "SSH login, if not the resource's default." }),
+  ),
 };
 
 export function linuxAppTools(): ToolDefinition[] {
@@ -126,13 +130,15 @@ export function linuxAppTools(): ToolDefinition[] {
         "Launch a graphical application on the host and return its window (windowId, title, size). Pass appId from list_apps_on_host, or exec for a raw command. The window is streaming and ready to screenshot or act on.",
       inputSchema: {
         ...targetShape,
-        appId: z.string().optional().describe("Desktop-entry id from list_apps_on_host."),
-        exec: z
-          .string()
-          .optional()
-          .describe(
-            "A raw command, when no desktop entry fits. Runs an arbitrary program on the host, so it waits for approval in chat.",
-          ),
+        appId: Schema.optionalKey(
+          Schema.String.annotate({ description: "Desktop-entry id from list_apps_on_host." }),
+        ),
+        exec: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "A raw command, when no desktop entry fits. Runs an arbitrary program on the host, so it waits for approval in chat.",
+          }),
+        ),
       },
       risk: "write",
       openWorld: true,
@@ -217,7 +223,9 @@ export function linuxAppTools(): ToolDefinition[] {
         "Capture a window as a PNG the model can see. Waits for the window to finish repainting first, so the shot reflects the latest action. Pixel coordinates in the image match those click_app_window and the accessibility tree use.",
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int().describe("Window id from launch_app or list_app_windows."),
+        windowId: Schema.Int.annotate({
+          description: "Window id from launch_app or list_app_windows.",
+        }),
       },
       risk: "read",
       openWorld: true,
@@ -252,7 +260,9 @@ export function linuxAppTools(): ToolDefinition[] {
         "Read a window's accessibility tree (what a screen reader would see): every element's role, name, text, state, and on-screen bounds. Each element with bounds carries a `center` you can pass straight to click_app_window. Cheaper and more reliable than reading a screenshot when the app exposes accessibility (most GTK/Qt apps do).",
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int().describe("Window id from launch_app or list_app_windows."),
+        windowId: Schema.Int.annotate({
+          description: "Window id from launch_app or list_app_windows.",
+        }),
       },
       risk: "read",
       openWorld: true,
@@ -286,11 +296,11 @@ export function linuxAppTools(): ToolDefinition[] {
         "Click at a pixel position in a window; the same coordinate space as a screenshot and the accessibility tree's `center`. Optionally right/middle button, or a double-click.",
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int(),
-        x: z.number().int().describe("X in window pixels."),
-        y: z.number().int().describe("Y in window pixels."),
-        button: z.enum(["left", "right", "middle"]).optional(),
-        doubleClick: z.boolean().optional(),
+        windowId: Schema.Int,
+        x: Schema.Int.annotate({ description: "X in window pixels." }),
+        y: Schema.Int.annotate({ description: "Y in window pixels." }),
+        button: Schema.optionalKey(Schema.Literals(["left", "right", "middle"])),
+        doubleClick: Schema.optionalKey(Schema.Boolean),
       },
       risk: "write",
       openWorld: true,
@@ -331,8 +341,8 @@ export function linuxAppTools(): ToolDefinition[] {
         "Type text into the window's focused widget, character by character; click or tab to the field first. Handles any character a keyboard could produce, including accented ones.",
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int(),
-        text: z.string().describe("The literal text to type."),
+        windowId: Schema.Int,
+        text: Schema.String.annotate({ description: "The literal text to type." }),
       },
       // Typing into a terminal app is running a command.
       risk: "destructive",
@@ -365,8 +375,8 @@ export function linuxAppTools(): ToolDefinition[] {
         'Press a key or chord in a window, e.g. "Enter", "Tab", "Escape", "ctrl+s", "ctrl+shift+t", "alt+F4". The last token is the key; earlier tokens are modifiers (ctrl, shift, alt, meta).',
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int(),
-        keys: z.string().describe('A key or "+"-joined chord.'),
+        windowId: Schema.Int,
+        keys: Schema.String.annotate({ description: 'A key or "+"-joined chord.' }),
       },
       // Enter in a terminal app submits whatever was typed.
       risk: "destructive",
@@ -399,11 +409,13 @@ export function linuxAppTools(): ToolDefinition[] {
         "Scroll by wheel notches at a position. Positive notches scroll down (or right, with horizontal:true), like a mouse wheel.",
       inputSchema: {
         ...targetShape,
-        windowId: z.number().int(),
-        x: z.number().int(),
-        y: z.number().int(),
-        notches: z.number().int().describe("Wheel notches; positive scrolls down/right."),
-        horizontal: z.boolean().optional(),
+        windowId: Schema.Int,
+        x: Schema.Int,
+        y: Schema.Int,
+        notches: Schema.Int.annotate({
+          description: "Wheel notches; positive scrolls down/right.",
+        }),
+        horizontal: Schema.optionalKey(Schema.Boolean),
       },
       risk: "write",
       openWorld: true,
@@ -438,12 +450,12 @@ export function linuxAppTools(): ToolDefinition[] {
         "Ask a window to close (the app may prompt to save). Set endSession:true instead to close every window and stop the whole app session on the host.",
       inputSchema: {
         ...targetShape,
-        windowId: z
-          .number()
-          .int()
-          .optional()
-          .describe("The window to close; omit with endSession."),
-        endSession: z.boolean().optional().describe("Close everything and end the host session."),
+        windowId: Schema.optionalKey(
+          Schema.Int.annotate({ description: "The window to close; omit with endSession." }),
+        ),
+        endSession: Schema.optionalKey(
+          Schema.Boolean.annotate({ description: "Close everything and end the host session." }),
+        ),
       },
       risk: "write",
       openWorld: true,

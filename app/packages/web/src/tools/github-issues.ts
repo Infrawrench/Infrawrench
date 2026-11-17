@@ -5,7 +5,8 @@
  * does (a repeat comments on the open issue), and a pull request is still
  * gated by the org's `pullRequestsEnabled` and never merged.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import { GITHUB_ISSUE_SOURCE_KINDS } from "@infrawrench/client-core";
 import { GithubApiError } from "@infrawrench/server-core/github/issues-api";
 import {
@@ -24,9 +25,9 @@ import {
 } from "@infrawrench/server-core/github-issues/pull-request";
 import { err, ok, type ToolDefinition } from "./types";
 
-const sourceKind = z
-  .enum(GITHUB_ISSUE_SOURCE_KINDS)
-  .describe("Which detector produced the finding: orphan, oversized, cost_anomaly, …");
+const sourceKind = Schema.Literals(GITHUB_ISSUE_SOURCE_KINDS).annotate({
+  description: "Which detector produced the finding: orphan, oversized, cost_anomaly, …",
+});
 
 function failure(e: unknown) {
   if (
@@ -40,18 +41,20 @@ function failure(e: unknown) {
 }
 
 const pullRequestInput = {
-  sourceKind: z
-    .enum(["orphan", "oversized"])
-    .describe("orphan (remove the block) or oversized (resize)"),
-  sourceId: z
-    .string()
-    .min(1)
-    .describe("The finding id; for orphan and oversized, the resource id."),
-  resourceId: z.string().min(1).describe("The Infrawrench resource id."),
-  recommendedSizeId: z
-    .string()
-    .optional()
-    .describe("For oversized: the recommended size id from list_oversized_resources."),
+  sourceKind: Schema.Literals(["orphan", "oversized"]).annotate({
+    description: "orphan (remove the block) or oversized (resize)",
+  }),
+  sourceId: Schema.String.check(minLength(1)).annotate({
+    description: "The finding id; for orphan and oversized, the resource id.",
+  }),
+  resourceId: Schema.String.check(minLength(1)).annotate({
+    description: "The Infrawrench resource id.",
+  }),
+  recommendedSizeId: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "For oversized: the recommended size id from list_oversized_resources.",
+    }),
+  ),
 };
 
 function pullRequestArgs(input: {
@@ -100,8 +103,8 @@ export function githubIssueTools(): ToolDefinition[] {
         "Findings that have been filed as GitHub issues, newest first, with the issue URL, " +
         "whether it is still open, whether a routing rule filed it, and any pull request.",
       inputSchema: {
-        sourceKind: sourceKind.optional(),
-        state: z.enum(["open", "closed"]).optional(),
+        sourceKind: Schema.optionalKey(sourceKind),
+        state: Schema.optionalKey(Schema.Literals(["open", "closed"])),
       },
       risk: "read",
       permission: "github-issues:read",
@@ -129,18 +132,30 @@ export function githubIssueTools(): ToolDefinition[] {
         "when known.",
       inputSchema: {
         sourceKind,
-        sourceId: z
-          .string()
-          .min(1)
-          .describe("The finding id; for orphan and oversized, the resource id."),
-        title: z.string().min(1).max(240).describe("One-line headline."),
-        details: z
-          .array(z.object({ label: z.string(), value: z.union([z.string(), z.number()]) }))
-          .max(30)
-          .optional(),
-        note: z.string().max(5000).optional(),
-        resourceId: z.string().optional().describe("The resource, used for routing."),
-        monthlyCost: z.object({ amount: z.number(), currency: z.string().length(3) }).optional(),
+        sourceId: Schema.String.check(minLength(1)).annotate({
+          description: "The finding id; for orphan and oversized, the resource id.",
+        }),
+        title: Schema.String.check(minLength(1), maxLength(240)).annotate({
+          description: "One-line headline.",
+        }),
+        details: Schema.optionalKey(
+          Schema.Array(
+            Schema.Struct({
+              label: Schema.String,
+              value: Schema.Union([Schema.String, Schema.Finite]),
+            }),
+          ).check(maxLength(30)),
+        ),
+        note: Schema.optionalKey(Schema.String.check(maxLength(5000))),
+        resourceId: Schema.optionalKey(
+          Schema.String.annotate({ description: "The resource, used for routing." }),
+        ),
+        monthlyCost: Schema.optionalKey(
+          Schema.Struct({
+            amount: Schema.Finite,
+            currency: Schema.String.check(minLength(3), maxLength(3)),
+          }),
+        ),
       },
       risk: "write",
       openWorld: true,

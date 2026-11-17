@@ -8,7 +8,7 @@
  * Terraform hint when the resource is IaC-managed, so an agent can hand a
  * human the exact command instead of paraphrasing one.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import { COST_EFFICIENCY_LIMITS, type EfficiencyAlertKind } from "@infrawrench/client-core";
 import { listEfficiencyAlerts } from "../services/efficiency-alerts";
 import { listOrphans } from "../services/orphans";
@@ -36,10 +36,11 @@ export function rightsizingTools(): ToolDefinition[] {
         "results are cached for a few minutes; pass refresh to recompute." +
         REMEDIATION_NOTE,
       inputSchema: {
-        refresh: z
-          .boolean()
-          .optional()
-          .describe("Bypass the short server-side cache and recompute now."),
+        refresh: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Bypass the short server-side cache and recompute now.",
+          }),
+        ),
       },
       risk: "read",
       permission: "resources:read",
@@ -79,17 +80,21 @@ export function rightsizingTools(): ToolDefinition[] {
         "regressions. Idle commitments carry `remediation` with the provider's commands for " +
         "inspecting, exchanging, re-scoping or returning the commitment where it allows that.",
       inputSchema: {
-        kind: z
-          .enum(["commitment_expiry", "commitment_idle", "unit_cost_regression"])
-          .optional()
-          .describe("Only this kind of alert."),
-        limit: z
-          .number()
-          .int()
-          .min(COST_EFFICIENCY_LIMITS.minEventsLimit)
-          .max(COST_EFFICIENCY_LIMITS.maxEventsLimit)
-          .optional()
-          .describe(`Rows to return (default ${COST_EFFICIENCY_LIMITS.defaultEventsLimit}).`),
+        kind: Schema.optionalKey(
+          Schema.Literals([
+            "commitment_expiry",
+            "commitment_idle",
+            "unit_cost_regression",
+          ]).annotate({ description: "Only this kind of alert." }),
+        ),
+        limit: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(COST_EFFICIENCY_LIMITS.minEventsLimit),
+            Schema.isLessThanOrEqualTo(COST_EFFICIENCY_LIMITS.maxEventsLimit),
+          ).annotate({
+            description: `Rows to return (default ${COST_EFFICIENCY_LIMITS.defaultEventsLimit}).`,
+          }),
+        ),
       },
       risk: "read",
       permission: "costs:read",

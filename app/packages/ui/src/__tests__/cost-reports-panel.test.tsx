@@ -18,12 +18,15 @@ beforeAll(() => {
 import { CostReportsPanel } from "../cost-reports/CostReportsPanel.js";
 import type { CostReportsClient } from "../cost-reports/types.js";
 import {
+  CostReportBulkRequest,
+  CostReportFolderInput,
+  CostReportInput,
+  CostReportWidgetConfig,
+  decodeForm,
+  widgetConfigFor,
+} from "@infrawrench/api-contract/schemas";
+import {
   DEFAULT_COST_GRAPH_CONFIG,
-  costReportBulkRequestSchema,
-  costReportFolderInputSchema,
-  costReportInputSchema,
-  costReportWidgetConfigSchema,
-  widgetConfigSchemaFor,
   type CostReport,
   type CostReportFolder,
 } from "../cost/config.js";
@@ -72,23 +75,19 @@ function makeClient(
 
 describe("cost report schemas", () => {
   it("registers cost_report in the widget-config map", () => {
-    // `widgetConfigSchemaFor` is `satisfies`-checked against the kind union, so
+    // `widgetConfigFor` is `satisfies`-checked against the kind union, so
     // this only fails if the kind was added without its schema.
-    expect(widgetConfigSchemaFor("cost_report")).toBe(costReportWidgetConfigSchema);
+    expect(widgetConfigFor("cost_report")).toBe(CostReportWidgetConfig);
   });
 
   it("requires a reportId on a cost_report widget config", () => {
-    expect(costReportWidgetConfigSchema.safeParse({ version: 1, reportId: "r1" }).success).toBe(
-      true,
-    );
-    expect(costReportWidgetConfigSchema.safeParse({ version: 1 }).success).toBe(false);
-    expect(costReportWidgetConfigSchema.safeParse({ version: 1, reportId: "" }).success).toBe(
-      false,
-    );
+    expect(decodeForm(CostReportWidgetConfig, { version: 1, reportId: "r1" }).success).toBe(true);
+    expect(decodeForm(CostReportWidgetConfig, { version: 1 }).success).toBe(false);
+    expect(decodeForm(CostReportWidgetConfig, { version: 1, reportId: "" }).success).toBe(false);
   });
 
   it("accepts a null folderId so a report can be moved out of a folder", () => {
-    const parsed = costReportInputSchema.safeParse({
+    const parsed = decodeForm(CostReportInput, {
       name: "Spend",
       config: DEFAULT_COST_GRAPH_CONFIG,
       folderId: null,
@@ -98,9 +97,9 @@ describe("cost report schemas", () => {
 
   it("rejects a blank name and a malformed config", () => {
     expect(
-      costReportInputSchema.safeParse({ name: "", config: DEFAULT_COST_GRAPH_CONFIG }).success,
+      decodeForm(CostReportInput, { name: "", config: DEFAULT_COST_GRAPH_CONFIG }).success,
     ).toBe(false);
-    expect(costReportInputSchema.safeParse({ name: "Spend", config: { version: 1 } }).success).toBe(
+    expect(decodeForm(CostReportInput, { name: "Spend", config: { version: 1 } }).success).toBe(
       false,
     );
   });
@@ -315,23 +314,22 @@ describe("CostReportsPanel", () => {
 describe("cost report folder schema", () => {
   it("accepts a null parent so a folder can be a top-level one", () => {
     expect(
-      costReportFolderInputSchema.safeParse({ name: "Finance", parentFolderId: null }).success,
+      decodeForm(CostReportFolderInput, { name: "Finance", parentFolderId: null }).success,
     ).toBe(true);
   });
 
   it("rejects a blank name", () => {
-    expect(costReportFolderInputSchema.safeParse({ name: "" }).success).toBe(false);
+    expect(decodeForm(CostReportFolderInput, { name: "" }).success).toBe(false);
   });
 });
 
 describe("bulk request schema", () => {
   it("needs at least one item and caps the total", () => {
     expect(
-      costReportBulkRequestSchema.safeParse({ action: "delete", reportIds: [], folderIds: [] })
-        .success,
+      decodeForm(CostReportBulkRequest, { action: "delete", reportIds: [], folderIds: [] }).success,
     ).toBe(false);
     expect(
-      costReportBulkRequestSchema.safeParse({
+      decodeForm(CostReportBulkRequest, {
         action: "move",
         reportIds: ["r1"],
         folderIds: [],
@@ -340,7 +338,7 @@ describe("bulk request schema", () => {
     ).toBe(true);
     const many = Array.from({ length: 300 }, (_, i) => `id-${i}`);
     expect(
-      costReportBulkRequestSchema.safeParse({
+      decodeForm(CostReportBulkRequest, {
         action: "delete",
         reportIds: many,
         folderIds: many,
@@ -350,7 +348,7 @@ describe("bulk request schema", () => {
 
   it("requires a target on a move", () => {
     expect(
-      costReportBulkRequestSchema.safeParse({ action: "move", reportIds: ["r1"], folderIds: [] })
+      decodeForm(CostReportBulkRequest, { action: "move", reportIds: ["r1"], folderIds: [] })
         .success,
     ).toBe(false);
   });

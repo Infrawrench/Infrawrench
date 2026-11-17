@@ -4,14 +4,20 @@
  * tools, these guard org-wide spend data, so every handler enforces the same
  * `costs:read` / `budgets:*` permissions as the HTTP API.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import {
+  BudgetInput,
+  CostQueryRequest,
+  IsoDate,
+  PricingPreviewRequest,
+  maxLength,
+  minLength,
+  pattern,
+} from "@infrawrench/api-contract/schemas";
 import {
   COST_ANNOTATION_LIMITS,
   COST_DIMENSIONS,
   COST_QUERY_LANGUAGE_SUMMARY,
-  budgetInputSchema,
-  costQueryRequestSchema,
-  pricingPreviewRequestSchema,
 } from "@infrawrench/ui/cost/config";
 import {
   acknowledgeCostAnomaly,
@@ -57,8 +63,9 @@ import {
 import { getCommitmentsFeed } from "@infrawrench/server-core/commitments/feed";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const isoDay = IsoDate;
 
 /** Resolve optional from/to tool args; defaults to the trailing 30 days. */
 function toolRange(input: Record<string, unknown>): { from: string; to: string } | null {
@@ -142,14 +149,14 @@ export function costTools(): ToolDefinition[] {
         "total reported as if it were the bill is a number nobody can reconcile against an " +
         "invoice. `adjustment.fixedTotals` are flat per-period charges that are deliberately " +
         "not included in `totals`; the internal figure is the total plus those.",
-      inputSchema: costQueryRequestSchema.shape,
+      inputSchema: CostQueryRequest.fields,
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const parsed = costQueryRequestSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid query: ${parsed.error.message}`);
+        const parsed = decodeToolInput(CostQueryRequest, input);
+        if (!parsed.success) return err(`Invalid query: ${parsed.message}`);
         try {
           return ok(await runCostQuery(auth.organizationId, parsed.data));
         } catch (e) {
@@ -222,20 +229,20 @@ export function costTools(): ToolDefinition[] {
         "it does **not** change any budget's alerting unless that budget separately opted into " +
         "the same model (see list_budgets' scenarioModelId).",
       inputSchema: {
-        ...costQueryRequestSchema.shape,
+        ...CostQueryRequest.fields,
         // Overrides the shared schema's optional field: on this tool the model
         // is the whole subject, so it is required rather than a modifier.
-        scenarioModelId: z
-          .string()
-          .describe("From list_scenario_models. An id that does not resolve is an error."),
+        scenarioModelId: Schema.String.annotate({
+          description: "From list_scenario_models. An id that does not resolve is an error.",
+        }),
       },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const parsed = costQueryRequestSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid query: ${parsed.error.message}`);
+        const parsed = decodeToolInput(CostQueryRequest, input);
+        if (!parsed.success) return err(`Invalid query: ${parsed.message}`);
         // `scenarioModelId` is part of the shared query schema, so it is
         // already parsed; this tool only insists it was actually sent.
         if (!parsed.data.scenarioModelId) return err("scenarioModelId is required");
@@ -271,17 +278,24 @@ export function costTools(): ToolDefinition[] {
         "explicitly can still be answered. Tag keys prefixed `k8s_node_label:` and " +
         "`k8s_pvc_label:` are Kubernetes node and PersistentVolumeClaim labels.",
       inputSchema: {
-        dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units", "virtual-tag-keys"]),
-        tagKey: z
-          .string()
-          .optional()
-          .describe("Required when dimension is 'tag' or 'virtual_tag' (the virtual tag's key)."),
-        includeHidden: z
-          .boolean()
-          .optional()
-          .describe(
-            "dimension=tag-keys only: also list keys the organization hides, flagged hidden.",
-          ),
+        dimension: Schema.Literals([
+          ...COST_DIMENSIONS,
+          "tag-keys",
+          "usage-units",
+          "virtual-tag-keys",
+        ]),
+        tagKey: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Required when dimension is 'tag' or 'virtual_tag' (the virtual tag's key).",
+          }),
+        ),
+        includeHidden: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "dimension=tag-keys only: also list keys the organization hides, flagged hidden.",
+          }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -368,13 +382,12 @@ export function costTools(): ToolDefinition[] {
         "give_cost_anomaly_feedback. `feedback` is the verdict (expected or unexpected) and who " +
         "gave it; `suppressionId` is set when a suppression kept the finding from alerting.",
       inputSchema: {
-        days: z
-          .number()
-          .int()
-          .min(1)
-          .max(90)
-          .optional()
-          .describe("Window in days over anomalous days, 1-90. Defaults to 30."),
+        days: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(90),
+          ).annotate({ description: "Window in days over anomalous days, 1-90. Defaults to 30." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -409,15 +422,15 @@ export function costTools(): ToolDefinition[] {
         "fire. Calling this again on the same anomaly replaces the sentence and rewords the note " +
         "rather than filing a second one. Audit-logged.",
       inputSchema: {
-        anomalyId: z.string().describe("From list_cost_anomalies."),
-        explanation: z
-          .string()
-          .min(1)
-          .max(COST_ANNOTATION_LIMITS.maxTextLength)
-          .describe(
+        anomalyId: Schema.String.annotate({ description: "From list_cost_anomalies." }),
+        explanation: Schema.String.check(
+          minLength(1),
+          maxLength(COST_ANNOTATION_LIMITS.maxTextLength),
+        ).annotate({
+          description:
             "One sentence on what caused the spend, in the past tense. Becomes the text of the " +
-              "annotation drawn on the charts.",
-          ),
+            "annotation drawn on the charts.",
+        }),
       },
       risk: "write",
       permission: "costs:write",
@@ -513,7 +526,7 @@ export function costTools(): ToolDefinition[] {
         "overall and per key, plus the largest untagged (account, service) buckets. Dates are " +
         "inclusive YYYY-MM-DD, defaulting to the trailing 30 days. Empty when the org has no " +
         "tag policy.",
-      inputSchema: { from: isoDay.optional(), to: isoDay.optional() },
+      inputSchema: { from: Schema.optionalKey(isoDay), to: Schema.optionalKey(isoDay) },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -541,9 +554,9 @@ export function costTools(): ToolDefinition[] {
         "never sum `subtreeTotals` across entries, because parents already contain their " +
         "children. For a flat organization, and for every leaf, the two are equal.",
       inputSchema: {
-        from: isoDay.optional(),
-        to: isoDay.optional(),
-        adjusted: z.boolean().optional(),
+        from: Schema.optionalKey(isoDay),
+        to: Schema.optionalKey(isoDay),
+        adjusted: Schema.optionalKey(Schema.Boolean),
       },
       risk: "read",
       permission: "costs:read",
@@ -622,14 +635,14 @@ export function costTools(): ToolDefinition[] {
         "abs round contains starts_with ends_with lower has_tag`; and `if c then x else y` " +
         "(the top-level else defaults to `cost`). An invalid expression comes back as an error " +
         "naming the character it was found at.",
-      inputSchema: pricingPreviewRequestSchema.shape,
+      inputSchema: PricingPreviewRequest.fields,
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const parsed = pricingPreviewRequestSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid preview: ${parsed.error.message}`);
+        const parsed = decodeToolInput(PricingPreviewRequest, input);
+        if (!parsed.success) return err(`Invalid preview: ${parsed.message}`);
         if (parsed.data.managedAccountId) {
           const deniedInvoices = await denyUnlessPermitted(auth, "invoices:read");
           if (deniedInvoices) return deniedInvoices;
@@ -682,12 +695,11 @@ export function costTools(): ToolDefinition[] {
         "whenever you state a converted amount. The automatic rates are the ECB's euro " +
         "reference rates: https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
       inputSchema: {
-        from: z.string().regex(/^[A-Za-z]{3}$/, "expected a three-letter currency code"),
-        to: z
-          .string()
-          .regex(/^[A-Za-z]{3}$/, "expected a three-letter currency code")
-          .optional(),
-        date: isoDay.optional().describe("Day of spend, YYYY-MM-DD. Defaults to today."),
+        from: Schema.String.check(pattern(/^[A-Za-z]{3}$/)),
+        to: Schema.optionalKey(Schema.String.check(pattern(/^[A-Za-z]{3}$/))),
+        date: Schema.optionalKey(
+          isoDay.annotate({ description: "Day of spend, YYYY-MM-DD. Defaults to today." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -736,7 +748,7 @@ export function costTools(): ToolDefinition[] {
       description:
         "Fetch one budget with current-period actual/forecast status plus its alert history " +
         "(up to the last 100 fired thresholds across periods).",
-      inputSchema: { budgetId: z.string() },
+      inputSchema: { budgetId: Schema.String },
       risk: "read",
       permission: "budgets:read",
       handler: async (input, auth) => {
@@ -765,13 +777,16 @@ export function costTools(): ToolDefinition[] {
         "event rewrites the note and rewords the same chart marker. It does not silence the " +
         "budget: later thresholds still fire. Audit-logged.",
       inputSchema: {
-        budgetId: z.string(),
-        eventId: z.string().describe("A fired event of that budget, from get_budget."),
-        note: z
-          .string()
-          .min(1)
-          .max(COST_ANNOTATION_LIMITS.maxTextLength)
-          .describe("One sentence on why the alert fired. Becomes the chart annotation's text."),
+        budgetId: Schema.String,
+        eventId: Schema.String.annotate({
+          description: "A fired event of that budget, from get_budget.",
+        }),
+        note: Schema.String.check(
+          minLength(1),
+          maxLength(COST_ANNOTATION_LIMITS.maxTextLength),
+        ).annotate({
+          description: "One sentence on why the alert fired. Becomes the chart annotation's text.",
+        }),
       },
       risk: "write",
       permission: "costs:write",
@@ -834,14 +849,14 @@ export function costTools(): ToolDefinition[] {
         "scope the budget; empty filters cover the whole organization. emailRecipients (member " +
         "user ids and extra addresses, from list_alert_email_options) are emailed when a " +
         "threshold fires, besides the alert routing rules. Audit-logged.",
-      inputSchema: budgetInputSchema.shape,
+      inputSchema: BudgetInput.fields,
       risk: "write",
       permission: "budgets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:write");
         if (denied) return denied;
-        const parsed = budgetInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid budget: ${parsed.error.message}`);
+        const parsed = decodeToolInput(BudgetInput, input);
+        if (!parsed.success) return err(`Invalid budget: ${parsed.message}`);
         let created;
         try {
           created = await createBudget(auth.organizationId, parsed.data, auth.userId);
@@ -870,7 +885,7 @@ export function costTools(): ToolDefinition[] {
         "amount, period and parent (same fields as create_budget). A full replace: omitted " +
         "optional fields are cleared, except emailRecipients, which an omission leaves unchanged. " +
         "Alert history is kept. Audit-logged.",
-      inputSchema: { budgetId: z.string(), ...budgetInputSchema.shape },
+      inputSchema: { budgetId: Schema.String, ...BudgetInput.fields },
       risk: "write",
       overwrites: true,
       permission: "budgets:write",
@@ -878,8 +893,8 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "budgets:write");
         if (denied) return denied;
         const { budgetId, ...rest } = input as { budgetId: string } & Record<string, unknown>;
-        const parsed = budgetInputSchema.safeParse(rest);
-        if (!parsed.success) return err(`Invalid budget: ${parsed.error.message}`);
+        const parsed = decodeToolInput(BudgetInput, rest);
+        if (!parsed.success) return err(`Invalid budget: ${parsed.message}`);
         let updated;
         try {
           updated = await updateBudget(auth.organizationId, budgetId, parsed.data);
@@ -907,7 +922,7 @@ export function costTools(): ToolDefinition[] {
       description:
         "Delete a budget (soft delete, alert history is retained). Audit-logged. The chat " +
         "surface confirms with the user before invoking.",
-      inputSchema: { budgetId: z.string() },
+      inputSchema: { budgetId: Schema.String },
       risk: "destructive",
       permission: "budgets:write",
       handler: async (input, auth) => {

@@ -112,8 +112,7 @@
     "ssh2": "^1.17.0",
     "tar": "^7.5.22",
     "ws": "^8.21.3",
-    "xz-decompress": "^0.2.3",
-    "zod": "^3.25.76"
+    "xz-decompress": "^0.2.3"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",

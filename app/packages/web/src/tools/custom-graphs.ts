@@ -13,7 +13,7 @@
  * the HTTP routes, so the two surfaces can't drift. Writes and renders are
  * paid-plan-gated there.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 
 import {
   CustomGraphError,
@@ -57,7 +57,7 @@ function summarize(row: CustomGraphRow, includeSource: boolean) {
   };
 }
 
-const controlValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+const controlValueSchema = Schema.Union([Schema.String, Schema.Finite, Schema.Boolean]);
 
 export function customGraphTools(): ToolDefinition[] {
   return [
@@ -82,7 +82,7 @@ export function customGraphTools(): ToolDefinition[] {
       name: "get_custom_graph",
       title: "Get custom graph",
       description: "Fetch one custom graph including its full TypeScript source.",
-      inputSchema: { graphId: z.string() },
+      inputSchema: { graphId: Schema.String },
       risk: "read",
       permission: "dashboards:read",
       handler: async (input, auth) => {
@@ -142,14 +142,21 @@ export function customGraphTools(): ToolDefinition[] {
         "(POST /api/org/{orgId}/dashboards/widgets). Paid-plan feature. Audit-logged. In chat, " +
         "a call that sets source waits for the user's approval.",
       inputSchema: {
-        graphId: z.string().optional().describe("Omit to create a new graph."),
-        name: z.string().optional(),
-        description: z.string().optional(),
-        source: z.string().optional().describe("The TypeScript body. Top-level await is allowed."),
-        skipTypecheck: z
-          .boolean()
-          .optional()
-          .describe("Save even when the source has type errors. Use only when deliberate."),
+        graphId: Schema.optionalKey(
+          Schema.String.annotate({ description: "Omit to create a new graph." }),
+        ),
+        name: Schema.optionalKey(Schema.String),
+        description: Schema.optionalKey(Schema.String),
+        source: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "The TypeScript body. Top-level await is allowed.",
+          }),
+        ),
+        skipTypecheck: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Save even when the source has type errors. Use only when deliberate.",
+          }),
+        ),
       },
       risk: "write",
       overwrites: true,
@@ -224,18 +231,21 @@ export function customGraphTools(): ToolDefinition[] {
         "you just wrote, passing control values or a button id to exercise interactions. " +
         "Read-only over the org (costs, metrics, listings) plus the graph's own data store.",
       inputSchema: {
-        graphId: z.string(),
-        controls: z
-          .record(z.string(), controlValueSchema)
-          .optional()
-          .describe("Control values keyed by control id, as a viewer would have chosen them."),
-        button: z.string().optional().describe("Id of a declared button to simulate pressing."),
-        trigger: z
-          .enum(["manual", "refresh", "interaction"])
-          .optional()
-          .describe(
-            'What the script sees as graph.event.kind; pass "refresh" to test its auto-refresh path.',
-          ),
+        graphId: Schema.String,
+        controls: Schema.optionalKey(
+          Schema.Record(Schema.String, controlValueSchema).annotate({
+            description: "Control values keyed by control id, as a viewer would have chosen them.",
+          }),
+        ),
+        button: Schema.optionalKey(
+          Schema.String.annotate({ description: "Id of a declared button to simulate pressing." }),
+        ),
+        trigger: Schema.optionalKey(
+          Schema.Literals(["manual", "refresh", "interaction"]).annotate({
+            description:
+              'What the script sees as graph.event.kind; pass "refresh" to test its auto-refresh path.',
+          }),
+        ),
       },
       risk: "write",
       permission: "dashboards:read",
@@ -266,7 +276,7 @@ export function customGraphTools(): ToolDefinition[] {
       description:
         "Delete a custom graph (soft delete) along with every dashboard card showing it, and its " +
         "stored data. Audit-logged. The chat surface confirms with the user before invoking.",
-      inputSchema: { graphId: z.string() },
+      inputSchema: { graphId: Schema.String },
       risk: "destructive",
       permission: "dashboards:write",
       handler: async (input, auth) => {

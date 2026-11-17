@@ -6,7 +6,8 @@
  * indistinguishable from a person's in the record, apart from the audit
  * entry's `source`.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { maxLength, pattern } from "@infrawrench/api-contract/schemas";
 import {
   COST_ANOMALY_FEEDBACK_LIMITS,
   COST_ANOMALY_FEEDBACK_REASONS,
@@ -45,17 +46,19 @@ export function costAnomalyFeedbackTools(): ToolDefinition[] {
         "the day, exactly as acknowledge_cost_anomaly does. Calling again replaces the verdict. " +
         "Audit-logged.",
       inputSchema: {
-        anomalyId: z.string().describe("From list_cost_anomalies."),
-        verdict: z.enum(COST_ANOMALY_VERDICTS),
-        reason: z.enum(COST_ANOMALY_FEEDBACK_REASONS).optional(),
-        note: z.string().max(COST_ANOMALY_FEEDBACK_LIMITS.noteMaxLength).optional(),
-        explain: z.boolean().optional(),
-        recurrence: z.enum(COST_ANOMALY_RECURRENCES).optional(),
-        expiresOn: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional()
-          .describe("Last day the suppression covers, YYYY-MM-DD. Defaults by recurrence."),
+        anomalyId: Schema.String.annotate({ description: "From list_cost_anomalies." }),
+        verdict: Schema.Literals(COST_ANOMALY_VERDICTS),
+        reason: Schema.optionalKey(Schema.Literals(COST_ANOMALY_FEEDBACK_REASONS)),
+        note: Schema.optionalKey(
+          Schema.String.check(maxLength(COST_ANOMALY_FEEDBACK_LIMITS.noteMaxLength)),
+        ),
+        explain: Schema.optionalKey(Schema.Boolean),
+        recurrence: Schema.optionalKey(Schema.Literals(COST_ANOMALY_RECURRENCES)),
+        expiresOn: Schema.optionalKey(
+          Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
+            description: "Last day the suppression covers, YYYY-MM-DD. Defaults by recurrence.",
+          }),
+        ),
       },
       risk: "write",
       permission: "costs:write",
@@ -153,13 +156,12 @@ export function costAnomalyFeedbackTools(): ToolDefinition[] {
         "counts by reason. Low precision with many `expected` verdicts is the cue to suggest a " +
         "suppression or a higher sensitivity threshold.",
       inputSchema: {
-        months: z
-          .number()
-          .int()
-          .min(1)
-          .max(COST_ANOMALY_FEEDBACK_LIMITS.precisionMaxMonths)
-          .optional()
-          .describe("Months to cover, 1-24. Defaults to 6."),
+        months: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(COST_ANOMALY_FEEDBACK_LIMITS.precisionMaxMonths),
+          ).annotate({ description: "Months to cover, 1-24. Defaults to 6." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",

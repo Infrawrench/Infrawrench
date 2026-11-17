@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from "zod";
+import type { Schema } from "effect";
 import type { ProductId } from "@infrawrench/client-core";
 import type { Permission } from "@infrawrench/server-core/permissions/catalog";
 
@@ -65,11 +65,13 @@ export interface ToolDefinition {
   title: string;
   description: string;
   /**
-   * Zod-shaped input schema: keys are field names, values are Zod types. This
-   * is the format the MCP SDK accepts. The chat agent converts it to JSON
-   * Schema via zod-to-json-schema for the Anthropic tool_use API.
+   * The tool's input as Effect Schema struct fields: keys are argument names,
+   * values their schemas (`Schema.optionalKey` for an optional argument).
+   * Both surfaces describe the tool by the JSON Schema `toolInputJsonSchema`
+   * builds from it; a handler that needs the decoded value decodes `input`
+   * with the operation's request schema itself (`decodeToolInput`).
    */
-  inputSchema: Record<string, ZodTypeAny>;
+  inputSchema: Schema.Struct.Fields;
   risk: ToolRisk;
   /**
    * True when a call reaches a system outside Infrawrench itself: a connected

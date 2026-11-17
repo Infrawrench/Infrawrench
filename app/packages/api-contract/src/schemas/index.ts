@@ -4,9 +4,9 @@
  * OpenAPI names and descriptions the API documents them under.
  *
  * Their own build entry (`@infrawrench/api-contract/schemas`), so a form can
- * import them without the endpoint definitions. Each is the Effect twin of a
- * Zod schema in `@infrawrench/ui` (`cost/config.ts`, `metric-alerts/config.ts`);
- * ui's `schemas-parity.test.ts` holds the two to the same decisions.
+ * import them without the endpoint definitions. They replaced the zod schemas
+ * that lived in `@infrawrench/ui`; `src/__tests__/request-schemas.test.ts`
+ * holds them to the decisions those made.
  */
 export * from "./alert-email";
 export * from "./billing-rules";

@@ -57,7 +57,8 @@ import {
   type OrgConfigUnresolved,
   type OrgConfigWorkflowTrigger,
 } from "@infrawrench/client-core";
-import { widgetConfigSchemaFor, type DashboardWidgetKind } from "@infrawrench/ui/cost/config";
+import { decodeForm, widgetConfigFor } from "@infrawrench/api-contract/schemas";
+import type { DashboardWidgetKind } from "@infrawrench/ui/cost/config";
 import { normalizeAnomalySettings } from "@infrawrench/server-core/cost/anomaly-settings";
 import { normalizeTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
 import { digestWindow, isValidTimeZone } from "@infrawrench/server-core/digest/compose";
@@ -1348,10 +1349,10 @@ function resolveCards(
       }
       config["graphId"] = graphId;
     }
-    const parsed = widgetConfigSchemaFor(card.widgetKind).safeParse(config);
+    const parsed = decodeForm(widgetConfigFor(card.widgetKind), config);
     if (!parsed.success) {
       throw new OrgConfigError(
-        `Dashboard "${dashboard.name}": invalid ${card.widgetKind} card, ${parsed.error.issues[0]?.message ?? "bad config"}`,
+        `Dashboard "${dashboard.name}": invalid ${card.widgetKind} card, ${parsed.message}`,
       );
     }
     rows.push({

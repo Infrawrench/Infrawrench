@@ -701,7 +701,7 @@ export const costReports = pgTable(
     /**
      * The saved graph: a `CostGraphConfig` from `@infrawrench/ui/cost/config`,
      * the same blob a `cost_graph` widget stores inline, validated against
-     * `costGraphConfigSchema` at the API boundary.
+     * `CostGraphConfig` (`@infrawrench/api-contract/schemas`) at the API boundary.
      */
     config: jsonb("config").notNull(),
     /**

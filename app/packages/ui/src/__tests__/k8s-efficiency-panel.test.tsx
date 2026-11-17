@@ -7,7 +7,7 @@ import {
 } from "@infrawrench/client-core";
 import { KubernetesEfficiencyPanel } from "../k8s-efficiency/KubernetesEfficiencyPanel.js";
 import type { KubernetesEfficiencyClient } from "../k8s-efficiency/types.js";
-import { kubernetesEfficiencyReportInputSchema } from "../cost/config.js";
+import { KubernetesEfficiencyReportInput, decodeForm } from "@infrawrench/api-contract/schemas";
 
 beforeAll(() => {
   if (!HTMLDialogElement.prototype.showModal) {
@@ -133,16 +133,16 @@ describe("KubernetesEfficiencyPanel", () => {
   });
 });
 
-describe("kubernetesEfficiencyReportInputSchema", () => {
+describe("KubernetesEfficiencyReportInput", () => {
   it("accepts the default config and refuses a label grouping without a key", () => {
     expect(
-      kubernetesEfficiencyReportInputSchema.safeParse({
+      decodeForm(KubernetesEfficiencyReportInput, {
         name: "x",
         config: DEFAULT_K8S_EFFICIENCY_CONFIG,
       }).success,
     ).toBe(true);
     expect(
-      kubernetesEfficiencyReportInputSchema.safeParse({
+      decodeForm(KubernetesEfficiencyReportInput, {
         name: "x",
         config: { ...DEFAULT_K8S_EFFICIENCY_CONFIG, groupBy: "label" },
       }).success,
