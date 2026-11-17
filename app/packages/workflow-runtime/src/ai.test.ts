@@ -23,7 +23,7 @@ import {
 
 const OK: WorkflowAiResult = {
   text: "the disk is full",
-  model: "claude-sonnet-5",
+  model: "claude-sonnet-5-5",
   stopReason: "end",
   inputTokens: 12,
   outputTokens: 6,
@@ -57,16 +57,29 @@ describe("ai dispatch", () => {
       spec: {
         prompt: "summarize these logs",
         system: "Answer in one sentence.",
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-5-5",
         maxTokens: 256,
       },
     });
     expect(ai).toHaveBeenCalledWith({
       prompt: "summarize these logs",
       system: "Answer in one sentence.",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       maxTokens: 256,
     });
+  });
+
+  it("runs a saved workflow's retired model id on its successor", async () => {
+    const { host, ai } = hostWithAi();
+    for (const [legacy, current] of [
+      ["claude-sonnet-5", "claude-sonnet-5-5"],
+      ["claude-haiku-4-5", "claude-haiku-5-5"],
+      ["claude-opus-5", "claude-opus-5-5"],
+    ] as const) {
+      ai.mockClear();
+      await dispatch(host, ctx, "ai", { spec: { prompt: "hi", model: legacy } });
+      expect(ai.mock.calls[0]?.[0]).toMatchObject({ model: current });
+    }
   });
 
   it("clamps maxTokens to the ceiling and falls back on nonsense", async () => {
@@ -89,7 +102,7 @@ describe("ai dispatch", () => {
     const { host, ai } = hostWithAi();
     await expect(
       dispatch(host, ctx, "ai", { spec: { prompt: "hi", model: "gpt-4o" } }),
-    ).rejects.toThrow(/does not support the model "gpt-4o".*claude-sonnet-5/);
+    ).rejects.toThrow(/does not support the model "gpt-4o".*claude-sonnet-5-5/);
     expect(ai).not.toHaveBeenCalled();
   });
 

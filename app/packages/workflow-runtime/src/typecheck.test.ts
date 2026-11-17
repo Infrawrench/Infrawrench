@@ -183,7 +183,7 @@ describe("typecheckWorkflow", () => {
 
   it("types both call shapes of infra.ai, and rejects a bad model", () => {
     const source = [
-      'const r = await infra.ai("Summarize these logs", { model: "claude-haiku-4-5" });',
+      'const r = await infra.ai("Summarize these logs", { model: "claude-haiku-5-5" });',
       "await infra.log(r.text, r.costMicros);",
       'await infra.ai({ prompt: "Classify this error", system: "One word.", maxTokens: 16 });',
     ].join("\n");

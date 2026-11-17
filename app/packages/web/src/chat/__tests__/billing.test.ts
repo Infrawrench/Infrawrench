@@ -59,17 +59,17 @@ describe("recordUsage", () => {
   it("inserts a usage row and returns the cost", async () => {
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
-    // Sonnet 5: $3/Mtok input × 1.5 markup = $4.50
+    // Sonnet 5.5: $2/Mtok input × 1.5 markup = $3.00
     const cost = await recordUsage({
       organizationId: "o1",
       conversationId: "c1",
       messageId: "m1",
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
-    expect(cost).toBe(4_500_000);
+    expect(cost).toBe(3_000_000);
     expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "usage-uuid", organizationId: "o1", costMicros: 4_500_000 }),
+      expect.objectContaining({ id: "usage-uuid", organizationId: "o1", costMicros: 3_000_000 }),
     );
   });
 
@@ -127,12 +127,12 @@ describe("recordUsage", () => {
       organizationId: "o1",
       conversationId: "c1",
       messageId: "m1",
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
     await new Promise((r) => setTimeout(r, 0));
     // Usage is still recorded internally (cost tracking), just never billed.
-    expect(cost).toBe(4_500_000);
+    expect(cost).toBe(3_000_000);
     expect(values).toHaveBeenCalled();
     expect(mockMeterCreate).not.toHaveBeenCalled();
   });

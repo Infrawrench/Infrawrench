@@ -35,11 +35,11 @@ import { formatAmount } from "./compose";
 
 /**
  * Anthropic's current frontier model. The digest is one short paragraph a week
- * per org, so the cost is negligible ($5/MTok in, $25/MTok out: this request
+ * per org, so the cost is negligible ($4/MTok in, $20/MTok out: this request
  * is well under a thousand tokens each way) and the quality of the judgement
  * about what mattered last week is the whole point of the feature.
  */
-const NARRATIVE_MODEL = "claude-opus-5";
+const NARRATIVE_MODEL = "claude-opus-5-5";
 
 /** Hard ceiling on the paragraph. Two or three sentences is the brief. */
 const NARRATIVE_MAX_TOKENS = 512;

@@ -164,15 +164,15 @@ describe("recordWorkflowAiUsage", () => {
   });
 
   it("inserts a usage row and returns the marked-up cost", async () => {
-    // Sonnet 5: $3/MTok input × 1.5 markup = $4.50
+    // Sonnet 5.5: $2/MTok input × 1.5 markup = $3.00
     const cost = await recordWorkflowAiUsage({
       organizationId: "o1",
       workflowId: "wf1",
       runId: "run1",
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
-    expect(cost).toBe(4_500_000);
+    expect(cost).toBe(3_000_000);
     const insert = queriesOn('insert into "workflow_ai_usage"')[0];
     expect(insert).toBeDefined();
     // id, org, workflow, run, model, tokens ×4, costMicros: insertion order.
@@ -181,12 +181,12 @@ describe("recordWorkflowAiUsage", () => {
       "o1",
       "wf1",
       "run1",
-      "claude-sonnet-5",
+      "claude-sonnet-5-5",
       1_000_000,
       0,
       0,
       0,
-      4_500_000,
+      3_000_000,
     ]);
   });
 
@@ -196,7 +196,7 @@ describe("recordWorkflowAiUsage", () => {
     await recordWorkflowAiUsage({
       organizationId: "o1",
       workflowId: "wf1",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       usage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
     await new Promise((r) => setTimeout(r, 0));

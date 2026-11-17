@@ -30,6 +30,7 @@ import {
   MAX_FETCH_HEADERS,
   MAX_FETCH_MAX_BYTES,
   MAX_FETCH_TIMEOUT_MS,
+  LEGACY_WORKFLOW_AI_MODELS,
   WORKFLOW_AI_MODELS,
 } from "./types.js";
 import type {
@@ -574,10 +575,11 @@ function aiSpec(raw: unknown): WorkflowAiSpec {
   if (prompt.length > MAX_AI_PROMPT_LENGTH) {
     throw new Error(`infra.ai() prompts are limited to ${MAX_AI_PROMPT_LENGTH} characters.`);
   }
-  const model = String(spec["model"] ?? DEFAULT_WORKFLOW_AI_MODEL);
+  const requested = String(spec["model"] ?? DEFAULT_WORKFLOW_AI_MODEL);
+  const model = LEGACY_WORKFLOW_AI_MODELS[requested] ?? requested;
   if (!(WORKFLOW_AI_MODELS as readonly string[]).includes(model)) {
     throw new Error(
-      `infra.ai() does not support the model ${JSON.stringify(model)} ` +
+      `infra.ai() does not support the model ${JSON.stringify(requested)} ` +
         `(available: ${WORKFLOW_AI_MODELS.join(", ")}).`,
     );
   }
