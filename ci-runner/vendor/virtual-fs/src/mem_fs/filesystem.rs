@@ -256,20 +256,24 @@ impl FileSystem {
     }
 
     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
+        // iwci patch (#1294): the parent is looked up under the write lock
+        // the link is added under, as `create_dir` and `open` do. Looked up
+        // under a read lock first, a parent removed in between (and its
+        // slot reused by another node) took the link into the wrong place.
+        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
         let (inode_of_parent, name_of_symlink) = {
-            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
-            let path = guard.canonicalize_without_inode(target)?;
+            let path = fs.canonicalize_without_inode(target)?;
             let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
             let name_of_symlink = path
                 .file_name()
                 .ok_or(FsError::InvalidInput)?
                 .to_os_string();
-            let inode_of_parent = match guard.inode_of_parent(parent_of_path)? {
+            let inode_of_parent = match fs.inode_of_parent(parent_of_path)? {
                 InodeResolution::Found(a) => a,
-                InodeResolution::Redirect(fs, mut redirected_path) => {
+                InodeResolution::Redirect(redirect_fs, mut redirected_path) => {
                     redirected_path.push(&name_of_symlink);
-                    drop(guard);
-                    let fs_ref: &dyn crate::FileSystem = fs.as_ref();
+                    drop(fs);
+                    let fs_ref: &dyn crate::FileSystem = redirect_fs.as_ref();
                     if let Some(mem_fs) = fs_ref.downcast_ref::<Self>() {
                         return mem_fs.create_symlink(source, redirected_path.as_path());
                     }
@@ -279,7 +283,6 @@ impl FileSystem {
             (inode_of_parent, name_of_symlink)
         };
 
-        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
         if fs.canonicalize(target).is_ok() {
             return Err(FsError::AlreadyExists);
         }

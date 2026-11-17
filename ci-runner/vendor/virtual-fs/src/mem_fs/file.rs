@@ -244,45 +244,36 @@ impl VirtualFile for FileHandle {
 
     fn unlink(&mut self) -> Result<()> {
         let filesystem = self.filesystem.clone();
-        let inode = self.inode;
+        let inode_of_file = self.inode;
 
-        let (inode_of_parent, position, inode_of_file) = {
-            // Read lock.
-            let fs = filesystem.inner.read().map_err(|_| FsError::Lock)?;
+        // iwci patch (#1294): the file's place in its parent is found under
+        // the write lock it is removed under. Found under a read lock first,
+        // a name that left the directory in between (a removal, a rename, a
+        // `rmdir`, from any thread) shifted the file down, and the entry at
+        // the old place, its neighbour or past the end, was removed instead.
+        let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
 
-            // The inode of the file.
-            let inode_of_file = inode;
+        // Find the position of the file in the parent, and the
+        // inode of the parent.
+        let (position, inode_of_parent) = fs
+            .storage
+            .iter()
+            .find_map(|(inode_of_parent, node)| match node {
+                Node::Directory(DirectoryNode { children, .. }) => {
+                    children.iter().enumerate().find_map(|(nth, inode)| {
+                        if inode == &inode_of_file {
+                            Some((nth, inode_of_parent))
+                        } else {
+                            None
+                        }
+                    })
+                }
 
-            // Find the position of the file in the parent, and the
-            // inode of the parent.
-            let (position, inode_of_parent) = fs
-                .storage
-                .iter()
-                .find_map(|(inode_of_parent, node)| match node {
-                    Node::Directory(DirectoryNode { children, .. }) => {
-                        children.iter().enumerate().find_map(|(nth, inode)| {
-                            if inode == &inode_of_file {
-                                Some((nth, inode_of_parent))
-                            } else {
-                                None
-                            }
-                        })
-                    }
+                _ => None,
+            })
+            .ok_or(FsError::BaseNotDirectory)?;
 
-                    _ => None,
-                })
-                .ok_or(FsError::BaseNotDirectory)?;
-
-            (inode_of_parent, position, inode_of_file)
-        };
-
-        {
-            // Write lock.
-            let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
-            fs.unlink_file_inode(inode_of_parent, position, inode_of_file)?;
-        }
-
-        Ok(())
+        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
     }
 
     fn get_special_fd(&self) -> Option<u32> {

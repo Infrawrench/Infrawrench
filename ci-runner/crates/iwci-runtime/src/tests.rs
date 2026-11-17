@@ -3260,6 +3260,217 @@ fn racing_unlinks_renames_and_creations_of_one_name_all_succeed() {
     }
 }
 
+/// A WASIX command that `rounds` times removes `/work/rr/<name>` and makes
+/// it again with `O_CREAT | O_EXCL`, writing one byte, as a compile cache
+/// wrote its entries (#1294). It is the only writer of its name, so the
+/// exclusive create can only fail if the name is somehow still taken:
+/// that exits 30. Any other failure exits from 20 up.
+fn recreator(name: &str, rounds: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("recreator-{name}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (data (i32.const 200) "x")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (i32.store (i32.const 32) (i32.const 200))
+    (i32.store (i32.const 36) (i32.const 1))
+    (loop $again
+      (local.set $errno (call $unlink (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; ENOENT the first time round
+      (if (i32.ne (local.get $errno) (i32.const 44))
+        (then (call $check (local.get $errno) (i32.const 20))))
+      ;; O_CREAT | O_EXCL
+      (local.set $errno (call $path_open (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len})
+        (i32.const 5) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)))
+      ;; EEXIST
+      (if (i32.eq (local.get $errno) (i32.const 20))
+        (then (call $proc_exit (i32.const 30))))
+      (call $check (local.get $errno) (i32.const 21))
+      (call $check (call $fd_write (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40)) (i32.const 22))
+      (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 23))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {rounds}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `opens` times opens `/work/rr/<name>` to read and
+/// closes it again, taking `ENOENT` as finding it between a removal and a
+/// creation, and exiting 31 or 32 on any other failure.
+fn reopener(name: &str, id: u32, opens: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("reopener-{name}-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      ;; read only: FD_READ
+      (local.set $errno (call $path_open (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len})
+        (i32.const 0) (i64.const 2) (i64.const 0) (i32.const 0) (i32.const 24)))
+      (if (i32.eqz (local.get $errno))
+        (then
+          (if (call $fd_close (i32.load (i32.const 24)))
+            (then (call $proc_exit (i32.const 31)))))
+        (else
+          ;; ENOENT
+          (if (i32.ne (local.get $errno) (i32.const 44))
+            (then (call $proc_exit (i32.const 32))))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {opens}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `rounds` times removes the directory
+/// `/work/rr/<name>` and makes it again. It is the only one making or
+/// removing it, so `mkdir` can only fail if the name is somehow still
+/// taken: that exits 33. Any other failure exits 24 or 25.
+fn remaker(name: &str, rounds: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("remaker-{name}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_create_directory" (func $mkdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      (local.set $errno (call $rmdir (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; ENOENT the first time round
+      (if (i32.and (i32.ne (local.get $errno) (i32.const 0)) (i32.ne (local.get $errno) (i32.const 44)))
+        (then (call $proc_exit (i32.const 24))))
+      (local.set $errno (call $mkdir (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; EEXIST
+      (if (i32.eq (local.get $errno) (i32.const 20))
+        (then (call $proc_exit (i32.const 33))))
+      (if (local.get $errno) (then (call $proc_exit (i32.const 25))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {rounds}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `stats` times looks `/work/rr/<name>` up with
+/// `stat`, taking `ENOENT` as finding it between a removal and a creation,
+/// and exiting 34 on any other failure.
+fn restater(name: &str, id: u32, stats: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("restater-{name}-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      (local.set $errno (call $stat (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len}) (i32.const 512)))
+      (if (i32.and (i32.ne (local.get $errno) (i32.const 0)) (i32.ne (local.get $errno) (i32.const 44)))
+        (then (call $proc_exit (i32.const 34))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {stats}))))))
+"#
+        ),
+    )
+}
+
+/// Opens racing removals and exclusive creations of one name (#1294), as a
+/// compile cache's workers read and rewrite one entry. A lookup that found
+/// the name uncached checked the file system, and only then put the name
+/// in its directory's cached entries; an unlink that ran in between took
+/// the entry out and removed the file first, so the lookup cached a file
+/// that was gone. The directory then listed the name, which `stat` and
+/// `unlink` said was not there, and an exclusive create of it failed with
+/// `EEXIST`, so the cache entry its writer had just removed was lost. A
+/// directory's `rmdir` and a `stat` of it raced the same way. Each name has
+/// one writer, whose exclusive creates and `mkdir`s all succeed, and what
+/// is left is listed, there and removable.
+#[test]
+fn a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(600);
+    let mut commands = Vec::new();
+    for name in ["a", "b"] {
+        commands.push(PathCommand {
+            name: format!("recreator-{name}"),
+            module: recreator(name, 20_000),
+        });
+        for id in 0..2 {
+            commands.push(PathCommand {
+                name: format!("reopener-{name}-{id}"),
+                module: reopener(name, id, 60_000),
+            });
+        }
+    }
+    commands.push(PathCommand {
+        name: "remaker-d".into(),
+        module: remaker("d", 20_000),
+    });
+    for id in 0..2 {
+        commands.push(PathCommand {
+            name: format!("restater-d-{id}"),
+            module: restater("d", id, 60_000),
+        });
+    }
+    let started: Vec<String> = commands.iter().map(|c| c.name.clone()).collect();
+    inv.commands = commands;
+    let script = format!(
+        "mkdir rr\npids=\n\
+         for c in {}; do $c & pids=\"$pids $!\"; done\n\
+         for pid in $pids; do wait $pid || exit $?; done\n\
+         for f in rr/*; do test -e \"$f\" || {{ echo \"$f is listed but not there\" >&2; exit 40; }}; done\n\
+         rm -r rr/* || exit 41\n\
+         rmdir rr || exit 42\n\
+         echo done\n",
+        started.join(" ")
+    );
+    let outcome = rt.run_script(&packages, "bash", &script, inv).unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "done\n");
+    assert!(job.as_dyn().metadata(Path::new("/work/rr")).is_err());
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.

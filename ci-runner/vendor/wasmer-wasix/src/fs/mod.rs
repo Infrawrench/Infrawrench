@@ -1557,7 +1557,27 @@ impl WasiFs {
                 // The cur_inode is definitely a directory (Kind::Dir) at this
                 // stage, and we need to create an inode (new_inode) and cache
                 // as an entry in current directory (entry_name => cur_inode).
-                let (entry_name, new_inode, should_insert, should_return) =
+                // iwci patch (#1294): what the entry is cached for, a file
+                // or a directory at a path, which is checked again below.
+                let cached_path = match &component_resolution {
+                    ComponentResolution::Create {
+                        kind: Kind::File { path, .. },
+                        is_ephemeral: false,
+                        ..
+                    } => Some((path.clone(), false)),
+                    ComponentResolution::Create {
+                        kind: Kind::Dir { path, .. },
+                        is_ephemeral: false,
+                        ..
+                    } => Some((path.clone(), true)),
+                    #[cfg(unix)]
+                    ComponentResolution::Special {
+                        kind: Kind::File { path, .. },
+                        ..
+                    } => Some((path.clone(), false)),
+                    _ => None,
+                };
+                let (entry_name, mut new_inode, should_insert, should_return) =
                     match component_resolution {
                         ComponentResolution::Create {
                             kind,
@@ -1606,8 +1626,38 @@ impl WasiFs {
                         unreachable!("Attempted to insert special device into non-directory");
                     };
 
+                    // iwci patch (#1294): the entry is cached only if the
+                    // name is still uncached and the file system still has
+                    // it, both checked under the write lock it is cached
+                    // under. The file system was read before, under the
+                    // read lock, and an unlink that took the name's entry
+                    // out and removed the file in between left this lookup
+                    // caching a file that was gone: the directory listed the
+                    // name (its listing adds the cached entries), `stat` and
+                    // `unlink` said it was not there, and an exclusive
+                    // create of it failed with `EEXIST`. An unlink holds
+                    // this lock from taking the entry out to removing the
+                    // file, so the file system is checked wholly before or
+                    // after it. An entry another lookup or a creation cached
+                    // meanwhile is kept, not replaced.
                     if should_insert {
-                        entries.insert(entry_name, new_inode.clone());
+                        if let Some(entry) = entries.get(&entry_name) {
+                            new_inode = entry.clone();
+                        } else if let Some((path, is_dir)) = &cached_path {
+                            match self.root_fs.symlink_metadata(path) {
+                                Ok(md)
+                                    if md.file_type().is_dir() == *is_dir
+                                        && !md.file_type().is_symlink() =>
+                                {
+                                    entries.insert(entry_name, new_inode.clone());
+                                }
+                                // Something else is there now: look again.
+                                Ok(_) => continue 'component_lookup,
+                                Err(_) => return Err(Errno::Noent),
+                            }
+                        } else {
+                            entries.insert(entry_name, new_inode.clone());
+                        }
                     }
 
                     if should_return {

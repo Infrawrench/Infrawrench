@@ -2070,6 +2070,70 @@ mod tests {
         );
     }
 
+    /// Unlinking a file through a handle open on it, as WASIX unlinks a
+    /// file it has open (#1294), while other names in its directory come
+    /// and go. The in-memory layer found the file's place among its
+    /// directory's entries under a read lock and removed the entry at that
+    /// place under the write lock taken after, so a name that went from
+    /// before it in between shifted it, and the unlink removed its
+    /// neighbour (a file that was then lost, or one that stayed listed with
+    /// nothing behind it) or panicked past the end. Each unlink removes its
+    /// own file and nothing else.
+    #[test]
+    fn unlinking_an_open_file_while_its_directory_changes_removes_only_that_file() {
+        const ROUNDS: usize = 20_000;
+        let fs = mem_fs::FileSystem::default();
+        fs.create_dir(Path::new("/d")).unwrap();
+        let kept: Vec<String> = (0..8).map(|i| format!("keep{i}")).collect();
+        for name in &kept {
+            write_file(&fs, format!("/d/{name}"), name.as_bytes()).unwrap();
+        }
+        std::thread::scope(|scope| {
+            for t in 0..2 {
+                let fs = &fs;
+                scope.spawn(move || {
+                    let path = format!("/d/open{t}");
+                    for _ in 0..ROUNDS {
+                        let mut file = fs
+                            .new_open_options()
+                            .write(true)
+                            .create_new(true)
+                            .open(Path::new(&path))
+                            .unwrap();
+                        file.unlink().unwrap();
+                    }
+                });
+            }
+            for t in 0..2 {
+                let fs = &fs;
+                scope.spawn(move || {
+                    let dir = format!("/d/dir{t}");
+                    let file = format!("/d/file{t}");
+                    for _ in 0..ROUNDS {
+                        fs.create_dir(Path::new(&dir)).unwrap();
+                        write_file(fs, &file, b"x").unwrap();
+                        fs.remove_dir(Path::new(&dir)).unwrap();
+                        fs.remove_file(Path::new(&file)).unwrap();
+                    }
+                });
+            }
+        });
+        let mut listed: Vec<String> = fs
+            .read_dir(Path::new("/d"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        listed.sort();
+        assert_eq!(listed, kept);
+        for name in &kept {
+            let path = format!("/d/{name}");
+            assert_eq!(read_file(&fs, &path).unwrap(), name.as_bytes());
+            fs.remove_file(Path::new(&path)).unwrap();
+        }
+        fs.remove_dir(Path::new("/d")).unwrap();
+    }
+
     #[test]
     fn a_jobs_paths_capture_encode_and_restore_into_another_job() {
         let builder = SnapshotBuilder::new();

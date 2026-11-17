@@ -173,9 +173,15 @@ pub fn path_rename_internal(
         return Ok(Errno::Inval);
     }
 
+    // iwci patch (#1294): the source's parent stays write-locked from taking
+    // the source's entry out until the file system has moved it, as
+    // `path_unlink_file` holds it until the file is removed. A lookup of
+    // the source caches it under that lock after checking the file system
+    // again, so it sees the source either not yet moved, its entry still
+    // there, or moved; in between, it cached a name that had just gone.
+    let mut source_parent_guard = source_parent_inode.write();
     let source_entry = {
-        let mut guard = source_parent_inode.write();
-        match guard.deref_mut() {
+        match source_parent_guard.deref_mut() {
             Kind::Dir { entries, .. } => {
                 match entries.remove(&source_entry_name) {
                     Some(entry) => entry,
@@ -219,8 +225,7 @@ pub fn path_rename_internal(
                 };
                 // if the above operation failed we have to revert the previous change and then fail
                 if let Err(e) = result {
-                    let mut guard = source_parent_inode.write();
-                    if let Kind::Dir { entries, .. } = guard.deref_mut() {
+                    if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
                         entries.insert(source_entry_name, source_entry);
                         return Ok(e);
                     }
@@ -276,8 +281,7 @@ pub fn path_rename_internal(
                 match (res, is_ephemeral) {
                     (Ok(()), _) | (Err(Errno::Noent), true) => {}
                     (Err(e), _) => {
-                        let mut guard = source_parent_inode.write();
-                        if let Kind::Dir { entries, .. } = guard.deref_mut() {
+                        if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
                             entries.insert(source_entry_name, source_entry.clone());
                             return Ok(e);
                         }
@@ -308,6 +312,7 @@ pub fn path_rename_internal(
             Kind::Root { .. } => unreachable!("The root can not be moved"),
         }
     }
+    drop(source_parent_guard);
 
     // iwci patch (#1092): the moved inode is the target's entry now, in
     // place of any it had, as the name now holds the moved file. The cached

@@ -1119,6 +1119,45 @@ longer had (the next unlink failed with `ENOTDIR`), so
 set. Upstream main has both asserts and the unlocked create (checked
 November 2026).
 
+**A name is cached only while the file system has it (#1294).** A lookup
+that found a name missing from its directory's cached entries (in
+`get_inode_at_path`, `src/fs/mod.rs`) read the file system under the
+directory's read lock, let it go, and then put the name in the entries
+under the write lock, replacing whatever was there. An unlink took the
+name's entry out under that write lock and removed the file after letting
+it go. A lookup that read the file system in that gap (a `stat`, or an
+open to read, which take no `rename_lock`) cached the file once it was
+gone. A directory's listing adds its cached entries to the file system's,
+so it listed the name, while `stat` and `unlink` said it was not there and
+`O_CREAT | O_EXCL` of it failed with `EEXIST`. That is what Node's compile
+cache met when it wrote entries in place: a Worker removed another's
+finished entry, lost its own exclusive create to the stale name
+(`failed: File exists`), and the entry was gone, its name listed, until
+the next `rm -rf` failed on it. Now the lookup caches the name only if the
+entries still lack it (one cached meanwhile is kept, not replaced) and the
+file system still has it, both checked under the write lock it caches it
+under, and the calls that take a name's entry out hold that lock until the
+file system has caught up: `path_unlink_file` until the file is removed,
+`path_rename` until the source has moved (the source's parent), and
+`path_create_directory` makes the directory and caches it under the lock,
+as `path_remove_directory` already removed and uncached it under it (a
+`rmdir` between the two left a directory cached that was gone). The lock
+order is the one a lookup already used, a directory's inode before the file
+system. Upstream `main` has the same lookup and unlink (checked November
+2026, at 65f18f0054). `iwci-runtime`'s
+`a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there`
+is the check: one writer per name removes and exclusively recreates a file
+(or a directory) while other processes open (or `stat`) it, so its
+exclusive create cannot fail unless the name is cached stale. With that
+fixed, it found one more race, between processes only: a creating open
+cached the new file's inode before it counted its own descriptor on it,
+under the fd map lock, which is the process's own. Another process (they
+share the inode tree) could open the cached inode, share its handle and
+close it again in between, and that close, the last descriptor it could
+see, dropped the handle, so the creator's first write failed with
+`EINVAL`. `src/syscalls/wasix/path_open2.rs` now counts the descriptor
+first. Upstream `main` caches first too (checked November 2026).
+
 **A panic in a syscall ends the process, not the thread (#1092).** Wasmer
 resumes a host function's panic where the guest was entered, which for
 every WASIX process and thread is `run_main_context`
@@ -1284,7 +1323,10 @@ directory's `..` is its new parent, `sendfile` writes to a file, a
 spawned child stops counting against `max_threads` once it exits
 (#7174), a control plane lists its processes, renames onto one name at
 once replace each other in the cache, an unlink of a name is atomic with
-its renames and never asserts, a panic in a syscall ends only its
+its renames and never asserts, a lookup caches a name only while the file
+system has it (and unlink, rename and `mkdir` keep the directory locked
+until the file system has caught up), a creating open counts its
+descriptor before it caches the new inode, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
 through a symbolic link, a new thread's stack pointer starts on its
 stack before its side modules' TLS is set up, the closure calls and
@@ -1337,7 +1379,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `concurrent_renames_onto_one_name_all_succeed`,
 `racing_unlinks_renames_and_creations_of_one_name_all_succeed`,
 `closure_calls_refuse_bad_input_with_an_errno`,
-`a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe` and
+`a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe`,
+`a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
 To regenerate after editing: `diff -u` each changed file against the crate
@@ -1564,11 +1607,30 @@ poll, as before). Upstream `main` still has the old code (checked November
 `resizing_a_snapshot_file_keeps_its_content` is the check; the crate's own
 tests do not build outside Wasmer's tree (they include its test files).
 
+**Why (#1294).** Two more places looked up under the read lock and changed
+the tree under the write lock after. An open file's `unlink`
+(`mem_fs/file.rs`), which is how WASIX unlinks a file it has open, found
+the file's place among its directory's entries, then removed the entry at
+that place: a name that left the directory in between shifted the file
+down, and the unlink removed its neighbour (a file that was then lost, or
+left listed with nothing behind it) or panicked past the end. And
+`create_symlink` resolved the parent before the lock it added the link
+under, so a parent removed in between took the link into whatever reused
+its slot. Both now do the whole of it under the write lock. Upstream
+`main` still finds the place under a read lock (checked November 2026, at
+65f18f0054). `iwci-vfs`'s
+`unlinking_an_open_file_while_its_directory_changes_removes_only_that_file`
+is the check. This was not what #1294 saw: there every change to the
+cache directory's entries was an unlink or a creating open, which all hold
+WASIX's `rename_lock`, so none ran between the two locks (see
+wasmer-wasix's "A name is cached only while the file system has it").
+
 **Remove it** when a virtual-fs release after 0.705.0 has #7039, a
-`create_dir` that looks up under its write lock and a `set_len` that copies
-up first: delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry. A
-release with only some of them is still worth taking with the other hunks
-kept.
+`create_dir` that looks up under its write lock, a `set_len` that copies
+up first and an open file's `unlink` and `create_symlink` that look up
+under their write lock: delete `vendor/virtual-fs*` and its
+`[patch.crates-io]` entry. A release with only some of them is still worth
+taking with the other hunks kept.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.
