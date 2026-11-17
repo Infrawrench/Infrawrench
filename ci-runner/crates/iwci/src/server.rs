@@ -64,7 +64,7 @@ const KEEP_FINISHED: usize = 1000;
 /// good (#1066).
 const KEEP_REPORT_SECS: u64 = 5 * 60;
 /// The current [`UsageRecord::schema`].
-pub const USAGE_SCHEMA: u32 = 4;
+pub const USAGE_SCHEMA: u32 = 5;
 /// The most runs of other runners this one helps at once, unless
 /// `--helping` says.
 pub const DEFAULT_HELPING: usize = 2;
@@ -192,6 +192,9 @@ pub struct JobUsage {
     pub status: String,
     pub duration_ms: u64,
     pub memory_mib: u64,
+    /// The whole vCPUs it held (`cpus:`); absent for its share of one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     /// A cloud job: it ran on the customer's account.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external: bool,
@@ -824,6 +827,7 @@ impl Server {
                                         .as_ref()
                                         .and_then(|e| e.sandbox)
                                         .map_or(0, |s| s.reserved_mib),
+                                cpus: j.cpus,
                                 external: j.cloud.is_some(),
                                 remote: j.remote.is_some(),
                             });
@@ -1013,7 +1017,7 @@ impl Server {
     fn prepare(&self, req: &RunRequest) -> Response<std::io::Cursor<Vec<u8>>> {
         let slots = self.runner.slots.as_ref().expect("checked in new");
         // Preparing uses a slot like a job does: it unpacks and compiles.
-        let Some(_slot) = slots.try_acquire() else {
+        let Some(_slot) = slots.try_acquire(1) else {
             return self.full();
         };
         match self.runner.prepare(req) {

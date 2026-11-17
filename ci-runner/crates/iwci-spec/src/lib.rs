@@ -169,6 +169,9 @@ pub const MAX_SERVICES: usize = 8;
 pub const MAX_LENT: usize = 16;
 /// How long a job waits for a service's `ready:` unless it says.
 pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 60;
+/// The most whole vCPUs a job may ask for with `cpus:`. A runner with
+/// fewer gives the job all of its own.
+pub const MAX_CPUS: u32 = 64;
 pub const MIN_MEMORY: u64 = 16 << 20;
 pub const MAX_MEMORY: u64 = 16 << 30;
 pub const DEFAULT_CLONE_INTO: &str = "/app";
@@ -467,6 +470,8 @@ struct JobStatic {
     tools: Vec<ToolRef>,
     timeout: u64,
     memory: u64,
+    /// `cpus:`, checked; `None` for the runner's share of one.
+    cpus: Option<u32>,
     changes: ChangePolicy,
     /// The services that passed their checks, substituted per entry.
     services: Vec<ServiceStatic>,
@@ -1331,6 +1336,16 @@ impl Validator<'_> {
                 }
             },
         };
+        let cpus = match job.cpus {
+            Some(n) if !(1..=MAX_CPUS).contains(&n) => {
+                self.error(
+                    format!("{path}.cpus"),
+                    format!("must be a whole number of vCPUs from 1 to {MAX_CPUS}"),
+                );
+                None
+            }
+            n => n,
+        };
         let changes = match &job.changes {
             None => ChangePolicy::Ignore,
             Some(raw::Changes::Mode(m)) if m == "ignore" => ChangePolicy::Ignore,
@@ -1548,6 +1563,7 @@ impl Validator<'_> {
             tools,
             timeout,
             memory,
+            cpus,
             changes,
             services,
             downloads,
@@ -1662,6 +1678,12 @@ impl Validator<'_> {
         if job.memory.is_some() {
             refuse(
                 "memory",
+                "sizes a job on the runner; a cloud job's size is its `cloud.machine`".into(),
+            );
+        }
+        if job.cpus.is_some() {
+            refuse(
+                "cpus",
                 "sizes a job on the runner; a cloud job's size is its `cloud.machine`".into(),
             );
         }
@@ -2395,6 +2417,7 @@ impl Validator<'_> {
                     timeout: std::time::Duration::from_secs(st.timeout),
                     // A cloud job takes none of the runner's memory.
                     memory_bytes: if cloud.is_some() { 0 } else { st.memory },
+                    cpus: if cloud.is_some() { None } else { st.cpus },
                     caches,
                     artifacts,
                     downloads: st.downloads.map(|(retention_secs, when)| DownloadSpec {

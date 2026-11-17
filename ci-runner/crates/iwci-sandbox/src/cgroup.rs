@@ -189,6 +189,13 @@ impl Cgroup {
         self.write("cgroup.procs", &pid.to_string())
     }
 
+    /// Sets `cpu.weight` (1 to 10000, 100 by default): its share of the
+    /// CPU time beside the other sandboxes when they want more than there
+    /// is.
+    pub fn set_cpu_weight(&self, weight: u64) -> io::Result<()> {
+        self.write("cpu.weight", &weight.clamp(1, 10_000).to_string())
+    }
+
     /// Changes `memory.max`: what the sandbox may hold from now on.
     pub fn set_memory_max(&self, bytes: u64) -> io::Result<()> {
         self.write("memory.max", &bytes.to_string())

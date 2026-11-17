@@ -554,6 +554,10 @@ pub struct PlannedJob {
     #[serde(with = "duration_secs")]
     pub timeout: Duration,
     pub memory_bytes: u64,
+    /// `cpus:`: whole vCPUs the job holds. `None` holds one slot, the
+    /// runner's share of a vCPU (`--jobs-per-cpu`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
     /// Which of its environment's own caches the job keeps (`env-cache:`).

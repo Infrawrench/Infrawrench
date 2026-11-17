@@ -181,6 +181,7 @@ everything through.
 | `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
 | `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
 | `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `cpus`         | Whole vCPUs the job holds, from `1` to `64`, instead of its share of one. See [Limits](#limits).                                                                                                                   |
 | `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
 | `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
 | `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
@@ -557,7 +558,7 @@ web-1` works as written. A job that is not root and cannot write the
   the machine's own network does not reach the host. A lent host is still
   written with its `ProxyJump` when its connection has one.
 - **Not yet**, each an error naming the key: `using`, `args`, `deps`,
-  `tools`, `cache`, `memory`, `network: false`, `services`, `packages`,
+  `tools`, `cache`, `memory`, `cpus`, `network: false`, `services`, `packages`,
   `task-cache`, `env-cache`, `downloads`, `changes: commit`, and `clone`
   other than `{ depth }`. A workspace's `deps` and `services` are not a
   cloud job's.
@@ -3635,6 +3636,17 @@ whole pipeline.
   threads. A WASIX program's own threads and subprocesses (bash running
   `sed`) are not capped, because a script waiting on its child would
   deadlock. Default: the machine's cores.
+- **`cpus:`** gives a job whole vCPUs instead of a share of one: it holds
+  `cpus × jobs-per-cpu` slots, every slot of that many vCPUs (all of the
+  runner's when it asks for more than there are; `iwci run` has a slot per
+  vCPU). While it waits for them no job takes a slot, so jobs of one slot
+  coming and going cannot keep it waiting; one such job gathers at a time,
+  and the others wait behind it. A helper of a split run starts one only
+  when all its slots are free. The job is told the number it holds:
+  `IWCI_CPUS`, the CPU count WASIX reports (`thread_parallelism`), and,
+  for a sandboxed job, gVisor's CPU count, with its cgroup's `cpu.weight`
+  that of as many one-slot jobs as it holds slots. Nothing caps it at that
+  many: CPU time no other job wants is still its to use, as for any job.
 - **`--memory`** is a budget across running jobs. A job reserves its
   `memory:` before it starts and waits until that fits, also when other
   runs hold the memory (any run giving memory back wakes the rest); a job
@@ -4168,15 +4180,17 @@ it is masked, and an untrusted run is given none of it:
   keeps idle connections open through proxies.
 - **Billing.** Each run writes a record to
   `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`: the run, its jobs, and
-  its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU
-  (`vcpu_seconds`) and the memory it reserved over that time
+  its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU,
+  or at the whole vCPUs of its `cpus:` that it held, which its line in
+  `jobs` gives as `"cpus"` (`vcpu_seconds`), and the memory it reserved
+  over that time
   (`memory_gib_seconds`). A cloud job ran on the customer's own account: it
   is in none of those, but in `external_jobs` and `external_seconds` (from
   its claim to its end), and its line in `jobs` is `"external": true` with
   that time as `duration_ms`. Failed and errored runs are recorded too,
-  with no usage. The record's `schema` is 4: 2 added a job `status` of
+  with no usage. The record's `schema` is 5: 2 added a job `status` of
   `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`), 3 the
-  external fields, 4 split runs. The runner that has a split run writes its
+  external fields, 4 split runs, 5 a job's `cpus`. The runner that has a split run writes its
   one record, for every job: a job another runner ran is `"remote": true`
   and is in `usage` like the rest, at its time there and the memory it
   reserved. A helper writes none, so summing an owner's records is still

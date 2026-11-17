@@ -719,15 +719,32 @@ Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep 
 
 A job another runner ran is billed like any other job of the run.
 
+## Whole vCPUs for a job
+
+A job shares a vCPU with other jobs unless it says otherwise. A job that compiles or runs a test suite in parallel can ask for whole vCPUs of its own with `cpus:`:
+
+```yaml
+jobs:
+  test:
+    using: env:go@1.27
+    run: go test -p "$IWCI_CPUS" ./...
+    cpus: 4
+```
+
+- **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
+- **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count the runtime reports to its programs. Without `cpus:`, `$IWCI_CPUS` is not set.
+- **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
+- A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
+
 ## Usage and billing
 
 CI is part of paid plans (from $20 per seat per month). The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
 
-- **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs.
+- **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs. A job with [`cpus:`](#whole-vcpus-for-a-job) is charged the whole vCPUs it holds instead.
 - **Memory**, $0.000008 per GiB-second: the memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs.
 - **Storage**, $0.0002 per GiB-hour (about $0.14 per GiB for a 30-day month): the space your caches and [downloads](#downloads) take on the runners, measured every hour. Task cache results count here too, and a download stops counting when it expires.
 
-For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all.
+For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. With `cpus: 2` as well it is charged 1,200 vCPU-seconds ($0.096) instead of 150.
 
 A job the task cache stood in for did not run, so it uses no vCPU time or memory. A [cloud job](#cloud-jobs) runs on your own account, so the provider bills you for the machine and it uses no vCPU time or memory here either.
 

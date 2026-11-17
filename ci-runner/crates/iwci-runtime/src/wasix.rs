@@ -250,6 +250,7 @@ impl JobRuntime {
         >,
         internet: bool,
         cpu: Arc<CpuMeter>,
+        cpus: Option<u32>,
         services: &[String],
     ) -> Self {
         crate::signals::install();
@@ -260,8 +261,10 @@ impl JobRuntime {
         // not depend on where it is called from (#1157).
         let _enter = shared.tokio.enter();
         // The shared threads, with the job's tasks counted by its meter
-        // (stall.rs).
-        let mut inner = PluggableRuntime::new(Arc::new(JobTasks::new(shared.tasks.clone(), cpu)));
+        // (stall.rs), telling the job the vCPUs of its `cpus:` when it has
+        // them.
+        let mut inner =
+            PluggableRuntime::new(Arc::new(JobTasks::new(shared.tasks.clone(), cpu, cpus)));
         inner.set_engine(engine);
         // One loopback per job, shared by all of its processes, and the
         // public internet when the runtime offers it.
@@ -307,6 +310,7 @@ impl JobRuntime {
             None,
             false,
             Arc::default(),
+            None,
             &[],
         )
     }
@@ -1241,6 +1245,7 @@ impl Starter<'_> {
             None,
             false,
             Arc::default(),
+            None,
             &[],
         );
         let loader: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(loader);
@@ -1290,6 +1295,7 @@ pub(crate) fn run(
         node,
         inv.internet,
         cpu.clone(),
+        inv.limits.cpus,
         &service_names,
     );
     let control = runtime.control.clone();
@@ -1733,6 +1739,7 @@ pub(crate) fn prepare(
         None,
         false,
         Arc::default(),
+        None,
         &[],
     );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
@@ -1779,6 +1786,7 @@ pub(crate) fn preload(
         None,
         false,
         Arc::default(),
+        None,
         &[],
     );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);
@@ -1817,6 +1825,7 @@ pub(crate) fn prepare_listing(
         None,
         false,
         Arc::default(),
+        None,
         &[],
     );
     let runtime: Arc<dyn WasixRuntime + Send + Sync> = Arc::new(runtime);

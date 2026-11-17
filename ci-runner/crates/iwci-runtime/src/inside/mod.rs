@@ -537,6 +537,9 @@ fn run(spec_path: &Path) -> Result<i32, String> {
         limits: crate::Limits {
             timeout: Duration::from_millis(spec.timeout_ms),
             memory_bytes: spec.memory_bytes,
+            // The sandbox has as many CPUs as the job holds already
+            // (`JobSpec::cpus`).
+            cpus: None,
         },
         log: Some(output_sink()),
         scratch: None,
