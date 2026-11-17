@@ -34,25 +34,26 @@ describe("computeCostMicros", () => {
     expect(micros).toBe(37_500_000);
   });
 
-  it("prices Gemini 3.7 Flash input, output, and cached input at default markup", () => {
-    const micros = computeCostMicros("gemini-3.7-flash", {
+  it("prices Sonnet 5.5 across all four buckets at default markup", () => {
+    const micros = computeCostMicros("claude-sonnet-5-5", {
       inputTokens: 1_000_000,
       outputTokens: 1_000_000,
       cacheReadTokens: 1_000_000,
-      cacheWriteTokens: 0,
-    });
-    // (1.50 + 7.50 + 0.15) * 1.5 markup
-    expect(micros).toBe(13_725_000);
-  });
-
-  it("never charges Gemini a cache-write rate", () => {
-    const micros = computeCostMicros("gemini-3.7-flash", {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
       cacheWriteTokens: 1_000_000,
     });
-    expect(micros).toBe(0);
+    // (2.00 + 10.00 + 0.10 + 2.50) * 1.5 markup
+    expect(micros).toBe(21_900_000);
+  });
+
+  it("prices Opus 5.5 across all four buckets at default markup", () => {
+    const micros = computeCostMicros("claude-opus-5-5", {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+      cacheWriteTokens: 1_000_000,
+    });
+    // (4.00 + 20.00 + 0.20 + 5.00) * 1.5 markup
+    expect(micros).toBe(43_800_000);
   });
 
   it("computes Haiku 4.5 output cost at default markup (5 * 1.5 = 7.5 USD/Mtok)", () => {
@@ -63,36 +64,6 @@ describe("computeCostMicros", () => {
       cacheWriteTokens: 0,
     });
     expect(micros).toBe(7_500_000);
-  });
-
-  it("prices legacy gemini-3.6-flash conversations at the same Flash rates", () => {
-    const micros = computeCostMicros("gemini-3.6-flash", {
-      inputTokens: 1_000_000,
-      outputTokens: 1_000_000,
-      cacheReadTokens: 1_000_000,
-      cacheWriteTokens: 0,
-    });
-    expect(micros).toBe(13_725_000);
-  });
-
-  it("prices legacy opus-4-8 conversations", () => {
-    const micros = computeCostMicros("claude-opus-4-8", {
-      inputTokens: 0,
-      outputTokens: 1_000_000,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    });
-    expect(micros).toBe(37_500_000);
-  });
-
-  it("prices legacy sonnet-4-6 conversations", () => {
-    const micros = computeCostMicros("claude-sonnet-4-6", {
-      inputTokens: 1_000_000,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-    });
-    expect(micros).toBe(4_500_000);
   });
 
   it("falls back to the most expensive tier for unknown models", () => {

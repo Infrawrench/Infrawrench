@@ -22,10 +22,13 @@
  * Opt-in per org (`org_digest_settings.narrative_enabled`, default off), so no
  * org starts paying for (or sending data to) an LLM without asking.
  *
- * Config (env): ANTHROPIC_API_KEY. Shared with the chat feature; without it
- * this is a no-op with a log line and the digest simply loses the paragraph.
+ * Config (env): Claude through ../anthropic-client.ts, shared with the chat
+ * feature; without it this is a no-op with a log line and the digest simply
+ * loses the paragraph.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+
+import { anthropicClient, isAnthropicConfigured } from "../anthropic-client";
 
 import type { WeeklyDigest } from "./compose";
 import { formatAmount } from "./compose";
@@ -98,7 +101,7 @@ export function digestPromptPayload(digest: WeeklyDigest): Record<string, unknow
 
 /** Whether this deployment can write narratives at all. */
 export function isNarrativeConfigured(): boolean {
-  return Boolean(process.env["ANTHROPIC_API_KEY"]);
+  return isAnthropicConfigured();
 }
 
 /**
@@ -109,14 +112,13 @@ export function isNarrativeConfigured(): boolean {
 export async function generateDigestNarrative(digest: WeeklyDigest): Promise<string | null> {
   if (!isNarrativeConfigured()) {
     console.warn(
-      "[digest] narrative requested but ANTHROPIC_API_KEY is not set on this deployment; sending the deterministic digest only.",
+      "[digest] narrative requested but Claude is not configured on this deployment; sending the deterministic digest only.",
     );
     return null;
   }
 
   try {
-    const client = new Anthropic({
-      apiKey: process.env["ANTHROPIC_API_KEY"] ?? "",
+    const client = anthropicClient({
       timeout: NARRATIVE_TIMEOUT_MS,
       // The digest is not latency-sensitive but it is also not worth a long
       // retry storm inside a tick; one retry is enough to ride out a blip.

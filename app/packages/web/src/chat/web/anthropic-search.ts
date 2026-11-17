@@ -16,11 +16,11 @@
  * where the newer `_20260209` would try to route the search through code
  * execution and 400 on a model that can't.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropicClient, isAnthropicConfigured } from "@infrawrench/server-core/anthropic-client";
 import type { SearchBackend, SearchHit, SearchOutcome } from "./types";
 
 /** Retrieval model for the sub-call. Must have a row in ../pricing.ts. */
-const SEARCH_MODEL = "claude-haiku-4-5";
+export const SEARCH_MODEL = "claude-haiku-4-5";
 
 /**
  * Ceiling on searches per tool call. The sub-model may fan one question out
@@ -46,11 +46,11 @@ export const anthropicSearchBackend: SearchBackend = {
   label: "Anthropic web search",
 
   isConfigured() {
-    return Boolean(process.env["ANTHROPIC_API_KEY"]);
+    return isAnthropicConfigured();
   },
 
   async search(query: string): Promise<SearchOutcome> {
-    const client = new Anthropic({ apiKey: process.env["ANTHROPIC_API_KEY"] });
+    const client = anthropicClient();
 
     const message = await client.messages.create({
       model: SEARCH_MODEL,

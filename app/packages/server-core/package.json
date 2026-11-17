@@ -63,6 +63,7 @@
     "./workflows/runner": "./src/workflows/runner.ts",
     "./workflows/approvals": "./src/workflows/approvals.ts",
     "./workflows/fetch": "./src/workflows/fetch.ts",
+    "./anthropic-client": "./src/anthropic-client.ts",
     "./workflows/ai": "./src/workflows/ai.ts",
     "./workflow-secrets": "./src/workflow-secrets.ts",
     "./github/app": "./src/github/app.ts",

@@ -39,6 +39,7 @@ import {
 } from "@infrawrench/server-core/billing/ai-usage";
 import type { ToolDefinition, ToolResult } from "../../tools/types";
 import { ok, err } from "../../tools/types";
+import { SEARCH_MODEL } from "./anthropic-search";
 import { searchBackend, isWebSearchConfigured } from "./backend";
 import { fetchPage, isWebFetchConfigured, MAX_CONTENT_CHARS } from "./fetch";
 import { recordWebSearchUsage } from "../billing";
@@ -116,20 +117,17 @@ async function conversationBlocks(
 async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult> {
   const backend = searchBackend();
   if (!backend) {
-    return err(
-      "Web search is not configured for this deployment (no Vertex AI project and no Anthropic API key).",
-    );
+    return err("Web search is not configured for this deployment (Claude is not configured).");
   }
 
   // Reserve against the shared AI pool before the sub-model runs: the parent
   // chat turn already released its model-call hold, so without this a search
   // near the cap could clear no check and bill past the line.
-  const reserveModel = backend.id === "vertex" ? "gemini-3.7-flash" : "claude-haiku-4-5";
   let reservationId: string;
   try {
     reservationId = await reserveAiSpend(
       ctx.organizationId,
-      estimateSearchCostMicros(backend.id, query, reserveModel),
+      estimateSearchCostMicros(backend.id, query, SEARCH_MODEL),
     );
   } catch (e) {
     if (e instanceof AiSpendCapExceededError) {

@@ -198,8 +198,7 @@ resource "aws_secretsmanager_secret_version" "app_env" {
 # The edge Workers' environment, which deploy-edge (web-deploy.yml) reads with
 # the CI role and uploads as both Workers' secrets. It is what the GKE
 # cluster's `infrawrench-env` secret held until the cluster was removed on
-# 2026-11-17: app_env, the Vertex AI coordinates (addresses, not credentials;
-# tfvars wins if it sets them) and the Lambda gateway's URL and shared secret.
+# 2026-11-17: app_env and the Lambda gateway's URL and shared secret.
 # lambda_app_env stays out: its values are the ones that must differ on
 # Lambda.
 resource "aws_secretsmanager_secret" "edge_env" {
@@ -214,10 +213,6 @@ resource "aws_secretsmanager_secret_version" "edge_env" {
   count     = local.lambda_enabled ? 1 : 0
   secret_id = aws_secretsmanager_secret.edge_env[0].id
   secret_string = jsonencode(merge(
-    {
-      GOOGLE_CLOUD_PROJECT  = var.project_id
-      GOOGLE_CLOUD_LOCATION = var.vertex_location
-    },
     var.app_env,
     local.lambda_worker_env,
   ))

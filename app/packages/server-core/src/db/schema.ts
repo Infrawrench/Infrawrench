@@ -4358,7 +4358,7 @@ export const chatConversations = pgTable(
      * explicitly, so this is only reached by a caller that forgets; it points
      * at the cheapest model so forgetting is cheap rather than expensive.
      */
-    model: text("model").notNull().default("gemini-3.7-flash"),
+    model: text("model").notNull().default("claude-sonnet-5-5"),
     /** System prompt override; null means use the default from chat/agent.ts */
     systemPrompt: text("system_prompt"),
     archivedAt: timestamp("archived_at"),

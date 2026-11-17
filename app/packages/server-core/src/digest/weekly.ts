@@ -59,6 +59,7 @@ import { listAccessReview } from "../access-review/feed";
 import { listBackupCoverage } from "../backups/feed";
 import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
+import { isAnthropicConfigured } from "../anthropic-client";
 import { generateDigestNarrative } from "./narrative";
 import {
   addDays,
@@ -1020,7 +1021,7 @@ export interface DigestSettingsRecord {
   sendDay: number;
   sendHour: number;
   narrativeEnabled: boolean;
-  /** Whether this deployment can write narratives at all (ANTHROPIC_API_KEY). */
+  /** Whether this deployment can write narratives at all (Claude configured). */
   narrativeAvailable: boolean;
   /** Whether this deployment can send mail (MAILGUN_API_KEY + MAILGUN_DOMAIN + EMAIL_FROM). */
   emailAvailable: boolean;
@@ -1040,7 +1041,7 @@ function toRecord(row: typeof orgDigestSettings.$inferSelect): DigestSettingsRec
     sendDay: row.sendDay,
     sendHour: row.sendHour,
     narrativeEnabled: row.narrativeEnabled,
-    narrativeAvailable: Boolean(process.env["ANTHROPIC_API_KEY"]),
+    narrativeAvailable: isAnthropicConfigured(),
     emailAvailable: isEmailConfigured(),
     attemptCount: row.attemptCount,
     lastAttemptAt: row.lastAttemptAt,
@@ -1074,7 +1075,7 @@ export async function getOrgDigestSettings(organizationId: string): Promise<Dige
   if (!row) {
     return {
       ...DEFAULT_SETTINGS,
-      narrativeAvailable: Boolean(process.env["ANTHROPIC_API_KEY"]),
+      narrativeAvailable: isAnthropicConfigured(),
       emailAvailable: isEmailConfigured(),
     };
   }

@@ -31,8 +31,8 @@ const subprocessors = [
   },
   {
     name: "Google Cloud",
-    purpose: "Application hosting (GKE) and the default chat model (Vertex AI)",
-    data: "Server traffic and logs; chat messages sent to the model",
+    purpose: "Application hosting (GKE)",
+    data: "Server traffic and logs",
   },
   {
     name: "Stripe",
@@ -42,8 +42,8 @@ const subprocessors = [
   {
     name: "Cloudflare",
     purpose:
-      "This website, desktop app downloads and update checks, the outbound egress proxy, and the instances.infrawrench.com chat (its AI Gateway relays questions to Anthropic, and it stores shared views and email alerts)",
-    data: "IP address, user agent, requested URL in edge logs; chat questions in transit; email addresses subscribed to instance price alerts",
+      "This website, desktop app downloads and update checks, the outbound egress proxy, the AI Gateway that relays the in-app chat assistant and other AI features to Anthropic, and the instances.infrawrench.com chat (its AI Gateway relays questions to Anthropic, and it stores shared views and email alerts)",
+    data: "IP address, user agent, requested URL in edge logs; chat messages and questions in transit; email addresses subscribed to instance price alerts",
   },
   {
     name: "GitHub",
@@ -68,9 +68,9 @@ const subprocessors = [
     data: "After analytics consent, a random visitor id and the pages the tag sees. For a confirmed purchase, unless you declined analytics: the amount, currency, time, your analytics choice, whether it was a subscription or a capacity slot, and the checkout email and phone Stripe already collected",
   },
   {
-    name: "Anthropic / OpenAI",
+    name: "Anthropic",
     purpose:
-      "Optional alternative chat models in the app, used only when you pick one; Anthropic also answers the chat on instances.infrawrench.com",
+      "The chat assistant's models (Claude), workflow infra.ai() calls and the optional weekly digest summary in the app, and the chat on instances.infrawrench.com",
     data: "Chat messages and the resource context attached to them",
   },
   {
@@ -249,10 +249,9 @@ const subprocessors = [
           <h2 id="ai">AI chat and web search</h2>
           <p>
             When you use the chat assistant, your messages and the resource context relevant to them
-            are sent to a model provider to generate a reply. The default model runs on Google Vertex
-            AI; Anthropic or OpenAI models are used only if the server is configured for them and you
-            select one. Under the API terms we use, these providers process the content to return a
-            response and do not use it to train their models.
+            are sent to Anthropic's Claude, through Cloudflare's AI Gateway, to generate a reply.
+            Under the API terms we use, Anthropic processes the content to return a response and does
+            not use it to train its models.
           </p>
           <p>
             If you use the assistant's web search or fetch tools, your query or the URL is sent to the

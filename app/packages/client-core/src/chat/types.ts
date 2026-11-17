@@ -13,11 +13,11 @@
 import type { AskQuestionAnswer } from "./ask-question";
 
 /**
- * Which provider minted a block's opaque signature. A conversation's model can
- * be changed mid-thread (PATCH /conversations/:id), so history routinely mixes
- * providers, and a thought signature is only valid to the provider that
- * issued it. Blocks written before this field existed are Anthropic's, which is
- * why `undefined` means Anthropic rather than "unknown".
+ * Which provider minted a block's opaque signature. Chat offered Gemini until
+ * it moved to Claude only, and conversations kept their history, so stored
+ * blocks can still be Gemini's; a thought signature is only valid to the
+ * provider that issued it. Blocks written before this field existed are
+ * Anthropic's, which is why `undefined` means Anthropic rather than "unknown".
  */
 export type ChatBlockProvider = "anthropic" | "gemini";
 
@@ -138,28 +138,18 @@ export interface ChatModelOption {
 
 export const CHAT_MODELS: ChatModelOption[] = [
   {
-    id: "gemini-3.7-flash",
-    label: "Gemini 3.7 Flash",
-    description: "Fast and inexpensive; the default for most chats",
+    id: "claude-sonnet-5-5",
+    label: "Claude Sonnet 5.5",
+    description: "Fast and capable; the default for most chats",
   },
   {
-    id: "claude-sonnet-5",
-    label: "Claude Sonnet 5",
-    description: "Balanced: near-Opus quality at lower cost",
-  },
-  {
-    id: "claude-opus-5",
-    label: "Claude Opus 5",
+    id: "claude-opus-5-5",
+    label: "Claude Opus 5.5",
     description: "Most capable; best for complex, multi-step infrastructure work",
-  },
-  {
-    id: "claude-haiku-4-5",
-    label: "Claude Haiku 4.5",
-    description: "Fastest and cheapest, for quick lookups",
   },
 ];
 
-export const DEFAULT_CHAT_MODEL = "gemini-3.7-flash";
+export const DEFAULT_CHAT_MODEL = "claude-sonnet-5-5";
 
 export interface SpendStatus {
   monthToDateMicros: number;

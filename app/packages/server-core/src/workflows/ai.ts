@@ -19,9 +19,10 @@
  * The spec arriving here is already validated by the runtime's `dispatch`
  * (model allowlist, prompt/system bounds, clamped maxTokens).
  */
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import type { WorkflowAiResult, WorkflowAiSpec } from "@infrawrench/workflow-runtime";
 
+import { anthropicClient, isAnthropicConfigured } from "../anthropic-client";
 import {
   AiSpendCapExceededError,
   estimateTokensFromChars,
@@ -48,7 +49,7 @@ const AI_TIMEOUT_MS = 120_000;
 
 /** Whether this deployment can serve `infra.ai()` at all. */
 export function isWorkflowAiConfigured(): boolean {
-  return Boolean(process.env["ANTHROPIC_API_KEY"]);
+  return isAnthropicConfigured();
 }
 
 export interface WorkflowAiContext {
@@ -86,11 +87,8 @@ export async function aiFromWorkflow(
   ctx: WorkflowAiContext,
   spec: WorkflowAiSpec,
 ): Promise<WorkflowAiResult> {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) {
-    throw new Error(
-      "infra.ai() is not available: this deployment has no ANTHROPIC_API_KEY configured.",
-    );
+  if (!isAnthropicConfigured()) {
+    throw new Error("infra.ai() is not available: Claude is not configured for this deployment.");
   }
 
   if (ctx.signal?.aborted) throw stoppedError();
@@ -115,7 +113,7 @@ export async function aiFromWorkflow(
   try {
     if (ctx.signal?.aborted) throw stoppedError();
 
-    const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 });
+    const client = anthropicClient({ timeout: AI_TIMEOUT_MS, maxRetries: 1 });
     const response = await client.messages.create(
       {
         model: spec.model,

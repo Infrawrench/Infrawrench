@@ -533,4 +533,11 @@
 // no longer answer 404 for an organization nobody turned CI on for, and
 // `CiStatus.enabled` is always true (kept for clients that hide CI when it is
 // false). Removals ship as a minor by the owner's decision, as in 1.113.0.
-export const API_VERSION = "1.115.0";
+// 1.116.0: chat runs on Claude only. The `model` enum of
+// `ChatConversationCreateInput` and `ChatConversationModelInput` is now
+// `claude-sonnet-5-5` (the default when `model` is omitted) and
+// `claude-opus-5-5`; `gemini-3.7-flash`, `claude-sonnet-5`, `claude-opus-5`
+// and `claude-haiku-4-5` are gone, and every stored conversation was moved to
+// `claude-sonnet-5-5`. Removals ship as a minor by the owner's decision, as in
+// 1.113.0.
+export const API_VERSION = "1.116.0";

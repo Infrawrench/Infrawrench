@@ -14,8 +14,8 @@ included) on Neon throughout:
 - **Oracle Cloud**: the `github-watcher`, on one Always Free VM. See
   [Oracle Cloud](#oracle-cloud).
 
-GCP keeps the Artifact Registry repo every image is built into first, the
-keyless CI identity that pushes there, and the Vertex AI service account.
+GCP keeps the Artifact Registry repo every image is built into first and the
+keyless CI identity that pushes there.
 The CF Workers deployables (website, telemetry) are not part of this.
 
 | Layer                                                                   | Owner                                     |
@@ -52,9 +52,6 @@ and removed on 2026-11-17 along with `infra/k8s`. Git history has both.
   restricted to `main` of this repository and to jobs running under the
   `production` GitHub environment. No GCP JSON key exists in repo secrets. The
   account can push to the registry and nothing else.
-- **Vertex AI** (`vertex.tf`): the service account Gemini chat used through
-  the GKE pods' Workload Identity. Nothing outside GCP holds credentials for
-  it yet.
 
 ## One-time bootstrap
 

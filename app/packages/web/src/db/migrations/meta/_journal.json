@@ -1324,6 +1324,13 @@
       "when": 1794885978741,
       "tag": "0188_analytics_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1794898800595,
+      "tag": "0189_chat_models_claude",
+      "breakpoints": true
     }
   ]
 }

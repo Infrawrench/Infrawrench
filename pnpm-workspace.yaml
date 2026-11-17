@@ -59,7 +59,6 @@ patchedDependencies:
   "@generaltranslation/react-core@11.1.6": patches/@generaltranslation__react-core@11.1.6.patch
 
 allowBuilds:
-  "@google/genai": true
   better-sqlite3: true
   cpu-features: true
   electron: true

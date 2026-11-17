@@ -279,32 +279,26 @@ app_env = {
   # app.config.ts. Setting it early degrades pages silently.
   PUSH_CRITICAL_ALERTS = "1"
 
-  # Chat models. The default model (Gemini 3.7 Flash) needs no key at all —
-  # it's served through Vertex AI, and the web pods authenticate with Workload
-  # Identity (infra/terraform/vertex.tf). GOOGLE_CLOUD_PROJECT and
-  # GOOGLE_CLOUD_LOCATION are injected automatically from project_id and
-  # var.vertex_location; set them here only to override.
+  # Claude: the chat models (Sonnet 5.5, Opus 5.5), the chat's `web_search`
+  # tool, `infra.ai()` in workflows (read by the poller as well as web) and
+  # the weekly digest's opt-in AI paragraph. Required for chat: without it a
+  # chat turn returns a configuration error, web_search isn't offered, the
+  # workflow typings mark infra.ai unavailable and a call throws, and the
+  # digest skips its paragraph with a log line.
   #
-  # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
-  # it, picking one returns a configuration error and chat falls back to
-  # nothing — leave it set unless you intend Gemini-only. The same key also
-  # backs `infra.ai()` in workflows (read by the poller as well as web —
-  # without it the generated typings mark infra.ai unavailable and a call
-  # throws) and the weekly digest's opt-in AI summary paragraph; without it
-  # that paragraph is skipped with a log line and the digest still sends its
-  # deterministic content.
+  # Production calls Claude through Cloudflare AI Gateway on Unified Billing,
+  # the same arrangement as instances.infrawrench.com, so no Anthropic key is
+  # held here. All three are needed: CLOUDFLARE_ACCOUNT_ID (the entry under
+  # "Bulk pricing data" below; one account serves both), AI_GATEWAY_ID (the
+  # gateway's name, created under AI > AI Gateway in the Cloudflare dashboard,
+  # with AI Gateway credits loaded) and AI_GATEWAY_TOKEN (a Cloudflare API
+  # token with the AI Gateway Run permission). With all three set they win over
+  # ANTHROPIC_API_KEY, which is only the fallback for a deployment without a
+  # gateway (create one at console.anthropic.com → API keys).
   # Optional
+  # AI_GATEWAY_ID        = "infrawrench"
+  # AI_GATEWAY_TOKEN     = "..."
   # ANTHROPIC_API_KEY    = "..."
-  # OPENAI_API_KEY       = "..."
-
-  # Which backend the chat agent's `web_search` tool uses. Optional: unset picks
-  # the first configured one, preferring "vertex" (Google Search grounding, uses
-  # the GOOGLE_CLOUD_PROJECT the default Gemini setup already has) over
-  # "anthropic" (Anthropic's server-side web search, needs ANTHROPIC_API_KEY).
-  # With neither configured the tool isn't offered and the agent is told to say
-  # what it would have looked up. Searches are billed on to the org per query on
-  # top of tokens, so this also chooses which per-query rate applies.
-  # INFRAWRENCH_CHAT_SEARCH_BACKEND = "vertex"
 
   # Ceiling on anonymous agent registrations per hour across every source
   # address — the kill switch for a distributed flood of trial workspaces.

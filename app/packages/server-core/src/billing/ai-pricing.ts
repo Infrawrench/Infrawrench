@@ -9,10 +9,10 @@
  * `infra.ai()` in workflows (web + poller). `web/src/chat/pricing.ts` re-exports
  * it, so chat code keeps its import path.
  *
- * Anthropic: cache write = 1.25x input, cache read = 0.1x input.
- * Gemini on Vertex AI: implicit caching is automatic and carries no write
- * charge, so cacheWrite is 0 and the provider reports zero cache-write tokens.
- * Reasoning tokens bill at the output rate and are folded into outputTokens.
+ * Anthropic: cache write = 1.25x input; cache read = 0.1x input on most
+ * models, 0.05x on Sonnet 5.5 and Opus 5.5. These are Anthropic's list rates;
+ * calls go through Cloudflare AI Gateway (../anthropic-client.ts). Thinking
+ * tokens bill at the output rate and are folded into outputTokens.
  */
 
 const MARKUP = 1.5;
@@ -26,16 +26,12 @@ interface ModelRates {
 
 /** USD per million tokens, before markup. */
 const MODEL_RATES: Record<string, ModelRates> = {
-  // Vertex AI standard-tier rates, which match AI Studio list for this model.
-  "gemini-3.7-flash": { input: 1.5, output: 7.5, cacheWrite: 0, cacheRead: 0.15 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0, cacheWrite: 2.5, cacheRead: 0.1 },
+  "claude-opus-5-5": { input: 4.0, output: 20.0, cacheWrite: 5.0, cacheRead: 0.2 },
+  // infra.ai() still accepts these, and the chat's web search runs on Haiku.
   "claude-opus-5": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-sonnet-5": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.1 },
-  // Legacy: conversations created before the model list moved to the current
-  // generation still carry these ids.
-  "gemini-3.6-flash": { input: 1.5, output: 7.5, cacheWrite: 0, cacheRead: 0.15 },
-  "claude-opus-4-8": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
-  "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
 };
 
 const FALLBACK_RATES = MODEL_RATES["claude-opus-5"]!;
@@ -48,26 +44,15 @@ export interface TokenUsage {
 }
 
 /**
- * Per-search fees, USD per single web search query, before markup. Both search
- * backends bill per query rather than per request (one call to the search tool
+ * Per-search fees, USD per single web search query, before markup. The search
+ * backend bills per query rather than per request (one call to the search tool
  * can fan out into several) so the unit here is the query, counted from what
  * the backend reports it actually ran.
  *
  * These are on top of the sub-model's token cost, which prices through
  * MODEL_RATES like any other call.
- *
- * Known imprecision, deliberate: Google gives 5,000 free search queries a month
- * aggregated across Gemini 3 models, and that allowance belongs to the Google
- * Cloud project; one pool shared by every organization on the deployment, with
- * no way to attribute a share of it to the org that used it. Rather than invent
- * an allocation, we charge from the first query, so early-month searches are
- * billed at list while the platform is still inside the free allowance. It is
- * the one place the "always exactly 1.5x what the API bills us" rule above does
- * not hold exactly, and it errs toward the platform.
  */
 const SEARCH_RATES: Record<string, number> = {
-  // $14 per 1,000 search queries on Gemini 3 models (billing began 2026-01-05).
-  vertex: 0.014,
   // $10 per 1,000 searches.
   anthropic: 0.01,
 };

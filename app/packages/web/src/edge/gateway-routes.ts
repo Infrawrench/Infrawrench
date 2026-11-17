@@ -48,8 +48,7 @@ const SESSION_ROUTES: readonly RegExp[] = [
   /^\/api\/agent-links\/requests(\/|$)/,
   /^\/api\/internal(\/|$)/,
   // SSE whose turns can outlast a Lambda invocation, with tools that drive
-  // drivers, SSH and bastion-bound accounts mid-stream. Gemini also signs in
-  // with the session gateway's GKE Workload Identity.
+  // drivers, SSH and bastion-bound accounts mid-stream.
   new RegExp(`${ORG}/chat(/|$)`),
   // Background cost export jobs: creating one kicks the export loop that only
   // the session gateway runs (`services/cost-export-job-loop.ts`), and a

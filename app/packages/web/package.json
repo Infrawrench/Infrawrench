@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
-    "@google/genai": "2.13.0",
     "@infrawrench/analytics": "workspace:*",
     "@infrawrench/api-contract": "workspace:*",
     "@infrawrench/appstream-core": "workspace:*",

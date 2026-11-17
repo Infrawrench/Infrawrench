@@ -1,6 +1,7 @@
 # What is left on GCP: the Artifact Registry repo CI pushes commit-SHA-tagged
-# images to (deploy-oci and deploy-aws-web copy them on to OCIR and ECR), the
-# keyless CI identity (ci.tf) and the Vertex AI service account (vertex.tf).
+# images to (deploy-oci and deploy-aws-web copy them on to OCIR and ECR) and
+# the keyless CI identity (ci.tf). Chat ran Gemini on Vertex AI until it moved
+# to Claude through Cloudflare AI Gateway on 2026-11-17.
 # The GKE cluster that used to run web, poller and github-watcher was removed
 # on 2026-11-17; those run on AWS, AWS Lambda and Oracle Cloud now.
 
@@ -9,10 +10,6 @@ resource "google_project_service" "required" {
     "artifactregistry.googleapis.com",
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
-    # Gemini chat inference. Vertex rather than the AI Studio developer API on
-    # purpose: Vertex is a normal Cloud SKU, so project credits and CUDs apply
-    # to it.
-    "aiplatform.googleapis.com",
   ])
 
   service = each.key

@@ -53,8 +53,8 @@ import {
 import { ASK_QUESTION_TOOL_NAME, parseAskQuestionInput } from "@infrawrench/client-core";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
-// Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.7
-// Flash think by default, so this needs room for reasoning and the reply.
+// Hard cap on thinking + response text per request. Sonnet 5.5 and Opus 5.5
+// always think, so this needs room for reasoning and the reply.
 const MAX_TOKENS = 32000;
 
 /** Ceiling for one agent-loop model call's spend reservation (full maxTokens out). */
@@ -576,6 +576,15 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     );
 
     if (toolUses.length === 0) {
+      // A safety classifier declined the turn (HTTP 200, no error). Without
+      // this the reply is simply empty, which reads as a hang.
+      if (stopReason === "refusal") {
+        yield {
+          type: "error",
+          message: "Claude declined to answer this request. Try rephrasing it.",
+        };
+        return;
+      }
       yield {
         type: "turn_end",
         messageId: assistantMessageId,

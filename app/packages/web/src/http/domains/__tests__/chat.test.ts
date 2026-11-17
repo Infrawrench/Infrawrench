@@ -8,7 +8,7 @@ import { buildTestApi } from "@/http/testing";
  * through to the `chat_conversations.model` column default (which was
  * `claude-opus-5`, the most expensive of the four) so the desktop sidebar's
  * New chat button silently opened billed Opus conversations while every picker
- * in the product said the default was Gemini Flash. The route now always
+ * in the product said the default was something cheaper. The route now always
  * writes a model, and this pins that.
  */
 
@@ -75,16 +75,16 @@ describe("POST /conversations", () => {
     expect(res.status).toBe(200);
     // Explicitly written, not left for the column default to decide.
     expect(inserted[0]).toMatchObject({ model: DEFAULT_CHAT_MODEL });
-    expect(inserted[0]?.["model"]).toBe("gemini-3.7-flash");
+    expect(inserted[0]?.["model"]).toBe("claude-sonnet-5-5");
   });
 
   it("honours an explicit model", async () => {
-    await post({ model: "claude-opus-5" });
-    expect(inserted[0]).toMatchObject({ model: "claude-opus-5" });
+    await post({ model: "claude-opus-5-5" });
+    expect(inserted[0]).toMatchObject({ model: "claude-opus-5-5" });
   });
 
   it("rejects a model that isn't in the catalogue", async () => {
-    const res = await post({ model: "gpt-9" });
+    const res = await post({ model: "gemini-3.7-flash" });
     expect(res.status).toBe(400);
     expect(inserted).toHaveLength(0);
   });

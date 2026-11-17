@@ -1,5 +1,5 @@
 variable "project_id" {
-  description = "GCP project id that owns the Artifact Registry repo, the CI identity and the Vertex AI service account."
+  description = "GCP project id that owns the Artifact Registry repo and the CI identity."
   type        = string
 }
 
@@ -55,18 +55,6 @@ variable "github_deploy_environment" {
   EOT
   type        = string
   default     = "production"
-}
-
-variable "vertex_location" {
-  description = <<-EOT
-    Vertex AI location for Gemini chat inference, published to the edge
-    Workers as GOOGLE_CLOUD_LOCATION. `global` is the multi-region endpoint — widest model
-    availability and the fewest capacity-driven 429s. Pin it to a single region
-    only if data residency requires it; not every model is offered in every
-    region.
-  EOT
-  type        = string
-  default     = "global"
 }
 
 variable "app_env" {
