@@ -125,7 +125,7 @@ pub const RUBY_ABIS: &[RubyAbi] = &[
         ruby_version: "4.0.0",
         platform: "wasm32-wasi",
         extension_api_version: "4.0.0-static",
-        rubygems: "4.0.3",
+        rubygems: "4.0.20",
         binstub: Binstub::ActivateAndLoadBinPath,
     },
 ];

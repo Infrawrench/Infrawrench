@@ -328,7 +328,7 @@ fn installs_the_bundle_as_bundler_lays_it_out() {
     let spec = read(b, &format!("{ROOT}/specifications/tool-1.2.0.gemspec"));
     assert!(spec.starts_with("# -*- encoding: utf-8 -*-\n# stub: tool 1.2.0 ruby lib\n"));
     assert!(spec.contains("  s.executables = [\"tool\".freeze]\n"));
-    assert!(spec.contains("  s.installed_by_version = \"4.0.3\".freeze\n"));
+    assert!(spec.contains("  s.installed_by_version = \"4.0.20\".freeze\n"));
 
     // A wrapper for the executable.
     let stub = read(b, &format!("{ROOT}/bin/tool"));
