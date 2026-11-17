@@ -167,6 +167,30 @@ impl<'a, M: MemorySize> FdWriteSource<'a, M> {
     }
 }
 
+/// Writes the whole of one `fd_write` to a pipe with one send, as Linux's
+/// `pipe_write` takes every segment of a `writev` under a single check for a
+/// reader. Sending segment by segment left a gap between them: a reader that
+/// took the first segment and closed its end made the next one fail with
+/// `EPIPE`, and raise `SIGPIPE`, though the bytes had arrived, and musl's
+/// `fflush` always ends its `writev` with an empty segment. A write of
+/// nothing returns 0 without looking for a reader, also as Linux does.
+/// `Errno::Pipe` means the reader was gone and nothing was written.
+fn write_to_pipe<M: MemorySize>(
+    pipe: &mut impl std::io::Write,
+    memory: &MemoryView,
+    data: &FdWriteSource<'_, M>,
+) -> Result<usize, Errno> {
+    let data = data.coalesce(memory, usize::MAX)?;
+    if data.is_empty() {
+        return Ok(0);
+    }
+    match std::io::Write::write_all(pipe, &data) {
+        Ok(()) => Ok(data.len()),
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Err(Errno::Pipe),
+        Err(e) => Err(map_io_err(e)),
+    }
+}
+
 #[allow(clippy::await_holding_lock)]
 pub(crate) fn fd_write_internal<M: MemorySize>(
     mut ctx: &mut FunctionEnvMut<'_, WasiEnv>,
@@ -338,124 +362,24 @@ pub(crate) fn fd_write_internal<M: MemorySize>(
                 Kind::PipeRx { .. } => {
                     return Ok(Err(Errno::Badf));
                 }
-                Kind::PipeTx { tx } => {
-                    let mut written = 0usize;
-
-                    match &data {
-                        FdWriteSource::Iovs { iovs, iovs_len } => {
-                            let mut raise_sigpipe = false;
-                            let iovs_arr = wasi_try_ok_ok!(
-                                iovs.slice(&memory, *iovs_len).map_err(mem_error_to_wasi)
-                            );
-                            let iovs_arr =
-                                wasi_try_ok_ok!(iovs_arr.access().map_err(mem_error_to_wasi));
-                            for iovs in iovs_arr.iter() {
-                                let buf = wasi_try_ok_ok!(
-                                    WasmPtr::<u8, M>::new(iovs.buf)
-                                        .slice(&memory, iovs.buf_len)
-                                        .map_err(mem_error_to_wasi)
-                                );
-                                let buf = wasi_try_ok_ok!(buf.access().map_err(mem_error_to_wasi));
-                                let write_result = std::io::Write::write(tx, buf.as_ref());
-                                let local_written = match write_result {
-                                    Ok(w) => w,
-                                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                                        // Need to do this to avoid double borrow on ctx with iovs_arr
-                                        raise_sigpipe = true;
-                                        break;
-                                    }
-                                    Err(e) => return Ok(Err(map_io_err(e))),
-                                };
-
-                                written += local_written;
-                                if local_written != buf.len() {
-                                    break;
-                                }
-                            }
-
-                            drop(iovs_arr);
-
-                            if raise_sigpipe {
-                                env.process.signal_process(Signal::Sigpipe);
-                                wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
-                                return Ok(Err(Errno::Pipe));
-                            }
-                        }
-                        FdWriteSource::Buffer(data) => {
-                            match std::io::Write::write_all(tx, data) {
-                                Ok(()) => (),
-                                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                                    env.process.signal_process(Signal::Sigpipe);
-                                    wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
-                                    return Ok(Err(Errno::Pipe));
-                                }
-                                Err(e) => return Ok(Err(map_io_err(e))),
-                            };
-                            written += data.len();
-                        }
+                Kind::PipeTx { tx } => match write_to_pipe(tx, &memory, &data) {
+                    Ok(written) => (written, false, true),
+                    Err(Errno::Pipe) => {
+                        env.process.signal_process(Signal::Sigpipe);
+                        wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+                        return Ok(Err(Errno::Pipe));
                     }
-
-                    (written, false, true)
-                }
-                Kind::DuplexPipe { pipe } => {
-                    let mut written = 0usize;
-
-                    match &data {
-                        FdWriteSource::Iovs { iovs, iovs_len } => {
-                            let mut raise_sigpipe = false;
-                            let iovs_arr = wasi_try_ok_ok!(
-                                iovs.slice(&memory, *iovs_len).map_err(mem_error_to_wasi)
-                            );
-                            let iovs_arr =
-                                wasi_try_ok_ok!(iovs_arr.access().map_err(mem_error_to_wasi));
-                            for iovs in iovs_arr.iter() {
-                                let buf = wasi_try_ok_ok!(
-                                    WasmPtr::<u8, M>::new(iovs.buf)
-                                        .slice(&memory, iovs.buf_len)
-                                        .map_err(mem_error_to_wasi)
-                                );
-                                let buf = wasi_try_ok_ok!(buf.access().map_err(mem_error_to_wasi));
-                                let write_result = std::io::Write::write(pipe, buf.as_ref());
-                                let local_written = match write_result {
-                                    Ok(w) => w,
-                                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                                        // Need to do this to avoid double borrow on ctx with iovs_arr
-                                        raise_sigpipe = true;
-                                        break;
-                                    }
-                                    Err(e) => return Ok(Err(map_io_err(e))),
-                                };
-
-                                written += local_written;
-                                if local_written != buf.len() {
-                                    break;
-                                }
-                            }
-
-                            drop(iovs_arr);
-
-                            if raise_sigpipe {
-                                env.process.signal_process(Signal::Sigpipe);
-                                wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
-                                return Ok(Err(Errno::Pipe));
-                            }
-                        }
-                        FdWriteSource::Buffer(data) => {
-                            match std::io::Write::write_all(pipe, data) {
-                                Ok(()) => (),
-                                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                                    env.process.signal_process(Signal::Sigpipe);
-                                    wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
-                                    return Ok(Err(Errno::Pipe));
-                                }
-                                Err(e) => return Ok(Err(map_io_err(e))),
-                            };
-                            written += data.len();
-                        }
+                    Err(err) => return Ok(Err(err)),
+                },
+                Kind::DuplexPipe { pipe } => match write_to_pipe(pipe, &memory, &data) {
+                    Ok(written) => (written, false, true),
+                    Err(Errno::Pipe) => {
+                        env.process.signal_process(Signal::Sigpipe);
+                        wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+                        return Ok(Err(Errno::Pipe));
                     }
-
-                    (written, false, true)
-                }
+                    Err(err) => return Ok(Err(err)),
+                },
                 Kind::Dir { .. } | Kind::Root { .. } => {
                     // TODO: verify
                     return Ok(Err(Errno::Isdir));

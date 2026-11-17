@@ -1249,6 +1249,25 @@ calls it, so a bad one traps in the guest like any bad function pointer.
 Upstream main has the same panics (checked November 2026, at 65f18f0054);
 reported as wasmerio/wasmer#7194.
 
+**One write to a pipe is one send.** `fd_write` sent each segment of a
+`writev` to a pipe as its own message and checked for a reader before each,
+so a reader that took the first segment and closed its end before the next
+made that one fail with `EPIPE` and raise `SIGPIPE`, though the bytes had
+arrived. musl's `fflush` always ends its `writev` with an empty segment, so
+any C program flushing its last answer to a parent that exits on reading it
+could die this way. `git-remote-https` did, after reporting a push: Git had
+the status, printed `[new tag]`, closed the pipe, and then exited 1 because
+its helper had been killed (`gh/gh-passes`, once in several runs). Linux's
+`pipe_write` takes every segment under one check, and returns 0 for a write
+of nothing without looking for a reader at all. Now `write_to_pipe` in
+`src/syscalls/wasi/fd_write.rs` coalesces the segments and sends them once,
+and sends nothing for an empty write, for both pipe kinds. A reader also gets
+the whole write in one read now, as on Linux, rather than a segment per read.
+`iwci-runtime`'s
+`a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe` is the
+check. Upstream main sends segment by segment too (checked November 2026, at
+65f18f0054).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1269,7 +1288,8 @@ its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
 through a symbolic link, a new thread's stack pointer starts on its
 stack before its side modules' TLS is set up, the closure calls and
-`call_dynamic` answer bad input with an errno, WASIX has file locks a C library calls (and
+`call_dynamic` answer bad input with an errno, one write to a pipe is one
+send, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a
@@ -1289,6 +1309,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
+`gh/gh-passes`,
 `python/file-locks-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails`,
 `python/tls-server-passes` and
@@ -1315,7 +1336,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `sendfile_copies_into_a_file`,
 `concurrent_renames_onto_one_name_all_succeed`,
 `racing_unlinks_renames_and_creations_of_one_name_all_succeed`,
-`closure_calls_refuse_bad_input_with_an_errno` and
+`closure_calls_refuse_bad_input_with_an_errno`,
+`a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
 To regenerate after editing: `diff -u` each changed file against the crate

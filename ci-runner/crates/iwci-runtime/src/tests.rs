@@ -1062,6 +1062,64 @@ fn no_descriptor_is_a_terminal() {
     assert_eq!(String::from_utf8_lossy(&outcome.stdout), "4442062");
 }
 
+/// Writes `ab`, nothing and `cd` to a pipe in one `fd_write` and reads it
+/// back with one read, then closes the read end and writes one empty
+/// segment and no segments at all. Exits with the step that went wrong.
+const PIPE_WRITES: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (import "wasix_32v1" "fd_pipe" (func $pipe (param i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 300) "abcd")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    ;; a pipe: read end at 16, write end at 20
+    (call $expect (call $pipe (i32.const 16) (i32.const 20)) (i32.const 0) (i32.const 10))
+    ;; three segments at 32: "ab", "" and "cd"
+    (i32.store (i32.const 32) (i32.const 300)) (i32.store (i32.const 36) (i32.const 2))
+    (i32.store (i32.const 40) (i32.const 310)) (i32.store (i32.const 44) (i32.const 0))
+    (i32.store (i32.const 48) (i32.const 302)) (i32.store (i32.const 52) (i32.const 2))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 32) (i32.const 3) (i32.const 8))
+      (i32.const 0) (i32.const 11))
+    (call $expect (i32.load (i32.const 8)) (i32.const 4) (i32.const 12))
+    ;; one read of up to 16 bytes into 400 gets all four
+    (i32.store (i32.const 64) (i32.const 400)) (i32.store (i32.const 68) (i32.const 16))
+    (call $expect (call $fd_read (i32.load (i32.const 16)) (i32.const 64) (i32.const 1) (i32.const 12))
+      (i32.const 0) (i32.const 13))
+    (call $expect (i32.load (i32.const 12)) (i32.const 4) (i32.const 14))
+    ;; with the reader gone, writing nothing is not a broken pipe
+    (call $expect (call $fd_close (i32.load (i32.const 16))) (i32.const 0) (i32.const 15))
+    (i32.store (i32.const 8) (i32.const 99))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 40) (i32.const 1) (i32.const 8))
+      (i32.const 0) (i32.const 16))
+    (call $expect (i32.load (i32.const 8)) (i32.const 0) (i32.const 17))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 40) (i32.const 0) (i32.const 8))
+      (i32.const 0) (i32.const 18))))
+"#;
+
+/// One `fd_write` to a pipe is one send, and a write of nothing never looks
+/// for a reader, as on Linux (vendor/README.md). Segment by segment, a
+/// reader that took the first segment and closed its end in between made
+/// the next one raise SIGPIPE, though the bytes had arrived; musl's `fflush`
+/// always ends with an empty segment, so `git-remote-https` died that way
+/// after reporting a push, and the push failed.
+#[test]
+fn a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("pipe-writes", PIPE_WRITES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+}
+
 #[test]
 fn an_infinite_loop_is_stopped_by_the_timeout() {
     let rt = runtime();
