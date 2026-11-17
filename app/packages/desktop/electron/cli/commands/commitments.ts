@@ -4,6 +4,7 @@ import type { CommitmentsFeed } from "@infrawrench/client-core" with {
 import { Effect, Schema } from "effect";
 import { Command } from "effect/cli";
 import { CloudApi, currentOrg, decodeBody } from "../effect/cloud-api";
+import { commitmentReport, commitmentReports } from "./commitment-reports";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { CliSession } from "../effect/session";
@@ -169,6 +170,9 @@ function savingCell(r: CommitmentRecommendationView): string {
  * both scriptable checks: a commitment quietly expiring (holdings with an end
  * date inside your renewal horizon) and a commitment quietly idle (derived
  * utilization sagging). `--json` in a weekly cron is the intended consumer.
+ *
+ * `commitments reports [name|id]` lists or runs a saved commitment report and
+ * `commitments report` runs an unsaved one (`commitment-reports.ts`).
  */
 export const commitments = Command.make(
   "commitments",
@@ -302,4 +306,5 @@ export const commitments = Command.make(
   Command.withDescription(
     "Reserved instances, savings plans and committed-use discounts: coverage, utilization and the planner",
   ),
+  Command.withSubcommands([commitmentReports, commitmentReport]),
 );

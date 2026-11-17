@@ -299,6 +299,16 @@ COMMANDS
   credits             prepaid balances with burn rate & runway ("6 days left")
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
+  commitments reports [name|id]
+                      list saved commitment reports, or run one: coverage, utilization,
+                      savings & commitment cost over time   [--metric utilization]
+                      [--format csv] [--out file.csv] (cloud only)
+  commitments report  an unsaved commitment report   [--last 90d | --from --to]
+                      [--bin day|week|month|quarter] [--group-by provider|commitment_type|
+                      commitment|service|account|region] [--metric <m>] [--provider aws]
+                      [-a <account>] [--service <name>] [--region <r>] [--commitment-type
+                      reservation|savings_plan|committed_use] [--commitment <id|description>]
+                      (filters repeat; --format csv; cloud only)
   savings             realized savings: what resizes, cleanups, schedules & commitments
                       actually saved vs projected   [--from] [--to] [--group-by month|kind|cost-centre|account]
   savings log "<what>" log a saving by hand   --amount <monthly> [--currency USD] [--from <day>] [--note]
@@ -414,7 +424,11 @@ FLAGS
                       pdf for reports/dashboards <name|id> and canvas show|refresh; csv or ndjson
                       for unit-costs <key> and k8s-efficiency <name|id>; costs push: json
                       (default), csv or focus; network-reports <name|id>: csv or pairs-csv;
-                      resource-reports <name|id>: csv
+                      resource-reports <name|id>, commitments reports <name|id> and
+                      commitments report: csv
+  --metric <m>        commitments reports/report: the metric the sparkline draws (coverage,
+                      eligibleCoverage, utilization, effectiveSavingsRate, netSavings,
+                      onDemandRemainder, commitmentCost, usedCommitmentCost, unusedCommitmentCost)
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
                       feedback: the reason category (planned_launch, migration, …); leaks
                       dismiss: false-positive, wont-fix or used-in-tests
@@ -471,8 +485,8 @@ FLAGS
                       earlier upload (required then)
   --out <path>        config export / export --format focus: write here instead of stdout;
                       reports/dashboards/canvas --format pdf: the PDF's path (default: <name>.pdf
-                      here); compliance export: the ZIP's path; network-reports, k8s-efficiency
-                      and resource-reports --format: the CSV's path
+                      here); compliance export: the ZIP's path; network-reports, k8s-efficiency,
+                      resource-reports and commitments reports/report --format: the CSV's path
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   --list              ssh-fanout: show the selectable hosts instead of running

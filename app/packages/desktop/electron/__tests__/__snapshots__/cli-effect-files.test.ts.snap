@@ -507,6 +507,298 @@ exports[`canvas > writes the PDF from show and refresh > 1 $ infrawrench canvas 
 }
 `;
 
+exports[`commitments reports > lists, runs and prints --json > 0 $ infrawrench commitments reports --json 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+  ],
+  "stderr": "",
+  "stdout": "{
+  "org": "org_1",
+  "reports": [
+    {
+      "id": "cr1",
+      "name": "EC2 coverage",
+      "description": null,
+      "config": {
+        "version": 1,
+        "dateRange": {
+          "kind": "relative",
+          "preset": "90d"
+        },
+        "granularity": "weekly",
+        "groupBy": "service",
+        "filters": {
+          "providers": [
+            "aws"
+          ]
+        },
+        "metric": "utilization"
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z"
+    },
+    {
+      "id": "cr2",
+      "name": "All commitments",
+      "description": null,
+      "config": {
+        "version": 1,
+        "dateRange": {
+          "kind": "relative",
+          "preset": "90d"
+        },
+        "granularity": "weekly",
+        "groupBy": "none",
+        "filters": {
+          "providers": [
+            "aws"
+          ]
+        },
+        "metric": "coverage"
+      },
+      "folderId": null,
+      "createdByUserId": null,
+      "createdAt": "2026-10-01T00:00:00.000Z",
+      "updatedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ]
+}
+",
+}
+`;
+
+exports[`commitments reports > lists, runs and prints --json > 0 $ infrawrench commitments reports 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+  ],
+  "stderr": "",
+  "stdout": "REPORT           CHART        GRANULARITY  GROUP BY     ID 
+EC2 coverage     Utilization  Weekly       Service      cr1
+All commitments  Coverage     Weekly       No grouping  cr2
+",
+}
+`;
+
+exports[`commitments reports > lists, runs and prints --json > 0 $ infrawrench commitments reports all commitments --metric netSavings 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+    "POST /commitments/reports/cr2/run",
+  ],
+  "stderr": "",
+  "stdout": "All commitments · 2026-10-05 to 2026-10-18 · weekly
+  measured: AWS
+  not measured (holdings only, their cost data has no coverage signal): Google Cloud
+
+USD  coverage 72.9%–84.4%  ·  utilization 96.9%  ·  ESR 20.8%
+     net savings $228.00 · on-demand remainder $230.00 · commitment $640.00 ($620.00 used, $20.00 unused)
+     Net savings vs on-demand  ▁█
+
+PERIOD      COVERAGE  UTILIZATION  ESR    NET SAVINGS  ON-DEMAND  USED     UNUSED
+2026-10-05     66.7%        96.8%  19.3%      $110.00    $150.00  $300.00  $10.00
+2026-10-12     80.0%        97.0%  22.3%      $118.00     $80.00  $320.00  $10.00
+Amortized basis. ESR is the effective savings rate; used and unused are commitment cost. A dash means nothing to measure, not zero. --json or --format csv for every metric.
+",
+}
+`;
+
+exports[`commitments reports > lists, runs and prints --json > 0 $ infrawrench commitments reports ec2 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+    "POST /commitments/reports/cr1/run",
+  ],
+  "stderr": "",
+  "stdout": "EC2 coverage · 2026-10-05 to 2026-10-18 · weekly · by service
+  measured: AWS
+  not measured (holdings only, their cost data has no coverage signal): Google Cloud
+  A provider in scope books a month's unused commitment on one day (the 1st, or the purchase day): use monthly granularity for its utilization.
+  Some covered usage has no reported on-demand price and counts as saving nothing: savings are a lower bound.
+
+USD  coverage 72.9%–84.4%  ·  utilization 96.9%  ·  ESR 20.8%
+     net savings $228.00 · on-demand remainder $230.00 · commitment $640.00 ($620.00 used, $20.00 unused)
+     Utilization  ██
+
+SERVICE                       COVERAGE  UTILIZATION  ESR    NET SAVINGS  ON-DEMAND  USED     UNUSED
+Amazon Elastic Compute Cloud     77.5%        96.9%  21.8%      $228.00    $180.00  $620.00  $20.00
+(not set)                         0.0%            -   0.0%        $0.00     $50.00    $0.00   $0.00
+Amortized basis. ESR is the effective savings rate; used and unused are commitment cost. A dash means nothing to measure, not zero. --json or --format csv for every metric.
+",
+}
+`;
+
+exports[`commitments reports > lists, runs and prints --json > 1 $ infrawrench commitments reports --local 1`] = `
+{
+  "requests": [],
+  "stderr": "Commitment reports live in Infrawrench Cloud: they read server-side cost rows and the commitment inventory.
+",
+  "stdout": "",
+}
+`;
+
+exports[`commitments reports > lists, runs and prints --json > 1 $ infrawrench commitments reports nope 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+  ],
+  "stderr": "No commitment report named "nope". Run \`infrawrench commitments reports\` to see the saved ones.
+",
+  "stdout": "",
+}
+`;
+
+exports[`commitments reports > runs an unsaved report by commitment type > 0 $ infrawrench commitments report --format csv 1`] = `
+{
+  "requests": [
+    "POST /commitments/report-query",
+  ],
+  "stderr": "",
+  "stdout": ""bucket","group","currency","coverage","eligibleCoverage","utilization","effectiveSavingsRate","netSavings","onDemandRemainder","commitmentCost","usedCommitmentCost","unusedCommitmentCost","onDemandEquivalent","savingsMeasuredShare"
+"2026-10-05","Savings plans","USD",1,1,0.952381,0.25,70,0,210,200,10,280,1
+"2026-10-12","Savings plans","USD",1,1,0.956522,0.253247,78,0,230,220,10,308,1
+"2026-10-05","Unattributed","USD",1,1,1,0.285714,40,0,100,100,0,140,1
+"2026-10-12","Unattributed","USD",1,1,1,0.285714,40,0,100,100,0,140,1
+"2026-10-05","On demand","USD",0,0,,0,0,150,0,0,0,0,
+"2026-10-12","On demand","USD",0,0,,0,0,80,0,0,0,0,
+"total","Savings plans","USD",1,1,0.954545,0.251701,148,0,440,420,20,588,1
+"total","Unattributed","USD",1,1,1,0.285714,80,0,200,200,0,280,1
+"total","On demand","USD",0,0,,0,0,230,0,0,0,0,
+",
+}
+`;
+
+exports[`commitments reports > runs an unsaved report by commitment type > 0 $ infrawrench commitments report --group-by commitment_type --bin week 1`] = `
+{
+  "requests": [
+    "POST /commitments/report-query",
+  ],
+  "stderr": "",
+  "stdout": "Acme · 2026-10-05 to 2026-10-18 · weekly · by commitment type
+  measured: AWS
+  not measured (holdings only, their cost data has no coverage signal): Google Cloud
+  Some covered usage is not tied to a commitment: the provider's billing data does not say which one covered it.
+
+USD  coverage 72.9%–84.4%  ·  utilization 96.9%  ·  ESR 20.8%
+     net savings $228.00 · on-demand remainder $230.00 · commitment $640.00 ($620.00 used, $20.00 unused)
+     Coverage  ▆▇
+
+COMMITMENT TYPE                   COVERAGE  UTILIZATION  ESR    NET SAVINGS  ON-DEMAND  USED     UNUSED
+Savings plans                       100.0%        95.5%  25.2%      $148.00      $0.00  $420.00  $20.00
+covered, commitment not reported    100.0%       100.0%  28.6%       $80.00      $0.00  $200.00   $0.00
+on demand (not covered)               0.0%            -   0.0%        $0.00    $230.00    $0.00   $0.00
+Amortized basis. ESR is the effective savings rate; used and unused are commitment cost. A dash means nothing to measure, not zero. --json or --format csv for every metric.
+",
+}
+`;
+
+exports[`commitments reports > runs an unsaved report by commitment type > 2 $ infrawrench commitments report --bin hour 1`] = `
+{
+  "requests": [],
+  "stderr": "DESCRIPTION
+  An unsaved commitment report: coverage, utilization, savings and commitment cost over time (cloud only)
+
+USAGE
+  infrawrench commitments report [flags]
+
+FLAGS
+  --last span                    How far back: 7d, 30d, 12w or 3m
+  --from date                    Start of the range (YYYY-MM-DD or an ISO timestamp)
+  --to date                      End of the range (YYYY-MM-DD or an ISO timestamp)
+  --bin choice                   Bucket size (no hourly: spend is stored one row per day, so an hour would be invented) (choices: day, week, month, quarter)
+  --group-by choice              Split the report by this dimension (choices: none, provider, commitment_type, commitment, service, account, region)
+  --metric choice                The metric the sparkline draws (the table and CSV carry every metric) (choices: coverage, eligibleCoverage, utilization, effectiveSavingsRate, netSavings, onDemandRemainder, commitmentCost, usedCommitmentCost, unusedCommitmentCost)
+  --provider id|name             Only this provider (aws, azure, gcp) (repeatable)
+  --service name                 Only this service, as the provider names it (repeatable)
+  --region region                Only this region (repeatable)
+  --commitment-type choice       Only commitments of this kind (repeatable) (choices: reservation, savings_plan, committed_use)
+  --commitment id|description    Only this commitment (repeatable)
+  --format csv                   Write the result as csv instead of printing it
+  --out path                     Write the file to this path
+  --file, -f path                Same as --out
+
+INHERITED FLAGS
+  --json                   Print JSON (same as --output json)
+  --text                   Print text, the default (same as --output text)
+  --output, -o choice      Output mode (choices: json, text)
+  --org id|name            Scope to one organization (default: INFRAWRENCH_ORG, or your only one)
+  --local                  Scope to the local (desktop) workspace
+  --account, -a id|name    Account id or name for resource commands
+  --color                  ANSI colours (--no-color turns them off)
+
+GLOBAL FLAGS
+  --help, -h       Show help information
+  --version, -v    Show version information
+
+EXAMPLES
+  # Six months, monthly, split by commitment type
+  infrawrench commitments report --last 180d --bin month --group-by commitment_type
+
+  # One AWS account, charting utilization
+  infrawrench commitments report --provider aws -a prod --metric utilization
+
+ERROR
+  Invalid value for flag --bin: "hour". Expected: "day" | "week" | "month" | "quarter"
+",
+  "stdout": "",
+}
+`;
+
+exports[`commitments reports > runs an unsaved report by commitment type > 2 $ infrawrench commitments report --from 2026-11-09 --to 2026-11-01 1`] = `
+{
+  "requests": [],
+  "stderr": "Invalid report: The range must not end before it starts.
+  at ["dateRange"]
+",
+  "stdout": "",
+}
+`;
+
+exports[`commitments reports > writes the CSV to stdout and to --out/--file > 0 $ infrawrench commitments reports all commitments --format csv -f all.csv 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+    "POST /commitments/reports/cr2/run",
+  ],
+  "stderr": "",
+  "stdout": "Wrote all.csv
+",
+}
+`;
+
+exports[`commitments reports > writes the CSV to stdout and to --out/--file > 0 $ infrawrench commitments reports ec2 --format csv --out ec2.csv 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+    "POST /commitments/reports/cr1/run",
+  ],
+  "stderr": "",
+  "stdout": "Wrote ec2.csv
+",
+}
+`;
+
+exports[`commitments reports > writes the CSV to stdout and to --out/--file > 0 $ infrawrench commitments reports ec2 --format csv 1`] = `
+{
+  "requests": [
+    "GET /commitments/reports",
+    "POST /commitments/reports/cr1/run",
+  ],
+  "stderr": "",
+  "stdout": ""bucket","group","currency","coverage","eligibleCoverage","utilization","effectiveSavingsRate","netSavings","onDemandRemainder","commitmentCost","usedCommitmentCost","unusedCommitmentCost","onDemandEquivalent","savingsMeasuredShare"
+"2026-10-05","Amazon Elastic Compute Cloud","USD",0.75,0.857143,0.967742,0.211538,110,100,310,300,10,420,1
+"2026-10-12","Amazon Elastic Compute Cloud","USD",0.8,0.888889,0.969697,0.223485,118,80,330,320,10,448,1
+"2026-10-05","","USD",0,0,,0,0,50,0,0,0,0,
+"2026-10-12","","USD",,,,,0,0,0,0,0,0,
+"total","Amazon Elastic Compute Cloud","USD",0.775,0.873239,0.96875,0.217557,228,180,640,620,20,868,1
+"total","","USD",0,0,,0,0,50,0,0,0,0,
+",
+}
+`;
+
 exports[`compliance > refuses a pack that is not a ZIP > 1 $ infrawrench compliance export 1`] = `
 {
   "requests": [
