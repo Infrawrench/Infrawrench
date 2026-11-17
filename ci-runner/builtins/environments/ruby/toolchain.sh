@@ -11,8 +11,8 @@
 # is given and OpenSSL calls its build date.
 release() {
   case "$1" in
-    3.4) echo "3.4.12 5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479 1 1792724866" ;;
-    4.0) echo "4.0.9 c35350682ff050b79702d57ade4516e7336063f510155d19fb2fb5b3f3909511 1 1792722966" ;;
+    3.4) echo "3.4.12 5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479 2 1792724866" ;;
+    4.0) echo "4.0.9 c35350682ff050b79702d57ade4516e7336063f510155d19fb2fb5b3f3909511 2 1792722966" ;;
     *)
       echo "error: no Ruby $1 here; know 3.4 and 4.0" >&2
       exit 2

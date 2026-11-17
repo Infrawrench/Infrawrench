@@ -270,7 +270,11 @@ mkdir -p "$build"
   # without getgroups(), which Process.groups= needs as well, and there is
   # no stack protector (nothing traps on its canary). memcmp works (its
   # check runs a program, and Ruby would link its own beside the C
-  # library's).
+  # library's). Nothing is taken from what this machine has installed,
+  # which rbconfig.rb would otherwise record: no pkg-config (`false` does
+  # not answer --version, so configure leaves PKG_CONFIG empty), no rustc,
+  # man pages in man format whether or not groff is here, and grep and
+  # mkdir by name rather than by where they are on this PATH.
   CC=wasixcc CXX=wasix++ AR=wasixar RANLIB=wasixranlib NM=wasixnm LD=wasixcc \
     CPPFLAGS="-D__wasix__=1 -I$deps/usr/include" \
     LDFLAGS="-L$deps/usr/lib" \
@@ -281,10 +285,11 @@ mkdir -p "$build"
     rb_cv_stack_grow_dir_wasm32=-1 ac_cv_func_fork=no ac_cv_func_fork_works=no \
     ac_cv_func_vfork=no ac_cv_func_vfork_works=no ac_cv_func_setgroups=no ac_cv_func_initgroups=no \
     ac_cv_func_memcmp_working=yes stack_protector=no \
+    PKG_CONFIG=false RUSTC=no GREP=grep EGREP="grep -E" MKDIR_P="mkdir -p" \
     "$ruby_src/configure" --host=wasm32-unknown-wasix --build="$(uname -m)-linux-gnu" \
     --prefix="$PREFIX" --bindir=/usr/bin --with-baseruby="$host/bin/ruby" \
     --with-coroutine=pthread --disable-install-doc --disable-jit-support --disable-yjit \
-    --disable-dtrace --without-gmp --without-valgrind \
+    --disable-dtrace --without-gmp --without-valgrind --with-mantype=man \
     --with-out-ext=pty,fiddle,win32,win32ole,readline \
     --with-openssl-dir="$deps/usr" --with-libyaml-dir="$deps/usr" --with-zlib-dir="$deps/usr"
 ) >"$work/configure.log" 2>&1 || {
@@ -315,7 +320,8 @@ cp "$check/wasix_check.so" "$dist/test/ruby/$minor/"
 # 7. The package: the interpreter as its command, and everything else under
 #    /opt/ruby. rbconfig.rb keeps what a gem's extension is built with, less
 #    this machine: paths under the work directory and the build triple,
-#    which would make x86_64 and ARM64 builds differ.
+#    which would make x86_64 and ARM64 builds differ (`build_vendor` is `pc`
+#    on one and `unknown` on the other).
 package="$work/package"
 rm -rf "$package"
 mkdir -p "$package/modules" "$package/ruby/bin" "$package/ruby/lib" "$package/ruby/ssl"
@@ -339,7 +345,21 @@ edit "$rbconfig" 1 "CONFIG[\"LDFLAGS\"] = \"-L. -L$deps/usr/lib\"" 'CONFIG["LDFL
 edit "$rbconfig" 1 "CONFIG[\"debugflags\"] = \"$map\"" 'CONFIG["debugflags"] = ""'
 edit "$rbconfig" 1 " '--build=$(uname -m)-linux-gnu'" ""
 edit "$rbconfig" 1 " 'build_alias=$(uname -m)-linux-gnu'" ""
-for key in build build_alias build_cpu; do
+# CFLAGS is `$(cflags)` as configure means it to be, which it writes out
+# expanded instead when the work directory's path has a `.` in it (as
+# lib.sh's scratch directory does): configure escapes the pattern it
+# recognises its own flags by, and its escaping turns each `.` into a
+# literal `&`, so nothing matches. The expansion is that of the moment
+# (no warning flags yet), and names the work directory.
+if ! grep -qxF '  CONFIG["CFLAGS"] = "$(cflags)"' "$rbconfig"; then
+  edit "$rbconfig" 1 "  CONFIG[\"CFLAGS\"] = \"-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2  -O2 -fno-fast-math $map  -fdeclspec\"" \
+    '  CONFIG["CFLAGS"] = "$(cflags)"'
+fi
+if [[ "$(grep -cxF '  CONFIG["CFLAGS"] = "$(cflags)"' "$rbconfig")" != 1 ]]; then
+  echo "error: rbconfig.rb's CFLAGS is not \$(cflags)" >&2
+  exit 1
+fi
+for key in build build_alias build_cpu build_vendor build_os; do
   perl -pi -e "s/^  CONFIG\\[\"$key\"\\] = \".*\"\$/  CONFIG[\"$key\"] = \"unknown\"/" "$rbconfig"
 done
 perl -pi -e "s|\\Q$work\\E|/build|g" "$rbconfig"

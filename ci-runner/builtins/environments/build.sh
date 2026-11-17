@@ -272,8 +272,8 @@ GO_CACHES='{ "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1
 # its patch number is the environment's revision after that, as with Go.
 ruby_pkgs() {
   case "$1" in
-    3.4) echo "3.4.12 3.4.12-iwci.1 50079f044536f943a8e40cbd7193fc380157d45a175fc7093ebfa966564eb7b6 3.4.0" ;;
-    4.0) echo "4.0.9 4.0.9-iwci.1 c613059065e020a48425d3cf3c7f9e8c3f5a524a7e4003feddb9447564ae5320 4.0.0" ;;
+    3.4) echo "3.4.12 3.4.12-iwci.2 08cbfa8c064cca0f0a1e53157568d775fb50f069f64b7397bdd0d76c837bb1b6 3.4.0" ;;
+    4.0) echo "4.0.9 4.0.9-iwci.2 2cac666633c53a6b0f11fe87fd863bc78d691d5b01505816d3b88c8ca681327c 4.0.0" ;;
     *) return 1 ;;
   esac
 }
