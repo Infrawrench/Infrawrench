@@ -496,6 +496,14 @@ export interface CommitmentsCapabilityDeclaration {
    * are "up to" marketing figures for most providers.
    */
   discount?: { min?: number; max: number; basis: "range" | "upper_bound" };
+  /**
+   * True when the provider's daily cost data books a whole month's unused
+   * commitment fee on one day (the 1st of the month, or the purchase day)
+   * instead of spreading it across the month. A commitment report at daily or
+   * weekly granularity then shows utilization dipping on that day, and says
+   * why rather than leaving it to read as a real one-day collapse.
+   */
+  unusedFeeBookedMonthly?: boolean;
 }
 
 /**

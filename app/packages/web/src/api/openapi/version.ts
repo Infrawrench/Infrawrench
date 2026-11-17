@@ -540,4 +540,9 @@
 // and `claude-haiku-4-5` are gone, and every stored conversation was moved to
 // `claude-sonnet-5-5`. Removals ship as a minor by the owner's decision, as in
 // 1.113.0.
-export const API_VERSION = "1.116.0";
+// 1.117.0: saved commitment reports under `/api/org/:orgId/commitments`:
+// `GET /report-options`, `POST /report-query`, `GET`/`POST /reports`,
+// `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
+// `CommitmentReport*` schemas; `commitment_report` joins the
+// `ShareableObjectType` enum. Additive.
+export const API_VERSION = "1.117.0";

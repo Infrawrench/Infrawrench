@@ -304,3 +304,203 @@ export async function getUncoveredDailySpend(
     );
   return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
 }
+
+/* ------------------------------------------------------------------ *
+ * Commitment reports
+ * ------------------------------------------------------------------ */
+
+/** Bucket sizes a commitment report reads at; days are the finest the table holds. */
+export type CommitmentReportBucketSize = "daily" | "weekly" | "monthly" | "quarterly";
+
+/**
+ * The split a commitment report query groups by. `commitment` keys each row
+ * by its commitment id, `__unattributed__` for covered usage or an unused fee
+ * with no id, and `__on_demand__` for uncovered usage; commitment *type* is
+ * that same key mapped through the inventory by the caller.
+ */
+export type CommitmentReportSplit =
+  "none" | "provider" | "service" | "account" | "region" | "commitment";
+
+export interface CommitmentReportCellQuery {
+  from: string;
+  to: string;
+  bucket: CommitmentReportBucketSize;
+  split: CommitmentReportSplit;
+  /** Already narrowed to visible, attributing accounts (and any account/provider filter). */
+  accountIds: readonly string[];
+  services?: readonly string[] | undefined;
+  regions?: readonly string[] | undefined;
+  /**
+   * Commitment ids the commitment side is restricted to, or null for every
+   * commitment. Uncovered usage is never restricted by this: it is the rest
+   * of the coverage denominator.
+   */
+  commitmentIds: readonly string[] | null;
+}
+
+/** One aggregate of {@link getCommitmentReportCells}: the client-core `CommitmentReportCell`, unmapped. */
+export interface CommitmentReportCellRow {
+  bucket: string;
+  group_key: string;
+  currency: string;
+  covered: number;
+  covered_all: number;
+  unused: number;
+  uncovered: number;
+  uncovered_eligible: number;
+  covered_on_demand: number;
+  covered_measured: number;
+}
+
+/**
+ * The bucket a day falls in, as its first day. Weeks start on Monday
+ * (`date_trunc('week')` is ISO). The day is truncated as a `timestamp` so the
+ * session time zone cannot move it across midnight.
+ */
+function reportBucketExpr(bucket: CommitmentReportBucketSize): SQL {
+  switch (bucket) {
+    case "daily":
+      return dayText;
+    case "weekly":
+      return sql`to_char(date_trunc('week', ${costDaily.day}::timestamp), 'YYYY-MM-DD')`;
+    case "monthly":
+      return sql`to_char(date_trunc('month', ${costDaily.day}::timestamp), 'YYYY-MM-DD')`;
+    case "quarterly":
+      return sql`to_char(date_trunc('quarter', ${costDaily.day}::timestamp), 'YYYY-MM-DD')`;
+  }
+}
+
+function reportSplitExpr(split: CommitmentReportSplit): SQL {
+  switch (split) {
+    case "none":
+      return sql`''`;
+    case "provider":
+      return sql`${costDaily.plugin_id}`;
+    case "service":
+      return sql`${costDaily.service}`;
+    case "account":
+      return sql`${costDaily.account_id}`;
+    case "region":
+      return sql`${costDaily.region}`;
+    case "commitment":
+      return sql`(CASE WHEN ${consumptionCondition()} AND ${uncoveredCondition()} THEN '__on_demand__' WHEN ${costDaily.commitment_id} = '' THEN '__unattributed__' ELSE ${costDaily.commitment_id} END)`;
+  }
+}
+
+/** `expression` summed over the rows matching `condition`; 0, not NULL, when none do. */
+function sumWhere(expression: SQL, condition: SQL): SQL<number> {
+  return sql<number>`coalesce(sum(${expression}) FILTER (WHERE ${condition}), 0)::float8`;
+}
+
+/**
+ * The commitment report's one scan: per bucket, group and currency, the seven
+ * amortized sums `client-core/src/commitment-reports.ts` turns into metrics
+ * (its module header defines each).
+ *
+ * Three charge types are read: the two consumption types, and
+ * `commitment_fee` **only where the provider reported an amortized amount**.
+ * On the amortized basis a purchase is worth zero on its own row (its value
+ * is on the covered usage), so what a fee row still carries is commitment no
+ * usage absorbed. A fee row without a reported amortized figure would fall
+ * back to its cash amount, which is the purchase itself, and counting that as
+ * "unused" would report a fresh three-year reservation as wasted in full on
+ * the day it was bought.
+ *
+ * "Eligible" uncovered usage is uncovered usage in a (provider, service,
+ * region) cell that had any covered usage in the same window and accounts:
+ * the feed's narrow-coverage cells, computed in the same statement by
+ * subquery so the cost visibility scope applies to both halves.
+ */
+export async function getCommitmentReportCells(
+  organizationId: string,
+  q: CommitmentReportCellQuery,
+): Promise<CommitmentReportCellRow[]> {
+  if (q.accountIds.length === 0) return [];
+  const money = amortizedAmountExpr();
+  const consumption = consumptionCondition();
+  const covered = coveredCondition();
+  const uncovered = uncoveredCondition();
+  const fee = sql`(${eq(costDaily.charge_type, "commitment_fee")} AND ${costDaily.amortized_reported} = 1)`;
+  const selected: SQL =
+    q.commitmentIds === null
+      ? sql`true`
+      : q.commitmentIds.length === 0
+        ? sql`false`
+        : inArray(costDaily.commitment_id, [...q.commitmentIds]);
+  const scope = and(
+    costDailyOrgCondition(organizationId),
+    dayRange(q.from, q.to),
+    inArray(costDaily.account_id, [...q.accountIds]),
+    q.services?.length ? inArray(costDaily.service, [...q.services]) : undefined,
+    q.regions?.length ? inArray(costDaily.region, [...q.regions]) : undefined,
+  )!;
+  const eligible = sql`(${costDaily.plugin_id}, ${costDaily.service}, ${costDaily.region}) IN (SELECT ${costDaily.plugin_id}, ${costDaily.service}, ${costDaily.region} FROM ${costDaily} WHERE ${scope} AND ${consumption} AND ${covered} GROUP BY ${costDaily.plugin_id}, ${costDaily.service}, ${costDaily.region})`;
+  const coveredSelected = sql`${consumption} AND ${covered} AND ${selected}`;
+  const measured = sql`${coveredSelected} AND ${costDaily.on_demand_reported} = 1`;
+
+  const rows = await getAnalyticsDb()
+    .select({
+      bucket: sql<string>`${reportBucketExpr(q.bucket)}`.as("bucket"),
+      group_key: sql<string>`${reportSplitExpr(q.split)}`.as("group_key"),
+      currency: costDaily.currency,
+      covered: sumWhere(money, coveredSelected).as("covered"),
+      covered_all: sumWhere(money, sql`${consumption} AND ${covered}`).as("covered_all"),
+      unused: sumWhere(sql`${costDaily.amortized_amount}`, sql`${fee} AND ${selected}`).as(
+        "unused",
+      ),
+      uncovered: sumWhere(money, sql`${consumption} AND ${uncovered}`).as("uncovered"),
+      uncovered_eligible: sumWhere(money, sql`${consumption} AND ${uncovered} AND ${eligible}`).as(
+        "uncovered_eligible",
+      ),
+      covered_on_demand: sumWhere(sql`${costDaily.on_demand_amount}`, measured).as(
+        "covered_on_demand",
+      ),
+      covered_measured: sumWhere(money, measured).as("covered_measured"),
+    })
+    .from(costDaily)
+    .where(and(scope, sql`(${consumption} OR ${fee})`))
+    .groupBy(sql`bucket`, sql`group_key`, costDaily.currency);
+  return rows.map((r) => ({
+    bucket: r.bucket,
+    group_key: r.group_key,
+    currency: r.currency,
+    covered: Number(r.covered),
+    covered_all: Number(r.covered_all),
+    unused: Number(r.unused),
+    uncovered: Number(r.uncovered),
+    uncovered_eligible: Number(r.uncovered_eligible),
+    covered_on_demand: Number(r.covered_on_demand),
+    covered_measured: Number(r.covered_measured),
+  }));
+}
+
+/** Distinct services and regions with consumption in the window, for the editor's pickers. */
+export async function getCommitmentReportDimensionValues(
+  organizationId: string,
+  from: string,
+  to: string,
+  accountIds: readonly string[],
+): Promise<{ services: string[]; regions: string[] }> {
+  if (accountIds.length === 0) return { services: [], regions: [] };
+  const rows = await getAnalyticsDb()
+    .selectDistinct({ service: costDaily.service, region: costDaily.region })
+    .from(costDaily)
+    .where(
+      and(
+        costDailyOrgCondition(organizationId),
+        dayRange(from, to),
+        consumptionCondition(),
+        inArray(costDaily.account_id, [...accountIds]),
+      ),
+    );
+  const services = new Set<string>();
+  const regions = new Set<string>();
+  for (const r of rows) {
+    if (r.service) services.add(r.service);
+    if (r.region) regions.add(r.region);
+  }
+  return {
+    services: [...services].sort((a, b) => a.localeCompare(b)),
+    regions: [...regions].sort((a, b) => a.localeCompare(b)),
+  };
+}
