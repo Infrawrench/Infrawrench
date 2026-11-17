@@ -44,6 +44,29 @@ overrides:
   # `Minimatch#regexp`, `matchOne`, walker Sets).
   "minimatch@>=7.0.0 <11.0.1": "^11.0.8"
   "glob@>=9.0.0 <14.0.2": "^14.0.6"
+  # Expo SDK 54's @expo/metro pins the whole metro family at exactly 0.83.3,
+  # whose `image-size` 1.x has GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq;
+  # 0.83.8 is the same minor without image-size. The family moves together
+  # (each package pins its siblings exactly). Drop these with SDK 55, whose
+  # @expo/metro is on 0.83.8 itself.
+  "@expo/metro>metro": "0.83.8"
+  "@expo/metro>metro-core": "0.83.8"
+  "@expo/metro>metro-cache": "0.83.8"
+  "@expo/metro>metro-config": "0.83.8"
+  "@expo/metro>metro-runtime": "0.83.8"
+  "@expo/metro>metro-file-map": "0.83.8"
+  "@expo/metro>metro-resolver": "0.83.8"
+  "@expo/metro>metro-cache-key": "0.83.8"
+  "@expo/metro>metro-source-map": "0.83.8"
+  "@expo/metro>metro-symbolicate": "0.83.8"
+  "@expo/metro>metro-minify-terser": "0.83.8"
+  "@expo/metro>metro-transform-worker": "0.83.8"
+  "@expo/metro>metro-babel-transformer": "0.83.8"
+  "@expo/metro>metro-transform-plugins": "0.83.8"
+  # React Native's metro-config (0.86, under the community CLI plugin) asks
+  # for ^0.84.3; 0.84.6 is the first 0.84 without image-size.
+  "@react-native/metro-config>metro-config": "0.84.6"
+  "@react-native/metro-config>metro-runtime": "0.84.6"
   # @raycast/api depends on an exact @types/react. A third copy can become the
   # hoisted one, and libraries that import React types without declaring them
   # (react-native-svg, @dnd-kit) then resolve it and clash with the app's own
