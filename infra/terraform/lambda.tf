@@ -1,9 +1,9 @@
 # The AWS Lambda gateway (see "Lambda gateway" in infra/README.md): the web
 # app's stateless Node work and the gateway half of the poller, on Lambda
-# behind the Cloudflare edge Worker, in place of most of what the GKE pods do.
+# behind the Cloudflare edge Worker.
 #
 #   Cloudflare Worker (edge) --> Lambda web gateway (function URL)
-#                            \-> GKE web pods (session gateway: WebSockets,
+#                            \-> AWS session gateway (aws-web.tf: WebSockets,
 #                                in-process registries, chat)
 #   EventBridge Scheduler ----> Lambda poller (POLLER_SCOPE from app_env)
 #
@@ -13,7 +13,7 @@
 # Lambda cannot be created before its image exists in ECR, and the image is
 # pushed by CI (`.github/workflows/web-deploy.yml`, `deploy-lambda`). After
 # that CI owns the code (`update-function-code`) and terraform owns the
-# configuration, the same split as infra/k8s and this directory.
+# configuration.
 #
 # Configuration is `app_env`, unchanged: it is far past Lambda's 4 KB
 # environment limit, so it goes into one Secrets Manager secret that the
@@ -62,8 +62,7 @@ variable "lambda_app_env" {
 variable "lambda_vpc_enabled" {
   description = <<-EOT
     Run the functions in a dedicated VPC whose outbound traffic leaves through
-    one NAT gateway and Elastic IP (the `lambda_egress_ip` output), the AWS
-    counterpart of the cluster's Cloud NAT address. Costs a NAT gateway. Off
+    one NAT gateway and Elastic IP (the `lambda_egress_ip` output). Costs a NAT gateway. Off
     means AWS's shared Lambda address ranges, which no one can usefully
     allowlist.
   EOT
@@ -124,8 +123,8 @@ provider "aws" {
 
 # The function URL is public (a Worker cannot sign SigV4 without carrying AWS
 # credentials), so the Worker proves itself with this. It reaches the Worker
-# the way every other value does: through the `infrawrench-env` secret that
-# deploy-edge uploads (kubernetes.tf merges it in), and the function through
+# the way every other value does: through the edge-env secret that deploy-edge
+# uploads (edge_env below merges it in), and the function through
 # the Secrets Manager secret below.
 resource "random_password" "lambda_gateway" {
   count   = local.lambda_enabled ? 1 : 0
@@ -134,7 +133,7 @@ resource "random_password" "lambda_gateway" {
 }
 
 locals {
-  # Merged into `infrawrench-env` by kubernetes.tf, for the edge Worker.
+  # Merged into the edge Workers' environment (edge_env below).
   lambda_worker_env = local.lambda_enabled ? merge(
     { LAMBDA_GATEWAY_SECRET = random_password.lambda_gateway[0].result },
     local.lambda_functions ? { LAMBDA_GATEWAY_URL = trimsuffix(aws_lambda_function_url.web[0].function_url, "/") } : {},
@@ -193,6 +192,34 @@ resource "aws_secretsmanager_secret_version" "app_env" {
     var.app_env,
     { LAMBDA_GATEWAY_SECRET = random_password.lambda_gateway[0].result },
     var.lambda_app_env,
+  ))
+}
+
+# The edge Workers' environment, which deploy-edge (web-deploy.yml) reads with
+# the CI role and uploads as both Workers' secrets. It is what the GKE
+# cluster's `infrawrench-env` secret held until the cluster was removed on
+# 2026-11-17: app_env, the Vertex AI coordinates (addresses, not credentials;
+# tfvars wins if it sets them) and the Lambda gateway's URL and shared secret.
+# lambda_app_env stays out: its values are the ones that must differ on
+# Lambda.
+resource "aws_secretsmanager_secret" "edge_env" {
+  count       = local.lambda_enabled ? 1 : 0
+  name        = "${local.lambda_name}/edge-env"
+  description = "Environment of the Infrawrench edge Workers, uploaded by deploy-edge (infra/terraform/lambda.tf)."
+  # Recreating the stack should not wait out a deletion window on its own name.
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "edge_env" {
+  count     = local.lambda_enabled ? 1 : 0
+  secret_id = aws_secretsmanager_secret.edge_env[0].id
+  secret_string = jsonencode(merge(
+    {
+      GOOGLE_CLOUD_PROJECT  = var.project_id
+      GOOGLE_CLOUD_LOCATION = var.vertex_location
+    },
+    var.app_env,
+    local.lambda_worker_env,
   ))
 }
 
@@ -658,6 +685,12 @@ resource "aws_iam_role_policy" "lambda_ci" {
         Resource = "arn:aws:lambda:${var.aws_region}:*:function:${local.lambda_name}-*"
       },
       {
+        # deploy-edge reads the Workers' environment (edge_env above).
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_secretsmanager_secret.edge_env[0].arn
+      },
+      {
         # Qualified ARNs only: a numbered version, never the function itself.
         Effect   = "Allow"
         Action   = "lambda:DeleteFunction"
@@ -682,7 +715,7 @@ output "lambda_ci_role_arn" {
 }
 
 output "lambda_web_function_url" {
-  description = "The web gateway's function URL (the `live` alias). Already in infrawrench-env as LAMBDA_GATEWAY_URL; shown for smoke tests."
+  description = "The web gateway's function URL (the `live` alias). Already in the edge-env secret as LAMBDA_GATEWAY_URL; shown for smoke tests."
   value       = one(aws_lambda_function_url.web[*].function_url)
 }
 

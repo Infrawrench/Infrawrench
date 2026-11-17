@@ -10,8 +10,9 @@
  * locally. Existing `process.env` entries always win: this never clobbers what
  * the shell or the container already set.
  *
- * Production does not use this: there the values come from the `infrawrench-env`
- * k8s secret (`app_env` in `infra/terraform/terraform.tfvars.example`).
+ * Production does not use this: there the values come from terraform's
+ * `app_env` (`infra/terraform/terraform.tfvars.example`), delivered to each
+ * runtime by `infra/terraform`.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

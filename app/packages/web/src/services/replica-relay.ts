@@ -8,9 +8,9 @@
  * routing, roughly half of those calls arrive somewhere else, and the pod they
  * land on has no way to know it should not just start its own.
  *
- * `infra/k8s/web-ws-ingress.yaml` handles the browser half by consistent-
- * hashing `?sid=` at the ingress, and states outright that the durable fix is
- * "a cross-replica relay". This is that relay, in two halves:
+ * The GKE ingress (`infra/k8s/web-ws-ingress.yaml`, since removed) handled the
+ * browser half by consistent-hashing `?sid=`, and stated outright that the
+ * durable fix is "a cross-replica relay". This is that relay, in two halves:
  *
  *   * a **lease** in `replica_session_owners` saying which pod holds a
  *     session, taken in one statement so two pods cannot both win it, and
@@ -78,11 +78,12 @@ export class RelayRemoteError extends Error {
 let warnedAboutSecret = false;
 
 /**
- * This pod's in-cluster address, or undefined when it has none.
+ * This instance's private address, or undefined when it has none.
  *
- * `POD_IP` comes from the downward API (`infra/k8s/web-deployment.yaml`). A
- * process without it is not part of a replica set as far as this module is
- * concerned, and takes the single-process path.
+ * `POD_IP` is set by `infra/vm/agent.sh` on the session gateway (the name is
+ * from the GKE downward API it replaced). A process without it is not part of
+ * a replica set as far as this module is concerned, and takes the
+ * single-process path.
  */
 export function relayAddress(): string | undefined {
   const ip = process.env["POD_IP"]?.trim();
