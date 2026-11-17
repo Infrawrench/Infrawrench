@@ -2465,7 +2465,8 @@ fn a_service_is_part_of_a_task_cache_key() {
                 b"a",
             )
             .unwrap();
-        task_cache_key(p.job("a").unwrap(), p, &snapshot.freeze(), &[], &[]).unwrap()
+        let locks = LockIndexes::new(ws);
+        task_cache_key(p.job("a").unwrap(), p, &snapshot.freeze(), &locks, &[], &[]).unwrap()
     };
     let none = job("");
     let with = job("    services: { db: { using: env:postgres@18, run: pglite } }\n");
@@ -4268,4 +4269,101 @@ fn what_jobs_held_is_kept_for_the_next_run_and_a_task_cache_hit_carries_it() {
     let (second, ran) = run_ordered(&p, Some(fresh.clone()), Some(store), None);
     assert!(second.passed() && ran.is_empty(), "{ran:?}");
     assert_eq!(fresh.held_of("x")["big"], kept["big"]);
+}
+
+/// A pnpm workspace of `app` and `other`, each depending on one package
+/// (`name@version`).
+fn pnpm_lockfile(app: &str, other: &str) -> String {
+    let mut text = String::from("lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n");
+    for (dir, dep) in [("app", app), ("other", other)] {
+        let (name, version) = dep.split_once('@').unwrap();
+        text.push_str(&format!(
+            "  {dir}:\n    dependencies:\n      {name}:\n        specifier: '*'\n        version: {version}\n\n"
+        ));
+    }
+    text.push_str("packages:\n\n");
+    for dep in [app, other] {
+        text.push_str(&format!(
+            "  {dep}:\n    resolution: {{integrity: sha512-AAAA}}\n\n"
+        ));
+    }
+    text.push_str("snapshots:\n\n");
+    for dep in [app, other] {
+        text.push_str(&format!("  {dep}: {{}}\n\n"));
+    }
+    text
+}
+
+#[test]
+fn a_package_job_is_keyed_on_its_part_of_a_pnpm_lockfile() {
+    let pkg = |dir: &str| iwci_spec::workspace::Package {
+        dir: dir.to_string(),
+        name: dir.to_string(),
+        scripts: BTreeMap::new(),
+        deps: Vec::new(),
+        entries: Default::default(),
+    };
+    let ctx = Context {
+        packages: iwci_spec::PackagesSource::Found(Arc::new(
+            iwci_spec::workspace::WorkspacePackages {
+                packages: vec![pkg("app"), pkg("other")],
+            },
+        )),
+        ..Context::default()
+    };
+    let p = iwci_spec::parse(
+        "name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:ok@1\n    packages: true\n    task-cache: true\n  root:\n    using: builtin:ok@1\n    task-cache: true\n  moved:\n    using: builtin:ok@1\n    packages: true\n    cwd: /\n    task-cache: true\n",
+        &ctx,
+    )
+    .unwrap();
+    let key = |lockfile: &str, job: &str, dir: Option<&str>| {
+        let ws = &p.workspaces[0];
+        let root = ws.clone.as_ref().unwrap().into.clone();
+        let snapshot = SnapshotBuilder::new();
+        snapshot
+            .write(format!("{root}/pnpm-lock.yaml"), lockfile.as_bytes())
+            .unwrap();
+        for dir in ["app", "other"] {
+            snapshot
+                .write(
+                    format!("{root}/{dir}/package.json"),
+                    format!(r#"{{"name":"{dir}"}}"#).as_bytes(),
+                )
+                .unwrap();
+        }
+        let job = p
+            .static_jobs()
+            .find(|j| j.key == job && j.package.as_ref().map(|p| p.dir.as_str()) == dir)
+            .unwrap();
+        let locks = LockIndexes::new(ws);
+        task_cache_key(job, &p, &snapshot.freeze(), &locks, &[], &[]).unwrap()
+    };
+    let before = pnpm_lockfile("left-pad@1.3.0", "chalk@5.0.0");
+    let after = pnpm_lockfile("left-pad@1.3.0", "chalk@5.1.0");
+    // `other`'s change reruns `other` and leaves `app` cached.
+    assert_eq!(
+        key(&before, "t", Some("app")),
+        key(&after, "t", Some("app"))
+    );
+    assert_ne!(
+        key(&before, "t", Some("other")),
+        key(&after, "t", Some("other"))
+    );
+    // A job that is not a package's, or leaves its package, reads it all.
+    assert_ne!(key(&before, "root", None), key(&after, "root", None));
+    assert_ne!(
+        key(&before, "moved", Some("app")),
+        key(&after, "moved", Some("app"))
+    );
+    // A change to `app`'s own dependencies reruns it.
+    let bumped = pnpm_lockfile("left-pad@1.3.1", "chalk@5.0.0");
+    assert_ne!(
+        key(&before, "t", Some("app")),
+        key(&bumped, "t", Some("app"))
+    );
+    // A lockfile the index cannot read keys on the whole file, as before.
+    assert_ne!(
+        key("not: [a", "t", Some("app")),
+        key("not: [b", "t", Some("app"))
+    );
 }

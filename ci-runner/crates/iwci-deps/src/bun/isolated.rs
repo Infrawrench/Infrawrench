@@ -514,17 +514,15 @@ fn plan_here<'a>(
             let Link::Store(index) = link else { continue };
             let instance = &store.instances[*index];
             if hidden.matches(alias) && hidden_claimed.insert(alias) {
-                layout.links.push((
-                    iwci_vfs::join_under(&hidden_modules, alias)?,
-                    package_dir(instance)?,
-                ));
+                let link = iwci_vfs::join_under(&hidden_modules, alias)?;
+                layout.hoisted_links.insert(link.clone());
+                layout.links.push((link, package_dir(instance)?));
                 layout.hoisted += 1;
             }
             if !of_root && public.matches(alias) && public_claimed.insert(alias) {
-                layout.links.push((
-                    iwci_vfs::join_under(&public_modules, alias)?,
-                    package_dir(instance)?,
-                ));
+                let link = iwci_vfs::join_under(&public_modules, alias)?;
+                layout.hoisted_links.insert(link.clone());
+                layout.links.push((link, package_dir(instance)?));
                 layout.hoisted += 1;
             }
             if visited.insert(*index) {
