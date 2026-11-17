@@ -30,7 +30,7 @@ You need `chat:read` to read conversations and `chat:write` to send messages or 
 
 ## What the agent can do
 
-Everything the UI can. Chat uses the same tools as the [MCP server](./mcp.md):
+Everything the UI can. Chat uses the same tools as the [MCP server](./mcp.md). There are over a thousand of them, so the agent starts each conversation with a few common ones (resources, accounts, workflows, web lookups) and searches for the rest when it needs them. You don't need to name a tool; ask for what you want.
 
 - **Resource lifecycle:** list, search, get, create, delete, attach, run an action, apply a manifest.
 - **Sidecars:** work inside the services a managed resource exposes. Ask "what's running in my DOKS cluster?" and the agent finds the cluster's `kubernetes` sidecar (`list_resource_sidecars`) and lists deployments, pods and services through it. The same works for managed databases (`postgres`, `mysql`, `redis`, `mongodb`).
@@ -144,7 +144,7 @@ Switching models mid-chat is safe. Your messages, the replies and every tool cal
 
 Chat is billed as metered usage, separate from your seat plan. You pay exactly **1.5× the model provider's published API rates** per million tokens. There are no other fees.
 
-Long working sessions usually pay the cheaper cache-read rate after the first turn. Cache writes have their own higher rate. Thinking tokens cost the output rate. You're only ever charged 1.5× what we're charged.
+Most turns cost a few cents. The agent loads only the tools a conversation uses, and long working sessions usually pay the cheaper cache-read rate after the first turn. Cache writes have their own higher rate. Thinking tokens cost the output rate. You're only ever charged 1.5× what we're charged.
 
 [Web search](#look-things-up-on-the-web) has one extra charge. Search providers charge per query, not per token, so a `web_search` call costs 1.5× the provider's per-query rate (currently $0.015 per query on Anthropic web search), plus 1.5× the tokens of the small model that runs the search. One call can run more than one query when needed, and you pay for the queries actually run. `web_fetch` has no per-request fee. You only pay for the page text that enters the chat as tokens.
 

@@ -12,7 +12,7 @@ import {
   anthropicClient,
   isAnthropicConfigured,
 } from "@infrawrench/server-core/anthropic-client";
-import type { ChatContentBlock } from "@infrawrench/ui";
+import type { ServerToolBlock, StoredChatBlock } from "../server-blocks";
 import type { ChatProvider, ProviderEvent, ProviderTool, TurnRequest } from "./types";
 
 function toAnthropicTool(t: ProviderTool): Anthropic.Tool {
@@ -30,6 +30,44 @@ function toAnthropicTool(t: ProviderTool): Anthropic.Tool {
 }
 
 /**
+ * Anthropic's server-side tool search, BM25 flavour: the model describes what
+ * it needs in words ("create a DigitalOcean droplet") and the API loads the
+ * best matches into context. The search runs inside the same response and is
+ * not metered separately; a tool it loads bills as ordinary input.
+ */
+export const TOOL_SEARCH_TOOL: Anthropic.ToolSearchToolBm25_20251119 = {
+  type: "tool_search_tool_bm25_20251119",
+  name: "tool_search_tool_bm25",
+};
+
+/**
+ * The `tools` array for one request.
+ *
+ * The registry is over a thousand tools (every plugin's `<plugin>_create_<type>`
+ * among them), roughly 600K tokens of schema, so sending it all as context made
+ * the first message of a conversation cost dollars in cache writes alone.
+ * Deferred tools are still sent, since the API searches and expands them
+ * server-side, but stay out of the prompt until a search loads them. The search
+ * tool goes in only when something is deferred, because at least one tool must
+ * not be.
+ *
+ * The cache marker sits on the last tool that loads up front: a deferred tool
+ * may not carry one (400), and deferred tools are outside the cached prefix
+ * anyway, so their order and count never invalidate it.
+ */
+export function anthropicTools(tools: readonly ProviderTool[]): Anthropic.ToolUnion[] {
+  const loaded: Anthropic.Tool[] = [];
+  const deferred: Anthropic.Tool[] = [];
+  for (const t of tools) {
+    if (t.deferLoading) deferred.push({ ...toAnthropicTool(t), defer_loading: true });
+    else loaded.push(toAnthropicTool(t));
+  }
+  const last = loaded[loaded.length - 1];
+  if (last) last.cache_control = { type: "ephemeral" };
+  return [...(deferred.length > 0 ? [TOOL_SEARCH_TOOL] : []), ...loaded, ...deferred];
+}
+
+/**
  * Strip anything another provider left behind.
  *
  * Chat used to offer Gemini, and conversations that ran on it were moved to
@@ -40,8 +78,8 @@ function toAnthropicTool(t: ProviderTool): Anthropic.Tool {
  * reduced to the fields Anthropic knows. tool_use must survive: dropping one
  * would orphan its paired tool_result.
  */
-export function sanitizeForAnthropic(blocks: ChatContentBlock[]): ChatContentBlock[] {
-  const out: ChatContentBlock[] = [];
+export function sanitizeForAnthropic(blocks: StoredChatBlock[]): StoredChatBlock[] {
+  const out: StoredChatBlock[] = [];
   for (const block of blocks) {
     if (block.type === "thinking") {
       if ((block.provider ?? "anthropic") === "anthropic") {
@@ -103,24 +141,14 @@ export const anthropicProvider: ChatProvider = {
   async *streamTurn(req: TurnRequest): AsyncGenerator<ProviderEvent> {
     const client = anthropicClient();
 
-    const tools = req.tools.map(toAnthropicTool);
-    // Prompt-cache the system prompt + tool definitions. Both are large and
-    // stable across a session; the tool list is ~150kb of JSON Schema. Without
-    // caching every turn pays full ingestion cost.
+    // Three cache breakpoints: the last up-front tool (in `anthropicTools`),
+    // the system prompt, and the top-level automatic one below, which follows
+    // the end of the conversation. Without that last one every iteration of
+    // the agent loop paid full input price for the whole history again.
+    const tools = anthropicTools(req.tools);
     const systemBlocks: Anthropic.TextBlockParam[] = [
       { type: "text", text: req.system, cache_control: { type: "ephemeral" } },
     ];
-    if (tools.length > 0) {
-      // Mark the last tool's schema with cache_control to checkpoint the entire
-      // tools array: Anthropic's caching extends from the start of the prompt
-      // through the most recent cache_control marker.
-      const last = tools[tools.length - 1];
-      if (last) {
-        (last as Anthropic.Tool & { cache_control?: { type: "ephemeral" } }).cache_control = {
-          type: "ephemeral",
-        };
-      }
-    }
 
     const apiMessages: Anthropic.MessageParam[] = req.messages.map((m) => ({
       role: m.role,
@@ -132,9 +160,12 @@ export const anthropicProvider: ChatProvider = {
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
-    const collectedBlocks: ChatContentBlock[] = [];
+    const collectedBlocks: StoredChatBlock[] = [];
     let currentTextIdx = -1;
     const partialToolJson: Record<number, { id: string; name: string; json: string }> = {};
+    // Tool search calls, kept whole (every field the API sent) so they replay
+    // unchanged; only `input` arrives later, as deltas.
+    const partialServerTool: Record<number, { block: object; json: string }> = {};
     // Stream index → collectedBlocks index for thinking blocks. They must be
     // persisted and echoed back verbatim (signature included) or the next
     // loop iteration's request is rejected.
@@ -147,6 +178,7 @@ export const anthropicProvider: ChatProvider = {
         system: systemBlocks,
         tools,
         messages,
+        cache_control: { type: "ephemeral" },
       });
     async function* events() {
       let started = false;
@@ -173,6 +205,10 @@ export const anthropicProvider: ChatProvider = {
         } else if (block.type === "tool_use") {
           partialToolJson[ev.index] = { id: block.id, name: block.name, json: "" };
           yield { type: "tool_use_start", toolUseId: block.id, name: block.name };
+        } else if (block.type === "server_tool_use") {
+          partialServerTool[ev.index] = { block, json: "" };
+        } else if (block.type === "tool_search_tool_result") {
+          collectedBlocks.push(block as unknown as ServerToolBlock);
         } else if (block.type === "thinking") {
           thinkingIdx[ev.index] = collectedBlocks.length;
           collectedBlocks.push({
@@ -200,8 +236,21 @@ export const anthropicProvider: ChatProvider = {
             acc.json += delta.partial_json;
             yield { type: "tool_use_input", toolUseId: acc.id, partialJson: delta.partial_json };
           }
+          const server = partialServerTool[ev.index];
+          if (server) server.json += delta.partial_json;
         }
       } else if (ev.type === "content_block_stop") {
+        const server = partialServerTool[ev.index];
+        if (server) {
+          let input: unknown = {};
+          try {
+            input = server.json ? JSON.parse(server.json) : {};
+          } catch {
+            // Replaying a search the API ran is all this block is for; an
+            // unparseable query only means it replays as an empty one.
+          }
+          collectedBlocks.push({ ...server.block, input } as ServerToolBlock);
+        }
         const acc = partialToolJson[ev.index];
         if (acc) {
           let parsedInput: Record<string, unknown> = {};

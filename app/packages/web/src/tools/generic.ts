@@ -158,6 +158,7 @@ export function genericTools(): ToolDefinition[] {
 
     {
       name: "list_accounts",
+      alwaysLoaded: true,
       title: "List accounts",
       description: "List all connected accounts (credential sets) in the caller's organization.",
       inputSchema: {},
@@ -623,6 +624,7 @@ export function genericTools(): ToolDefinition[] {
 
     {
       name: "search_resources",
+      alwaysLoaded: true,
       title: "Search resources",
       description:
         "Substring-match resources across every connected account. Matches against resource display name, account name, plugin name, and resource-type label. Returns up to 50 results.",
@@ -720,6 +722,7 @@ export function genericTools(): ToolDefinition[] {
 
     {
       name: "list_resource_sidecars",
+      alwaysLoaded: true,
       title: "List resource sidecars",
       description:
         "Discover the sidecar (peer plugin) integrations a resource exposes. Managed Kubernetes " +
@@ -839,6 +842,7 @@ export function genericTools(): ToolDefinition[] {
 
     {
       name: "list_resources",
+      alwaysLoaded: true,
       title: "List resources",
       description:
         "List live resources of a given type for an account. Also works inside sidecars: to see " +
@@ -886,6 +890,7 @@ export function genericTools(): ToolDefinition[] {
 
     {
       name: "get_resource",
+      alwaysLoaded: true,
       title: "Get resource",
       description:
         "Fetch a single resource's full state: non-secret fields and resolved outputs. Use get_resource_outputs to fetch sensitive outputs explicitly.",

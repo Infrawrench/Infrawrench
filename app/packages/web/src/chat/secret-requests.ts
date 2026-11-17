@@ -1,4 +1,4 @@
-import type { ChatContentBlock } from "@infrawrench/client-core";
+import type { StoredChatBlock } from "./server-blocks";
 
 export const WRITE_WORKFLOW_SECRET_TOOL_NAME = "write_workflow_secret";
 
@@ -25,7 +25,7 @@ export function secretRequestMetadata(input: Record<string, unknown>): SecretReq
   };
 }
 
-export function sanitizeSecretToolBlocks(blocks: ChatContentBlock[]): ChatContentBlock[] {
+export function sanitizeSecretToolBlocks(blocks: StoredChatBlock[]): StoredChatBlock[] {
   return blocks.map((block) =>
     block.type === "tool_use" && block.name === WRITE_WORKFLOW_SECRET_TOOL_NAME
       ? { ...block, input: secretRequestMetadata(block.input) }

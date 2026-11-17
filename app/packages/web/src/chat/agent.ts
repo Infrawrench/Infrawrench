@@ -43,6 +43,7 @@ import { providerForModel, type ProviderTool } from "./providers";
 import { notifyChatToolApproval } from "./slack-approvals";
 import { webChatTools, webChatToolSpecs } from "./web/tools";
 import { fenceToolResults } from "./untrusted";
+import type { StoredChatBlock } from "./server-blocks";
 import {
   pendingSecretRequestValues,
   sanitizeSecretToolBlocks,
@@ -168,6 +169,7 @@ Style:
 - For destructive actions (delete, drop, restart, secret destroy or rotation, credential export, manifest apply, SQL writes, exec, KV writes, Docker stop/restart, typing or key presses into a remote app, launching a raw command, saving workflow or custom graph source, arming a workflow trigger, sleep/wake schedules), the UI will prompt the user to approve before the action runs. Describe what you're about to do in the tool_use, but don't ask the user separately; the approval UI handles confirmation.
 - When you need a decision, a preference, or information the user hasn't given you, call \`ask_question\` instead of asking in prose. Use \`type: "selection"\` with concrete options when the choices are known (the UI always adds an Other text field; do not add an Other option yourself). Use \`type: "text"\` for a free-form answer. You can mix both in one call. Do not use this to confirm destructive actions.
 - Never print revealed secret values or accessed credentials inline unless the user explicitly asks. Refer to them by description ("the AWS access key has been generated and downloaded").
+- Most of your tools are not loaded until you look for them. Call \`tool_search_tool_bm25\` with a short description of what you need ("create a DigitalOcean droplet", "budget alerts", "query costs by service") and the matching tools become available to call. Every provider's create tools are named \`<plugin>_create_<type>\` (\`aws_create_s3_bucket\`). Tools named below that you don't see yet are found the same way. Search before telling the user something can't be done.
 - Prefer the most specific tool for the job (e.g. \`gcp_create_secret_manager_secret\` over \`create_resource\` when both are available).
 - You can read the public web: \`web_search\` for a question, \`web_fetch\` to read one URL (GET only, public addresses only). Reach for them when being out of date would change your answer, provider quotas, a changelog or deprecation, an unfamiliar error string, the current shape of a third-party API, and prefer them over answering from memory on anything that changes. Not every deployment has them; if they aren't in your tool list, say what you'd have looked up rather than guessing. Cite what you used: link the sources inline so the user can check them.
 - Published instance list prices and their history (the AWS services in the warehouse, Azure virtual machines, Google Cloud machine types, Alibaba Cloud ECS, RunPod, and AWS's public status history) come from \`get_instance_pricing_schema\` and \`query_instance_pricing\`. Read the schema before writing SQL: its notes name the defaults a correct query depends on. That warehouse is public list prices, not this organization's spend (\`query_costs\`) and not the shorter cross-provider catalog (\`search_price_catalog\`, \`compare_instance_prices\`). Do not answer those questions from memory or from the web.
@@ -183,7 +185,7 @@ You operate in the user's organization. Resources, accounts, and outputs belong 
 interface ConversationMessageRow {
   id: string;
   role: string;
-  content: AnthropicContentBlock[];
+  content: StoredChatBlock[];
 }
 
 export type AgentEvent =
@@ -307,7 +309,7 @@ async function loadConversationForApi(
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,
-      content: r.content as AnthropicContentBlock[],
+      content: r.content as StoredChatBlock[],
     })),
     model: conv.model,
     system: conv.systemPrompt ?? SYSTEM_PROMPT,
@@ -346,10 +348,12 @@ async function approvalSummaryFor(
 function toolToProvider(t: Omit<ToolDefinition, "handler">): ProviderTool {
   // Both providers take JSON Schema (draft 2020-12) for tool input, converted
   // from the same Effect Schema fields MCP uses; see `toolInputJsonSchema`.
+  // Every tool but the few marked `alwaysLoaded` waits behind tool search.
   return {
     name: t.name,
     description: t.description,
     inputSchema: toolInputJsonSchema(t.inputSchema),
+    ...(t.alwaysLoaded ? {} : { deferLoading: true }),
   };
 }
 
@@ -480,7 +484,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
-    let collectedBlocks: AnthropicContentBlock[] = [];
+    let collectedBlocks: StoredChatBlock[] = [];
     const secretToolUseIds = new Set<string>();
     let costMicros = 0;
 
@@ -572,7 +576,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       .where(eq(chatConversations.id, conversationId));
 
     const toolUses = collectedBlocks.filter(
-      (b): b is Extract<AnthropicContentBlock, { type: "tool_use" }> => b.type === "tool_use",
+      (b): b is Extract<StoredChatBlock, { type: "tool_use" }> => b.type === "tool_use",
     );
 
     if (toolUses.length === 0) {

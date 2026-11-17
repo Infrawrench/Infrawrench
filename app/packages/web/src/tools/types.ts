@@ -148,6 +148,14 @@ export interface ToolDefinition {
    * that cut across apps.
    */
   product?: ProductId;
+  /**
+   * Chat offers this tool's schema to the model up front. Every other tool
+   * waits behind tool search (`chat/providers/anthropic.ts`) and loads only
+   * when the model asks for it, because sending the whole registry made every
+   * conversation's first message cost dollars. Keep it to the handful of tools
+   * most conversations call; each one is input on every request. MCP ignores it.
+   */
+  alwaysLoaded?: boolean;
   handler(input: Record<string, unknown>, auth: ToolAuthContext): Promise<ToolResult>;
 }
 

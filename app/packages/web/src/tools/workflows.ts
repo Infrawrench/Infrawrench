@@ -383,6 +383,7 @@ export function workflowTools(): ToolDefinition[] {
 
     {
       name: "get_workflow_typings",
+      alwaysLoaded: true,
       title: "Get workflow typings",
       description:
         "Return the generated `infra.d.ts` that workflow source is written against; the same " +
@@ -520,6 +521,7 @@ export function workflowTools(): ToolDefinition[] {
 
     {
       name: "check_workflow_source",
+      alwaysLoaded: true,
       title: "Type-check workflow source",
       description:
         "Type-check a candidate workflow source against this organization's generated typings " +
@@ -576,6 +578,7 @@ export function workflowTools(): ToolDefinition[] {
 
     {
       name: "write_workflow",
+      alwaysLoaded: true,
       title: "Write workflow",
       description:
         "Create a workflow (omit workflowId) or update one (pass workflowId). The source is a " +
@@ -742,6 +745,7 @@ export function workflowTools(): ToolDefinition[] {
 
     {
       name: "run_workflow",
+      alwaysLoaded: true,
       title: "Run workflow",
       description:
         "Run a workflow now and return its outcome (status, log lines, output, error). " +

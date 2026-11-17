@@ -266,6 +266,7 @@ function available(): WebTool[] {
         },
         risk: "read",
         permission: null,
+        alwaysLoaded: true,
       },
       run: (input, ctx) => runSearch(String(input["query"] ?? ""), ctx),
     });
@@ -285,6 +286,7 @@ function available(): WebTool[] {
         },
         risk: "read",
         permission: null,
+        alwaysLoaded: true,
       },
       run: (input) => runFetch(String(input["url"] ?? "")),
       requiresApproval: async (input, ctx) =>
