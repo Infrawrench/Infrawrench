@@ -15,7 +15,8 @@
 #   build-cache.sh key <name>...    print each key and what went into it
 #
 # Names, and what each builds (spec below): clickhouse, edgejs, git,
-# go@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript, oxfmt.
+# go@<minor>, ruby@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript,
+# oxfmt.
 #
 # The key is the SHA-256 of a listing, stored beside each entry as
 # inputs.txt:
@@ -103,6 +104,15 @@ spec() {
       BUILD=(bash builtins/environments/go/build.sh "$minor")
       VERIFY=(verify_go "$minor")
       ;;
+    ruby@*)
+      # And the C library patches it shares with Edge.js. The check
+      # extension test.sh loads is built with it.
+      minor="${1#ruby@}"
+      INPUTS+=(builtins/environments/ruby builtins/environments/edgejs/wasix-libc-*.patch)
+      OUTPUTS=("dist/package/ruby/$minor.*" "dist/test/ruby/$minor")
+      BUILD=(bash builtins/environments/ruby/build.sh "$minor")
+      VERIFY=(verify_ruby "$minor")
+      ;;
     kubectl@*)
       # And env:go's build script, pins and patch series, which it builds with.
       minor="${1#kubectl@}"
@@ -145,7 +155,7 @@ spec() {
       REFRESH=1
       ;;
     *)
-      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript and oxfmt" >&2
+      echo "build-cache.sh: no build \`$1\`; know clickhouse, edgejs, git, go@<minor>, ruby@<minor>, kubectl@<minor>, gh@<minor>, openssh, typescript and oxfmt" >&2
       exit 2
       ;;
   esac
@@ -352,6 +362,13 @@ verify_go() {
   read -r _ version go_sha cache_sha <<<"$(sed -n "s/^    ${1//./\\.}) echo \"\(.*\)\" ;;\$/\1/p" builtins/environments/build.sh)"
   check "dist/package/go/$version/go.webc" "$go_sha" &&
     check "dist/package/go/$version/go-std-cache.webc" "$cache_sha"
+}
+
+# verify_ruby <minor>: the package, against environments/build.sh's ruby_pkgs.
+verify_ruby() {
+  local version sha
+  read -r _ version sha _ <<<"$(sed -n "/^ruby_pkgs() {/,/^}/s/^    ${1//./\\.}) echo \"\(.*\)\" ;;\$/\1/p" builtins/environments/build.sh)"
+  check "dist/package/ruby/$version/ruby.webc" "$sha"
 }
 
 # verify_kubectl <minor>: the module, against kubectl/build.sh's release().

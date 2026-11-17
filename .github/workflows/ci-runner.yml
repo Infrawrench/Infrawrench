@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/python/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/python/build.sh builtins/environments/ruby/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
 
   # The lisafs server (crates/iwci-sandbox) under gVisor's real kernel, on
   # both architectures the runners are: a busybox shell and Bun run in a

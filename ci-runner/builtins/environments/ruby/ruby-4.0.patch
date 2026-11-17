@@ -1,0 +1,91 @@
+Ruby 4.0's part of env:ruby's WASIX build, beside ruby-wasix.patch.
+
+ruby.h starts main() through ruby.wasm's Asyncify loop (rb_wasm_rt_start)
+on every non-Emscripten WebAssembly target; not on WASIX.
+
+A cross build has no builtin binary (builtin_binary.rbbin is made by
+running miniruby, which cannot run on the build machine), so ruby
+compiles its builtins from source at start, through mini_builtin.c, as
+miniruby does. That file's RubyGems hooks are miniruby's, which do
+nothing, so `ruby -e 'Gem'` failed and every gem, bundled ones included,
+needed `-rrubygems`. With the source fallback in ruby itself
+(BUILTIN_FROM_SOURCE), gem_prelude.rb is compiled and run like the other
+builtins, and RubyGems, did_you_mean, error_highlight and syntax_suggest
+load as they do from the binary. (Ruby 3.4's builtin.c loads gem_prelude
+either way.)
+--- a/builtin.c
++++ b/builtin.c
+@@ -9,6 +9,10 @@
+ #ifndef BUILTIN_BINARY_SIZE
+ 
+ #define BUILTIN_LOADED(feature_name, iseq) ((void)0)
++/* A cross build has no builtin binary (miniruby cannot run to make one), so
++ * ruby compiles its builtins from source, as miniruby does, and loads
++ * RubyGems as it would from the binary. */
++#define BUILTIN_FROM_SOURCE 1
+ #include "mini_builtin.c"
+ 
+ #else
+@@ -129,7 +133,7 @@
+ Init_builtin_features(void)
+ {
+ 
+-#ifdef BUILTIN_BINARY_SIZE
++#if defined(BUILTIN_BINARY_SIZE) || defined(BUILTIN_FROM_SOURCE)
+ 
+     rb_load_gem_prelude((VALUE)rb_root_box());
+ 
+--- a/include/ruby/ruby.h
++++ b/include/ruby/ruby.h
+@@ -434,7 +434,7 @@
+     RUBY__ASAN_DEFAULT_OPTIONS \
+     /* RUBY_GLOBAL_SETUP end */
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ int rb_wasm_rt_start(int (*)(int, char **), int, char **);
+ # define ruby_start_main rb_wasm_rt_start
+ #else
+--- a/mini_builtin.c
++++ b/mini_builtin.c
+@@ -103,7 +103,35 @@
+     rb_iseq_eval(iseq, rb_root_box());
+ }
+ 
++#ifdef BUILTIN_FROM_SOURCE
++/* ruby of a cross build (builtin.c): RubyGems as builtin.c loads it. */
+ VALUE
++rb_define_gem_modules(VALUE flags_value, VALUE _)
++{
++    rb_box_gem_flags_t *flags = (rb_box_gem_flags_t *)flags_value;
++
++    if (flags->gem) {
++        rb_define_module("Gem");
++        if (flags->error_highlight) {
++            rb_define_module("ErrorHighlight");
++        }
++        if (flags->did_you_mean) {
++            rb_define_module("DidYouMean");
++        }
++        if (flags->syntax_suggest) {
++            rb_define_module("SyntaxSuggest");
++        }
++    }
++    return Qnil;
++}
++
++void
++rb_load_gem_prelude(VALUE box)
++{
++    rb_iseq_eval(builtin_iseq_load("gem_prelude", NULL), (const rb_box_t *)box);
++}
++#else
++VALUE
+ rb_define_gem_modules(VALUE _a, VALUE _b)
+ {
+     // do nothing - moniruby doesn't load gem_prelude.rb.
+@@ -115,3 +143,4 @@
+ {
+     // do nothing - miniruby doesn't support loading RubyGems.
+ }
++#endif

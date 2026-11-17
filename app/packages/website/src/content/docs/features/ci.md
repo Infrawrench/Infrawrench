@@ -59,6 +59,7 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                            |
 | `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
+| `env:ruby@3.4`, `env:ruby@4.0` | the same as `env:bash@5`, plus Ruby 3.4 or 4.0 (`ruby`, `gem`, `bundle`, `rake`) |
 | `env:postgres@18`              | the same as `env:bash@5`, plus PostgreSQL 18.4, for a job's `services:`          |
 | `env:aws@1.46`                 | the same as `env:python@3.13`, plus the AWS CLI 1.46 (`aws`)                     |
 | `env:az@2.92`                  | the same as `env:python@3.13`, plus the Azure CLI 2.92 (`az`)                    |
@@ -104,6 +105,17 @@ jobs:
     run: |
       go vet ./...
       go test ./...
+```
+
+In `env:ruby`, `bundle install`, `gem install`, `rake` and `ruby` work as on a developer's machine, with the gems that ship with Ruby (minitest, test-unit, rake and the rest) already there. Gems install into the job's own `GEM_HOME`, with their commands on the `PATH`, and download while the job runs, so leave the job's network on. Threads, sockets, TLS and child processes (`system`, backticks, `Open3`) work, with real exit statuses; `fork` raises `NotImplementedError`, and a gem with a C extension that has to be compiled while it installs does not install.
+
+```yaml
+jobs:
+  test:
+    using: env:ruby@4.0
+    run: |
+      bundle install
+      bundle exec rake test
 ```
 
 In `env:bash-node`, a job can install a command-line tool for itself with `npm i -g`, `pnpm add -g`, `npx` or `pnpm dlx`, and run it by name. These fetch from the npm registry while the job runs and, unlike your repository's dependencies, are not checked against a lockfile, so pin an exact version. The tool is gone when the job ends; to keep it between runs, cache `/root/.local/share/pnpm`, where global installs go:

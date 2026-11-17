@@ -1163,6 +1163,7 @@ Environments:
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                            |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
+| `ruby@3.4`, `ruby@4.0` | `bash@5`'s packages plus our `iwci/ruby` (CRuby 3.4.12 or 4.0.9, built for WASIX here, with RubyGems and Bundler; see [Ruby](#ruby))                                                                                                   |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
 | `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                            |
 | `aws@1.46`             | `python@3.13`'s packages plus our `iwci/aws-cli` (the AWS CLI 1.46.3; see [Cloud CLIs](#cloud-clis))                                                                                                                                   |
@@ -2710,6 +2711,143 @@ What to know:
   over 600. Each used to count until its parent exited, so the 512th
   `os/exec` (or Node `child_process`) failed with "Operation not
   permitted" ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
+
+### Ruby
+
+`env:ruby@3.4` and `env:ruby@4.0` are CRuby 3.4.12 and 4.0.9, built from
+the release tarballs for WASIX here (`builtins/environments/ruby/build.sh`),
+beside the tools of `env:bash@5` and [Git](#git). `ruby` is a command, and
+RubyGems, Bundler, `gem`, `bundle`, `rake`, `irb`, `erb`, `rdoc`, `ri`
+and `racc` are on `PATH`, with the default and bundled gems of the release
+(minitest, test-unit, rake, power_assert, rexml, rss, net-ftp, ...):
+
+```yaml
+test:
+  using: env:ruby@4.0
+  run: |
+    bundle install
+    bundle exec rake test
+```
+
+What works, each in `builtins/test.sh`'s `ruby@*` jobs:
+
+- **Threads are native threads.** `Thread`, `Mutex`, `Queue`,
+  `ConditionVariable`, `Timeout`, Fibers and Enumerators, with the
+  collector running while several threads hold objects.
+- **Sockets.** `TCPServer` and `TCPSocket` on the job's loopback,
+  `Net::HTTP`, and TLS through `openssl` (OpenSSL 3.5.9, Mozilla's CA
+  certificates at `/opt/ruby/ssl/cert.pem`), out to the internet as well.
+- **Child processes with real exit statuses.** `system`, backticks,
+  `spawn`, `Process.wait`, `IO.popen` and `Open3`, with redirections,
+  environments and `chdir:`; a failing command fails, a missing one
+  returns `nil` from `system` and raises `Errno::ENOENT` from `spawn`, and
+  `exec` replaces the process. `fork` and `IO.popen("-")` raise
+  `NotImplementedError` (`Process.respond_to?(:fork)` is false), as on
+  Windows: WASIX has no fork.
+- **The standard library's extensions**, each loaded by `require`:
+  `etc`, `fcntl`, `zlib`, `psych` (libyaml 0.2.5), `json`, `bigdecimal`,
+  `date`, `ripper`, `prism`, `racc`, `strscan`, `digest`, `openssl`,
+  `io/console`, `io/wait`, `socket`, `stringio`, `objspace` and
+  `coverage`. Not built: `fiddle` (no libffi), `pty` (no pseudo-terminals)
+  and `readline` (`irb` uses Reline).
+- **`gem install` and `bundle install`** from rubygems.org, into the
+  job's `GEM_HOME`, with installed commands on `PATH`. A gem with a C
+  extension does not install: a job has no C compiler.
+
+What does not, or differs:
+
+- **A thread waiting on a descriptor looks for interrupts every 100 ms.**
+  WASIX cannot end a blocking call with a signal to a thread, which is how
+  Ruby wakes one on Linux, so a thread in `IO.select`, a read or an
+  `accept` waits in slices instead, and `Thread#kill`, `Thread#raise`,
+  `Timeout` and the program's exit reach it within 100 ms. A thread in
+  `Process.wait` cannot be interrupted.
+- **Signals, as far as WASIX has them.** `trap` handlers run, in a child
+  process too (`Process.kill(:TERM, pid)` reaches a child's handler), but
+  a signal that arrives while the main thread waits on a descriptor takes
+  its default action, and a child ended by a signal reports an exit status
+  rather than `termsig`. `IO#wait_priority` and `IO.select` with an error
+  set fail with `ENOSYS`: WASIX cannot wait for exceptional conditions.
+- **No JIT** (YJIT and ZJIT generate native code), and each process has at
+  most 4 GiB of memory (wasm32).
+- `spawn`'s `rlimit_*:`, `uid:` and `gid:` raise `Errno::ENOTSUP`.
+
+The environment sets these, which a job's `env:` can override:
+
+| Variable   | Value                                                              | Why                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEM_HOME` | `/root/.local/share/gem/ruby/<ruby_version>` (`4.0.0`, `3.4.0`)    | `gem install` and `bundle install` install here rather than into the interpreter's own directory, as RubyGems' `--user-install` would (`Gem.user_dir`). |
+| `PATH`     | `$GEM_HOME/bin`, `/usr/local/bin`, `/opt/ruby/bin`, then the usual | The commands gems install come first, then the interpreter's own (`gem`, `bundle`, `rake`, `irb`, ...). `ruby` itself is `/usr/bin/ruby`.               |
+
+No `BUNDLE_*` variable is set, so Bundler behaves as it does elsewhere:
+`bundle install` installs into `GEM_HOME`, and a repository's own
+`.bundle/config` (`BUNDLE_PATH: vendor/bundle`) is honoured.
+
+**C extensions.** The interpreter is a WASIX dynamic main module and every
+extension, the standard library's included, is a side module it opens
+with `dlopen()` when it is required, as on Linux: `.so` files under
+`/opt/ruby/lib/ruby/<ruby_version>/wasm32-wasix`, and a gem's in its own
+directories. Keeping them out of the interpreter, rather than linking them
+in as `--with-static-linked-ext` would, is what lets a gem's newer
+version of a default gem with an extension (`bigdecimal`, `json`, `date`)
+load its own `.so`, as Bundler expects, and a gem's extension built
+elsewhere load with a plain `require`. A job cannot compile one (no C
+compiler), so one is built outside and brought in, the way
+`builtins/environments/ruby/build.sh` builds its check extension
+(`check-ext/`, loaded by `ruby@*/extension-passes`):
+
+| `RbConfig::CONFIG` / RubyGems | 4.0                             | 3.4                   |
+| ----------------------------- | ------------------------------- | --------------------- |
+| `arch`                        | `wasm32-wasix`                  | `wasm32-wasix`        |
+| `ruby_version`                | `4.0.0`                         | `3.4.0`               |
+| `DLEXT`                       | `so`                            | `so`                  |
+| `ENABLE_SHARED`               | `no` (there is no `libruby.so`) | `no`                  |
+| `Gem::Platform.local`         | `wasm32-wasi`                   | `wasm32-wasi`         |
+| `Gem.extension_api_version`   | `4.0.0-static`                  | `3.4.0-static`        |
+| RubyGems                      | 4.0.20 (Bundler 4.0.20)         | 3.6.9 (Bundler 2.6.9) |
+
+1. On x86_64 or aarch64 Linux, unpack the toolchain `build.sh` pins
+   (wasixcc 0.4.3, wasix-org's LLVM 21.1.206, Binaryen 133 and the
+   wasix-libc `sysroot-ehpic` of v2026-07-30.1; Edge.js's C library
+   patches are only needed by the interpreter) and set wasixcc's
+   environment as `build.sh` step 1 does:
+   `WASIXCC_SYSROOT_PREFIX`, `WASIXCC_LLVM_LOCATION`,
+   `WASIXCC_BINARYEN_LOCATION`, `WASIXCC_WASM_EXCEPTIONS=legacy`,
+   `WASIXCC_PIC=yes`, `WASIXCC_RUN_WASM_OPT=no`, with wasixcc's
+   executables and Binaryen's `bin` on `PATH`.
+2. Take `/opt/ruby` out of the environment's `iwci/ruby` package:
+   `wasmer package unpack ruby.webc --out-dir pkg` puts it in `pkg/ruby`
+   (a job can also `tar` it into a download). Its
+   `include/ruby-<ruby_version>` has the headers and
+   `lib/ruby/<ruby_version>/wasm32-wasix/rbconfig.rb` the build settings:
+   `CC` `wasixcc`, `CCDLFLAGS` `-fPIC`, `LDSHARED` `$(CC) -shared`,
+   `DLDFLAGS` `ruby-wasix-stack-anchor.o` from that directory (a
+   constructor that makes the module import `__stack_pointer`), no
+   `DLDLIBS` (the interpreter has the whole C library), and `POSTLINK`
+   `wasm-opt --flatten --coalesce-locals --spill-pointers -O2 --emit-exnref -g --strip-dwarf --strip-producers -o $@ $@`.
+   The `POSTLINK` pass is not optional: Ruby's collector finds the objects
+   a C function holds only on the stack, and `--spill-pointers` is what
+   puts them there; without it an extension's objects can be collected
+   while it uses them.
+3. Run `extconf.rb` with a native Ruby of the same release, pointed at
+   that `rbconfig.rb`, which finds the headers and libraries beside it:
+   `ruby --disable-gems -I pkg/ruby/lib/ruby/<ruby_version>/wasm32-wasix -r rbconfig extconf.rb && make`.
+   `mkmf`'s `have_func` and `have_library` checks link against the
+   package's `lib/libruby-static.a` and work; checks that run a program
+   (`try_run`) do not, as in any cross build. Built this way from the
+   unpacked package, `check-ext` comes out byte for byte as `build.sh`
+   makes it.
+4. Put the `.so` where `require` finds it: on `$LOAD_PATH` (`-I`,
+   `RUBYLIB`), or, for a gem, in its `lib/` or under
+   `extensions/wasm32-wasi/<extension_api_version>/<gem>-<version>/`
+   in the gem home (`GEM_HOME`), where RubyGems looks for an installed
+   gem's compiled extension.
+
+A side module links no C library of its own: the interpreter exports all
+of it, and the module's undefined functions are resolved against the
+interpreter when it is loaded. A library it needs (libxml2, SQLite) is
+compiled into it as position-independent objects with the same
+toolchain.
 
 ### Rust
 
