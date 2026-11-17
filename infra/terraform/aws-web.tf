@@ -1,6 +1,6 @@
 # The session gateway on AWS: two t4g.medium instances (Graviton, 2 vCPU,
 # 4 GiB) running the web image, replacing the GKE `web` Deployment (the
-# cluster itself stays: ClickHouse and the cloudflared connector run there).
+# cluster itself stays: the cloudflared connector runs there).
 #
 #   edge Worker --> Lambda (NODE_ROUTES) --> these instances (SESSION_ROUTES:
 #   WebSockets, SSE, SSH and kubectl PTYs, uploads over 4 MiB)
@@ -43,7 +43,7 @@ variable "session_gateway_tunnel_token" {
   description = <<-EOT
     Token of the Cloudflare Tunnel the session gateway connects to
     ("infrawrench-session-gateway", a different tunnel from
-    cloudflare_tunnel_token, which is ClickHouse's). Its routes are
+    cloudflare_tunnel_token, which is the cluster's). Its routes are
     app.infrawrench.com and session-gateway.infrawrench.com (a test hostname)
     to http://localhost:3000.
   EOT

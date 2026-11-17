@@ -3,7 +3,7 @@
 Prod web stack on GKE: `web` (the Node API + WebSockets, 2 replicas), `poller`
 (2 replicas — safe, it claims work atomically), and `github-watcher`
 (1 replica — its SHA CAS makes overlap safe, but replicas just multiply
-GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
+GitHub API reads). Postgres, analytics tables included, stays on Neon;
 the CF Workers deployables (website, telemetry) are not part of this.
 In front of the pods sit the Cloudflare edge Workers and, optionally, the
 AWS Lambda gateway, which take over most of the web API and the poller; see
@@ -20,7 +20,7 @@ AWS Lambda gateway, which take over most of the web API and the poller; see
 | Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`        |
 | Lambda gateway: ECR, functions, VPC, schedule (optional)              | `infra/terraform/lambda.tf`               |
 | Lambda image `lambda`, tagged `:<commit sha>`                         | `.github/workflows/web-deploy.yml`        |
-| Cloudflare Tunnel connector to ClickHouse (optional)                  | `infra/terraform/edge.tf`                 |
+| Cloudflare Tunnel connector for jeeves (optional)                     | `infra/terraform/edge.tf`                 |
 
 **The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
 runs in the `web`/`poller` isolates; if those pods made the request, every
@@ -89,8 +89,7 @@ Nothing DigitalOcean-side remains.
      `AR_REGISTRY`, plus `GKE_CLUSTER` / `GKE_REGION` if you changed the
      terraform defaults
 
-3. **Allowlists** — if ClickHouse Cloud's IP access list or Neon's IP allow is
-   enabled, add the `egress_ip` output (the Cloud NAT address). Nothing else in
+3. **Allowlists** — if Neon's IP allow is enabled, add the `egress_ip` output (the Cloud NAT address). Nothing else in
    the fleet has a routable address.
 
 4. **First deploy** — push to `main` (or run the `web-deploy` workflow
@@ -181,14 +180,13 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   for kubelet probes, and `web` → `web:3000` for the cross-replica relay.
   `poller` and `github-watcher` expose no ports and keep the bare deny. The
   selector is an explicit label list rather than `podSelector: {}` because
-  ClickHouse, Keeper and cert-manager's HTTP-01 solver pods share this
+  the cloudflared connector and cert-manager's HTTP-01 solver pods share this
   namespace.
 - _Egress_ is the public internet minus every private and link-local range
   (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), plus
   kube-dns (by its Service ClusterIP too, because NodeLocal DNSCache answers
   on the node and a pod selector never matches), the GKE metadata server's
-  Workload Identity endpoints, ClickHouse,
-  and `web` → `web`. It is a denylist of the cluster's own address space, not
+  Workload Identity endpoints, and `web` → `web`. It is a denylist of the cluster's own address space, not
   an allowlist of destinations: `web`, `poller` and `github-watcher` dial
   arbitrary customer infrastructure by design and a NetworkPolicy cannot name
   SaaS hosts. But this VPC is not peered with anything, so nothing a customer
@@ -197,27 +195,8 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   metadata server). Workflow `fetch()` is still isolated structurally, off
   cluster on the egress proxy; this policy covers what the app dials itself.
 
-**ClickHouse and Keeper** (`infra/terraform/clickhouse.tf`): ClickHouse accepts
-8123/9000 only from the app workloads and its own bootstrap/backup jobs, 9000
-and 9009 only from the other replica, and probes from the node subnet. Keeper
-accepts 9181 only from the ClickHouse servers and 9234 (Raft, which has no
-authentication of its own) only from other Keeper members. On top of the
-network layer:
-
-- **Interserver credentials.** Part fetches on 9009 carry a terraform-generated
-  user/password (`interserver_http_credentials`). Adding them to a running
-  cluster needs one apply with `clickhouse_interserver_allow_empty = true`,
-  then another with it removed; the tfvars example has the reasoning.
-- **Keeper digest identity.** The servers authenticate to Keeper with a
-  terraform-generated digest identity, and ClickHouse then creates every znode
-  with the `auth` ACL instead of `world:anyone`. Znodes that existed before the
-  identity was added keep their open ACL; the Keeper ingress policy is what
-  protects those. To close them too, from a ClickHouse pod with a ZooKeeper
-  3.6+ CLI: `addauth digest <CLICKHOUSE_KEEPER_IDENTITY>` then
-  `setAcl -R /clickhouse auth::cdrwa`. Never regenerate the identity without
-  doing the same, or the servers lock themselves out of their own metadata.
-- **Keeper four-letter words** are limited to the read-only set; the defaults
-  include `rcvr`, `rqld` and `ydld`, which change cluster state without auth.
+**cloudflared** (`infra/terraform/edge.tf`): accepts only kubelet probes from
+the node subnet, and reaches only jeeves, cluster DNS and Cloudflare's edge.
 
 **Enforcement** is GKE's Calico addon, `enable_network_policy` in
 `infra/terraform/main.tf` (on by default). The alternatives and their cost:
@@ -234,10 +213,10 @@ network layer:
   policies carry over unchanged if the cluster is ever rebuilt on it.
 
 Rollout order: let CI apply `infra/k8s` first (any push to it does), then
-`terraform apply`; the ClickHouse policies and enforcement then land together.
+`terraform apply`; the cloudflared policy and enforcement then land together.
 Verify enforcement is live before trusting the policy: from a throwaway pod in
-the namespace, a connection to `clickhouse-keeper-headless:9181` should time
-out, and the app should still serve, sync and query metrics. A NetworkPolicy
+the namespace, a connection to the cloudflared pods' metrics port (2000)
+should time out, and jeeves should still serve. A NetworkPolicy
 that is present but inert is worse than none, because it reads as protection.
 
 ### Control plane access
@@ -266,7 +245,7 @@ Function) may run as that account. **Manual step:**
 1. Find what uses the default account:
    `gcloud compute instances list --format='table(name,serviceAccounts[].email)'`,
    plus Cloud Functions, Cloud Run and Dataflow if the project uses them. GKE
-   nodes and the ClickHouse VM use `google_service_account.nodes`, not it.
+   nodes use `google_service_account.nodes`, not it.
 2. If nothing does, remove the grant:
    `gcloud projects remove-iam-policy-binding <project> --member='serviceAccount:<number>-compute@developer.gserviceaccount.com' --role=roles/editor`.
    Projects old enough to have the legacy
@@ -294,9 +273,8 @@ consoles, Linux app streams, chat and the workflow isolate. KNOWLEDGE.md
 - **`infrawrench-poller`** (`app/packages/poller/edge`) runs the poller
   passes that need nothing Node-only, beside the Node poller running with
   `POLLER_SCOPE=gateway`.
-- Both reach Postgres through **Hyperdrive** and ClickHouse through a
-  **Workers VPC service** over a Cloudflare Tunnel whose connector runs in the
-  cluster (`edge.tf`). ClickHouse gets no public address.
+- Both reach Postgres, the analytics tables included, through
+  **Hyperdrive**.
 
 ### Provisioning (once)
 
@@ -311,17 +289,11 @@ wrangler ...`) on the Infrawrench Production account.
 2. **Hyperdrive**, pointed at Neon's _direct_ endpoint (not `-pooler`;
    Hyperdrive is the pool):
    `wrangler hyperdrive create infrawrench-db --connection-string="postgres://…"`.
-3. **Tunnel**: create a remotely-managed tunnel (Networking > Tunnels), put
-   its token in `terraform.tfvars` as `cloudflare_tunnel_token`, and
-   `terraform apply`. Two `cloudflared` pods come up; `/ready` is green once
-   they hold a connection.
-4. **VPC service** for ClickHouse over that tunnel:
-   `wrangler vpc service create infrawrench-clickhouse --type http --tunnel-id <id> --hostname clickhouse.infrawrench.svc.cluster.local --http-port 8123`.
-5. **Queue**: `wrangler queues create infrawrench-poll`.
-6. Replace `HYPERDRIVE_ID` and `CLICKHOUSE_VPC_SERVICE_ID` in **both**
-   `edge/wrangler.jsonc` files with the ids from steps 2 and 4, and commit.
-   CI refuses to deploy while the placeholders are there.
-7. Set the repo variable `EDGE_DEPLOY_ENABLED=true`. The next main push runs
+3. **Queue**: `wrangler queues create infrawrench-poll`.
+4. Replace `HYPERDRIVE_ID` in **both** `edge/wrangler.jsonc` files with the
+   id from step 2, and commit. CI refuses to deploy while the placeholder is
+   there.
+5. Set the repo variable `EDGE_DEPLOY_ENABLED=true`. The next main push runs
    `deploy-edge` after the cluster rollout: it reads `infrawrench-env` from
    the cluster and uploads it as both Workers' secrets, so `app_env` stays the
    one place a value lives.
@@ -404,31 +376,23 @@ KNOWLEDGE.md ("Edge/gateway split") explains the routing; this is the runbook.
 
 ### Provisioning (once)
 
-1. **ClickHouse over the tunnel.** ClickHouse is in-cluster and the functions
-   are not, so give the tunnel from `edge.tf` a public hostname
-   (Networking > Tunnels > (tunnel) > Published application routes), say
-   `clickhouse-gw.infrawrench.com` to `http://clickhouse.infrawrench.svc.cluster.local:8123`,
-   and put a Cloudflare Access application with a **Service Auth** policy in
-   front of it. Create a service token (Access > Service credentials) and put
-   the hostname and token in `lambda_app_env` (`terraform.tfvars.example`
-   shows the shape). The ClickHouse password still applies behind Access.
-2. **Neon pooler.** Point `lambda_app_env.DATABASE_URL` at the `-pooler`
+1. **Neon pooler.** Point `lambda_app_env.DATABASE_URL` at the `-pooler`
    endpoint. Every warm execution environment holds its own small pool, and
    the pooler keeps that from eating the compute's connection limit.
-3. **Terraform**, with AWS credentials for the target account:
+2. **Terraform**, with AWS credentials for the target account:
    `lambda_enabled = true`, then `terraform apply`. This creates the ECR
    repository, the secret, the VPC and NAT, the roles and GitHub's OIDC
    provider (set `aws_github_oidc_provider_arn` instead if the account
    already has one). No functions yet: they need an image.
-4. **GitHub**: repository variables `LAMBDA_ECR_REPOSITORY` and
+3. **GitHub**: repository variables `LAMBDA_ECR_REPOSITORY` and
    `AWS_LAMBDA_CI_ROLE_ARN` from the outputs (plus `AWS_REGION` if not
    us-east-2), then `LAMBDA_DEPLOY_ENABLED=true`. The next deploy pushes the
    image and notes that the functions do not exist yet.
-5. **Terraform again** with `lambda_initial_image_tag` set to that commit SHA.
+4. **Terraform again** with `lambda_initial_image_tag` set to that commit SHA.
    The functions, the function URL and the schedule come up, and
    `infrawrench-env` gains `LAMBDA_GATEWAY_URL`. The poller function starts
    claiming at once, beside the Node poller; the leases make that safe.
-6. **Smoke test** before the Worker uses it: a request to the function URL
+5. **Smoke test** before the Worker uses it: a request to the function URL
    without the secret must answer 403. `GET /healthz` with the
    `x-iw-gateway-secret` header answers `ok`. The apply that creates the
    function also publishes version 1 and its snapshot, which takes a minute
@@ -537,8 +501,8 @@ apply`; the agents restart the app within a minute.
   any more (removed 2026-10-13). Set `replicas: 2` in
   `infra/k8s/web-deployment.yaml` and deploy; add a route
   `app.infrawrench.com` -> `http://web.infrawrench.svc.cluster.local:80` to
-  the cluster's tunnel (`infrawrench-clickhouse`, which also carries
-  `clickhouse-gw` and `jeeves`) and an egress rule to the web pods in
+  the cluster's tunnel (`infrawrench-clickhouse`, named for what it first
+  carried; it now carries `jeeves`) and an egress rule to the web pods in
   `kubernetes_network_policy_v1.cloudflared` (edge.tf); then point
   `app.infrawrench.com` at that tunnel (`<id>.cfargotunnel.com`, proxied).
 

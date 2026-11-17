@@ -42,29 +42,6 @@ variable "node_count_max" {
   default     = 4
 }
 
-variable "clickhouse_machine_type" {
-  description = <<-EOT
-    Machine type for the dedicated ClickHouse node pool (one node per replica,
-    two replicas). 2 vCPU / 8 GB: each replica used ~0.2 CPU and ~1.1 GiB of
-    the 4 vCPU / 16 GB nodes it had before 2026-10-13, and requests 500m /
-    3Gi (limit 6Gi). Raise this and the StatefulSet's resources together.
-  EOT
-  type        = string
-  default     = "e2-standard-2"
-}
-
-variable "clickhouse_disk_gb" {
-  description = <<-EOT
-    Size of each ClickHouse replica's data volume (pd-balanced), in GiB.
-    Growing it later is an online resize (edit + apply); shrinking is not.
-    The default is sized to fit the project's 500 GB regional SSD_TOTAL_GB
-    quota (automated increase requests are denied on this account) — raise
-    the quota before raising this meaningfully.
-  EOT
-  type        = number
-  default     = 100
-}
-
 variable "repository_id" {
   description = <<-EOT
     Artifact Registry repository name. If you change this from the default,
@@ -117,7 +94,7 @@ variable "app_env" {
     Runtime environment for all three services, written to the
     `infrawrench-env` k8s secret that the deployments envFrom. See
     terraform.tfvars.example for the full key list (DATABASE_URL, WorkOS,
-    Stripe, ClickHouse, GitHub App, encryption key, ...).
+    Stripe, GitHub App, encryption key, ...).
   EOT
   type        = map(string)
   sensitive   = true
@@ -127,8 +104,7 @@ variable "enable_network_policy" {
   description = <<-EOT
     Enforce Kubernetes NetworkPolicy with GKE's Calico addon. Without it the
     cluster accepts NetworkPolicy objects and enforces none of them, so the
-    app and ClickHouse isolation in infra/k8s/network-policy.yaml and
-    clickhouse.tf does nothing. Turning it on updates the cluster in place
+    isolation in infra/k8s/network-policy.yaml and edge.tf does nothing. Turning it on updates the cluster in place
     (no replacement), but GKE recreates every node afterwards; see the
     NetworkPolicy section of infra/README.md.
   EOT
@@ -164,15 +140,3 @@ variable "control_plane_dns_endpoint" {
   default     = true
 }
 
-variable "clickhouse_interserver_allow_empty" {
-  description = <<-EOT
-    Let ClickHouse replicas accept unauthenticated interserver (port 9009)
-    requests alongside authenticated ones. Only for the one apply that first
-    adds interserver credentials to an already-running cluster, so a replica
-    that has not restarted yet can still fetch parts from one that has; set it
-    back to false on the next apply. See the ClickHouse notes in
-    terraform.tfvars.example.
-  EOT
-  type        = bool
-  default     = false
-}

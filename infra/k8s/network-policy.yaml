@@ -1,6 +1,5 @@
-# Network isolation for the three app workloads. ClickHouse and Keeper share
-# this namespace; their policies live with them in
-# infra/terraform/clickhouse.tf.
+# Network isolation for the three app workloads. The cloudflared connector
+# shares this namespace; its policy lives with it in infra/terraform/edge.tf.
 #
 # ---------------------------------------------------------------------------
 # Read this before adding an egress rule
@@ -63,9 +62,9 @@
 # Default-deny ingress for the three app workloads.
 #
 # Scoped by an explicit label list rather than `podSelector: {}` on purpose:
-# the ClickHouse StatefulSet and its Keeper quorum live in THIS namespace
-# (infra/terraform/clickhouse.tf), and an empty selector would sever the
-# replica/Keeper mesh on 9000/9009/9181/9234 the moment enforcement came on.
+# other workloads (the cloudflared connector, infra/terraform/edge.tf) live in
+# THIS namespace with policies of their own, and an empty selector would apply
+# this one to them too.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -237,17 +236,6 @@ spec:
           port: 987
         - protocol: TCP
           port: 988
-    # The in-cluster ClickHouse (infra/terraform/clickhouse.tf), matching its
-    # ingress policy. A ClickHouse Cloud URL is public and needs nothing here.
-    - to:
-        - podSelector:
-            matchLabels:
-              app: clickhouse
-      ports:
-        - protocol: TCP
-          port: 8123
-        - protocol: TCP
-          port: 9000
     # web → web for the cross-replica relay; the egress half of the rule in
     # web-allow-ingress above. Only `web` has a peer to relay to, but listing
     # the source side here keeps the app egress in one policy.
