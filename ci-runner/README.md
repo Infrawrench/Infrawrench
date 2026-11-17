@@ -1150,8 +1150,8 @@ Builtins:
 | `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
 | `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
 | `vercel@65`        | `node`     | The Vercel CLI 65.16.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
-| `wrangler@4`       | `node`     | Wrangler 4.162.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
-| `cf@1.0.0-beta.32` | `node`     | Cloudflare's CLI, `cf` 1.0.0-beta.32 (a beta: name the exact version). See [Deployment CLIs](#deployment-clis).                              |
+| `wrangler@4`       | `node`     | Wrangler 4.163.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
+| `cf@1.0.0-rc.0`    | `node`     | Cloudflare's CLI, `cf` 1.0.0-rc.0 (a release candidate: name the exact version). See [Deployment CLIs](#deployment-clis).                    |
 | `neon@9`           | `node`     | The Neon CLI 9.5.0 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
 
 Environments:
@@ -1681,9 +1681,9 @@ job of its own (`using:`) it is refused the same way.
 ### Deployment CLIs
 
 Four command-line programs from npm are builtins for deploying from a job:
-`builtin:vercel@65`, `builtin:wrangler@4`, `builtin:cf@1.0.0-beta.32`
-(Cloudflare's new CLI, in beta, so only its exact version resolves) and
-`builtin:neon@9`. Each runs on the environment's `node`, so list it in
+`builtin:vercel@65`, `builtin:wrangler@4`, `builtin:cf@1.0.0-rc.0`
+(Cloudflare's new CLI, a release candidate, so only its exact version
+resolves) and `builtin:neon@9`. Each runs on the environment's `node`, so list it in
 `tools:` of a job on `env:bash-node`:
 
 ```yaml
@@ -1729,6 +1729,13 @@ deploy:
   still asks npm's registry for its newest version (three seconds at most,
   cached for an hour); with `network: false` that fails at once and changes
   nothing.
+- **Files are watched by polling.** `fs.watch` fails with `ENOSYS` in a
+  job (there is no inotify in the isolate), and Wrangler's watcher
+  (chokidar, inside Wrangler and Miniflare) does not recover from that:
+  from 4.163.0 `wrangler dev` waits for the watcher to be ready before it
+  starts, so it ended with status 0 having done nothing (#1279).
+  `builtin:wrangler`'s default environment sets `CHOKIDAR_USEPOLLING=1`,
+  which watches with `fs.watchFile` (a `stat` every 100 ms) instead.
 - **Native programs are left out.** A job is a WebAssembly isolate, so a
   native binary cannot run in it, and npm leaves the per-platform builds out:
   - The Vercel CLI's own native build (`@vercel/vc-native-*`) gives way to
@@ -1748,8 +1755,11 @@ deploy --no-bundle` uploads a Worker built elsewhere as it is, and
     no build that runs here. Wrangler loads it, through Miniflare, to start
     at all (the real package throws "Unsupported platform: wasi wasm32 LE"
     as it loads), so `builtins/npm-cli/stubs/workerd` stands in for it: it
-    exports what the package does, and its `workerd` prints why it cannot
-    run and exits 1. `wrangler dev`, anything with `--local`, `cf dev` and
+    exports what the package does, and its `workerd` exits 1. Why it cannot
+    run is printed by the process about to start it, as Miniflare reads the
+    path to spawn it: Miniflare judges a failed start by the output it has
+    when the runtime's `exit` event comes, which can be before that output
+    is read, and the reason was then lost (#1279). `wrangler dev`, anything with `--local`, `cf dev` and
     `@cloudflare/vitest-pool-workers` fail, saying so. Use `wrangler dev
 --remote`, which runs the Worker on Cloudflare, or a
     [cloud job](#cloud-jobs) for the local runtime.

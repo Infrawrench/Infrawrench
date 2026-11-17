@@ -1,6 +1,6 @@
 {
   "name": "cf",
-  "version": "1.0.0-beta.32",
+  "version": "1.0.0-rc.0",
   "entry": "node_modules/cf/bin/cf",
   "args": [],
   "env": {
@@ -8,6 +8,6 @@
     "CF_SEND_TELEMETRY": "false",
     "WRANGLER_SEND_METRICS": "false"
   },
-  "description": "Cloudflare's CLI, cf 1.0.0-beta.32, on the environment's node; workerd is a stand-in that explains itself",
-  "tree_sha256": "c151ff91bcf17b5a8cbefc51cd1a42fe805ee85c90269b7308a98c64eea5a090"
+  "description": "Cloudflare's CLI, cf 1.0.0-rc.0, on the environment's node; workerd is a stand-in that explains itself",
+  "tree_sha256": "43e1e95ea273a441bfd1bde2e8e84868c7e2984d580e968d673535486c7ef9b8"
 }

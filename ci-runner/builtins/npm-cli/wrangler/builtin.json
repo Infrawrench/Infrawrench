@@ -1,12 +1,13 @@
 {
   "name": "wrangler",
-  "version": "4.162.0",
+  "version": "4.163.0",
   "entry": "node_modules/wrangler/bin/wrangler.js",
   "args": [],
   "env": {
     "WRANGLER_SEND_METRICS": "false",
-    "DO_NOT_TRACK": "1"
+    "DO_NOT_TRACK": "1",
+    "CHOKIDAR_USEPOLLING": "1"
   },
-  "description": "Wrangler 4.162.0, on the environment's node, bundling with esbuild-wasm; workerd is a stand-in that explains itself",
-  "tree_sha256": "6a21685c0b9d1515d5a12e0696b8352b7977e47dd60bde61d91accdc44c88930"
+  "description": "Wrangler 4.163.0, on the environment's node, bundling with esbuild-wasm; workerd is a stand-in that explains itself",
+  "tree_sha256": "f32b7b0904828d5cc693e4aeef31079ebd5a7275b47429877c89b56deb5c169f"
 }

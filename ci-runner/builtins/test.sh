@@ -1518,7 +1518,9 @@ jobs:
       fetch("http://127.0.0.1:4200/_received").then((r) => r.json()).then(([d]) => {
         if (d.pages !== "site" || d.branch !== "main" || d.files.join() !== "/app.css,/index.html") throw new Error(JSON.stringify(d));
       });'
-  # workerd cannot run in a job: `wrangler dev` says so and fails.
+  # workerd cannot run in a job: `wrangler dev` says so and fails. It gets
+  # that far only with its config watcher polling (CHOKIDAR_USEPOLLING in
+  # builtin.json): on fs.watch's ENOSYS it waited for good and exited 0.
   wrangler-dev-fails:
     using: env:bash-node@24
     network: false
@@ -1536,7 +1538,7 @@ jobs:
     using: env:bash-node@24
     network: false
     timeout: 5m
-    tools: [builtin:cf@1.0.0-beta.32]
+    tools: [builtin:cf@1.0.0-rc.0]
     connections: [cloudflare]
     env: { CLOUDFLARE_API_BASE_URL: "http://127.0.0.1:4200/client/v4" }
     run: |
