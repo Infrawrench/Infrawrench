@@ -4,9 +4,9 @@
  *
  * **No claim protocol between replicas, on purpose.** Every other poller pass
  * leases its rows so N replicas do disjoint work; this one does not, because
- * {@link destroyOrganization} is idempotent end to end (the ClickHouse purge is
- * a no-op the second time, WorkOS answers 404, and the Postgres delete reports
- * zero rows) and a lease here has nowhere honest to live: the only column that
+ * {@link destroyOrganization} is idempotent end to end (WorkOS answers 404 the
+ * second time, and the Postgres delete reports zero rows and so purges
+ * nothing) and a lease here has nowhere honest to live: the only column that
  * could hold one is `trialExpiresAt`, and moving that forward would re-grant
  * paid access to an org we are in the middle of deleting. Two replicas racing
  * costs one duplicated sweep and nothing else.
@@ -113,7 +113,7 @@ export async function runTrialExpiryPass(options: TrialPassOptions = {}): Promis
         destroyed += 1;
         console.log(
           `[trials] destroyed expired trial org ${org.id} (${org.displayName}): ` +
-            `clickhouse=${result.clickhouseTablesPurged.length} tables, ` +
+            `analytics=${result.analyticsTablesPurged.length} tables, ` +
             `workos=${result.workosDeleted ? "deleted" : "left in place"}`,
         );
       } else {

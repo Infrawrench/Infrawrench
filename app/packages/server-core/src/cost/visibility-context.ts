@@ -6,7 +6,7 @@
  * A cost visibility scope has to hold on every surface that reads cost rows:
  * the query route, reports, dashboard widgets, budgets, showback, unit costs,
  * forecasts, the chat agent, MCP tools, custom graphs, the CLI. Those reach
- * ClickHouse through a few dozen service functions that all take a bare
+ * `cost_daily` through a few dozen service functions that all take a bare
  * `organizationId`, and threading a scope argument through every one of them
  * would be a large diff whose failure mode is silent: a missed call site reads
  * the whole org and looks perfectly fine.
@@ -15,7 +15,7 @@
  * the org-tree middleware (and once per tool call, Slack command and
  * unattended object evaluation), and the **readers** apply it: every
  * `cost_daily` predicate is built by `costDailyOrgCondition` in
- * `clickhouse/cost-readers.ts`, which consults {@link costVisibilityLayersFor}.
+ * `analytics/cost-readers.ts`, which consults {@link costVisibilityLayersFor}.
  * A cost route added next year is scoped without anybody remembering to scope
  * it, which is the property a per-route check can never have.
  *

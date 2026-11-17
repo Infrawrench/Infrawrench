@@ -63,7 +63,7 @@ const db = {
 vi.mock("../db/client", () => ({ db }));
 
 const getShowbackSpend = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ getShowbackSpend }));
+vi.mock("../analytics/cost-readers", () => ({ getShowbackSpend }));
 
 const listCostCentres = vi.fn();
 const listAllocationRules = vi.fn();

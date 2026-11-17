@@ -8,7 +8,7 @@
  * filters, and budgets with no special-casing downstream. A server outside
  * Infrawrench does the same thing over HTTP: see `cost/external-costs.ts`.
  *
- * Validation, the reserved-tag invariant, and the ClickHouse write all live in
+ * Validation, the reserved-tag invariant, and the `cost_daily` write all live in
  * `cost/cost-ingest.ts`; what is specific to workflows is the per-run cap and
  * the synthetic account a row falls back to when it names no real one.
  */

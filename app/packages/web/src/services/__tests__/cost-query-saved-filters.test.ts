@@ -14,12 +14,12 @@ import type { CostFilter } from "@infrawrench/client-core";
  *    prevent.
  *
  * Everything stateful is mocked; what is asserted is the exact filter list
- * handed to the ClickHouse reader, which is the only place filters take
+ * handed to the cost reader, which is the only place filters take
  * effect.
  */
 
 const mockQueryCosts = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   getCostCoverage: vi.fn(async () => new Map()),
   getCostDimensionValues: vi.fn(async () => []),

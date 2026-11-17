@@ -1,7 +1,7 @@
 /**
  * Weekly digest: data gathering, scheduling, and delivery. The composition
  * itself is pure and lives in `./compose.ts`; this module is everything that
- * touches the database, ClickHouse, and the Slack/Teams/email transports.
+ * touches the database and the Slack/Teams/email transports.
  *
  * Scheduling piggybacks on the poller's tick loop (`poller/src/loop.ts` calls
  * `runWeeklyDigests()` every tick) rather than adding a scheduler process. That
@@ -48,7 +48,7 @@ import {
   type DigestStatus,
 } from "@infrawrench/client-core";
 import { loadChangeCostImpacts } from "../cost/change-impact-load";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { listExpiring } from "../expiry/feed";
@@ -107,7 +107,7 @@ const RETRY_BACKOFF_MINUTES = [15, 60];
  *
  * It exists because the digest shares the poller's 15s tick with account
  * polling, cost collection and workflow scheduling, and one org's digest is not
- * cheap: two ClickHouse queries, an optional Anthropic call bounded at 30s, and
+ * cheap: two cost queries, an optional Anthropic call bounded at 30s, and
  * a fan-out to Slack, Teams and one request per email recipient. Every org on
  * the default Monday 07:00 UTC schedule comes due in the *same* tick, so an
  * unbounded pass is a pile-up that stalls everything queued behind it.
@@ -128,9 +128,9 @@ function dayRange(from: string, to: string): { fromDate: Date; toDatePlusOne: Da
 }
 
 /**
- * Gather one org's digest inputs and compose the digest. Two ClickHouse
+ * Gather one org's digest inputs and compose the digest. Two cost
  * queries (provider and service grouping over the two-week span) and three
- * cheap Postgres counts.
+ * cheap counts.
  *
  * Sync incidents are counted from `paging_incidents` rather than
  * `account_sync_failures`: the failure rows are a rolling window the pager
@@ -288,7 +288,7 @@ export async function buildWeeklyDigest(
       }),
     // Current backup gaps. Same point-in-time headcount and the same
     // defensiveness: `skipCosts` because the digest wants the risk counts,
-    // not a spend quote, and a ClickHouse round trip per org per week to
+    // not a spend quote, and a cost query per org per week to
     // populate a number nobody reads is not worth the latency.
     listBackupCoverage(organizationId, { skipCosts: true })
       .then((feed) => ({
@@ -430,7 +430,7 @@ async function buildRealizedSavings(
 
 /**
  * How many of the week's changes are measured for the "biggest cost move"
- * line. A bound rather than a limit on ambition: each batch is two ClickHouse
+ * line. A bound rather than a limit on ambition: each batch is two `cost_daily`
  * range-scans, and a busy org can record thousands of changes a week.
  *
  * The changes are taken newest-first, which is the sample most likely to have
@@ -964,7 +964,7 @@ async function runOneDigest(
     if (outcome.status === "succeeded") console.log(line);
     else console.warn(`${line}${outcome.error ? `: ${outcome.error}` : ""}`);
   } catch (err) {
-    // A build failure (ClickHouse down, Postgres blip) is as retryable as a
+    // A build failure (a failed cost read, a Postgres blip) is as retryable as a
     // total delivery failure, and just as invisible if we only logged it.
     const message = err instanceof Error ? err.message : String(err);
     await recordAttempt(organizationId, now, row.attemptCount, {

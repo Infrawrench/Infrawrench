@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The fourth reconciliation guard, and the only one that cannot live in
- * `clickhouse/cost-reconcile.ts`: whether a pass ran *degraded* is something
+ * `analytics/cost-reconcile.ts`: whether a pass ran *degraded* is something
  * only the plugin knows.
  *
  * Both large collectors fall back to an unattributed query when the provider
@@ -30,13 +30,13 @@ vi.mock("../db/schema", () => ({ accounts: { id: "id" } }));
 vi.mock("drizzle-orm", () => ({ eq: (a: unknown, b: unknown) => ({ eq: [a, b] }) }));
 
 const insertCostRows = vi.fn(async () => undefined);
-vi.mock("../clickhouse/cost-writers", () => ({
+vi.mock("../analytics/cost-writers", () => ({
   insertCostRows,
   toCostDailyRows: (_meta: unknown, rows: unknown[]) => rows,
 }));
 
 const reconcileCollectedChunk = vi.fn(async () => [{ tombstone: true }]);
-vi.mock("../clickhouse/cost-reconcile", () => ({ reconcileCollectedChunk }));
+vi.mock("../analytics/cost-reconcile", () => ({ reconcileCollectedChunk }));
 
 const fetchCostData = vi.fn();
 const loadAccountClient = vi.fn();

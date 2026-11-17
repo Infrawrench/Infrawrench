@@ -130,7 +130,7 @@ export interface AiAttributionDayProviderStats {
  * The outcome of the latest attribution run for one org-day: match-rate
  * statistics per source and coverage per provider. Small (one row per day)
  * and overwritten on every run, so the stats endpoint sums a range in app code
- * without touching ClickHouse.
+ * without re-reading `ai_cost_attributed`.
  */
 export const aiAttributionDays = pgTable(
   "ai_attribution_days",

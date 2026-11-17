@@ -6,12 +6,12 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * Metric alert evaluation tests, modelled on `budget-eval.test.ts`: the
  * window maths are covered pure in `metric-alert-window.test.ts`; this suite
  * covers the pipeline; open-claim dedupe, cooldown suppression, the resolve
- * claim, recovery notifications, and notifiedAt accounting. ClickHouse is
+ * claim, recovery notifications, and notifiedAt accounting. Metrics are
  * mocked at the reader boundary and the selector at its module boundary.
  */
 
 const getMetricMinuteSeriesBatch = vi.fn();
-vi.mock("../clickhouse/readers", () => ({ getMetricMinuteSeriesBatch }));
+vi.mock("../analytics/readers", () => ({ getMetricMinuteSeriesBatch }));
 // Event subscriptions have their own suite (event-subscriptions.test.ts); here
 // the extra query would only shift this file's scripted database responses.
 vi.mock("../events/publish", () => ({
@@ -295,9 +295,9 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
 });
 
 describe("evaluateMetricAlertRule — resilience", () => {
-  it("never throws when the ClickHouse read fails", async () => {
+  it("never throws when the metric read fails", async () => {
     pg.queueRows([]); // the open-events read still runs first
-    getMetricMinuteSeriesBatch.mockRejectedValue(new Error("clickhouse down"));
+    getMetricMinuteSeriesBatch.mockRejectedValue(new Error("metric store down"));
     await expect(metricEval.evaluateMetricAlertRule(rule(), NOW)).resolves.toBeUndefined();
   });
 
@@ -306,7 +306,7 @@ describe("evaluateMetricAlertRule — resilience", () => {
     await expect(metricEval.evaluateMetricAlertRule(rule(), NOW)).resolves.toBeUndefined();
   });
 
-  it("queries ClickHouse once for the union of selected and open resources", async () => {
+  it("reads metrics once for the union of selected and open resources", async () => {
     pg.queueRows([{ id: "evt9", resourceId: "gone", resourceName: "old-vm", notifiedAt: null }]);
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
     expect(getMetricMinuteSeriesBatch).toHaveBeenCalledTimes(1);

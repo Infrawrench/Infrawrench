@@ -1,7 +1,7 @@
 /**
  * Cost visibility on the HTTP and tool surfaces.
  *
- * The scope itself is applied by the ClickHouse readers (server-core
+ * The scope itself is applied by the cost readers (server-core
  * `cost/visibility-context.ts`); this module is what *establishes* it outside
  * the org tree, and lists what a scoped caller is refused there. On the org
  * tree, `OrgAuth` (`http/middleware-live.ts`) resolves the caller's scope once

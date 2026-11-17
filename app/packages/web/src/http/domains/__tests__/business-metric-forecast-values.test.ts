@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// Everything the business-metrics router imports that reaches the database or
-// ClickHouse is mocked. These tests own the forecast-values transport only.
+// Everything the business-metrics router imports that reaches the database
+// is mocked. These tests own the forecast-values transport only.
 vi.mock("@infrawrench/server-core/cost/metric-ingest", () => ({
   BusinessMetricIngestError: class extends Error {},
   ingestMetricValues: vi.fn(),

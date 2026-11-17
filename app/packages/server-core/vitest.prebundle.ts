@@ -19,10 +19,8 @@ import { builtinModules } from "node:module";
  *   itself is listed too, for the same reason: drizzle-orm's Postgres driver
  *   bundles `postgres`, which db/client.ts imports.
  * - Not a CommonJS package that tests mock. Bundled, its named imports are read
- *   off a default export, so `vi.mock("@clickhouse/client", () => ({ createClient }))`
- *   stops satisfying `import { createClient }`. drizzle-orm's ClickHouse driver
- *   therefore carries a copy of that client of its own, which it uses only when
- *   asked to make the client; clickhouse/client.ts makes it and hands it over.
+ *   off a default export, so a `vi.mock` of it that returns named exports
+ *   stops satisfying the import.
  * - `a > b` names a package `b` by way of `a`, for a package the test's own
  *   package.json does not list (server-core has no `effect`; plugin-base does).
  *   Any import of `b` that resolves to that same package then gets the bundle.
@@ -43,8 +41,7 @@ import { builtinModules } from "node:module";
  * Node's built-in modules are excluded by name because the optimizer resolves a
  * bare `buffer` or `events` to the npm package of that name when one is
  * installed, and would bundle that polyfill in place of the built-in
- * (`@clickhouse/client` and the request signer in plugin-base both import
- * `buffer`).
+ * (the request signer in plugin-base imports `buffer`).
  */
 
 /** What server-core's own tests and everything that tests against its source load. */
@@ -53,8 +50,6 @@ export const SERVER_CORE_PREBUNDLED = [
   "drizzle-orm/pg-core",
   "drizzle-orm/pg-proxy",
   "drizzle-orm/postgres-js",
-  "drizzle-orm/clickhouse",
-  "drizzle-orm/clickhouse-core",
   "drizzle-orm > postgres",
   "@infrawrench/client-core",
   "@infrawrench/plugin-base",

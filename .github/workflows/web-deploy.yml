@@ -489,9 +489,9 @@ jobs:
 
       - name: Refuse placeholder binding ids
         run: |
-          if grep -nE '"(HYPERDRIVE_ID|CLICKHOUSE_VPC_SERVICE_ID)"' \
+          if grep -nE '"HYPERDRIVE_ID"' \
               app/packages/web/edge/wrangler.jsonc app/packages/poller/edge/wrangler.jsonc; then
-            echo "::error::Replace the placeholder ids above with the real Hyperdrive and VPC service ids (infra/README.md, Cloudflare edge)."
+            echo "::error::Replace the placeholder ids above with the real Hyperdrive id (infra/README.md, Cloudflare edge)."
             exit 1
           fi
 

@@ -56,7 +56,7 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
 
     // Same trigger point for anomaly detection: cost data only changes when
     // collection runs. This fires once per account, so for a multi-account org
-    // most calls are redundant: the ClickHouse reads are the expensive half
+    // most calls are redundant: the cost reads are the expensive half
     // and the row dedup does nothing to avoid them. detectCostAnomaliesForOrg
     // rate-limits itself per org and returns immediately when called again
     // inside that window.

@@ -15,7 +15,7 @@
  *    same pure `convertGroups` the cost graph uses.
  * 3. **Denominator**: one range read of `business_metric_values` (labels
  *    included, filtered and grouped in memory), or for `usage_unit_cost` one
- *    ClickHouse read of the providers' own usage quantities.
+ *    `cost_daily` read of the providers' own usage quantities.
  * 4. **The division**: `computeUnitCosts`, pure, once per label series.
  *
  * ## The label rule
@@ -57,7 +57,7 @@ import {
   queryUsageQuantities,
   type CostSeriesGroup,
   type ShowbackRule,
-} from "../clickhouse/cost-readers";
+} from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { convertGroups, mergeConvertedGroups, RateBook } from "./currency-convert";
 import { loadConversionContext, loadOrgRateBook } from "./currency-settings";

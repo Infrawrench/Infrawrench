@@ -469,7 +469,7 @@ export interface ManagedInvoice {
 /**
  * The list row. Deliberately without `lines` and `derivation`: a draft's
  * figures are recomputed on read, and recomputing every draft in the list would
- * turn opening the page into one ClickHouse scan per draft.
+ * turn opening the page into one `cost_daily` scan per draft.
  *
  * `totals` is therefore **null for a draft**, not zero, not stale. Null is the
  * honest answer to "what does this draft come to" from a list query, and the

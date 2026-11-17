@@ -23,7 +23,7 @@ import {
 } from "@infrawrench/client-core";
 import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 
-import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { getAnalyticsDb } from "./client";
 import { costDailyOrgCondition } from "./cost-readers";
 import { dayRange, membershipCondition, physicalDimensionExpr } from "./cost-sql";
 import { costDaily } from "./schema";
@@ -37,15 +37,23 @@ export interface KubernetesEfficiencyScan {
   groupByLabelKey?: string | undefined;
 }
 
+/**
+ * A tag's value, `''` when the row does not carry the key: the grouping and the
+ * assembly both read `''` as "no value", and `->>` alone would give NULL.
+ */
+function tag(key: string): SQL<string> {
+  return sql<string>`coalesce(${costDaily.tags} ->> ${key}::text, '')`;
+}
+
 function bucketExpr(granularity: K8sEfficiencyGranularity): SQL {
   switch (granularity) {
     case "week":
-      // Mode 1: weeks start on Monday, matching `kubernetesEfficiencyBucketStart`.
-      return sql`toString(toStartOfWeek(${costDaily.day}, 1))`;
+      // ISO weeks start on Monday, matching `kubernetesEfficiencyBucketStart`.
+      return sql`to_char(date_trunc('week', ${costDaily.day}::timestamp), 'YYYY-MM-DD')`;
     case "month":
-      return sql`toString(toStartOfMonth(${costDaily.day}))`;
+      return sql`to_char(date_trunc('month', ${costDaily.day}::timestamp), 'YYYY-MM-DD')`;
     case "day":
-      return sql`toString(${costDaily.day})`;
+      return sql`to_char(${costDaily.day}, 'YYYY-MM-DD')`;
   }
 }
 
@@ -56,7 +64,6 @@ function bucketExpr(granularity: K8sEfficiencyGranularity): SQL {
  * classification, so the scan does not group by anything for it.
  */
 function groupExpr(scan: KubernetesEfficiencyScan): SQL {
-  const tag = (key: string) => sql`${costDaily.tags}[${key}]`;
   switch (scan.groupBy) {
     case "cluster":
       return sql`${costDaily.account_id}`;
@@ -66,7 +73,7 @@ function groupExpr(scan: KubernetesEfficiencyScan): SQL {
       // Namespace-qualified, so two `web` Deployments in different
       // namespaces stay apart. The cluster-capacity buckets have no namespace
       // and so no workload.
-      return sql`if(${tag("namespace")} != '' AND ${tag("workload")} != '', concat(${tag("namespace")}, '/', ${tag("workload_kind")}, '/', ${tag("workload")}), '')`;
+      return sql`CASE WHEN ${tag("namespace")} <> '' AND ${tag("workload")} <> '' THEN concat(${tag("namespace")}, '/', ${tag("workload_kind")}, '/', ${tag("workload")}) ELSE '' END`;
     case "node_pool":
       return tag("node_pool");
     case "label":
@@ -82,8 +89,6 @@ export async function scanKubernetesEfficiency(
   organizationId: string,
   scan: KubernetesEfficiencyScan,
 ): Promise<KubernetesEfficiencyScanRow[]> {
-  if (!isClickHouseConfigured()) return [];
-  const db = getClickHouseDb();
   const where = and(
     costDailyOrgCondition(organizationId),
     dayRange(scan.from, scan.to),
@@ -96,21 +101,22 @@ export async function scanKubernetesEfficiency(
       ),
     ),
   );
-  const rows = await db
+  const rows = await getAnalyticsDb()
     .select({
       bucket: bucketExpr(scan.granularity).as("bucket"),
       grp: groupExpr(scan).as("grp"),
       account_id: costDaily.account_id,
       service: costDaily.service,
-      resource: sql<string>`${costDaily.tags}[${K8S_RESOURCE_TAG}]`.as("resource"),
-      usage: sql<string>`${costDaily.tags}[${K8S_USAGE_TAG}]`.as("usage"),
+      resource: tag(K8S_RESOURCE_TAG).as("resource"),
+      usage: tag(K8S_USAGE_TAG).as("usage"),
       currency: costDaily.currency,
-      amount: sql<number>`sum(${costDaily.amount})`.as("amount"),
+      amount: sql<number>`sum(${costDaily.amount})`.mapWith(Number).as("amount"),
     })
     .from(costDaily)
-    // FINAL, like every spend read: a restated day must never count twice.
-    .final()
     .where(where)
+    // `bucket`, `grp`, `resource` and `usage` by output column: their
+    // expressions carry bound tag keys, which a repeated expression would not
+    // match.
     .groupBy(
       sql`bucket`,
       sql`grp`,
@@ -143,17 +149,15 @@ export async function getKubernetesDimensionValues(
   organizationId: string,
   opts: { dimension: "account" | "region" | "tag"; tagKey?: string | undefined },
 ): Promise<string[]> {
-  if (!isClickHouseConfigured()) return [];
-  const db = getClickHouseDb();
   const expr = physicalDimensionExpr(opts.dimension, opts.tagKey);
-  const rows = await db
+  const rows = await getAnalyticsDb()
     .selectDistinct({ value: expr.as("value") })
     .from(costDaily)
     .where(
       and(
         costDailyOrgCondition(organizationId),
         eq(costDaily.plugin_id, KUBERNETES_COST_PLUGIN_ID),
-        sql`${expr} != ''`,
+        sql`${expr} <> ''`,
       ),
     )
     .orderBy(asc(sql`value`))
@@ -163,10 +167,8 @@ export async function getKubernetesDimensionValues(
 
 /** Tag keys present on the org's Kubernetes cost rows, for the label pickers. */
 export async function getKubernetesTagKeys(organizationId: string): Promise<string[]> {
-  if (!isClickHouseConfigured()) return [];
-  const db = getClickHouseDb();
-  const rows = await db
-    .selectDistinct({ key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key") })
+  const rows = await getAnalyticsDb()
+    .selectDistinct({ key: sql<string>`jsonb_object_keys(${costDaily.tags})`.as("key") })
     .from(costDaily)
     .where(
       and(

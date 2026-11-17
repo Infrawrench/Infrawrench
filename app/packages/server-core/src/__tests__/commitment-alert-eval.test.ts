@@ -25,7 +25,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 const getAccountDataDays = vi.fn();
 const getCommitmentDeliveredTotals = vi.fn();
-vi.mock("../clickhouse/commitment-readers", () => ({
+vi.mock("../analytics/commitment-readers", () => ({
   getAccountDataDays,
   getCommitmentDeliveredTotals,
 }));
@@ -338,7 +338,7 @@ describe("evaluateCommitmentAlertsForOrg — the org's settings", () => {
   });
 
   it("swallows a failed pass rather than breaking the poller", async () => {
-    getCommitmentDeliveredTotals.mockRejectedValue(new Error("clickhouse down"));
+    getCommitmentDeliveredTotals.mockRejectedValue(new Error("cost store down"));
     prime();
     await expect(evaluate("org1", NOW, true)).resolves.toBeUndefined();
     expect(routeAlert).not.toHaveBeenCalled();

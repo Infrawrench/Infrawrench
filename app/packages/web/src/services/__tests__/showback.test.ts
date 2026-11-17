@@ -15,14 +15,14 @@ const mockListCostCentres = vi.fn();
 const mockListAllocationRules = vi.fn();
 const mockGetShowbackSpend = vi.fn();
 
-// Mocked rather than imported for real: both modules reach server-core's db /
-// ClickHouse clients, which throw at import time without their env.
+// Mocked rather than imported for real: both modules query server-core's db
+// client.
 vi.mock("@infrawrench/server-core/cost/allocation", () => ({
   listCostCentres: (...args: unknown[]) => mockListCostCentres(...args),
   listAllocationRules: (...args: unknown[]) => mockListAllocationRules(...args),
 }));
 
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   getShowbackSpend: (...args: unknown[]) => mockGetShowbackSpend(...args),
 }));
 
@@ -162,7 +162,7 @@ describe("getShowbackReport — parent and child rules", () => {
     centre("search", "Search", "plat"),
   ];
 
-  it("hands ClickHouse one flat pre-ordered rule list — one pass, not one per segment", async () => {
+  it("hands the reader one flat pre-ordered rule list: one pass, not one per segment", async () => {
     mockListCostCentres.mockResolvedValue(TREE);
     mockListAllocationRules.mockResolvedValue([
       rule("child", "search", 0),
@@ -187,7 +187,7 @@ describe("getShowbackReport — parent and child rules", () => {
       rule("child", "search", 0),
       rule("parent", "eng", 1),
     ]);
-    // First match wins in the single `multiIf`, so the row comes back attributed
+    // First match wins in the single `CASE`, so the row comes back attributed
     // to the child and to nothing else.
     mockGetShowbackSpend.mockResolvedValue([
       { costCentreId: "search", currency: "USD", amount: 500 },

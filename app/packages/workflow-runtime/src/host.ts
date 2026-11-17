@@ -303,7 +303,7 @@ export interface WorkflowHost {
   /**
    * Report daily spend into the org's cost store (powers `infra.costs.write`).
    * Cloud-only: the desktop host omits it and the call surfaces a
-   * {@link WorkflowCapabilityError}, since cost data lives in ClickHouse.
+   * {@link WorkflowCapabilityError}, since cost data lives only in the cloud.
    */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
 

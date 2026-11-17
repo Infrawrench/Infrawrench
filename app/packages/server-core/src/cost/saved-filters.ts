@@ -20,7 +20,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { savedCostFilters } from "../db/schema";
-import type { CostFilter } from "../clickhouse/cost-readers";
+import type { CostFilter } from "../analytics/cost-readers";
 
 /** A `savedFilterId` that does not resolve to a live filter in the org. */
 export class SavedCostFilterResolutionError extends Error {

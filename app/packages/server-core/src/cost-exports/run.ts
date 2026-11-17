@@ -38,8 +38,7 @@ import type {
   CostExportRunResult,
 } from "@infrawrench/client-core";
 import { focusVersionOfSchema } from "@infrawrench/client-core";
-import { getCostCoverage } from "../clickhouse/cost-readers";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { getCostCoverage } from "../analytics/cost-readers";
 import { uploadCostExportObject, CostExportUploadError } from "./destinations";
 import { nextCostExportRunAt, periodsToExport, type CostExportCadence } from "./periods";
 import {
@@ -78,7 +77,6 @@ import {
  * empty column rather than a fake date.
  */
 export async function costCollectionWatermark(organizationId: string): Promise<string> {
-  if (!isClickHouseConfigured()) return "";
   const coverage = await getCostCoverage(organizationId);
   let watermark: string | null = null;
   for (const { lastDay } of coverage.values()) {
@@ -281,9 +279,6 @@ export async function runCostExport(
       throw new CostExportUploadError(
         "No destination credentials are stored (or they could not be decrypted). Re-enter them in Settings → Cost exports.",
       );
-    }
-    if (!isClickHouseConfigured()) {
-      throw new CostExportUploadError("Cost storage is not configured on this deployment");
     }
 
     watermark = await costCollectionWatermark(row.organizationId);

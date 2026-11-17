@@ -10,7 +10,7 @@
  *
  * Both sides of every ratio here are **amortized** money, and the callers that
  * aggregate the cells are responsible for that (see
- * `../clickhouse/commitment-readers.ts`). Cash is not an alternative view: AWS
+ * `../analytics/commitment-readers.ts`). Cash is not an alternative view: AWS
  * prices RI- and SP-covered usage at an unblended rate of zero and Azure prices
  * reservation-covered usage at an `EffectivePrice` of zero, because the money
  * left the account when the commitment was bought. Covered *cash* spend is

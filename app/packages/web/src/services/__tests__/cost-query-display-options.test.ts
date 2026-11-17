@@ -3,14 +3,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * `runCostQuery`'s display options: the measure (cost / usage / count), the
  * quarterly and hourly bins, and the cumulative toggle. Everything stateful is
- * mocked; what is asserted is what reaches the ClickHouse readers and the
+ * mocked; what is asserted is what reaches the cost readers and the
  * shape that comes back.
  */
 
 const mockQueryCosts = vi.fn();
 const mockQueryCostCounts = vi.fn();
 const mockUsageUnits = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   COST_STORE_GRANULARITY: "daily",
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   queryCostCounts: (...args: unknown[]) => mockQueryCostCounts(...args),

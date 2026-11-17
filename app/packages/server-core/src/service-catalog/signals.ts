@@ -132,7 +132,7 @@ export class ServiceSignals {
    */
   resourceSpend(): Promise<Map<string, ResourceSpend[]> | null> {
     return this.once("spend", async () => {
-      const { getResourceCostTotals } = await import("../clickhouse/cost-readers");
+      const { getResourceCostTotals } = await import("../analytics/cost-readers");
       const { addDays, isoDay } = await import("../cost/dates");
       const to = isoDay(new Date(this.now));
       const from = addDays(to, -(SERVICE_COST_WINDOW_DAYS - 1));

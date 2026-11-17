@@ -92,7 +92,7 @@ export interface GraphMetricSeries {
  * sandbox can never name an org.
  */
 export interface GraphHost {
-  /** Org-scoped cost query (ClickHouse on the cloud). */
+  /** Org-scoped cost query (`cost_daily` on the cloud). */
   queryCosts(query: GraphCostQuery): Promise<GraphCostResult>;
   /**
    * The org's estimated carbon (the Costs page's figure). Optional: a host

@@ -32,7 +32,7 @@ import {
   type SizeOption,
 } from "@infrawrench/plugin-base";
 
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { addDays, isoDay } from "../cost/dates";
 import { db } from "../db/client";
 import { resources } from "../db/schema";

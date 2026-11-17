@@ -7,18 +7,36 @@
  * unattributed buckets to add up, and the pair list must exclude them to be a
  * list of pairs.
  *
- * Every read is `FINAL`. The table is a ReplacingMergeTree and a re-collected
- * day writes a newer `ingested_at` for the same key; without `FINAL` a day
- * collected twice reads as double its traffic until the parts happen to merge.
+ * A re-collected day replaces its rows in place (the writer upserts on the
+ * table's key), so nothing here has to pick a version: a day collected twice
+ * reads once.
  */
-import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { strictlyVisibleAccountIds } from "../cost/visibility-context";
-import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { getAnalyticsDb } from "./client";
 import { networkFlowDaily as flow } from "./schema";
 
-async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await build(getClickHouseDb());
+/**
+ * A value of a column that is constant, or near enough, within the group: a
+ * pair's endpoints and labels, an account's currency. `max` rather than `min`
+ * so a label that was empty on one day and known on another reads as known.
+ */
+export function anyValue(column: SQLWrapper): SQL<string> {
+  return sql<string>`max(${column})`;
 }
 
 export interface NetworkFlowRange {
@@ -62,7 +80,7 @@ export function flowOrgCondition(organizationId: string) {
   const orgCond = eq(flow.organization_id, organizationId);
   const visible = strictlyVisibleAccountIds(organizationId);
   if (!visible) return orgCond;
-  if (visible.size === 0) return and(orgCond, sql`0`);
+  if (visible.size === 0) return and(orgCond, sql`false`);
   return and(orgCond, inArray(flow.account_id, [...visible]));
 }
 
@@ -107,23 +125,20 @@ export async function readNetworkFlowScopeTotals(
   range: NetworkFlowRange,
   filters: NetworkFlowFilters = {},
 ): Promise<NetworkFlowScopeTotal[]> {
-  const rows = await query((db) =>
-    db
-      .select({
-        scope: flow.scope,
-        direction: flow.direction,
-        attribution: flow.attribution,
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
-        currency: sql<string>`any(${flow.currency})`.as("currency"),
-        pair_count: sql<string>`count()`.as("pair_count"),
-      })
-      .from(flow)
-      .final()
-      .where(whereClause(organizationId, range, filters))
-      .groupBy(flow.scope, flow.direction, flow.attribution)
-      .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`)),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      scope: flow.scope,
+      direction: flow.direction,
+      attribution: flow.attribution,
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+      currency: anyValue(flow.currency).as("currency"),
+      pair_count: sql<string>`count(*)`.as("pair_count"),
+    })
+    .from(flow)
+    .where(whereClause(organizationId, range, filters))
+    .groupBy(flow.scope, flow.direction, flow.attribution)
+    .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`));
   return rows.map((r) => ({
     scope: r.scope,
     direction: r.direction,
@@ -179,45 +194,38 @@ export async function readTopNetworkFlows(
   filters: NetworkFlowFilters = {},
   limit = 50,
 ): Promise<NetworkFlowPair[]> {
-  const rows = await query((db) =>
-    db
-      .select({
-        src_ref: sql<string>`any(${flow.src_ref})`.as("src_ref"),
-        src_label: sql<string>`any(${flow.src_label})`.as("src_label"),
-        src_zone: sql<string>`any(${flow.src_zone})`.as("src_zone"),
-        src_region: sql<string>`any(${flow.src_region})`.as("src_region"),
-        src_service: sql<string>`any(${flow.src_service})`.as("src_service"),
-        src_resource_type_id: sql<string>`any(${flow.src_resource_type_id})`.as(
-          "src_resource_type_id",
-        ),
-        dst_ref: sql<string>`any(${flow.dst_ref})`.as("dst_ref"),
-        dst_label: sql<string>`any(${flow.dst_label})`.as("dst_label"),
-        dst_zone: sql<string>`any(${flow.dst_zone})`.as("dst_zone"),
-        dst_region: sql<string>`any(${flow.dst_region})`.as("dst_region"),
-        dst_service: sql<string>`any(${flow.dst_service})`.as("dst_service"),
-        dst_resource_type_id: sql<string>`any(${flow.dst_resource_type_id})`.as(
-          "dst_resource_type_id",
-        ),
-        scope: flow.scope,
-        direction: flow.direction,
-        attribution: sql<string>`any(${flow.attribution})`.as("attribution"),
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        packets: sql<string>`sum(${flow.packets})`.as("packets"),
-        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
-        currency: sql<string>`any(${flow.currency})`.as("currency"),
-        account_id: sql<string>`any(${flow.account_id})`.as("account_id"),
-        plugin_id: sql<string>`any(${flow.plugin_id})`.as("plugin_id"),
-        days: sql<string>`uniqExact(${flow.day})`.as("days"),
-      })
-      .from(flow)
-      .final()
-      .where(
-        and(whereClause(organizationId, range, filters), sql`${flow.attribution} != 'truncated'`),
-      )
-      .groupBy(flow.scope, flow.direction, flow.pair_hash)
-      .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`))
-      .limit(Math.max(1, Math.min(500, Math.floor(limit)))),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      src_ref: anyValue(flow.src_ref).as("src_ref"),
+      src_label: anyValue(flow.src_label).as("src_label"),
+      src_zone: anyValue(flow.src_zone).as("src_zone"),
+      src_region: anyValue(flow.src_region).as("src_region"),
+      src_service: anyValue(flow.src_service).as("src_service"),
+      src_resource_type_id: anyValue(flow.src_resource_type_id).as("src_resource_type_id"),
+      dst_ref: anyValue(flow.dst_ref).as("dst_ref"),
+      dst_label: anyValue(flow.dst_label).as("dst_label"),
+      dst_zone: anyValue(flow.dst_zone).as("dst_zone"),
+      dst_region: anyValue(flow.dst_region).as("dst_region"),
+      dst_service: anyValue(flow.dst_service).as("dst_service"),
+      dst_resource_type_id: anyValue(flow.dst_resource_type_id).as("dst_resource_type_id"),
+      scope: flow.scope,
+      direction: flow.direction,
+      attribution: anyValue(flow.attribution).as("attribution"),
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      packets: sql<string>`sum(${flow.packets})`.as("packets"),
+      estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+      currency: anyValue(flow.currency).as("currency"),
+      account_id: anyValue(flow.account_id).as("account_id"),
+      plugin_id: anyValue(flow.plugin_id).as("plugin_id"),
+      days: sql<string>`count(DISTINCT ${flow.day})`.as("days"),
+    })
+    .from(flow)
+    .where(
+      and(whereClause(organizationId, range, filters), sql`${flow.attribution} != 'truncated'`),
+    )
+    .groupBy(flow.scope, flow.direction, flow.pair_hash)
+    .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`))
+    .limit(Math.max(1, Math.min(500, Math.floor(limit))));
   return rows.map((r) => ({
     ...r,
     bytes: Number(r.bytes),
@@ -250,27 +258,24 @@ export async function readObservedEgress(
   excludeAccountId: string,
 ): Promise<ObservedEgressRow[]> {
   if (refs.length === 0) return [];
-  const rows = await query((db) =>
-    db
-      .select({
-        ref: flow.src_ref,
-        scope: flow.scope,
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-      })
-      .from(flow)
-      .final()
-      .where(
-        and(
-          flowOrgCondition(organizationId),
-          eq(flow.day, day),
-          eq(flow.direction, "egress"),
-          ne(flow.account_id, excludeAccountId),
-          inArray(flow.src_ref, refs.slice(0, 5000)),
-          sql`${flow.attribution} != 'truncated'`,
-        ),
-      )
-      .groupBy(flow.src_ref, flow.scope),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      ref: flow.src_ref,
+      scope: flow.scope,
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+    })
+    .from(flow)
+    .where(
+      and(
+        flowOrgCondition(organizationId),
+        eq(flow.day, day),
+        eq(flow.direction, "egress"),
+        ne(flow.account_id, excludeAccountId),
+        inArray(flow.src_ref, refs.slice(0, 5000)),
+        sql`${flow.attribution} != 'truncated'`,
+      ),
+    )
+    .groupBy(flow.src_ref, flow.scope);
   return rows.map((r) => ({ ref: r.ref, scope: r.scope, bytes: Number(r.bytes) }));
 }
 
@@ -300,32 +305,29 @@ export async function readNetworkFlowSourceDays(
   accountId: string,
   range: NetworkFlowRange,
 ): Promise<NetworkFlowSourceDayRow[]> {
-  const rows = await query((db) =>
-    db
-      .select({
-        day: sql<string>`toString(${flow.day})`.as("day"),
-        src_ref: flow.src_ref,
-        src_label: sql<string>`any(${flow.src_label})`.as("src_label"),
-        scope: flow.scope,
-        method: flow.method,
-        attribution: sql<string>`any(${flow.attribution})`.as("attribution"),
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
-        currency: sql<string>`any(${flow.currency})`.as("currency"),
-      })
-      .from(flow)
-      .final()
-      .where(
-        and(
-          flowOrgCondition(organizationId),
-          eq(flow.account_id, accountId),
-          gte(flow.day, range.from),
-          lte(flow.day, range.to),
-        ),
-      )
-      .groupBy(sql`day`, flow.src_ref, flow.scope, flow.method)
-      .orderBy(asc(sql`day`)),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      day: sql<string>`to_char(${flow.day}, 'YYYY-MM-DD')`.as("day"),
+      src_ref: flow.src_ref,
+      src_label: anyValue(flow.src_label).as("src_label"),
+      scope: flow.scope,
+      method: flow.method,
+      attribution: anyValue(flow.attribution).as("attribution"),
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+      currency: anyValue(flow.currency).as("currency"),
+    })
+    .from(flow)
+    .where(
+      and(
+        flowOrgCondition(organizationId),
+        eq(flow.account_id, accountId),
+        gte(flow.day, range.from),
+        lte(flow.day, range.to),
+      ),
+    )
+    .groupBy(flow.day, flow.src_ref, flow.scope, flow.method)
+    .orderBy(asc(flow.day));
   return rows.map((r) => ({
     ...r,
     bytes: Number(r.bytes),
@@ -346,20 +348,17 @@ export async function readNetworkFlowDaily(
   range: NetworkFlowRange,
   filters: NetworkFlowFilters = {},
 ): Promise<NetworkFlowDayPoint[]> {
-  const rows = await query((db) =>
-    db
-      .select({
-        day: sql<string>`toString(${flow.day})`.as("day"),
-        scope: flow.scope,
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
-      })
-      .from(flow)
-      .final()
-      .where(whereClause(organizationId, range, filters))
-      .groupBy(sql`day`, flow.scope)
-      .orderBy(asc(sql`day`), desc(sql`estimated_cost`)),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      day: sql<string>`to_char(${flow.day}, 'YYYY-MM-DD')`.as("day"),
+      scope: flow.scope,
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+    })
+    .from(flow)
+    .where(whereClause(organizationId, range, filters))
+    .groupBy(flow.day, flow.scope)
+    .orderBy(asc(flow.day), desc(sql`estimated_cost`));
   return rows.map((r) => ({
     day: r.day,
     scope: r.scope,

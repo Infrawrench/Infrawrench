@@ -18,14 +18,14 @@ import { evaluateMetricAlertRule, type MetricAlertRuleRow } from "./eval";
 
 /**
  * Must exceed the worst-case duration of one rule's evaluation (a Postgres
- * selector read plus one bounded ClickHouse read) with a wide margin.
+ * selector read plus one bounded metric read) with a wide margin.
  */
 export const METRIC_ALERT_LEASE_MS = 5 * 60 * 1000;
 
 /**
  * How often each rule re-evaluates. Metrics land on the resource poll cadence
  * (seconds), so a minute keeps firing latency well inside the shortest
- * allowed window (5 minutes) without hammering ClickHouse.
+ * allowed window (5 minutes) without hammering the metric tables.
  */
 export const METRIC_ALERT_EVAL_INTERVAL_MS = 60 * 1000;
 

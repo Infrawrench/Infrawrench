@@ -9,7 +9,7 @@ let inventoryRows: Array<{
   outputsJson: Record<string, unknown>;
 }> = [];
 
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   getCostTagKeys: (...a: unknown[]) => mockGetCostTagKeys(...a),
   getCostTagKeyUsage: (...a: unknown[]) => mockGetCostTagKeyUsage(...a),
 }));

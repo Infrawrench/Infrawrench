@@ -4,7 +4,7 @@
  * reports).
  *
  * One table. Like query monitors, the time series is deliberately **not**
- * stored here: the events an SLO counts are already in ClickHouse's 1m rollup,
+ * stored here: the events an SLO counts are already in the `metric_points_1m` rollup,
  * and the evaluator and the detail view both read them from there. What is
  * kept is the last snapshot (SLI, budget, burn rates), which is what the list
  * renders, what the wallboard reads, and the claim column the alert

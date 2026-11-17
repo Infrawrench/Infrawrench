@@ -17,7 +17,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { aiAttributionDimensions, aiRequestSources } from "../db/schema";
-import { insertAiRequestAggregates } from "../clickhouse/ai-attribution-store";
+import { insertAiRequestAggregates } from "../analytics/ai-attribution-store";
 import { loadAccountClient } from "../sync-resources";
 import { fetchLiteLlmDay } from "./litellm";
 import { loadAiSourceApiKey, type AiRequestSourceRow } from "./store";

@@ -1,7 +1,7 @@
 /**
  * Identifiers that mark a cost row as workflow-reported. Deliberately db-free
  * (like `cost/dates.ts`) so read paths and tests can label these rows without
- * pulling in the writer's database and ClickHouse imports.
+ * pulling in the writer's database imports.
  *
  * See `cost/workflow-costs.ts` for what writes them and why the reserved tag
  * matters.

@@ -129,7 +129,7 @@ export function ChangesPanel({
    *
    * A separate effect from the feed rather than part of it: the feed must
    * render immediately whether or not spend can be read, and a `costs:read`
-   * failure (a member without the scope, an unconfigured ClickHouse) has to
+   * failure (a member without the scope, a failed cost read) has to
    * cost the page its cost column and nothing else.
    */
   useEffect(() => {

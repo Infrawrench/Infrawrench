@@ -2,8 +2,8 @@
  * Superseded-row reconciliation: the mechanism that replaced a documented
  * `ALTER TABLE cost_daily DELETE` in two plugins' upgrade notes.
  *
- * A ReplacingMergeTree only replaces a row something rewrites, and `cost_daily`
- * folds charge type and commitment id into `tags_hash`, so the day a plugin
+ * An upsert only replaces a row something rewrites, and `cost_daily` folds
+ * charge type and commitment id into `tags_hash`, so the day a plugin
  * starts stamping charge types, a cell whose spend was entirely non-usage moves
  * to a new key and its old row lingers, double-counting. The same shape recurs
  * whenever a provider restates a cell away or a label changes, which is why it
@@ -15,9 +15,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { hashTags, toCostDailyRows, type CostDailyRow } from "../clickhouse/cost-writers";
-import { supersededTombstones, type StoredCostRowKey } from "../clickhouse/cost-reconcile";
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
+import { hashTags, toCostDailyRows, type CostDailyRow } from "../analytics/cost-writers";
+import { supersededTombstones, type StoredCostRowKey } from "../analytics/cost-reconcile";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 const META = { organizationId: "org-1", accountId: "acc-1", pluginId: "azure" };
 
@@ -408,24 +408,22 @@ describe("getStoredCostRowKeys excludes rows that are already zero", () => {
     // not written) and each one re-inserts an identical zero row. Idempotent,
     // but unbounded write amplification against the table whose whole point is
     // retaining years of daily history.
-    const ch = fakeClickHouse();
-    vi.doMock("../clickhouse/client", () => ({
-      isClickHouseConfigured: () => true,
-      getClickHouseDb: () => ch.db,
-      getClickHouseClient: () => ch.client,
-    }));
+    const pg = fakePostgres();
+    vi.doMock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
     vi.resetModules();
-    const { getStoredCostRowKeys } = await import("../clickhouse/cost-reconcile");
+    const { getStoredCostRowKeys } = await import("../analytics/cost-reconcile");
 
     await getStoredCostRowKeys(META, "2026-07-01", "2026-07-31");
 
-    expect(ch.lastQuery()).toContain(
-      "(`cost_daily`.`amount` != 0 OR `cost_daily`.`amortized_amount` != 0)",
-    );
-    // …and only through `FINAL`, so an un-merged part cannot yield one
-    // tombstone per stored version of the same key.
-    expect(ch.lastQuery()).toContain("from `cost_daily` final");
-    vi.doUnmock("../clickhouse/client");
+    const { sql, params } = pg.lastQuery();
+    expect(sql).toContain('("cost_daily"."amount" != 0 OR "cost_daily"."amortized_amount" != 0)');
+    // …and only this account's own collector rows over the window: guard 3
+    // starts here, before supersededTombstones ever sees a pushed row.
+    expect(sql).toContain('"cost_daily"."organization_id" = $1');
+    expect(sql).toContain('"cost_daily"."account_id" = $2');
+    expect(sql).toContain('"cost_daily"."plugin_id" = $3');
+    expect(params).toEqual(["org-1", "acc-1", "azure", "2026-07-01", "2026-07-31"]);
+    vi.doUnmock("../analytics/client");
     vi.resetModules();
   });
 });

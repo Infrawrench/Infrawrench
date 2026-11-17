@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockQueryCosts = vi.fn();
 const mockQueryCostCounts = vi.fn();
 const mockUsageUnits = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   COST_STORE_GRANULARITY: "daily",
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   queryCostCounts: (...args: unknown[]) => mockQueryCostCounts(...args),

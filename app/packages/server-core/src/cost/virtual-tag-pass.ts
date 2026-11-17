@@ -30,7 +30,7 @@ import {
   type VirtualTagStats,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { getOrgCostDayRange, getVirtualTagStats } from "../clickhouse/cost-readers";
+import { getOrgCostDayRange, getVirtualTagStats } from "../analytics/cost-readers";
 import {
   VirtualTagError,
   assertVirtualTagReferencesSound,

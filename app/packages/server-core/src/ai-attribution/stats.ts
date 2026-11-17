@@ -20,7 +20,7 @@ import {
   type AiAttributionDayProviderStats,
   type AiAttributionDaySourceStats,
 } from "../db/schema";
-import { querySpendByCallerTag } from "../clickhouse/cost-readers";
+import { querySpendByCallerTag } from "../analytics/cost-readers";
 import { isCostScoped } from "../cost/visibility-context";
 
 export interface DayRecord {

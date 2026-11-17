@@ -1,5 +1,5 @@
 /**
- * ClickHouse aggregates feeding the commitment modules
+ * `cost_daily` aggregates feeding the commitment modules
  * (`../commitments/{coverage,utilization,planner}.ts`: all pure; every
  * query here exists to hand them their inputs and nothing else).
  *
@@ -57,14 +57,12 @@
  * stamp, not a claim.
  */
 import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
-import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { getAnalyticsDb } from "./client";
 import { amortizedAmountExpr, costDailyOrgCondition, dayRange } from "./cost-readers";
 import { costDaily } from "./schema";
 
-async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await build(getClickHouseDb());
-}
+/** `cost_daily.day` as its `YYYY-MM-DD` text. */
+const dayText = sql<string>`to_char(${costDaily.day}, 'YYYY-MM-DD')`;
 
 /** The charge type a provider stamps on consumption a commitment covered. */
 const COVERED_CHARGE_TYPE = "commitment_covered_usage";
@@ -132,37 +130,39 @@ export async function getCommitmentCoverageCells(
 ): Promise<CoverageCellRow[]> {
   if (accountIds.length === 0) return [];
   const money = amortizedAmountExpr();
-  const rows = await query((db) =>
-    db
-      .select({
-        account_id: costDaily.account_id,
-        plugin_id: costDaily.plugin_id,
-        service: costDaily.service,
-        region: costDaily.region,
-        currency: costDaily.currency,
-        covered_amount: sql<number>`sumIf(${money}, ${coveredCondition()})`.as("covered_amount"),
-        uncovered_amount: sql<number>`sumIf(${money}, ${uncoveredCondition()})`.as(
-          "uncovered_amount",
-        ),
-      })
-      .from(costDaily)
-      .final()
-      .where(
-        and(
-          costDailyOrgCondition(organizationId),
-          dayRange(from, to),
-          consumptionCondition(),
-          inArray(costDaily.account_id, accountIds),
-        ),
-      )
-      .groupBy(
-        costDaily.account_id,
-        costDaily.plugin_id,
-        costDaily.service,
-        costDaily.region,
-        costDaily.currency,
+  // A filtered sum of no rows is NULL, so each side is coalesced to the zero
+  // the pure module expects for a cell with nothing on that side.
+  const rows = await getAnalyticsDb()
+    .select({
+      account_id: costDaily.account_id,
+      plugin_id: costDaily.plugin_id,
+      service: costDaily.service,
+      region: costDaily.region,
+      currency: costDaily.currency,
+      covered_amount: sql<number>`coalesce(sum(${money}) FILTER (WHERE ${coveredCondition()}), 0)`
+        .mapWith(Number)
+        .as("covered_amount"),
+      uncovered_amount:
+        sql<number>`coalesce(sum(${money}) FILTER (WHERE ${uncoveredCondition()}), 0)`
+          .mapWith(Number)
+          .as("uncovered_amount"),
+    })
+    .from(costDaily)
+    .where(
+      and(
+        costDailyOrgCondition(organizationId),
+        dayRange(from, to),
+        consumptionCondition(),
+        inArray(costDaily.account_id, accountIds),
       ),
-  );
+    )
+    .groupBy(
+      costDaily.account_id,
+      costDaily.plugin_id,
+      costDaily.service,
+      costDaily.region,
+      costDaily.currency,
+    );
   return rows.map((r) => ({
     ...r,
     covered_amount: Number(r.covered_amount),
@@ -183,21 +183,16 @@ export async function getAccountDataDays(
   accountIds: string[],
 ): Promise<Map<string, Set<string>>> {
   if (accountIds.length === 0) return new Map();
-  const rows = await query((db) =>
-    db
-      .selectDistinct({
-        account_id: costDaily.account_id,
-        day: sql<string>`toString(${costDaily.day})`.as("day"),
-      })
-      .from(costDaily)
-      .where(
-        and(
-          costDailyOrgCondition(organizationId),
-          dayRange(from, to),
-          inArray(costDaily.account_id, accountIds),
-        ),
+  const rows = await getAnalyticsDb()
+    .selectDistinct({ account_id: costDaily.account_id, day: dayText.as("day") })
+    .from(costDaily)
+    .where(
+      and(
+        costDailyOrgCondition(organizationId),
+        dayRange(from, to),
+        inArray(costDaily.account_id, accountIds),
       ),
-  );
+    );
   const result = new Map<string, Set<string>>();
   for (const r of rows) {
     let set = result.get(r.account_id);
@@ -232,27 +227,24 @@ export async function getCommitmentDeliveredTotals(
   accountIds: string[],
 ): Promise<CommitmentDeliveredRow[]> {
   if (accountIds.length === 0) return [];
-  const rows = await query((db) =>
-    db
-      .select({
-        account_id: costDaily.account_id,
-        commitment_id: costDaily.commitment_id,
-        currency: costDaily.currency,
-        amount: sql<number>`sum(${amortizedAmountExpr()})`.as("amount"),
-      })
-      .from(costDaily)
-      .final()
-      .where(
-        and(
-          costDailyOrgCondition(organizationId),
-          dayRange(from, to),
-          consumptionCondition(),
-          ne(costDaily.commitment_id, ""),
-          inArray(costDaily.account_id, accountIds),
-        ),
-      )
-      .groupBy(costDaily.account_id, costDaily.commitment_id, costDaily.currency),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      account_id: costDaily.account_id,
+      commitment_id: costDaily.commitment_id,
+      currency: costDaily.currency,
+      amount: sql<number>`sum(${amortizedAmountExpr()})`.mapWith(Number).as("amount"),
+    })
+    .from(costDaily)
+    .where(
+      and(
+        costDailyOrgCondition(organizationId),
+        dayRange(from, to),
+        consumptionCondition(),
+        ne(costDaily.commitment_id, ""),
+        inArray(costDaily.account_id, accountIds),
+      ),
+    )
+    .groupBy(costDaily.account_id, costDaily.commitment_id, costDaily.currency);
   return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
 }
 
@@ -284,34 +276,31 @@ export async function getUncoveredDailySpend(
   accountIds: string[],
 ): Promise<UncoveredDailyRow[]> {
   if (accountIds.length === 0) return [];
-  const rows = await query((db) =>
-    db
-      .select({
-        plugin_id: costDaily.plugin_id,
-        service: costDaily.service,
-        region: costDaily.region,
-        currency: costDaily.currency,
-        day: sql<string>`toString(${costDaily.day})`.as("day"),
-        amount: sql<number>`sum(${amortizedAmountExpr()})`.as("amount"),
-      })
-      .from(costDaily)
-      .final()
-      .where(
-        and(
-          costDailyOrgCondition(organizationId),
-          dayRange(from, to),
-          consumptionCondition(),
-          uncoveredCondition(),
-          inArray(costDaily.account_id, accountIds),
-        ),
-      )
-      .groupBy(
-        costDaily.plugin_id,
-        costDaily.service,
-        costDaily.region,
-        costDaily.currency,
-        sql`day`,
+  const rows = await getAnalyticsDb()
+    .select({
+      plugin_id: costDaily.plugin_id,
+      service: costDaily.service,
+      region: costDaily.region,
+      currency: costDaily.currency,
+      day: dayText.as("day"),
+      amount: sql<number>`sum(${amortizedAmountExpr()})`.mapWith(Number).as("amount"),
+    })
+    .from(costDaily)
+    .where(
+      and(
+        costDailyOrgCondition(organizationId),
+        dayRange(from, to),
+        consumptionCondition(),
+        uncoveredCondition(),
+        inArray(costDaily.account_id, accountIds),
       ),
-  );
+    )
+    .groupBy(
+      costDaily.plugin_id,
+      costDaily.service,
+      costDaily.region,
+      costDaily.currency,
+      costDaily.day,
+    );
   return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
 }

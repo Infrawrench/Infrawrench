@@ -24,7 +24,7 @@ import {
 import {
   getCostTagKeys,
   getCostTagKeyUsage,
-} from "@infrawrench/server-core/clickhouse/cost-readers";
+} from "@infrawrench/server-core/analytics/cost-readers";
 import { getOrgTagKeySettings } from "@infrawrench/server-core/cost/tag-key-settings";
 import { addDays, isoDay } from "@infrawrench/server-core/cost/dates";
 import { db } from "../db/client";

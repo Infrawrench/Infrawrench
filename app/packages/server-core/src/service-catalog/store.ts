@@ -222,7 +222,7 @@ export interface ResolvedMembership {
  * tag is computed from billing data, so this is the only way to ask it about a
  * resource; a resource without per-resource cost rows can never match.
  *
- * Failure (ClickHouse down, the tag deleted) matches nothing rather than
+ * Failure (the cost read failing, the tag deleted) matches nothing rather than
  * throwing: membership is read on every service page, and a billing outage
  * must not take the page down with it.
  */
@@ -233,7 +233,7 @@ async function virtualTagMatches(
   const out = new Set<string>();
   if (!rule.key || !rule.value) return out;
   try {
-    const { queryCosts } = await import("../clickhouse/cost-readers");
+    const { queryCosts } = await import("../analytics/cost-readers");
     const to = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
     const groups = await queryCosts(organizationId, {

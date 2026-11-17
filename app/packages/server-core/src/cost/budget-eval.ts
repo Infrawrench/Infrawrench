@@ -43,7 +43,7 @@ import {
   queryUsageDaily,
   type CostBasis,
   type CostFilter,
-} from "../clickhouse/cost-readers";
+} from "../analytics/cost-readers";
 import { billingAdjustmentsAreEmpty } from "@infrawrench/client-core";
 import { resolveBillingAdjustments } from "./billing-rules";
 import { convertGroups } from "./currency-convert";

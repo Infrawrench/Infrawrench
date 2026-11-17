@@ -25,7 +25,7 @@ vi.mock("@infrawrench/server-core/cost/allocation", () => ({
   listCostCentres: (...args: unknown[]) => mockListCostCentres(...args),
   listAllocationRules: (...args: unknown[]) => mockListAllocationRules(...args),
 }));
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   getShowbackSpend: (...args: unknown[]) => mockGetShowbackSpend(...args),
 }));
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({

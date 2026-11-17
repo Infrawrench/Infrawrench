@@ -13,7 +13,7 @@ import type { CostExportRecord } from "../cost-exports/store";
  *
  * Mocked at the module boundary in the style of `metric-alert-pass.test.ts`:
  * the drizzle `db` is a capture object, and everything that would reach
- * ClickHouse or a bucket is replaced.
+ * `cost_daily` or a bucket is replaced.
  */
 
 /** Every `db.update(...).set(values)` payload, in order. */
@@ -47,9 +47,7 @@ vi.mock("../encryption", () => ({
   decrypt: async () => JSON.stringify({ kind: "http", url: "https://wh.example.com/ingest?sig=x" }),
 }));
 
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured: () => true }));
-
-vi.mock("../clickhouse/cost-readers", () => ({
+vi.mock("../analytics/cost-readers", () => ({
   getCostCoverage: async () => new Map([["acct-1", { lastDay: "2026-08-06" }]]),
 }));
 

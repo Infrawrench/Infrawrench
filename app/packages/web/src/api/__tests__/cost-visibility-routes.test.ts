@@ -1,7 +1,7 @@
 /**
  * Every cost route honours the caller's cost visibility scope.
  *
- * The scope is applied by the ClickHouse readers (server-core
+ * The scope is applied by the cost readers (server-core
  * `cost-visibility-sql.test.ts` proves every reader does), so what a route
  * has to get right is *running inside* the caller's scope. This suite
  * enumerates the HttpApi domains that reach cost data and proves each one is
@@ -41,9 +41,9 @@ const COST_DATA = [
   /services\/custom-graph/,
   /services\/moment/,
   /services\/blast-radius/,
-  /clickhouse\/cost-readers/,
-  /clickhouse\/commitment-readers/,
-  /clickhouse\/network-flow-readers/,
+  /analytics\/cost-readers/,
+  /analytics\/commitment-readers/,
+  /analytics\/network-flow-readers/,
   /credits\/feed/,
   /commitments\/feed/,
   /savings\/realized/,

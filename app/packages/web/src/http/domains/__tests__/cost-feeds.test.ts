@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi, type TestCaller } from "@/http/testing";
 
-// The feeds reach ClickHouse, Postgres and plugin clients; these tests are
+// The feeds reach Postgres and plugin clients; these tests are
 // about the transport of the read-only feeds moved together: their gates,
 // what each passes to its service, and the sentences of their refusals.
 const mockOrphans = vi.fn();

@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Validation and restatement for business-metric values.
  *
- * The invariant worth protecting is the same one `cost-ingest.ts` protects, by
- * a different mechanism: **re-reporting a day replaces it rather than adding to
- * it**. For cost rows that falls out of the ReplacingMergeTree key; here it is a
- * `(metric_id, day)` unique index and an `ON CONFLICT DO UPDATE`. An ingest
+ * The invariant worth protecting is the same one `cost-ingest.ts` protects, on
+ * a different key: **re-reporting a day replaces it rather than adding to
+ * it**. For cost rows that is an upsert on the `cost_daily` primary key; here
+ * it is one on the `(metric_id, day)` unique index. An ingest
  * that accumulated would double every number the first time a nightly job
  * retried, and nothing about the resulting chart would look wrong, which is
  * exactly why it is asserted rather than assumed.

@@ -1,74 +1,53 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
- * The readers run against a real Drizzle database over a fake driver, so the
- * SQL these assertions see is the SQL ClickHouse would get. Rows are given as
- * objects whose keys are written **in each query's projection order**: see
- * `helpers/fake-clickhouse.ts`.
+ * The readers run against a real Drizzle database over a recording driver, so
+ * the SQL these assertions see is the SQL Postgres would get. Rows are given
+ * as objects whose keys are written **in each query's projection order**: see
+ * `helpers/fake-postgres.ts`. `db/analytics.test.ts` runs the same readers
+ * against a real server.
  */
-const ch = fakeClickHouse();
-const isConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({
-  isClickHouseConfigured: () => isConfigured(),
-  getClickHouseDb: () => ch.db,
-  getClickHouseClient: () => ch.client,
-}));
+const pg = fakePostgres();
+vi.mock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
 
-let readers: typeof import("../clickhouse/readers");
+const readers = await import("../analytics/readers");
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.clearAllMocks();
-  ch.reset();
-  isConfigured.mockReturnValue(true);
-  readers = await import("../clickhouse/readers");
-});
-
-describe("guard: not configured", () => {
-  it("getLatestStats returns null", async () => {
-    isConfigured.mockReturnValue(false);
-    expect(await readers.getLatestStats("o", "r")).toBeNull();
-    expect(ch.queries).toEqual([]);
-  });
-
-  it("getLatestMetricsBatch returns an empty map", async () => {
-    isConfigured.mockReturnValue(false);
-    const out = await readers.getLatestMetricsBatch("o", ["r"]);
-    expect(out.size).toBe(0);
-  });
+  pg.reset();
 });
 
 describe("getLatestStats", () => {
   it("parses the stats_json of the newest row", async () => {
-    ch.setRows([{ stats_json: JSON.stringify([{ label: "L", value: "1" }]) }]);
+    pg.setRows([{ stats_json: JSON.stringify([{ label: "L", value: "1" }]) }]);
     const out = await readers.getLatestStats("o", "r");
     expect(out).toEqual([{ label: "L", value: "1" }]);
+    expect(pg.lastQuery().sql).toContain('order by "dashboard_stats"."ts" desc limit');
   });
 
   it("returns null when no rows", async () => {
-    ch.setRows([]);
+    pg.setRows([]);
     expect(await readers.getLatestStats("o", "r")).toBeNull();
   });
 
   it("returns null on malformed JSON", async () => {
-    ch.setRows([{ stats_json: "{not json" }]);
+    pg.setRows([{ stats_json: "{not json" }]);
     expect(await readers.getLatestStats("o", "r")).toBeNull();
   });
 
   it("propagates a failing query instead of reading as 'no data'", async () => {
-    vi.spyOn(ch.client, "query").mockRejectedValueOnce(new Error("boom"));
-    // Drizzle re-throws with the statement attached; the driver's error is the
-    // cause. What matters is that it throws at all rather than answering "this
+    // A null row makes the decode throw, which stands in for a driver error.
+    // What matters is that it throws at all rather than answering "this
     // resource has no data", which is how an outage renders as an empty chart.
-    const failure = await readers.getLatestStats("o", "r").catch((err: unknown) => err);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as { cause?: unknown }).cause).toMatchObject({ message: "boom" });
+    pg.queueRows([null as never]);
+    await expect(readers.getLatestStats("o", "r")).rejects.toBeInstanceOf(Error);
   });
 });
 
 describe("getLatestMetrics", () => {
   it("groups rows back into per-series shape", async () => {
-    ch.setRows([
+    pg.setRows([
       { series_label: "cpu", unit: "%", ts_ms: 0, value: 1 },
       { series_label: "cpu", unit: "%", ts_ms: 1000, value: 2 },
       { series_label: "mem", unit: "", ts_ms: 0, value: 9 },
@@ -86,8 +65,17 @@ describe("getLatestMetrics", () => {
     expect(mem.unit).toBeUndefined(); // empty unit omitted
   });
 
+  it("reads the last hour of raw points with millisecond timestamps", async () => {
+    pg.setRows([]);
+    await readers.getLatestMetrics("o", "r");
+    const { sql } = pg.lastQuery();
+    expect(sql).toContain('from "metric_points_raw"');
+    expect(sql).toContain("now() - interval '1 hour'");
+    expect(sql).toContain("(extract(epoch from");
+  });
+
   it("returns null when no rows", async () => {
-    ch.setRows([]);
+    pg.setRows([]);
     expect(await readers.getLatestMetrics("o", "r")).toBeNull();
   });
 });
@@ -96,11 +84,11 @@ describe("getLatestMetricsBatch", () => {
   it("returns empty map for empty ids without querying", async () => {
     const out = await readers.getLatestMetricsBatch("o", []);
     expect(out.size).toBe(0);
-    expect(ch.queries).toEqual([]);
+    expect(pg.queries).toEqual([]);
   });
 
   it("keys series by resource id", async () => {
-    ch.setRows([
+    pg.setRows([
       { resource_id: "r1", series_label: "cpu", unit: "%", ts_ms: 0, value: 1 },
       { resource_id: "r1", series_label: "cpu", unit: "%", ts_ms: 1, value: 2 },
       { resource_id: "r2", series_label: "io", unit: "", ts_ms: 0, value: 3 },
@@ -112,8 +100,18 @@ describe("getLatestMetricsBatch", () => {
 });
 
 describe("getLatestStatsBatch", () => {
+  it("takes the newest snapshot per resource", async () => {
+    pg.setRows([]);
+    await readers.getLatestStatsBatch("o", ["r1", "r2"]);
+    const { sql } = pg.lastQuery();
+    expect(sql).toContain('select distinct on ("dashboard_stats"."resource_id")');
+    expect(sql).toContain(
+      'order by "dashboard_stats"."resource_id" asc, "dashboard_stats"."ts" desc',
+    );
+  });
+
   it("parses each row, skipping malformed ones", async () => {
-    ch.setRows([
+    pg.setRows([
       { resource_id: "r1", stats_json: JSON.stringify([{ label: "A", value: "1" }]) },
       { resource_id: "r2", stats_json: "broken" },
     ]);
@@ -125,35 +123,38 @@ describe("getLatestStatsBatch", () => {
   it("empty ids → empty map, no query", async () => {
     const out = await readers.getLatestStatsBatch("o", []);
     expect(out.size).toBe(0);
-    expect(ch.queries).toEqual([]);
+    expect(pg.queries).toEqual([]);
   });
 });
 
 describe("getLatestAccountCounts", () => {
   it("parses the newest counts_json", async () => {
-    ch.setRows([{ counts_json: JSON.stringify([{ typeLabel: "VMs", count: 2 }]) }]);
+    pg.setRows([{ counts_json: JSON.stringify([{ typeLabel: "VMs", count: 2 }]) }]);
     expect(await readers.getLatestAccountCounts("o", "a")).toEqual([
       { typeLabel: "VMs", count: 2 },
     ]);
   });
 
   it("null on no rows and on malformed json", async () => {
-    ch.setRows([]);
+    pg.setRows([]);
     expect(await readers.getLatestAccountCounts("o", "a")).toBeNull();
-    ch.setRows([{ counts_json: "x" }]);
+    pg.setRows([{ counts_json: "x" }]);
     expect(await readers.getLatestAccountCounts("o", "a")).toBeNull();
   });
 });
 
 describe("getLatestAccountCountsBatch", () => {
   it("maps account ids, skipping malformed", async () => {
-    ch.setRows([
+    pg.setRows([
       { account_id: "a1", counts_json: JSON.stringify([{ typeLabel: "X", count: 1 }]) },
       { account_id: "a2", counts_json: "nope" },
     ]);
     const out = await readers.getLatestAccountCountsBatch("o", ["a1", "a2"]);
     expect(out.get("a1")).toEqual([{ typeLabel: "X", count: 1 }]);
     expect(out.has("a2")).toBe(false);
+    expect(pg.lastQuery().sql).toContain(
+      'select distinct on ("account_resource_counts"."account_id")',
+    );
   });
 
   it("empty ids → empty map", async () => {
@@ -164,7 +165,7 @@ describe("getLatestAccountCountsBatch", () => {
 
 describe("getMetricRange", () => {
   function withRows() {
-    ch.setRows([
+    pg.setRows([
       { series_label: "cpu", unit: "%", ts_ms: 0, value: 1 },
       { series_label: "cpu", unit: "%", ts_ms: 1000, value: 2 },
     ]);
@@ -173,23 +174,33 @@ describe("getMetricRange", () => {
   it("uses metric_points_raw for spans <= 2h", async () => {
     withRows();
     await readers.getMetricRange("o", "r", 0, 60 * 60 * 1000); // 1h
-    expect(ch.lastQuery()).toContain("metric_points_raw");
+    const { sql, params } = pg.lastQuery();
+    expect(sql).toContain('from "metric_points_raw"');
+    // Millisecond bounds on the raw table.
+    expect(params).toContain(new Date(0).toISOString());
+    expect(params).toContain(new Date(60 * 60 * 1000).toISOString());
   });
 
-  it("uses the 1m rollup for spans <= 7d", async () => {
+  it("uses the 1m rollup's sum/count average for spans <= 7d", async () => {
     withRows();
-    const from = 0;
-    const to = 3 * 24 * 60 * 60 * 1000; // 3d
-    await readers.getMetricRange("o", "r", from, to);
-    expect(ch.lastQuery()).toContain("metric_points_1m");
+    await readers.getMetricRange("o", "r", 0, 3 * 24 * 60 * 60 * 1000); // 3d
+    const { sql } = pg.lastQuery();
+    expect(sql).toContain('from "metric_points_1m"');
+    expect(sql).toMatch(/"value_sum" \/ nullif\(("metric_points_1m"\.)?"value_count", 0\)/);
   });
 
   it("uses the 1h rollup for spans > 7d", async () => {
     withRows();
-    const from = 0;
-    const to = 30 * 24 * 60 * 60 * 1000; // 30d
-    await readers.getMetricRange("o", "r", from, to);
-    expect(ch.lastQuery()).toContain("metric_points_1h");
+    await readers.getMetricRange("o", "r", 0, 30 * 24 * 60 * 60 * 1000); // 30d
+    expect(pg.lastQuery().sql).toContain('from "metric_points_1h"');
+  });
+
+  it("floors rollup bounds to the second", async () => {
+    withRows();
+    await readers.getMetricRange("o", "r", 1_500, 3 * 24 * 60 * 60 * 1000 + 999);
+    const { params } = pg.lastQuery();
+    expect(params).toContain(new Date(1_000).toISOString());
+    expect(params).toContain(new Date(3 * 24 * 60 * 60 * 1000).toISOString());
   });
 
   it("groups returned rows by series", async () => {
@@ -199,22 +210,17 @@ describe("getMetricRange", () => {
     expect(out[0]!.label).toBe("cpu");
     expect(out[0]!.points).toHaveLength(2);
   });
-
-  it("returns [] when not configured", async () => {
-    isConfigured.mockReturnValue(false);
-    expect(await readers.getMetricRange("o", "r", 0, 1000)).toEqual([]);
-  });
 });
 
 describe("getMetricQuantilesBatch", () => {
   it("returns an empty map for an empty id list without querying", async () => {
     const out = await readers.getMetricQuantilesBatch("o", [], 0, 1000);
     expect(out.size).toBe(0);
-    expect(ch.queries).toEqual([]);
+    expect(pg.queries).toEqual([]);
   });
 
   it("reads the 1m rollup and groups quantiles per resource", async () => {
-    ch.setRows([
+    pg.setRows([
       {
         resource_id: "r1",
         series_label: "CPU Utilization",
@@ -244,18 +250,39 @@ describe("getMetricQuantilesBatch", () => {
       },
     ]);
     const out = await readers.getMetricQuantilesBatch("o", ["r1", "r2"], 0, 1000);
-    expect(ch.lastQuery()).toContain("metric_points_1m");
-    expect(ch.lastQuery()).toContain("quantile(0.05)");
+    const { sql } = pg.lastQuery();
+    expect(sql).toContain('from "metric_points_1m"');
+    expect(sql).toContain("percentile_cont(0.05) WITHIN GROUP (ORDER BY");
+    expect(sql).toContain("percentile_cont(0.95) WITHIN GROUP (ORDER BY");
     expect(out.get("r1")).toEqual([
       { label: "CPU Utilization", unit: "%", q05: 1, q95: 12.5, max: 40, samples: 20160 },
       { label: "Memory Available", unit: "bytes", q05: 1024, q95: 4096, max: 8192, samples: 20160 },
     ]);
     expect(out.get("r2")).toHaveLength(1);
   });
+});
 
-  it("returns an empty map when not configured", async () => {
-    isConfigured.mockReturnValue(false);
-    const out = await readers.getMetricQuantilesBatch("o", ["r1"], 0, 1000);
-    expect(out.size).toBe(0);
+describe("listMetricSeriesKeys", () => {
+  it("counts distinct resources per series over the last week, narrowed by plugin", async () => {
+    pg.setRows([{ series_label: "CPU", unit: "%", resource_count: "3" }]);
+    expect(await readers.listMetricSeriesKeys("o", { pluginId: "aws" })).toEqual([
+      { label: "CPU", unit: "%", resourceCount: 3 },
+    ]);
+    const { sql, params } = pg.lastQuery();
+    expect(sql).toMatch(/count\(DISTINCT ("metric_points_raw"\.)?"resource_id"\)/);
+    expect(sql).toContain("now() - interval '7 days'");
+    expect(params).toContain("aws");
+  });
+});
+
+describe("getMetricDailyAverageBatch", () => {
+  it("averages hourly rollup averages per UTC day", async () => {
+    pg.setRows([{ resource_id: "r1", day: "2026-11-01", value: "0.5" }]);
+    expect(await readers.getMetricDailyAverageBatch("o", ["r1"], "Up", 0, 1000)).toEqual([
+      { resourceId: "r1", day: "2026-11-01", value: 0.5 },
+    ]);
+    const { sql } = pg.lastQuery();
+    expect(sql).toContain('from "metric_points_1h"');
+    expect(sql).toContain("AT TIME ZONE 'UTC', 'YYYY-MM-DD')");
   });
 });

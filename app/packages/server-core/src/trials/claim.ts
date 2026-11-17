@@ -15,8 +15,8 @@
  * **Merge moves credentials, not derived state.** Only `accounts` rows are
  * re-parented. Resources, metrics, cost history and poll outcomes are all
  * reproducible from the account by the next poll, and re-parenting them would
- * mean a 76-table `UPDATE organization_id` in Postgres plus mutations across
- * eight ClickHouse tables: a large, mostly-unobservable migration whose
+ * mean a 76-table `UPDATE organization_id` plus the ten analytics tables: a
+ * large, mostly-unobservable migration whose
  * failure modes land in someone else's tenant. Moving the credential and
  * letting the poller rebuild is the same end state by a route that cannot
  * half-succeed.
@@ -42,7 +42,7 @@ import {
 } from "../permissions/resolver.js";
 import { hasPermission } from "../permissions/catalog.js";
 import { FREE_PLAN_LIMITS, PlanRequiredError, planAccess } from "../entitlements.js";
-import { destroyOrganization, moveOrgClickHouseData } from "./destroy.js";
+import { destroyOrganization, moveOrgAnalyticsData } from "./destroy.js";
 import { agentUserId } from "./identity.js";
 import { withTrialOrgLock } from "./lock.js";
 
@@ -60,7 +60,7 @@ export interface ClaimTrialOptions {
   /** Required for `merge`: the org the caller wants the work moved into. */
   targetOrganizationId?: string;
   /**
-   * Merge only: also re-parent the trial's ClickHouse history (metrics, cost,
+   * Merge only: also re-parent the trial's analytics history (metrics, cost,
    * poll outcomes, network flows) onto the target org.
    *
    * Off by default because it is the more surprising outcome: a user merging
@@ -80,7 +80,7 @@ export interface ClaimTrialResult {
   /** Accounts re-parented by a merge. Zero for an adopt. */
   accountsMoved: number;
   /**
-   * Whether ClickHouse history was moved. False for an adopt, where the rows
+   * Whether analytics history was moved. False for an adopt, where the rows
    * never needed to go anywhere: the org they belong to is the one being kept.
    */
   historyMoved: boolean;
@@ -198,12 +198,11 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
 
     const accountsMoved = await mergeTrialInto(trialOrgId, targetOrganizationId);
 
-    // History moves before the destroy so the purge can be skipped entirely:
-    // see `DestroyOrganizationOptions.skipClickHouse` for why "the mutation queue
-    // is ordered" is not a good enough reason to issue both.
+    // History moves before the destroy, whose purge then finds nothing of the
+    // trial's left to delete.
     let historyMoved = false;
     if (options.moveHistory) {
-      await moveOrgClickHouseData(trialOrgId, targetOrganizationId);
+      await moveOrgAnalyticsData(trialOrgId, targetOrganizationId);
       historyMoved = true;
     }
 
@@ -228,7 +227,7 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
     // No `expiredTrialOnly` here: this caller already holds the org's lock (a
     // guarded destroy would deadlock re-taking it; see `lock.ts`), and a merge
     // destroys the trial org whether or not its clock has run out.
-    await destroyOrganization(trialOrgId, { skipClickHouse: historyMoved });
+    await destroyOrganization(trialOrgId);
 
     return { mode: "merge", organizationId: targetOrganizationId, accountsMoved, historyMoved };
   });

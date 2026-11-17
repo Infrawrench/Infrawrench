@@ -6,7 +6,7 @@
  * LOCKED) RETURNING`, so replicas share the work and a replica that dies
  * mid-pass lets its SLOs come due again when the lease expires.
  *
- * Runtime `edge`: an evaluation reads Postgres and ClickHouse and routes
+ * Runtime `edge`: an evaluation reads Postgres and routes
  * alerts over fixed HTTPS services, and calls no plugin code, exactly like the
  * metric-alert pass it sits beside.
  *
@@ -18,7 +18,7 @@ import { slos } from "../db/schema";
 import { evaluateSlo } from "./eval";
 import type { SloRecord } from "./store";
 
-/** Must exceed one evaluation (two bounded ClickHouse reads) with a wide margin. */
+/** Must exceed one evaluation (two bounded metric reads) with a wide margin. */
 export const SLO_LEASE_MS = 5 * 60 * 1000;
 
 /**

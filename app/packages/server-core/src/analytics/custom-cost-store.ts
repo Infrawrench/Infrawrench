@@ -1,19 +1,18 @@
 /**
- * ClickHouse side of custom cost sources: reading back what an upload holds,
- * and removing rows.
+ * The `cost_daily` side of custom cost sources: reading back what an upload
+ * holds, and removing rows.
  *
- * **Removal is a tombstone, not a mutation**, for the reasons
- * `cost-reconcile.ts` gives: `cost_daily` is a ReplacingMergeTree, so a
- * zero-amount row written at an existing key supersedes it on the table's own
- * path, synchronously from the reader's point of view (`FINAL`), at the cost of
- * one row. An `ALTER TABLE … DELETE` would be an asynchronous part rewrite.
+ * **Removal is a tombstone, not a delete**, for the reasons
+ * `cost-reconcile.ts` gives: a zero-amount row upserted at an existing key
+ * replaces it on the table's one write path, the same one a collection's
+ * restatement takes.
  *
  * A tombstone copies the stored row's `tags` and `tags_hash` verbatim, which
  * keeps the upload tag on it: a zeroed row still belongs to its upload, and
  * the holdings query below excludes it because it holds nothing.
  */
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { getAnalyticsDb } from "./client";
 import { dayRange } from "./cost-readers";
 import type { CostDailyRow } from "./cost-writers";
 import { insertCostRows } from "./cost-writers";
@@ -49,9 +48,11 @@ function scopeWhere(scope: CustomCostRowScope): SQL | undefined {
     eq(costDaily.organization_id, scope.organizationId),
     eq(costDaily.plugin_id, scope.pluginId),
     scope.from && scope.to ? dayRange(scope.from, scope.to) : undefined,
-    scope.uploadId ? sql`${costDaily.tags}[${UPLOAD_TAG}] = ${scope.uploadId}` : undefined,
+    scope.uploadId ? sql`${costDaily.tags} ->> ${UPLOAD_TAG} = ${scope.uploadId}` : undefined,
+    // DISTINCT FROM, not `!=`: a row with no upload tag reads NULL, and a
+    // replace has to sweep those up as well as other uploads' rows.
     scope.excludeUploadId
-      ? sql`${costDaily.tags}[${UPLOAD_TAG}] != ${scope.excludeUploadId}`
+      ? sql`${costDaily.tags} ->> ${UPLOAD_TAG} IS DISTINCT FROM ${scope.excludeUploadId}`
       : undefined,
     HOLDS_SOMETHING,
   );
@@ -68,15 +69,13 @@ export async function tombstoneCustomCostRows(scope: CustomCostRowScope): Promis
   zeroed: number;
   uploadIds: string[];
 }> {
-  if (!isClickHouseConfigured()) return { zeroed: 0, uploadIds: [] };
-  const db = getClickHouseDb();
+  const db = getAnalyticsDb();
 
   const days = await db
-    .selectDistinct({ day: sql<string>`toString(${costDaily.day})`.as("day") })
+    .selectDistinct({ day: costDaily.day })
     .from(costDaily)
-    .final()
     .where(scopeWhere(scope))
-    .orderBy(sql`day`);
+    .orderBy(costDaily.day);
 
   let zeroed = 0;
   const uploadIds = new Set<string>();
@@ -84,7 +83,7 @@ export async function tombstoneCustomCostRows(scope: CustomCostRowScope): Promis
     const stored = await db
       .select({
         account_id: costDaily.account_id,
-        day: sql<string>`toString(${costDaily.day})`.as("day"),
+        day: costDaily.day,
         service: costDaily.service,
         region: costDaily.region,
         resource_id: costDaily.resource_id,
@@ -95,8 +94,7 @@ export async function tombstoneCustomCostRows(scope: CustomCostRowScope): Promis
         commitment_id: costDaily.commitment_id,
       })
       .from(costDaily)
-      .final()
-      .where(and(scopeWhere({ ...scope, from: day, to: day })));
+      .where(scopeWhere({ ...scope, from: day, to: day }));
     if (stored.length === 0) continue;
     const tombstones: CostDailyRow[] = stored.map((row) => {
       const upload = row.tags[UPLOAD_TAG];
@@ -150,20 +148,19 @@ export async function getCustomCostUploadHoldings(
   for (const uploadId of uploadIds) {
     holdings.set(uploadId, { uploadId, rowCount: 0, fromDate: null, toDate: null, totals: {} });
   }
-  if (!isClickHouseConfigured() || uploadIds.length === 0) return holdings;
+  if (uploadIds.length === 0) return holdings;
 
-  const uploadExpr = sql<string>`${costDaily.tags}[${UPLOAD_TAG}]`;
-  const rows = await getClickHouseDb()
+  const uploadExpr = sql<string>`${costDaily.tags} ->> ${UPLOAD_TAG}`;
+  const rows = await getAnalyticsDb()
     .select({
       upload_id: uploadExpr.as("upload_id"),
       currency: costDaily.currency,
-      rows: sql<number>`count()`.as("rows"),
-      amount: sql<number>`sum(${costDaily.amount})`.as("amount"),
-      from_day: sql<string>`toString(min(${costDaily.day}))`.as("from_day"),
-      to_day: sql<string>`toString(max(${costDaily.day}))`.as("to_day"),
+      rows: sql<number>`count(*)::int`.as("rows"),
+      amount: sql<number>`sum(${costDaily.amount})::float8`.as("amount"),
+      from_day: sql<string>`min(${costDaily.day})::text`.as("from_day"),
+      to_day: sql<string>`max(${costDaily.day})::text`.as("to_day"),
     })
     .from(costDaily)
-    .final()
     .where(
       and(
         eq(costDaily.organization_id, organizationId),

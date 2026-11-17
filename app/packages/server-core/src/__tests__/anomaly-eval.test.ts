@@ -11,8 +11,8 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  * exactly what a `baseline.length` guard cannot see, and what let every key of
  * a brand-new org alert as a new spend source on day one.
  *
- * ClickHouse is mocked at its module boundary, matching `budget-eval.test.ts`.
- * Postgres is real Drizzle over a recording driver (helpers/fake-postgres.ts):
+ * The cost readers are mocked at their module boundary, matching
+ * `budget-eval.test.ts`. The rest of Postgres is real Drizzle over a recording driver (helpers/fake-postgres.ts):
  * a pass issues the settings select, then one upsert per finding, then per
  * pending anomaly a hints update (when there are hints), the cooldown count and
  * the notifiedAt stamp, and finally the SMS claim's read + conditional update:
@@ -22,7 +22,7 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
 
 const queryCosts = vi.fn();
 const getCostCoverage = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, getCostCoverage }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts, getCostCoverage }));
 
 /** The batched anomaly SMS rides this; the rest of `anomaly-sms.ts` runs real. */
 const sendOneShotPage = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
@@ -39,7 +39,7 @@ vi.mock("../cost/anomaly-hints", () => ({ buildAnomalyHints }));
 
 /**
  * The contributor breakdown, mocked at its module boundary for the same
- * reason as the hints: its ranking and its one ClickHouse statement have
+ * reason as the hints: its ranking and its one `cost_daily` statement have
  * their own suite (`anomaly-contributors.test.ts`). Default: null, "could not
  * compute", which writes nothing and leaves the statement order below as it
  * always was.
@@ -185,7 +185,7 @@ const OPTS = { sigmas: 3, minDeltaAbs: 10, minBaselineDays: 7, minNewSourceAbs: 
 const NOW = new Date("2026-07-15T12:00:00Z");
 const YESTERDAY = "2026-07-14";
 
-/** Coverage as ClickHouse reports it: one row per account. */
+/** Coverage as the reader reports it: one row per account. */
 function coverage(...firstDays: string[]) {
   return new Map(
     firstDays.map((firstDay, i) => [`acct${i}`, { firstDay, lastDay: YESTERDAY }] as const),
@@ -341,7 +341,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
   });
 
   it("keeps detecting spikes when the coverage read fails, and never throws", async () => {
-    getCostCoverage.mockRejectedValue(new Error("clickhouse down"));
+    getCostCoverage.mockRejectedValue(new Error("database down"));
     providerCosts([
       {
         key: "aws",

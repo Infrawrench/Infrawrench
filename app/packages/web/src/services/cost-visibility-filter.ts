@@ -1,7 +1,7 @@
 /**
- * Postgres-side halves of cost visibility.
+ * The stored-figure halves of cost visibility.
  *
- * ClickHouse reads are scoped by the readers themselves. What is left are the
+ * `cost_daily` reads are scoped by the readers themselves. What is left are the
  * objects whose figures an unattended evaluator computed and stored (budget
  * crossings, change-alert events) and the per-account rows (credits,
  * commitments) that have no cost row to test a scope against. These helpers

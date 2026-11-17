@@ -3,7 +3,7 @@
  *
  * Cost data only moves when the poller collects it, so evaluation piggybacks on
  * the same pass that fires budget alert pages (`cost/budget-eval.ts`) and reuses
- * the month status it already computed: no extra ClickHouse queries.
+ * the month status it already computed: no extra cost queries.
  *
  * Firing exactly once per month is enforced with a conditional UPDATE on
  * `workflows.budget_last_fired_key` rather than a marker table: the key encodes

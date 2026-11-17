@@ -1,5 +1,5 @@
 /**
- * The synthetic identity probe results are written to ClickHouse under.
+ * The synthetic identity probe results are written to the metric tables under.
  *
  * A deliberate leaf with no imports, split out of `probes/pass.ts` for the
  * same reason `cost/workflow-cost-ids.ts` is split out of
@@ -15,7 +15,7 @@
 export const PROBE_PLUGIN_ID = "synthetic-probe";
 export const PROBE_RESOURCE_TYPE_ID = "probe";
 
-/** The ClickHouse `resource_id` for one probe's series. */
+/** The metric tables' `resource_id` for one probe's series. */
 export function probeMetricResourceId(probeId: string): string {
   return `probe:${probeId}`;
 }

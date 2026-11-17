@@ -43,7 +43,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costReportAnomalies, costReportAnomalyAlerts, costReports } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { orgAppUrl } from "../app-url";
 import { resolveObjectCostVisibility } from "./visibility";

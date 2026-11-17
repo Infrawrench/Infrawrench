@@ -50,7 +50,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costAnomalies, costAnomalySuppressions } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { expandCentreSubtrees, runWithCostVisibility } from "./visibility-context";
 import type { SlackMessageButton } from "../slack";
@@ -91,7 +91,7 @@ export const EMPTY_FEEDBACK_CONTEXT: AnomalyFeedbackContext = {
 };
 
 /**
- * Most scope reads one pass will issue. Each is one grouped ClickHouse read
+ * Most scope reads one pass will issue. Each is one grouped `cost_daily` read
  * over at most `EVALUATION_DAYS` days; past this the rest are skipped for the
  * pass (and logged), which fails towards alerting.
  */

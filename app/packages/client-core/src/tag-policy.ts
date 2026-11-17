@@ -1,7 +1,7 @@
 /**
  * Org tag policy, tag compliance, and cost-centre allocation: the pure
  * contract shared by web, desktop, mobile, the CLI, and the server (the
- * ClickHouse readers and the create-time enforcement both import from here,
+ * cost readers and the create-time enforcement both import from here,
  * exactly the way the cost query vocabulary in `costs.ts` is shared).
  *
  * A tag policy is a list of required tag keys, each optionally restricted to a
@@ -447,7 +447,7 @@ export const ALLOCATION_RULE_LIMITS = { maxRules: 200 } as const;
 
 /**
  * The org's rules in evaluation order: the order the showback reader compiles
- * into its single `multiIf`, and the order the settings UI must display so
+ * into its single first-match `CASE`, and the order the settings UI must display so
  * "first match wins" means what the list shows.
  *
  * The existing rule is unchanged: **lower priority number fires first, first
@@ -569,7 +569,7 @@ function addTotals(into: Record<string, number>, from: Record<string, number>): 
 
 /**
  * Assemble the showback tree from the flat per-centre sums the single
- * ClickHouse pass produced.
+ * `cost_daily` pass produced.
  *
  * The query resolves each cost row to exactly one centre id; the rollup here is
  * pure arithmetic on top of that, which is what keeps the report to one scan of

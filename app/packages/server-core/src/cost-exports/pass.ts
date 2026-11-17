@@ -22,7 +22,7 @@ import type { CostExportRecord } from "./store";
 
 /**
  * Must exceed the worst-case duration of one run. A run streams up to 91 daily
- * periods out of ClickHouse and uploads each as its own object, against a
+ * periods out of `cost_daily` and uploads each as its own object, against a
  * bucket that may be on the other side of the planet: minutes, not seconds.
  * Too short and a second replica starts the same export while the first is
  * still uploading, which would have the two racing to overwrite the same keys.

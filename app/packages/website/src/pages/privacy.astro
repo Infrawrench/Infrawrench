@@ -6,7 +6,7 @@ import Footer from "../components/Footer.astro";
 // On demand so middleware can negotiate; see src/middleware.ts.
 export const prerender = false;
 
-const lastUpdated = "November 5, 2026";
+const lastUpdated = "November 17, 2026";
 const contactEmail = "astrid@infrawrench.com";
 
 const title = "Privacy Policy";
@@ -33,11 +33,6 @@ const subprocessors = [
     name: "Google Cloud",
     purpose: "Application hosting (GKE) and the default chat model (Vertex AI)",
     data: "Server traffic and logs; chat messages sent to the model",
-  },
-  {
-    name: "ClickHouse Cloud",
-    purpose: "Time-series store for resource metrics and cost history",
-    data: "Metric and cost datapoints keyed to your organization and resources",
   },
   {
     name: "Stripe",

@@ -5,7 +5,7 @@
  * queries are built*, not per route. So this suite:
  *
  * 1. calls **every** exported `cost_daily` reader inside a scoped execution and
- *    asserts the scope predicate reaches the statement ClickHouse receives;
+ *    asserts the scope predicate reaches the statement Postgres receives;
  * 2. asserts an unrestricted (or absent) visibility emits the bare org
  *    predicate, byte-identical to before scopes existed;
  * 3. guards the source: no reader may build its own
@@ -17,22 +17,23 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
+import { fakePostgres } from "./helpers/fake-postgres";
+import { inlineSql } from "./helpers/inline-sql";
 
-const ch = fakeClickHouse();
-const captured = ch.queries;
+const pg = fakePostgres();
+/** Every statement since the last reset, parameters written back in. */
+const captured = () => pg.queries.map(inlineSql);
 
-vi.mock("../clickhouse/client", () => ({
-  isClickHouseConfigured: () => true,
-  getClickHouseDb: () => ch.db,
-  getClickHouseClient: () => ch.client,
-}));
+vi.mock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
 
-const readers = await import("../clickhouse/cost-readers");
-const commitmentReaders = await import("../clickhouse/commitment-readers");
-const flowReaders = await import("../clickhouse/network-flow-readers");
-const k8sEfficiencyReaders = await import("../clickhouse/k8s-efficiency-readers");
-const reportReaders = await import("../clickhouse/network-flow-report-readers");
+/** What a layer that grants nothing compiles to, ANDed onto the org predicate. */
+const MATCHES_NOTHING = / and false\)/i;
+
+const readers = await import("../analytics/cost-readers");
+const commitmentReaders = await import("../analytics/commitment-readers");
+const flowReaders = await import("../analytics/network-flow-readers");
+const k8sEfficiencyReaders = await import("../analytics/k8s-efficiency-readers");
+const reportReaders = await import("../analytics/network-flow-report-readers");
 const ctx = await import("../cost/visibility-context");
 const { expandCentreSubtrees } = ctx;
 
@@ -169,23 +170,22 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
 ];
 
 beforeEach(() => {
-  captured.length = 0;
-  ch.setRows?.([]);
+  pg.reset();
 });
 
 describe("every cost_daily reader applies the caller's scope", () => {
   it.each(READ_CALLS)("%s narrows to the scoped accounts", async (_name, call) => {
     await ctx.runWithCostVisibility(ACCOUNT_SCOPE, call);
-    expect(captured.length).toBeGreaterThan(0);
-    for (const q of captured) expect(q).toContain("'acct-visible'");
+    expect(captured().length).toBeGreaterThan(0);
+    for (const q of captured()) expect(q).toContain("'acct-visible'");
   });
 
   it.each(READ_CALLS)("%s is unchanged when unrestricted", async (_name, call) => {
     await call();
-    const bare = [...captured];
-    captured.length = 0;
+    const bare = captured();
+    pg.reset();
     await ctx.runWithCostVisibility(ctx.unrestrictedCostVisibility(ORG), call);
-    expect(captured).toEqual(bare);
+    expect(captured()).toEqual(bare);
     for (const q of bare) expect(q).not.toContain("acct-visible");
   });
 
@@ -197,7 +197,7 @@ describe("every cost_daily reader applies the caller's scope", () => {
 });
 
 describe("scope SQL shape", () => {
-  it("a cost-centre layer tests the showback allocation multiIf", async () => {
+  it("a cost-centre layer tests the showback allocation CASE", async () => {
     await ctx.runWithCostVisibility(
       scoped([
         {
@@ -207,7 +207,7 @@ describe("scope SQL shape", () => {
       ]),
       () => readers.getCostTagKeys(ORG),
     );
-    expect(captured[0]).toMatch(/multiIf\(.*'team'.*'platform'.*'centre-a'/s);
+    expect(captured()[0]).toMatch(/CASE WHEN .*'team'.*'platform'.*'centre-a'/s);
   });
 
   it("accounts and centres OR together; a saved filter ANDs on", async () => {
@@ -222,7 +222,7 @@ describe("scope SQL shape", () => {
       ]),
       () => readers.getCostTagKeys(ORG),
     );
-    expect(captured[0]).toMatch(/'acct-a'.*OR.*multiIf.*AND.*'eu-west-1'/s);
+    expect(captured()[0]).toMatch(/'acct-a'.*OR.*CASE WHEN.*AND.*'eu-west-1'/s);
   });
 
   it("a layer that reads a virtual tag matches nothing rather than widening", async () => {
@@ -252,9 +252,9 @@ describe("scope SQL shape", () => {
       () => readers.getCostTagKeys(ORG),
     );
     // Two reads per call (billed rows and AI caller splits); every one is narrowed.
-    expect(captured.length).toBeGreaterThanOrEqual(2);
-    for (const q of captured) {
-      expect(q).toMatch(/and 0|AND 0|\(0\)| 0\)/i);
+    expect(captured().length).toBeGreaterThanOrEqual(2);
+    for (const q of captured()) {
+      expect(q).toMatch(MATCHES_NOTHING);
       expect(q).not.toContain("payments");
     }
   });
@@ -264,7 +264,7 @@ describe("scope SQL shape", () => {
     await ctx.runWithCostVisibility(scoped([{ accountIds: ["a"], unresolvable: true }]), () =>
       readers.getCostTagKeys(ORG),
     );
-    for (const q of captured) expect(q).toMatch(/and 0|AND 0|\(0\)| 0\)/i);
+    for (const q of captured()) expect(q).toMatch(MATCHES_NOTHING);
   });
 
   it("layers intersect: each one is ANDed on", async () => {
@@ -272,7 +272,7 @@ describe("scope SQL shape", () => {
       scoped([{ accountIds: ["acct-a", "acct-b"] }, { accountIds: ["acct-b"] }]),
       () => readers.getCostTagKeys(ORG),
     );
-    const q = captured[0]!;
+    const q = captured()[0]!;
     expect(q.indexOf("'acct-a'")).toBeGreaterThan(-1);
     expect(q.split("'acct-b'").length - 1).toBe(2);
   });
@@ -282,12 +282,12 @@ describe("scope SQL shape", () => {
     await ctx.runWithCostVisibility(ACCOUNT_SCOPE, () =>
       flowReaders.readNetworkFlowScopeTotals(ORG, range, {}),
     );
-    expect(captured[0]).toContain("'acct-visible'");
-    captured.length = 0;
+    expect(captured()[0]).toContain("'acct-visible'");
+    pg.reset();
     await ctx.runWithCostVisibility(scoped([{ costCentreIds: ["c"] }]), () =>
       flowReaders.readNetworkFlowScopeTotals(ORG, range, {}),
     );
-    expect(captured[0]).toMatch(/ 0\)|and 0/i);
+    expect(captured()[0]).toMatch(MATCHES_NOTHING);
   });
 
   it("network flow report reads narrow exactly like the feed", async () => {
@@ -322,13 +322,13 @@ describe("scope SQL shape", () => {
       () => reportReaders.readNetworkFlowReportDimensionValues(ORG, range),
     ];
     for (const call of calls) {
-      captured.length = 0;
+      pg.reset();
       await ctx.runWithCostVisibility(ACCOUNT_SCOPE, call);
-      expect(captured.length).toBeGreaterThan(0);
-      for (const q of captured) expect(q).toContain("'acct-visible'");
-      captured.length = 0;
+      expect(captured().length).toBeGreaterThan(0);
+      for (const q of captured()) expect(q).toContain("'acct-visible'");
+      pg.reset();
       await ctx.runWithCostVisibility(scoped([{ costCentreIds: ["c"] }]), call);
-      for (const q of captured) expect(q).toMatch(/ 0\)|and 0/i);
+      for (const q of captured()) expect(q).toMatch(MATCHES_NOTHING);
     }
   });
 });
@@ -388,10 +388,10 @@ describe("source guard", () => {
           // an upload, recomputing its holdings), with two predicates, behind
           // a route refused to scoped callers.
           const allowed =
-            path.endsWith(join("clickhouse", "cost-readers.ts")) ||
-            path.endsWith(join("clickhouse", "cost-reconcile.ts"))
+            path.endsWith(join("analytics", "cost-readers.ts")) ||
+            path.endsWith(join("analytics", "cost-reconcile.ts"))
               ? 1
-              : path.endsWith(join("clickhouse", "custom-cost-store.ts"))
+              : path.endsWith(join("analytics", "custom-cost-store.ts"))
                 ? 2
                 : 0;
           if (hits.length > allowed) offenders.push(path);

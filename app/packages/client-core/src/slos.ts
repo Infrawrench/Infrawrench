@@ -265,7 +265,7 @@ function compare(value: number, comparator: SloComparator, threshold: number): b
   }
 }
 
-/** The ClickHouse series an SLO reads, by kind. */
+/** The metric series an SLO reads, by kind. */
 export function sloSeriesLabel(source: Pick<SloSourceFields, "sliKind" | "metricKey">): string {
   switch (source.sliKind) {
     case "probe_availability":

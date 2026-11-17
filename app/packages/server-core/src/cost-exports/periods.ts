@@ -1,9 +1,8 @@
 /**
  * Period and schedule arithmetic for scheduled cost exports.
  *
- * Pure functions over civil (wall-clock) dates in an IANA zone (no database,
- * no ClickHouse) so the two rules that make an export reconcilable can be
- * tested directly:
+ * Pure functions over civil (wall-clock) dates in an IANA zone (no database)
+ * so the two rules that make an export reconcilable can be tested directly:
  *
  *   1. **One object per period, always written whole.** A run that re-exports
  *      a period because of a restatement re-emits *every* day of it, not just

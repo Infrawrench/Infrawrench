@@ -1,6 +1,7 @@
 import type { CostChargeType, CostRow } from "@infrawrench/plugin-base";
-import type { InferInsertModel } from "drizzle-orm";
-import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { getTableColumns, sql, type InferInsertModel, type SQL } from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
+import { getAnalyticsDb } from "./client";
 import { costDaily, type Complete } from "./schema";
 
 /**
@@ -23,8 +24,8 @@ export type CostDailyRow = Complete<Omit<InferInsertModel<typeof costDaily>, "in
 const RESERVED_KEY_PREFIX = "infrawrench:";
 
 /**
- * The parts of a row's identity that are NOT columns in `cost_daily`'s ORDER BY
- * but must still keep rows apart. See {@link hashTags}.
+ * The parts of a row's identity that are NOT columns in `cost_daily`'s primary
+ * key but must still keep rows apart. See {@link hashTags}.
  */
 export interface CostRowKeyExtras {
   chargeType?: string | undefined;
@@ -33,20 +34,20 @@ export interface CostRowKeyExtras {
 
 /**
  * Stable 64-bit FNV-1a hash of a canonicalized (key-sorted, `=`/`\n`-joined)
- * tags map, as a decimal string for ClickHouse's UInt64. Deterministic across
- * processes so re-ingested rows land on the same ReplacingMergeTree key.
+ * tags map, as a decimal string (Postgres has no unsigned 64-bit integer, and
+ * nothing does arithmetic on it). Deterministic across processes so a
+ * re-ingested row lands on the same primary key and replaces the one stored.
  *
- * **Why charge type and commitment id are hashed in here.** `cost_daily` is a
- * ReplacingMergeTree whose sort key is
+ * **Why charge type and commitment id are hashed in here.** `cost_daily`'s
+ * primary key is
  * `(org, account, day, service, region, resource_id, tags_hash, currency)`, and
  * that key is frozen: it cannot gain `charge_type` without re-keying three
- * years of history (`clickhouse/migrate.ts` explains why the ALTER path may
- * only add columns). But a provider legitimately reports several charge types
+ * years of history. But a provider legitimately reports several charge types
  * for the same account, day, service and region: the EC2 usage line, the credit
  * applied against it, and the tax on it are three rows identical in every key
- * column. Written as-is, ReplacingMergeTree treats them as three versions of
- * one row and `FINAL` keeps only the last one ingested: the org's spend would
- * silently become whichever line the provider happened to page in last.
+ * column. Written as-is, the upsert would treat them as three versions of one
+ * row and keep only the last one written: the org's spend would silently
+ * become whichever line the provider happened to page in last.
  *
  * So they are folded into `tags_hash`, which IS in the key, as synthetic
  * `infrawrench:`-prefixed entries. This is the same trick pushed rows use to
@@ -62,7 +63,7 @@ export interface CostRowKeyExtras {
  *
  * **The synthetic entries go into the hash only (never into the `tags` column
  * {@link toCostDailyRows} writes) and something depends on that.**
- * `clickhouse/cost-reconcile.ts` distinguishes a collector's rows from rows a
+ * `analytics/cost-reconcile.ts` distinguishes a collector's rows from rows a
  * user pushed by looking for a reserved key in the *stored* `tags`, so if these
  * entries were also stored, every attribution row a collector writes would look
  * pushed, and reconciliation would skip exactly the rows it exists to fix:
@@ -111,7 +112,7 @@ function toCostDailyRow(
     region: r.region ?? "",
     resource_id: r.resourceId ?? "",
     tags: r.tags ?? {},
-    // Charge type and commitment id ride in the hash because the sort key
+    // Charge type and commitment id ride in the hash because the primary key
     // cannot carry them: without this a credit would replace the usage line
     // it was credited against. See hashTags.
     tags_hash: hashTags(r.tags, { chargeType, commitmentId }),
@@ -148,24 +149,104 @@ export function toCostDailyRows(
 }
 
 /**
- * Write a chunk's rows.
+ * Rows per statement. Postgres caps a statement at 65,535 bind parameters and a
+ * row binds one per column (21 of them), so this stays well inside the cap
+ * while keeping a month of resource-level billing to a handful of round trips.
+ */
+const INSERT_BATCH_ROWS = 1000;
+
+/** `cost_daily`'s primary key, in declaration order. */
+const KEY_COLUMNS: PgColumn[] = [
+  costDaily.organization_id,
+  costDaily.account_id,
+  costDaily.day,
+  costDaily.service,
+  costDaily.region,
+  costDaily.resource_id,
+  costDaily.tags_hash,
+  costDaily.currency,
+];
+
+/**
+ * The upsert's `SET`: every column outside the key takes the incoming row's
+ * value. Derived from the table so a column added to the schema is replaced on
+ * a re-fetch too, rather than silently keeping its first value forever.
+ */
+const REPLACE_NON_KEY_COLUMNS: Record<string, SQL> = Object.fromEntries(
+  Object.entries(getTableColumns(costDaily))
+    .filter(([, column]) => !KEY_COLUMNS.includes(column))
+    .map(([property, column]) => [property, sql`excluded.${sql.identifier(column.name)}`]),
+);
+
+/** A row's primary key, NUL-joined so no two distinct keys collide. */
+function primaryKey(row: CostDailyRow): string {
+  return [
+    row.organization_id,
+    row.account_id,
+    row.day,
+    row.service,
+    row.region,
+    row.resource_id,
+    row.tags_hash,
+    row.currency,
+  ].join("\u0000");
+}
+
+/**
+ * Write a chunk's rows: an upsert on the primary key that replaces every
+ * non-key column, so re-fetching a day restates it in place.
+ *
+ * A stored row is only replaced by one with an `ingested_at` at least as new.
+ * Every write stamps the database's `now()`, so in practice the latest write
+ * wins; the guard keeps two collections of the same account racing each other
+ * from leaving the older fetch's numbers behind.
+ *
+ * Postgres refuses a statement that touches the same key twice ("cannot affect
+ * row a second time"), so each batch keeps only the last row per key, the one
+ * that would have replaced the others anyway. Batches run in one transaction,
+ * so a reader never sees a chunk half restated.
  *
  * Unlike the fire-and-forget metric writers, cost collection must know about
  * failures so the poller can back off and retry: errors throw.
  *
- * **Accepts an async iterable, and nothing here passes one.** The dialect
- * streams a body, so a caller producing rows lazily would never hold a month of
- * a large account's resource-level billing at once, but `cost/collect.ts`
+ * **Accepts an async iterable, and nothing here passes one.** Rows are written
+ * a batch at a time, so a caller producing them lazily would never hold a month
+ * of a large account's resource-level billing at once, but `cost/collect.ts`
  * cannot be that caller. Reconciliation subtracts the keys about to be written
- * from the keys already stored, and appends its tombstones to the same insert,
- * so the mapped rows have to exist before the write starts. Streaming them
- * while holding the identical array would be ceremony. The parameter is here so
- * that a shape which *can* stream does not have to reopen this function.
+ * from the keys already stored, and appends its tombstones to the same write,
+ * so the mapped rows have to exist before the write starts. The parameter is
+ * here so that a shape which *can* stream does not have to reopen this
+ * function.
  */
 export async function insertCostRows(
   rows: CostDailyRow[] | AsyncIterable<CostDailyRow>,
 ): Promise<void> {
-  if (!isClickHouseConfigured()) return;
   if (Array.isArray(rows) && rows.length === 0) return;
-  await getClickHouseDb().insert(costDaily).values(rows);
+  await getAnalyticsDb().transaction(async (tx) => {
+    const flush = async (batch: Map<string, CostDailyRow>): Promise<void> => {
+      if (batch.size === 0) return;
+      await tx
+        .insert(costDaily)
+        .values([...batch.values()])
+        .onConflictDoUpdate({
+          target: KEY_COLUMNS,
+          set: REPLACE_NON_KEY_COLUMNS,
+          setWhere: sql`${costDaily.ingested_at} <= excluded.ingested_at`,
+        });
+    };
+
+    let batch = new Map<string, CostDailyRow>();
+    for await (const row of rows) {
+      const key = primaryKey(row);
+      // Deleted first so the surviving row moves to the end, keeping the batch
+      // in the order the rows arrived in.
+      batch.delete(key);
+      batch.set(key, row);
+      if (batch.size >= INSERT_BATCH_ROWS) {
+        await flush(batch);
+        batch = new Map();
+      }
+    }
+    await flush(batch);
+  });
 }

@@ -17,12 +17,16 @@ import {
   HOURLY_BINNING_UNAVAILABLE_REASON,
   referencedVirtualTagKeys,
 } from "@infrawrench/client-core";
-import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql, type SQL } from "drizzle-orm";
-import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql, Subquery, type SQL } from "drizzle-orm";
+import { getAnalyticsDb, type AnalyticsDb } from "./client";
 import {
   dayRange,
+  firstMatch,
+  hasTagExpr,
   membershipCondition,
   physicalDimensionExpr,
+  tagValueExpr,
+  textParam,
   type PhysicalCostDimension,
 } from "./cost-sql";
 import { aiCostAttributed, costDaily } from "./schema";
@@ -55,7 +59,7 @@ export type CostDimension = CostDimensionId;
 export type { CostBasis, CostChargeType, CostFilter };
 
 /**
- * What ClickHouse itself can answer. The wire request carries three more
+ * What one scan of `cost_daily` can answer. The wire request carries three more
  * knobs (`topN`, `comparePreviousPeriod`, `forecast`) that the web service
  * layer resolves into extra queries before getting here.
  *
@@ -63,8 +67,8 @@ export type { CostBasis, CostChargeType, CostFilter };
  * reason, and deliberately: it is compiled to `filters` by the service layer,
  * and this type is where that is enforced. Query *text* has no meaning down
  * here and must never acquire one; the only thing that reaches the SQL below is
- * a `CostFilter[]` whose values go through the dialect's own escaping like
- * every other filter's.
+ * a `CostFilter[]` whose values are bound as parameters like every other
+ * filter's.
  */
 export type CostQuery = Omit<
   CostQueryRequest,
@@ -105,11 +109,11 @@ export type CostQuery = Omit<
  * The virtual tag definitions a read needs: `provided` when it already covers
  * every referenced key, otherwise loaded from Postgres for exactly those keys.
  *
- * The loader is imported dynamically on purpose. This module is otherwise
- * ClickHouse-only, and `cost/virtual-tags.ts` opens a database connection as an
- * import side effect; a static import would hand that to every consumer of a
- * cost reader, including the tests and tools that never touch a virtual tag.
- * A query that references none never reaches the import at all.
+ * The loader is imported dynamically on purpose: `cost/virtual-tags.ts` is the
+ * whole virtual tag store (its writes, validation and the client-core rule
+ * compiler), and a static import would hand that to every consumer of a cost
+ * reader, including the tests and tools that never touch a virtual tag. A
+ * query that references none never reaches the import at all.
  */
 export async function resolveVirtualTags(
   organizationId: string,
@@ -184,10 +188,10 @@ const COST_VIEW_COLUMNS = [
  * commitment-blended or list-priced line.
  */
 const BILLED_ONLY_COLUMNS = {
-  list_amount: sql`toFloat64(0)`,
-  list_reported: sql`toUInt8(0)`,
-  blended_amount: sql`toFloat64(0)`,
-  blended_reported: sql`toUInt8(0)`,
+  list_amount: sql`0::float8`,
+  list_reported: sql`0::smallint`,
+  blended_amount: sql`0::float8`,
+  blended_reported: sql`0::smallint`,
 } as const;
 
 /** The split half's projection: its own columns, then the billed-only defaults. */
@@ -203,6 +207,19 @@ function splitColumns(a: typeof aiCostAttributed): SQL {
   );
 }
 
+/** A derived row source standing in for `cost_daily` in a reader's FROM. */
+export type CostSource = Subquery<"cost_daily", Record<string, unknown>>;
+
+/**
+ * A statement shaped like `cost_daily`, as a subquery aliased `cost_daily`: the
+ * readers' column references (`"cost_daily"."amount"`…) then resolve against
+ * it, and the query builder accepts columns of the `cost_daily` table as
+ * columns of this source, which it would refuse for a FROM of raw SQL.
+ */
+function costSource(statement: SQL): CostSource {
+  return new Subquery(statement, {}, "cost_daily") as CostSource;
+}
+
 /** True when any of these tag keys names an AI caller dimension. */
 export function referencesCallerTags(tagKeys: Array<string | undefined>): boolean {
   return tagKeys.some((k) => typeof k === "string" && k.startsWith(CALLER_TAG_PREFIX));
@@ -210,7 +227,7 @@ export function referencesCallerTags(tagKeys: Array<string | undefined>): boolea
 
 /**
  * `cost_daily` with each attributed day's AI rows replaced by their caller
- * splits, aliased as `cost_daily` so every column reference, filter and
+ * splits, as a source aliased `cost_daily` so every column reference, filter and
  * visibility layer below resolves against it unchanged.
  *
  * Only reached when a query names a `caller:` tag key; every other read is
@@ -221,7 +238,7 @@ export function referencesCallerTags(tagKeys: Array<string | undefined>): boolea
  * simply carry no caller tag. Latest run per day wins, so a run in progress is
  * invisible until it is complete.
  */
-export function attributedCostSource(organizationId: string, from: string, to: string): SQL {
+export function attributedCostSource(organizationId: string, from: string, to: string): CostSource {
   const billedCols = sql.join(
     [
       ...COST_VIEW_COLUMNS.map((c) => sql`${costDaily[c]}`),
@@ -232,8 +249,12 @@ export function attributedCostSource(organizationId: string, from: string, to: s
     sql`, `,
   );
   const splitCols = splitColumns(aiCostAttributed);
-  const runDays = sql`SELECT ${aiCostAttributed.day} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`}`;
-  return sql`(SELECT ${billedCols} FROM ${costDaily} FINAL WHERE ${costDailyOrgCondition(organizationId)} AND ${dayRange(from, to)} AND NOT (mapContains(${costDaily.tags}, 'ai:provider') AND ${costDaily.day} IN (${runDays})) UNION ALL SELECT ${splitCols} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} AND (${aiCostAttributed.day}, ${aiCostAttributed.run_at}) IN (SELECT ${aiCostAttributed.day}, max(${aiCostAttributed.run_at}) FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} GROUP BY ${aiCostAttributed.day})) AS ${sql.identifier("cost_daily")}`;
+  const a = aiCostAttributed;
+  const splitRange = sql`${a.organization_id} = ${organizationId} AND ${a.day} >= ${from}::date AND ${a.day} <= ${to}::date`;
+  const runDays = sql`SELECT ${a.day} FROM ${a} WHERE ${splitRange}`;
+  return costSource(
+    sql`SELECT ${billedCols} FROM ${costDaily} WHERE ${costDailyOrgCondition(organizationId)} AND ${dayRange(from, to)} AND NOT (${hasTagExpr("ai:provider")} AND ${costDaily.day} IN (${runDays})) UNION ALL SELECT ${splitCols} FROM ${a} WHERE ${splitRange} AND (${a.day}, ${a.run_at}) IN (SELECT ${a.day}, max(${a.run_at}) FROM ${a} WHERE ${splitRange} GROUP BY ${a.day})`,
+  );
 }
 
 /**
@@ -243,18 +264,20 @@ export function attributedCostSource(organizationId: string, from: string, to: s
  * pickers and the spend-by-caller breakdown. `from`/`to` are optional: the
  * pickers look at all history.
  */
-export function callerSplitsSource(organizationId: string, from?: string, to?: string): SQL {
+export function callerSplitsSource(organizationId: string, from?: string, to?: string): CostSource {
   const a = aiCostAttributed;
   const cols = splitColumns(a);
   const range = sql.join(
     [
       sql`${a.organization_id} = ${organizationId}`,
-      ...(from ? [sql`${a.day} >= ${sql`toDate(${from})`}`] : []),
-      ...(to ? [sql`${a.day} <= ${sql`toDate(${to})`}`] : []),
+      ...(from ? [sql`${a.day} >= ${from}::date`] : []),
+      ...(to ? [sql`${a.day} <= ${to}::date`] : []),
     ],
     sql` AND `,
   );
-  return sql`(SELECT ${cols} FROM ${a} WHERE ${range} AND (${a.day}, ${a.run_at}) IN (SELECT ${a.day}, max(${a.run_at}) FROM ${a} WHERE ${range} GROUP BY ${a.day})) AS ${sql.identifier("cost_daily")}`;
+  return costSource(
+    sql`SELECT ${cols} FROM ${a} WHERE ${range} AND (${a.day}, ${a.run_at}) IN (SELECT ${a.day}, max(${a.run_at}) FROM ${a} WHERE ${range} GROUP BY ${a.day})`,
+  );
 }
 
 /** Attributed spend for one caller tag over a range, visibility applied. */
@@ -268,7 +291,7 @@ export async function querySpendByCallerTag(
   const rows = await query((db) =>
     db
       .select({
-        value: sql<string>`${costDaily.tags}[${tagKey}]`.as("value"),
+        value: sql<string>`${tagValueExpr(tagKey)}`.as("value"),
         currency: costDaily.currency,
         amount: sql<number>`sum(${costDaily.amount})`.as("amount"),
       })
@@ -286,13 +309,11 @@ export async function querySpendByCallerTag(
 }
 
 /**
- * Unconfigured deployments have no cost history, so `[]` is the truth there. A
- * configured-but-failing ClickHouse throws, so the caller's request fails
+ * Run one read. A failing database throws, so the caller's request fails
  * loudly rather than rendering an outage as "you have spent nothing".
  */
-async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await build(getClickHouseDb());
+async function query<T>(build: (db: AnalyticsDb) => Promise<T[]>): Promise<T[]> {
+  return await build(getAnalyticsDb());
 }
 
 /**
@@ -335,7 +356,7 @@ function dimensionExpr(
  * amount still uses it, and one with zero still falls back.
  */
 export function amortizedAmountExpr(): SQL {
-  return sql`if(${costDaily.amortized_reported} != 0 OR ${costDaily.amortized_amount} != 0, ${costDaily.amortized_amount}, ${costDaily.amount})`;
+  return sql`(CASE WHEN ${costDaily.amortized_reported} != 0 OR ${costDaily.amortized_amount} != 0 THEN ${costDaily.amortized_amount} ELSE ${costDaily.amount} END)`;
 }
 
 /**
@@ -350,7 +371,7 @@ export function amortizedAmountExpr(): SQL {
  * pools, and every provider mix.
  */
 export function blendedAmountExpr(): SQL {
-  return sql`if(${costDaily.blended_reported} != 0, ${costDaily.blended_amount}, ${amortizedAmountExpr()})`;
+  return sql`(CASE WHEN ${costDaily.blended_reported} != 0 THEN ${costDaily.blended_amount} ELSE ${amortizedAmountExpr()} END)`;
 }
 
 /**
@@ -382,7 +403,7 @@ function chargeTypeCondition(chargeTypes: CostChargeType[] | undefined): SQL | u
  * The SQL one cost visibility layer compiles to:
  * `(account IN … OR allocated centre IN …) AND <saved filter>`.
  *
- * The centre arm is the showback `multiIf` (first matching allocation rule
+ * The centre arm is the showback `CASE` (first matching allocation rule
  * wins, unmatched rows are `''`) tested for membership, so "a row belongs to
  * the Platform centre" means exactly what the showback report says it means.
  * A layer with neither accounts nor centres is decided by its saved filter
@@ -390,7 +411,7 @@ function chargeTypeCondition(chargeTypes: CostChargeType[] | undefined): SQL | u
  * closed.
  */
 function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
-  if (layer.unresolvable) return sql`0`;
+  if (layer.unresolvable) return sql`false`;
   // A layer that reads a virtual tag (through its saved filter or a cost
   // centre's allocation rules) matches nothing. This predicate is plain WHERE
   // SQL built synchronously from the compiled scope: it has no virtual tag
@@ -400,16 +421,18 @@ function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
     (layer.filters ?? []).some((f) => f.dimension === "virtual_tag") ||
     layer.rules.some((r) => (r.match as { virtualTagKey?: string }).virtualTagKey)
   ) {
-    return sql`0`;
+    return sql`false`;
   }
   const arms: SQL[] = [];
   if (layer.accountIds.length > 0) arms.push(inArray(costDaily.account_id, layer.accountIds));
   if (layer.costCentreIds.length > 0) {
-    const branches = layer.rules.map(
-      (rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`,
+    const centreExpr = firstMatch(
+      layer.rules.map((rule) => ({
+        when: matchConditions(rule.match),
+        then: textParam(rule.costCentreId),
+      })),
+      sql`''`,
     );
-    const centreExpr =
-      branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
     arms.push(inArray(centreExpr, layer.costCentreIds));
   }
   // No virtual tag reaches here (refused above), so an empty scope suffices.
@@ -417,11 +440,11 @@ function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
   const filterConds = (layer.filters ?? []).map((f) =>
     membershipCondition(dimensionExpr(f.dimension, f.tagKey, noVirtualTags), f.op, f.values),
   );
-  if (arms.length === 0 && layer.filters === null) return sql`0`;
+  if (arms.length === 0 && layer.filters === null) return sql`false`;
   const parts: SQL[] = [];
   if (arms.length > 0) parts.push(sql`(${sql.join(arms, sql` OR `)})`);
   parts.push(...filterConds);
-  return parts.length > 0 ? sql`(${sql.join(parts, sql` AND `)})` : sql`1`;
+  return parts.length > 0 ? sql`(${sql.join(parts, sql` AND `)})` : sql`true`;
 }
 
 /**
@@ -452,7 +475,7 @@ export function costDailyOrgCondition(organizationId: string): SQL {
 
 /**
  * The SQL conditions a rule's match compiles to: an AND of the fields it sets,
- * or `1` (matches everything) when it sets none.
+ * or `true` (matches everything) when it sets none.
  *
  * Shared by allocation rules and billing rules on purpose: they match on the
  * same `cost_daily` columns with the same semantics, and two builders for one
@@ -460,7 +483,7 @@ export function costDailyOrgCondition(organizationId: string): SQL {
  * about which rows a tag rule claims. `BillingRuleMatch` is a superset
  * (`chargeType`), so an allocation match passes through structurally.
  *
- * Every value goes through the dialect's literal escaping, never interpolation.
+ * Every value is a bound parameter, never interpolation.
  */
 function matchConditions(
   match: BillingRuleMatch & {
@@ -473,8 +496,8 @@ function matchConditions(
   if (match.tagKey) {
     conds.push(
       match.tagValue !== undefined
-        ? sql`${costDaily.tags}[${match.tagKey}] = ${match.tagValue}`
-        : sql`mapContains(${costDaily.tags}, ${match.tagKey})`,
+        ? sql`${tagValueExpr(match.tagKey)} = ${textParam(match.tagValue)}`
+        : hasTagExpr(match.tagKey),
     );
   }
   if (match.accountId) conds.push(eq(costDaily.account_id, match.accountId));
@@ -490,26 +513,27 @@ function matchConditions(
     const value = scope.value(match.virtualTagKey);
     conds.push(
       match.virtualTagValue !== undefined
-        ? sql`${value} = ${match.virtualTagValue}`
+        ? sql`${value} = ${textParam(match.virtualTagValue)}`
         : sql`${value} != ''`,
     );
   }
-  return conds.length > 0 ? sql.join(conds, sql` AND `) : sql`1`;
+  return conds.length > 0 ? sql`(${sql.join(conds, sql` AND `)})` : sql`true`;
 }
 
 /**
  * The adjusted money expression: the raw one multiplied by every matching
  * percentage rule's factor.
  *
- * `amount * if(c1, 1.1, 1) * if(c2, 0.85, 1)`: a **product of conditional
- * factors**, not a `multiIf`. That is the composition half of the ordering
+ * `amount * (CASE WHEN c1 THEN 1.1 ELSE 1 END) * (CASE WHEN c2 THEN 0.85 ELSE 1
+ * END)`: a **product of conditional factors**, not one first-match `CASE`.
+ * That is the composition half of the ordering
  * model in SQL: markups genuinely compose, so two 10% rules must give ×1.21,
  * and a first-match-wins expression would silently give ×1.10. Multiplication
  * commutes, so the compiled order does not change the arithmetic; it exists so
  * the same rule set always produces the same SQL.
  *
- * Factors are rendered as bare numeric literals rather than through the string
- * escaping every match value gets: they are numbers this module derived from a
+ * Factors are rendered as bare numeric literals rather than bound like every
+ * match value: they are numbers this module derived from a
  * validated `percent` (`1 + percent/100`, bounded to [-100, 1000]), never caller
  * text. The `Number.isFinite` guard is what keeps that true.
  */
@@ -519,7 +543,7 @@ function adjustedAmountExpr(raw: SQL, factors: CompiledBillingAdjustments["facto
     // A guard, not a formality: an unbounded value here would be the one place
     // a rule's number reaches the SQL text.
     const factor = Number.isFinite(f.factor) ? f.factor : 1;
-    return sql`if(${matchConditions(f.match)}, ${sql.raw(String(factor))}, 1)`;
+    return sql`(CASE WHEN ${matchConditions(f.match)} THEN ${sql.raw(`${String(factor)}::float8`)} ELSE 1 END)`;
   });
   return sql`(${raw}) * ${sql.join(terms, sql` * `)}`;
 }
@@ -546,12 +570,13 @@ function reallocationExpr(
   kind: "cost_centre" | "account",
   fallback: SQL,
 ): SQL {
-  if (reallocations.length === 0) return fallback;
-  const branches = reallocations.map((r) => {
-    const cond = matchConditions(r.match);
-    return r.targetKind !== kind ? sql`${cond}, ${fallback}` : sql`${cond}, ${r.targetId}`;
-  });
-  return sql`multiIf(${sql.join(branches, sql`, `)}, ${fallback})`;
+  return firstMatch(
+    reallocations.map((r) => ({
+      when: matchConditions(r.match),
+      then: r.targetKind !== kind ? fallback : textParam(r.targetId),
+    })),
+    fallback,
+  );
 }
 
 /**
@@ -565,20 +590,39 @@ function reallocationExpr(
 export const COST_STORE_GRANULARITY: CostGranularity = "daily";
 
 /**
+ * `money` summed over the rows `cond` holds for, `0` when it holds for none: a
+ * plain `FILTER`ed sum is `NULL` over no rows, and every caller reads these as
+ * amounts.
+ */
+function sumWhere(money: SQL, cond: SQL): SQL<number> {
+  return sql<number>`coalesce(sum(${money}) FILTER (WHERE ${cond}), 0)`;
+}
+
+/**
+ * A day (or a truncation of one) as `"YYYY-MM-DD"`, the bucket and day string
+ * every caller keys on. Spelled out rather than left to `::text`, which follows
+ * the session's `DateStyle`.
+ */
+function dayText(day: SQL): SQL {
+  return sql`to_char(${day}, 'YYYY-MM-DD')`;
+}
+
+/**
  * The bucket expression for a bin size. Running totals (`cumulative`) are a
  * post-pass over these buckets, not a bucket of their own, so they never
  * reach here.
  */
 function bucketExpr(bin: CostBinSize): SQL {
   switch (bin) {
+    // `date_trunc('week')` is the ISO week, so buckets start on Monday.
     case "weekly":
-      return sql`toString(toStartOfWeek(${costDaily.day}, 1))`;
+      return dayText(sql`date_trunc('week', ${costDaily.day}::timestamp)`);
     case "monthly":
-      return sql`toString(toStartOfMonth(${costDaily.day}))`;
+      return dayText(sql`date_trunc('month', ${costDaily.day}::timestamp)`);
     case "quarterly":
-      return sql`toString(toStartOfQuarter(${costDaily.day}))`;
+      return dayText(sql`date_trunc('quarter', ${costDaily.day}::timestamp)`);
     case "daily":
-      return sql`toString(${costDaily.day})`;
+      return dayText(sql`${costDaily.day}`);
     case "hourly":
       // There is no hour to bucket by: a day-keyed row would land entirely in
       // its midnight bucket and the chart would show 23 empty hours a day.
@@ -615,8 +659,7 @@ interface QueryCostsRow {
 /**
  * Aggregate cost_daily into per-bucket, per-group, per-currency sums.
  * Currencies are never merged: mixed-currency orgs get one series per
- * currency and the UI labels them. Uses FINAL so restated rows
- * (ReplacingMergeTree versions) never double-count.
+ * currency and the UI labels them.
  *
  * `costBasis` picks which money column is summed and `chargeTypes` narrows
  * which rows count; both default to the behaviour that predates them (cash,
@@ -688,7 +731,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
     groupExpr =
       q.groupBy === "none" || q.segmentByDate
         ? xExpr
-        : sql`concat(${xExpr}, ${COST_X_SEGMENT_SEPARATOR}, ${groupExpr})`;
+        : sql`(${xExpr} || ${textParam(COST_X_SEGMENT_SEPARATOR)} || ${groupExpr})`;
   }
 
   const where = and(
@@ -758,14 +801,13 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
             db
               .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
               .from(costDaily)
-              .final()
               .$dynamic(),
             scope,
           )
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`))
-        : withVirtualTagJoins(db.select(selection).from(costDaily).final().$dynamic(), scope)
+        : withVirtualTagJoins(db.select(selection).from(costDaily).$dynamic(), scope)
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`)),
@@ -815,7 +857,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
  * Units are matched as the providers wrote them and never converted: "GB" and
  * "GB-Mo" are different quantities, and summing them would produce a number
  * that means nothing. Rows reporting no usage carry an empty unit and so never
- * match. Uses FINAL for the same reason {@link queryCosts} does.
+ * match.
  */
 export async function queryUsageDaily(
   organizationId: string,
@@ -839,11 +881,10 @@ export async function queryUsageDaily(
     withVirtualTagJoins(
       db
         .select({
-          bucket: sql`toString(${costDaily.day})`.as("bucket"),
+          bucket: sql`to_char(${costDaily.day}, 'YYYY-MM-DD')`.as("bucket"),
           amount: sql<number>`sum(${quantity})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic(),
       scope,
     )
@@ -865,7 +906,7 @@ export async function queryUsageDaily(
  * The `count` measure: how many distinct values of the group-by dimension had
  * nonzero spend in each bin, plus the distinct count over the whole range.
  *
- * Two levels of aggregation, both in ClickHouse: the inner query sums spend per
+ * Two levels of aggregation, both in the database: the inner query sums spend per
  * (bin, value, currency) and the outer counts the values whose sum is not zero.
  * "Nonzero" is judged per currency, so a value billed 5 USD and refunded 5 EUR
  * on the same day still counts (the two amounts are not comparable), and
@@ -921,7 +962,6 @@ export async function queryCostCounts(
           amount: sql<number>`sum(${moneyExpr})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic();
       const perGroup = withVirtualTagJoins(grouped, vt)
         .where(where)
@@ -930,7 +970,7 @@ export async function queryCostCounts(
       return db
         .select({
           bucket: perGroup.bucket,
-          n: sql<string>`uniqExact(${perGroup.grp})`.as("n"),
+          n: sql<string>`count(DISTINCT ${perGroup.grp})`.as("n"),
         })
         .from(perGroup)
         .where(sql`${perGroup.amount} != 0`)
@@ -945,14 +985,13 @@ export async function queryCostCounts(
           amount: sql<number>`sum(${moneyExpr})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic();
       const perGroup = withVirtualTagJoins(grouped, vt)
         .where(where)
         .groupBy(sql`grp`, costDaily.currency)
         .as("per_group_total");
       return db
-        .select({ n: sql<string>`uniqExact(${perGroup.grp})`.as("n") })
+        .select({ n: sql<string>`count(DISTINCT ${perGroup.grp})`.as("n") })
         .from(perGroup)
         .where(sql`${perGroup.amount} != 0`);
     }),
@@ -975,12 +1014,12 @@ export async function getCostUsageUnits(organizationId: string): Promise<string[
     db
       .select({
         unit: costDaily.usage_unit,
-        rows: sql<string>`count()`.as("rows"),
+        row_count: sql<string>`count(*)`.as("row_count"),
       })
       .from(costDaily)
       .where(and(costDailyOrgCondition(organizationId), sql`${costDaily.usage_unit} != ''`))
       .groupBy(costDaily.usage_unit)
-      .orderBy(desc(sql`rows`))
+      .orderBy(desc(sql`row_count`))
       .limit(500),
   );
   return rows.map((r) => r.unit);
@@ -1020,7 +1059,6 @@ export async function getResourceCostTotals(
         amount: sql<number>`sum(${amountExpr(costBasis)})`.as("amount"),
       })
       .from(costDaily)
-      .final()
       .where(
         and(
           costDailyOrgCondition(organizationId),
@@ -1050,7 +1088,7 @@ export interface ResourceCostWindowRow {
 /**
  * Spend per provider resource id over several windows in one scan: a resource
  * report's accrued, month-to-date and previous-month columns. The scan covers
- * the union of the windows and each window is a `sumIf` over it, so three
+ * the union of the windows and each window is a filtered sum over it, so three
  * columns cost one read rather than three.
  *
  * `accountIds` / `resourceIds` narrow the read to one page of a report; a
@@ -1074,10 +1112,7 @@ export async function getResourceCostWindows(
   const money = amountExpr(opts.costBasis);
   const sums: Record<string, SQL.Aliased<number>> = {};
   windows.forEach((w, i) => {
-    sums[`w${i}`] =
-      sql<number>`sumIf(${money}, ${costDaily.day} >= toDate(${w.from}) AND ${costDaily.day} <= toDate(${w.to}))`.as(
-        `w${i}`,
-      );
+    sums[`w${i}`] = sumWhere(money, dayRange(w.from, w.to)).as(`w${i}`);
   });
   const rows = await query((db) =>
     db
@@ -1088,7 +1123,6 @@ export async function getResourceCostWindows(
         ...sums,
       })
       .from(costDaily)
-      .final()
       .where(
         and(
           costDailyOrgCondition(organizationId),
@@ -1155,7 +1189,6 @@ export async function getResourceVirtualTagValues(
           amount: sql<number>`sum(${money})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic(),
       scope,
     )
@@ -1188,9 +1221,9 @@ export async function getCostDimensionValues(
     const key = opts!.tagKey!;
     const callerRows = await query((db) =>
       db
-        .selectDistinct({ value: sql<string>`${costDaily.tags}[${key}]`.as("value") })
+        .selectDistinct({ value: sql<string>`${tagValueExpr(key)}`.as("value") })
         .from(callerSplitsSource(organizationId, opts?.from, opts?.to))
-        .where(and(costDailyOrgCondition(organizationId), sql`${costDaily.tags}[${key}] != ''`))
+        .where(and(costDailyOrgCondition(organizationId), sql`${tagValueExpr(key)} != ''`))
         .orderBy(asc(sql`value`))
         .limit(500),
     );
@@ -1246,8 +1279,9 @@ export async function getCostTagKeys(
 ): Promise<string[]> {
   const rows = await query((db) =>
     db
-      .selectDistinct({ key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key") })
+      .selectDistinct({ key: sql<string>`${TAG_KEY_COLUMN}`.as("key") })
       .from(costDaily)
+      .crossJoinLateral(TAG_KEYS_JOIN)
       .where(costDailyOrgCondition(organizationId))
       .orderBy(asc(sql`key`))
       .limit(limit),
@@ -1256,10 +1290,9 @@ export async function getCostTagKeys(
   // what puts `caller:team` in every group-by and filter picker.
   const callerRows = await query((db) =>
     db
-      .selectDistinct({
-        key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key"),
-      })
+      .selectDistinct({ key: sql<string>`${TAG_KEY_COLUMN}`.as("key") })
       .from(callerSplitsSource(organizationId))
+      .crossJoinLateral(TAG_KEYS_JOIN)
       .where(costDailyOrgCondition(organizationId))
       .orderBy(asc(sql`key`))
       .limit(50),
@@ -1274,6 +1307,14 @@ export async function getCostTagKeys(
 /** Upper bound on distinct tag keys read per org for pickers and the usage table. */
 export const TAG_KEY_SCAN_LIMIT = 2000;
 
+/**
+ * One row per tag key a cost row carries, joined laterally so a reader can
+ * group and count by key. The column is not called `key`, which readers
+ * project as an alias: a bare `GROUP BY key` resolves input columns first.
+ */
+const TAG_KEYS_JOIN = sql`jsonb_object_keys(${costDaily.tags}) AS tag_keys(tag_key)`;
+const TAG_KEY_COLUMN = sql`tag_keys.tag_key`;
+
 /** Per-key usage over a window of cost data: the tag key settings table. */
 export interface CostTagKeyUsageRow {
   key: string;
@@ -1286,35 +1327,32 @@ export interface CostTagKeyUsageRow {
 /**
  * How each tag key is used in the org's cost data since `from`: which
  * providers bill with it, on how many rows and distinct resources, and the
- * last day it appeared. Busiest keys first.
- *
- * Read without FINAL: these are orientation figures for deciding what to hide,
- * and a replaced-but-unmerged row inflating a count by one changes no decision,
- * while FINAL over a 90-day window is the expensive way to read it.
+ * last day it appeared. Busiest keys first. At most 16 provider ids per key:
+ * the table shows a handful of logos, not an inventory.
  */
 export async function getCostTagKeyUsage(
   organizationId: string,
   from: string,
   limit = TAG_KEY_SCAN_LIMIT,
 ): Promise<CostTagKeyUsageRow[]> {
-  const key = sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`;
   const rows = await query((db) =>
     db
       .select({
-        key: key.as("key"),
-        plugin_ids: sql<string[]>`groupUniqArray(16)(toString(${costDaily.plugin_id}))`.as(
+        key: sql<string>`${TAG_KEY_COLUMN}`.as("key"),
+        plugin_ids: sql<string[]>`(array_agg(DISTINCT ${costDaily.plugin_id}))[1:16]`.as(
           "plugin_ids",
         ),
-        row_count: sql<string>`count()`.as("row_count"),
+        row_count: sql<string>`count(*)`.as("row_count"),
         resource_count:
-          sql<string>`uniqExactIf(${costDaily.resource_id}, ${costDaily.resource_id} != '')`.as(
+          sql<string>`count(DISTINCT ${costDaily.resource_id}) FILTER (WHERE ${costDaily.resource_id} != '')`.as(
             "resource_count",
           ),
-        last_seen: sql<string>`toString(max(${costDaily.day}))`.as("last_seen"),
+        last_seen: sql<string>`to_char(max(${costDaily.day}), 'YYYY-MM-DD')`.as("last_seen"),
       })
       .from(costDaily)
+      .crossJoinLateral(TAG_KEYS_JOIN)
       .where(and(costDailyOrgCondition(organizationId), gte(costDaily.day, from)))
-      .groupBy(sql`key`)
+      .groupBy(TAG_KEY_COLUMN)
       .orderBy(desc(sql`row_count`), asc(sql`key`))
       .limit(limit),
   );
@@ -1340,7 +1378,7 @@ export interface UntaggedSpendRows {
 /**
  * Untagged spend over the org's required tag keys: how much of the range's
  * spend is on rows missing at least one required key, overall and per key.
- * "Carries the key" is `mapContains`: a present-but-empty value counts as
+ * "Carries the key" is key presence: a present-but-empty value counts as
  * tagged here (billing exports rarely emit empty tag values, and spend-side
  * strictness belongs to the resource compliance report, not the money view).
  *
@@ -1357,19 +1395,18 @@ export async function getUntaggedSpend(
 ): Promise<UntaggedSpendRows> {
   if (requiredKeys.length === 0) return { totals: [], byKey: [], topUntagged: [] };
 
-  const hasKey = (key: string) => sql`mapContains(${costDaily.tags}, ${key})`;
-  const missingAny = sql`NOT (${sql.join(requiredKeys.map(hasKey), sql` AND `)})`;
+  const missingAny = sql`NOT (${sql.join(requiredKeys.map(hasTagExpr), sql` AND `)})`;
   const money = amountExpr(costBasis);
   const scope = and(costDailyOrgCondition(organizationId), dayRange(from, to));
 
-  // One `sumIf` per required key, selected alongside the totals so the whole
+  // One filtered sum per required key, selected alongside the totals so the whole
   // report is a single scan. The keys are the org's own configuration, but the
   // aliases they land under are generated here rather than derived from them:
   // a tag key is arbitrary user text and has no business being an identifier.
   const perKey = Object.fromEntries(
     requiredKeys.map((key, i) => [
       `missing_${i}`,
-      sql<number>`sumIf(${money}, NOT ${hasKey(key)})`.as(`missing_${i}`),
+      sumWhere(money, sql`NOT ${hasTagExpr(key)}`).as(`missing_${i}`),
     ]),
   ) as Record<string, SQL.Aliased<number>>;
 
@@ -1378,11 +1415,10 @@ export async function getUntaggedSpend(
       .select({
         currency: costDaily.currency,
         total: sql<number>`sum(${money})`.as("total"),
-        untagged: sql<number>`sumIf(${money}, ${missingAny})`.as("untagged"),
+        untagged: sumWhere(money, missingAny).as("untagged"),
         ...perKey,
       })
       .from(costDaily)
-      .final()
       .where(scope)
       .groupBy(costDaily.currency)
       .orderBy(asc(costDaily.currency)),
@@ -1413,7 +1449,6 @@ export async function getUntaggedSpend(
         amount: sql<number>`sum(${money})`.as("amount"),
       })
       .from(costDaily)
-      .final()
       .where(and(scope, missingAny))
       .groupBy(costDaily.account_id, costDaily.service, costDaily.currency)
       .orderBy(desc(sql`amount`))
@@ -1448,16 +1483,19 @@ export interface ShowbackRule {
 }
 
 /**
- * The first-match-wins allocation `multiIf`: one cost centre id per row, `''`
- * for rows no rule claims. Shared by showback and by `queryCosts`'
- * `groupByAllocation`, so "which centre does this row belong to" has one
- * answer everywhere.
+ * The first-match-wins allocation `CASE`: one cost centre id per row, `''`
+ * for rows no rule claims. Shared by showback, invoice pricing and
+ * `queryCosts`' `groupByAllocation`, so "which centre does this row belong to"
+ * has one answer everywhere.
  */
 function allocationExpr(rules: ShowbackRule[], scope: VirtualTagScope): SQL {
-  const branches = rules.map(
-    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
+  return firstMatch(
+    rules.map((rule) => ({
+      when: matchConditions(rule.match, scope),
+      then: textParam(rule.costCentreId),
+    })),
+    sql`''`,
   );
-  return branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
 }
 
 /**
@@ -1494,11 +1532,10 @@ export async function queryUsageQuantities(
     withVirtualTagJoins(
       db
         .select({
-          day: sql<string>`toString(${costDaily.day})`.as("d"),
+          day: sql<string>`to_char(${costDaily.day}, 'YYYY-MM-DD')`.as("d"),
           value: sql<number>`sum(${quantity})`.as("value"),
         })
         .from(costDaily)
-        .final()
         .$dynamic(),
       scope,
     )
@@ -1533,7 +1570,7 @@ export async function getCostUsageUnitSummaries(
         unit: costDaily.usage_unit,
         usage: sql<number>`sum(${costDaily.usage_amount})`.as("usage"),
         spend: sql<number>`sum(${costDaily.amount})`.as("spend"),
-        services: sql<string[]>`groupUniqArray(5)(${costDaily.service})`.as("services"),
+        services: sql<string[]>`(array_agg(DISTINCT ${costDaily.service}))[1:5]`.as("services"),
       })
       .from(costDaily)
       .where(
@@ -1544,7 +1581,7 @@ export async function getCostUsageUnitSummaries(
         ),
       )
       .groupBy(costDaily.usage_unit)
-      .having(sql`usage > 0`)
+      .having(sql`sum(${costDaily.usage_amount}) > 0`)
       .orderBy(desc(sql`spend`))
       .limit(200),
   );
@@ -1557,7 +1594,7 @@ export async function getCostUsageUnitSummaries(
 
 /**
  * Spend per cost centre via first-match-wins allocation rules, compiled into
- * one `multiIf` so ClickHouse walks `cost_daily` once. `rules` must already be
+ * one `CASE` so a single scan walks `cost_daily` once. `rules` must already be
  * in evaluation order (ascending priority). Rows no rule claims come back
  * under the empty-string centre id: the caller labels that "Unallocated".
  *
@@ -1577,8 +1614,8 @@ export async function getCostUsageUnitSummaries(
  *
  * `adjustments` layers the org's billing rules on top **inside the same
  * statement**: percentage factors multiply the summed amount, and cost-centre
- * reallocations wrap the allocation `multiIf` in a second one that overrides
- * it. Reallocation is why the two `multiIf`s nest rather than merge: the
+ * reallocations wrap the allocation `CASE` in a second one that overrides
+ * it. Reallocation is why the two `CASE`s nest rather than merge: the
  * allocation rules answer "where did this land", the billing rules answer "and
  * where should it be billed instead", and collapsing them would make a
  * reallocation indistinguishable from someone editing the allocation rules.
@@ -1653,14 +1690,13 @@ export async function getShowbackSpend(
           db
             .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
             .from(costDaily)
-            .final()
             .$dynamic(),
           scope,
         )
           .where(where)
           .groupBy(sql`centre`, costDaily.currency)
           .orderBy(desc(sql`amount`))
-      : withVirtualTagJoins(db.select(selection).from(costDaily).final().$dynamic(), scope)
+      : withVirtualTagJoins(db.select(selection).from(costDaily).$dynamic(), scope)
           .where(where)
           .groupBy(sql`centre`, costDaily.currency)
           .orderBy(desc(sql`amount`));
@@ -1682,8 +1718,8 @@ export async function getCostCoverage(
     db
       .select({
         account_id: costDaily.account_id,
-        first_day: sql<string>`toString(min(${costDaily.day}))`.as("first_day"),
-        last_day: sql<string>`toString(max(${costDaily.day}))`.as("last_day"),
+        first_day: sql<string>`to_char(min(${costDaily.day}), 'YYYY-MM-DD')`.as("first_day"),
+        last_day: sql<string>`to_char(max(${costDaily.day}), 'YYYY-MM-DD')`.as("last_day"),
       })
       .from(costDaily)
       .where(costDailyOrgCondition(organizationId))
@@ -1738,7 +1774,7 @@ export interface AnomalyContributorQuery {
  * Decompose one anomaly's scope along every contributor facet at once: **one
  * scan, one statement**.
  *
- * Each row is `ARRAY JOIN`ed against its own facet values (its account, its
+ * Each row is joined laterally against its own facet values (its account, its
  * region, its resource id, its usage unit, its charge type, and one entry per
  * tag it carries) plus a `total` entry, and the result is grouped by
  * (facet, value). Every facet is therefore a partition of the same rows, and
@@ -1746,10 +1782,11 @@ export interface AnomalyContributorQuery {
  * the same snapshot rather than from the anomaly's stored figures (which may
  * predate a restatement).
  *
- * `LIMIT n BY facet` over a global "largest rise first" order bounds the answer
- * to a few rows per facet however many resources or tag values the scope
- * holds, and `uniqExact` on the account says whether a value's spend sits in
- * one account (the fact cost visibility folding decides on).
+ * Ranking each facet's values by rise and keeping the first `perFacet` of
+ * each bounds the answer to a few rows per facet however many resources or
+ * tag values the scope holds, and a distinct count on the account says whether
+ * a value's spend sits in one account (the fact cost visibility folding
+ * decides on).
  *
  * Cash basis and every charge type, exactly what detection judged, through the
  * one org predicate every cost read uses: unattended callers (the evaluator)
@@ -1760,37 +1797,41 @@ export async function getAnomalyContributorRows(
   organizationId: string,
   q: AnomalyContributorQuery,
 ): Promise<AnomalyContributorRow[]> {
-  const days = Math.max(1, q.baselineDays);
-  const facets = sql`arrayConcat([tuple('total', ''), tuple('account', ${costDaily.account_id}), tuple('region', toString(${costDaily.region})), tuple('resource', ${costDaily.resource_id}), tuple('usage_unit', toString(${costDaily.usage_unit})), tuple('charge_type', toString(${costDaily.charge_type}))], arrayMap((k, v) -> tuple(concat('tag:', toString(k)), v), mapKeys(${costDaily.tags}), mapValues(${costDaily.tags})))`;
+  const days = sql.raw(`${String(Math.max(1, q.baselineDays))}::float8`);
+  // One (facet, value) pair per facet the row has, plus one per tag it carries.
+  const facets = sql`(VALUES ('total', ''), ('account', ${costDaily.account_id}), ('region', ${costDaily.region}), ('resource', ${costDaily.resource_id}), ('usage_unit', ${costDaily.usage_unit}), ('charge_type', ${costDaily.charge_type}) UNION ALL SELECT 'tag:' || t.key, coalesce(t.value, '') FROM jsonb_each_text(${costDaily.tags}) AS t) AS facets(facet, facet_value)`;
+  const facet = sql`facets.facet`;
   const amount = amountExpr(undefined);
+  const actual = sumWhere(amount, eq(costDaily.day, q.day));
+  const baselineTotal = sumWhere(amount, lt(costDaily.day, q.day));
   const scopeCond =
     q.dimension === "provider"
       ? eq(costDaily.plugin_id, q.dimensionKey)
       : eq(costDaily.service, q.dimensionKey);
-  const rows = await query((db) =>
-    db
+  const rows = await query((db) => {
+    const grouped = db
       .select({
-        facet: sql<string>`tupleElement(f, 1)`.as("facet"),
-        key: sql<string>`tupleElement(f, 2)`.as("key"),
-        // Aliased apart from the column names on purpose: ClickHouse resolves
-        // aliases inside expressions, and `any(account_id) AS account_id`
-        // would read its own result.
+        facet: sql<string>`${facet}`.as("facet"),
+        key: sql<string>`facets.facet_value`.as("key"),
         single_account:
-          sql<string>`if(uniqExact(${costDaily.account_id}) = 1, any(${costDaily.account_id}), '')`.as(
+          sql<string>`CASE WHEN count(DISTINCT ${costDaily.account_id}) = 1 THEN min(${costDaily.account_id}) ELSE '' END`.as(
             "single_account",
           ),
         single_plugin:
-          sql<string>`if(uniqExact(${costDaily.plugin_id}) = 1, toString(any(${costDaily.plugin_id})), '')`.as(
+          sql<string>`CASE WHEN count(DISTINCT ${costDaily.plugin_id}) = 1 THEN min(${costDaily.plugin_id}) ELSE '' END`.as(
             "single_plugin",
           ),
-        actual: sql<number>`sumIf(${amount}, ${eq(costDaily.day, q.day)})`.as("actual"),
-        baseline_total: sql<number>`sumIf(${amount}, ${lt(costDaily.day, q.day)})`.as(
-          "baseline_total",
-        ),
+        actual: actual.as("actual"),
+        baseline_total: baselineTotal.as("baseline_total"),
+        // Largest rise first within each facet: the per-facet cap below keeps
+        // the head of this order.
+        facet_rank:
+          sql<number>`row_number() OVER (PARTITION BY ${facet} ORDER BY ${actual} - ${baselineTotal} / ${days} DESC)`.as(
+            "facet_rank",
+          ),
       })
       .from(costDaily)
-      .final()
-      .arrayJoin(sql`${facets} AS f`)
+      .crossJoinLateral(facets)
       .where(
         and(
           costDailyOrgCondition(organizationId),
@@ -1799,14 +1840,25 @@ export async function getAnomalyContributorRows(
           eq(costDaily.currency, q.currency),
         ),
       )
-      .groupBy(sql`facet`, sql`key`)
+      .groupBy(facet, sql`facets.facet_value`)
+      .as("contributors");
+    return db
+      .select({
+        facet: grouped.facet,
+        key: grouped.key,
+        single_account: grouped.single_account,
+        single_plugin: grouped.single_plugin,
+        actual: grouped.actual,
+        baseline_total: grouped.baseline_total,
+      })
+      .from(grouped)
+      .where(lte(grouped.facet_rank, Math.max(1, Math.floor(q.perFacet))))
       .orderBy(
-        desc(sql`facet = 'total'`),
-        desc(sql`actual - baseline_total / ${sql.raw(String(days))}`),
+        desc(sql`${grouped.facet} = 'total'`),
+        desc(sql`${grouped.actual} - ${grouped.baseline_total} / ${days}`),
       )
-      .limitBy(Math.max(1, Math.floor(q.perFacet)), sql`facet`)
-      .limit(Math.max(1, Math.floor(q.maxRows))),
-  );
+      .limit(Math.max(1, Math.floor(q.maxRows)));
+  });
   return rows.map((r) => ({
     facet: String(r.facet),
     key: String(r.key),
@@ -1844,13 +1896,13 @@ export interface PricingLineRow {
 /**
  * The grouped cost lines a managed-account invoice is priced from.
  *
- * The same allocation `multiIf` and cost-centre reallocation `getShowbackSpend`
+ * The same allocation `CASE` and cost-centre reallocation `getShowbackSpend`
  * compiles, so every row resolves to exactly the centre the showback report
  * puts it in; but grouped finer, by calendar month, account, provider,
  * service, region, charge type and unit, plus one column per tag key a rule
  * reads. That is the grain the pricing engine (`client-core/msp-pricing.ts`)
  * evaluates rules at, and it is fixed by the rules' own vocabulary rather than
- * by anything a user typed: tag keys arrive as escaped literals, never as SQL.
+ * by anything a user typed: tag keys arrive as bound parameters, never as SQL.
  *
  * Nothing is multiplied here. Percentage, tiered and expression rules all run
  * in the engine, which is what lets an invoice say which rule changed which
@@ -1882,22 +1934,18 @@ export async function getPricingLines(
     ...new Set(rules.flatMap((r) => (r.match.virtualTagKey ? [r.match.virtualTagKey] : []))),
   ];
   const scope = new VirtualTagScope(await resolveVirtualTags(organizationId, keys, from, to));
-  const branches = rules.map(
-    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
-  );
-  const allocationExpr =
-    branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
+  const allocated = allocationExpr(rules, scope);
   const centreExpr =
     options.reallocations && options.reallocations.length > 0
-      ? reallocationExpr(options.reallocations, "cost_centre", allocationExpr)
-      : allocationExpr;
+      ? reallocationExpr(options.reallocations, "cost_centre", allocated)
+      : allocated;
   const rawExpr = scope.weighted(amountExpr(options.costBasis));
   const tagKeys = [...(options.tagKeys ?? [])];
 
   const selection: Record<string, SQL.Aliased> = {
     centre: centreExpr.as("centre"),
     currency: sql`${costDaily.currency}`.as("currency"),
-    month: sql`formatDateTime(${costDaily.day}, '%Y-%m')`.as("month"),
+    month: sql`to_char(${costDaily.day}, 'YYYY-MM')`.as("month"),
     account_id: sql`${costDaily.account_id}`.as("account_id"),
     plugin_id: sql`${costDaily.plugin_id}`.as("plugin_id"),
     service: sql`${costDaily.service}`.as("service"),
@@ -1907,45 +1955,43 @@ export async function getPricingLines(
   };
   tagKeys.forEach((key, i) => {
     selection[`t${i}`] =
-      sql`if(mapContains(${costDaily.tags}, ${key}), concat('=', ${costDaily.tags}[${key}]), '')`.as(
-        `t${i}`,
-      );
+      sql`(CASE WHEN ${hasTagExpr(key)} THEN '=' || ${tagValueExpr(key)} ELSE '' END)`.as(`t${i}`);
   });
   const groupKeys = Object.keys(selection);
   const aggregates = {
     collected: sql<number>`sum(${rawExpr})`.as("collected"),
-    listed_collected: sql<number>`sum(if(${costDaily.list_reported} != 0, ${rawExpr}, 0))`.as(
-      "listed_collected",
-    ),
-    list_amount_sum: sql<number>`sum(if(${costDaily.list_reported} != 0, ${scope.weighted(
-      sql`${costDaily.list_amount}`,
-    )}, 0))`.as("list_amount_sum"),
+    listed_collected:
+      sql<number>`sum(CASE WHEN ${costDaily.list_reported} != 0 THEN ${rawExpr} ELSE 0 END)`.as(
+        "listed_collected",
+      ),
+    list_amount_sum:
+      sql<number>`sum(CASE WHEN ${costDaily.list_reported} != 0 THEN ${scope.weighted(
+        sql`${costDaily.list_amount}`,
+      )} ELSE 0 END)`.as("list_amount_sum"),
     usage_sum: sql<number>`sum(${scope.weighted(sql`${costDaily.usage_amount}`)})`.as("usage_sum"),
   };
 
-  const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
+  // The centre is a per-row value and one of the grouping keys, so keeping
+  // only some centres is a row filter: the same rows a filter on the grouped
+  // result would keep.
   const buckets = options.buckets;
-  const having =
-    buckets && buckets.length > 0
-      ? sql`centre IN (${sql.join(
-          buckets.map((b) => sql`${b}`),
-          sql`, `,
-        )})`
-      : undefined;
+  const where = and(
+    costDailyOrgCondition(organizationId),
+    dayRange(from, to),
+    buckets && buckets.length > 0 ? inArray(centreExpr, [...buckets]) : undefined,
+  );
 
-  const rows = (await query((db) => {
-    const q = withVirtualTagJoins(
+  const rows = (await query((db) =>
+    withVirtualTagJoins(
       db
         .select({ ...selection, ...aggregates })
         .from(costDaily)
-        .final()
         .$dynamic(),
       scope,
     )
       .where(where)
-      .groupBy(...groupKeys.map((k) => sql.raw(k)));
-    return having ? q.having(having) : q;
-  })) as Array<Record<string, unknown>>;
+      .groupBy(...groupKeys.map((k) => sql`${sql.identifier(k)}`)),
+  )) as Array<Record<string, unknown>>;
 
   return rows.map((r) => {
     const tags: Record<string, string> = {};
@@ -2016,7 +2062,6 @@ export async function getVirtualTagStats(
           amount: sql<number>`sum(${ruleMoney})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic(),
       ruleScope,
     )
@@ -2036,7 +2081,6 @@ export async function getVirtualTagStats(
           amount: sql<number>`sum(${valueMoney})`.as("amount"),
         })
         .from(costDaily)
-        .final()
         .$dynamic(),
       valueScope,
     )
@@ -2051,7 +2095,7 @@ export async function getVirtualTagStats(
   const [distinct] = await query((db) =>
     withVirtualTagJoins(
       db
-        .select({ n: sql<number>`uniqExact(${distinctExpr})`.as("n") })
+        .select({ n: sql<number>`count(DISTINCT ${distinctExpr})`.as("n") })
         .from(costDaily)
         .$dynamic(),
       distinctScope,
@@ -2080,9 +2124,9 @@ export async function getOrgCostDayRange(
   const [row] = await query((db) =>
     db
       .select({
-        first_day: sql<string>`toString(min(${costDaily.day}))`.as("first_day"),
-        last_day: sql<string>`toString(max(${costDaily.day}))`.as("last_day"),
-        n: sql<number>`count()`.as("n"),
+        first_day: sql<string>`to_char(min(${costDaily.day}), 'YYYY-MM-DD')`.as("first_day"),
+        last_day: sql<string>`to_char(max(${costDaily.day}), 'YYYY-MM-DD')`.as("last_day"),
+        n: sql<number>`count(*)`.as("n"),
       })
       .from(costDaily)
       .where(costDailyOrgCondition(organizationId)),

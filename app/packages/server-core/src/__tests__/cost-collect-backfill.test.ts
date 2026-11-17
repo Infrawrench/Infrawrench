@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * Everything external is mocked or faked: the DB (real Drizzle over a
  * recording driver, so the flag UPDATE renders its actual SQL), the
- * account/plugin/client loader, and the ClickHouse writers.
+ * account/plugin/client loader, and the cost writers.
  *
  * "Today" is frozen mid-month so a short history window stays inside one
  * calendar month. Without that, near the 1st the same windows span two months
@@ -25,7 +25,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 const updates = () => pg.queries.filter((q) => q.sql.startsWith('update "accounts"'));
 
 const insertCostRows = vi.fn(async () => undefined);
-vi.mock("../clickhouse/cost-writers", () => ({
+vi.mock("../analytics/cost-writers", () => ({
   insertCostRows,
   toCostDailyRows: (_meta: unknown, rows: unknown[]) => rows,
 }));

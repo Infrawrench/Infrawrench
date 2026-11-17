@@ -5,9 +5,7 @@
  * shape, a report reads the same rows through a filter set, a grouping and a
  * bucket size chosen by the user. Every statement here starts from
  * {@link flowOrgCondition}, so a cost visibility scope narrows a report
- * exactly as it narrows the feed (to accounts the scope grants outright), and
- * every statement is `FINAL` for the same reason as there: a re-collected day
- * would otherwise read as double its traffic until the parts merge.
+ * exactly as it narrows the feed (to accounts the scope grants outright).
  */
 import {
   and,
@@ -23,18 +21,14 @@ import {
   type SQLWrapper,
 } from "drizzle-orm";
 
-import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { getAnalyticsDb } from "./client";
 import {
+  anyValue,
   flowOrgCondition,
   type NetworkFlowPair,
   type NetworkFlowRange,
 } from "./network-flow-readers";
 import { networkFlowDaily as flow } from "./schema";
-
-async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await build(getClickHouseDb());
-}
 
 /**
  * A report's filters as SQL sees them. Every list ORs within itself and ANDs
@@ -72,12 +66,21 @@ export type NetworkFlowReportSplit =
 
 export type NetworkFlowReportBucket = "daily" | "weekly" | "monthly";
 
-/** Separator inside pair-shaped group keys; mirrors `NETWORK_FLOW_PAIR_SEPARATOR`. */
-const PAIR_SEPARATOR = "\u001f";
+/**
+ * Joins the two halves of a pair-shaped group key: `chr(31)` is U+001F, the
+ * character `NETWORK_FLOW_PAIR_SEPARATOR` names. A function call rather than a
+ * bind parameter, so the key expression carries no parameter of its own.
+ */
+const PAIR_SEPARATOR = sql`chr(31)`;
 
-const peerService = sql`if(${flow.direction} = 'egress', ${flow.dst_service}, ${flow.src_service})`;
-const peerResourceType = sql`if(${flow.direction} = 'egress', ${flow.dst_resource_type_id}, ${flow.src_resource_type_id})`;
-const localNetwork = sql`if(${flow.direction} = 'egress', ${flow.src_network}, ${flow.dst_network})`;
+/** One of a row's two sides, chosen by direction: the peer of egress is its destination. */
+function byDirection(egress: SQLWrapper, ingress: SQLWrapper): SQL<string> {
+  return sql<string>`(CASE WHEN ${flow.direction} = 'egress' THEN ${egress} ELSE ${ingress} END)`;
+}
+
+const peerService = byDirection(flow.dst_service, flow.src_service);
+const peerResourceType = byDirection(flow.dst_resource_type_id, flow.src_resource_type_id);
+const localNetwork = byDirection(flow.src_network, flow.dst_network);
 
 function nonEmpty(list: string[] | undefined): list is string[] {
   return Array.isArray(list) && list.length > 0;
@@ -121,13 +124,13 @@ function splitExpr(split: NetworkFlowReportSplit): { key: SQL; labelA: SQL; labe
     case "pair":
       return {
         key: sql`concat(${flow.src_ref}, ${PAIR_SEPARATOR}, ${flow.dst_ref})`,
-        labelA: sql`any(${flow.src_label})`,
-        labelB: sql`any(${flow.dst_label})`,
+        labelA: anyValue(flow.src_label),
+        labelB: anyValue(flow.dst_label),
       };
     case "source":
-      return { key: sql`${flow.src_ref}`, labelA: sql`any(${flow.src_label})`, labelB: empty };
+      return { key: sql`${flow.src_ref}`, labelA: anyValue(flow.src_label), labelB: empty };
     case "destination":
-      return { key: sql`${flow.dst_ref}`, labelA: sql`any(${flow.dst_label})`, labelB: empty };
+      return { key: sql`${flow.dst_ref}`, labelA: anyValue(flow.dst_label), labelB: empty };
     case "traffic_class":
       return { key: sql`${flow.scope}`, labelA: empty, labelB: empty };
     case "service":
@@ -151,46 +154,54 @@ function splitExpr(split: NetworkFlowReportSplit): { key: SQL; labelA: SQL; labe
   }
 }
 
+/**
+ * The bucket a day falls in, as its first day's `YYYY-MM-DD`. Weeks start on
+ * Monday (`date_trunc('week')` is ISO). The date is truncated as a `timestamp`
+ * so the session time zone cannot move it across midnight.
+ */
 function bucketOf(bucket: NetworkFlowReportBucket): SQL {
   switch (bucket) {
     case "daily":
-      return sql`toString(${flow.day})`;
+      return sql`to_char(${flow.day}, 'YYYY-MM-DD')`;
     case "weekly":
-      return sql`toString(toMonday(${flow.day}))`;
+      return sql`to_char(date_trunc('week', ${flow.day}::timestamp), 'YYYY-MM-DD')`;
     case "monthly":
-      return sql`toString(toStartOfMonth(${flow.day}))`;
+      return sql`to_char(date_trunc('month', ${flow.day}::timestamp), 'YYYY-MM-DD')`;
   }
 }
 
-/** `sumIf` over rows from a sampled source; a constant 0 when none samples. */
-function sampledSum(column: SQL, sampledPluginIds: readonly string[]): SQL {
+/** A column summed over the rows matching `condition`; 0, not NULL, when none do. */
+function sumWhere(column: SQLWrapper, condition: SQL | undefined): SQL<number> {
+  return sql<number>`coalesce(sum(${column}) FILTER (WHERE ${condition}), 0)::float8`;
+}
+
+/** {@link sumWhere} over rows from a sampled source; a constant 0 when none samples. */
+function sampledSum(column: SQLWrapper, sampledPluginIds: readonly string[]): SQL<number> {
   return sampledPluginIds.length > 0
-    ? sql`sumIf(${column}, ${inArray(flow.plugin_id, [...sampledPluginIds])})`
-    : sql`toFloat64(0)`;
+    ? sumWhere(column, inArray(flow.plugin_id, [...sampledPluginIds]))
+    : sql<number>`0::float8`;
 }
 
 /**
- * The six figures every report aggregate carries.
+ * The six figures every report aggregate carries, as `float8` so the driver
+ * hands back numbers (a `sum` of `bigint` is `numeric`, which arrives as a
+ * string).
  *
- * Aliased `total_bytes` / `total_cost` rather than after their columns: in
- * ClickHouse an alias shadows the column of the same name, so a `sum(bytes)
- * AS bytes` would turn the `sumIf(bytes, …)` beside it into an aggregate of an
- * aggregate, which the server refuses.
+ * Aliased `total_bytes` / `total_cost` rather than after their columns, so the
+ * ranking's ORDER BY can only mean the aggregate: Postgres resolves a bare name
+ * to the output column in ORDER BY but to the input column in GROUP BY, and a
+ * name that is never both cannot be read the wrong way.
  */
 function figureColumns(sampledPluginIds: readonly string[]) {
   return {
-    total_bytes: sql<string>`sum(${flow.bytes})`.as("total_bytes"),
+    total_bytes: sql<number>`sum(${flow.bytes})::float8`.as("total_bytes"),
     total_cost: sql<number>`sum(${flow.estimated_cost})`.as("total_cost"),
-    sampled_bytes: sql<string>`${sampledSum(sql`${flow.bytes}`, sampledPluginIds)}`.as(
-      "sampled_bytes",
-    ),
-    sampled_cost: sql<number>`${sampledSum(sql`${flow.estimated_cost}`, sampledPluginIds)}`.as(
-      "sampled_cost",
-    ),
-    unattributed_bytes: sql<string>`sumIf(${flow.bytes}, ${flow.attribution} = 'unattributed')`.as(
+    sampled_bytes: sampledSum(flow.bytes, sampledPluginIds).as("sampled_bytes"),
+    sampled_cost: sampledSum(flow.estimated_cost, sampledPluginIds).as("sampled_cost"),
+    unattributed_bytes: sumWhere(flow.bytes, sql`${flow.attribution} = 'unattributed'`).as(
       "unattributed_bytes",
     ),
-    truncated_bytes: sql<string>`sumIf(${flow.bytes}, ${flow.attribution} = 'truncated')`.as(
+    truncated_bytes: sumWhere(flow.bytes, sql`${flow.attribution} = 'truncated'`).as(
       "truncated_bytes",
     ),
   };
@@ -253,25 +264,22 @@ export async function readNetworkFlowReportCells(
 ): Promise<NetworkFlowReportCellRow[]> {
   if (options.groupKeys && options.groupKeys.length === 0) return [];
   const { key } = splitExpr(options.split);
-  const rows = await query((db) =>
-    db
-      .select({
-        bucket: sql<string>`${bucketOf(options.bucket)}`.as("bucket"),
-        group_key: sql<string>`${key}`.as("group_key"),
-        currency: flow.currency,
-        ...figureColumns(options.sampledPluginIds),
-      })
-      .from(flow)
-      .final()
-      .where(
-        and(
-          reportWhere(organizationId, options.range, options.filters),
-          options.groupKeys ? inArray(key, options.groupKeys) : undefined,
-        ),
-      )
-      .groupBy(sql`bucket`, sql`group_key`, flow.currency)
-      .orderBy(asc(sql`bucket`)),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      bucket: sql<string>`${bucketOf(options.bucket)}`.as("bucket"),
+      group_key: sql<string>`${key}`.as("group_key"),
+      currency: flow.currency,
+      ...figureColumns(options.sampledPluginIds),
+    })
+    .from(flow)
+    .where(
+      and(
+        reportWhere(organizationId, options.range, options.filters),
+        options.groupKeys ? inArray(key, options.groupKeys) : undefined,
+      ),
+    )
+    .groupBy(sql`bucket`, sql`group_key`, flow.currency)
+    .orderBy(asc(sql`bucket`));
   return rows.map((r) => ({
     bucket: r.bucket,
     group_key: r.group_key,
@@ -306,24 +314,21 @@ export async function readNetworkFlowReportGroups(
   },
 ): Promise<{ rows: NetworkFlowReportGroupRow[]; count: number }> {
   const { key, labelA, labelB } = splitExpr(options.split);
-  const rows = await query((db) =>
-    db
-      .select({
-        group_key: sql<string>`${key}`.as("group_key"),
-        label_a: sql<string>`${labelA}`.as("label_a"),
-        label_b: sql<string>`${labelB}`.as("label_b"),
-        currency: flow.currency,
-        ...figureColumns(options.sampledPluginIds),
-        pair_count: sql<string>`uniqExact(${flow.pair_hash})`.as("pair_count"),
-        group_count: sql<string>`count() OVER ()`.as("group_count"),
-      })
-      .from(flow)
-      .final()
-      .where(reportWhere(organizationId, options.range, options.filters))
-      .groupBy(sql`group_key`, flow.currency)
-      .orderBy(...rankOrder(options.orderByBytes, "total_bytes", "total_cost"), asc(sql`group_key`))
-      .limit(Math.max(1, Math.min(500, Math.floor(options.limit)))),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      group_key: sql<string>`${key}`.as("group_key"),
+      label_a: sql<string>`${labelA}`.as("label_a"),
+      label_b: sql<string>`${labelB}`.as("label_b"),
+      currency: flow.currency,
+      ...figureColumns(options.sampledPluginIds),
+      pair_count: sql<string>`count(DISTINCT ${flow.pair_hash})`.as("pair_count"),
+      group_count: sql<string>`count(*) OVER ()`.as("group_count"),
+    })
+    .from(flow)
+    .where(reportWhere(organizationId, options.range, options.filters))
+    .groupBy(sql`group_key`, flow.currency)
+    .orderBy(...rankOrder(options.orderByBytes, "total_bytes", "total_cost"), asc(sql`group_key`))
+    .limit(Math.max(1, Math.min(500, Math.floor(options.limit))));
   return {
     rows: rows.map((r) => ({
       group_key: r.group_key,
@@ -359,53 +364,46 @@ export async function readNetworkFlowReportTalkers(
 ): Promise<NetworkFlowReportTalkerRow[]> {
   const sampled =
     options.sampledPluginIds.length > 0
-      ? sql<string>`max(${inArray(flow.plugin_id, [...options.sampledPluginIds])})`
-      : sql<string>`toUInt8(0)`;
-  const rows = await query((db) =>
-    db
-      .select({
-        src_ref: sql<string>`any(${flow.src_ref})`.as("src_ref"),
-        src_label: sql<string>`any(${flow.src_label})`.as("src_label"),
-        src_zone: sql<string>`any(${flow.src_zone})`.as("src_zone"),
-        src_region: sql<string>`any(${flow.src_region})`.as("src_region"),
-        src_service: sql<string>`any(${flow.src_service})`.as("src_service"),
-        src_resource_type_id: sql<string>`any(${flow.src_resource_type_id})`.as(
-          "src_resource_type_id",
-        ),
-        src_network: sql<string>`any(${flow.src_network})`.as("src_network"),
-        dst_ref: sql<string>`any(${flow.dst_ref})`.as("dst_ref"),
-        dst_label: sql<string>`any(${flow.dst_label})`.as("dst_label"),
-        dst_zone: sql<string>`any(${flow.dst_zone})`.as("dst_zone"),
-        dst_region: sql<string>`any(${flow.dst_region})`.as("dst_region"),
-        dst_service: sql<string>`any(${flow.dst_service})`.as("dst_service"),
-        dst_resource_type_id: sql<string>`any(${flow.dst_resource_type_id})`.as(
-          "dst_resource_type_id",
-        ),
-        dst_network: sql<string>`any(${flow.dst_network})`.as("dst_network"),
-        scope: flow.scope,
-        direction: flow.direction,
-        attribution: sql<string>`any(${flow.attribution})`.as("attribution"),
-        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        packets: sql<string>`sum(${flow.packets})`.as("packets"),
-        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
-        currency: sql<string>`any(${flow.currency})`.as("currency"),
-        account_id: sql<string>`any(${flow.account_id})`.as("account_id"),
-        plugin_id: sql<string>`any(${flow.plugin_id})`.as("plugin_id"),
-        days: sql<string>`uniqExact(${flow.day})`.as("days"),
-        sampled: sampled.as("sampled"),
-      })
-      .from(flow)
-      .final()
-      .where(
-        and(
-          reportWhere(organizationId, options.range, options.filters),
-          sql`${flow.attribution} != 'truncated'`,
-        ),
-      )
-      .groupBy(flow.scope, flow.direction, flow.pair_hash)
-      .orderBy(...rankOrder(options.orderByBytes))
-      .limit(Math.max(1, Math.min(500, Math.floor(options.limit)))),
-  );
+      ? sql<number>`max(CASE WHEN ${inArray(flow.plugin_id, [...options.sampledPluginIds])} THEN 1 ELSE 0 END)`
+      : sql<number>`0`;
+  const rows = await getAnalyticsDb()
+    .select({
+      src_ref: anyValue(flow.src_ref).as("src_ref"),
+      src_label: anyValue(flow.src_label).as("src_label"),
+      src_zone: anyValue(flow.src_zone).as("src_zone"),
+      src_region: anyValue(flow.src_region).as("src_region"),
+      src_service: anyValue(flow.src_service).as("src_service"),
+      src_resource_type_id: anyValue(flow.src_resource_type_id).as("src_resource_type_id"),
+      src_network: anyValue(flow.src_network).as("src_network"),
+      dst_ref: anyValue(flow.dst_ref).as("dst_ref"),
+      dst_label: anyValue(flow.dst_label).as("dst_label"),
+      dst_zone: anyValue(flow.dst_zone).as("dst_zone"),
+      dst_region: anyValue(flow.dst_region).as("dst_region"),
+      dst_service: anyValue(flow.dst_service).as("dst_service"),
+      dst_resource_type_id: anyValue(flow.dst_resource_type_id).as("dst_resource_type_id"),
+      dst_network: anyValue(flow.dst_network).as("dst_network"),
+      scope: flow.scope,
+      direction: flow.direction,
+      attribution: anyValue(flow.attribution).as("attribution"),
+      bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      packets: sql<string>`sum(${flow.packets})`.as("packets"),
+      estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+      currency: anyValue(flow.currency).as("currency"),
+      account_id: anyValue(flow.account_id).as("account_id"),
+      plugin_id: anyValue(flow.plugin_id).as("plugin_id"),
+      days: sql<string>`count(DISTINCT ${flow.day})`.as("days"),
+      sampled: sampled.as("sampled"),
+    })
+    .from(flow)
+    .where(
+      and(
+        reportWhere(organizationId, options.range, options.filters),
+        sql`${flow.attribution} != 'truncated'`,
+      ),
+    )
+    .groupBy(flow.scope, flow.direction, flow.pair_hash)
+    .orderBy(...rankOrder(options.orderByBytes))
+    .limit(Math.max(1, Math.min(500, Math.floor(options.limit))));
   return rows.map((r) => ({
     ...r,
     bytes: Number(r.bytes),
@@ -446,48 +444,48 @@ export async function readNetworkFlowReportDimensionValues(
   excludePluginIds: string[] = [],
 ): Promise<NetworkFlowReportDimensionValues> {
   const where = reportWhere(organizationId, range, { excludePluginIds });
-  const cap = sql.raw(String(OPTION_VALUES_CAP));
-  const both = (a: SQLWrapper, b: SQLWrapper) =>
-    sql<string[]>`arrayConcat(groupUniqArray(${cap})(${a}), groupUniqArray(${cap})(${b}))`;
+  const db = getAnalyticsDb();
+  // `array_agg(DISTINCT …)` sorts, so a capped picker keeps the first values
+  // alphabetically rather than an arbitrary subset. Over no rows it is NULL.
+  const capped = (column: SQLWrapper) =>
+    sql`(array_agg(DISTINCT ${column}))[1:${sql.raw(String(OPTION_VALUES_CAP))}]`;
+  const both = (a: SQLWrapper, b: SQLWrapper) => sql<string[] | null>`${capped(a)} || ${capped(b)}`;
+  // Each row is read twice, once per end, so an endpoint is ranked by all the
+  // traffic it took part in; `side` is a bit (1 source, 2 destination) that
+  // `bit_or` folds into "which ends was it seen at".
+  const endpoint = sql`(VALUES
+    (${flow.src_ref}, ${flow.src_label}, ${flow.src_resource_type_id}, 1),
+    (${flow.dst_ref}, ${flow.dst_label}, ${flow.dst_resource_type_id}, 2)
+  ) AS endpoint(ref, label, resource_type_id, side)`;
   const [dims, endpoints] = await Promise.all([
-    query((db) =>
-      db
-        .select({
-          networks: both(flow.src_network, flow.dst_network).as("networks"),
-          regions: both(flow.src_region, flow.dst_region).as("regions"),
-          zones: both(flow.src_zone, flow.dst_zone).as("zones"),
-          services: sql<string[]>`groupUniqArray(${cap})(${peerService})`.as("services"),
-          resource_types: sql<string[]>`groupUniqArray(${cap})(${peerResourceType})`.as(
-            "resource_types",
-          ),
-          scopes: sql<string[]>`groupUniqArray(${flow.scope})`.as("scopes"),
-        })
-        .from(flow)
-        .final()
-        .where(where),
-    ),
-    query((db) =>
-      db
-        .select({
-          ref: sql<string>`endpoint.1`.as("ref"),
-          label: sql<string>`any(endpoint.2)`.as("label"),
-          resource_type_id: sql<string>`any(endpoint.3)`.as("resource_type_id"),
-          sides: sql<string>`groupBitOr(endpoint.4)`.as("sides"),
-          bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
-        })
-        .from(flow)
-        .final()
-        .arrayJoin(
-          sql`[tuple(${flow.src_ref}, ${flow.src_label}, ${flow.src_resource_type_id}, toUInt8(1)), tuple(${flow.dst_ref}, ${flow.dst_label}, ${flow.dst_resource_type_id}, toUInt8(2))] AS endpoint`,
-        )
-        .where(and(where, sql`${flow.attribution} != 'truncated'`))
-        .groupBy(sql`ref`)
-        .orderBy(desc(sql`bytes`))
-        .limit(OPTION_VALUES_CAP),
-    ),
+    db
+      .select({
+        networks: both(flow.src_network, flow.dst_network).as("networks"),
+        regions: both(flow.src_region, flow.dst_region).as("regions"),
+        zones: both(flow.src_zone, flow.dst_zone).as("zones"),
+        services: sql<string[] | null>`${capped(peerService)}`.as("services"),
+        resource_types: sql<string[] | null>`${capped(peerResourceType)}`.as("resource_types"),
+        scopes: sql<string[] | null>`array_agg(DISTINCT ${flow.scope})`.as("scopes"),
+      })
+      .from(flow)
+      .where(where),
+    db
+      .select({
+        ref: sql<string>`endpoint.ref`.as("ref"),
+        label: sql<string>`max(endpoint.label)`.as("label"),
+        resource_type_id: sql<string>`max(endpoint.resource_type_id)`.as("resource_type_id"),
+        sides: sql<number>`bit_or(endpoint.side)`.as("sides"),
+        bytes: sql<number>`sum(${flow.bytes})::float8`.as("bytes"),
+      })
+      .from(flow)
+      .crossJoinLateral(endpoint)
+      .where(and(where, sql`${flow.attribution} != 'truncated'`))
+      .groupBy(sql`endpoint.ref`)
+      .orderBy(desc(sql`bytes`))
+      .limit(OPTION_VALUES_CAP),
   ]);
   const row = dims[0];
-  const distinct = (values: string[] | undefined) =>
+  const distinct = (values: string[] | null | undefined) =>
     [...new Set((values ?? []).filter((v) => v !== ""))].sort((a, b) => a.localeCompare(b));
   return {
     networks: distinct(row?.networks),

@@ -21,7 +21,7 @@ import {
   readNetworkFlowScopeTotals,
   readTopNetworkFlows,
   type NetworkFlowFilters,
-} from "../clickhouse/network-flow-readers";
+} from "../analytics/network-flow-readers";
 import { db } from "../db/client";
 import { accountNetworkFlowPolls, accounts } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";

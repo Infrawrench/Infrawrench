@@ -33,12 +33,12 @@ import {
 import { NETWORK_FLOW_METHODS, type NetworkFlowScope } from "@infrawrench/plugin-base";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import {
   readNetworkFlowSourceDays,
   readTopNetworkFlows,
   type NetworkFlowSourceDayRow,
-} from "../clickhouse/network-flow-readers";
+} from "../analytics/network-flow-readers";
 import { db } from "../db/client";
 import { accounts, kubernetesNetworkSettings } from "../db/schema";
 import { getPlugin } from "../plugin-loader";

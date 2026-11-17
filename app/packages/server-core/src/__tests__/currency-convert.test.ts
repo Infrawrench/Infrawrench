@@ -1,5 +1,5 @@
 /**
- * Exhaustive tests for the pure conversion layer. No database, no ClickHouse,
+ * Exhaustive tests for the pure conversion layer. No database,
  * no clock: every case here is a function of its arguments, which is the whole
  * reason `cost/currency-convert.ts` holds no db import.
  *

@@ -25,7 +25,7 @@ const sendBudgetAlertPage = vi.fn(async () => false);
 vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 
 const queryCosts = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts }));
 
 vi.mock("../cost/currency-settings", () => ({
   getOrgCurrencySettings: vi.fn(async () => ({ displayCurrency: null })),

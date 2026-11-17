@@ -21,7 +21,7 @@ const STEP_MULTIPLES = [1, 2, 2.5, 5, 10];
 
 /**
  * A negative smaller than this share of the plotted span is float drift, not
- * data: summing a day's charges against its credits in ClickHouse lands on
+ * data: summing a day's charges against its credits in floating point lands on
  * values like -2.7e-17, which must not drag the baseline off zero.
  */
 const DRIFT_RATIO = 1e-9;

@@ -6,27 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * The DB is a real Drizzle over the recording driver, so the assertions are
  * against the SQL these paths actually render rather than against a hand-shaped
- * mock. ClickHouse and WorkOS are the two stores destruction reaches outside
- * Postgres, and both are stubbed so ordering can be observed.
+ * mock. WorkOS is the one store destruction reaches outside Postgres, and it is
+ * stubbed so ordering can be observed.
  */
 
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { fakePostgres } from "./helpers/fake-postgres";
 
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
-
-// Typed with its argument so `mock.calls` carries it: an untyped `vi.fn()`
-// gives back an empty tuple and every read of a call needs a cast.
-interface ChCommand {
-  query: string;
-  query_params?: Record<string, string>;
-}
-const chCommand = vi.fn(async (_opts: ChCommand) => ({}));
-let clickhouseConfigured = true;
-vi.mock("../clickhouse/client", () => ({
-  isClickHouseConfigured: () => clickhouseConfigured,
-  getClickHouseClient: () => ({ command: chCommand }),
-}));
 
 vi.mock("../permissions/resolver", () => ({
   ensureSystemRoles: vi.fn(async () => undefined),
@@ -60,10 +48,32 @@ const updates = (table: string) => pg.queries.filter((q) => q.sql.startsWith(`up
 const deletes = (table: string) =>
   pg.queries.filter((q) => q.sql.startsWith(`delete from "${table}"`));
 
+/** Every analytics table name, in the order the purge and the move walk them. */
+const analyticsTables = () =>
+  destroy.ORG_SCOPED_ANALYTICS_TABLES.map((table) => getTableConfig(table).name);
+
+/**
+ * Run with `db.transaction` recording which statements it wrapped, as
+ * `[first, end)` indices into `pg.queries`. The fake runs a transaction flat,
+ * so this is what lets a test say "these statements share one transaction".
+ */
+function recordTransactions(): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  vi.spyOn(pg.db, "transaction").mockImplementation((async (
+    fn: (tx: typeof pg.db) => Promise<unknown>,
+  ) => {
+    const first = pg.queries.length;
+    try {
+      return await fn(pg.db);
+    } finally {
+      ranges.push([first, pg.queries.length]);
+    }
+  }) as never);
+  return ranges;
+}
+
 beforeEach(async () => {
   pg.reset();
-  chCommand.mockClear();
-  clickhouseConfigured = true;
   process.env["WORKOS_API_KEY"] = "sk_test";
   vi.stubGlobal(
     "fetch",
@@ -144,32 +154,55 @@ describe("planAccess", () => {
 });
 
 describe("destroyOrganization", () => {
-  it("purges every org-scoped ClickHouse table before deleting the org row", async () => {
-    await destroy.destroyOrganization("org-doomed");
+  /** The statements before the purge: the registration read, then the org delete. */
+  function queueDeletedOrg(id = "org-doomed") {
+    pg.queueRows([]); // surviving registrations
+    pg.queueRows([{ id }]); // the org delete's returning row
+  }
 
-    expect(chCommand).toHaveBeenCalledTimes(destroy.ORG_SCOPED_CLICKHOUSE_TABLES.length);
-    for (const table of destroy.ORG_SCOPED_CLICKHOUSE_TABLES) {
-      expect(
-        chCommand.mock.calls.some(([arg]) => arg.query.includes(`ALTER TABLE ${table} DELETE`)),
-      ).toBe(true);
+  it("purges every analytics table in the transaction that deletes the org row", async () => {
+    const transactions = recordTransactions();
+    queueDeletedOrg();
+    const result = await destroy.destroyOrganization("org-doomed");
+
+    expect(result.analyticsTablesPurged).toEqual(analyticsTables());
+    const [orgDelete] = deletes("organizations");
+    expect(orgDelete).toBeDefined();
+    // The analytics tables carry no foreign key, so the cascade never reaches
+    // them: each needs its own delete, and all of them have to commit or roll
+    // back with the org row or a failure leaves half an org behind.
+    const [range] = transactions;
+    expect(range).toBeDefined();
+    const inside = pg.queries.slice(range![0], range![1]);
+    expect(inside[0]).toBe(orgDelete);
+    for (const table of analyticsTables()) {
+      const [purge] = deletes(table);
+      expect(purge, table).toBeDefined();
+      expect(inside).toContain(purge);
     }
-    expect(deletes("organizations")).toHaveLength(1);
   });
 
   it("parameterises the org id rather than interpolating it", async () => {
+    queueDeletedOrg("org'; drop table --");
     await destroy.destroyOrganization("org'; drop table --");
-    for (const [{ query, query_params }] of chCommand.mock.calls) {
-      expect(query).not.toContain("drop table");
-      expect(query_params?.["organizationId"]).toBe("org'; drop table --");
+    for (const table of analyticsTables()) {
+      const [purge] = deletes(table);
+      expect(purge?.sql).not.toContain("drop table");
+      expect(purge?.params).toEqual(["org'; drop table --"]);
     }
   });
 
-  it("leaves Postgres untouched when the ClickHouse purge throws", async () => {
-    chCommand.mockRejectedValueOnce(new Error("clickhouse down"));
-    await expect(destroy.destroyOrganization("org-doomed")).rejects.toThrow("clickhouse down");
-    // The org survives to be retried next tick: half-deleted state across
-    // three stores is the outcome the ordering exists to prevent.
-    expect(deletes("organizations")).toHaveLength(0);
+  it("purges nothing when the org row's delete matched nothing", async () => {
+    // A concurrent sweep already deleted it (and its history, in the same
+    // transaction), or the reaper's guard declined: either way the analytics
+    // rows must be left exactly as they are.
+    pg.queueRows([]); // surviving registrations
+    pg.queueRows([]); // the org delete matched no row
+    const result = await destroy.destroyOrganization("org-doomed");
+
+    expect(result.deleted).toBe(false);
+    expect(result.analyticsTablesPurged).toEqual([]);
+    for (const table of analyticsTables()) expect(deletes(table)).toHaveLength(0);
   });
 
   it("removes the agent user rows the cascade cannot reach", async () => {
@@ -183,13 +216,6 @@ describe("destroyOrganization", () => {
     // `users` is not org-scoped, so without this every expired trial would
     // leave an orphan row behind permanently.
     expect(userDelete?.params).toContain("agent_reg_1");
-  });
-
-  it("skips ClickHouse entirely when it isn't configured", async () => {
-    clickhouseConfigured = false;
-    const result = await destroy.destroyOrganization("org-doomed");
-    expect(chCommand).not.toHaveBeenCalled();
-    expect(result.clickhouseTablesPurged).toEqual([]);
   });
 
   it("treats a WorkOS 404 as success", async () => {
@@ -235,7 +261,8 @@ describe("runTrialExpiryPass", () => {
       { id: "org-b", displayName: "B" },
     ]);
     queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
-    chCommand.mockRejectedValueOnce(new Error("clickhouse down")); // org-a dies here
+    pg.queueRows([]); // org-a: surviving registrations
+    pg.queueRows([null as never]); // org-a dies here: its delete fails
     queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
     pg.queueRows([]); // org-b: surviving registrations
     pg.queueRows([{ id: "org-b" }]); // org-b: the delete's returning row
@@ -255,14 +282,15 @@ describe("runTrialExpiryPass", () => {
     expect(result.destroyed).toBe(0);
     expect(result.failed).toBe(0);
     // Nothing irreversible happened: no purge was issued and no row deleted.
-    expect(chCommand).not.toHaveBeenCalled();
+    for (const table of analyticsTables()) expect(deletes(table)).toHaveLength(0);
     expect(deletes("organizations")).toHaveLength(0);
   });
 
   it("backs a persistently failing org off instead of retrying it every tick", async () => {
     pg.queueRows([{ id: "org-a", displayName: "A" }]);
     queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
-    chCommand.mockRejectedValueOnce(new Error("clickhouse down"));
+    pg.queueRows([]); // surviving registrations
+    pg.queueRows([null as never]); // the delete fails
     await pass.runTrialExpiryPass({ now });
 
     // Same tick clock: the org is due in the table but sitting out its backoff,
@@ -457,11 +485,14 @@ describe("claimTrialOrg", () => {
 
       expect(result.accountsMoved).toBe(1);
       expect(result.historyMoved).toBe(false);
-      // Default merge purges the trial's ClickHouse rows with the org.
-      expect(chCommand.mock.calls.some(([a]) => a.query.includes("DELETE"))).toBe(true);
+      // Nothing is re-parented, so the destroy's purge takes the trial's
+      // analytics rows with the org.
+      for (const table of analyticsTables()) expect(updates(table)).toHaveLength(0);
+      expect(deletes("organizations")).toHaveLength(1);
     });
 
-    it("re-parents ClickHouse history when asked, and then does not purge it", async () => {
+    it("re-parents analytics history when asked, before the destroy purges the trial", async () => {
+      const transactions = recordTransactions();
       queueMergePreamble();
       const result = await claim.claimTrialOrg({
         registrationId: "reg_1",
@@ -472,11 +503,41 @@ describe("claimTrialOrg", () => {
       });
 
       expect(result.historyMoved).toBe(true);
-      const queries = chCommand.mock.calls.map(([a]) => a.query);
-      expect(queries.every((q) => q.includes("UPDATE organization_id"))).toBe(true);
-      // The delete is not issued at all: skipping it is what removes the
-      // dependence on ClickHouse mutation ordering.
-      expect(queries.some((q) => q.includes("DELETE"))).toBe(false);
+      // The move is its own transaction, committed before the destroy starts,
+      // so the purge that follows finds none of the trial's rows left.
+      const [move] = transactions;
+      expect(move).toBeDefined();
+      const inside = pg.queries.slice(move![0], move![1]);
+      for (const table of analyticsTables()) {
+        const [update] = updates(table);
+        expect(update, table).toBeDefined();
+        expect(inside).toContain(update);
+        expect(update?.params).toEqual(["org-target", "org-trial"]);
+      }
+      expect(deletes("organizations").every((q) => pg.queries.indexOf(q) >= move![1])).toBe(true);
+    });
+
+    it("drops a trial row whose key the target already holds instead of colliding", async () => {
+      queueMergePreamble();
+      await claim.claimTrialOrg({
+        registrationId: "reg_1",
+        userId: "user-1",
+        mode: "merge",
+        targetOrganizationId: "org-target",
+        moveHistory: true,
+      });
+
+      // An account connected to both orgs was polled by both, so re-parenting
+      // would hit the primary key on exactly those rows. Every keyed table gets
+      // the dedupe first; an unkeyed append-only one has nothing to collide.
+      const dedupes = pg.queries.filter((q) => q.sql.startsWith("DELETE FROM"));
+      for (const table of ["metric_points_raw", "cost_daily", "network_flow_daily"]) {
+        const dedupe = dedupes.find((q) => q.sql.startsWith(`DELETE FROM "${table}" AS moving`));
+        expect(dedupe, table).toBeDefined();
+        expect(dedupe?.params).toEqual(["org-trial", "org-target"]);
+        expect(pg.queries.indexOf(dedupe!)).toBeLessThan(pg.queries.indexOf(updates(table)[0]!));
+      }
+      expect(dedupes.some((q) => q.sql.includes('"dashboard_stats"'))).toBe(false);
     });
 
     it("moves the agent's membership into the target as a member, not an owner", async () => {
@@ -539,7 +600,7 @@ describe("claimTrialOrg", () => {
           moveHistory: true,
         }),
       ).rejects.toThrow(/costs:write/);
-      expect(chCommand).not.toHaveBeenCalled();
+      for (const table of analyticsTables()) expect(updates(table)).toHaveLength(0);
     });
 
     it("refuses when the merge would put a free target over its account limit", async () => {

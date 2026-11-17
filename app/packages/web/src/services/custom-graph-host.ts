@@ -9,7 +9,7 @@
 import { getCarbonEstimate } from "@infrawrench/server-core/cost/carbon";
 import { and, asc, count, eq, ilike, isNull, sql } from "drizzle-orm";
 
-import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
+import { getMetricRange } from "@infrawrench/server-core/analytics/readers";
 import { getOrgAccountClient } from "@infrawrench/server-core/org-accounts";
 import { hasPermission, resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { buildWorkflowFetch } from "@infrawrench/server-core/workflows/fetch";
@@ -70,7 +70,7 @@ async function listOrgResources(
 }
 
 /**
- * Metric lookup mirrors the resource-detail route: ClickHouse history first
+ * Metric lookup mirrors the resource-detail route: stored history first
  * (only pinned resources accumulate points), then a live provider fetch. The
  * live path's failure degrades to "no data": a dead provider must not fail
  * the whole render.

@@ -11,16 +11,16 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SQL } from "drizzle-orm";
-import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import {
   amortizedAmountExpr,
   blendedAmountExpr,
   costBasisAmountExpr,
-} from "../clickhouse/cost-readers";
-import { toCostDailyRows } from "../clickhouse/cost-writers";
+} from "../analytics/cost-readers";
+import { toCostDailyRows } from "../analytics/cost-writers";
 
-const render = (fragment: SQL) => new ClickHouseDialect().sqlToQuery(fragment).sql;
+const render = (fragment: SQL) => new PgDialect().sqlToQuery(fragment).sql;
 
 const meta = { organizationId: "org-1", accountId: "acct-1", pluginId: "aws" };
 
@@ -59,8 +59,8 @@ describe("blended basis, host side", () => {
   });
 
   it("resolves each basis to its own expression", () => {
-    expect(render(costBasisAmountExpr(undefined))).toBe("`cost_daily`.`amount`");
-    expect(render(costBasisAmountExpr("cash"))).toBe("`cost_daily`.`amount`");
+    expect(render(costBasisAmountExpr(undefined))).toBe('"cost_daily"."amount"');
+    expect(render(costBasisAmountExpr("cash"))).toBe('"cost_daily"."amount"');
     expect(render(costBasisAmountExpr("amortized"))).toBe(render(amortizedAmountExpr()));
     expect(render(costBasisAmountExpr("blended"))).toBe(render(blendedAmountExpr()));
   });

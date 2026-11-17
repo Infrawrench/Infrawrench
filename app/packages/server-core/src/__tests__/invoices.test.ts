@@ -255,7 +255,7 @@ const getShowbackSpend = vi.fn();
  * The priced path's reader, fed from the same fixture as the classic one: each
  * showback row becomes one usage line carrying its *collected* amount, and the
  * engine applies the rules itself. Calling through to `getShowbackSpend` keeps
- * every "it never asked ClickHouse" assertion meaningful on both paths.
+ * every "it never read the spend" assertion meaningful on both paths.
  */
 const getPricingLines = vi.fn(async (...args: unknown[]) => {
   const rows = (await getShowbackSpend(...args)) as Array<{
@@ -281,7 +281,7 @@ const getPricingLines = vi.fn(async (...args: unknown[]) => {
     listAmount: 0,
   }));
 });
-vi.mock("../clickhouse/cost-readers", () => ({ getShowbackSpend, getPricingLines }));
+vi.mock("../analytics/cost-readers", () => ({ getShowbackSpend, getPricingLines }));
 
 const listCostCentres = vi.fn();
 const listAllocationRules = vi.fn();
@@ -817,9 +817,9 @@ describe("renderInvoiceCsv", () => {
 /**
  * Approval freezes **one consistent set of figures**, or nothing.
  *
- * The figures are computed from ClickHouse before the row is written, because
- * a transaction held open across an analytics query would be a lock behind a
- * network call. That leaves a window in which the draft, or the customer it
+ * The figures are computed from `cost_daily` before the row is written,
+ * because a transaction held open across those aggregations would hold a row
+ * lock for as long as they take. That leaves a window in which the draft, or the customer it
  * bills, can change, and every one of these tests drives a change through that
  * window by mutating the store from inside the spend query, which is exactly
  * when a concurrent request would commit.

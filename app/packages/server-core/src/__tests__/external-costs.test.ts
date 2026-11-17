@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Validation and mapping for cost rows a server pushes over the API. The
  * important invariant is the reserved `infrawrench:source` tag: it is what
- * keeps a pushed batch's ReplacingMergeTree key disjoint from provider-collected
+ * keeps a pushed batch's `cost_daily` primary key disjoint from provider-collected
  * rows, so attributing spend to a real account can never overwrite the poller's
  * data, and what keeps two sources from overwriting each other.
  */
@@ -12,10 +12,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 const insertCostRows = vi.fn(async (_rows: Array<Record<string, unknown>>) => undefined);
 const hashTags = vi.fn((tags: Record<string, string> | undefined) => JSON.stringify(tags ?? {}));
-vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
-
-const isClickHouseConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
+vi.mock("../analytics/cost-writers", () => ({ insertCostRows, hashTags }));
 
 // Real Drizzle over a recording driver: the org-membership check renders its
 // actual SQL (and shadow-validates under test:postgres:shadow).
@@ -39,7 +36,7 @@ async function write(rows: unknown[], source = "snowflake-invoices") {
   });
 }
 
-/** The rows handed to ClickHouse by the first (and only) call. */
+/** The rows handed to the writer by the first (and only) call. */
 function inserted(): Array<Record<string, unknown>> {
   return insertCostRows.mock.calls[0]?.[0] ?? [];
 }
@@ -47,7 +44,6 @@ function inserted(): Array<Record<string, unknown>> {
 beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
-  isClickHouseConfigured.mockReturnValue(true);
   mod = await import("../cost/external-costs");
 });
 
@@ -141,11 +137,6 @@ describe("writeExternalCostRows", () => {
     await expect(write(Array.from({ length: 5001 }, () => ROW))).rejects.toThrow(
       /at most 5000 rows per call/,
     );
-  });
-
-  it("fails clearly when cost storage isn't configured", async () => {
-    isClickHouseConfigured.mockReturnValue(false);
-    await expect(write([ROW])).rejects.toThrow(/Cost storage is not configured/);
   });
 });
 

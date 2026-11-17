@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// The service is mocked (it reaches the Drizzle client and ClickHouse). These
+// The service is mocked (it reaches the Drizzle client). These
 // tests own the transport contract of the anomaly feedback routes under
 // /costs: permissions, the statuses the service's refusals map to, the 201 and
 // 204 answers, and the precision window's bounds.

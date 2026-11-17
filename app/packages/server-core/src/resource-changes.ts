@@ -74,7 +74,7 @@ export async function recordResourceChanges(
  * answer ("when did this change?", "what moved last quarter?"), and it is an
  * order of magnitude beyond every other time span in the product: the weekly
  * digest looks back two weeks (and reads `resources`/`paging_incidents`, never
- * this table), cost anomaly detection lives in ClickHouse, and
+ * this table), cost anomaly detection reads `cost_daily`, and
  * `account_sync_failures` is minutes.
  *
  * Deliberately a constant, not a per-org setting: a per-org window would need

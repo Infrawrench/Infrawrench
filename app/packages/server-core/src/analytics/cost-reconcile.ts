@@ -3,12 +3,12 @@
  *
  * ─── The hazard ───────────────────────────────────────────────────────────
  *
- * `cost_daily` is a ReplacingMergeTree. Re-collecting a day *replaces* a row
- * only when the new row lands on the same sort key; a row nothing rewrites is
- * never deleted, because a ReplacingMergeTree has no concept of deletion. That
- * key is frozen (see `migrate.ts`) and cannot carry charge type or commitment
- * id, so `cost-writers.ts` folds those into `tags_hash`, but only when they
- * are non-default, precisely so an ordinary usage row keeps hashing the way it
+ * `cost_daily` is written by upsert. Re-collecting a day *replaces* a row only
+ * when the new row lands on the same primary key; a row nothing rewrites is
+ * never deleted, because the write path only ever inserts or replaces. That
+ * key is frozen and cannot carry charge type or commitment id, so
+ * `cost-writers.ts` folds those into `tags_hash`, but only when they are
+ * non-default, precisely so an ordinary usage row keeps hashing the way it
  * always did.
  *
  * The consequence bites the day a plugin *starts* attributing. A
@@ -35,11 +35,10 @@
  * Same key, so it replaces rather than adds; the money becomes nothing, which
  * is what the provider now says it is.
  *
- * Zeroing rather than `ALTER TABLE ... DELETE` is deliberate. A mutation is
- * asynchronous, rewrites whole parts, and is the kind of thing an operator has
- * to be told to run, which was the resting state this module exists to remove.
- * An insert on an existing key is the table's own supersede path, costs one row,
- * and lands with the collection that noticed it.
+ * Zeroing rather than deleting keeps the repair on the table's one write path:
+ * a tombstone is an ordinary row in the same upsert as the chunk that noticed
+ * it, so the restated day and its repair land in one transaction, and a zero
+ * row adds nothing to any sum a reader takes.
  *
  * ─── What it does not fix ─────────────────────────────────────────────────
  *
@@ -94,7 +93,7 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import { restatedDayScope } from "../cost/period-scope";
-import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { getAnalyticsDb } from "./client";
 import { dayRange } from "./cost-readers";
 import type { CostDailyRow } from "./cost-writers";
 import { costDaily } from "./schema";
@@ -128,7 +127,7 @@ export interface StoredCostRowKey {
   commitment_id: string;
 }
 
-/** The full ReplacingMergeTree identity of a row, minus org/account/plugin. */
+/** A row's primary key, minus org and account (fixed for one collection). */
 function identity(row: {
   day: string;
   service: string;
@@ -215,12 +214,8 @@ export function supersededTombstones(
 
 /**
  * Read back the keys this account already has stored over `[from, to]` that
- * still hold money.
- *
- * `FINAL` because an un-merged part can hold several versions of one key and a
- * tombstone per version would be pointless duplication;
- * {@link supersededTombstones} de-duplicates as well, since `FINAL` is a read
- * guarantee rather than a uniqueness one.
+ * still hold money. One row per key: the primary key makes a stored row the
+ * only version of itself.
  *
  * **Rows that are already zero on both bases are excluded, and that is what
  * makes a key get tombstoned once rather than forever.** Without the filter a
@@ -244,10 +239,9 @@ export async function getStoredCostRowKeys(
   from: string,
   to: string,
 ): Promise<StoredCostRowKey[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await getClickHouseDb()
+  return await getAnalyticsDb()
     .select({
-      day: sql<string>`toString(${costDaily.day})`.as("day"),
+      day: costDaily.day,
       service: costDaily.service,
       region: costDaily.region,
       resource_id: costDaily.resource_id,
@@ -258,7 +252,6 @@ export async function getStoredCostRowKeys(
       commitment_id: costDaily.commitment_id,
     })
     .from(costDaily)
-    .final()
     .where(
       and(
         eq(costDaily.organization_id, meta.organizationId),

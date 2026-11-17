@@ -11,7 +11,7 @@
  *   the 404 `server.ts` sends (the files themselves never reach the Worker:
  *   the asset layer serves them near the visitor, headers from `_headers`);
  * - runs the API (`src/api`, the HttpApi router) itself, against Hyperdrive
- *   and the private ClickHouse binding; or
+ *   and the Postgres behind it; or
  * - forwards to Node, with `src/edge/gateway-routes.ts` choosing the tier:
  *   WebSocket sessions and stateful routes to the session gateway; driver-only
  *   routes, plugin calls and requests about accounts that need Node
