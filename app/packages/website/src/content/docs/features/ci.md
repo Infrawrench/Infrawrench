@@ -156,7 +156,7 @@ jobs:
 
 | Tool                    | What it is                                                      |
 | ----------------------- | --------------------------------------------------------------- |
-| `builtin:vercel@65`     | The Vercel CLI 65.16                                            |
+| `builtin:vercel@65`     | The Vercel CLI 65.17                                            |
 | `builtin:wrangler@4`    | Wrangler 4.163, for Workers and Pages                           |
 | `builtin:cf@1.0.0-rc.0` | Cloudflare's `cf`, a release candidate (name the exact version) |
 | `builtin:neon@9`        | The Neon CLI 9.5 (the successor to `neonctl`)                   |
