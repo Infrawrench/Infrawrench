@@ -188,6 +188,7 @@ fn invocation(job: &JobFs) -> Invocation {
         limits: Limits {
             timeout: Duration::from_secs(120),
             memory_bytes: 1 << 30,
+            cpus: None,
         },
         log: None,
         scratch: None,
