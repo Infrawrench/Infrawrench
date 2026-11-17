@@ -48,6 +48,8 @@ import {
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
+import { createDesktopCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
@@ -199,6 +201,12 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let commitmentReportsClient: CommitmentReportsClient | null = null;
+function getCommitmentReportsClient(): CommitmentReportsClient {
+  if (!commitmentReportsClient) commitmentReportsClient = createDesktopCommitmentReportsClient();
+  return commitmentReportsClient;
 }
 
 let networkFlowReportsClient: NetworkFlowReportsClient | null = null;
@@ -428,6 +436,8 @@ function renderPanel(
           client={getCostsClient()}
           // Cloud-only: reports read the server's network-flow store.
           networkFlowReports={activeCloudOrgId ? getNetworkFlowReportsClient() : undefined}
+          // Cloud-only: reports read server-side cost rows and the inventory.
+          commitmentReports={activeCloudOrgId ? getCommitmentReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
           onOpenExternal={(url) => void openExternalUrl(url)}
