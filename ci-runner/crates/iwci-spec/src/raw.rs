@@ -269,7 +269,8 @@ pub enum Depth {
 }
 
 /// `pnpm`, or `pnpm: { dir: app }` to point at a lockfile below the root.
-/// The ecosystems are `pnpm`, `bun`, `go`, `cargo`, `pip` and `composer`.
+/// The ecosystems are `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer` and
+/// `bundler`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Dep {
@@ -290,6 +291,30 @@ pub struct DepOptions {
     /// `pylock.toml` or `requirements.txt`.
     #[serde(default)]
     pub file: Option<String>,
+    /// bundler only: the Ruby (`"3.4"`, `"4.0"`) to install gems for,
+    /// instead of the lock's `RUBY VERSION` or `.ruby-version`. A number
+    /// is read as its text, so `4.0` works unquoted.
+    #[serde(default, deserialize_with = "version_text")]
+    pub ruby: Option<String>,
+}
+
+/// A `major.minor` written as a string or as a YAML number.
+fn version_text<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Text {
+        Str(String),
+        Int(u64),
+        Float(f64),
+    }
+    Ok(match Option::<Text>::deserialize(d)? {
+        None => None,
+        Some(Text::Str(s)) => Some(s),
+        Some(Text::Int(i)) => Some(format!("{i}.0")),
+        // `4.0` arrives as 4: keep the one decimal a minor version has.
+        Some(Text::Float(f)) if f.fract() == 0.0 => Some(format!("{f:.1}")),
+        Some(Text::Float(f)) => Some(f.to_string()),
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]

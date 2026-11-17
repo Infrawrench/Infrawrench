@@ -126,12 +126,14 @@ the same caches as a push to that branch. See [Manual runs](#manual-runs).
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
 
-`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip` or
-`composer`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
-`only: [app/packages/web]` to install just those importers' closure, and pip
+`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer`
+or `bundler`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
+`only: [app/packages/web]` to install just those importers' closure, pip
 `file: requirements/ci.txt` to read another lock than `pylock.toml` or
-`requirements.txt`. [Bun](#bun), [Python](#python) and [PHP](#php) say what
-the Bun, pip and Composer installers read and check.
+`requirements.txt`, and bundler `ruby: "3.4"` to name the Ruby gems are
+installed for. [Bun](#bun), [Python](#python), [PHP](#php) and
+[Ruby gems](#ruby-gems) say what the Bun, pip, Composer and Bundler
+installers read and check.
 
 ### Filters
 
@@ -2598,6 +2600,89 @@ curl built into it report development versions (OpenSSL 3.2.0-dev, curl
 pin, but what is inside them can only be checked by running it. Composer's
 phar is pinned by the SHA-256 getcomposer.org publishes.
 
+### Ruby gems
+
+`bundle install` downloads from rubygems.org when the job runs, over the
+job's [network](#networking), and compiles native extensions with a
+compiler a job does not have. `deps: [bundler]` installs `Gemfile.lock`
+before the job instead, the way the pip and Composer installers do:
+
+```yaml
+workspace:
+  deps:
+    - bundler # Gemfile.lock at the root
+    - bundler: { dir: api, ruby: "3.4" }
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false # nothing to download
+    run: bundle exec rspec
+```
+
+What the lock must say, and what is checked:
+
+- **Checksums.** Every gem from a gem server is checked against the
+  SHA-256 in the lock's `CHECKSUMS` section before anything is unpacked.
+  Bundler 2.6 and later write that section for a new lock; an older lock
+  gets it with `bundle lock --add-checksums`. A gem without one refuses the
+  install, naming it. Only https gem servers are fetched, without
+  credentials.
+- **The `ruby` platform.** No gem publishes a build for the WebAssembly
+  Ruby a job runs, so each gem's `ruby` build (its source) is installed,
+  and the lock must list `ruby` under `PLATFORMS` with a `ruby` build of
+  every gem. The lock `rails new` writes lists only machine platforms
+  (`x86_64-linux`, `arm64-darwin`, ...) and, for nokogiri, sqlite3, ffi
+  and prism, only their builds for those.
+  `bundle lock --add-platform ruby` adds the platform and each gem's
+  source build, with its checksum. Bundler in the job refuses a lock
+  without its platform too. Run it on its own: Bundler 4.0.3 given
+  `--add-checksums --add-platform ruby` in one command adds the platform
+  without the builds, which the install refuses, naming the gems;
+  `bundle lock --remove-platform ruby` and then `--add-platform ruby`
+  mends such a lock.
+- **`GIT` sources** are fetched by the commit the lock's `revision` names
+  (https only, without credentials) into the runner's git cache, as
+  Composer packages are, so git's object ids tie every byte to the commit,
+  and checked out where Bundler looks (`bundler/gems/<repo>-<rev>/`).
+  `submodules: true` is refused. Bundler evaluates such a gem's gemspec
+  when the bundle loads, as it does after `bundle install`; one that shells
+  out to `git ls-files` needs `git` in the job.
+- **`PATH` sources** are directories of the repository and need nothing
+  installed.
+- **Missing dependencies** a gem declares and the lock does not install
+  are reported as warnings.
+
+Each gem is installed where `bundle install` puts it with
+`BUNDLE_PATH=vendor/bundle`, without running Ruby: its files under
+`vendor/bundle/ruby/<version>/gems/`, its specification (the Ruby
+RubyGems writes, from the gem's metadata) under `specifications/`, and RubyGems' wrapper for each executable under
+`bin/`, which `bundle exec` puts on `PATH`. Nothing in a gem runs at
+install time. The job gets `BUNDLE_PATH=vendor/bundle`, which Bundler reads
+relative to the Gemfile's directory, so one value serves every Gemfile,
+and `BUNDLE_FROZEN=true`, so it never resolves or reaches a gem server.
+Nothing writes `.bundle/config`; a committed one that sets another
+`BUNDLE_PATH` wins over the job's, and the install warns. The install is
+cached like the others (see [Caching](#caching)).
+
+**Which Ruby.** Gems are installed for Ruby 3.4 or 4.0, which decides the
+directory (`ruby/3.4.0`, `ruby/4.0.0`) and the extension directory below.
+The Ruby is `ruby:` when the pipeline names one, else the lock's
+`RUBY VERSION` (written when the Gemfile has a `ruby` line), else
+`.ruby-version`, else 4.0. A `ruby:` that disagrees with the lock's
+`RUBY VERSION` is refused, since Bundler in the job would refuse it.
+
+**Native extensions.** A gem with a C extension (`extensions:` in its
+gemspec) cannot be compiled before a job, and a job has no compiler.
+Such a gem is installed with its Ruby files, and its extension directory
+(`extensions/wasm32-wasi/<api>/<gem>/`) gets the `gem.build_complete` marker
+without the compiled part. Bundler then counts the gem as installed and the
+bundle loads; only requiring the compiled part fails, with a `LoadError`
+that names it. The install warns once per gem. A Rails lock has gems like
+that which a test suite never loads (kamal's `ed25519` and
+`bcrypt_pbkdf`), and those cost nothing; a test that does load one (a
+database driver, nokogiri) fails until a build of it for the job's Ruby is
+placed there.
+
 ### Go
 
 `env:go@1.23` to `env:go@1.27` are the five newest Go minor releases
@@ -3138,16 +3223,16 @@ commit) runs in about 0.35 s.
 Everything a run builds is cached under `--cache`, so the second run of a
 commit, and of most commits after it, does almost nothing:
 
-| What             | Kept under  | Keyed by                                                                                                                                                                                       |
-| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| git objects      | `git/`      | One repository per remote (the run's, and Composer packages fetched by commit). A commit already there costs no network.                                                                       |
-| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`. Re-verified on every read. |
-| installs         | `installs/` | What the install read. See below.                                                                                                                                                              |
-| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                         |
-| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                        |
+| What             | Kept under  | Keyed by                                                                                                                                                                                                                       |
+| ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| git objects      | `git/`      | One repository per remote (the run's, and Composer packages and Bundler `GIT` sources fetched by commit). A commit already there costs no network.                                                                             |
+| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`, a `Gemfile.lock`'s `CHECKSUMS`. Re-verified on every read. |
+| installs         | `installs/` | What the install read. See below.                                                                                                                                                                                              |
+| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                                                         |
+| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                                                        |
 
 **Installs** (`node_modules`, the `GOMODCACHE`, `vendor/`, a Python user
-site) are cached whole. An install runs in a layer over the checkout that records every read
+site, `vendor/bundle`) are cached whole. An install runs in a layer over the checkout that records every read
 reaching the checkout, including files it looked for and did not find, and
 keeps every write to itself. Both are stored, and a later run reuses the
 result only when every recorded read still sees the same thing. So a bumped
@@ -4188,15 +4273,15 @@ job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 
-| Crate          | Does                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------ |
-| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                             |
-| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                           |
-| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.            |
-| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip and Composer installers over a verifying, caching fetcher. |
-| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                              |
-| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.  |
-| `iwci`         | The scheduler and the `iwci` command.                                                |
+| Crate          | Does                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                                      |
+| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                                    |
+| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.                     |
+| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip, Composer and Bundler installers over a verifying, caching fetcher. |
+| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                                       |
+| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.           |
+| `iwci`         | The scheduler and the `iwci` command.                                                         |
 
 ## Development
 

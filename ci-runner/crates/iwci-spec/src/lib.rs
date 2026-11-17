@@ -942,7 +942,7 @@ impl Validator<'_> {
                 self.error(
                     &dep_path,
                     format!(
-                        "unknown ecosystem `{name}`; expected `pnpm`, `bun`, `go`, `cargo`, `pip` or `composer`"
+                        "unknown ecosystem `{name}`; expected `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer` or `bundler`"
                     ),
                 );
                 continue;
@@ -982,11 +982,26 @@ impl Validator<'_> {
                 }
                 file => file,
             };
+            let ruby = match options.ruby {
+                Some(_) if ecosystem != Ecosystem::Bundler => {
+                    self.error(format!("{dep_path}.ruby"), "ruby applies only to bundler");
+                    None
+                }
+                Some(v) if !is_major_minor(&v) => {
+                    self.error(
+                        format!("{dep_path}.ruby"),
+                        format!("{v:?} is not a Ruby version such as \"3.4\" or \"4.0\""),
+                    );
+                    None
+                }
+                ruby => ruby,
+            };
             let spec = DepSpec {
                 ecosystem,
                 dir,
                 only: options.only,
                 file,
+                ruby,
             };
             if specs.contains(&spec) {
                 self.error(&dep_path, "listed twice");
@@ -2416,6 +2431,16 @@ fn normalise_abs(path: &str) -> Option<String> {
         }
     }
     Some(format!("/{}", parts.join("/")))
+}
+
+/// `3.4`, `4.0`: digits, one dot, digits.
+fn is_major_minor(v: &str) -> bool {
+    v.split_once('.').is_some_and(|(major, minor)| {
+        !major.is_empty()
+            && !minor.is_empty()
+            && major.bytes().all(|b| b.is_ascii_digit())
+            && minor.bytes().all(|b| b.is_ascii_digit())
+    })
 }
 
 fn join_relative(root: &str, rel: &str) -> Option<String> {

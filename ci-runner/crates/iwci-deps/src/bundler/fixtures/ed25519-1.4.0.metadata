@@ -1,0 +1,130 @@
+--- !ruby/object:Gem::Specification
+name: ed25519
+version: !ruby/object:Gem::Version
+  version: 1.4.0
+platform: ruby
+authors:
+- Tony Arcieri
+autorequire:
+bindir: exe
+cert_chain: []
+date: 2025-05-04 00:00:00.000000000 Z
+dependencies:
+- !ruby/object:Gem::Dependency
+  name: bundler
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '0'
+  type: :development
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '0'
+description: A Ruby binding to the Ed25519 elliptic curve public-key signature system
+  described in RFC 8032.
+email:
+- tony.arcieri@gmail.com
+executables: []
+extensions:
+- ext/ed25519_ref10/extconf.rb
+extra_rdoc_files:
+- README.md
+- ed25519.png
+files:
+- CHANGES.md
+- LICENSE
+- README.md
+- ed25519.png
+- ext/ed25519_jruby/LICENSE.txt
+- ext/ed25519_jruby/README.md
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/EdDSAEngine.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/EdDSAKey.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/EdDSAPrivateKey.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/EdDSAPublicKey.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/EdDSASecurityProvider.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/KeyFactory.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/KeyPairGenerator.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/Utils.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/Constants.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/Curve.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/Encoding.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/Field.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/FieldElement.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/GroupElement.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/ScalarOps.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/bigint/BigIntegerFieldElement.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/bigint/BigIntegerLittleEndianEncoding.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/bigint/BigIntegerScalarOps.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/bigint/package.html
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/ed25519/Ed25519FieldElement.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/ed25519/Ed25519LittleEndianEncoding.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/math/ed25519/Ed25519ScalarOps.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSAGenParameterSpec.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSANamedCurveSpec.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSANamedCurveTable.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSAParameterSpec.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSAPrivateKeySpec.java
+- ext/ed25519_jruby/net/i2p/crypto/eddsa/spec/EdDSAPublicKeySpec.java
+- ext/ed25519_jruby/org/cryptorb/Ed25519Provider.java
+- ext/ed25519_ref10/api.h
+- ext/ed25519_ref10/base.h
+- ext/ed25519_ref10/base2.h
+- ext/ed25519_ref10/d.h
+- ext/ed25519_ref10/d2.h
+- ext/ed25519_ref10/ed25519_ref10.c
+- ext/ed25519_ref10/ed25519_ref10.h
+- ext/ed25519_ref10/extconf.rb
+- ext/ed25519_ref10/fe.c
+- ext/ed25519_ref10/fe.h
+- ext/ed25519_ref10/ge.c
+- ext/ed25519_ref10/ge.h
+- ext/ed25519_ref10/ge_add.h
+- ext/ed25519_ref10/ge_madd.h
+- ext/ed25519_ref10/ge_msub.h
+- ext/ed25519_ref10/ge_p2_dbl.h
+- ext/ed25519_ref10/ge_sub.h
+- ext/ed25519_ref10/keypair.c
+- ext/ed25519_ref10/open.c
+- ext/ed25519_ref10/pow22523.h
+- ext/ed25519_ref10/pow225521.h
+- ext/ed25519_ref10/sc.h
+- ext/ed25519_ref10/sc_muladd.c
+- ext/ed25519_ref10/sc_reduce.c
+- ext/ed25519_ref10/sha512.c
+- ext/ed25519_ref10/sha512.h
+- ext/ed25519_ref10/sign.c
+- ext/ed25519_ref10/sqrtm1.h
+- ext/ed25519_ref10/verify.c
+- lib/ed25519.rb
+- lib/ed25519/signing_key.rb
+- lib/ed25519/verify_key.rb
+- lib/ed25519/version.rb
+- lib/ed25519_jruby.jar
+homepage: https://github.com/RubyCrypto/ed25519
+licenses:
+- MIT
+metadata: {}
+post_install_message:
+rdoc_options: []
+require_paths:
+- lib
+required_ruby_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: '3.0'
+required_rubygems_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: '0'
+requirements: []
+rubygems_version: 3.5.16
+signing_key:
+specification_version: 4
+summary: An efficient digital signature library providing the Ed25519 algorithm
+test_files: []

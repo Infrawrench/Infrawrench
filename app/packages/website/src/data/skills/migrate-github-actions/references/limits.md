@@ -25,7 +25,7 @@ Check each migrated job against this list before handing back.
 
 - **Node 24 only** on the runner (`env:bash-node@24`). A matrix over older Node versions becomes one job on 24, or cloud jobs for the others.
 - **Native Node addons** load only when the package ships a WebAssembly (`wasm32-wasi`) build: Vite 8, Vitest, Rolldown, tsdown, oxc and the Astro compiler do. A dependency with only native binaries (some image, database and crypto libraries) needs a cloud job.
-- **npm and Yarn lockfiles** are not installed by `workspace.deps` (it supports pnpm, Bun, Go, Cargo, pip and Composer). Convert with `pnpm import` and commit `pnpm-lock.yaml`, or run `npm ci` in the job's script (slower: it downloads on every run and is not checked against the lockfile).
+- **npm and Yarn lockfiles** are not installed by `workspace.deps` (it supports pnpm, Bun, Go, Cargo, pip, Composer and Bundler). Convert with `pnpm import` and commit `pnpm-lock.yaml`, or run `npm ci` in the job's script (slower: it downloads on every run and is not checked against the lockfile).
 - **Bun**: dependencies install from `bun.lock`, but scripts run with Node; there is no `bun` command.
 - **Rust, Java, .NET, Ruby, Swift**: no environment yet. Cloud jobs.
 

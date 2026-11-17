@@ -19,8 +19,8 @@ pub enum Integrity {
     /// A Subresource Integrity string as npm and pnpm lockfiles carry it:
     /// `sha512-<base64>` (also `sha384-`, `sha256-` and the legacy `sha1-`).
     Sri(String),
-    /// A hex SHA-256, as `Cargo.lock`'s `checksum` and a pip lock's
-    /// `--hash=sha256:` carry it.
+    /// A hex SHA-256, as `Cargo.lock`'s `checksum`, a pip lock's
+    /// `--hash=sha256:` and a `Gemfile.lock`'s `CHECKSUMS` carry it.
     Sha256Hex(String),
     /// A hex SHA-1, as `composer.lock`'s `dist.shasum` carries it: the only
     /// hash Composer records. Finding a second file with a given SHA-1 is

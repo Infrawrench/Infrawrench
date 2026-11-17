@@ -92,7 +92,8 @@ fn the_example_pipeline_expands() {
             ecosystem: Ecosystem::Go,
             dir: "/app/terraform-provider-infrawrench".into(),
             only: None,
-            file: None
+            file: None,
+            ruby: None
         }]
     );
 
@@ -335,6 +336,14 @@ fn paths_and_workspaces() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ pip: { file: ../../etc/passwd } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "inside the clone",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ pip: { ruby: '3.4' } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "ruby applies only to bundler",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ bundler: { ruby: latest } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "is not a Ruby version",
     );
     assert_error(
         "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    deps: [pnpm]\n",
@@ -2336,6 +2345,7 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
         dir: dir.into(),
         only: None,
         file: None,
+        ruby: None,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2346,6 +2356,37 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
         "name: x\nworkspace:\n  deps: [{ bun: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "only applies to pnpm",
     );
+}
+
+#[test]
+fn bundler_takes_a_directory_and_a_ruby() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [bundler, { bundler: { dir: api, ruby: 4.0 } }, { bundler: { dir: old, ruby: '3.4' } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = |dir: &str, ruby: Option<&str>| DepSpec {
+        ecosystem: Ecosystem::Bundler,
+        dir: dir.into(),
+        only: None,
+        file: None,
+        ruby: ruby.map(str::to_string),
+    };
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps,
+        vec![
+            dep("/app", None),
+            dep("/app/api", Some("4.0")),
+            dep("/app/old", Some("3.4"))
+        ]
+    );
+    assert_eq!(
+        Ecosystem::parse("bundler").map(Ecosystem::name),
+        Some("bundler")
+    );
+    // A workspace that names no Ruby keeps the key it had.
+    let no_ruby = serde_json::to_value(dep("/app", None)).unwrap();
+    assert!(no_ruby.get("ruby").is_none());
 }
 
 const MANUAL: &str = r#"name: Deploy

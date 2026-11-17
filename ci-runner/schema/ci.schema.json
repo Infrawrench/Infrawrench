@@ -251,7 +251,7 @@
       }
     },
     "ecosystem": {
-      "enum": ["pnpm", "bun", "go", "cargo", "pip", "composer"]
+      "enum": ["pnpm", "bun", "go", "cargo", "pip", "composer", "bundler"]
     },
     "deps": {
       "type": "array",
@@ -286,6 +286,12 @@
                 "file": {
                   "type": "string",
                   "description": "pip only: the lock to read, relative to `dir`, instead of `pylock.toml` or `requirements.txt`."
+                },
+                "ruby": {
+                  "type": ["string", "number"],
+                  "pattern": "^[0-9]+\\.[0-9]+$",
+                  "examples": ["3.4", "4.0"],
+                  "description": "bundler only: the Ruby to install gems for (`major.minor`), instead of the lock's RUBY VERSION or `.ruby-version`."
                 }
               }
             }

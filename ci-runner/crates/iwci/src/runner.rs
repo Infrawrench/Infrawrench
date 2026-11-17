@@ -769,6 +769,7 @@ impl Runner {
             layers: self.layers.clone(),
             threads: self.cpus,
             git: Some(self.git.clone()),
+            prebuilt: Arc::new(iwci_deps::bundler::NoPrebuilt),
         };
         let mut author = self.author.clone();
         author.time = now_secs() as i64;

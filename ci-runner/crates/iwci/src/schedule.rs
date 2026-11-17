@@ -4044,6 +4044,7 @@ fn task_cache_key(
     for dep in &ws.deps {
         // Patch files, which `bun.lock` names without pinning their content.
         let bun_patches;
+        let bundler_gemspecs;
         let names: Vec<&str> = match dep.ecosystem {
             iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
             iwci_spec::Ecosystem::Bun => {
@@ -4062,6 +4063,18 @@ fn task_cache_key(
                 None => iwci_deps::pip::DEFAULT_FILES.to_vec(),
             },
             iwci_spec::Ecosystem::Composer => vec!["composer.lock", "composer.json"],
+            iwci_spec::Ecosystem::Bundler => {
+                // The gemspecs of `PATH` sources, which Bundler reads when
+                // the bundle loads and the lock does not pin.
+                let lock = iwci_deps::bundler::LOCKFILES
+                    .iter()
+                    .find_map(|name| snapshot.read(format!("{}/{name}", dep.dir)).ok());
+                bundler_gemspecs = iwci_deps::bundler::path_gemspecs(lock.as_deref());
+                iwci_deps::bundler::INPUT_FILES
+                    .into_iter()
+                    .chain(bundler_gemspecs.iter().map(String::as_str))
+                    .collect()
+            }
         };
         for name in names {
             let path = format!("{}/{name}", dep.dir);
