@@ -20,7 +20,6 @@ AWS Lambda gateway, which take over most of the web API and the poller; see
 | Edge Workers `infrawrench-web` / `infrawrench-poller` (optional)      | `.github/workflows/web-deploy.yml`        |
 | Lambda gateway: ECR, functions, VPC, schedule (optional)              | `infra/terraform/lambda.tf`               |
 | Lambda image `lambda`, tagged `:<commit sha>`                         | `.github/workflows/web-deploy.yml`        |
-| Cloudflare Tunnel connector for jeeves (optional)                     | `infra/terraform/edge.tf`                 |
 
 **The egress proxy is deliberately not on this cluster.** Workflow `fetch()`
 runs in the `web`/`poller` isolates; if those pods made the request, every
@@ -195,9 +194,6 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   metadata server). Workflow `fetch()` is still isolated structurally, off
   cluster on the egress proxy; this policy covers what the app dials itself.
 
-**cloudflared** (`infra/terraform/edge.tf`): accepts only kubelet probes from
-the node subnet, and reaches only jeeves, cluster DNS and Cloudflare's edge.
-
 **Enforcement** is GKE's Calico addon, `enable_network_policy` in
 `infra/terraform/main.tf` (on by default). The alternatives and their cost:
 
@@ -213,11 +209,10 @@ the node subnet, and reaches only jeeves, cluster DNS and Cloudflare's edge.
   policies carry over unchanged if the cluster is ever rebuilt on it.
 
 Rollout order: let CI apply `infra/k8s` first (any push to it does), then
-`terraform apply`; the cloudflared policy and enforcement then land together.
-Verify enforcement is live before trusting the policy: from a throwaway pod in
-the namespace, a connection to the cloudflared pods' metrics port (2000)
-should time out, and jeeves should still serve. A NetworkPolicy
-that is present but inert is worse than none, because it reads as protection.
+`terraform apply` to turn enforcement on. Verify enforcement is live before
+trusting the policy: from a throwaway pod outside the app labels, a connection
+to a `web` pod should time out. A NetworkPolicy that is present but inert is
+worse than none, because it reads as protection.
 
 ### Control plane access
 
@@ -499,12 +494,13 @@ apply`; the agents restart the app within a minute.
   object). Changes to `cloud-init-aws.yaml` only reach new instances.
 - **Rollback to GKE**: there is no ingress or load balancer in the cluster
   any more (removed 2026-10-13). Set `replicas: 2` in
-  `infra/k8s/web-deployment.yaml` and deploy; add a route
-  `app.infrawrench.com` -> `http://web.infrawrench.svc.cluster.local:80` to
-  the cluster's tunnel (`infrawrench-clickhouse`, named for what it first
-  carried; it now carries `jeeves`) and an egress rule to the web pods in
-  `kubernetes_network_policy_v1.cloudflared` (edge.tf); then point
-  `app.infrawrench.com` at that tunnel (`<id>.cfargotunnel.com`, proxied).
+  `infra/k8s/web-deployment.yaml` and deploy. The cluster has no tunnel
+  connector any more (its tunnel and `infra/terraform/edge.tf` were removed
+  on 2026-11-17): create a tunnel with a route `app.infrawrench.com` ->
+  `http://web.infrawrench.svc.cluster.local:80`, restore `edge.tf` from git
+  history with an egress rule to the web pods in place of the jeeves one, set
+  `cloudflare_tunnel_token` and apply; then point `app.infrawrench.com` at
+  that tunnel (`<id>.cfargotunnel.com`, proxied).
 
 ## Oracle Cloud
 

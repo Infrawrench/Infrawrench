@@ -104,7 +104,7 @@ variable "enable_network_policy" {
   description = <<-EOT
     Enforce Kubernetes NetworkPolicy with GKE's Calico addon. Without it the
     cluster accepts NetworkPolicy objects and enforces none of them, so the
-    isolation in infra/k8s/network-policy.yaml and edge.tf does nothing. Turning it on updates the cluster in place
+    isolation in infra/k8s/network-policy.yaml does nothing. Turning it on updates the cluster in place
     (no replacement), but GKE recreates every node afterwards; see the
     NetworkPolicy section of infra/README.md.
   EOT

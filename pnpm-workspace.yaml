@@ -47,18 +47,7 @@ peerDependencyRules:
   allowAny:
     - typescript
 
-# drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
-# `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
-# `drizzle-orm/clickhouse` (a driver binding for `@clickhouse/client`) from
-# https://github.com/Infrawrench/drizzle-orm/tree/clickhouse-dialect, plus the
-# two type-only branches in `column-builder.d.ts` that teach `BuildColumn` about
-# the new dialect, and the `exports` entries that make them importable.
-#
-# It is additive: no file drizzle already shipped changes behaviour, so a
-# drizzle bump only has to re-run the fork's build (see KNOWLEDGE.md, "The
-# ClickHouse dialect patch"), not re-derive a merge.
 patchedDependencies:
-  drizzle-orm@0.45.2: patches/drizzle-orm@0.45.2.patch
   # versionMajorMinor "7.0" so rolldown-plugin-dts 0.27 emits declarations with
   # the tsc-rs binary. See KNOWLEDGE.md, "Type checking".
   "@tsc-rs/typescript@0.8.0": patches/@tsc-rs__typescript@0.8.0.patch

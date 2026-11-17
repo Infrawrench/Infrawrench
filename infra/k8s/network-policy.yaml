@@ -1,5 +1,4 @@
-# Network isolation for the three app workloads. The cloudflared connector
-# shares this namespace; its policy lives with it in infra/terraform/edge.tf.
+# Network isolation for the three app workloads.
 #
 # ---------------------------------------------------------------------------
 # Read this before adding an egress rule
@@ -62,9 +61,8 @@
 # Default-deny ingress for the three app workloads.
 #
 # Scoped by an explicit label list rather than `podSelector: {}` on purpose:
-# other workloads (the cloudflared connector, infra/terraform/edge.tf) live in
-# THIS namespace with policies of their own, and an empty selector would apply
-# this one to them too.
+# a workload added to THIS namespace later brings a policy of its own, and an
+# empty selector would apply this one to it too.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

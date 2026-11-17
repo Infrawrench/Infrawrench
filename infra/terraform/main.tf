@@ -181,7 +181,7 @@ resource "google_container_cluster" "prod" {
   # replace this cluster. Enabling the addon updates the cluster in place, but
   # GKE then recreates every node (honouring the maintenance window and each
   # pool's surge settings) to start the Calico agents. Without it the policies
-  # in infra/k8s/network-policy.yaml and edge.tf are accepted by the API
+  # in infra/k8s/network-policy.yaml are accepted by the API
   # server and enforce nothing.
   addons_config {
     network_policy_config {

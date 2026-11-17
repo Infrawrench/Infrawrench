@@ -1,6 +1,5 @@
 # The github-watcher on Oracle Cloud's Always Free tier, replacing the GKE
-# `github-watcher` Deployment (the cluster itself stays: the cloudflared
-# connector runs there). The session gateway is on AWS instead
+# `github-watcher` Deployment. The session gateway is on AWS instead
 # (aws-web.tf): Oracle's free Ampere capacity in us-ashburn-1 was exhausted in
 # every availability domain for days.
 #

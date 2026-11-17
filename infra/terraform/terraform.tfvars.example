@@ -14,7 +14,7 @@ github_repository = "Infrawrench/infrawrench"
 # ---------------------------------------------------------------------------
 
 # Optional, default true. Enforces the NetworkPolicies in
-# infra/k8s/network-policy.yaml and edge.tf through GKE's Calico addon.
+# infra/k8s/network-policy.yaml through GKE's Calico addon.
 # An in-place cluster update (no replacement), after which GKE recreates every
 # node, one surge node at a time. Apply infra/k8s first (CI does on any push)
 # so the allow rules exist before enforcement starts. Setting false leaves the
@@ -454,11 +454,6 @@ app_env = {
 # lambda_app_env = {
 #   DATABASE_URL = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
 # }
-
-# The cluster's Cloudflare Tunnel connector, which publishes jeeves
-# (edge.tf). OPTIONAL: empty runs no connector. The token is the `eyJ...`
-# string from Networking > Tunnels > (tunnel) > Add a replica.
-# cloudflare_tunnel_token = "eyJ..."
 
 # Oracle Cloud github-watcher (one Always Free micro VM; oci.tf, runbook in
 # infra/README.md, "Oracle Cloud"). OPTIONAL: false creates nothing in OCI.
