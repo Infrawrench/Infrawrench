@@ -192,6 +192,8 @@ const BILLED_ONLY_COLUMNS = {
   list_reported: sql`0::smallint`,
   blended_amount: sql`0::float8`,
   blended_reported: sql`0::smallint`,
+  on_demand_amount: sql`0::float8`,
+  on_demand_reported: sql`0::smallint`,
 } as const;
 
 /** The split half's projection: its own columns, then the billed-only defaults. */

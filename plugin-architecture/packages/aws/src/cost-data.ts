@@ -599,9 +599,10 @@ class Buckets {
    * `UnblendedCost` but no `AmortizedCost` would read as *zero* in every
    * amortized view instead of falling back to the cash figure it has.
    */
-  rows(blended?: ReadonlyMap<Bucket, number>): CostRow[] {
+  rows(pricing?: AwsCommitmentPricing): CostRow[] {
     return [...this.map.values()].map((b) => {
-      const blend = blended?.get(b);
+      const blend = pricing?.blended.get(b);
+      const onDemand = pricing?.onDemand.get(b);
       return {
         date: b.date,
         service: b.service,
@@ -612,6 +613,7 @@ class Buckets {
         ...(b.amortizedReported ? { amortizedAmount: b.amortizedAmount } : {}),
         ...(b.onDemand ? { listAmount: b.amount } : {}),
         ...(blend !== undefined ? { blendedAmount: blend } : {}),
+        ...(onDemand !== undefined ? { onDemandAmount: onDemand } : {}),
       };
     });
   }
@@ -653,19 +655,23 @@ export function awsServiceDayKey(service: string, date: string): string {
 }
 
 /**
- * The blended amount per bucket: see "Blended commitment discounts" in the
- * module header. Pure, so the arithmetic is testable without a mocked CE.
+ * The on-demand-equivalent cost of each covered bucket: the Savings Plan
+ * half's `UnblendedCost` plus the RI half re-priced at the service-day's
+ * `OnDemandCostOfRIHoursUsed` ratio. `null` for a bucket with RI effective
+ * cost whose service-day has no usable RI figure (missing, or a ratio outside
+ * [{@link RI_RATIO_MIN}, {@link RI_RATIO_MAX}], which means a member account
+ * is reading utilization for reservations it does not own). Buckets that are
+ * not covered usage are absent. Pure.
  *
- * `spCells` holds the Savings Plan half of each covered cell, and
- * `riOnDemand` the day's `OnDemandCostOfRIHoursUsed` per service-day. A
- * covered cell with RI effective cost whose service-day has no usable RI
- * figure gets a `null` weight, which leaves its whole pool unblended.
+ * Shared by blending (as pool weights) and by `CostRow.onDemandAmount`, so
+ * the savings a commitment report shows and the rate a blended view applies
+ * come from one figure.
  */
-export function blendAwsBuckets(
+export function awsCoveredOnDemand(
   buckets: Bucket[],
   spCells: ReadonlyMap<string, AwsSavingsPlanCell>,
   riOnDemand: ReadonlyMap<string, number>,
-): Map<Bucket, number> {
+): Map<Bucket, number | null> {
   const riPart = (b: Bucket): number => {
     const sp = spCells.get(awsCellKey(b.date, b.service, b.region, b.currency));
     return Math.max(0, effectiveAmount(b) - (sp?.effective ?? 0));
@@ -678,12 +684,9 @@ export function blendAwsBuckets(
     riEffective.set(key, (riEffective.get(key) ?? 0) + riPart(b));
   }
 
-  const members: Array<BlendMember | null> = buckets.map((b) => {
-    const pool = [b.date, b.currency, b.service].join("\u0000");
-    if (b.chargeType === "usage") {
-      return { pool, effective: effectiveAmount(b), weight: b.amount };
-    }
-    if (b.chargeType !== "commitment_covered_usage") return null;
+  const out = new Map<Bucket, number | null>();
+  for (const b of buckets) {
+    if (b.chargeType !== "commitment_covered_usage") continue;
     const sp = spCells.get(awsCellKey(b.date, b.service, b.region, b.currency));
     const ri = riPart(b);
     let weight: number | null = sp?.onDemand ?? 0;
@@ -697,7 +700,38 @@ export function blendAwsBuckets(
           ? weight + ri * ratio
           : null;
     }
-    return { pool, effective: effectiveAmount(b), weight, covered: true };
+    out.set(b, weight);
+  }
+  return out;
+}
+
+/**
+ * The blended amount per bucket: see "Blended commitment discounts" in the
+ * module header. Pure, so the arithmetic is testable without a mocked CE.
+ *
+ * `spCells` holds the Savings Plan half of each covered cell, and
+ * `riOnDemand` the day's `OnDemandCostOfRIHoursUsed` per service-day. A
+ * covered cell with RI effective cost whose service-day has no usable RI
+ * figure gets a `null` weight, which leaves its whole pool unblended.
+ */
+export function blendAwsBuckets(
+  buckets: Bucket[],
+  spCells: ReadonlyMap<string, AwsSavingsPlanCell>,
+  riOnDemand: ReadonlyMap<string, number>,
+): Map<Bucket, number> {
+  const coveredOnDemand = awsCoveredOnDemand(buckets, spCells, riOnDemand);
+  const members: Array<BlendMember | null> = buckets.map((b) => {
+    const pool = [b.date, b.currency, b.service].join("\u0000");
+    if (b.chargeType === "usage") {
+      return { pool, effective: effectiveAmount(b), weight: b.amount };
+    }
+    if (b.chargeType !== "commitment_covered_usage") return null;
+    return {
+      pool,
+      effective: effectiveAmount(b),
+      weight: coveredOnDemand.get(b) ?? null,
+      covered: true,
+    };
   });
 
   const blended = blendCommitmentPools(members);
@@ -709,17 +743,24 @@ export function blendAwsBuckets(
   return out;
 }
 
+/** What {@link commitmentPricing} learned: blended amounts and on-demand equivalents. */
+export interface AwsCommitmentPricing {
+  blended: Map<Bucket, number>;
+  onDemand: Map<Bucket, number>;
+}
+
 /**
- * Gather what {@link blendAwsBuckets} needs: one request for the Savings Plan
- * half of the covered cells and one utilization request per service with RI
- * coverage. Skipped entirely when nothing was covered. Best effort: any
- * failure blends nothing, and the rows are returned exactly as before.
+ * Gather what {@link blendAwsBuckets} and {@link awsCoveredOnDemand} need: one
+ * request for the Savings Plan half of the covered cells and one utilization
+ * request per service with RI coverage. Skipped entirely when nothing was
+ * covered. Best effort: any failure blends nothing and stamps no on-demand
+ * equivalent, and the rows are returned exactly as before.
  */
-async function blendedAmounts(
+async function commitmentPricing(
   creds: AwsCredentials,
   timePeriod: { Start: string; End: string },
   buckets: Buckets,
-): Promise<Map<Bucket, number> | undefined> {
+): Promise<AwsCommitmentPricing | undefined> {
   const all = buckets.values();
   if (!all.some((b) => b.chargeType === "commitment_covered_usage")) return undefined;
   try {
@@ -763,7 +804,11 @@ async function blendedAmounts(
         // Refused or unavailable for this service: its pools stay unblended.
       }
     }
-    return blendAwsBuckets(all, spCells, riOnDemand);
+    const onDemand = new Map<Bucket, number>();
+    for (const [b, v] of awsCoveredOnDemand(all, spCells, riOnDemand)) {
+      if (v !== null) onDemand.set(b, v);
+    }
+    return { blended: blendAwsBuckets(all, spCells, riOnDemand), onDemand };
   } catch {
     return undefined;
   }
@@ -964,5 +1009,5 @@ export async function fetchAwsCostData(
     buckets.add({ ...identity, amount: 0, amortizedAmount: 0, amortizedReported: false });
   }
 
-  return { rows: buckets.rows(await blendedAmounts(creds, timePeriod, buckets)) };
+  return { rows: buckets.rows(await commitmentPricing(creds, timePeriod, buckets)) };
 }
