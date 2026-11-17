@@ -325,13 +325,37 @@ pub fn closure_prepare<M: MemorySize>(
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
 
-    let (env, mut store) = ctx.data_and_store_mut();
-    let memory = unsafe { env.memory_view(&store) };
+    let env = ctx.data();
 
     let Some(linker) = env.inner().linker().cloned() else {
         error!("Closures only work for dynamic modules.");
         return Ok(Errno::Notsup);
     };
+
+    // iwci patch (#1304): the guest's input is checked before anything is
+    // built from it. `closure` must be one of the slots `closure_allocate`
+    // hands out: the module built below stores the trampoline there from its
+    // constructor, and any other index (libffi given the address of a
+    // trampoline page of its caller's own, say) made that constructor trap
+    // with "out of bounds table access", which the load below reported and
+    // this call turned into a panic, ending the guest's process with 134.
+    // Those slots are in every instance group's table. And a function
+    // has at most 1000 parameters and 1000 results, which is all the
+    // compiler accepts.
+    const MAX_CLOSURE_TYPES: u32 = 1000;
+    if argument_types_length > MAX_CLOSURE_TYPES || result_types_length > MAX_CLOSURE_TYPES {
+        return Ok(Errno::Inval);
+    }
+    match linker.is_closure(closure, &mut ctx) {
+        Ok(true) => {}
+        Ok(false) => return Ok(Errno::Inval),
+        Err(e) => {
+            error!("Failed to look up closure index {closure}: {e}");
+            return Ok(Errno::Fault);
+        }
+    }
+    let (env, mut store) = ctx.data_and_store_mut();
+    let memory = unsafe { env.memory_view(&store) };
 
     let argument_types = {
         let arg_offset = argument_types_ptr.offset().into();
@@ -380,13 +404,12 @@ pub fn closure_prepare<M: MemorySize>(
         module_name: &module_name,
         bytes: &wasm_bytes,
     };
-    let module_handle = match linker.load_module(wasm_loader, &mut ctx) {
-        Ok(m) => m,
-        Err(e) => {
-            // Should never happen
-            panic!("Failed to load newly built in-memory module: {e}");
-        }
-    };
+    // iwci patch (#1304): a module that fails to load (out of table or
+    // memory) is the guest's error, as it is for `dlopen`, not a panic.
+    if let Err(e) = linker.load_module(wasm_loader, &mut ctx) {
+        error!("Failed to load the module for closure {closure}: {e}");
+        return Ok(Errno::Fault);
+    }
 
     return Ok(Errno::Success);
 }

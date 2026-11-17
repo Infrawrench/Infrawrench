@@ -2703,6 +2703,172 @@
      };
      if st_nlink == 0 {
          {
+--- a/src/syscalls/wasix/call_dynamic.rs
++++ b/src/syscalls/wasix/call_dynamic.rs
+@@ -6,7 +6,10 @@
+ macro_rules! write_value {
+     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $value:expr) => {{
+         let bytes = $value.to_le_bytes();
+-        if $offset + bytes.len() as u64 <= $max {
++        if $offset
++            .checked_add(bytes.len() as u64)
++            .is_some_and(|end| end <= $max)
++        {
+             $memory.write($offset, &bytes)?;
+             $offset += bytes.len() as u64;
+             Ok(true)
+@@ -36,7 +39,7 @@
+ 
+ macro_rules! read_value {
+     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $ty:ident, $val:ident, $len:expr) => {{
+-        if $offset + $len > $max {
++        if $offset.checked_add($len).is_none_or(|end| end > $max) {
+             Ok(if $strict {
+                 None
+             } else {
+@@ -125,9 +128,33 @@
+ 
+     let function_type = function.ty(&store);
+ 
++    // iwci patch (#1304): what the guest asks for is checked before the call.
++    // A function whose parameters or results are references (which a side
++    // module can put in the table) has no byte form, and reading or writing
++    // one panicked; and a buffer that ends past the address space overflowed
++    // the arithmetic below. Both are the guest's error.
++    let is_number = |ty: &Type| {
++        matches!(
++            ty,
++            Type::I32 | Type::I64 | Type::F32 | Type::F64 | Type::V128
++        )
++    };
++    if !function_type.params().iter().all(is_number)
++        || !function_type.results().iter().all(is_number)
++    {
++        return Ok(Errno::Inval);
++    }
++    let values_start: u64 = values.offset().into();
++    let results_start: u64 = results.offset().into();
++    let (Some(max_values_offset), Some(max_results_offset)) = (
++        values_start.checked_add(values_len.into()),
++        results_start.checked_add(results_len.into()),
++    ) else {
++        return Ok(Errno::Inval);
++    };
++
+     let memory = unsafe { env.memory_view(&store) };
+-    let mut current_values_offset: u64 = values.offset().into();
+-    let max_values_offset = current_values_offset + values_len.into();
++    let mut current_values_offset = values_start;
+     let mut values_buffer = vec![];
+     for ty in function_type.params() {
+         let Some(value) = wasi_try_mem_ok!(read_value(
+@@ -152,8 +179,7 @@
+         .map_err(crate::flatten_runtime_error)?;
+ 
+     let memory = unsafe { env.memory_view(&store) };
+-    let mut current_results_offset: u64 = results.offset().into();
+-    let max_results_offset = current_results_offset + results_len.into();
++    let mut current_results_offset = results_start;
+     for result_value in result_values {
+         wasi_try_mem_ok!(write_value(
+             &memory,
+--- a/src/syscalls/wasix/closure_allocate.rs
++++ b/src/syscalls/wasix/closure_allocate.rs
+@@ -29,6 +29,12 @@
+ 
+     let (env, mut store) = ctx.data_and_store_mut();
+     let memory = unsafe { env.memory_view(&store) };
+-    closure.write(&memory, function_id);
++    // iwci patch (#1304): a pointer the index cannot be written to is the
++    // guest's error, and the slot goes back rather than staying allocated
++    // with nobody knowing its index.
++    if let Err(e) = closure.write(&memory, function_id) {
++        _ = linker.free_closure_index(&mut ctx, function_id);
++        return Ok(mem_error_to_wasi(e));
++    }
+     return Ok(Errno::Success);
+ }
+--- a/src/syscalls/wasix/closure_free.rs
++++ b/src/syscalls/wasix/closure_free.rs
+@@ -17,10 +17,11 @@
+         return Ok(Errno::Notsup);
+     };
+ 
+-    let free_result = linker.free_closure_index(&mut ctx, closure);
+-    if let Err(e) = free_result {
+-        // Should never happen
+-        panic!("Failed to free closure index: {e}");
++    // iwci patch (#1304): a failure here is reported to the guest, as
++    // `closure_allocate`'s is, not a panic.
++    if let Err(e) = linker.free_closure_index(&mut ctx, closure) {
++        error!("Failed to free closure index {closure}: {e}");
++        return Ok(Errno::Fault);
+     }
+ 
+     return Ok(Errno::Success);
+--- a/src/syscalls/wasix/closure_prepare.rs
++++ b/src/syscalls/wasix/closure_prepare.rs
+@@ -325,14 +325,38 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
+-    let (env, mut store) = ctx.data_and_store_mut();
+-    let memory = unsafe { env.memory_view(&store) };
++    let env = ctx.data();
+ 
+     let Some(linker) = env.inner().linker().cloned() else {
+         error!("Closures only work for dynamic modules.");
+         return Ok(Errno::Notsup);
+     };
+ 
++    // iwci patch (#1304): the guest's input is checked before anything is
++    // built from it. `closure` must be one of the slots `closure_allocate`
++    // hands out: the module built below stores the trampoline there from its
++    // constructor, and any other index (libffi given the address of a
++    // trampoline page of its caller's own, say) made that constructor trap
++    // with "out of bounds table access", which the load below reported and
++    // this call turned into a panic, ending the guest's process with 134.
++    // Those slots are in every instance group's table. And a function
++    // has at most 1000 parameters and 1000 results, which is all the
++    // compiler accepts.
++    const MAX_CLOSURE_TYPES: u32 = 1000;
++    if argument_types_length > MAX_CLOSURE_TYPES || result_types_length > MAX_CLOSURE_TYPES {
++        return Ok(Errno::Inval);
++    }
++    match linker.is_closure(closure, &mut ctx) {
++        Ok(true) => {}
++        Ok(false) => return Ok(Errno::Inval),
++        Err(e) => {
++            error!("Failed to look up closure index {closure}: {e}");
++            return Ok(Errno::Fault);
++        }
++    }
++    let (env, mut store) = ctx.data_and_store_mut();
++    let memory = unsafe { env.memory_view(&store) };
++
+     let argument_types = {
+         let arg_offset = argument_types_ptr.offset().into();
+         let arguments_slice = wasi_try_mem_ok!(
+@@ -380,13 +404,12 @@
+         module_name: &module_name,
+         bytes: &wasm_bytes,
+     };
+-    let module_handle = match linker.load_module(wasm_loader, &mut ctx) {
+-        Ok(m) => m,
+-        Err(e) => {
+-            // Should never happen
+-            panic!("Failed to load newly built in-memory module: {e}");
+-        }
+-    };
++    // iwci patch (#1304): a module that fails to load (out of table or
++    // memory) is the guest's error, as it is for `dlopen`, not a panic.
++    if let Err(e) = linker.load_module(wasm_loader, &mut ctx) {
++        error!("Failed to load the module for closure {closure}: {e}");
++        return Ok(Errno::Fault);
++    }
+ 
+     return Ok(Errno::Success);
+ }
 --- /dev/null
 +++ b/src/syscalls/wasix/iwci_fd_lock.rs
 @@ -0,0 +1,205 @@
