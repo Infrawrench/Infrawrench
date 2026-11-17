@@ -12,10 +12,10 @@ index 63d9eed4..ba4057dc 100644
  )
 diff --git a/src/edge_compile_cache.cc b/src/edge_compile_cache.cc
 new file mode 100644
-index 00000000..53485309
+index 00000000..55af9a63
 --- /dev/null
 +++ b/src/edge_compile_cache.cc
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,397 @@
 +#include "edge_compile_cache.h"
 +
 +#include <cctype>
@@ -29,7 +29,6 @@ index 00000000..53485309
 +#include <system_error>
 +#include <vector>
 +
-+#include <fcntl.h>
 +#include <unistd.h>
 +
 +#include "edge_buffer_lease.h"
@@ -97,6 +96,30 @@ index 00000000..53485309
 +  va_start(args, format);
 +  std::vfprintf(stderr, format, args);
 +  va_end(args);
++}
++
++std::string Format(const char* format, ...) {
++  va_list args;
++  va_start(args, format);
++  va_list again;
++  va_copy(again, args);
++  const int length = std::vsnprintf(nullptr, 0, format, args);
++  va_end(args);
++  std::string out;
++  if (length > 0) {
++    out.resize(static_cast<size_t>(length) + 1);
++    std::vsnprintf(out.data(), out.size(), format, again);
++    out.resize(static_cast<size_t>(length));
++  }
++  va_end(again);
++  return out;
++}
++
++// A whole line in one write. The main thread and every Worker report to
++// the same stderr, and a line printed in two parts (the start, then how it
++// ended) had other threads' lines in the middle of it (#1249).
++void DebugLine(const std::string& line) {
++  std::fwrite(line.data(), 1, line.size(), stderr);
 +}
 +
 +const char* TypeName(CodeType type) {
@@ -287,12 +310,15 @@ index 00000000..53485309
 +  out->file_bytes.clear();
 +  out->payload_offset = 0;
 +  out->payload_size = 0;
-+  Debug("[compile cache] reading cache from %s for %s %s...",
-+        entry.cache_path.c_str(),
-+        TypeName(entry.type),
-+        entry.source_filename.c_str());
++  const bool debug = DebugEnabled();
++  const std::string reading = debug ? Format("[compile cache] reading cache from %s for %s %s...",
++                                             entry.cache_path.c_str(),
++                                             TypeName(entry.type),
++                                             entry.source_filename.c_str())
++                                    : std::string();
++  errno = 0;
 +  if (!edge_bytecode_cache::io::ReadFileFully(entry.cache_path, &out->file_bytes)) {
-+    Debug(" no entry\n");
++    if (debug) DebugLine(reading + Format(" no entry (%s)\n", std::strerror(errno != 0 ? errno : EIO)));
 +    return false;
 +  }
 +  const uint8_t* data = out->file_bytes.data();
@@ -315,13 +341,13 @@ index 00000000..53485309
 +    mismatch = "empty cache";
 +  }
 +  if (mismatch != nullptr) {
-+    Debug(" %s\n", mismatch);
++    if (debug) DebugLine(reading + " " + mismatch + "\n");
 +    out->file_bytes.clear();
 +    return false;
 +  }
 +  out->payload_offset = kHeaderSize;
 +  out->payload_size = size - kHeaderSize;
-+  Debug(" success, size=%zu\n", out->payload_size);
++  if (debug) DebugLine(reading + Format(" success, size=%zu\n", out->payload_size));
 +  return true;
 +}
 +
@@ -337,38 +363,45 @@ index 00000000..53485309
 +  WriteU64(&contents, 40, Hash64(payload, size));
 +  std::memcpy(contents.data() + kHeaderSize, payload, size);
 +
-+  // Written in place rather than to a temporary file and renamed: renames
-+  // onto one name from two threads at once abort the iwci runner (#1092),
-+  // and a test runner's workers all write the same entries. The stale or
-+  // refused entry goes first; then only one writer can create the file, and
-+  // a reader that meets one half written finds its hashes wrong and takes
-+  // it for a miss.
-+  Debug("[compile cache] writing cache for %s %s to %s...",
-+        TypeName(entry.type),
-+        entry.source_filename.c_str(),
-+        entry.cache_path.c_str());
-+  std::error_code ec;
-+  fs::remove(entry.cache_path, ec);
-+  const int fd = open(entry.cache_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
++  // As Node does: written whole to a file of its own, then renamed over the
++  // entry, so the entry is always one writer's or another's, complete, and
++  // never missing. It used to be written in place, removed first and then
++  // created exclusively, because renames onto one name from two threads at
++  // once aborted the iwci runner (#1092, fixed in the runner since 0.3.22).
++  // That left the entry missing between the two, and a writer that removed
++  // another's entry and then could not create its own left none for the
++  // next process (#1249).
++  const bool debug = DebugEnabled();
++  const std::string writing = debug ? Format("[compile cache] writing cache for %s %s to %s...",
++                                             TypeName(entry.type),
++                                             entry.source_filename.c_str(),
++                                             entry.cache_path.c_str())
++                                    : std::string();
++  std::string temporary = entry.cache_path + ".XXXXXX";
++  const int fd = mkstemp(temporary.data());
 +  if (fd < 0) {
-+    Debug("failed: %s\n", std::strerror(errno));
++    if (debug) DebugLine(writing + Format("failed: %s\n", std::strerror(errno)));
 +    return;
 +  }
 +  size_t written = 0;
++  int error = 0;
 +  while (written < contents.size()) {
 +    const ssize_t n = write(fd, contents.data() + written, contents.size() - written);
 +    if (n < 0 && errno == EINTR) continue;
-+    if (n <= 0) break;
++    if (n <= 0) {
++      error = n < 0 ? errno : EIO;
++      break;
++    }
 +    written += static_cast<size_t>(n);
 +  }
-+  const int write_errno = errno;
-+  close(fd);
-+  if (written != contents.size()) {
-+    Debug("failed: %s\n", std::strerror(write_errno));
-+    fs::remove(entry.cache_path, ec);
++  if (close(fd) != 0 && error == 0) error = errno;
++  if (error == 0 && std::rename(temporary.c_str(), entry.cache_path.c_str()) != 0) error = errno;
++  if (error != 0) {
++    unlink(temporary.c_str());
++    if (debug) DebugLine(writing + Format("failed: %s\n", std::strerror(error)));
 +    return;
 +  }
-+  Debug("success\n");
++  if (debug) DebugLine(writing + "success\n");
 +}
 +
 +void ReportCompiled(const Entry& entry, bool had_cache, bool rejected) {
@@ -382,10 +415,10 @@ index 00000000..53485309
 +}  // namespace edge_compile_cache
 diff --git a/src/edge_compile_cache.h b/src/edge_compile_cache.h
 new file mode 100644
-index 00000000..977c0bc9
+index 00000000..e4044f8d
 --- /dev/null
 +++ b/src/edge_compile_cache.h
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,99 @@
 +#ifndef EDGE_COMPILE_CACHE_H_
 +#define EDGE_COMPILE_CACHE_H_
 +
@@ -473,8 +506,10 @@ index 00000000..977c0bc9
 +// one this writes, compiled from exactly this source, and undamaged.
 +bool Read(const Entry& entry, edge_bytecode_cache::SidecarPayload* out);
 +
-+// Replaces the entry; failures (a read-only directory, no space, another
-+// process writing it) are silent, as in Node.
++// Replaces the entry, as Node does: written to a temporary file beside it
++// and renamed over it, so a reader finds an entry whole or none, and
++// writers racing on one entry leave one of theirs. Failures (a read-only
++// directory, no space) are silent, as in Node.
 +void Save(const Entry& entry, const uint8_t* payload, size_t size);
 +
 +// Reports what the engine did with an entry, as Node's debug output does.

@@ -226,7 +226,7 @@ GCLOUD_ENV="$(cloud_env /opt/google-cloud-sdk/bin)"',
     "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
     "CLOUDSDK_PYTHON": "/usr/bin/python3"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.15 ea2e4c122ce896e682e27f8024625662375d552c454e66abf35c24f02f58fcff"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.16 117f4e175cd715177f666d0991d9e82bdcfe6c20ba30d657bdc1fa5c03589707"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -407,7 +407,9 @@ for env in "$@"; do
       #          (#1151).
       # 24.0.19: and `npm i -g` and `pnpm add -g` put commands on PATH.
       # 24.0.20: and Git's prompts read /dev/tty, so they end at once (#1264).
-      build_env bash-node 24.0.20 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
+      # 24.0.21: and Workers writing one compile cache entry at once leave
+      #          one of theirs, never none (#1249).
+      build_env bash-node 24.0.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
         "${TOOLS[@]}" "$EDGEJS_PKG"
       ;;
     go | go@*)
@@ -489,7 +491,8 @@ for env in "$@"; do
       # 26.11.2: bash-node 24.0.17's Edge.js (#1141, #1142, #1143).
       # 26.11.3: bash-node 24.0.18's Edge.js (#1151).
       # 26.11.4: and Git's prompts read /dev/tty (#1264).
-      build_env clickhouse 26.11.4 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.5: bash-node 24.0.21's Edge.js (#1249).
+      build_env clickhouse 26.11.5 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     *)
