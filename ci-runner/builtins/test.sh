@@ -4065,10 +4065,12 @@ jobs:
       end
       raise "exec" unless `ruby -e 'exec "echo", "execd"'` == "execd\n"
       raise "argv" unless IO.popen(["ruby", "-e", "puts 1\nputs 2"], &:read) == "1\n2\n"
-      pid = spawn("ruby", "-e", "trap(:TERM) { exit 7 }; sleep 5")
-      sleep 1
-      Process.kill(:TERM, pid)
-      Process.wait(pid)
+      # The child says when its trap is in place: a fixed sleep raced Ruby's
+      # start-up on a loaded runner and sent TERM before the trap existed.
+      child = IO.popen(["ruby", "-e", "trap(:TERM) { exit 7 }; puts :ready; $stdout.flush; sleep 60"])
+      raise "child never got ready" unless child.gets == "ready\n"
+      Process.kill(:TERM, child.pid)
+      child.close
       raise "trap in a child: #{$?.inspect}" unless $?.exitstatus == 7
       puts "system ok"
       RUBY
