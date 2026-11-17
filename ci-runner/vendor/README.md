@@ -1222,6 +1222,32 @@ fewer. The dynamic linker (`src/state/linker/`) keeps the full set, since
 a side module may import from a namespace its main module does not.
 Upstream main builds all five (checked November 2026).
 
+**The closure calls answer bad input with an errno (#1304).** WASIX's
+closures are three calls a dynamic module makes (libffi's WASIX port is the
+user): `closure_allocate` reserves a table slot, `closure_prepare` builds and
+loads a small module whose constructor stores a trampoline in it, and
+`closure_free` gives it back; `call_dynamic` calls any table entry with
+arguments from memory. `closure_prepare` took the slot on trust, so an index
+that was no slot (Ruby's ffi gem built without `--enable-libffi-alloc` hands
+libffi the address of a trampoline page of its own) made the constructor trap
+with "out of bounds table access", and the call `panic!`ed on the failed
+load. So did `closure_free` on a failed unlock, and `call_dynamic` on a
+function with a reference parameter or result, which has no byte form. Each
+panic ended only the guest's process, with status 134, through the catch
+above (#1092): the runner, its other jobs and the job's later steps were
+unaffected. Now `closure_prepare` refuses with `EINVAL` an index that is not
+one of the slots `closure_allocate` hands out (they are in every instance
+group's table) and more than 1000 argument or result types, before building
+anything, and answers `EFAULT` for a module that fails to load as `dlopen`
+does; `closure_free` answers `EFAULT`; `call_dynamic` refuses a reference
+type and a buffer that ends past the address space (the sum overflowed for a
+wasm64 guest) with `EINVAL`; and `closure_allocate`, which ignored a failed
+write of the index, puts the slot back and answers the memory error. A
+backing function `closure_prepare` is given is not checked: the trampoline
+calls it, so a bad one traps in the guest like any bad function pointer.
+`iwci-runtime`'s `closure_calls_refuse_bad_input_with_an_errno` is the check.
+Upstream main has the same panics (checked November 2026, at 65f18f0054).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1241,7 +1267,8 @@ once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
 through a symbolic link, a new thread's stack pointer starts on its
-stack before its side modules' TLS is set up, WASIX has file locks a C library calls (and
+stack before its side modules' TLS is set up, the closure calls and
+`call_dynamic` answer bad input with an errno, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a
@@ -1286,7 +1313,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_directory_moved_out_of_a_removed_one_has_its_new_parent`,
 `sendfile_copies_into_a_file`,
 `concurrent_renames_onto_one_name_all_succeed`,
-`racing_unlinks_renames_and_creations_of_one_name_all_succeed` and
+`racing_unlinks_renames_and_creations_of_one_name_all_succeed`,
+`closure_calls_refuse_bad_input_with_an_errno` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
 To regenerate after editing: `diff -u` each changed file against the crate

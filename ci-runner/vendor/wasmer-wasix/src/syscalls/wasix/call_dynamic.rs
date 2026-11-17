@@ -6,7 +6,10 @@ use wasmer::ValueType;
 macro_rules! write_value {
     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $value:expr) => {{
         let bytes = $value.to_le_bytes();
-        if $offset + bytes.len() as u64 <= $max {
+        if $offset
+            .checked_add(bytes.len() as u64)
+            .is_some_and(|end| end <= $max)
+        {
             $memory.write($offset, &bytes)?;
             $offset += bytes.len() as u64;
             Ok(true)
@@ -36,7 +39,7 @@ fn write_value(
 
 macro_rules! read_value {
     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $ty:ident, $val:ident, $len:expr) => {{
-        if $offset + $len > $max {
+        if $offset.checked_add($len).is_none_or(|end| end > $max) {
             Ok(if $strict {
                 None
             } else {
@@ -125,9 +128,33 @@ pub fn call_dynamic<M: MemorySize>(
 
     let function_type = function.ty(&store);
 
+    // iwci patch (#1304): what the guest asks for is checked before the call.
+    // A function whose parameters or results are references (which a side
+    // module can put in the table) has no byte form, and reading or writing
+    // one panicked; and a buffer that ends past the address space overflowed
+    // the arithmetic below. Both are the guest's error.
+    let is_number = |ty: &Type| {
+        matches!(
+            ty,
+            Type::I32 | Type::I64 | Type::F32 | Type::F64 | Type::V128
+        )
+    };
+    if !function_type.params().iter().all(is_number)
+        || !function_type.results().iter().all(is_number)
+    {
+        return Ok(Errno::Inval);
+    }
+    let values_start: u64 = values.offset().into();
+    let results_start: u64 = results.offset().into();
+    let (Some(max_values_offset), Some(max_results_offset)) = (
+        values_start.checked_add(values_len.into()),
+        results_start.checked_add(results_len.into()),
+    ) else {
+        return Ok(Errno::Inval);
+    };
+
     let memory = unsafe { env.memory_view(&store) };
-    let mut current_values_offset: u64 = values.offset().into();
-    let max_values_offset = current_values_offset + values_len.into();
+    let mut current_values_offset = values_start;
     let mut values_buffer = vec![];
     for ty in function_type.params() {
         let Some(value) = wasi_try_mem_ok!(read_value(
@@ -152,8 +179,7 @@ pub fn call_dynamic<M: MemorySize>(
         .map_err(crate::flatten_runtime_error)?;
 
     let memory = unsafe { env.memory_view(&store) };
-    let mut current_results_offset: u64 = results.offset().into();
-    let max_results_offset = current_results_offset + results_len.into();
+    let mut current_results_offset = results_start;
     for result_value in result_values {
         wasi_try_mem_ok!(write_value(
             &memory,

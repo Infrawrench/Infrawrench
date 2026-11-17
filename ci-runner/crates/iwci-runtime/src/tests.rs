@@ -4358,6 +4358,103 @@ fn record_locks_belong_to_a_process_while_it_runs() {
         .unwrap();
 }
 
+/// A WASIX dynamic main module, which closures need, calling the closure
+/// calls with input they must refuse and then with input they must take
+/// (#1304). Its `dylink.0` section (added by `dynamic_module`) gives it
+/// 4 KiB of data at 1024 and two table slots at `__table_base`, which hold
+/// `$backing`, a closure's body, and `$takes_ref`. The exit code is the
+/// check that failed plus what it got; 28 is `EINVAL`.
+const CLOSURES: &str = r#"
+(module
+  (type $closure (func (param i32) (result i32)))
+  (import "env" "memory" (memory 1 65536 shared))
+  (import "env" "__indirect_function_table" (table 1 funcref))
+  (import "env" "__stack_pointer" (global $sp (mut i32)))
+  (import "env" "__table_base" (global $tb i32))
+  (import "wasix_32v1" "closure_allocate" (func $allocate (param i32) (result i32)))
+  (import "wasix_32v1" "closure_prepare" (func $prepare (param i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "closure_free" (func $free (param i32) (result i32)))
+  (import "wasix_32v1" "call_dynamic" (func $call (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (elem (global.get $tb) func $backing $takes_ref)
+  ;; results[0] = values[0] * 2 + environment
+  (func $backing (param $values i32) (param $results i32) (param $env i32)
+    (i32.store (local.get $results)
+      (i32.add (i32.mul (i32.load (local.get $values)) (i32.const 2)) (local.get $env))))
+  (func $takes_ref (param externref))
+  (func $expect (param $check i32) (param $got i32) (param $want i32)
+    (if (i32.ne (local.get $got) (local.get $want))
+      (then (call $exit (i32.add (local.get $check) (local.get $got))))))
+  ;; closure_prepare(backing, closure, one i32 argument, one i32 result,
+  ;; environment 2); WasmValueType I32 is 0, at 1024 and 1028
+  (func $prepare_at (param $closure i32) (param $arguments i32) (result i32)
+    (call $prepare (global.get $tb) (local.get $closure)
+      (i32.const 1024) (local.get $arguments) (i32.const 1028) (i32.const 1) (i32.const 2)))
+  (func (export "_start")
+    (local $closure i32)
+    ;; an index past the table (what libffi was given, the address of a
+    ;; trampoline page), one in it that is no closure's ($backing's), and
+    ;; more arguments than a function can have
+    (call $expect (i32.const 10) (call $prepare_at (i32.const 0x7fffff00) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 20) (call $prepare_at (global.get $tb) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 30) (call $prepare_at (i32.const 0x7fffff00) (i32.const 1001)) (i32.const 28))
+    ;; freeing an index that is no closure's does nothing
+    (call $expect (i32.const 40) (call $free (i32.const 0x7fffff00)) (i32.const 0))
+    ;; calling past the table, and a function with a reference parameter
+    (call $expect (i32.const 50) (call $call (i32.const 0x7fffff00) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 60)
+      (call $call (i32.add (global.get $tb) (i32.const 1)) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0))
+      (i32.const 28))
+    ;; a closure's index written past memory (EMEMVIOLATION, 78)
+    (call $expect (i32.const 70) (call $allocate (i32.const 0xfffffffc)) (i32.const 78))
+    ;; and a closure made, called directly and through call_dynamic, freed
+    (call $expect (i32.const 80) (call $allocate (i32.const 1040)) (i32.const 0))
+    (local.set $closure (i32.load (i32.const 1040)))
+    (call $expect (i32.const 90) (call $prepare_at (local.get $closure) (i32.const 1)) (i32.const 0))
+    (call $expect (i32.const 100) (call_indirect (type $closure) (i32.const 20) (local.get $closure)) (i32.const 42))
+    (i32.store (i32.const 1032) (i32.const 20))
+    (call $expect (i32.const 110) (call $call (local.get $closure) (i32.const 1032) (i32.const 4) (i32.const 1036) (i32.const 4) (i32.const 1)) (i32.const 0))
+    (call $expect (i32.const 120) (i32.load (i32.const 1036)) (i32.const 42))
+    (call $expect (i32.const 130) (call $free (local.get $closure)) (i32.const 0))
+    (call $exit (i32.const 0))))
+"#;
+
+/// `wat` as a dynamically linked main module: a `dylink.0` section first,
+/// whose memory info asks for 4 KiB of data aligned to 1 KiB and two table
+/// slots.
+fn dynamic_module(name: &str, wat: &str) -> WasmModule {
+    let module = wat::parse_str(wat).unwrap();
+    let mut name_and_info = vec![8];
+    name_and_info.extend_from_slice(b"dylink.0");
+    // WASM_DYLINK_MEM_INFO: memory size 4096, alignment 2^10, table size
+    // 2, table alignment 2^0, in LEB128
+    name_and_info.extend_from_slice(&[1, 5, 0x80, 0x20, 10, 2, 0]);
+    let mut bytes = module[..8].to_vec();
+    bytes.push(0);
+    bytes.push(name_and_info.len() as u8);
+    bytes.extend_from_slice(&name_and_info);
+    bytes.extend_from_slice(&module[8..]);
+    WasmModule::new(name, bytes)
+}
+
+/// A host call given an index, a pointer or a type it cannot use answers
+/// an errno and the program goes on (#1304). `closure_prepare` given an
+/// index that was no closure's panicked, ending the process with 134,
+/// which Ruby's ffi met in `attach_function`; `call_dynamic` panicked on a
+/// function with reference parameters the same way.
+#[test]
+fn closure_calls_refuse_bad_input_with_an_errno() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &dynamic_module("closures", CLOSURES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+}
+
 #[test]
 fn a_flock_is_held_until_its_description_has_no_descriptor() {
     use wasmer_wasix::fs::{FileLocks, FlockOp};

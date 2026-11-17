@@ -17,10 +17,11 @@ pub fn closure_free(
         return Ok(Errno::Notsup);
     };
 
-    let free_result = linker.free_closure_index(&mut ctx, closure);
-    if let Err(e) = free_result {
-        // Should never happen
-        panic!("Failed to free closure index: {e}");
+    // iwci patch (#1304): a failure here is reported to the guest, as
+    // `closure_allocate`'s is, not a panic.
+    if let Err(e) = linker.free_closure_index(&mut ctx, closure) {
+        error!("Failed to free closure index {closure}: {e}");
+        return Ok(Errno::Fault);
     }
 
     return Ok(Errno::Success);
