@@ -40,6 +40,12 @@ const ENV_KEYS = [
 
 let saved: Record<string, string | undefined>;
 
+function configureGateway(): void {
+  process.env["CLOUDFLARE_ACCOUNT_ID"] = "acct";
+  process.env["AI_GATEWAY_ID"] = "app";
+  process.env["AI_GATEWAY_TOKEN"] = "tok";
+}
+
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
@@ -58,9 +64,9 @@ describe("searchBackend", () => {
     expect(isWebSearchConfigured()).toBe(false);
   });
 
-  it("uses Anthropic with a direct key", () => {
+  it("is not configured by a direct Anthropic key alone", () => {
     process.env["ANTHROPIC_API_KEY"] = "sk-test";
-    expect(searchBackend()?.id).toBe("anthropic");
+    expect(searchBackend()).toBeNull();
   });
 
   it("uses Anthropic through AI Gateway", () => {
@@ -83,7 +89,7 @@ describe("webChatToolSpecs", () => {
   });
 
   it("offers only web_search without an egress proxy", () => {
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
+    configureGateway();
     expect(webChatToolSpecs().map((t) => t.name)).toEqual(["web_search"]);
   });
 
@@ -99,7 +105,7 @@ describe("webChatToolSpecs", () => {
   });
 
   it("keeps both tools read-tier and ungated, so neither prompts for approval", () => {
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
+    configureGateway();
     process.env["WORKFLOW_FETCH_PROXY_URL"] = "https://egress.example.com";
     process.env["WORKFLOW_FETCH_PROXY_TOKEN"] = "tok";
     const specs = webChatToolSpecs();

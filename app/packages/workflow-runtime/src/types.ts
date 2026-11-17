@@ -489,12 +489,27 @@ export interface WorkflowFetchResponse {
  * so pricing and the monthly AI spend cap ride the same rails (the codegen
  * union in codegen.ts's AI_INTERFACES must list exactly these ids).
  */
-export const WORKFLOW_AI_MODELS = ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"] as const;
+export const WORKFLOW_AI_MODELS = [
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  "claude-opus-5-5",
+] as const;
 
 export type WorkflowAiModel = (typeof WORKFLOW_AI_MODELS)[number];
 
+/**
+ * Ids `infra.ai()` used to offer, run on their successors. Saved workflows
+ * keep working without an edit; the typings only offer the current ids, so the
+ * editor points an author at the new one the next time they open the file.
+ */
+export const LEGACY_WORKFLOW_AI_MODELS: Readonly<Record<string, WorkflowAiModel>> = {
+  "claude-sonnet-5": "claude-sonnet-5-5",
+  "claude-haiku-4-5": "claude-haiku-5-5",
+  "claude-opus-5": "claude-opus-5-5",
+};
+
 /** Model used when the author doesn't choose one: capable, not the priciest. */
-export const DEFAULT_WORKFLOW_AI_MODEL: WorkflowAiModel = "claude-sonnet-5";
+export const DEFAULT_WORKFLOW_AI_MODEL: WorkflowAiModel = "claude-sonnet-5-5";
 
 /** Reply-length budget (tokens) when the caller doesn't set one. */
 export const DEFAULT_AI_MAX_TOKENS = 1024;

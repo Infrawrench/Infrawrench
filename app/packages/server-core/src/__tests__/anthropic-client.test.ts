@@ -86,12 +86,9 @@ describe("anthropicClient", () => {
     expect(headers.has("authorization")).toBe(false);
   });
 
-  it("falls back to Anthropic directly with a key", async () => {
+  it("never calls Anthropic directly, even with a key in the environment", () => {
     process.env["ANTHROPIC_API_KEY"] = "sk-direct";
-
-    const { url, headers } = await send();
-    expect(url).toBe("https://api.anthropic.com/v1/messages");
-    expect(headers.get("x-api-key")).toBe("sk-direct");
-    expect(headers.has("cf-aig-authorization")).toBe(false);
+    expect(isAnthropicConfigured()).toBe(false);
+    expect(() => anthropicClient()).toThrow(/AI_GATEWAY_TOKEN/);
   });
 });

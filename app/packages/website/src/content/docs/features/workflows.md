@@ -313,11 +313,11 @@ for (const pod of await cluster.pods.list()) {
 
 **The model only sees what you send it.** Unlike [writing workflows with an AI client](#writing-workflows-with-an-ai-client), `infra.ai` is not an agent. It has no tools, no access to your accounts or resources, and no memory between calls. Put what you want it to look at (a log tail, a diff, a list of alerts) in the prompt.
 
-| Option      | Default             | What it does                                                                          |
-| ----------- | ------------------- | ------------------------------------------------------------------------------------- |
-| `model`     | `"claude-sonnet-5"` | Also `"claude-haiku-4-5"` (fastest, cheapest) or `"claude-opus-5"` (most capable).    |
-| `system`    | none                | A system prompt framing how to answer ("Reply with one word: PAGE or IGNORE.").       |
-| `maxTokens` | `1024`              | Cap on the reply length, up to 8192. Check `stopReason === "max_tokens"` for cutoffs. |
+| Option      | Default               | What it does                                                                                                                                                                                                     |
+| ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model`     | `"claude-sonnet-5-5"` | Also `"claude-haiku-5-5"` (fastest, cheapest) or `"claude-opus-5-5"` (most capable). Workflows that name an older model (`"claude-sonnet-5"`, `"claude-haiku-4-5"`, `"claude-opus-5"`) run on its 5.5 successor. |
+| `system`    | none                  | A system prompt framing how to answer ("Reply with one word: PAGE or IGNORE.").                                                                                                                                  |
+| `maxTokens` | `1024`                | Cap on the reply length, up to 8192. Check `stopReason === "max_tokens"` for cutoffs.                                                                                                                            |
 
 The result includes `text`, the `model` that answered, `stopReason` (`"end"` or `"max_tokens"`), token counts, and `costMicros` (the cost in millionths of a dollar).
 

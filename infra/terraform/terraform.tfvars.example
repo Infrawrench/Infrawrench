@@ -292,13 +292,11 @@ app_env = {
   # "Bulk pricing data" below; one account serves both), AI_GATEWAY_ID (the
   # gateway's name, created under AI > AI Gateway in the Cloudflare dashboard,
   # with AI Gateway credits loaded) and AI_GATEWAY_TOKEN (a Cloudflare API
-  # token with the AI Gateway Run permission). With all three set they win over
-  # ANTHROPIC_API_KEY, which is only the fallback for a deployment without a
-  # gateway (create one at console.anthropic.com → API keys).
+  # token with the AI Gateway Run permission). ANTHROPIC_API_KEY is not read;
+  # remove it from app_env.
   # Optional
   # AI_GATEWAY_ID        = "infrawrench"
   # AI_GATEWAY_TOKEN     = "..."
-  # ANTHROPIC_API_KEY    = "..."
 
   # Ceiling on anonymous agent registrations per hour across every source
   # address — the kill switch for a distributed flood of trial workspaces.

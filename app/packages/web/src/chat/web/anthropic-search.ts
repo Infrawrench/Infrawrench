@@ -9,18 +9,18 @@
  * search (`tool_choice` pins it to the tool, so it cannot answer from memory)
  * and then reading the results back out of its response.
  *
- * The sub-model is Haiku: it is doing retrieval and compression, not reasoning,
- * and the expensive model that asked for the search is the one that will use the
- * answer. Haiku also can't do programmatic tool calling, which settles the tool
- * version: `web_search_20250305` defaults to `allowed_callers: ["direct"]`,
- * where the newer `_20260209` would try to route the search through code
- * execution and 400 on a model that can't.
+ * The sub-model is Haiku 5.5: it is doing retrieval and compression, not
+ * reasoning, and the expensive model that asked for the search is the one
+ * that will use the answer. A forced tool call skips thinking on Haiku 5.5, so
+ * the pinned `tool_choice` below also keeps the sub-call cheap. The tool
+ * version stays `web_search_20250305`: the dynamic-filtering `_20260209`
+ * variant runs on Sonnet and Opus, not Haiku.
  */
 import { anthropicClient, isAnthropicConfigured } from "@infrawrench/server-core/anthropic-client";
 import type { SearchBackend, SearchHit, SearchOutcome } from "./types";
 
 /** Retrieval model for the sub-call. Must have a row in ../pricing.ts. */
-export const SEARCH_MODEL = "claude-haiku-4-5";
+export const SEARCH_MODEL = "claude-haiku-5-5";
 
 /**
  * Ceiling on searches per tool call. The sub-model may fan one question out
@@ -56,6 +56,9 @@ export const anthropicSearchBackend: SearchBackend = {
       model: SEARCH_MODEL,
       max_tokens: MAX_TOKENS,
       system: SUB_PROMPT,
+      // Haiku 5.5 thinks by default and thinking shares max_tokens with the
+      // summary. Retrieval and compression need little of it.
+      output_config: { effort: "low" },
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: MAX_USES }],
       // Compel the search. Without this the sub-model is free to answer a
       // question it thinks it knows, which would silently turn a search tool
@@ -63,6 +66,11 @@ export const anthropicSearchBackend: SearchBackend = {
       tool_choice: { type: "tool", name: "web_search" },
       messages: [{ role: "user", content: query }],
     });
+
+    // A safety classifier can decline the sub-call (HTTP 200, no results).
+    // Say so rather than hand the agent an empty summary it might read as
+    // "nothing found".
+    const refused = message.stop_reason === "refusal";
 
     const hits: SearchHit[] = [];
     const text: string[] = [];
@@ -93,6 +101,7 @@ export const anthropicSearchBackend: SearchBackend = {
       }
     }
 
+    if (refused) errors.push("the search model declined this query");
     const summary = text.join("\n\n");
     return {
       summary:
