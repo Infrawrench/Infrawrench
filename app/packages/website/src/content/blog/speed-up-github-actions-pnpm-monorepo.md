@@ -59,13 +59,13 @@ The condition keeps every run on `main`, so each merged commit still gets a full
 pnpm can select the packages that changed since a commit, plus every package that depends on them. In a pull request, compare against `main`:
 
 ```yaml
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      # ...pnpm and Node setup as in Step 2...
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter "...[origin/main]" build
-      - run: pnpm --filter "...[origin/main]" test
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+# ...pnpm and Node setup as in Step 2...
+- run: pnpm install --frozen-lockfile
+- run: pnpm --filter "...[origin/main]" build
+- run: pnpm --filter "...[origin/main]" test
 ```
 
 - `[origin/main]` selects packages with files changed since `origin/main`.
