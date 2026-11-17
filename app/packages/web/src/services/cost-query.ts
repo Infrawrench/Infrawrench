@@ -69,7 +69,7 @@ import {
 // function: everything it needs is already computed by the time it runs.
 import { CostScenarioError, attachCostScenario } from "./cost-scenario-query";
 // The db-free id module, not the writer: importing the writer here would drag
-// its db/ClickHouse imports into every cost read path (and its tests).
+// its database imports into every cost read path (and its tests).
 import {
   WORKFLOW_COST_PLUGIN_ID,
   workflowIdFromCostAccountId,
@@ -608,7 +608,7 @@ export async function runCostQuery(
 
   // Text queries are compiled to the structured filter here and nowhere else.
   // Everything below (and everything in `cost-readers.ts`) sees only
-  // `CostFilter[]`, whose values are bound as ClickHouse parameters.
+  // `CostFilter[]`, whose values are bound as query parameters.
   //
   // A saved filter is different from the query/filters pair: those are two
   // spellings of one filter (alternatives), while `savedFilterId` composes;

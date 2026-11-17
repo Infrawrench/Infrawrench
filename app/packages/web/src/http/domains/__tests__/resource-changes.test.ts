@@ -5,7 +5,7 @@ import { buildTestApi } from "@/http/testing";
 
 // The change feed's transport contract around the revert (which has its own
 // file): the hand-checked bodies and query, and the second permission cost
-// per change needs. Nothing here reaches Postgres, ClickHouse or a provider.
+// per change needs. Nothing here reaches Postgres or a provider.
 vi.mock("@/db/client", () => ({ db: {} }));
 vi.mock("@infrawrench/server-core/db/client", () => ({ db: {} }));
 vi.mock("@/services/plugin-clients", () => ({ getClientForAccount: vi.fn() }));

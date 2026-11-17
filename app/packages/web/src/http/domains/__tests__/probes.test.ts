@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// The store and the metric readers reach Postgres and ClickHouse; these tests
+// The store and the metric readers reach Postgres; these tests
 // are about the transport: the hand-picked body, statuses, the store's
 // refusals and the routes' own sentences.
 class FakeProbeInputError extends Error {

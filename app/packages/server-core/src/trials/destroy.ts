@@ -5,7 +5,7 @@
  * the only code in the repo that deletes an org, and there was none before it.
  * `POST /api/orgs` could always create one; nothing could ever remove one.
  *
- * The work spans three stores, and the order they are touched in is the whole
+ * The work spans two stores, and the order they are touched in is the whole
  * design:
  *
  *  1. **WorkOS**: first, because it is the only fallible step that changes
@@ -13,20 +13,17 @@
  *     UUIDs, minted by us) have no WorkOS counterpart at all, and the 404
  *     answers count as success; but when WorkOS *refuses* (rotated key, an
  *     outage), aborting here leaves the org genuinely intact everywhere.
- *  2. **ClickHouse**: metrics, cost, poll outcomes and network flows are
- *     org-scoped but carry no foreign key to anything. Nothing deletes them
- *     implicitly, and an issued purge cannot be recalled, which is exactly
- *     why it must not run before every check and every abortable step is
- *     behind it.
- *  3. **Postgres**: one `DELETE`, and 76 tables cascade behind it. Last,
- *     because the `organizations` row is the only record that the other two
- *     have anything to clean up.
+ *  2. **Postgres**: one transaction. Deleting the `organizations` row
+ *     cascades 76 tables behind it; the analytics tables (metrics, cost, poll
+ *     outcomes, network flows, AI attribution) carry no foreign key, so they
+ *     are deleted explicitly in the same transaction, and only once the org
+ *     row's delete has actually matched. Either all of it happens or none.
  *
  * Any step failing aborts the rest and leaves the org intact for the next
  * sweep. That is the safe direction to fail in: an org that outlives its clock
- * by an hour is a billing curiosity, whereas half-deleted state spread across
- * three stores is unrecoverable without hand-written SQL. Every step is
- * idempotent, so the retry costs nothing.
+ * by an hour is a billing curiosity, whereas half-deleted state is
+ * unrecoverable without hand-written SQL. Every step is idempotent, so the
+ * retry costs nothing.
  *
  * The reaper additionally passes {@link DestroyOrganizationOptions.expiredTrialOnly},
  * which takes the per-org lock in `lock.ts` and re-checks the org is *still*
@@ -34,35 +31,53 @@
  * ceremony completing in the window between the reaper's due-query and this
  * function must win, not be silently deleted underneath.
  */
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 
 import { db } from "../db/client.js";
-import { agentAuthRegistrations, organizations, users } from "../db/schema.js";
-import { getClickHouseClient, isClickHouseConfigured } from "../analytics/client.js";
+import {
+  accountResourceCounts,
+  agentAuthRegistrations,
+  aiCostAttributed,
+  aiRequestDaily,
+  costDaily,
+  dashboardStats,
+  metricPoints1h,
+  metricPoints1m,
+  metricPointsRaw,
+  networkFlowDaily,
+  organizations,
+  pollOutcomes,
+  users,
+} from "../db/schema.js";
 import { agentUserId } from "./identity.js";
 import { withTrialOrgLock } from "./lock.js";
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
- * Every ClickHouse table holding org-scoped rows.
+ * Every analytics table holding org-scoped rows.
  *
  * Hard-coded rather than derived from the schema module: a table added there
  * without a thought about deletion should show up as *data that outlives its
  * org*, and the only way to make that visible is to have one list that someone
- * has to remember to edit. `trials/__tests__/destroy.test.ts` asserts this list
- * covers every table in `clickhouse/schema.ts` that has an `organization_id`
- * column, so forgetting fails the build rather than leaking rows.
+ * has to remember to edit. `trials/__tests__/destroy-coverage.test.ts` asserts
+ * this list covers every table in `db/analytics-schema.ts` that has an
+ * `organization_id` column, so forgetting fails the build rather than leaking
+ * rows. Everything else org-scoped hangs off `organizations` by foreign key and
+ * goes with it.
  */
-export const ORG_SCOPED_CLICKHOUSE_TABLES = [
-  "metric_points_raw",
-  "metric_points_1m",
-  "metric_points_1h",
-  "dashboard_stats",
-  "account_resource_counts",
-  "poll_outcomes",
-  "cost_daily",
-  "network_flow_daily",
-  "ai_request_daily",
-  "ai_cost_attributed",
+export const ORG_SCOPED_ANALYTICS_TABLES = [
+  metricPointsRaw,
+  metricPoints1m,
+  metricPoints1h,
+  dashboardStats,
+  accountResourceCounts,
+  pollOutcomes,
+  costDaily,
+  networkFlowDaily,
+  aiRequestDaily,
+  aiCostAttributed,
 ] as const;
 
 export interface DestroyOrganizationResult {
@@ -73,8 +88,8 @@ export interface DestroyOrganizationResult {
    * which is what a claim landing in the window looks like.
    */
   deleted: boolean;
-  /** Tables a purge was issued against. Empty when ClickHouse isn't configured. */
-  clickhouseTablesPurged: readonly string[];
+  /** Analytics tables the org's rows were deleted from. Empty when nothing was deleted. */
+  analyticsTablesPurged: readonly string[];
   /** Whether the WorkOS org was deleted (or was already absent). */
   workosDeleted: boolean;
   /**
@@ -84,35 +99,18 @@ export interface DestroyOrganizationResult {
   agentUsersDeleted: number;
 }
 
-/**
- * Issue the org-scoped purge across every ClickHouse table.
- *
- * `ALTER TABLE … DELETE` is a *mutation*: ClickHouse acknowledges the statement
- * and rewrites parts in the background, so a successful return means "accepted",
- * not "gone". `mutations_sync = 2` would make it synchronous, and is deliberately
- * not used: a reaper sweeping a batch of orgs would then block for as long as
- * the largest org's parts take to rewrite, turning a cheap tick into a stall.
- * The rows are unreachable either way: every read path filters by
- * `organization_id`, and that org is about to stop existing in Postgres.
- */
-async function purgeClickHouse(organizationId: string): Promise<readonly string[]> {
-  if (!isClickHouseConfigured()) return [];
-  const client = getClickHouseClient();
+/** Delete the org's rows from every analytics table, inside the caller's transaction. */
+async function purgeAnalytics(tx: Tx, organizationId: string): Promise<readonly string[]> {
   const purged: string[] = [];
-  for (const table of ORG_SCOPED_CLICKHOUSE_TABLES) {
-    // The table name is from the frozen list above, never from input; only the
-    // org id is parameterised, and it must be, since org ids are user-visible.
-    await client.command({
-      query: `ALTER TABLE ${table} DELETE WHERE organization_id = {organizationId:String}`,
-      query_params: { organizationId },
-    });
-    purged.push(table);
+  for (const table of ORG_SCOPED_ANALYTICS_TABLES) {
+    await tx.delete(table).where(eq(table.organization_id, organizationId));
+    purged.push(getTableConfig(table).name);
   }
   return purged;
 }
 
 /**
- * Re-parent an org's ClickHouse history onto another org.
+ * Re-parent an org's analytics history onto another org.
  *
  * Used by a merge claim when the user asks to keep their trial's history. This
  * works (rather than orphaning rows against ids that no longer exist)
@@ -121,28 +119,45 @@ async function purgeClickHouse(organizationId: string): Promise<readonly string[
  * account re-polls into the target org and recreates the same resource ids, so
  * the moved series re-attach to the rows they described.
  *
- * Like the purge this is a background mutation, so the history reappears in the
- * target org shortly after the claim rather than instantly. That is worth
- * saying in the UI: a user who merges and immediately sees an empty cost graph
- * has been told the wrong thing by the absence.
+ * The same property means the target can already hold a row the trial has
+ * too: an account connected to both orgs was polled by both, so the trial's
+ * metric points for a resource can share their whole key with the target's.
+ * Re-parenting those would violate the primary key, so a trial row whose key
+ * the target already has is dropped first and the target's kept: it is the
+ * same reading, polled twice. One transaction, so the history moves whole or
+ * not at all.
  */
-export async function moveOrgClickHouseData(
+export async function moveOrgAnalyticsData(
   fromOrganizationId: string,
   toOrganizationId: string,
 ): Promise<readonly string[]> {
-  if (!isClickHouseConfigured()) return [];
-  const client = getClickHouseClient();
-  const moved: string[] = [];
-  for (const table of ORG_SCOPED_CLICKHOUSE_TABLES) {
-    await client.command({
-      query:
-        `ALTER TABLE ${table} UPDATE organization_id = {toOrganizationId:String} ` +
-        `WHERE organization_id = {fromOrganizationId:String}`,
-      query_params: { fromOrganizationId, toOrganizationId },
-    });
-    moved.push(table);
-  }
-  return moved;
+  return await db.transaction(async (tx) => {
+    const moved: string[] = [];
+    for (const table of ORG_SCOPED_ANALYTICS_TABLES) {
+      const config = getTableConfig(table);
+      const keyColumns = (config.primaryKeys[0]?.columns ?? []).filter(
+        (column) => column.name !== "organization_id",
+      );
+      if (keyColumns.length > 0) {
+        const sameKey = sql.join(
+          keyColumns.map(
+            (column) =>
+              sql`moving.${sql.identifier(column.name)} = kept.${sql.identifier(column.name)}`,
+          ),
+          sql` AND `,
+        );
+        await tx.execute(
+          sql`DELETE FROM ${table} AS moving USING ${table} AS kept WHERE moving.organization_id = ${fromOrganizationId} AND kept.organization_id = ${toOrganizationId} AND ${sameKey}`,
+        );
+      }
+      await tx
+        .update(table)
+        .set({ organization_id: toOrganizationId })
+        .where(eq(table.organization_id, fromOrganizationId));
+      moved.push(config.name);
+    }
+    return moved;
+  });
 }
 
 /**
@@ -194,18 +209,6 @@ async function deleteWorkosOrganization(organizationId: string): Promise<boolean
 
 export interface DestroyOrganizationOptions {
   /**
-   * Skip the ClickHouse purge because the caller has already moved the rows
-   * somewhere else (see {@link moveOrgClickHouseData}).
-   *
-   * This exists to avoid a race rather than to save work. `ALTER TABLE … UPDATE`
-   * and `ALTER TABLE … DELETE` are both background mutations; ClickHouse applies
-   * them per part in submission order, so a purge issued after a move *should*
-   * find nothing, but "should, because of how the mutation queue is ordered" is
-   * a thin thing to rest a customer's cost history on. Not issuing the delete at
-   * all is the same outcome with nothing to reason about.
-   */
-  skipClickHouse?: boolean;
-  /**
    * Reaper path: take the per-org lock and destroy only if the org is *still*
    * an expired, unclaimed trial at `now`. A claim that completed after the
    * reaper's due-query cleared `trialExpiresAt` (adopt) or is holding the lock
@@ -248,28 +251,22 @@ export async function destroyOrganization(
       if (!stillExpiredTrial) {
         return {
           deleted: false,
-          clickhouseTablesPurged: [],
+          analyticsTablesPurged: [],
           workosDeleted: false,
           agentUsersDeleted: 0,
         };
       }
-      return await destroyStores(organizationId, options, {
-        trialGuardNow: now,
-      });
+      return await destroyStores(organizationId, { trialGuardNow: now });
     });
   }
-  return await destroyStores(organizationId, options, {});
+  return await destroyStores(organizationId, {});
 }
 
 async function destroyStores(
   organizationId: string,
-  options: DestroyOrganizationOptions,
   guard: { trialGuardNow?: Date },
 ): Promise<DestroyOrganizationResult> {
   const workosDeleted = await deleteWorkosOrganization(organizationId);
-  const clickhouseTablesPurged = options.skipClickHouse
-    ? []
-    : await purgeClickHouse(organizationId);
 
   // Read the org's registrations before the delete cascades them away. Their
   // agents' `users` rows are the one thing belonging to this org that does NOT
@@ -283,26 +280,32 @@ async function destroyStores(
     .from(agentAuthRegistrations)
     .where(eq(agentAuthRegistrations.organizationId, organizationId));
 
-  // On the reaper path the guard predicates ride on the DELETE itself as well:
-  // the lock already serialises claims, so this is belt and braces, but the
-  // row this braces against being deleted is a paying customer's org.
-  const deleted = await db
-    .delete(organizations)
-    .where(
-      guard.trialGuardNow
-        ? and(
-            eq(organizations.id, organizationId),
-            lte(organizations.trialExpiresAt, guard.trialGuardNow),
-            isNull(organizations.claimedAt),
-          )
-        : eq(organizations.id, organizationId),
-    )
-    .returning({ id: organizations.id });
+  const { deleted, analyticsTablesPurged } = await db.transaction(async (tx) => {
+    // On the reaper path the guard predicates ride on the DELETE itself as
+    // well: the lock already serialises claims, so this is belt and braces, but
+    // the row this braces against being deleted is a paying customer's org.
+    const removed = await tx
+      .delete(organizations)
+      .where(
+        guard.trialGuardNow
+          ? and(
+              eq(organizations.id, organizationId),
+              lte(organizations.trialExpiresAt, guard.trialGuardNow),
+              isNull(organizations.claimedAt),
+            )
+          : eq(organizations.id, organizationId),
+      )
+      .returning({ id: organizations.id });
+    // The analytics rows go only with the org row: a guard that declined the
+    // delete must leave the org's history exactly as it was.
+    if (removed.length === 0) return { deleted: false, analyticsTablesPurged: [] };
+    return { deleted: true, analyticsTablesPurged: await purgeAnalytics(tx, organizationId) };
+  });
 
   // After the org, so a failure above leaves the agent identity intact for the
   // retry rather than stranding a registration with no user to act as.
   let agentUsersDeleted = 0;
-  if (deleted.length > 0 && survivingAgents.length > 0) {
+  if (deleted && survivingAgents.length > 0) {
     const removed = await db
       .delete(users)
       .where(
@@ -316,8 +319,8 @@ async function destroyStores(
   }
 
   return {
-    deleted: deleted.length > 0,
-    clickhouseTablesPurged,
+    deleted,
+    analyticsTablesPurged,
     workosDeleted,
     agentUsersDeleted,
   };

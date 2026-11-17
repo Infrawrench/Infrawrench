@@ -18,7 +18,7 @@
  * Configuration is the workflow proxy's own env pair
  * (`WORKFLOW_FETCH_PROXY_URL` / `WORKFLOW_FETCH_PROXY_TOKEN`), but where a
  * workflow's fetch throws when they're missing, probes SKIP: monitoring is a
- * best-effort surface (the ClickHouse stance), and a deployment without the
+ * best-effort surface (like every metric write), and a deployment without the
  * proxy simply has probes that never run rather than a poller that logs an
  * error every tick.
  *
@@ -260,7 +260,7 @@ export async function recordProbeResult(
   result: ProbeProxyResult,
   now = new Date(),
 ): Promise<void> {
-  // Best-effort, like every metric write: a ClickHouse outage costs history,
+  // Best-effort, like every metric write: a failed insert costs history,
   // never state transitions.
   await insertMetricPoints(
     flattenMetricSeries(

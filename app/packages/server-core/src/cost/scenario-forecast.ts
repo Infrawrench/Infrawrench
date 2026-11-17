@@ -11,7 +11,7 @@
  * The arithmetic itself is in `@infrawrench/client-core`
  * (`applyCostScenario`) and is pure. This module is the part that needs the
  * world: it loads the model, fetches one trend projection per distinct
- * adjustment scope from ClickHouse, and resolves the currency the amounts are
+ * adjustment scope from `cost_daily`, and resolves the currency the amounts are
  * added in.
  *
  * ## Three rules it enforces

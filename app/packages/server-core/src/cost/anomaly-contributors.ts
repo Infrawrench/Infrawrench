@@ -14,9 +14,9 @@
  *
  * - {@link rankAnomalyContributors} is pure (rows in, ranked contributors out)
  *   and unit-tested without a database.
- * - {@link computeAnomalyContributors} is the I/O: **one** grouped ClickHouse
+ * - {@link computeAnomalyContributors} is the I/O: **one** grouped `cost_daily`
  *   statement over the anomaly's scope and baseline window
- *   (`getAnomalyContributorRows`), then two small Postgres reads to name what
+ *   (`getAnomalyContributorRows`), then two small reads to name what
  *   it found (synced resources by provider id, accounts by id).
  *
  * The baseline is the detector's own: the mean of the same trailing window,
@@ -37,7 +37,6 @@ import type {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
-import { isClickHouseConfigured } from "../analytics/client";
 import { getAnomalyContributorRows, type AnomalyContributorRow } from "../analytics/cost-readers";
 import { ANOMALY_BASELINE_DAYS } from "./anomaly-detect";
 import { addDays } from "./dates";
@@ -247,9 +246,9 @@ export function toStoredContributors(
 
 /**
  * Decompose one anomaly and name what it found. Null when it could not be
- * computed (ClickHouse unconfigured or failing, a Postgres read failing):
- * callers store nothing then, so a later pass or read tries again. An empty
- * list is an answer (nothing rose enough to name) and is stored as one.
+ * computed (a read failing): callers store nothing then, so a later pass or
+ * read tries again. An empty list is an answer (nothing rose enough to name)
+ * and is stored as one.
  *
  * Never throws: contributors annotate an alert that must go out regardless.
  */
@@ -257,7 +256,6 @@ export async function computeAnomalyContributors(
   organizationId: string,
   target: AnomalyContributorTarget,
 ): Promise<CostAnomalyContributor[] | null> {
-  if (!isClickHouseConfigured()) return null;
   try {
     const rows = await getAnomalyContributorRows(organizationId, {
       day: target.day,

@@ -1,7 +1,7 @@
 /**
  * Metric threshold alert evaluation: the pipeline half. The window judgement
  * lives in `window.ts` (pure, unit-tested); this module resolves the rule's
- * selector, reads the per-minute samples from ClickHouse, opens/resolves
+ * selector, reads the per-minute samples from the 1m rollup, opens/resolves
  * firing events, and fans out through the existing notification transports
  * under the `metricAlerts` trigger.
  *
@@ -262,7 +262,7 @@ export async function evaluateMetricAlertRule(
       .where(and(eq(metricAlertEvents.ruleId, rule.id), eq(metricAlertEvents.status, "firing")))
       .orderBy(desc(metricAlertEvents.firedAt));
 
-    // One ClickHouse read covers everything this rule needs: the selected
+    // One metric read covers everything this rule needs: the selected
     // resources plus any open incidents whose resource has left the selector
     // (those still need a verdict so they can resolve).
     const selectedIds = new Set(selected.map((r) => r.id));

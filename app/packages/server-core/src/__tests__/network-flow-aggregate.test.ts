@@ -308,7 +308,7 @@ describe("aggregateNetworkFlows", () => {
     const rows = byAttribution(result.rows, "resolved");
     expect(rows).toHaveLength(2);
     expect(rows[0]!.pairHash).not.toBe(rows[1]!.pairHash);
-    // Stable across processes: the ReplacingMergeTree key depends on it.
+    // Stable across processes: the `network_flow_daily` primary key depends on it.
     expect(fnv1a64("i-src i-a  use1-az2  ")).toBe(fnv1a64("i-src i-a  use1-az2  "));
   });
 });

@@ -2,7 +2,7 @@
  * Synthetic probes: `/api/org/:orgId/probes`, the handlers. Execution happens
  * in the poller (`server-core/src/probes/pass.ts`); these manage the rows,
  * mine endpoint suggestions from synced resource outputs, and read the
- * recorded series back out of ClickHouse.
+ * recorded series back out of the metric tables.
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
@@ -82,7 +82,7 @@ function toWire(row: ProbeRecord, uptime24h: number | null) {
 
 /**
  * Trailing-24h uptime per probe from the recorded "Up" series. Best-effort:
- * a ClickHouse outage costs the uptime column, never the list.
+ * a failed metric read costs the uptime column, never the list.
  */
 async function uptimeByProbe(
   organizationId: string,
@@ -296,7 +296,7 @@ const ProbesHandlers = HttpApiBuilder.group(ProbesApi, "probes", (handlers) =>
             metadata: { name: updated.name, patch: { ...patch } },
           }),
         );
-        // Best-effort, never throws: a ClickHouse outage costs the uptime column.
+        // Best-effort, never throws: a failed metric read costs the uptime column.
         const uptime = yield* legacy(() => uptimeByProbe(organizationId, [updated]));
         return yield* respond(SyntheticProbe)(toWire(updated, uptime.get(updated.id) ?? null));
       }),

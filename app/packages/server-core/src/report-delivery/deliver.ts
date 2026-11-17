@@ -3,7 +3,7 @@
  *
  * Gathering mirrors `digest/weekly.ts`: the report's saved config is resolved
  * to a window with the shared `costQueryForConfig`, the spend is read from
- * ClickHouse, converted into the org's display currency at its stated rates
+ * `cost_daily`, converted into the org's display currency at its stated rates
  * (the same `convertGroups` path the digest and the graph API use), and the
  * pure composition in `./compose.ts` turns it into the message every
  * transport renders.
@@ -30,7 +30,6 @@ import {
 import { db } from "../db/client";
 import { accounts, costReports, organizations, reportNotifications } from "../db/schema";
 import { queryCosts, type CostSeriesGroup } from "../analytics/cost-readers";
-import { isClickHouseConfigured } from "../analytics/client";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { loadPlugins } from "../plugin-loader";
@@ -109,7 +108,7 @@ async function labelForGroups(
 /**
  * Run the report and compose the delivery data.
  *
- * Two ClickHouse reads (the report's window and the same span shifted back one
+ * Two cost reads (the report's window and the same span shifted back one
  * full period: the comparison is always included in a delivery, whatever the
  * saved config says, because "vs the period before" is what makes a recurring
  * number readable) plus the org's currency settings. Conversion follows the
@@ -121,9 +120,6 @@ export async function buildReportDelivery(
   report: { id: string; name: string; description: string | null; config: CostGraphConfig },
   now = new Date(),
 ): Promise<ReportDeliveryData> {
-  if (!isClickHouseConfigured()) {
-    throw new Error("Cost storage is not configured on this deployment");
-  }
   const config = report.config;
   const request = costQueryForConfig(config, now);
   const filters: CostFilter[] = config.filters ?? [];
@@ -403,7 +399,7 @@ export async function runReportNotification(
     if (outcome.status === "succeeded") console.log(line);
     else console.warn(`${line}${outcome.error ? `: ${outcome.error}` : ""}`);
   } catch (err) {
-    // A build failure (ClickHouse down, a bad config) is as retryable as a
+    // A build failure (the database down, a bad config) is as retryable as a
     // total delivery failure, and just as invisible if only logged.
     const message = err instanceof Error ? err.message : String(err);
     await recordAttempt(row, now, {

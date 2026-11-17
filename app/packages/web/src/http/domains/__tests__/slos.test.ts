@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// The store, the readers and the freeze service reach Postgres and
-// ClickHouse; these tests are about the transport.
+// The store, the readers and the freeze service reach Postgres; these tests
+// are about the transport.
 class FakeSloInputError extends Error {
   constructor(
     message: string,

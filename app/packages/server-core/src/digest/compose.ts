@@ -17,7 +17,7 @@ import { emailButton, emailDocument, escapeHtml } from "../email-html";
  * missing or failed narrative costs nothing but the paragraph.
  */
 
-/** One grouped daily cost series, shaped like ClickHouse's `queryCosts` output. */
+/** One grouped daily cost series, shaped like `queryCosts`'s output. */
 export interface DigestCostGroup {
   /** Group key (provider id or service name); "" for ungrouped rows. */
   key: string;

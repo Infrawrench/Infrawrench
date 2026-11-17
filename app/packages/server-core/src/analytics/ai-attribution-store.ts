@@ -2,25 +2,36 @@
  * Reads and writes for the two AI attribution tables (`ai_request_daily`,
  * `ai_cost_attributed`). See their declarations in `schema.ts`.
  *
- * Inserts go through the raw driver with `wait_for_async_insert: 1`, not the
- * shared async default: an attribution run reads the aggregates a collection
- * has just written, and the stats endpoint reads the split a run has just
- * written, so a fire-and-forget insert would race its own reader.
+ * Both tables are append-only and readers take the latest collection or run,
+ * so each write is one transaction: a reader must never see half a collection
+ * (or half a run's split) as the newest one. An attribution run reads the
+ * aggregates a collection has just written, and the stats endpoint reads the
+ * split a run has just written, so both rely on the write being committed by
+ * the time it returns, which a transaction gives them.
  */
 import type { AiRequestAggregate } from "@infrawrench/plugin-base";
-import { and, eq, getTableName, sql } from "drizzle-orm";
+import { and, eq, inArray, sql, type InferInsertModel } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 
-import { getClickHouseClient, getClickHouseDb, isClickHouseConfigured } from "./client";
+import { getAnalyticsDb } from "./client";
 import { hashTags } from "./cost-writers";
 import { aiCostAttributed, aiRequestDaily, costDaily } from "./schema";
 
-async function insertRows(table: string, rows: Record<string, unknown>[]): Promise<void> {
-  if (!isClickHouseConfigured() || rows.length === 0) return;
-  await getClickHouseClient().insert({
-    table,
-    values: rows,
-    format: "JSONEachRow",
-    clickhouse_settings: { async_insert: 1, wait_for_async_insert: 1 },
+/**
+ * Rows per statement: comfortably inside Postgres's 65,535 bind-parameter cap
+ * for both tables (17 and 19 columns).
+ */
+const INSERT_BATCH_ROWS = 1000;
+
+async function insertRows<TTable extends PgTable>(
+  table: TTable,
+  rows: InferInsertModel<TTable>[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await getAnalyticsDb().transaction(async (tx) => {
+    for (let i = 0; i < rows.length; i += INSERT_BATCH_ROWS) {
+      await tx.insert(table).values(rows.slice(i, i + INSERT_BATCH_ROWS));
+    }
   });
 }
 
@@ -33,7 +44,7 @@ export async function insertAiRequestAggregates(
   aggregates: AiRequestAggregate[],
 ): Promise<void> {
   await insertRows(
-    getTableName(aiRequestDaily),
+    aiRequestDaily,
     aggregates.map((a) => ({
       organization_id: organizationId,
       source_id: sourceId,
@@ -76,35 +87,33 @@ export async function readLatestAiAggregates(
   day: string,
   sourceIds: string[],
 ): Promise<StoredAiAggregate[]> {
-  if (!isClickHouseConfigured() || sourceIds.length === 0) return [];
+  if (sourceIds.length === 0) return [];
   const t = aiRequestDaily;
-  const rows = await getClickHouseDb()
+  const rows = await getAnalyticsDb()
     .select()
     .from(t)
     .where(
       and(
         eq(t.organization_id, organizationId),
         eq(t.day, day),
-        sql`(${t.source_id}, ${t.collected_at}) IN (SELECT ${t.source_id}, max(${t.collected_at}) FROM ${t} WHERE ${t.organization_id} = ${organizationId} AND ${t.day} = ${sql`toDate(${day})`} GROUP BY ${t.source_id})`,
+        inArray(t.source_id, sourceIds),
+        sql`(${t.source_id}, ${t.collected_at}) IN (SELECT ${t.source_id}, max(${t.collected_at}) FROM ${t} WHERE ${t.organization_id} = ${organizationId} AND ${t.day} = ${day}::date GROUP BY ${t.source_id})`,
       ),
     );
-  const wanted = new Set(sourceIds);
-  return rows
-    .filter((r) => wanted.has(r.source_id))
-    .map((r) => ({
-      sourceId: r.source_id,
-      provider: r.provider,
-      model: r.model,
-      metadata: (r.metadata ?? {}) as Record<string, string>,
-      requests: Number(r.requests),
-      inputTokens: Number(r.input_tokens),
-      outputTokens: Number(r.output_tokens),
-      cacheReadTokens: Number(r.cache_read_tokens),
-      cacheWriteTokens: Number(r.cache_write_tokens),
-      reasoningTokens: Number(r.reasoning_tokens),
-      reportedCost: Number(r.reported_cost_known) ? Number(r.reported_cost) : null,
-      reportedCurrency: r.reported_currency || null,
-    }));
+  return rows.map((r) => ({
+    sourceId: r.source_id,
+    provider: r.provider,
+    model: r.model,
+    metadata: r.metadata ?? {},
+    requests: Number(r.requests),
+    inputTokens: Number(r.input_tokens),
+    outputTokens: Number(r.output_tokens),
+    cacheReadTokens: Number(r.cache_read_tokens),
+    cacheWriteTokens: Number(r.cache_write_tokens),
+    reasoningTokens: Number(r.reasoning_tokens),
+    reportedCost: Number(r.reported_cost_known) ? Number(r.reported_cost) : null,
+    reportedCurrency: r.reported_currency || null,
+  }));
 }
 
 /** A billed AI row as the attribution run copies it into its splits. */
@@ -137,13 +146,12 @@ export async function readBilledAiRows(
   organizationId: string,
   day: string,
 ): Promise<BilledAiCostRow[]> {
-  if (!isClickHouseConfigured()) return [];
   const c = costDaily;
-  const rows = await getClickHouseDb()
+  const rows = await getAnalyticsDb()
     .select({
       account_id: c.account_id,
       plugin_id: c.plugin_id,
-      day: sql<string>`toString(${c.day})`.as("d"),
+      day: c.day,
       service: c.service,
       region: c.region,
       resource_id: c.resource_id,
@@ -158,17 +166,16 @@ export async function readBilledAiRows(
       commitment_id: c.commitment_id,
     })
     .from(c)
-    .final()
     .where(
       and(
         eq(c.organization_id, organizationId),
         eq(c.day, day),
-        sql`mapContains(${c.tags}, 'ai:provider')`,
+        sql`jsonb_exists(${c.tags}, 'ai:provider')`,
       ),
     );
   return rows.map((r) => ({
     ...r,
-    tags: (r.tags ?? {}) as Record<string, string>,
+    tags: r.tags ?? {},
     amount: Number(r.amount),
     usage_amount: Number(r.usage_amount),
     amortized_amount: Number(r.amortized_amount),
@@ -183,7 +190,7 @@ export async function insertAttributedRows(
   rows: BilledAiCostRow[],
 ): Promise<void> {
   await insertRows(
-    getTableName(aiCostAttributed),
+    aiCostAttributed,
     rows.map((r) => ({
       organization_id: organizationId,
       account_id: r.account_id,

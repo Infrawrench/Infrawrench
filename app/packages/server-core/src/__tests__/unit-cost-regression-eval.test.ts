@@ -9,7 +9,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  *
  * What this file is for: the trigger goes through `routeAlert` and never
  * through a transport; the fire-once row is keyed on the window end; a gap in
- * the metric series never becomes a firing once real ClickHouse and Postgres
+ * the metric series never becomes a firing once real cost and metric
  * shapes are in the loop.
  */
 
@@ -297,7 +297,7 @@ describe("evaluateUnitCostRegressionsForOrg — guards", () => {
   });
 
   it("swallows a failed metric rather than breaking the poller", async () => {
-    queryCosts.mockRejectedValue(new Error("clickhouse down"));
+    queryCosts.mockRejectedValue(new Error("database down"));
     prime();
     await expect(evaluate("org1", NOW, true)).resolves.toBeUndefined();
     expect(routeAlert).not.toHaveBeenCalled();

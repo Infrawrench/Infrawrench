@@ -24,7 +24,7 @@ import { runReportNotification } from "./deliver";
 import type { ReportNotificationRecord } from "./store";
 
 /**
- * Must exceed the worst-case duration of one delivery: two ClickHouse reads
+ * Must exceed the worst-case duration of one delivery: two cost reads
  * plus a fan-out to Slack, Teams and one request per email address, each with
  * its own timeout. Minutes of budget for tens of seconds of work: too short
  * and a second replica double-posts the same report into the same channel,

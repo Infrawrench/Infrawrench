@@ -6,7 +6,7 @@
  *
  * The arithmetic lives in `change-detect.ts` (pure, unit-tested: window
  * definitions, thresholds, the new/vanished-group rules); this module reads
- * the series from ClickHouse, converts currencies the org holds rates for,
+ * the series from `cost_daily`, converts currencies the org holds rates for,
  * persists what fired, and notifies through the alert routing layer under
  * the `costChangeAlerts` trigger; routing rules, quiet hours and escalation
  * apply exactly as they do to budgets and anomalies.
@@ -60,7 +60,7 @@ import { orgAppUrl } from "../app-url";
 /**
  * Least time between full evaluations of one org. Same shape and reasoning
  * as the anomaly evaluator's gate: evaluation is invoked once per collected
- * account, the ClickHouse reads are the expensive half, and correctness
+ * account, the cost reads are the expensive half, and correctness
  * never rests on this (the events-table unique index does that) so an
  * in-process map is enough.
  */

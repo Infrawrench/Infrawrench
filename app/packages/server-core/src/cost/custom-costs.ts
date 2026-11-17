@@ -20,7 +20,7 @@
  *   history as `uploading` so it can be deleted.
  *
  * Removal of any kind (an upload, a replaced range, a whole source) writes
- * tombstones through `clickhouse/custom-cost-store.ts`.
+ * tombstones through `analytics/custom-cost-store.ts`.
  */
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";

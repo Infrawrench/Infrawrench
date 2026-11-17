@@ -6,9 +6,9 @@
  * drivers and SSH sessions in one process, inside the cluster network. A
  * destination a tenant typed (a Redis URL, a Databricks host, a kubeconfig
  * `server`, an SSH host) would otherwise reach whatever that process can:
- * loopback services, the cloud metadata endpoint, the kubelet, ClickHouse,
- * other pods, and the loopback listeners of SSH tunnels other organizations
- * opened. This module is the one place that decides what is reachable.
+ * loopback services, the cloud metadata endpoint, the kubelet, other pods,
+ * and the loopback listeners of SSH tunnels other organizations opened. This
+ * module is the one place that decides what is reachable.
  *
  * Policy, in order:
  *  - Always refused: loopback, unspecified, link-local (cloud metadata lives
@@ -421,7 +421,7 @@ export async function guardDriverConnection(
 /**
  * The scope of the plugin code currently running. Set around plugin client
  * calls and the plugin HTTP host service; HTTP made outside it (the server's
- * own calls to its database, ClickHouse, WorkOS) is not tenant-directed and
+ * own calls to its database and WorkOS) is not tenant-directed and
  * is left alone.
  */
 const egressScope = new AsyncLocalStorage<DialScope>();

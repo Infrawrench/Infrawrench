@@ -222,7 +222,7 @@ export interface ResolvedMembership {
  * tag is computed from billing data, so this is the only way to ask it about a
  * resource; a resource without per-resource cost rows can never match.
  *
- * Failure (ClickHouse down, the tag deleted) matches nothing rather than
+ * Failure (the cost read failing, the tag deleted) matches nothing rather than
  * throwing: membership is read on every service page, and a billing outage
  * must not take the page down with it.
  */

@@ -63,6 +63,16 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
 }));
 
 vi.mock("uuid", () => ({ v4: () => "uuid-1" }));
+// The poll's health record is an insert into the same Postgres; this suite
+// counts resource-row writes, so the analytics writers stay out of its tally
+// (they have their own suite, analytics-writers.test.ts).
+vi.mock("@infrawrench/server-core/analytics/writers", () => ({
+  flattenMetricSeries: vi.fn(() => []),
+  insertMetricPoints: vi.fn(async () => {}),
+  insertDashboardStats: vi.fn(async () => {}),
+  insertAccountResourceCounts: vi.fn(async () => {}),
+  insertPollOutcome: vi.fn(async () => {}),
+}));
 
 const { accountsDomain } = await import("@/http/domains/accounts/index");
 const { resourceChanges } = await import("@infrawrench/server-core/db/schema");

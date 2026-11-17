@@ -2,7 +2,7 @@
 #
 #   docker compose -f docker-compose.dev.yml watch
 #
-# brings up Postgres (migrated), ClickHouse, the WorkOS emulator
+# brings up Postgres (migrated), the WorkOS emulator
 # (github.com/workos/emulate) and the three services (web, poller,
 # github-watcher) with hot reload: source changes sync into the containers and
 # tsx/Vite pick them up. App: http://localhost:3000 — log in with
@@ -60,10 +60,6 @@ x-backend-env: &backend-env
   DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
   # Dev-only fixed keys — never reuse outside this compose file.
   ENCRYPTION_MASTER_KEY: uRW8wQXfjwBUcLFwQnmNnO3VvY4x/Nd8E2VVQF9nnvo=
-  CLICKHOUSE_METRICS_URL: http://clickhouse:8123
-  CLICKHOUSE_METRICS_USER: default
-  CLICKHOUSE_METRICS_PASSWORD: infrawrench
-  CLICKHOUSE_METRICS_DATABASE: infrawrench
 
 services:
   postgres:
@@ -80,33 +76,6 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U infrawrench -d infrawrench"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.8-alpine
-    environment:
-      CLICKHOUSE_DB: infrawrench
-      CLICKHOUSE_PASSWORD: infrawrench
-    ports:
-      # 8124 on the host so a natively installed ClickHouse on 8123 keeps
-      # working. Lets the real-database tests target this container:
-      #   CLICKHOUSE_METRICS_URL=http://localhost:8124 ... pnpm test:clickhouse
-      - "8124:8123"
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    volumes:
-      - chdata:/var/lib/clickhouse
-      # IPv4 listen override — the image defaults to "::", which fails (and
-      # leaves nothing listening) on IPv6-less Docker networks.
-      - ./infra/docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro
-    healthcheck:
-      # 127.0.0.1, not localhost: the server listens IPv4-only (see the
-      # listen.xml mount below) and in-container localhost resolves to ::1.
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8123/ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -166,8 +135,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      clickhouse:
-        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -210,8 +177,6 @@ services:
       <<: *backend-env
     depends_on:
       postgres:
-        condition: service_healthy
-      clickhouse:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -259,4 +224,3 @@ services:
 
 volumes:
   pgdata:
-  chdata:

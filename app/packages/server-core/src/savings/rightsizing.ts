@@ -36,11 +36,11 @@ import { attachIacHints, type IacHintTarget } from "./remediation-iac.js";
  *
  * Unlike orphans this can't be a pure read: the size catalogs come from the
  * provider APIs with the account's credentials, and the percentiles from
- * ClickHouse. Both are slow-moving, so the whole org response is cached
+ * the metric rollups. Both are slow-moving, so the whole org response is cached
  * in-memory for a few minutes and recomputed on demand: there is no poller
  * pass to keep stale rows warm (the orphans shape, not the schedules one).
  *
- * Failure surface, deliberately: a ClickHouse outage throws (the section
+ * Failure surface, deliberately: a failed metric read throws (the section
  * shows the error instead of "nothing is oversized"), while one account's
  * broken credentials only cost that account's rows; logged `[rightsizing]`,
  * never silent.
@@ -58,7 +58,7 @@ const responseCache = new Map<string, CacheEntry>();
 /**
  * Orgs whose computation is currently running. A `refresh=true` call (or a
  * cache-expiry miss) while one is in flight joins that run instead of
- * stacking a second full provider/ClickHouse sweep.
+ * stacking a second full provider and metric sweep.
  */
 const inFlight = new Set<string>();
 

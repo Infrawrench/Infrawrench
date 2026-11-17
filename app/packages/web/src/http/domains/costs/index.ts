@@ -135,8 +135,8 @@ const csvStream = (chunks: AsyncIterable<string>) =>
         }
       },
       async cancel() {
-        // The client went away: stop reading, which releases the ClickHouse
-        // result set in the row stream's `finally`.
+        // The client went away: stop reading, which closes the export's cursor
+        // and hands its connection back to the pool.
         await runInLegacyScopes(scopes, () => iterator.return?.());
       },
     });

@@ -21,7 +21,7 @@
  *
  * Loaders select only the columns a hit needs. The list services compute
  * placements, statuses and spend that a search result never shows, so calling
- * them per keystroke would cost a ClickHouse round trip for nothing.
+ * them per keystroke would cost a spend query for nothing.
  */
 import { and, asc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import {

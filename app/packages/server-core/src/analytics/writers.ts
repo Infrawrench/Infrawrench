@@ -37,6 +37,10 @@ export function flattenMetricSeries(
   for (const s of series) {
     const unit = s.unit ?? "";
     for (const p of s.points) {
+      // NaN and Infinity serialize to JSON null, which the NOT NULL column
+      // rejects, failing the whole batch with it. A provider gap is no point,
+      // not a zero, so it is dropped.
+      if (!Number.isFinite(p.value)) continue;
       rows.push({
         organization_id: meta.organizationId,
         account_id: meta.accountId,

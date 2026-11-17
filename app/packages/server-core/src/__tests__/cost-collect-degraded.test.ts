@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The fourth reconciliation guard, and the only one that cannot live in
- * `clickhouse/cost-reconcile.ts`: whether a pass ran *degraded* is something
+ * `analytics/cost-reconcile.ts`: whether a pass ran *degraded* is something
  * only the plugin knows.
  *
  * Both large collectors fall back to an unattributed query when the provider

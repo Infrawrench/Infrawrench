@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * sync-resources orchestrates listing resources from a plugin client and
- * reconciling them into the DB + ClickHouse. We mock every external dep:
+ * reconciling them into the DB and the metric tables. We mock every external dep:
  *
  *  - db: real Drizzle over a recording driver (helpers/fake-postgres.ts).
  *    Result rows are queued FIFO in statement order: writes consume a queue
@@ -17,7 +17,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  *    soft-delete update per batch of what is gone (none when nothing is), the
  *    pinned selectDistinct, then the refs select.
  *  - encryption, plugin-loader, host-services, tunnel-resolver: vi.fn mocks.
- *  - clickhouse/writers: vi.fn mocks asserting the streamed rows.
+ *  - analytics/writers: vi.fn mocks asserting the streamed rows.
  *  - plugin-base: only `evaluatePeerIntegrationUnreachable` is used.
  */
 
@@ -47,7 +47,7 @@ vi.mock("../host-services", () => ({ buildPluginHostServices }));
 const rewriteCredentialsThroughTunnel = vi.fn(async () => undefined);
 vi.mock("../tunnel-resolver", () => ({ rewriteCredentialsThroughTunnel }));
 
-// --- clickhouse writers ----------------------------------------------------
+// --- analytics writers -----------------------------------------------------
 const flattenMetricSeries = vi.fn(() => [{ metric: "cpu" }]);
 const insertAccountResourceCounts = vi.fn(async (_opts?: unknown) => undefined);
 const insertDashboardStats = vi.fn(async () => undefined);

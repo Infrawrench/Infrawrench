@@ -1,26 +1,15 @@
 /**
- * ClickHouse reads behind service-level objectives: the hourly good/total
- * buckets the evaluator and the detail view share, and the (resource, series)
- * vocabulary the editor's metric picker offers.
+ * Reads behind service-level objectives: the hourly good/total buckets the
+ * evaluator and the detail view share, and the (resource, series) vocabulary
+ * the editor's metric picker offers.
  *
  * Its own module beside `readers.ts`, the `network-flow-readers.ts` split.
+ * Like those readers, a failing query throws rather than answering empty.
  */
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
-import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { getAnalyticsDb } from "./client";
+import { epochMillis, rollupAverage, withinSeconds } from "./readers";
 import { metricPoints1m, metricPointsRaw } from "./schema";
-
-/** Same contract as `readers.ts`: unconfigured is empty, configured-but-failing throws. */
-async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
-  if (!isClickHouseConfigured()) return [];
-  return await build(getClickHouseDb());
-}
-
-function withinSeconds(column: unknown, fromMs: number, toMs: number) {
-  return and(
-    gte(column as never, sql`toDateTime(${Math.floor(fromMs / 1000)})`),
-    lte(column as never, sql`toDateTime(${Math.floor(toMs / 1000)})`),
-  );
-}
 
 /**
  * How an SLO judges one minute's averaged sample, in SQL: `fraction` counts
@@ -40,13 +29,34 @@ export interface SloHourlyBucketRow {
   total: number;
 }
 
+/** A minute's judgement as a 0–1 SQL expression over its rollup average. */
+function goodExpr(value: SQL, judgement: SloMinuteJudgement): SQL {
+  if (judgement.kind === "fraction") return sql`least(greatest(${value}, 0), 1)`;
+  const t = judgement.threshold;
+  let holds: SQL;
+  switch (judgement.comparator) {
+    case "<":
+      holds = sql`${value} < ${t}`;
+      break;
+    case "<=":
+      holds = sql`${value} <= ${t}`;
+      break;
+    case ">":
+      holds = sql`${value} > ${t}`;
+      break;
+    case ">=":
+      holds = sql`${value} >= ${t}`;
+      break;
+  }
+  return sql`CASE WHEN ${holds} THEN 1 ELSE 0 END`;
+}
+
 /**
  * Hourly good/total sums of one series for one resource, built from the 1m
- * rollup: the inner GROUP BY finalizes each minute's average first, so a
- * minute is one event however bursty the raw reporting was; then each minute
- * is judged and the hour sums them. The evaluator's long-window read and the
- * detail view's history read. The 1m rollup keeps 30 days, which is the
- * longest SLO window.
+ * rollup: each rollup row is one minute's average, so a minute is one event
+ * however bursty the raw reporting was; each minute is judged and the hour
+ * sums them. The evaluator's long-window read and the detail view's history
+ * read. The 1m rollup keeps 30 days, which is the longest SLO window.
  */
 export async function getSloHourlyBuckets(
   organizationId: string,
@@ -56,57 +66,27 @@ export async function getSloHourlyBuckets(
   fromMs: number,
   toMs: number,
 ): Promise<SloHourlyBucketRow[]> {
-  const rows = await query((db) => {
-    const minutes = db
-      .select({
-        ts_minute: metricPoints1m.ts_minute,
-        value: sql<number>`avgMerge(${metricPoints1m.value_avg})`.as("value"),
-      })
-      .from(metricPoints1m)
-      .where(
-        and(
-          eq(metricPoints1m.organization_id, organizationId),
-          eq(metricPoints1m.resource_id, resourceId),
-          eq(metricPoints1m.series_label, seriesLabel),
-          withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
-        ),
-      )
-      .groupBy(metricPoints1m.ts_minute)
-      .as("minutes");
-
-    let good;
-    if (judgement.kind === "fraction") {
-      good = sql`least(greatest(${minutes.value}, 0), 1)`;
-    } else {
-      const t = judgement.threshold;
-      switch (judgement.comparator) {
-        case "<":
-          good = sql`if(${minutes.value} < ${t}, 1, 0)`;
-          break;
-        case "<=":
-          good = sql`if(${minutes.value} <= ${t}, 1, 0)`;
-          break;
-        case ">":
-          good = sql`if(${minutes.value} > ${t}, 1, 0)`;
-          break;
-        case ">=":
-          good = sql`if(${minutes.value} >= ${t}, 1, 0)`;
-          break;
-      }
-    }
-
-    return db
-      .select({
-        hour_ms: sql<string>`toUnixTimestamp(toStartOfHour(${minutes.ts_minute})) * 1000`.as(
-          "hour_ms",
-        ),
-        good: sql<number>`sum(${good})`.as("good"),
-        total: sql<string>`count()`.as("total"),
-      })
-      .from(minutes)
-      .groupBy(sql`hour_ms`)
-      .orderBy(asc(sql`hour_ms`));
-  });
+  const good = goodExpr(rollupAverage(metricPoints1m), judgement);
+  // Truncated in UTC, as the writer buckets, so an hour is the same hour
+  // whatever the session's time zone.
+  const hour = sql`date_trunc('hour', ${metricPoints1m.ts_minute}, 'UTC')`;
+  const rows = await getAnalyticsDb()
+    .select({
+      hour_ms: epochMillis(hour).as("hour_ms"),
+      good: sql<number>`sum(${good})::float8`.mapWith(Number).as("good"),
+      total: sql<number>`count(*)::int`.mapWith(Number).as("total"),
+    })
+    .from(metricPoints1m)
+    .where(
+      and(
+        eq(metricPoints1m.organization_id, organizationId),
+        eq(metricPoints1m.resource_id, resourceId),
+        eq(metricPoints1m.series_label, seriesLabel),
+        withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
+      ),
+    )
+    .groupBy(hour)
+    .orderBy(hour);
   return rows.map((r) => ({
     startMs: Number(r.hour_ms),
     good: Number(r.good),
@@ -133,29 +113,27 @@ export async function listResourceMetricSeries(
   organizationId: string,
   limit = 5000,
 ): Promise<ResourceSeriesRow[]> {
-  const rows = await query((db) =>
-    db
-      .select({
-        resource_id: metricPointsRaw.resource_id,
-        plugin_id: sql<string>`any(${metricPointsRaw.plugin_id})`.as("plugin_id"),
-        resource_type_id: sql<string>`any(${metricPointsRaw.resource_type_id})`.as(
-          "resource_type_id",
-        ),
-        series_label: metricPointsRaw.series_label,
-        unit: sql<string>`any(${metricPointsRaw.unit})`.as("unit"),
-      })
-      .from(metricPointsRaw)
-      .where(
-        and(
-          eq(metricPointsRaw.organization_id, organizationId),
-          sql`${metricPointsRaw.ts} > now() - INTERVAL 7 DAY`,
-          sql`${metricPointsRaw.plugin_id} != 'synthetic-probe'`,
-        ),
-      )
-      .groupBy(metricPointsRaw.resource_id, metricPointsRaw.series_label)
-      .orderBy(asc(metricPointsRaw.resource_id), asc(metricPointsRaw.series_label))
-      .limit(limit),
-  );
+  const rows = await getAnalyticsDb()
+    .select({
+      resource_id: metricPointsRaw.resource_id,
+      plugin_id: sql<string>`min(${metricPointsRaw.plugin_id})`.as("plugin_id"),
+      resource_type_id: sql<string>`min(${metricPointsRaw.resource_type_id})`.as(
+        "resource_type_id",
+      ),
+      series_label: metricPointsRaw.series_label,
+      unit: sql<string>`min(${metricPointsRaw.unit})`.as("unit"),
+    })
+    .from(metricPointsRaw)
+    .where(
+      and(
+        eq(metricPointsRaw.organization_id, organizationId),
+        sql`${metricPointsRaw.ts} > now() - interval '7 days'`,
+        sql`${metricPointsRaw.plugin_id} <> 'synthetic-probe'`,
+      ),
+    )
+    .groupBy(metricPointsRaw.resource_id, metricPointsRaw.series_label)
+    .orderBy(asc(metricPointsRaw.resource_id), asc(metricPointsRaw.series_label))
+    .limit(limit);
   return rows.map((r) => ({
     resourceId: r.resource_id,
     pluginId: r.plugin_id,

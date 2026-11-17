@@ -11,7 +11,7 @@
  *      signs off on; nothing here purchases anything)
  *
  * Derivations happen in the pure modules next door; this file only fetches
- * their inputs (Postgres inventory + ClickHouse aggregates) and maps rows.
+ * their inputs (the inventory and the `cost_daily` aggregates) and maps rows.
  *
  * Attribution gating: derived utilization, coverage and the planner only use
  * accounts whose plugin declares `costs.chargeTypes`, for anyone else,

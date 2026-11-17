@@ -176,7 +176,7 @@ export async function getUntaggedSpendReport(
       topUntagged: [],
     };
   }
-  // Two independent reads (ClickHouse spend and the Postgres account labels
+  // Two independent reads (the spend and the account labels
   // it is joined against) so they go out together rather than one after the
   // other. Follows the caller's basis: this report's number is a share of total
   // spend, and it has to be a share of the same total the graphs above it draw.

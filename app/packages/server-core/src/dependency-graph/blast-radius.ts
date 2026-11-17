@@ -13,7 +13,7 @@
  *    name the resource without depending on it.
  *
  * The rule this module is built around: **every gatherer that cannot answer
- * says so.** A failed ClickHouse read, a flow switch that is off, a workflow
+ * says so.** A failed flow read, a flow switch that is off, a workflow
  * body that names the resource by a value it computes at runtime; each one
  * lands in `unchecked` with a sentence, and none of them can turn into a quiet
  * "nothing found". A person is about to press Delete on the strength of this
@@ -37,7 +37,6 @@ import {
   type DependencyGraphData,
   type FlowPeerIdentities,
 } from "@infrawrench/client-core";
-import { isClickHouseConfigured } from "../analytics/client.js";
 import { readTopNetworkFlows } from "../analytics/network-flow-readers.js";
 import { getNetworkFlowSettings } from "../network-flow/settings.js";
 
@@ -166,11 +165,11 @@ async function loadDependencyGraphSafely(organizationId: string) {
 /**
  * Traffic peers, from network flow attribution.
  *
- * Three separate reasons this can decline to answer, and each says which:
- * collection is off for the org, there is no warehouse configured, or the
- * resource has no external id for the flow refs to match on.
+ * Separate reasons this can decline to answer, and each says which:
+ * collection is off for the org, the resource has no external id for the flow
+ * refs to match on, or the setting or the flow read itself failed.
  *
- * A fourth kind of gap comes from the peers themselves. Flow refs are the
+ * Another kind of gap comes from the peers themselves. Flow refs are the
  * **provider's** id, not the app's composite one, and `external_id` is unique
  * only within one plugin and one account, so identifying a peer is a scoped
  * lookup that is allowed to fail. `resolveFlowPeerIdentities` links a ref only
@@ -188,12 +187,6 @@ async function loadFlowPeers(
     return { peers: [], checked: false };
   };
 
-  if (!isClickHouseConfigured()) {
-    return off(
-      "The metrics warehouse is not configured, so nothing is known about what talks to " +
-        "this resource over the network.",
-    );
-  }
   if (!row?.externalId) {
     return off(
       "This resource has no provider id recorded, and network flows are matched on the " +

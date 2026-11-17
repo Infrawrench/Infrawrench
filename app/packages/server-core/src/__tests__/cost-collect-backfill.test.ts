@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * Everything external is mocked or faked: the DB (real Drizzle over a
  * recording driver, so the flag UPDATE renders its actual SQL), the
- * account/plugin/client loader, and the ClickHouse writers.
+ * account/plugin/client loader, and the cost writers.
  *
  * "Today" is frozen mid-month so a short history window stays inside one
  * calendar month. Without that, near the 1st the same windows span two months

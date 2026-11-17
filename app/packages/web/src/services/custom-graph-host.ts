@@ -70,7 +70,7 @@ async function listOrgResources(
 }
 
 /**
- * Metric lookup mirrors the resource-detail route: ClickHouse history first
+ * Metric lookup mirrors the resource-detail route: stored history first
  * (only pinned resources accumulate points), then a live provider fetch. The
  * live path's failure degrades to "no data": a dead provider must not fail
  * the whole render.

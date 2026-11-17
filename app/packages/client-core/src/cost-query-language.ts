@@ -14,10 +14,10 @@
  *
  * 1. **It is a front-end, not a query engine.** Anything the structured filter
  *    cannot express is a parse error here, never a new branch downstream.
- *    There is exactly one execution path (`clickhouse/cost-readers.ts`), one
+ *    There is exactly one execution path (`analytics/cost-readers.ts`), one
  *    set of bound parameters, and therefore one security surface: the text
  *    never reaches SQL, only the compiled `CostFilter[]` does, and its values
- *    go through the same `{name:Array(String)}` binding they always did.
+ *    are bound as query parameters like any structured filter's.
  * 2. **It round-trips.** `parseCostQuery(formatCostQuery(f))` deep-equals `f`
  *    for every filter list the API would accept.
  * 3. **Errors carry an offset.** A query language with vague errors is worse

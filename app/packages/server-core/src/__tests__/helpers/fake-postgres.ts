@@ -1,7 +1,6 @@
 /**
- * A Postgres double that is a *real* Drizzle database over a recording driver:
- * the Postgres counterpart of `fake-clickhouse.ts`, built on Drizzle's
- * pg-proxy driver so every chain renders through the real dialect against the
+ * A Postgres double that is a *real* Drizzle database over a recording driver,
+ * built on Drizzle's pg-proxy driver so every chain renders through the real dialect against the
  * real `db/schema.ts` tables. The hand-rolled chainable stubs this replaces
  * assert the test's idea of the query builder; this asserts the SQL and
  * parameters Postgres would receive.
@@ -9,8 +8,7 @@
  * Migrating a suite from a hand stub: mock the module with the fake's `db`
  * (`vi.mock("../db/client", () => ({ db: pg.db }))`), drop any `db/schema`
  * mocks (the real schema is the point), and feed results with
- * {@link FakePostgres.setRows} / {@link FakePostgres.queueRows}. As in the
- * ClickHouse fake, row objects must list their keys in projection order.
+ * {@link FakePostgres.setRows} / {@link FakePostgres.queueRows}. Row objects must list their keys in projection order.
  * Hard-won details, learned across the ~40 suites already migrated:
  *
  * - Import the module under test with a top-level `await import(...)` after

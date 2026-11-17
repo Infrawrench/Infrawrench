@@ -9,7 +9,7 @@
  * Platform $12k" is the shape a finance conversation actually takes, and only
  * one of those numbers can be read off a single figure.
  *
- * The nesting never reaches the database. One `multiIf` over `cost_daily`
+ * The nesting never reaches the database. One first-match `CASE` over `cost_daily`
  * resolves each row to exactly one centre in one scan (see `getShowbackSpend`);
  * everything below is arithmetic over that result.
  */
@@ -73,7 +73,7 @@ export async function getShowbackReport(
   //
   // `listAllocationRules` already returns evaluation order: ascending
   // priority, then the more deeply nested centre first on a tie. Nesting stops
-  // here: `getShowbackSpend` compiles this flat list into one `multiIf` and
+  // here: `getShowbackSpend` compiles this flat list into one `CASE` and
   // resolves each row to exactly one centre in a single scan of `cost_daily`,
   // and the tree is assembled from the resulting sums below. A per-segment
   // query would be one scan per node of the tree for the same answer.
@@ -85,7 +85,7 @@ export async function getShowbackReport(
   // three-year commitment in the month it was signed is not a chargeback
   // anyone can budget against.
   // The billing rules ride into the same scan: percentage factors multiply the
-  // summed amount, cost-centre reallocations wrap the allocation `multiIf`, and
+  // summed amount, cost-centre reallocations wrap the allocation `CASE`, and
   // `rawAmount` comes back from the same pass. Omitted when the org has no
   // rules, so an unadjusted report issues the query it always has.
   const compiled =

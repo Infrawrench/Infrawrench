@@ -3,7 +3,7 @@
  * request's AsyncLocalStorage scopes.
  *
  * Much of the server reads per-request state from AsyncLocalStorage rather
- * than from its arguments: the caller's cost visibility (every ClickHouse cost
+ * than from its arguments: the caller's cost visibility (every cost
  * reader), its object-sharing principal, the API key an audit row is
  * attributed to, and the edge invocation's request scope (`keepAlive`, the
  * per-invocation Postgres client, gateway-only tracking, held secret writes).

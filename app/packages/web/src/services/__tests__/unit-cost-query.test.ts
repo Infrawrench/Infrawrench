@@ -173,7 +173,7 @@ describe("runUnitCostQuery — the numerator's scope", () => {
     expect(mockQueryCosts).not.toHaveBeenCalled();
   });
 
-  it("never asks ClickHouse to group — a per-group ratio has no denominator", async () => {
+  it("never asks the cost reader to group: a per-group ratio has no denominator", async () => {
     await runUnitCostQuery("org1", "active-customers", request);
     expect(mockQueryCosts.mock.calls[0]?.[1].groupBy).toBe("none");
   });

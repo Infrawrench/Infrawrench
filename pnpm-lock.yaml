@@ -1086,9 +1086,6 @@ importers:
 
   app/packages/poller:
     dependencies:
-      '@clickhouse/client-web':
-        specifier: ^1.23.1
-        version: 1.23.1
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
@@ -1190,9 +1187,6 @@ importers:
       '@aws-sdk/client-secrets-manager':
         specifier: ^3.1106.0
         version: 3.1106.0
-      '@clickhouse/client':
-        specifier: ^1.23.1
-        version: 1.23.1
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
@@ -1857,9 +1851,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.96.0
         version: 0.96.0(zod@3.25.76)
-      '@clickhouse/client-web':
-        specifier: ^1.23.1
-        version: 1.23.1
       '@google/genai':
         specifier: 2.13.0
         version: 2.13.0(@modelcontextprotocol/sdk@1.30.0(supports-color@10.2.2)(zod@3.25.76))(supports-color@10.2.2)
@@ -6291,10 +6282,6 @@ packages:
 
   '@clickhouse/client-web@1.23.1':
     resolution: {integrity: sha512-VpYPSnBD7PWmEucp8wfd24u9tkyLwFH2ATyMT9R6J8b4U9snbVX1QjanJt/92YtSjam1GblhM7t3oChmJF/m0Q==}
-
-  '@clickhouse/client@1.23.1':
-    resolution: {integrity: sha512-vs3/Zc1dHvT171btW5nMoPsPCJ6QVJ5pp7obxzO5sjqwFx/jjz9wwCAqcFOdc2DhprugDBaVn+4dVY8hG3A9nw==}
-    engines: {node: '>=20'}
 
   '@cloudflare/kv-asset-handler@0.5.0':
     resolution: {integrity: sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg==}
@@ -19853,8 +19840,6 @@ snapshots:
       sisteransi: 1.0.5
 
   '@clickhouse/client-web@1.23.1': {}
-
-  '@clickhouse/client@1.23.1': {}
 
   '@cloudflare/kv-asset-handler@0.5.0': {}
 

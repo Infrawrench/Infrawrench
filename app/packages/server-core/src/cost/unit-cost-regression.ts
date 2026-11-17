@@ -1,5 +1,5 @@
 /**
- * Unit-cost regression detection: **pure**. No db, no ClickHouse, no clock,
+ * Unit-cost regression detection: **pure**. No db, no clock,
  * no network.
  *
  * ## The signal the other cost alerts cannot see

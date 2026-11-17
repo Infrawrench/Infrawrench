@@ -1,7 +1,7 @@
 /**
  * Cloud cost graphs, budgets, and dashboard widgets. Cloud-mode only: cost
- * data has no local-SQLite equivalent (it lives in the cloud ClickHouse
- * store), so these are never called when activeCloudOrgId is unset.
+ * data has no local-SQLite equivalent (it lives in the cloud's
+ * database), so these are never called when activeCloudOrgId is unset.
  *
  * Typed calls to the contract's cost domains over the cloud transport
  * (`./cloud-client.ts`), as in `cloud-probes.ts`: each answer is the server's

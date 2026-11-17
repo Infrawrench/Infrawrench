@@ -872,7 +872,7 @@ export interface GenerateInfraDtsInput {
   triggerKind?: WorkflowTriggerKind;
   /**
    * Whether this host can store cost data (cloud only: costs live in
-   * ClickHouse). When false, `infra.costs` is typed `never` so a desktop
+   * the cloud database). When false, `infra.costs` is typed `never` so a desktop
    * author sees it's unavailable while editing instead of at run time.
    */
   costs?: boolean;

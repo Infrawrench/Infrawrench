@@ -19,20 +19,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { compileBillingRules, type BillingRule } from "@infrawrench/client-core";
 
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
+import { fakePostgres } from "./helpers/fake-postgres";
+import { inlineSql } from "./helpers/inline-sql";
 
 /**
- * A real Drizzle database over a fake driver, so `captured` holds the exact
- * statement ClickHouse would receive: literals, escaping, `FINAL` and all.
+ * A real Drizzle database over a recording driver, so `captured` holds the
+ * exact statement Postgres would receive, with its parameters written back in
+ * as literals (`inlineSql`) for the evaluator below to read.
  */
-const ch = fakeClickHouse();
-const captured = ch.queries;
+const pg = fakePostgres();
+const captured = new Proxy([] as string[], {
+  get: (_target, prop) => Reflect.get(pg.queries.map(inlineSql), prop),
+});
 
-vi.mock("../analytics/client", () => ({
-  isClickHouseConfigured: () => true,
-  getClickHouseDb: () => ch.db,
-  getClickHouseClient: () => ch.client,
-}));
+vi.mock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
 
 const { queryCosts, getShowbackSpend } = await import("../analytics/cost-readers");
 
@@ -68,18 +68,18 @@ function row(over: Partial<Row> = {}): Row {
 type Value = string | number | boolean;
 
 /**
- * Evaluate a ClickHouse expression of the subset these readers emit:
- * `if(...)`, `multiIf(...)`, `mapContains(tags, 'key')`, `tags['key']`,
- * quoted string literals, backticked columns (qualified or not), numeric
- * literals, `*`, `=`, `!=`/`<>`, `AND`/`and`, `OR`/`or`, and a bare `1`.
+ * Evaluate a Postgres expression of the subset these readers emit:
+ * `CASE WHEN … THEN … ELSE … END`, `jsonb_exists(tags, 'key')`,
+ * `coalesce(tags ->> 'key', '')`, quoted string literals, `::text` /
+ * `::float8` casts, double-quoted columns (qualified or not), numeric
+ * literals, `*`, `=`, `!=`/`<>`, `AND`/`and`, `OR`/`or`, `true`.
  *
  * Deliberately narrow. Anything the compiler starts emitting that is not in
  * this grammar throws rather than being silently skipped, so a new construct
  * cannot slip past these invariants unexamined.
  *
- * There are no bound parameters to resolve: ClickHouse has no prepared
- * statements, so the dialect renders every rule value as an escaped literal.
- * The escaping is what this evaluator's string parsing has to undo.
+ * It reads the statement with its parameters inlined (`inlineSql`), whose
+ * string quoting doubles `'`; that is what the string parsing undoes.
  */
 function evaluate(expr: string, r: Row): Value {
   let i = 0;
@@ -101,30 +101,37 @@ function evaluate(expr: string, r: Row): Value {
     if (!eat(text)) throw new Error(`expected "${text}" at ${i} in: ${s}`);
   };
   const truthy = (v: Value): boolean => v === true || v === 1;
+  /** A trailing `::text` / `::float8` cast, which changes nothing here. */
+  const cast = () => {
+    ws();
+    const match = /^::(text|float8)\b/.exec(s.slice(i));
+    if (match) i += match[0].length;
+  };
 
-  /** A backticked column, optionally qualified: `` `cost_daily`.`amount` ``. */
+  /** A double-quoted column, optionally qualified: `"cost_daily"."amount"`. */
   const columnRef = (): string | null => {
     ws();
-    const match = /^(?:`cost_daily`\.)?`([a-z_][a-z0-9_]*)`/.exec(s.slice(i));
+    const match = /^(?:"cost_daily"\.)?"([a-z_][a-z0-9_]*)"/.exec(s.slice(i));
     if (!match) return null;
     i += match[0].length;
     return match[1]!;
   };
 
-  /** A single-quoted literal, undoing the dialect's backslash escaping. */
+  /** A single-quoted literal, undoing the doubled `'`. */
   const stringLiteral = (): string => {
     ws();
     if (s[i] !== "'") throw new Error(`expected a string literal at ${i} in: ${s}`);
     i++;
     let out = "";
     while (i < s.length) {
-      if (s[i] === "\\") {
-        out += s[i + 1];
+      if (s[i] === "'" && s[i + 1] === "'") {
+        out += "'";
         i += 2;
         continue;
       }
       if (s[i] === "'") {
         i++;
+        cast();
         return out;
       }
       out += s[i];
@@ -155,7 +162,7 @@ function evaluate(expr: string, r: Row): Value {
     const left = mulExpr();
     ws();
     // `<>` is what Drizzle's `ne()` renders; `!=` is what the hand-written
-    // fragments use. ClickHouse accepts both and they mean the same thing.
+    // fragments use. Postgres accepts both and they mean the same thing.
     if (eat("!=") || eat("<>")) return left !== mulExpr();
     // Guard against consuming the `=` of a `!=`: both are tried first.
     if (eat("=")) return left === mulExpr();
@@ -176,51 +183,49 @@ function evaluate(expr: string, r: Row): Value {
       expect_(")");
       return v;
     }
-    if (eat("if(")) {
-      const cond = orExpr();
-      expect_(",");
-      const a = orExpr();
-      expect_(",");
-      const b = orExpr();
-      expect_(")");
-      return truthy(cond) ? a : b;
-    }
-    if (eat("multiIf(")) {
-      const arms: Value[] = [];
-      for (;;) {
-        arms.push(orExpr());
-        if (eat(")")) break;
-        expect_(",");
+    if (eat("CASE ")) {
+      let result: Value | undefined;
+      while (eat("WHEN ")) {
+        const cond = orExpr();
+        expect_("THEN ");
+        const value = orExpr();
+        if (result === undefined && truthy(cond)) result = value;
       }
-      // (cond, value) pairs followed by one default.
-      for (let k = 0; k + 1 < arms.length; k += 2) {
-        if (truthy(arms[k]!)) return arms[k + 1]!;
-      }
-      return arms[arms.length - 1]!;
+      expect_("ELSE ");
+      const fallback = orExpr();
+      expect_("END");
+      return result ?? fallback;
     }
-    if (eat("mapContains(")) {
+    if (eat("jsonb_exists(")) {
       const column = columnRef();
-      if (column !== "tags") throw new Error(`mapContains on "${column}" in: ${s}`);
+      if (column !== "tags") throw new Error(`jsonb_exists on "${column}" in: ${s}`);
       expect_(",");
       const key = stringLiteral();
       expect_(")");
       return Object.prototype.hasOwnProperty.call(r.tags, key);
     }
+    if (eat("coalesce(")) {
+      const column = columnRef();
+      if (column !== "tags") throw new Error(`coalesce on "${column}" in: ${s}`);
+      expect_("->>");
+      const key = stringLiteral();
+      expect_(",");
+      const fallback = stringLiteral();
+      expect_(")");
+      return r.tags[key] ?? fallback;
+    }
+    if (eat("true")) return true;
+    if (eat("false")) return false;
     ws();
     if (s[i] === "'") return stringLiteral();
     const numberMatch = /^-?\d+(\.\d+)?/.exec(s.slice(i));
     if (numberMatch) {
       i += numberMatch[0].length;
+      cast();
       return Number(numberMatch[0]);
     }
     const column = columnRef();
     if (column !== null) {
-      if (eat("[")) {
-        if (column !== "tags") throw new Error(`indexed "${column}" in: ${s}`);
-        const key = stringLiteral();
-        expect_("]");
-        return r.tags[key] ?? "";
-      }
       if (!(column in r)) throw new Error(`unknown column "${column}" in: ${s}`);
       return (r as unknown as Record<string, Value>)[column]!;
     }
@@ -233,9 +238,9 @@ function evaluate(expr: string, r: Row): Value {
   return value;
 }
 
-/** The expression a `select` column is aliased from, e.g. ``as `amount` ``. */
+/** The expression a `select` column is aliased from, e.g. `as "amount"`. */
 function selectExpr(sql: string, alias: string): string {
-  const at = sql.indexOf(` as \`${alias}\``);
+  const at = sql.indexOf(` as "${alias}"`);
   if (at < 0) throw new Error(`no column aliased ${alias} in:\n${sql}`);
   let depth = 0;
   let start = 0;
@@ -299,7 +304,7 @@ const baseQuery = {
 };
 
 beforeEach(() => {
-  ch.reset();
+  pg.reset();
   seq = 0;
 });
 
@@ -316,7 +321,7 @@ describe("rules compile into the query, not around it", () => {
     await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
 
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.match(/from `cost_daily`/g)).toHaveLength(1);
+    expect(captured[0]!.match(/from "cost_daily"/g)).toHaveLength(1);
   });
 
   it("keeps the showback report to one scan with rules layered on", async () => {
@@ -329,7 +334,7 @@ describe("rules compile into the query, not around it", () => {
       compileBillingRules([markup(15), move("cost_centre", "cc-shared", { service: "AmazonEKS" })]),
     );
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.match(/from `cost_daily`/g)).toHaveLength(1);
+    expect(captured[0]!.match(/from "cost_daily"/g)).toHaveLength(1);
   });
 
   it("emits the statement it always did when no rules are passed", async () => {
@@ -340,8 +345,8 @@ describe("rules compile into the query, not around it", () => {
     // returns nothing: `undefined` fails at the first arithmetic, a zero renders
     // as a number somebody bills against.
     expect(withoutRules).not.toContain("raw_amount");
-    expect(unsum(selectExpr(withoutRules, "amount"))).toBe("`cost_daily`.`amount`");
-    expect(selectExpr(withoutRules, "grp")).toBe("`account_id`");
+    expect(unsum(selectExpr(withoutRules, "amount"))).toBe(`"cost_daily"."amount"`);
+    expect(selectExpr(withoutRules, "grp")).toBe(`"account_id"`);
   });
 });
 
@@ -355,7 +360,7 @@ describe("collected spend is never touched", () => {
     });
     const sql = captured[0]!;
     // Not "contains amount": *is* the column, with nothing applied to it.
-    expect(unsum(selectExpr(sql, "raw_amount"))).toBe("`cost_daily`.`amount`");
+    expect(unsum(selectExpr(sql, "raw_amount"))).toBe(`"cost_daily"."amount"`);
     expect(captured).toHaveLength(1);
   });
 
@@ -389,7 +394,7 @@ describe("collected spend is never touched", () => {
 
 describe("percentage rules compose", () => {
   async function factorFor(rules: BillingRule[], r: Row): Promise<number> {
-    ch.reset();
+    pg.reset();
     await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
     const sql = captured[0]!;
     return Number(evaluate(unsum(selectExpr(sql, "amount")), r)) / r.amount;
@@ -450,8 +455,8 @@ describe("percentage rules compose", () => {
 
 describe("reallocation moves money without creating or destroying it", () => {
   it("does not appear in the money expression at all", async () => {
-    // The structural half of the invariant: reallocation targets are bound as
-    // `br*t` parameters, and the summed expression must not reference one.
+    // The structural half of the invariant: reallocation targets only ever
+    // appear in the group expression, never in the summed one.
     await queryCosts("org", {
       ...baseQuery,
       adjustments: compileBillingRules([
@@ -460,8 +465,8 @@ describe("reallocation moves money without creating or destroying it", () => {
       ]),
     });
     const sql = captured[0]!;
-    expect(unsum(selectExpr(sql, "amount"))).toBe("`cost_daily`.`amount`");
-    expect(selectExpr(sql, "grp")).toContain("multiIf");
+    expect(unsum(selectExpr(sql, "amount"))).toBe(`"cost_daily"."amount"`);
+    expect(selectExpr(sql, "grp")).toContain("CASE WHEN");
   });
 
   /**
@@ -511,7 +516,7 @@ describe("reallocation moves money without creating or destroying it", () => {
         );
       }
 
-      ch.reset();
+      pg.reset();
       await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
       const sql = captured[0]!;
       const grpExpr = selectExpr(sql, "grp");
@@ -557,7 +562,7 @@ describe("reallocation moves money without creating or destroying it", () => {
     const r = row({ service: "AmazonEKS", account_id: "acct-a" });
     expect(evaluate(selectExpr(q, "grp"), r)).toBe("acct-a");
 
-    ch.reset();
+    pg.reset();
     await getShowbackSpend(
       "org",
       [{ costCentreId: "cc-original", match: {} }],

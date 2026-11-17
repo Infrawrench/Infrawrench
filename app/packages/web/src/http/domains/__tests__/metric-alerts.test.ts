@@ -144,7 +144,7 @@ describe("metric alert routes", () => {
     expect(mockListEvents).toHaveBeenCalledWith("org-1", { ruleId: "r1", limit: 25 });
   });
 
-  it("feeds the metric key picker from the ClickHouse reader", async () => {
+  it("feeds the metric key picker from the metric reader", async () => {
     mockListMetricSeriesKeys.mockResolvedValue([{ label: "CPU %", unit: "%", resourceCount: 3 }]);
     const res = await buildApp().request("/metric-keys?pluginId=aws&resourceTypeId=ec2-instance");
     expect(res.status).toBe(200);

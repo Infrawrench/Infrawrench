@@ -14,7 +14,7 @@ const CUSTOM_PREFIX = "custom:";
  * what lets "delete this upload" find exactly the rows that upload wrote, and
  * (by changing `tags_hash`) keeps two uploads of one source from replacing
  * each other's rows on insert: overlap is an explicit append or replace, never
- * an accident of the ReplacingMergeTree key.
+ * an accident of the primary key.
  */
 export const CUSTOM_COST_UPLOAD_TAG = "infrawrench:upload";
 

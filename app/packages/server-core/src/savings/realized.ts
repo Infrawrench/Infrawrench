@@ -9,7 +9,7 @@
  * still filling in; a stored one would freeze that and need an invalidation
  * rule mirroring every collector's restatement horizon. Recomputing on read
  * makes "the figure improves as billing lands" a property of the design. The
- * cost is two or three ClickHouse range-scans per report, the shapes the cost
+ * cost is two or three `cost_daily` range-scans per report, the shapes the cost
  * graphs already run.
  *
  * Lives in `server-core` rather than `web` because the weekly digest runs in
@@ -46,7 +46,7 @@ import {
 } from "./math";
 import { getOrgSavingsSettings } from "./settings";
 
-/** Oldest billing day ever read: `cost_daily`'s TTL is three years. */
+/** Oldest billing day ever read: `cost_daily` keeps three years (`ANALYTICS_RETENTION`). */
 const MAX_LOOKBACK_DAYS = 3 * 366;
 
 /** A caller mistake the API maps to a 400. */

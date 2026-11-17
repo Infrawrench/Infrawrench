@@ -309,7 +309,7 @@ const ManagedAccountsHandlers = HttpApiBuilder.group(InvoicesApi, "managedAccoun
 const InvoicesHandlers = HttpApiBuilder.group(InvoicesApi, "invoices", (handlers) =>
   handlers
     // Summaries, not full invoices: a draft's figures are recomputed on read,
-    // and recomputing every draft would make opening the list one ClickHouse
+    // and recomputing every draft would make opening the list one `cost_daily`
     // scan per draft. A draft's `totals` is therefore null here.
     .handle("list", ({ query }) =>
       Effect.gen(function* () {

@@ -228,7 +228,7 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
 
   it("never throws when evaluation of one budget fails", async () => {
     arrange([budget()], []);
-    queryCosts.mockRejectedValue(new Error("clickhouse down"));
+    queryCosts.mockRejectedValue(new Error("database down"));
     await expect(budgetEval.evaluateBudgetsForOrg("org1", NOW)).resolves.toBeUndefined();
   });
 });

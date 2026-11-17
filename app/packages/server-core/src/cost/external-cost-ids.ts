@@ -2,7 +2,7 @@
  * Identifiers that mark a cost row as pushed over the HTTP API by a server
  * outside Infrawrench. Deliberately db-free (like `cost/workflow-cost-ids.ts`)
  * so read paths and tests can label these rows without pulling in the writer's
- * database and ClickHouse imports.
+ * database imports.
  *
  * See `cost/external-costs.ts` for what writes them and `cost/cost-ingest.ts`
  * for why the reserved tag matters.

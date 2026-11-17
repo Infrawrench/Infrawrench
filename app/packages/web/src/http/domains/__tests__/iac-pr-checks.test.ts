@@ -110,7 +110,7 @@ describe("iac", () => {
   });
 
   it("answers an unexpected failure with the route's 500 sentence", async () => {
-    runIacReconciliation.mockRejectedValueOnce(new Error("clickhouse down"));
+    runIacReconciliation.mockRejectedValueOnce(new Error("database down"));
     const res = await iac().request("/reconciliation?stateId=s1");
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "IaC reconciliation failed" });

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * `runCostQuery`'s display options: the measure (cost / usage / count), the
  * quarterly and hourly bins, and the cumulative toggle. Everything stateful is
- * mocked; what is asserted is what reaches the ClickHouse readers and the
+ * mocked; what is asserted is what reaches the cost readers and the
  * shape that comes back.
  */
 

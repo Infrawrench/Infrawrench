@@ -17,12 +17,12 @@ import {
 import { and, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { costDaily } from "./schema";
 
-/** The dimensions that are a column (or a map lookup) on `cost_daily` itself. */
+/** The dimensions that are a column (or a tag lookup) on `cost_daily` itself. */
 export type PhysicalCostDimension = Exclude<CostDimensionId, "virtual_tag">;
 
 /**
  * Column expression for a physical dimension. Tag dimensions read from the
- * Map column; everything else is a plain column. `virtual_tag` is not here on
+ * `tags` map; everything else is a plain column. `virtual_tag` is not here on
  * purpose: it is not a column, and compiling one needs the org's definitions
  * (see `VirtualTagScope` in `virtual-tag-sql.ts`).
  */
@@ -47,47 +47,89 @@ export function physicalDimensionExpr(
       return sql`${costDaily.commitment_id}`;
     case "tag": {
       if (!tagKey) throw new Error("tagKey is required for the tag dimension");
-      return sql`${costDaily.tags}[${tagKey}]`;
+      return tagValueExpr(tagKey);
     }
   }
 }
 
 /**
+ * One tag's value on a row, `''` when the row does not carry the key.
+ *
+ * `->>` on a missing key is SQL `NULL`, and every reader groups, compares and
+ * concatenates tag values on the understanding that an absent tag is the empty
+ * string: `NULL` would drop out of `IN`, `!=` and `||` instead of reading as
+ * "untagged". The key is cast because `->>` is also defined for an integer
+ * (array index) operand, so an untyped parameter would be ambiguous.
+ */
+export function tagValueExpr(tagKey: string): SQL {
+  return sql`coalesce(${costDaily.tags} ->> ${tagKey}::text, '')`;
+}
+
+/** Whether a row carries the tag key at all, whatever its value. */
+export function hasTagExpr(tagKey: string): SQL {
+  return sql`jsonb_exists(${costDaily.tags}, ${tagKey}::text)`;
+}
+
+/**
+ * First match wins: `CASE WHEN c1 THEN v1 WHEN c2 THEN v2 … ELSE fallback END`
+ * over ordered (condition, value) pairs, or just `fallback` with none. The
+ * shape of every rule list compiled here: allocation, reallocation, virtual
+ * tags.
+ */
+export function firstMatch(branches: Array<{ when: SQL; then: SQL }>, fallback: SQL): SQL {
+  if (branches.length === 0) return fallback;
+  const arms = branches.map((b) => sql`WHEN ${b.when} THEN ${b.then}`);
+  return sql`(CASE ${sql.join(arms, sql` `)} ELSE ${fallback} END)`;
+}
+
+/**
+ * A string literal bound as `text`. Postgres cannot infer a parameter's type
+ * from a `CASE` branch on its own, from `||`, or from a bare projection, so
+ * every literal value that reaches one of those positions says what it is.
+ */
+export function textParam(value: string): SQL {
+  return sql`${value}::text`;
+}
+
+/**
  * The `[from, to]` day-range predicate every `cost_daily` reader filters on.
  *
- * Shared so no reader can get the comparison wrong. `day` is a `Date` column and
- * the bounds are `"YYYY-MM-DD"` strings, which the column's own mapping renders
- * as `toDate('…')`: comparing a `String` against a `Date` is a hard error in
- * ClickHouse rather than a coercion, and this is what keeps it from happening.
- *
- * The builder also qualifies the column as `cost_daily`.`day`, which matters
- * more than it looks: ClickHouse resolves SELECT aliases inside `WHERE`, unlike
- * standard SQL, and several readers below project `toString(day) AS day`. An
- * unqualified `day` in the predicate would bind to *that alias* and the query
- * would die with "There is no supertype for types String, Date". A qualified
- * identifier cannot bind to a projection alias.
+ * Shared so no reader can get the comparison wrong: the bounds are
+ * `"YYYY-MM-DD"` strings bound against the `date` column, so the comparison is
+ * by calendar day, inclusive at both ends.
  */
 export function dayRange(from: string, to: string): SQL {
   return and(gte(costDaily.day, from), lte(costDaily.day, to))!;
 }
 
+const ASCII_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ASCII_LOWER = "abcdefghijklmnopqrstuvwxyz";
+
 /**
- * The ASCII case fold every text operator applies, in SQL: ClickHouse's
- * `lower()` folds `A-Z` only, which is exactly what `foldCostFilterCase` in
- * client-core does on the JS side.
+ * The ASCII case fold every text operator applies, in SQL: `A-Z` only, which
+ * is exactly what `foldCostFilterCase` in client-core does on the JS side.
+ * Postgres' `lower()` would also fold non-ASCII letters by the collation's
+ * rules, so a needle the JS side left alone could stop matching the column.
  */
-function folded(expr: SQL): SQL {
-  return sql`lower(${expr})`;
+export function asciiLower(expr: SQL): SQL {
+  return sql`translate(${expr}, ${sql.raw(`'${ASCII_UPPER}'`)}, ${sql.raw(`'${ASCII_LOWER}'`)})`;
+}
+
+/** The `upper` twin of {@link asciiLower}: `a-z` only. */
+export function asciiUpper(expr: SQL): SQL {
+  return sql`translate(${expr}, ${sql.raw(`'${ASCII_LOWER}'`)}, ${sql.raw(`'${ASCII_UPPER}'`)})`;
 }
 
 /**
- * The flexible-match form of a column: ASCII case folded, then `[[:space:]_-]`
- * removed; the SQL twin of client-core's `normalizeCostFilterValue`. The
- * pattern is a constant (never user input), so it is rendered raw; the values
- * it is compared with are normalised in JS and bound as escaped literals.
+ * The flexible-match form of a column: ASCII case folded, then ASCII
+ * whitespace, `_` and `-` removed; the SQL twin of client-core's
+ * `normalizeCostFilterValue`, character class for character class (a
+ * `[[:space:]]` class would follow the locale and take non-ASCII spaces too).
+ * The pattern is a constant (never user input), so it is rendered raw; the
+ * values it is compared with are normalised in JS and bound as parameters.
  */
 export function flexibleMatchExpr(expr: SQL): SQL {
-  return sql`replaceRegexpAll(${folded(expr)}, ${sql.raw("'[[:space:]_-]'")}, '')`;
+  return sql`regexp_replace(${asciiLower(expr)}, ${sql.raw("'[\\t\\n\\v\\f\\r _-]'")}, '', 'g')`;
 }
 
 /** De-duplicated, in first-seen order, so a repeated value is one predicate. */
@@ -105,38 +147,38 @@ function distinct(values: readonly string[]): string[] {
  *   lost its last value behaving the way it did before, instead of throwing on
  *   read.
  * - `flexible_match`: the normalised column `IN` the normalised values.
- * - `contains` / `not_contains` / `starts_with`: `position` / `startsWith` over
+ * - `contains` / `not_contains` / `starts_with`: `strpos` / `starts_with` over
  *   the folded column against folded values, OR-ed across values (and negated
  *   as a whole for `not_contains`). An empty value list matches nothing
  *   (`not_contains`: everything), the convention `in` already follows.
- * - `is_set` / `is_not_set`: `expr != ''` / `expr = ''`. A missing map key
- *   reads as `''` in ClickHouse, so "absent" and "empty" are one state, as
+ * - `is_set` / `is_not_set`: `expr != ''` / `expr = ''`. A missing tag reads
+ *   as `''` ({@link tagValueExpr}), so "absent" and "empty" are one state, as
  *   they are everywhere else a tag is read.
  *
- * Values only ever reach SQL as escaped literals through Drizzle's binding;
- * the one raw fragment is the constant normalisation pattern above.
+ * Values only ever reach SQL as bound parameters; the raw fragments are the
+ * constant fold and normalisation patterns above.
  */
 export function membershipCondition(expr: SQL, op: CostFilterOp, values: string[]): SQL {
   switch (op) {
     case "in":
     case "not_in":
-      if (values.length === 0) return op === "in" ? sql`0` : sql`1`;
+      if (values.length === 0) return op === "in" ? sql`false` : sql`true`;
       return op === "in" ? inArray(expr, values) : notInArray(expr, values);
     case "flexible_match": {
       const targets = distinct(values.map(normalizeCostFilterValue));
-      if (targets.length === 0) return sql`0`;
+      if (targets.length === 0) return sql`false`;
       return inArray(flexibleMatchExpr(expr), targets);
     }
     case "contains":
     case "not_contains":
     case "starts_with": {
       const needles = distinct(values.map(foldCostFilterCase));
-      if (needles.length === 0) return op === "not_contains" ? sql`1` : sql`0`;
-      const column = folded(expr);
+      if (needles.length === 0) return op === "not_contains" ? sql`true` : sql`false`;
+      const column = asciiLower(expr);
       const hits = needles.map((needle) =>
         op === "starts_with"
-          ? sql`startsWith(${column}, ${needle})`
-          : sql`position(${column}, ${needle}) > 0`,
+          ? sql`starts_with(${column}, ${textParam(needle)})`
+          : sql`strpos(${column}, ${textParam(needle)}) > 0`,
       );
       const any = hits.length === 1 ? hits[0]! : sql`(${sql.join(hits, sql` OR `)})`;
       return op === "not_contains" ? sql`NOT (${any})` : any;

@@ -91,7 +91,7 @@ export const EMPTY_FEEDBACK_CONTEXT: AnomalyFeedbackContext = {
 };
 
 /**
- * Most scope reads one pass will issue. Each is one grouped ClickHouse read
+ * Most scope reads one pass will issue. Each is one grouped `cost_daily` read
  * over at most `EVALUATION_DAYS` days; past this the rest are skipped for the
  * pass (and logged), which fails towards alerting.
  */

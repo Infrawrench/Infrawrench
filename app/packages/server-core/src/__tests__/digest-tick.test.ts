@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * How much work one digest tick is allowed to take on.
  *
  * The digest runs inside the poller's 15s tick, behind account polling and in
- * front of cost collection and retention. One org costs two ClickHouse queries,
+ * front of cost collection and retention. One org costs two cost queries,
  * an optional Anthropic call bounded at 30s, and a fan-out to Slack, Teams and
  * one request per email address, so the interesting case is the one every
  * deployment hits: every org on the default Monday 07:00 UTC schedule comes due

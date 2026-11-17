@@ -1210,7 +1210,7 @@ export interface MetricsRequest {
 
 /**
  * `POST /:pluginId/:typeId/metrics`: a resource's metric series. History
- * comes from ClickHouse (written by the poller); only resources pinned on
+ * comes from the metric tables (written by the poller); only resources pinned on
  * some dashboard accumulate points. With no history, the series are fetched
  * live from the provider via the plugin's `fetchMetricSeries`, so an unpinned
  * resource still charts whatever the provider can serve on demand.

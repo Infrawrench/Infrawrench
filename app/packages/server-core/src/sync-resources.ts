@@ -560,7 +560,7 @@ export async function syncAccountResources(
 
 /**
  * Fetch dashboard stats + metric series for resources in this account that are pinned
- * on some dashboard, and stream them into ClickHouse. For __account__ pins, write
+ * on some dashboard, and store them. For __account__ pins, write
  * aggregate resource counts. Per-resource failures are swallowed so one plugin
  * error can't poison the cycle.
  */

@@ -21,7 +21,7 @@ import { orgScorecardSettings } from "../db/schema";
 import { evaluateOrgScorecards } from "./eval";
 import { pruneScorecardHistory } from "./store";
 
-/** Must exceed one org's evaluation (a posture scan, an orphan scan, ClickHouse reads). */
+/** Must exceed one org's evaluation (a posture scan, an orphan scan, cost reads). */
 export const SCORECARD_LEASE_MS = 15 * 60 * 1000;
 
 /** Scores move with inventory and findings, which change on the sync cadence. */

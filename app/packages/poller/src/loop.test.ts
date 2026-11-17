@@ -57,7 +57,7 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   accounts: { id: "id", organizationId: "organizationId" },
 }));
 
-// Partial: the ClickHouse schema is built with `sql` at module load, so a
+// Partial: the analytics schema is built with `sql` at module load, so a
 // wholesale mock of drizzle-orm takes the whole import graph down with it.
 vi.mock("drizzle-orm", async (importOriginal) => ({
   ...(await importOriginal<typeof import("drizzle-orm")>()),
@@ -89,6 +89,19 @@ vi.mock("@infrawrench/server-core/ssh-recording/retention", () => ({
   settleAbandonedRecordings: (...a: unknown[]) => settleAbandonedRecordings(...a),
 }));
 
+// The trial reaper's destroy path lists the analytics tables at module scope,
+// which the schema mock above does not carry; this suite never reaps a trial.
+vi.mock("@infrawrench/server-core/trials/pass", () => ({
+  runTrialExpiryPass: () => Promise.resolve({ due: 0, destroyed: 0, failed: 0 }),
+}));
+
+// The analytics prune issues DELETEs this suite has no database for.
+const pruneAnalytics = vi.fn();
+vi.mock("@infrawrench/server-core/analytics/retention", () => ({
+  pruneAnalytics: (...a: unknown[]) => pruneAnalytics(...a),
+  ANALYTICS_RETENTION_INTERVAL_MS: 60 * 60 * 1000,
+}));
+
 const pruneCreditSnapshots = vi.fn();
 vi.mock("@infrawrench/server-core/credits/feed", () => ({
   pruneCreditSnapshots: (...a: unknown[]) => pruneCreditSnapshots(...a),
@@ -106,14 +119,14 @@ vi.mock("@infrawrench/server-core/vulnerabilities/kev", () => ({
   runKevFeedPass: () => Promise.resolve(),
 }));
 
-// Mocked like the workflow runner: the real pass pulls in the ClickHouse
+// Mocked like the workflow runner: the real pass pulls in the analytics
 // reader chain, which this suite has no business importing.
 const runMetricAlertPass = vi.fn();
 vi.mock("@infrawrench/server-core/metric-alerts/pass", () => ({
   runMetricAlertPass: (...a: unknown[]) => runMetricAlertPass(...a),
 }));
 
-// The SLO pass reads ClickHouse too; mocked for the metric-alert reason.
+// The SLO pass reads the metric rollups too; mocked for the metric-alert reason.
 const runSloPass = vi.fn();
 vi.mock("@infrawrench/server-core/slos/pass", () => ({
   runSloPass: (...a: unknown[]) => runSloPass(...a),
@@ -459,7 +472,7 @@ describe("PollerLoop SLOs", () => {
 
   it("swallows a failing SLO pass so account polling still runs", async () => {
     claimDueAccounts.mockResolvedValue([row("a")]);
-    runSloPass.mockRejectedValueOnce(new Error("clickhouse down"));
+    runSloPass.mockRejectedValueOnce(new Error("database down"));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const loop = new PollerLoop();
     loop.start();
@@ -508,7 +521,7 @@ describe("PollerLoop metric alerts", () => {
 
   it("swallows a failing metric alert pass so account polling still runs", async () => {
     claimDueAccounts.mockResolvedValue([row("a")]);
-    runMetricAlertPass.mockRejectedValueOnce(new Error("clickhouse down"));
+    runMetricAlertPass.mockRejectedValueOnce(new Error("database down"));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const loop = new PollerLoop();
     loop.start();

@@ -12,8 +12,8 @@
  * it inherits that module's guarantees:
  *
  * - **Re-reporting a day restates it, never accumulates.** For cost rows that
- *   falls out of the ReplacingMergeTree key; here it is a `(metric_id, day)`
- *   unique index and an `ON CONFLICT DO UPDATE`. Either way a nightly job is
+ *   is an upsert on the `cost_daily` primary key; here it is one on the
+ *   `(metric_id, day)` unique index. Either way a nightly job is
  *   safe to retry, which is the only property that makes unattended ingest
  *   usable at all: an accumulating write doubles every number the first time
  *   the job re-runs, and nothing about the resulting chart looks wrong.
@@ -318,10 +318,10 @@ export interface StoredMetricValue {
  * A metric's values across an inclusive day range, in day order.
  *
  * This is the denominator side of every unit-cost query. It is deliberately a
- * plain range read rather than a join against spend: the numerator lives in
- * ClickHouse and the two are combined once, at the bucket level, in application
- * code; see the `business_metric_values` table comment for why that is the
- * right shape and a per-point cross-store join is not.
+ * plain range read rather than a join against spend: the numerator is summed
+ * from `cost_daily` on its own and the two are combined once, at the bucket
+ * level, in application code; see the `business_metric_values` table comment
+ * for why that is the right shape and a per-point join is not.
  */
 export async function getMetricValues(
   metricId: string,

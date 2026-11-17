@@ -49,7 +49,7 @@
  * Mobile does not depend on `@infrawrench/ui`, and the compiler that turns
  * these rules into SQL lives in `server-core`. One definition in `client-core`
  * is what stops the wire shape, the zod schema (`ui/src/cost/config.ts`) and
- * the ClickHouse compiler from drifting into three different vocabularies.
+ * the SQL compiler from drifting into three different vocabularies.
  */
 import type { CostChargeType } from "./costs.js";
 import { pricingExpressionError } from "./pricing-expression.js";
@@ -568,8 +568,8 @@ export interface CompiledBillingFixed {
  * bucket.
  *
  * The split is the ordering model made concrete: `factors` all apply (a
- * product), `reallocations` are first-match-wins (a `multiIf`), and `fixed`
- * never touches a row at all. `server-core/clickhouse/cost-readers.ts` turns
+ * product), `reallocations` are first-match-wins (a nested `CASE`), and `fixed`
+ * never touches a row at all. `server-core/analytics/cost-readers.ts` turns
  * the first two into one expression each, inside the query that was going to
  * run anyway.
  */

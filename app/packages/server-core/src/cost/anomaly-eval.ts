@@ -5,7 +5,7 @@
  * collection cadence gives a daily detection cadence for free.
  *
  * The maths live in `anomaly-detect.ts` (pure, unit-tested); this module reads
- * the series from ClickHouse, persists what was flagged, and fans out through
+ * the series from `cost_daily`, persists what was flagged, and fans out through
  * the existing notification transports under the `anomalyAlerts` trigger. The
  * thresholds it judges against are per-org (`anomaly-settings.ts`), read once
  * per pass: the detector itself stays pure and takes them as arguments.
@@ -111,7 +111,7 @@ const EVALUATION_DAYS = 3;
  * Least time between full evaluations of one org.
  *
  * Detection is invoked per account, so an org with N cost accounts would
- * otherwise issue 2N grouped 29-day ClickHouse reads a day for an answer that
+ * otherwise issue 2N grouped 29-day `cost_daily` reads a day for an answer that
  * only moves when a day's data changes. Correctness never rests on this gate
  * (the unique index does that) so an in-process map is enough: the cost of a
  * poller restart, or of a second replica, is an extra pass, not a double
@@ -124,7 +124,7 @@ const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
  *
  * A row stays a candidate on every pass until something delivers it (a
  * cooldown keeps it undelivered for days), and the breakdown is one grouped
- * ClickHouse read; recomputing it hourly for an answer that only moves when
+ * `cost_daily` read; recomputing it hourly for an answer that only moves when
  * the day is restated would be waste. Six hours still picks up a restatement
  * the same day it lands.
  */
@@ -192,7 +192,7 @@ interface Finding {
  * 28-day history for every provider and every service at once.
  *
  * Read once per pass, from the existing per-account coverage aggregate. It
- * costs one extra ClickHouse read per org per pass (an hour apart at worst),
+ * costs one extra `cost_daily` read per org per pass (an hour apart at worst),
  * which is the price of the fact being exact. Deriving it instead from the
  * window `detectForDimension` already fetches would be free but wrong in one
  * direction that matters: that window only reaches back
@@ -246,7 +246,7 @@ function judgeDay(
  * Detect anomalies in one dimension's series across `days`, upsert them, and
  * return those still awaiting notification.
  *
- * One ClickHouse read covers every day in the window: the series needed to
+ * One `cost_daily` read covers every day in the window: the series needed to
  * judge the oldest day is a prefix of the series needed to judge the newest,
  * so widening the read by `EVALUATION_DAYS` costs nothing extra per pass.
  *
@@ -491,7 +491,7 @@ export async function detectCostAnomaliesForOrg(
         // Contributors come first, because the hints lead with what they say:
         // the anomalous day's rise decomposed by resource, account, region,
         // usage unit, charge type and tag (`anomaly-contributors.ts`), one
-        // grouped ClickHouse read, stored on the row. A breakdown computed
+        // grouped `cost_daily` read, stored on the row. A breakdown computed
         // within `CONTRIBUTOR_REFRESH_MS` is reused. Like hints, a failure only
         // costs the alert its breakdown.
         let contributors: CostAnomalyContributor[] = anomaly.contributors ?? [];

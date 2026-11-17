@@ -3,7 +3,7 @@
 //
 // This is the CLI's reason to exist on a server rather than a laptop: a cron,
 // a deploy script, or a health check can reach the org's on-call fan-out and
-// its cost history without embedding Twilio, Slack, Expo, or a ClickHouse
+// its cost history without embedding Twilio, Slack, Expo, or a database
 // client. Both commands are thin wrappers over `POST /pages` and
 // `POST /costs/rows`; the server owns every rule, including the paging cooldown
 // that makes it safe to call `page` on every tick of a monitor.

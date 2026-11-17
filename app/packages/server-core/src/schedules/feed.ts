@@ -7,7 +7,7 @@
  *
  * Cost annotation follows the orphan finder exactly: best-effort, matched in
  * memory against `resources.external_id`, mixed-currency matches dropped, and
- * a ClickHouse failure yields `null`; a missing bill quotes nothing, never
+ * a failed cost read yields `null`; a missing bill quotes nothing, never
  * $0.00.
  */
 import { and, eq, inArray } from "drizzle-orm";
@@ -42,14 +42,14 @@ interface CostTotalEntry {
 
 /**
  * Trailing-window spend per `${accountId} ${externalId}` key. Returns null
- * when ClickHouse is unreachable/unconfigured: schedules still work without
+ * when the cost read fails: schedules still work without
  * billing data.
  */
 async function loadCostTotals(organizationId: string): Promise<Map<string, CostTotalEntry> | null> {
   const to = isoDay(new Date());
   const from = addDays(to, -(SCHEDULE_COST_WINDOW_DAYS - 1));
-  // Only the ClickHouse read is allowed to fail; a bug in the merge below must
-  // throw, not read as "ClickHouse down".
+  // Only the cost read is allowed to fail; a bug in the merge below must
+  // throw, not read as "no billing data".
   let totals: Awaited<ReturnType<typeof getResourceCostTotals>>;
   try {
     totals = await getResourceCostTotals(organizationId, from, to);

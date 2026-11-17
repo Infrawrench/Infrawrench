@@ -162,14 +162,14 @@ describe("a failed access review is not a quiet scan", () => {
   // the window was marked spent; suppressing the retry and every access
   // finding for a day, with a broken feed indistinguishable from a clean org.
   it("rolls the claim back instead of spending the window", async () => {
-    listAccessReview.mockRejectedValue(new Error("clickhouse is down"));
+    listAccessReview.mockRejectedValue(new Error("the database is down"));
     const spy = hushErrors();
 
     const result = await runPostureAlerts({ limit: 4 }, NOW);
 
     expect(result.outcomes[ORG]).toEqual({
       status: "scan-failed",
-      error: "clickhouse is down",
+      error: "the database is down",
     });
     expect(result.sent).toBe(0);
     // The claim was taken, so the org counts as scanned…

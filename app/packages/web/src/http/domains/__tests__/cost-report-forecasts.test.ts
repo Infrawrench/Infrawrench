@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// The services are mocked rather than exercised: they reach the Drizzle client
-// and ClickHouse. These tests own the transport contract of the forecast
+// The services are mocked rather than exercised: they reach the Drizzle
+// client. These tests own the transport contract of the forecast
 // routes on the report router: permissions, validation, status codes, audit.
 vi.mock("../../../services/cost-reports", () => ({
   listCostReports: vi.fn(),

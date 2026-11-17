@@ -1,7 +1,7 @@
 /**
  * The pure halves of a cost report's forecasts: the trend baseline with its
  * band, and the driver-metric baseline ("projected unit cost times forecast
- * volume"). No database, no ClickHouse: the web service fetches the observed
+ * volume"). No database: the web service fetches the observed
  * spend, the metric's actuals and its forecasted values, then hands them here,
  * and applies scenario models on top of whichever baseline this returns.
  *

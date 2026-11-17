@@ -338,7 +338,7 @@ describe("evaluateCommitmentAlertsForOrg — the org's settings", () => {
   });
 
   it("swallows a failed pass rather than breaking the poller", async () => {
-    getCommitmentDeliveredTotals.mockRejectedValue(new Error("clickhouse down"));
+    getCommitmentDeliveredTotals.mockRejectedValue(new Error("cost store down"));
     prime();
     await expect(evaluate("org1", NOW, true)).resolves.toBeUndefined();
     expect(routeAlert).not.toHaveBeenCalled();

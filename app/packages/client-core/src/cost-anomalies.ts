@@ -104,7 +104,7 @@ export interface CostAnomaly {
    *
    * Computed when the anomaly is detected (and on first read for findings
    * older than the feature), then stored, so every surface shows the same
-   * answer. Empty when the breakdown found nothing (ClickHouse unavailable,
+   * answer. Empty when the breakdown found nothing (the cost read failed,
    * or the spend has since been restated away). Contributors outside the
    * viewer's cost visibility scope are folded into one `other` row per facet.
    * Optional on the wire, like `hints`.

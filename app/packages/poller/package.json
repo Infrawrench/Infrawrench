@@ -14,7 +14,6 @@
     "edge:deploy": "wrangler deploy -c edge/wrangler.jsonc"
   },
   "dependencies": {
-    "@clickhouse/client-web": "^1.23.1",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",

@@ -42,7 +42,7 @@ describe("bucketCostAnnotations", () => {
   });
 
   it("puts a Sunday in the week that started six days earlier", () => {
-    // Monday-start weeks (toStartOfWeek(day, 1)): 2026-07-19 is a Sunday and
+    // Monday-start weeks (date_trunc('week'), the ISO week): 2026-07-19 is a Sunday and
     // belongs to the 2026-07-13 bar, never to the one starting tomorrow.
     const weeks = ["2026-07-06", "2026-07-13", "2026-07-20"];
     expect(

@@ -4,8 +4,8 @@
 #
 # Idempotent, source-derived setup only: refresh workspace dependencies and
 # generated state. No services are started and no migrations run here (that is
-# start.sh's job); the system packages (Postgres, ClickHouse, the WorkOS
-# emulator) come from the environment's base snapshot.
+# start.sh's job); the system packages (Postgres, the WorkOS emulator) come
+# from the environment's base snapshot.
 #
 # Runs from the repo root after checkout, before start.sh.
 set -euo pipefail
@@ -35,11 +35,6 @@ if [ ! -f app/packages/web/.env ]; then
 # Dev-only fixed keys mirroring docker-compose.dev.yml. NEVER reuse elsewhere.
 DATABASE_URL=postgres://infrawrench:infrawrench@localhost:5432/infrawrench
 ENCRYPTION_MASTER_KEY=uRW8wQXfjwBUcLFwQnmNnO3VvY4x/Nd8E2VVQF9nnvo=
-
-CLICKHOUSE_METRICS_URL=http://localhost:8123
-CLICKHOUSE_METRICS_USER=default
-CLICKHOUSE_METRICS_PASSWORD=infrawrench
-CLICKHOUSE_METRICS_DATABASE=infrawrench
 
 APP_URL=http://localhost:3000
 INFRAWRENCH_PLATFORM_ADMIN_EMAILS=dev@infrawrench.local

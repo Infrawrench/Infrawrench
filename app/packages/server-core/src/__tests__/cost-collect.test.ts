@@ -57,13 +57,13 @@ describe("hashTags", () => {
     expect(a).not.toBe(c);
   });
 
-  it("stays within UInt64 range", () => {
+  it("stays within the unsigned 64-bit range", () => {
     const h = BigInt(hashTags({ k: "v".repeat(1000) }));
     expect(h >= 0n && h < 2n ** 64n).toBe(true);
   });
 
   /**
-   * charge_type and commitment_id are not in cost_daily's (frozen) ORDER BY, so
+   * charge_type and commitment_id are not in cost_daily's (frozen) primary key, so
    * they ride in tags_hash instead. These are the cases that keeps honest.
    */
   describe("charge type and commitment folding", () => {
@@ -166,10 +166,10 @@ describe("toCostDailyRows", () => {
   });
 
   it("keeps same-day usage, credit and tax as three distinct rows", () => {
-    // The failure this guards: cost_daily is a ReplacingMergeTree keyed on
-    // tags_hash (charge_type is NOT in the sort key), so three rows identical
-    // in every key column would be treated as three versions of one row and
-    // FINAL would keep only the last ingested; the credit would eat the usage.
+    // The failure this guards: cost_daily's primary key includes tags_hash
+    // but not charge_type, so three rows identical in every key column would
+    // upsert into one row holding only the last ingested; the credit would eat
+    // the usage.
     const rows = toCostDailyRows({ organizationId: "org1", accountId: "acc1", pluginId: "aws" }, [
       { date: "2026-07-01", service: "AmazonEC2", currency: "USD", amount: 100 },
       {

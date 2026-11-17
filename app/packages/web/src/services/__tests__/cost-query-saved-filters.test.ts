@@ -14,7 +14,7 @@ import type { CostFilter } from "@infrawrench/client-core";
  *    prevent.
  *
  * Everything stateful is mocked; what is asserted is the exact filter list
- * handed to the ClickHouse reader, which is the only place filters take
+ * handed to the cost reader, which is the only place filters take
  * effect.
  */
 

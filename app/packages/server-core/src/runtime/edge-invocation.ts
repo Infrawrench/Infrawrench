@@ -3,15 +3,13 @@
  * Worker's queue consumer and scheduler alarm) runs its work inside.
  *
  * It does what a Node process does once at boot, per invocation: marks the
- * runtime as edge, points ClickHouse at the private VPC binding, and opens a
- * database client against Hyperdrive. It also owns that client's lifetime,
+ * runtime as edge and opens a database client against Hyperdrive. It also owns that client's lifetime,
  * which is the subtle part: work handed to `keepAlive` (audit writes, drift
  * notifications) may still be running after `fn` returns, and closing the
  * client under it would fail those writes. So the close waits for every
  * kept-alive promise, including ones registered while it was waiting.
  */
 import { createDb } from "../db/client";
-import { configureClickHouseTransport } from "../analytics/client";
 import { markEdgeRuntime } from "./gateway-only";
 import { runInRequestScope } from "./request-scope";
 
@@ -19,13 +17,6 @@ import { runInRequestScope } from "./request-scope";
 export interface EdgeBindings {
   /** Hyperdrive in front of the primary Postgres. */
   HYPERDRIVE: { connectionString: string };
-  /**
-   * Workers VPC service reaching the in-cluster ClickHouse through Cloudflare
-   * Tunnel. Optional: without it ClickHouse is reached at
-   * `CLICKHOUSE_METRICS_URL` directly (local development, or a public
-   * ClickHouse).
-   */
-  CLICKHOUSE?: { fetch: typeof fetch };
 }
 
 /** The part of an `ExecutionContext` / `DurableObjectState` this needs. */
@@ -35,13 +26,9 @@ export interface WaitUntilContext {
 
 let initialised = false;
 
-function initEdgeRuntime(env: EdgeBindings): void {
+function initEdgeRuntime(): void {
   if (initialised) return;
   markEdgeRuntime();
-  const clickhouse = env.CLICKHOUSE;
-  if (clickhouse) {
-    configureClickHouseTransport((input, init) => clickhouse.fetch(input, init));
-  }
   initialised = true;
 }
 
@@ -60,7 +47,7 @@ export async function withEdgeInvocation<T>(
   fn: () => Promise<T>,
   options: EdgeInvocationOptions = {},
 ): Promise<T> {
-  initEdgeRuntime(env);
+  initEdgeRuntime();
   const { db, close } = createDb(env.HYPERDRIVE.connectionString, {
     max: options.maxConnections ?? 3,
     // Hyperdrive caches prepared statements; the type round-trip only matters

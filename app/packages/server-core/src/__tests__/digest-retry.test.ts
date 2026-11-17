@@ -227,7 +227,7 @@ vi.mock("../backups/feed", () => ({
 }));
 vi.mock("../analytics/cost-readers", () => ({
   queryCosts: async () => {
-    if (buildShouldThrow) throw new Error("ClickHouse unavailable");
+    if (buildShouldThrow) throw new Error("cost store unavailable");
     return [];
   },
 }));
@@ -605,7 +605,7 @@ describe("runWeeklyDigests state machine", () => {
     await runWeeklyDigests(DUE);
 
     expect(settingsRow).toMatchObject({ lastStatus: "failed", attemptCount: 1 });
-    expect(settingsRow?.lastError).toContain("ClickHouse unavailable");
+    expect(settingsRow?.lastError).toContain("cost store unavailable");
     expect(settingsRow?.nextAttemptAt).toBeInstanceOf(Date);
   });
 

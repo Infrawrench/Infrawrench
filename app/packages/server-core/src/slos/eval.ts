@@ -1,8 +1,8 @@
 /**
- * SLO evaluation: read the SLI's events from ClickHouse, compute the snapshot
- * with client-core's pure arithmetic (the same code the detail view draws
- * with), store it, and route alert transitions through the org's rules under
- * the `sloAlerts` trigger.
+ * SLO evaluation: read the SLI's events from the metric rollups, compute the
+ * snapshot with client-core's pure arithmetic (the same code the detail view
+ * draws with), store it, and route alert transitions through the org's rules
+ * under the `sloAlerts` trigger.
  *
  * Dedupe follows the house conventions:
  *
@@ -36,7 +36,6 @@ import {
 import { db } from "../db/client";
 import { slos } from "../db/schema";
 import { getMetricMinuteSeriesBatch } from "../analytics/readers";
-import { isClickHouseConfigured } from "../analytics/client";
 import { getSloHourlyBuckets, type SloMinuteJudgement } from "../analytics/slo-readers";
 import { probeMetricResourceId } from "../probes/metric-ids";
 import { alertReached, routeAlert } from "../alerts/route";
@@ -46,7 +45,7 @@ import { loadSloSourceLabels, type SloRecord } from "./store";
 /** Minute resolution is needed for the short windows; six hours covers the longest of them. */
 const MINUTE_LOOKBACK_MS = 6 * 60 * 60_000;
 
-/** Which ClickHouse identity and judgement an SLO reads. */
+/** Which metric identity and judgement an SLO reads. */
 export function sloMetricTarget(row: SloRecord): {
   resourceId: string;
   seriesLabel: string;
@@ -311,10 +310,6 @@ async function recordFailure(row: SloRecord, now: Date, message: string): Promis
 /** Evaluate one SLO. Never throws. */
 export async function evaluateSlo(row: SloRecord, now = new Date()): Promise<void> {
   try {
-    if (!isClickHouseConfigured()) {
-      await recordFailure(row, now, "The metric store is not configured on this deployment.");
-      return;
-    }
     const labels = await loadSloSourceLabels(row.organizationId, [row]);
     if (row.probeId && !labels.probes.has(row.probeId)) {
       await recordFailure(row, now, "The probe this SLO measures was deleted.");

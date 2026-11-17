@@ -7,7 +7,7 @@
  *
  * The judgements live next door in `expiry-detect.ts` and `idle-detect.ts`:
  * both pure and exhaustively tested. This module reads the inventory and the
- * ClickHouse aggregates, persists what fired, and notifies through the alert
+ * `cost_daily` aggregates, persists what fired, and notifies through the alert
  * routing layer under the `commitmentExpiryAlerts` and `commitmentIdleAlerts`
  * triggers. **Nothing here talks to a transport**: routing rules, quiet hours
  * and escalation apply exactly as they do to budgets and anomalies, which is
@@ -72,7 +72,7 @@ import { orgAppUrl } from "../app-url";
 /**
  * Least time between full evaluations of one org. Same shape and reasoning as
  * the anomaly and change-alert gates: evaluation is invoked once per collected
- * account, the ClickHouse reads are the expensive half, and correctness never
+ * account, the `cost_daily` scans are the expensive half, and correctness never
  * rests on this; the events tables' unique indexes do that.
  */
 const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
@@ -138,7 +138,7 @@ interface CommitmentRow {
  *
  * Returns null when the org has nothing to judge (no commitment-capable
  * plugin, no such account, or no collected holdings) so the caller can stop
- * before touching ClickHouse.
+ * before scanning `cost_daily`.
  */
 async function loadCommitmentContext(
   organizationId: string,

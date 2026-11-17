@@ -13,13 +13,14 @@
  * exchange rates *and the day they were read*, the billing rules that were in
  * force, and the names everything in scope had at that moment. Every later read
  * of an `approved`, `sent` or `void` invoice returns those bytes and never
- * touches ClickHouse. A provider revising a bill in March, an exchange rate
+ * touches `cost_daily`. A provider revising a bill in March, an exchange rate
  * being restated, a cost centre being renamed or moved to another customer:
  * none of them can change a number that has already been sent to a customer.
  *
  * The figures are computed *outside* the transaction that stores them: the
- * computation reads ClickHouse and a transaction held open across it would be
- * a lock held across a network, so approval is **optimistically concurrent**:
+ * computation is a set of `cost_daily` aggregations that take as long as they
+ * take, and a transaction held open across them would hold a row lock for all
+ * of that, so approval is **optimistically concurrent**:
  * every input that fed the computation is re-read under a row lock at the
  * moment of writing and compared, and any change refuses the approval rather
  * than freezing figures that belong to a different question. See
@@ -734,7 +735,7 @@ async function getInvoiceRow(organizationId: string, id: string): Promise<Invoic
  *
  * **A draft recomputes; everything else does not.** That single line is the
  * feature. A frozen invoice returns the bytes written at approval, and this
- * function does not so much as look at ClickHouse for it.
+ * function does not so much as look at `cost_daily` for it.
  */
 export async function getInvoice(
   organizationId: string,
@@ -1233,10 +1234,10 @@ async function nextInvoiceNumber(
  *
  * ## Why this is optimistically concurrent
  *
- * The figures come from ClickHouse, which takes as long as it takes, so they
- * are computed **before** the transaction that stores them: holding a Postgres
- * transaction open across an analytics query would put a row lock behind a
- * network call, and `computeInvoiceFigures` does not run on the transaction
+ * The figures come from `cost_daily` aggregations, which take as long as they
+ * take, so they are computed **before** the transaction that stores them:
+ * holding the transaction open across them would hold a row lock for that
+ * long, and `computeInvoiceFigures` does not run on the transaction
  * anyway. That leaves a window, and the window is the bug this guards:
  *
  * ```
@@ -1565,7 +1566,7 @@ export async function sendInvoice(
  *
  * All three statements therefore run in one transaction, and it either applies
  * whole or not at all. The only work left outside is computing the new draft's
- * figures, which reads ClickHouse: a draft recomputes on every read, so that
+ * figures, which reads `cost_daily`: a draft recomputes on every read, so that
  * is a display concern, not state, and the pair is already durable when it runs.
  */
 export async function voidInvoice(

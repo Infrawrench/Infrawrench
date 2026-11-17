@@ -22,7 +22,7 @@
  *
  * The fourth field is the one that makes the other three honest.
  * {@link BlastRadiusReport.unchecked} lists what the report could *not* look
- * at: flow collection off, ClickHouse unreachable, workflow bodies matched
+ * at: flow collection off, the flow read failing, workflow bodies matched
  * only by literal id. A report with an empty `dependants` list and an empty
  * `unchecked` list is a clean bill of health; a report with an empty
  * `dependants` list and three `unchecked` entries is a shrug, and the two must

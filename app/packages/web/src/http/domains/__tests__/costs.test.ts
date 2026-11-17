@@ -141,7 +141,7 @@ vi.mock("../../../services/showback", () => ({
   getShowbackReport: vi.fn(),
 }));
 
-// The FOCUS service reaches Postgres (names) and ClickHouse (rows) at import
+// The FOCUS service reaches Postgres (names and rows) at import
 // time. These tests own the transport: validation, permission, status codes,
 // headers and the streamed body. The mapping has its own suite in server-core
 // (`cost-export-focus.test.ts`).
@@ -433,7 +433,7 @@ describe("POST /query", () => {
   });
 
   it("defaults to cash and every charge type when neither is given", async () => {
-    // Absent, not "cash": an older client's request must reach ClickHouse as
+    // Absent, not "cash": an older client's request must reach the cost reader as
     // the query it always was.
     const res = await buildApp().request("/query", {
       method: "POST",
@@ -865,7 +865,7 @@ describe("anomaly settings", () => {
  * 400, and that the two spellings can never be sent together.
  */
 describe("POST /query: cost query language", () => {
-  /** The filter as ClickHouse was asked for it. */
+  /** The filter as the cost reader was asked for it. */
   const filtersPassedDown = () =>
     (mockQueryCosts.mock.calls[0]![1] as { filters: unknown }).filters;
 
@@ -1003,7 +1003,7 @@ describe("POST /query: cost query language", () => {
   });
 
   it("keeps values that look like SQL as opaque filter values", async () => {
-    // The compiled values are bound as ClickHouse parameters exactly like a
+    // The compiled values are bound as query parameters exactly like a
     // structured filter's, so nothing here can be anything but a string.
     const res = await buildApp().request("/query", {
       method: "POST",

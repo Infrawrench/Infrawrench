@@ -3,16 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Validation and mapping for workflow-reported cost rows. The important
  * invariant is the reserved `infrawrench:workflow` tag: it is what keeps a
- * workflow's ReplacingMergeTree key disjoint from provider-collected rows, so
+ * workflow's `cost_daily` primary key disjoint from provider-collected rows, so
  * attributing spend to a real account can never overwrite the poller's data.
  */
 
 const insertCostRows = vi.fn(async (_rows: Array<Record<string, unknown>>) => undefined);
 const hashTags = vi.fn((tags: Record<string, string> | undefined) => JSON.stringify(tags ?? {}));
 vi.mock("../analytics/cost-writers", () => ({ insertCostRows, hashTags }));
-
-const isClickHouseConfigured = vi.fn(() => true);
-vi.mock("../analytics/client", () => ({ isClickHouseConfigured }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
@@ -35,7 +32,7 @@ async function write(rows: unknown[], writtenSoFar = 0) {
   });
 }
 
-/** The rows handed to ClickHouse by the first (and only) call. */
+/** The rows handed to the writer by the first (and only) call. */
 function inserted(): Array<Record<string, unknown>> {
   return insertCostRows.mock.calls[0]?.[0] ?? [];
 }
@@ -43,7 +40,6 @@ function inserted(): Array<Record<string, unknown>> {
 beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
-  isClickHouseConfigured.mockReturnValue(true);
   mod = await import("../cost/workflow-costs");
 });
 
@@ -126,11 +122,6 @@ describe("writeWorkflowCostRows", () => {
 
   it("caps rows per run across calls", async () => {
     await expect(write([ROW], 50_000)).rejects.toThrow(/50000 rows per run/);
-  });
-
-  it("fails clearly when cost storage isn't configured", async () => {
-    isClickHouseConfigured.mockReturnValue(false);
-    await expect(write([ROW])).rejects.toThrow(/Cost storage is not configured/);
   });
 });
 

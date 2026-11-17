@@ -1,16 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
+import { fakePostgres } from "./helpers/fake-postgres";
 
-const ch = fakeClickHouse();
+const pg = fakePostgres();
 
-vi.mock("../analytics/client", () => ({
-  isClickHouseConfigured: () => true,
-  getClickHouseDb: () => ch.db,
-  getClickHouseClient: () => ch.client,
-}));
+vi.mock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
 
-const { scanKubernetesEfficiency, getKubernetesDimensionValues } =
+const { scanKubernetesEfficiency, getKubernetesDimensionValues, getKubernetesTagKeys } =
   await import("../analytics/k8s-efficiency-readers");
 
 const BASE = {
@@ -21,34 +17,46 @@ const BASE = {
 };
 
 beforeEach(() => {
-  ch.queries.length = 0;
-  ch.setRows?.([]);
+  pg.reset();
 });
 
 describe("scanKubernetesEfficiency", () => {
-  it("reads only Kubernetes rows, FINAL, with the resource and usage tags", async () => {
+  it("reads only Kubernetes rows, with the resource and usage tags, in Monday weeks", async () => {
     await scanKubernetesEfficiency("org-1", { ...BASE, groupBy: "namespace" });
-    const q = ch.queries[0]!;
-    expect(q.toLowerCase()).toContain(" final");
-    expect(q).toContain("'kubernetes'");
-    expect(q).toContain("'k8s_resource'");
-    expect(q).toContain("'k8s_usage'");
-    expect(q).toContain("toStartOfWeek");
-    expect(q).toContain("'namespace'");
+    const q = pg.queries[0]!;
+    expect(q.params).toContain("kubernetes");
+    expect(q.params).toContain("k8s_resource");
+    expect(q.params).toContain("k8s_usage");
+    expect(q.params).toContain("namespace");
+    // ISO weeks start on Monday, which is what the client-core bucketing expects.
+    expect(q.sql).toContain("date_trunc('week'");
+    // A missing tag must read as '' so it groups with "no value", not as NULL.
+    expect(q.sql).toMatch(/coalesce\(("cost_daily"\.)?"tags" ->> \$\d+::text, ''\)/);
   });
 
   it("namespace-qualifies workloads and groups labels by their tag key", async () => {
     await scanKubernetesEfficiency("org-1", { ...BASE, groupBy: "workload" });
-    expect(ch.queries[0]).toContain("concat(");
+    expect(pg.queries[0]!.sql).toContain("concat(");
     await scanKubernetesEfficiency("org-1", {
       ...BASE,
       groupBy: "label",
       groupByLabelKey: "k8s_pod_label:team",
     });
-    expect(ch.queries[1]).toContain("'k8s_pod_label:team'");
+    expect(pg.queries[1]!.params).toContain("k8s_pod_label:team");
   });
 
-  it("applies filters through the shared membership vocabulary, escaped", async () => {
+  it("buckets by month and by day as YYYY-MM-DD text", async () => {
+    await scanKubernetesEfficiency("org-1", {
+      ...BASE,
+      granularity: "month",
+      groupBy: "cluster",
+    });
+    expect(pg.queries[0]!.sql).toContain("to_char(date_trunc('month'");
+    await scanKubernetesEfficiency("org-1", { ...BASE, granularity: "day", groupBy: "cluster" });
+    expect(pg.queries[1]!.sql).toMatch(/to_char\(("cost_daily"\.)?"day", 'YYYY-MM-DD'\)/);
+  });
+
+  it("applies filters through the shared membership vocabulary, as bound values", async () => {
     await scanKubernetesEfficiency("org-1", {
       ...BASE,
       groupBy: "cluster",
@@ -57,13 +65,14 @@ describe("scanKubernetesEfficiency", () => {
         { dimension: "region", op: "not_in", values: ["eu-west-1"] },
       ],
     });
-    const q = ch.queries[0]!;
-    expect(q).toContain("pay\\'ments");
-    expect(q).toContain("not in");
+    const q = pg.queries[0]!;
+    expect(q.sql).not.toContain("pay'ments");
+    expect(q.params).toContain("pay'ments");
+    expect(q.sql).toContain("not in");
   });
 
   it("maps the scan's rows", async () => {
-    ch.setRows?.([
+    pg.setRows([
       {
         bucket: "2026-09-01",
         grp: "payments",
@@ -94,7 +103,17 @@ describe("scanKubernetesEfficiency", () => {
 describe("getKubernetesDimensionValues", () => {
   it("narrows picker values to Kubernetes rows", async () => {
     await getKubernetesDimensionValues("org-1", { dimension: "tag", tagKey: "node_pool" });
-    expect(ch.queries[0]).toContain("'kubernetes'");
-    expect(ch.queries[0]).toContain("'node_pool'");
+    expect(pg.queries[0]!.params).toContain("kubernetes");
+    expect(pg.queries[0]!.params).toContain("node_pool");
+  });
+});
+
+describe("getKubernetesTagKeys", () => {
+  it("lists the distinct keys of the Kubernetes rows' tags", async () => {
+    pg.setRows([{ key: "namespace" }, { key: "node_pool" }]);
+    expect(await getKubernetesTagKeys("org-1")).toEqual(["namespace", "node_pool"]);
+    const q = pg.queries[0]!;
+    expect(q.sql).toMatch(/select distinct jsonb_object_keys\(("cost_daily"\.)?"tags"\)/);
+    expect(q.params).toContain("kubernetes");
   });
 });

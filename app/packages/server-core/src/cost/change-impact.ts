@@ -1,6 +1,6 @@
 /**
  * Cost per change: the arithmetic. **Pure**: no db, no
- * ClickHouse, no clock of its own (callers pass "today"), which is what makes
+ * clock of its own (callers pass "today"), which is what makes
  * every rule below exhaustively testable. The gathering lives beside it in
  * `change-impact-load.ts`; the wire contract and phrasing live in
  * `client-core/change-cost-impact.ts`.
@@ -83,7 +83,7 @@ export {
   MIN_CHANGE_IMPACT_WINDOW_DAYS,
 } from "@infrawrench/client-core";
 
-/** Daily points for one currency, as ClickHouse returned them. */
+/** Daily points for one currency, as the cost readers returned them. */
 export interface ChangeImpactSeriesInput {
   currency: string;
   /** `{ day: "YYYY-MM-DD", amount }`. Only days that actually have rows. */

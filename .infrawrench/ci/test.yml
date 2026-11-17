@@ -45,9 +45,6 @@
 #
 # - Database migrations: `db:migrate` twice against a fresh database, the
 #   second run proving it a no-op.
-# - ClickHouse database tests: server-core's tests against a real ClickHouse
-#   (`env:clickhouse`, ClickHouse 26.11) as a service, and the mocked
-#   ClickHouse suites shadow-run against it.
 # - Postgres database tests: server-core's tests against three `env:postgres`
 #   servers (pglite-server, PostgreSQL 18.4) after migrating them, and the
 #   mocked Postgres suites shadow-run against another.
@@ -199,7 +196,7 @@ jobs:
   # `memory:`, so a Vitest job's peak follows its size rather than saying
   # what it needs: the small suites peak at 3.5 to 4 GiB given 6 GiB and at
   # 1.8 to 2.8 GiB given 3 GiB. Every suite passes at 3 GiB; at 2 GiB
-  # server-core, workflow-runtime and the ClickHouse plugin run out.
+  # server-core, workflow-runtime and the ClickHouse provider plugin run out.
   #
   # Vitest starts a `node` per test file, and most of a large suite's time is
   # each of them loading its modules, so how many run at once is what sets a
@@ -525,44 +522,10 @@ jobs:
     memory: 3GiB
     timeout: 20m
 
-  # `test:db`'s ClickHouse files (DDL from migrateMetrics, inserts, the
-  # materialized-view rollups, the cost and network-flow SQL) and
-  # `test:clickhouse:shadow` (every statement the mocked suites capture, also
-  # run against the server). ClickHouse 26.11 is newer than production's
-  # 26.3, so this is also where a release's changed defaults show up first
-  # (#1114, #1116).
-  clickhouse-db:
-    name: ClickHouse tests ${{ package.name }}
-    packages: { only: [app/packages/server-core] }
-    needs: [prep, "^bundle", "^source"]
-    using: env:bash-node@24.0.18
-    services:
-      clickhouse:
-        using: env:clickhouse@26.11.3
-        run: clickhouse-server
-        env:
-          CLICKHOUSE_DB: infrawrench
-          CLICKHOUSE_PASSWORD: infrawrench
-        ready: { port: 8123, timeout: 120s }
-    env:
-      NODE_OPTIONS: --require /app/.infrawrench/ci/node-preload.cjs
-      CLICKHOUSE_METRICS_URL: http://clickhouse:8123
-      CLICKHOUSE_METRICS_USER: default
-      CLICKHOUSE_METRICS_PASSWORD: infrawrench
-      CLICKHOUSE_METRICS_DATABASE: infrawrench
-    run: |
-      node node_modules/vitest/vitest.mjs run --config vitest.db.config.ts src/__tests__/db/clickhouse.test.ts src/__tests__/db/clickhouse-cost.test.ts
-      node node_modules/vitest/vitest.mjs run --config vitest.shadow-clickhouse.config.ts
-    task-cache:
-      root-inputs: [tsconfig.base.json, .infrawrench/ci/node-preload.cjs, .infrawrench/ci/stubs/**]
-    memory: 4GiB
-    timeout: 20m
-
   # The Postgres integration suites against `env:postgres` (pglite-server,
   # PostgreSQL 18.4; production runs 18.6), migrated first. It runs the whole
-  # `vitest.db.config.ts`, so a new file in src/__tests__/db/ is picked up;
-  # the ClickHouse files there skip themselves without CLICKHOUSE_METRICS_*,
-  # and `clickhouse-db` runs them. pglite-server has one backend: transactions
+  # `vitest.db.config.ts`, so a new file in src/__tests__/db/ is picked up,
+  # the analytics suites included. pglite-server has one backend: transactions
   # run one at a time, row locks never contend, and pgcrypto is partial
   # (README, "PostgreSQL"). A test of real lock contention needs a real server.
   #
@@ -644,7 +607,7 @@ jobs:
   # statements apart. Its config bundles what the files import, with the list
   # server-core's own tests use (vitest.prebundle.ts): in a run of everything
   # a plugin change reaches, 142 s became 86 s on ci-1 and 42 s became 29 s
-  # on ci-2. The ClickHouse shadow run does the same.
+  # on ci-2.
   postgres-shadow:
     name: Postgres shadow tests ${{ package.name }}
     packages: { only: [app/packages/server-core] }
