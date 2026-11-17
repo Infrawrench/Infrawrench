@@ -3563,7 +3563,8 @@ objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
 Jobs see `CI=true`, `HOME=/root` and `GIT_TERMINAL_PROMPT=0` (unless they
 set their own), `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and
-`IWCI_OUTPUT`, plus `PWD` set
+`IWCI_OUTPUT`, `IWCI_CPUS` when the job has `cpus:` (the vCPUs it holds),
+plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
 [Known limitations](#known-limitations)). A `run:` script and what it starts
