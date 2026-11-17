@@ -4223,6 +4223,15 @@ fn the_young_generation_a_job_is_charged_is_what_the_v8_flags_allow() {
         wasmer_napi::budget::DEFAULT_YOUNG_GENERATION,
         (3 * semi_space_mib) << 20
     );
+    // The semi-space a young generation starts at (#996) is within that,
+    // so starting larger never charges a job more.
+    let min_semi_space_mib: u64 = V8_FLAGS
+        .split_whitespace()
+        .find_map(|flag| flag.strip_prefix("--min-semi-space-size="))
+        .expect("V8_FLAGS sets the first semi-space")
+        .parse()
+        .unwrap();
+    assert!(min_semi_space_mib <= semi_space_mib);
 }
 
 /// Opens `work/f.lock` twice (two open file descriptions), then takes and

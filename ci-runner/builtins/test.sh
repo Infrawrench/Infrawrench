@@ -1706,6 +1706,36 @@ jobs:
       cp.spawn("xcmd", { env, stdio: "inherit" }).on("exit", (code) => process.exit(code));
       JS
       test "$(node /tmp/spawn.cjs)" = "x ran"
+      # The runner's preload patches child_process the first time it is
+      # asked for, not at every start (#996): through require (destructured
+      # as it loads), import, a dynamic import, process.getBuiltinModule and
+      # in a worker, and never when nothing asks.
+      node -e 'if (process.moduleLoadList.includes("NativeModule child_process")) process.exit(1)'
+      cat >/tmp/spawn2.cjs <<'JS'
+      const { execFileSync } = require("child_process");
+      const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+      process.stdout.write(execFileSync("xcmd", { env }));
+      JS
+      test "$(node /tmp/spawn2.cjs)" = "x ran"
+      cat >/tmp/spawn.mjs <<'JS'
+      import { execFileSync } from "node:child_process";
+      const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+      process.stdout.write(execFileSync("xcmd", { env }));
+      const cp = await import("child_process");
+      process.stdout.write(cp.default.execFileSync("xcmd", { env }));
+      JS
+      test "$(node /tmp/spawn.mjs)" = "x ran"$'\n'"x ran"
+      test "$(node -e '
+      const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+      process.stdout.write(process.getBuiltinModule("child_process").execFileSync("xcmd", { env }));
+      ')" = "x ran"
+      test "$(node -e '
+      const { Worker } = require("node:worker_threads");
+      new Worker(`
+        const env = { ...process.env, PATH: "/tmp/x:" + process.env.PATH };
+        process.stdout.write(require("node:child_process").execFileSync("xcmd", { env }));
+      `, { eval: true });
+      ')" = "x ran"
   # Global installs (README.md, "Global installs"), from a registry on the
   # job's loopback: `npm i -g` (pnpm, in Edge.js) and `pnpm add -g` put
   # the package's commands on PATH, the first time in a job too, and

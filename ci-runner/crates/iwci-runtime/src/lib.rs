@@ -107,10 +107,19 @@ pub fn set_node_worker_threads(cpus: usize) {
 ///   at most three of them, 48 MiB, which is what the bridge charges a
 ///   job's `memory:` for one (`DEFAULT_YOUNG_GENERATION`, #1158; a test
 ///   below holds the two together).
+/// - `--min-semi-space-size=8` (#996): a young generation started at V8's
+///   1 MiB semi-space, and Edge.js's bootstrap fills that three times over,
+///   so every `node -e 0` stopped for three scavenges (2.7 ms of pauses on
+///   its main thread) that copied the bootstrap's long-lived objects twice.
+///   From 8 MiB it starts and exits with none: 19 million instructions
+///   fewer per `node`, and the runner's peak memory with twenty `node`s
+///   alive at once came out lower (1,150 MB against 1,192 MB), since less
+///   is promoted to the old generation. It stays under the maximum above,
+///   so what a job is charged does not change.
 #[cfg(feature = "node")]
 const V8_FLAGS: &str = "--js-source-phase-imports --harmony-import-attributes \
                         --no-memory-protection-keys --no-global-heap-limit-counts-external-memory \
-                        --max-semi-space-size=16";
+                        --min-semi-space-size=8 --max-semi-space-size=16";
 
 /// Configures the V8 that Node jobs run on, once per process, with
 /// `V8_FLAGS`. It runs at start-up, after [`set_node_worker_threads`]

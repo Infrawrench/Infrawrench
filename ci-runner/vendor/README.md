@@ -691,6 +691,26 @@ for the warning, and `iwci-runtime`'s
 `an_unsettled_top_level_await_warns_on_the_jobs_stderr_not_the_runners` and
 `a_fatal_error_is_printed_on_the_jobs_stderr_and_ends_only_the_job`.
 
+**And: less copying at every start (#996).** Two things every `node` did
+that cost more than they had to. A bytecode handle (`BytecodeRecord`,
+`v8/src/unofficial_napi_contextify.cc`), which Edge.js opens for every
+built-in it loads (about 1.2 MB of source for a `node -e 0`), kept its
+source as UTF-8 (`ToUtf8String`, which copies twice) and made a V8 string of
+it again to compile (`NewFromUtf8`), and
+`unofficial_napi_contextify_compile_function` did the same round trip for
+every CommonJS module it compiled. Both now keep and compile the V8 string
+they were given (`BytecodeRecord::source`, a `v8::Global`), and the check
+for a byte order mark before `#!` reads its first three characters
+(`StartsWithBomHashbang`). A lone surrogate in a source now stays one
+rather than becoming U+FFFD, as with a source given as text. And
+`read_guest_c_string` (`src/guest/util.rs`), which every N-API call that
+names a property or a function goes through, read the guest's string a
+byte at a time, each a bounds-checked read of guest memory and a push onto
+the vector; it reads 256 bytes at a time up to the terminator now, with the
+same result and the same limit (`scan_c_string`, and its test
+`a_c_string_reads_the_same_a_chunk_at_a_time`). Together about 9 million
+instructions fewer per `node -e 0` (of about 270 million).
+
 **Remove it** when a wasmer-napi release after 0.705.0 links V8 15.9 or
 later in a form the runner can link (no CREL, libstdc++ on ARM64), includes
 wasmerio/napi main's rework of `g_mu` (envs owned per thread, termination outside the
@@ -1158,6 +1178,21 @@ rewritten to (`builtins/environments/python/build.sh`). The tests are
 `a_flock_is_held_until_its_description_has_no_descriptor`. Upstream has no
 file locking (checked November 2026); a later WASIX defines `flock` and
 `fcntl64` as Linux system calls.
+
+**Only the WASI versions a module imports (#996).** Instantiating a module
+(`WasiEnv::instantiate`, `src/state/env.rs`), which every process and each
+of its threads does, built the host functions of all five WASI and WASIX
+namespaces (`import_object_for_all_wasi_versions`, `src/lib.rs`), several
+hundred `Function`s made and dropped again, though a module imports from
+fewer: Edge.js from `wasi` (its one import there is `thread-spawn`),
+`wasi_snapshot_preview1` and `wasix_32v1`, not `wasi_unstable` or
+`wasix_64v1`. `import_object_for_module_wasi_versions` builds only the
+namespaces the module names, and instantiation only ever reads those, so
+it resolves the same functions. A coreutils `/bin/true` in a job takes 7.6
+million instructions where it took 9.6 million, and a `node -e 0` 3 million
+fewer. The dynamic linker (`src/state/linker/`) keeps the full set, since
+a side module may import from a namespace its main module does not.
+Upstream main builds all five (checked November 2026).
 
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream

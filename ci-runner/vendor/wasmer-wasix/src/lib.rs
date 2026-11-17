@@ -846,6 +846,53 @@ fn import_object_for_all_wasi_versions(
     imports
 }
 
+/// iwci patch (#996): like `import_object_for_all_wasi_versions`, with only
+/// the namespaces `module` imports from. Every process instantiates its
+/// module, and each of its threads instantiates it again, so building the
+/// several hundred host functions of the WASI versions it does not import,
+/// and dropping them again, was paid at every start: Edge.js imports from
+/// `wasi`, `wasi_snapshot_preview1` and `wasix_32v1`, not `wasi_unstable`
+/// or `wasix_64v1`. Instantiation only reads the imports the module names,
+/// so it resolves the same functions. Only for a module instantiated on its
+/// own: the dynamic linker keeps the full set.
+fn import_object_for_module_wasi_versions(
+    module: &wasmer::Module,
+    store: &mut impl AsStoreMut,
+    env: &FunctionEnv<WasiEnv>,
+) -> Imports {
+    let mut wanted = [false; 5];
+    for import in module.imports() {
+        match import.module() {
+            "wasi" => wanted[0] = true,
+            "wasi_unstable" => wanted[1] = true,
+            "wasi_snapshot_preview1" => wanted[2] = true,
+            "wasix_32v1" => wanted[3] = true,
+            "wasix_64v1" => wanted[4] = true,
+            _ => {}
+        }
+    }
+    let mut imports = Imports::new();
+    if wanted[0] {
+        imports.register_namespace("wasi", wasi_exports_generic(store, env));
+    }
+    if wanted[1] {
+        imports.register_namespace("wasi_unstable", wasi_unstable_exports(store, env));
+    }
+    if wanted[2] {
+        imports.register_namespace(
+            "wasi_snapshot_preview1",
+            wasi_snapshot_preview1_exports(store, env),
+        );
+    }
+    if wanted[3] {
+        imports.register_namespace("wasix_32v1", wasix_exports_32(store, env));
+    }
+    if wanted[4] {
+        imports.register_namespace("wasix_64v1", wasix_exports_64(store, env));
+    }
+    imports
+}
+
 /// Combines a state generating function with the import list for legacy WASI
 fn generate_import_object_snapshot0(
     store: &mut impl AsStoreMut,

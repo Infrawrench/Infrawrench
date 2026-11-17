@@ -135,16 +135,114 @@ pub fn read_guest_c_string(env: &mut FunctionEnvMut<NapiEnv>, guest_ptr: i32) ->
     let (state, store) = env.data_and_store_mut();
     let memory = state.memory.clone()?;
     let view = memory.view(&store);
+    scan_c_string(view.data_size(), guest_ptr as u64, |offset, buf| {
+        view.read(offset, buf).is_ok()
+    })
+}
+
+/// iwci patch (#996): the bytes of the NUL-terminated string at `start` in a
+/// memory of `size` bytes, read a chunk at a time with `read`, where they
+/// were read a byte (and a bounds-checked read, and a push) at a time. Every
+/// N-API call that names a property or a function passes one. `None` for a
+/// string that runs past the end of memory or past
+/// `MAX_GUEST_CSTRING_SCAN` bytes, as before.
+fn scan_c_string(
+    size: u64,
+    start: u64,
+    mut read: impl FnMut(u64, &mut [u8]) -> bool,
+) -> Option<Vec<u8>> {
     let mut out = Vec::new();
-    let mut offset = guest_ptr as u64;
-    for _ in 0..super::MAX_GUEST_CSTRING_SCAN {
-        let mut b = [0u8; 1];
-        view.read(offset, &mut b).ok()?;
-        if b[0] == 0 {
+    let mut chunk = [0u8; 256];
+    while out.len() < super::MAX_GUEST_CSTRING_SCAN {
+        let offset = start + out.len() as u64;
+        if offset >= size {
+            return None;
+        }
+        let want = (size - offset)
+            .min(chunk.len() as u64)
+            .min((super::MAX_GUEST_CSTRING_SCAN - out.len()) as u64) as usize;
+        if !read(offset, &mut chunk[..want]) {
+            return None;
+        }
+        if let Some(end) = chunk[..want].iter().position(|&b| b == 0) {
+            out.extend_from_slice(&chunk[..end]);
             return Some(out);
         }
-        out.push(b[0]);
-        offset += 1;
+        out.extend_from_slice(&chunk[..want]);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_c_string;
+    use super::super::MAX_GUEST_CSTRING_SCAN;
+
+    /// What the byte-at-a-time loop returned.
+    fn bytewise(memory: &[u8], start: u64) -> Option<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut offset = start;
+        for _ in 0..MAX_GUEST_CSTRING_SCAN {
+            let b = *memory.get(usize::try_from(offset).ok()?)?;
+            if b == 0 {
+                return Some(out);
+            }
+            out.push(b);
+            offset += 1;
+        }
+        None
+    }
+
+    fn chunked(memory: &[u8], start: u64) -> Option<Vec<u8>> {
+        scan_c_string(memory.len() as u64, start, |offset, buf| {
+            let at = offset as usize;
+            match memory.get(at..at + buf.len()) {
+                Some(src) => {
+                    buf.copy_from_slice(src);
+                    true
+                }
+                None => false,
+            }
+        })
+    }
+
+    #[test]
+    fn a_c_string_reads_the_same_a_chunk_at_a_time() {
+        let mut memory = vec![b'x'; 3 * MAX_GUEST_CSTRING_SCAN];
+        // From 1001, the next terminator is past the limit.
+        for at in [0, 1, 255, 256, 257, 1000, 70_000, 135_000] {
+            memory[at] = 0;
+        }
+        let starts = [
+            0,
+            1,
+            2,
+            200,
+            255,
+            256,
+            258,
+            999,
+            1001,
+            1001 + MAX_GUEST_CSTRING_SCAN as u64 - 1,
+            70_001,
+            135_001,
+            memory.len() as u64 - 10,
+            memory.len() as u64 - 1,
+            memory.len() as u64,
+            memory.len() as u64 + 5,
+        ];
+        for start in starts {
+            assert_eq!(chunked(&memory, start), bytewise(&memory, start), "from {start}");
+        }
+        // Terminated exactly at the limit, and one byte past it.
+        let mut memory = vec![b'y'; MAX_GUEST_CSTRING_SCAN + 1];
+        memory[MAX_GUEST_CSTRING_SCAN - 1] = 0;
+        assert_eq!(chunked(&memory, 0).map(|s| s.len()), Some(MAX_GUEST_CSTRING_SCAN - 1));
+        let mut memory = vec![b'y'; MAX_GUEST_CSTRING_SCAN + 1];
+        memory[MAX_GUEST_CSTRING_SCAN] = 0;
+        assert_eq!(chunked(&memory, 0), None);
+        assert_eq!(bytewise(&memory, 0), None);
+        // A read that fails is no string.
+        assert_eq!(scan_c_string(10, 0, |_, _| false), None);
+    }
 }
