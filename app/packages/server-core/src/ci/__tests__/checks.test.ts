@@ -106,6 +106,20 @@ describe("CI checks on GitHub", () => {
     );
   });
 
+  it("shows the runner's error for a run it could not start, not an empty pipeline", async () => {
+    const why = "fetch abc: git: No credentials were returned";
+    mockProxyJson.mockResolvedValueOnce({ id: "ci-1.abc", state: "error", error: why });
+    await syncRun(row("push"));
+    const update = mockUpsert.mock.calls.at(-1)?.[1];
+    expect(update).toMatchObject({
+      status: "completed",
+      conclusion: "failure",
+      title: "Could not run",
+      summary: why,
+    });
+    expect(String(update?.summary)).not.toContain("No pipeline ran");
+  });
+
   it("still passes a run whose jobs passed", async () => {
     mockProxyJson.mockResolvedValue(finished([{ id: "prettier", status: "passed" }]));
     await syncRun(row("pull-request"));

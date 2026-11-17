@@ -764,7 +764,9 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     }
     return;
   }
-  if (run.state === "failed") {
+  if (run.state !== "finished") {
+    // The runner reports this as `error`. It used to be read as a finished
+    // run with no jobs, so a refused clone showed "No pipeline ran".
     const reason = run.error ?? "The runner could not run this commit.";
     await finish(row, "error", reason);
     await upsertCheck(row, {
