@@ -1,0 +1,179 @@
+--- !ruby/object:Gem::Specification
+name: rspec-core
+version: !ruby/object:Gem::Version
+  version: 3.13.7
+platform: ruby
+authors:
+- Steven Baker
+- David Chelimsky
+- Chad Humphries
+- Myron Marston
+bindir: exe
+cert_chain:
+- |
+  -----BEGIN CERTIFICATE-----
+  MIIFvjCCA6agAwIBAgIJAPXjfUbCjdXWMA0GCSqGSIb3DQEBCwUAMIGAMQswCQYD
+  VQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UEBwwHU2VhdHRsZTEO
+  MAwGA1UECgwFUlNwZWMxEzARBgNVBAMMCnJzcGVjLmluZm8xJTAjBgkqhkiG9w0B
+  CQEWFnJzcGVjQGdvb2dsZWdyb3Vwcy5jb20wHhcNMjYwMjE3MTE0ODM0WhcNMjcw
+  MjE3MTE0ODM0WjCBgDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCldhc2hpbmd0b24x
+  EDAOBgNVBAcMB1NlYXR0bGUxDjAMBgNVBAoMBVJTcGVjMRMwEQYDVQQDDApyc3Bl
+  Yy5pbmZvMSUwIwYJKoZIhvcNAQkBFhZyc3BlY0Bnb29nbGVncm91cHMuY29tMIIC
+  IjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsSmjgcHaKlD0jizRJowi2bGI
+  KMOHnJoExxRNHHxH+3w9kkl95YldvDRVX495b13ZCzwRe0AyqX24wq04tp0G5Z5C
+  e/w2pnNK4ol1eECPwQu+YGpepeODlZICL5gwQspe0cDifbBnHx5QySMiPpvx6bC0
+  tQTox0ppDIaMhch8IPCwyoE4DQK5bpsdwnLSHTsQjUIb7IM8tUMpd/iKrJgNffwc
+  6gC1TmhIlzQoB26nCNh9uK7xZjUM+sGECzvcYuImchUaIgJA/ybrlZS+m/hxzvBo
+  mLnn/xNEC6Vz5HG+3TR0Gb0cSUf6XUu2s51Jk/SJi3MhCZp2gs9OUg4EVZNzQVkZ
+  efLBjAZG2Mxk14JyB4/Omc+Jk0ajprINCBbUNnxzCJrYDM3J9TVWIwyUGNX/U3MO
+  s3tMAT+EVgx/mZMPnBO8EULlyF51MRUp3Wy9Mnw8AYLk30UnMG5AjqgO5JNyFlA7
+  Xeh3EVdWY3vMB1pkhPwlsenpcmj5gOzrd54lELOVbCGHCf48iSqeflY2Lhe0pvzK
+  blXCJBDmtrebvus291rM/dHcbEfK1SVd5Wut/n131iouf6dnNCFskFygDcgBbthC
+  gpEMqf80lEmhX59VUsm0Pv6OEo+ZPHBvXPiJA6DShQh9t3YtpwyA8uVDMbT/i32u
+  2FUsqZbbJcCmkBrGposCAwEAAaM5MDcwCQYDVR0TBAIwADALBgNVHQ8EBAMCBLAw
+  HQYDVR0OBBYEFPPvQ5XT0Nvuhi6k+hrWVv35J+TeMA0GCSqGSIb3DQEBCwUAA4IC
+  AQBaeeGIZtBFDP33D1/4sXldSgwntVcL5qC5pcjamLWM4HK4/a6ePMy1uoX+dEnJ
+  J+BjZWURsUfFOob+xnUe8AMSbv9gupckfVehZoBzOvJDaWcALo8GKjJlmVtzEIqZ
+  TvBLO5zQwR4cWIrg0NWjkDOSQOrNNQ2Degv/aOFrR8dFPJSgxZG/IC0/t6s72cEt
+  V4SIe/NLIU4RyBzfgn/RBsalDEF1yIVlDWspMa78clS3bPmntkNyfLwIUwINDHhn
+  swFA8bEKMQWqRlupuRmEiy3nGe6az46YlPXzK5UWfXJ6Lb1wIE8W80TRx0HpSC7j
+  JfXPfQ0PLgiU4nnQqain2bIn96Ooco8kspeqp8rSJ8sbaMPTNmcFuwD3gzWsRnJ3
+  rIaJbmrUcq6DlJ7jfv3u5TPt4JWzDP7oDPf3nXNiF2Cn48Ne598G5lHH6Heyxe39
+  pYZdhEptKJWPHxbJWHXD02omKprkNuQKHpnXrW+mmbiO4IcqAMggiud+DaEQg20x
+  Dae4cNbvK5p3D+5xqvcEO2G4uCMDmJjrSd61kvTLBnm1qroHqrpi9GauEVWZZmD0
+  n0ph8oFAXOsKQWxZ+4uh6yGISk+WhngCZEVPZUjq7SIGAuVhQy2ZgwdjnLEz//lD
+  x0Qexp5yGeoxAL9qKM/RXYKtuRZBJV1z+L9A1YOtwaXXNg==
+  -----END CERTIFICATE-----
+date: 1980-01-02 00:00:00.000000000 Z
+dependencies:
+- !ruby/object:Gem::Dependency
+  name: rspec-support
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - "~>"
+      - !ruby/object:Gem::Version
+        version: 3.13.0
+  type: :runtime
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - "~>"
+      - !ruby/object:Gem::Version
+        version: 3.13.0
+description: BDD for Ruby. RSpec runner and example groups.
+email: rspec@googlegroups.com
+executables:
+- rspec
+extensions: []
+extra_rdoc_files: []
+files:
+- ".document"
+- ".yardopts"
+- Changelog.md
+- LICENSE.md
+- README.md
+- exe/rspec
+- lib/rspec/autorun.rb
+- lib/rspec/core.rb
+- lib/rspec/core/backtrace_formatter.rb
+- lib/rspec/core/bisect/coordinator.rb
+- lib/rspec/core/bisect/example_minimizer.rb
+- lib/rspec/core/bisect/fork_runner.rb
+- lib/rspec/core/bisect/server.rb
+- lib/rspec/core/bisect/shell_command.rb
+- lib/rspec/core/bisect/shell_runner.rb
+- lib/rspec/core/bisect/utilities.rb
+- lib/rspec/core/configuration.rb
+- lib/rspec/core/configuration_options.rb
+- lib/rspec/core/did_you_mean.rb
+- lib/rspec/core/drb.rb
+- lib/rspec/core/dsl.rb
+- lib/rspec/core/example.rb
+- lib/rspec/core/example_group.rb
+- lib/rspec/core/example_status_persister.rb
+- lib/rspec/core/filter_manager.rb
+- lib/rspec/core/flat_map.rb
+- lib/rspec/core/formatters.rb
+- lib/rspec/core/formatters/base_bisect_formatter.rb
+- lib/rspec/core/formatters/base_formatter.rb
+- lib/rspec/core/formatters/base_text_formatter.rb
+- lib/rspec/core/formatters/bisect_drb_formatter.rb
+- lib/rspec/core/formatters/bisect_progress_formatter.rb
+- lib/rspec/core/formatters/console_codes.rb
+- lib/rspec/core/formatters/deprecation_formatter.rb
+- lib/rspec/core/formatters/documentation_formatter.rb
+- lib/rspec/core/formatters/exception_presenter.rb
+- lib/rspec/core/formatters/failure_list_formatter.rb
+- lib/rspec/core/formatters/fallback_message_formatter.rb
+- lib/rspec/core/formatters/helpers.rb
+- lib/rspec/core/formatters/html_formatter.rb
+- lib/rspec/core/formatters/html_printer.rb
+- lib/rspec/core/formatters/html_snippet_extractor.rb
+- lib/rspec/core/formatters/json_formatter.rb
+- lib/rspec/core/formatters/profile_formatter.rb
+- lib/rspec/core/formatters/progress_formatter.rb
+- lib/rspec/core/formatters/protocol.rb
+- lib/rspec/core/formatters/snippet_extractor.rb
+- lib/rspec/core/formatters/syntax_highlighter.rb
+- lib/rspec/core/hooks.rb
+- lib/rspec/core/invocations.rb
+- lib/rspec/core/memoized_helpers.rb
+- lib/rspec/core/metadata.rb
+- lib/rspec/core/metadata_filter.rb
+- lib/rspec/core/minitest_assertions_adapter.rb
+- lib/rspec/core/mocking_adapters/flexmock.rb
+- lib/rspec/core/mocking_adapters/mocha.rb
+- lib/rspec/core/mocking_adapters/null.rb
+- lib/rspec/core/mocking_adapters/rr.rb
+- lib/rspec/core/mocking_adapters/rspec.rb
+- lib/rspec/core/notifications.rb
+- lib/rspec/core/option_parser.rb
+- lib/rspec/core/ordering.rb
+- lib/rspec/core/output_wrapper.rb
+- lib/rspec/core/pending.rb
+- lib/rspec/core/profiler.rb
+- lib/rspec/core/project_initializer.rb
+- lib/rspec/core/project_initializer/.rspec
+- lib/rspec/core/project_initializer/spec/spec_helper.rb
+- lib/rspec/core/rake_task.rb
+- lib/rspec/core/reporter.rb
+- lib/rspec/core/ruby_project.rb
+- lib/rspec/core/runner.rb
+- lib/rspec/core/sandbox.rb
+- lib/rspec/core/set.rb
+- lib/rspec/core/shared_context.rb
+- lib/rspec/core/shared_example_group.rb
+- lib/rspec/core/shell_escape.rb
+- lib/rspec/core/test_unit_assertions_adapter.rb
+- lib/rspec/core/version.rb
+- lib/rspec/core/warnings.rb
+- lib/rspec/core/world.rb
+homepage: https://rspec.info
+licenses:
+- MIT
+metadata:
+  bug_tracker_uri: https://github.com/rspec/rspec/issues
+  changelog_uri: https://github.com/rspec/rspec/blob/rspec-core-v3.13.7/rspec-core/Changelog.md
+  documentation_uri: https://rspec.info/documentation/
+  mailing_list_uri: https://groups.google.com/forum/#!forum/rspec
+  rubygems_mfa_required: 'true'
+  source_code_uri: https://github.com/rspec/rspec/blob/rspec-core-v3.13.7/rspec-core
+rdoc_options:
+- "--charset=UTF-8"
+require_paths:
+- lib
+required_ruby_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: 1.8.7
+required_rubygems_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: '0'
+requirements: []
+rubygems_version: 4.0.20
+specification_version: 4
+summary: rspec-core-3.13.7
+test_files: []

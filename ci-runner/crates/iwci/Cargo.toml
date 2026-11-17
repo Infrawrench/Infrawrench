@@ -47,3 +47,8 @@ tar = { version = "0.4.46", default-features = false }
 # already in the tree.
 bytes = "1.9"
 shared-buffer = "0.1.4"
+
+[dev-dependencies]
+# The gem builds' tests write a gzipped archive. Already in the tree through
+# iwci-deps.
+flate2 = "1.1"

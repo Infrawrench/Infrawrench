@@ -1,6 +1,6 @@
 [package]
 name = "iwci-deps"
-description = "Installs a workspace's dependencies (pnpm, Bun, Go modules, Cargo crates, pip wheels, Composer packages) into its snapshot"
+description = "Installs a workspace's dependencies (pnpm, Bun, Go modules, Cargo crates, pip wheels, Composer packages, Ruby gems) into its snapshot"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,8 +16,8 @@ hex.workspace = true
 # each `files` entry by an MD5 of its name, as Composer does.
 sha1 = { version = "0.11", default-features = false }
 md-5 = { version = "0.11", default-features = false }
-# Go, Cargo, pip and Composer installers: module zips, wheels, Composer
-# dists, crate tarballs, Cargo.lock, pylock.toml and the
+# Go, Cargo, pip, Composer and Bundler installers: module zips, wheels,
+# Composer dists, crate tarballs, `.gem` files, Cargo.lock, pylock.toml and the
 # checksum files cargo's directory source reads. Compression backends are
 # limited to what those formats use (deflate only).
 zip = { version = "9.4.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
@@ -28,7 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 semver = "1"
 base64 = "0.22"
-# pnpm installer: the lockfile is YAML. Package files go into the snapshot
+# pnpm installer: the lockfile is YAML, and so is a gem's metadata. Package files go into the snapshot
 # as shared read-only buffers (the version virtual-fs uses), so peer
 # variants of one package share bytes and no copy happens under mem_fs's
 # lock.

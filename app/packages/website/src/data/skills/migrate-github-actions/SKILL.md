@@ -40,7 +40,7 @@ The reference for every key is the runner's README, `ci-runner/README.md` in the
 
 - **A job is one script.** `run:` is bash with `set -euo pipefail`. Join a GitHub job's `run` steps into one `run: |` block in order. Use `if:` on a job, not on a line; inside the script, use shell conditionals.
 - **Secrets only in `env:`.** `${{ secrets.NAME }}` works only as an `env:` value. Map it to a variable and read the variable in the script.
-- **Pick an environment.** Every job without `cloud:` names `using:`: `env:bash@5`, `env:bash-node@24`, `env:python@3.13`, `env:go@1.27`, `env:php@8.4`, or a tool such as `builtin:typescript@7.1`. Versions are pinned; a bare name is an error.
+- **Pick an environment.** Every job without `cloud:` names `using:`: `env:bash@5`, `env:bash-node@24`, `env:python@3.13`, `env:go@1.27`, `env:php@8.4`, `env:ruby@4.0`, or a tool such as `builtin:typescript@7.1`. Versions are pinned; a bare name is an error.
 - **Jobs in `needs:` hand files on with `artifacts:`**, not with upload and download actions. Files for people to download from the run are `downloads:`.
 - **Pull requests from forks** run only after a maintainer approves them, get no secrets, and never run cloud jobs. There is no `pull_request_target` equivalent.
 

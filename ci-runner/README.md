@@ -126,12 +126,15 @@ the same caches as a push to that branch. See [Manual runs](#manual-runs).
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
 
-`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip` or
-`composer`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
-`only: [app/packages/web]` to install just those importers' closure, and pip
+`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer`
+or `bundler`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
+`only: [app/packages/web]` to install just those importers' closure, pip
 `file: requirements/ci.txt` to read another lock than `pylock.toml` or
-`requirements.txt`. [Bun](#bun), [Python](#python) and [PHP](#php) say what
-the Bun, pip and Composer installers read and check.
+`requirements.txt`, and bundler `ruby: "3.4"` to name the Ruby gems are
+installed for and `without-extensions: [redcarpet]` for gems whose C
+extension the jobs never load. [Bun](#bun), [Python](#python), [PHP](#php) and
+[Ruby gems](#ruby-gems) say what the Bun, pip, Composer and Bundler
+installers read and check.
 
 ### Filters
 
@@ -1181,6 +1184,7 @@ Environments:
 | `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                            |
 | `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
 | `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
+| `ruby@3.4`, `ruby@4.0` | `bash@5`'s packages plus our `iwci/ruby` (CRuby 3.4.12 or 4.0.9, built for WASIX here, with RubyGems and Bundler; see [Ruby](#ruby))                                                                                                   |
 | `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
 | `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                            |
 | `aws@1.46`             | `python@3.13`'s packages plus our `iwci/aws-cli` (the AWS CLI 1.46.3; see [Cloud CLIs](#cloud-clis))                                                                                                                                   |
@@ -2619,6 +2623,273 @@ curl built into it report development versions (OpenSSL 3.2.0-dev, curl
 pin, but what is inside them can only be checked by running it. Composer's
 phar is pinned by the SHA-256 getcomposer.org publishes.
 
+### Ruby gems
+
+`bundle install` downloads from rubygems.org when the job runs, over the
+job's [network](#networking), and compiles native extensions with a
+compiler a job does not have. `deps: [bundler]` installs `Gemfile.lock`
+before the job instead, the way the pip and Composer installers do:
+
+```yaml
+workspace:
+  deps:
+    - bundler # Gemfile.lock at the root
+    - bundler: { dir: api, ruby: "3.4", without-extensions: [redcarpet] }
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false # nothing to download
+    run: bundle exec rspec
+```
+
+What the lock must say, and what is checked:
+
+- **Checksums.** Every gem from a gem server is checked against the
+  SHA-256 in the lock's `CHECKSUMS` section before anything is unpacked.
+  Bundler 2.6 and later write that section for a new lock; an older lock
+  gets it with `bundle lock --add-checksums`. A gem without one refuses the
+  install, naming it. Only https gem servers are fetched, without
+  credentials.
+- **The `ruby` platform.** No gem publishes a build for the WebAssembly
+  Ruby a job runs, so each gem's `ruby` build (its source) is installed,
+  and the lock must list `ruby` under `PLATFORMS` with a `ruby` build of
+  every gem. The lock `rails new` writes lists only machine platforms
+  (`x86_64-linux`, `arm64-darwin`, ...) and, for nokogiri, sqlite3, ffi
+  and prism, only their builds for those.
+  `bundle lock --add-platform ruby` adds the platform and each gem's
+  source build, with its checksum. Bundler in the job refuses a lock
+  without its platform too. Run it on its own: Bundler 4.0.3 given
+  `--add-checksums --add-platform ruby` in one command adds the platform
+  without the builds, which the install refuses, naming the gems;
+  `bundle lock --remove-platform ruby` and then `--add-platform ruby`
+  mends such a lock.
+- **`GIT` sources** are fetched by the commit the lock's `revision` names
+  (https only, without credentials) into the runner's git cache, as
+  Composer packages are, so git's object ids tie every byte to the commit,
+  and checked out where Bundler looks (`bundler/gems/<repo>-<rev>/`).
+  `submodules: true` is refused. Bundler evaluates such a gem's gemspec
+  when the bundle loads, as it does after `bundle install`; one that shells
+  out to `git ls-files` needs `git` in the job.
+- **`PATH` sources** are directories of the repository and need nothing
+  installed.
+- **Missing dependencies** a gem declares and the lock does not install
+  are reported as warnings.
+
+Each gem is installed where `bundle install` puts it with
+`BUNDLE_PATH=vendor/bundle`, without running Ruby: its files under
+`vendor/bundle/ruby/<version>/gems/`, its specification (the Ruby
+RubyGems writes, from the gem's metadata) under `specifications/`, and RubyGems' wrapper for each executable under
+`bin/`, which `bundle exec` puts on `PATH`. Nothing in a gem runs at
+install time. The job gets `BUNDLE_PATH=vendor/bundle`, which Bundler reads
+relative to the Gemfile's directory, so one value serves every Gemfile,
+and `BUNDLE_FROZEN=true`, so it never resolves or reaches a gem server.
+Nothing writes `.bundle/config`; a committed one that sets another
+`BUNDLE_PATH` wins over the job's, and the install warns. The install is
+cached like the others (see [Caching](#caching)).
+
+**Which Ruby.** Gems are installed for Ruby 3.4 or 4.0, which decides the
+directory (`ruby/3.4.0`, `ruby/4.0.0`) and the extension directory below.
+The Ruby is `ruby:` when the pipeline names one, else the lock's
+`RUBY VERSION` (written when the Gemfile has a `ruby` line), else
+`.ruby-version`, else 4.0. A `ruby:` that disagrees with the lock's
+`RUBY VERSION` is refused, since Bundler in the job would refuse it.
+
+**Native extensions.** A gem with a C extension (`extensions:` in its
+gemspec) cannot be compiled before a job (the installer runs no gem's
+code), and a job has no compiler. Its extension comes from the runner's
+builds instead: `builtins/environments/ruby/gems/` builds the extensions of
+the gem versions [Rails](#rails) lists for each Ruby, as WASIX side modules
+the way [Ruby](#ruby) says to build one, into one archive per Ruby that
+the runner pins by SHA-256 (`crates/iwci/src/gem_builds.rs`) and reads from
+its store. The installer puts a gem's build in its extension directory
+(`extensions/wasm32-wasi/<api>/<gem>-<version>/`), where RubyGems looks for
+it, with the `gem.build_complete` marker that makes Bundler count the gem
+as installed, and the install is cached with the archive's digest in its
+key.
+
+A gem with an extension and no build of that version for the job's Ruby
+stops the install before the job, naming the gem and the versions there
+are builds of:
+
+```text
+bundler in /app: nokogiri-1.19.6: has a native extension (ext/nokogiri/extconf.rb), which a job cannot compile, and there are builds for Ruby 4.0 of nokogiri 1.19.7; lock one of those (`gem "nokogiri", "1.19.7"` in the Gemfile, then `bundle lock`). If the job never loads it, list nokogiri in this install's `without-extensions` to install it without (README.md, "Ruby gems")
+```
+
+Failing there, rather than installing the gem without its compiled part,
+keeps the failure where it is caused: otherwise the bundle would load and
+the first test to require the gem would fail with a `LoadError`, possibly
+far into the run. A gem the jobs never load is listed in
+`without-extensions`, and is installed with its Ruby files and the marker
+only, so requiring its compiled part raises a `LoadError`: a Markdown
+renderer that only a release script uses, say. A name there that has a
+build gets the build, and a name the lock does not install, or one without
+an extension, is a warning.
+
+**The job's environment.** Besides `BUNDLE_PATH` and `BUNDLE_FROZEN`, a
+lock that installs Rails (`activesupport`) gets `PARALLEL_WORKERS=1`; see
+[Rails](#rails).
+
+### Rails
+
+A Rails app's tests run with `deps: [bundler]` and `bin/rails test`, with
+no network in the job:
+
+```yaml
+workspace:
+  deps: [bundler]
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false
+    run: bin/rails test
+```
+
+`builtins/test.sh`'s `ruby@*/rails-passes` runs the tests of a `rails new`
+app (Rails 8.1, SQLite, minitest; `builtins/environments/ruby/apps/rails`)
+that way, and `rails-fails` the same app with a test that must fail. The
+app is `rails new`'s with two lines changed in its Gemfile, both below:
+selenium-webdriver is `require: false`, and tzinfo-data is on every
+platform (then `bundle lock`, which adds it).
+
+What works:
+
+- **The default stack's native gems**, each with its extension built for
+  the job's Ruby (the table below): SQLite through `sqlite3`, HTML and
+  `assert_select` through `nokogiri`, bootsnap's cache, and the rest of a
+  `rails new` lock, which the Rails job loads one by one and checks each
+  came from the runner's build.
+- **Models, fixtures, controller and integration tests** against the
+  app's SQLite database in `storage/`, which `bin/rails test` prepares from
+  `db/schema.rb`.
+- **PostgreSQL through `pg`**, against `env:postgres@18` as a
+  [service](#background-services) (`builtins/test.sh`'s `databases-passes`
+  queries one, and `databases-fails` gets PostgreSQL's error for a missing
+  table). pglite serves one connection at a time, so a test suite holds
+  one; `pglite-server` serves more.
+- **mysql2 and trilogy over TLS** to a server that asks for it: trilogy
+  with OpenSSL, mysql2 with MariaDB Connector/C, which checks the server's
+  certificate and name against `sslca:` (`databases-tls-passes`, against a
+  stand-in that speaks only the handshake and ping).
+- **Tests run in one process.** Rails runs a suite of more than 50 tests in
+  forked workers, one per processor (the `parallelize` line in
+  `test_helper.rb`), and a job's Ruby has no `fork`. The installer sets `PARALLEL_WORKERS=1` in the jobs' environment
+  when the lock installs Rails (`activesupport`), which turns the workers
+  off; a job's own `env:` wins over it, so a suite that wants workers can
+  run them as threads, `parallelize(workers: 4, with: :threads)` with
+  `PARALLEL_WORKERS: 4`.
+- **bootsnap** caches compiled Ruby under `tmp/cache`, which is the job's
+  and goes when it ends. Spring, which `rails new` stopped adding in 7.1,
+  forks its server and does not run; `DISABLE_SPRING=1` in an older app.
+
+What does not:
+
+- **System tests** (`test/system`, Capybara with Selenium) drive a browser,
+  which a job does not have. Run `bin/rails test:system` as a
+  [cloud job](#cloud-jobs).
+- **No zoneinfo.** A job has no `/usr/share/zoneinfo`, so Active Support's
+  time zones need the tzinfo-data gem, as on Windows: `rails new` adds it
+  for `platforms: %i[ windows jruby ]` only, and Rails fails at boot with
+  "tzinfo-data is not present". Drop the `platforms:` and lock again
+  (`bundle lock`).
+- **selenium-webdriver raises when it is loaded** ("unknown os: wasix": it
+  knows Windows, macOS, Linux and the BSDs by `RbConfig::CONFIG["host_os"]`),
+  and `rails new` puts it in the Gemfile's `test` group, which
+  `Bundler.require` loads before any test runs. Give it `require: false`,
+  which changes nothing for system tests on a developer's machine
+  (Capybara requires it when a system test drives a browser).
+- **puma and nio4r load, and a server is not tested.** puma's cluster mode
+  forks and cannot run; single mode starts threads, but stopping it with a
+  signal while its main thread waits on its socket ends the process at once
+  rather than gracefully ([Ruby](#ruby), signals). puma is built without
+  TLS.
+- **`bundle exec ruby`** runs Ruby without the bundle ([Ruby](#ruby),
+  `exec`); `bin/rails`, `bundle exec rake` and `ruby -rbundler/setup` load
+  it.
+- **ffi has no libraries to call but the C library.** Active Storage loads
+  ffi at boot (through ruby-vips), and `ffi_lib` failing to find libvips is
+  the `LoadError` it expects, so the app boots. `attach_function` works,
+  with callbacks into Ruby (`builtins/test.sh` sorts with the C library's
+  `qsort` and a Ruby comparison), but a job has no libvips, ImageMagick or
+  other shared library for it to load, and ffi has no `types.conf` for
+  this platform, so typedefs such as `:size_t` do not resolve.
+- **nokogiri reads no gzipped documents**: its libxml2 is built without
+  zlib, which the interpreter has but does not offer to extensions.
+- **No MySQL to test against.** `mysql2` and `trilogy` are built and
+  load, and connect over the job's network to a MySQL or MariaDB server
+  elsewhere (a [lent connection](#connections-ssh-keys-and-resources), say), but no environment
+  runs one as a service: there is no MySQL or MariaDB for WASIX
+  ([Background services](#background-services)). `builtins/test.sh` checks that each loads and
+  that a refused connection is its own error, not that it talks to a
+  server.
+
+**The builds.** `builtins/environments/ruby/gems/gems.txt` lists them,
+one line per gem version, with the SHA-256 of its `.gem`:
+
+| Gem              | Version | Notes                                                                                |
+| ---------------- | ------- | ------------------------------------------------------------------------------------ |
+| bcrypt           | 3.1.22  | `has_secure_password`; commented out in `rails new`'s Gemfile                        |
+| bcrypt_pbkdf     | 1.1.2   | kamal, through net-ssh                                                               |
+| bigdecimal       | 4.1.3   | the lock's, in place of the interpreter's own                                        |
+| bindex           | 0.8.1   | web-console                                                                          |
+| bootsnap         | 1.26.1  |                                                                                      |
+| date             | 3.6.0   |                                                                                      |
+| debug            | 1.11.1  |                                                                                      |
+| ed25519          | 1.4.0   | kamal, through net-ssh                                                               |
+| erb              | 6.0.7   |                                                                                      |
+| ffi              | 1.17.4  | libffi from wasix-org's port, its closures from libffi (`--enable-libffi-alloc`)     |
+| io-console       | 0.9.5   | its extconf.rb skips any platform matching `wasi`; built as the interpreter's own is |
+| json             | 3.1.0   |                                                                                      |
+| msgpack          | 1.8.7   | bootsnap                                                                             |
+| mysql2           | 0.5.7   | MariaDB Connector/C 3.4.11, with OpenSSL 3.5.9 and its authentication plugins        |
+| nio4r            | 2.7.5   | Action Cable, puma                                                                   |
+| nokogiri         | 1.19.7  | libxml2 2.13.9 and libxslt 1.1.43 from the gem's own archives, with its patches      |
+| pg               | 1.7.0   | libpq from PostgreSQL 18.7, with OpenSSL 3.5.9                                       |
+| prism            | 2.1.0   |                                                                                      |
+| puma             | 8.1.2   | without TLS                                                                          |
+| racc             | 1.8.1   |                                                                                      |
+| rbs              | 4.2.0   |                                                                                      |
+| sqlite3          | 2.10.2  | SQLite 3.54.1 from the gem's own archive, with its packaged build's options          |
+| trilogy          | 2.13.3  | with OpenSSL 3.5.9                                                                   |
+| websocket-driver | 0.9.0   | Action Cable                                                                         |
+
+These are the versions Rails 8.1.4.1's `rails new` locks
+(`crates/iwci-deps/src/bundler/fixtures/rails-8.1.lock`), bcrypt, and the
+newest releases of the drivers of the databases `rails new --database`
+offers besides SQLite (pg, mysql2, trilogy). A lock with
+another version of one of them fails the install, naming the versions in
+the table, until that version is added.
+
+**Adding a gem or a version** is one line in `gems.txt` (name, version,
+and the SHA-256 rubygems.org serves for its `ruby`-platform `.gem`, which
+is the lock's `CHECKSUMS` entry), and a case in `gems/build.sh`'s
+`prepare` if its extension needs a library or an `extconf.rb` flag. Then,
+on x86_64 or aarch64 Linux, for each Ruby:
+
+```sh
+bash builtins/environments/ruby/gems/build.sh 4.0
+bash builtins/environments/ruby/gems/build.sh 3.4
+```
+
+Each prints the archive's SHA-256 and size; those go in `GEM_BUILDS`
+(`crates/iwci/src/gem_builds.rs`), which is what runners read. The build
+is reproducible (source paths mapped away, the archive sorted and dated),
+so the build cache and the other architecture check the same digest, and a
+changed build of the same gems is a new `GEMS_BUILD` number in the script.
+`builtins/publish.sh` uploads the archive as a blob beside env:ruby
+(`dist/blobs/ruby-gems/`), and a runner whose store lacks it fails an
+install that needs it, naming the archive.
+
+How each is built, and why the installer places them rather than
+env:ruby carrying them: the extensions are built against the environment's
+own package (unpacked from the webc environments/build.sh pins) the way
+[Ruby](#ruby) says to build one, with the libraries a gem links compiled
+into its module from the source the gem ships. Keeping them out of the
+environment lets the install fail early, naming what is missing, before a
+job starts; puts each gem's build where RubyGems already looks, with no
+hook in the interpreter; ties the install's cache key to the builds; and
+lets a new build of the gems ship without a new version of the
+environment, since every `env:ruby@4.0.x` has the same extension ABI.
+
 ### Go
 
 `env:go@1.23` to `env:go@1.27` are the five newest Go minor releases
@@ -2731,6 +3002,159 @@ What to know:
   over 600. Each used to count until its parent exited, so the 512th
   `os/exec` (or Node `child_process`) failed with "Operation not
   permitted" ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
+
+### Ruby
+
+`env:ruby@3.4` and `env:ruby@4.0` are CRuby 3.4.12 and 4.0.9, built from
+the release tarballs for WASIX here (`builtins/environments/ruby/build.sh`),
+beside the tools of `env:bash@5` and [Git](#git). `ruby` is a command, and
+RubyGems, Bundler, `gem`, `bundle`, `rake`, `irb`, `erb`, `rdoc`, `ri`
+and `racc` are on `PATH`, with the default and bundled gems of the release
+(minitest, test-unit, rake, power_assert, rexml, rss, net-ftp, ...):
+
+```yaml
+test:
+  using: env:ruby@4.0
+  run: |
+    bundle install
+    bundle exec rake test
+```
+
+What works, each in `builtins/test.sh`'s `ruby@*` jobs:
+
+- **Threads are native threads.** `Thread`, `Mutex`, `Queue`,
+  `ConditionVariable`, `Timeout`, Fibers and Enumerators, with the
+  collector running while several threads hold objects.
+- **Sockets.** `TCPServer` and `TCPSocket` on the job's loopback,
+  `Net::HTTP`, and TLS through `openssl` (OpenSSL 3.5.9, Mozilla's CA
+  certificates at `/opt/ruby/ssl/cert.pem`), out to the internet as well.
+- **Child processes with real exit statuses.** `system`, backticks,
+  `spawn`, `Process.wait`, `IO.popen` and `Open3`, with redirections,
+  environments and `chdir:`; a failing command fails, a missing one
+  returns `nil` from `system` and raises `Errno::ENOENT` from `spawn`, and
+  `exec` replaces the process. `fork` and `IO.popen("-")` raise
+  `NotImplementedError` (`Process.respond_to?(:fork)` is false), as on
+  Windows: WASIX has no fork.
+- **The standard library's extensions**, each loaded by `require`:
+  `etc`, `fcntl`, `zlib`, `psych` (libyaml 0.2.5), `json`, `bigdecimal`,
+  `date`, `ripper`, `prism`, `racc`, `strscan`, `digest`, `openssl`,
+  `io/console`, `io/wait`, `socket`, `stringio`, `objspace` and
+  `coverage`. Not built: `fiddle` (no libffi), `pty` (no pseudo-terminals)
+  and `readline` (`irb` uses Reline).
+- **`gem install` and `bundle install`** from rubygems.org, into the
+  job's `GEM_HOME`, with installed commands on `PATH`. A gem with a C
+  extension does not install: a job has no C compiler. `deps: [bundler]`
+  installs one with a build made ahead of time ([Ruby gems](#ruby-gems),
+  [Rails](#rails)).
+
+What does not, or differs:
+
+- **A thread waiting on a descriptor looks for interrupts every 100 ms.**
+  WASIX cannot end a blocking call with a signal to a thread, which is how
+  Ruby wakes one on Linux, so a thread in `IO.select`, a read or an
+  `accept` waits in slices instead, and `Thread#kill`, `Thread#raise`,
+  `Timeout` and the program's exit reach it within 100 ms. A thread in
+  `Process.wait` cannot be interrupted.
+- **Signals, as far as WASIX has them.** `trap` handlers run, in a child
+  process too (`Process.kill(:TERM, pid)` reaches a child's handler), but
+  a signal that arrives while the main thread waits on a descriptor takes
+  its default action, and a child ended by a signal reports an exit status
+  rather than `termsig`. WASIX cannot wait for exceptional conditions
+  (out-of-band data), so none is ever reported: `IO#wait_priority` waits
+  until its timeout, `IO.select`'s error set comes back empty, and a wait
+  for `IO::READABLE | IO::PRIORITY` (as the pg gem's) is a wait for
+  readable.
+- **`exec` passes the environment the process started with**, not one
+  changed through `ENV` since (`system`, `spawn`, backticks and an `exec`
+  given an environment hash pass the current one). So `bundle exec ruby
+script.rb`, which sets `RUBYOPT` and then execs Ruby, runs the script
+  without the bundle; `bundle exec rake`, `rspec` or `rails`, Ruby scripts
+  that Bundler loads in its own process, are not affected. Use `ruby
+-rbundler/setup script.rb`.
+- **No JIT** (YJIT and ZJIT generate native code), and each process has at
+  most 4 GiB of memory (wasm32).
+- `spawn`'s `rlimit_*:`, `uid:` and `gid:` raise `Errno::ENOTSUP`.
+
+The environment sets these, which a job's `env:` can override:
+
+| Variable   | Value                                                              | Why                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEM_HOME` | `/root/.local/share/gem/ruby/<ruby_version>` (`4.0.0`, `3.4.0`)    | `gem install` and `bundle install` install here rather than into the interpreter's own directory, as RubyGems' `--user-install` would (`Gem.user_dir`). |
+| `PATH`     | `$GEM_HOME/bin`, `/usr/local/bin`, `/opt/ruby/bin`, then the usual | The commands gems install come first, then the interpreter's own (`gem`, `bundle`, `rake`, `irb`, ...). `ruby` itself is `/usr/bin/ruby`.               |
+
+No `BUNDLE_*` variable is set, so Bundler behaves as it does elsewhere:
+`bundle install` installs into `GEM_HOME`, and a repository's own
+`.bundle/config` (`BUNDLE_PATH: vendor/bundle`) is honoured.
+
+**C extensions.** The interpreter is a WASIX dynamic main module and every
+extension, the standard library's included, is a side module it opens
+with `dlopen()` when it is required, as on Linux: `.so` files under
+`/opt/ruby/lib/ruby/<ruby_version>/wasm32-wasix`, and a gem's in its own
+directories. Keeping them out of the interpreter, rather than linking them
+in as `--with-static-linked-ext` would, is what lets a gem's newer
+version of a default gem with an extension (`bigdecimal`, `json`, `date`)
+load its own `.so`, as Bundler expects, and a gem's extension built
+elsewhere load with a plain `require`. A job cannot compile one (no C
+compiler), so one is built outside and brought in, the way
+`builtins/environments/ruby/build.sh` builds its check extension
+(`check-ext/`, loaded by `ruby@*/extension-passes`):
+
+| `RbConfig::CONFIG` / RubyGems | 4.0                             | 3.4                   |
+| ----------------------------- | ------------------------------- | --------------------- |
+| `arch`                        | `wasm32-wasix`                  | `wasm32-wasix`        |
+| `ruby_version`                | `4.0.0`                         | `3.4.0`               |
+| `DLEXT`                       | `so`                            | `so`                  |
+| `ENABLE_SHARED`               | `no` (there is no `libruby.so`) | `no`                  |
+| `Gem::Platform.local`         | `wasm32-wasi`                   | `wasm32-wasi`         |
+| `Gem.extension_api_version`   | `4.0.0-static`                  | `3.4.0-static`        |
+| RubyGems                      | 4.0.20 (Bundler 4.0.20)         | 3.6.9 (Bundler 2.6.9) |
+
+1. On x86_64 or aarch64 Linux, unpack the toolchain `build.sh` pins
+   (wasixcc 0.4.3, wasix-org's LLVM 21.1.206, Binaryen 133 and the
+   wasix-libc `sysroot-ehpic` of v2026-07-30.1; Edge.js's C library
+   patches are only needed by the interpreter) and set wasixcc's
+   environment as `build.sh` step 1 does:
+   `WASIXCC_SYSROOT_PREFIX`, `WASIXCC_LLVM_LOCATION`,
+   `WASIXCC_BINARYEN_LOCATION`, `WASIXCC_WASM_EXCEPTIONS=legacy`,
+   `WASIXCC_PIC=yes`, `WASIXCC_RUN_WASM_OPT=no`, with wasixcc's
+   executables and Binaryen's `bin` on `PATH`.
+2. Take `/opt/ruby` out of the environment's `iwci/ruby` package:
+   `wasmer package unpack ruby.webc --out-dir pkg` puts it in `pkg/ruby`
+   (a job can also `tar` it into a download). Its
+   `include/ruby-<ruby_version>` has the headers and
+   `lib/ruby/<ruby_version>/wasm32-wasix/rbconfig.rb` the build settings:
+   `CC` `wasixcc`, `CCDLFLAGS` `-fPIC`, `LDSHARED` `$(CC) -shared`,
+   `DLDFLAGS` `ruby-wasix-stack-anchor.o` from that directory (a
+   constructor that makes the module import `__stack_pointer`), no
+   `DLDLIBS` (the interpreter has the whole C library), and `POSTLINK`
+   `wasm-opt --flatten --coalesce-locals --spill-pointers -O2 --emit-exnref -g --strip-dwarf --strip-producers -o $@ $@`.
+   The `POSTLINK` pass is not optional: Ruby's collector finds the objects
+   a C function holds only on the stack, and `--spill-pointers` is what
+   puts them there; without it an extension's objects can be collected
+   while it uses them.
+3. Run `extconf.rb` with a native Ruby of the same release, pointed at
+   that `rbconfig.rb`, which finds the headers and libraries beside it:
+   `ruby --disable-gems -I pkg/ruby/lib/ruby/<ruby_version>/wasm32-wasix -r rbconfig extconf.rb && make`.
+   `mkmf`'s `have_func` and `have_library` checks link against the
+   package's `lib/libruby-static.a` and work; checks that run a program
+   (`try_run`) do not, as in any cross build. An `extconf.rb` that loads
+   RubyGems (nio4r's) would then load the package's `monitor.so`, which is
+   WebAssembly, into the native Ruby: give `-I` a directory holding only a
+   copy of `rbconfig.rb` with its `TOPDIR` set to `pkg/ruby`'s absolute
+   path, as `gems/build.sh` does. Built this way from the
+   unpacked package, `check-ext` comes out byte for byte as `build.sh`
+   makes it.
+4. Put the `.so` where `require` finds it: on `$LOAD_PATH` (`-I`,
+   `RUBYLIB`), or, for a gem, in its `lib/` or under
+   `extensions/wasm32-wasi/<extension_api_version>/<gem>-<version>/`
+   in the gem home (`GEM_HOME`), where RubyGems looks for an installed
+   gem's compiled extension.
+
+A side module links no C library of its own: the interpreter exports all
+of it, and the module's undefined functions are resolved against the
+interpreter when it is loaded. A library it needs (libxml2, SQLite) is
+compiled into it as position-independent objects with the same
+toolchain.
 
 ### Rust
 
@@ -3159,16 +3583,16 @@ commit) runs in about 0.35 s.
 Everything a run builds is cached under `--cache`, so the second run of a
 commit, and of most commits after it, does almost nothing:
 
-| What             | Kept under  | Keyed by                                                                                                                                                                                       |
-| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| git objects      | `git/`      | One repository per remote (the run's, and Composer packages fetched by commit). A commit already there costs no network.                                                                       |
-| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`. Re-verified on every read. |
-| installs         | `installs/` | What the install read. See below.                                                                                                                                                              |
-| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                         |
-| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                        |
+| What             | Kept under  | Keyed by                                                                                                                                                                                                                       |
+| ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| git objects      | `git/`      | One repository per remote (the run's, and Composer packages and Bundler `GIT` sources fetched by commit). A commit already there costs no network.                                                                             |
+| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`, a `Gemfile.lock`'s `CHECKSUMS`. Re-verified on every read. |
+| installs         | `installs/` | What the install read. See below.                                                                                                                                                                                              |
+| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                                                         |
+| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                                                        |
 
 **Installs** (`node_modules`, the `GOMODCACHE`, `vendor/`, a Python user
-site) are cached whole. An install runs in a layer over the checkout that records every read
+site, `vendor/bundle`) are cached whole. An install runs in a layer over the checkout that records every read
 reaching the checkout, including files it looked for and did not find, and
 keeps every write to itself. Both are stored, and a later run reuses the
 result only when every recorded read still sees the same thing. So a bumped
@@ -4209,15 +4633,15 @@ job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 
-| Crate          | Does                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------ |
-| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                             |
-| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                           |
-| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.            |
-| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip and Composer installers over a verifying, caching fetcher. |
-| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                              |
-| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.  |
-| `iwci`         | The scheduler and the `iwci` command.                                                |
+| Crate          | Does                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                                      |
+| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                                    |
+| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.                     |
+| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip, Composer and Bundler installers over a verifying, caching fetcher. |
+| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                                       |
+| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.           |
+| `iwci`         | The scheduler and the `iwci` command.                                                         |
 
 ## Development
 

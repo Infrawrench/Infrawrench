@@ -60,6 +60,9 @@ struct BuildTarget {
 enum Kind {
     Builtin,
     Environment,
+    /// Files the runner pins by digest in its own source (the gem builds,
+    /// `crate::gem_builds`): uploaded as blobs, with no manifest.
+    Blobs,
 }
 
 #[derive(Deserialize)]
@@ -145,6 +148,30 @@ pub fn publish(mut args: Args) -> Result<ExitCode, String> {
                 };
                 iwci_store::publish_tool(store.as_ref(), &Namespace::Builtin, &draft)
                     .map(|(_, report)| report)
+            }
+            Kind::Blobs => {
+                let files = build
+                    .files
+                    .iter()
+                    .map(|f| at(&f.file))
+                    .collect::<Result<Vec<_>, String>>()?;
+                let (uploaded, skipped) = iwci_store::publish_blobs(store.as_ref(), &files)
+                    .map_err(|e| format!("{}: {e}", dir.display()))?;
+                println!(
+                    "{} {}@{} as blobs ({} uploaded, {} already there): {}",
+                    style::ok("published"),
+                    build.name,
+                    version,
+                    uploaded.len(),
+                    skipped.len(),
+                    uploaded
+                        .iter()
+                        .chain(&skipped)
+                        .map(|d| format!("sha256:{d}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                continue;
             }
             Kind::Environment => {
                 let draft = EnvDraft {

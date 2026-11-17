@@ -22,13 +22,18 @@ pub struct GitWorkspaces {
     pub layers: Arc<iwci_deps::cache::LayerCache>,
     /// Threads an install may use to fetch and unpack (`--cpus`).
     pub threads: usize,
-    /// Where Composer packages without a dist hash are fetched by commit.
+    /// Where Composer packages without a dist hash, and Bundler's `GIT`
+    /// sources, are fetched by commit.
     pub git: Option<iwci_git::GitCache>,
+    /// Native extensions built ahead of time for `env:ruby`, placed where
+    /// Bundler looks for a gem's compiled part.
+    pub prebuilt: Arc<dyn iwci_deps::bundler::PrebuiltExtensions>,
 }
 
-/// Composer packages' git commits, through the run's git cache. The commit
-/// id is what verifies them: gix checks every object it receives against
-/// its id, so the tree read back is the one the lock names.
+/// Packages' git commits (Composer's, Bundler's), through the run's git
+/// cache. The commit id is what verifies them: gix checks every object it
+/// receives against its id, so the tree read back is the one the lock
+/// names.
 pub struct CachedGitTrees {
     pub git: iwci_git::GitCache,
     /// Tests reach fixture repositories over `file://`; a lock never may,
@@ -36,8 +41,8 @@ pub struct CachedGitTrees {
     pub allow_local: bool,
 }
 
-impl iwci_deps::composer::GitTrees for CachedGitTrees {
-    fn files(&self, url: &str, commit: &str) -> Result<Vec<iwci_deps::composer::TreeFile>, String> {
+impl iwci_deps::git::GitTrees for CachedGitTrees {
+    fn files(&self, url: &str, commit: &str) -> Result<Vec<iwci_deps::git::TreeFile>, String> {
         if !(url.starts_with("https://") || self.allow_local && url.starts_with("file://")) {
             return Err(format!("{url}: only https git URLs are fetched"));
         }
@@ -57,7 +62,7 @@ impl iwci_deps::composer::GitTrees for CachedGitTrees {
                 continue;
             };
             let data = tree.read(&path).map_err(|e| e.to_string())?;
-            files.push(iwci_deps::composer::TreeFile {
+            files.push(iwci_deps::git::TreeFile {
                 path: relative.to_string_lossy().into_owned(),
                 data,
                 executable: tree.mode(&path).is_some_and(|m| m & 0o111 != 0),
@@ -71,6 +76,16 @@ impl iwci_deps::composer::GitTrees for CachedGitTrees {
 /// which changes how fast an install runs and never what it writes.
 fn options_key(kind: &str, dir: &str, options: &impl std::fmt::Debug) -> String {
     format!("{kind}\0{dir}\0{options:?}")
+}
+
+impl GitWorkspaces {
+    /// The run's git cache as a source of packages' trees, or nothing.
+    fn trees(&self) -> Option<CachedGitTrees> {
+        self.git.clone().map(|git| CachedGitTrees {
+            git,
+            allow_local: false,
+        })
+    }
 }
 
 fn depth(d: CloneDepth) -> iwci_git::Depth {
@@ -201,13 +216,10 @@ impl Workspaces for GitWorkspaces {
                     };
                     let key = options_key("composer", &dep.dir, &options);
                     options.parallelism = threads;
-                    let git = self.git.clone().map(|git| CachedGitTrees {
-                        git,
-                        allow_local: false,
-                    });
-                    let git: &dyn iwci_deps::composer::GitTrees = match &git {
+                    let git = self.trees();
+                    let git: &dyn iwci_deps::git::GitTrees = match &git {
                         Some(g) => g,
-                        None => &iwci_deps::composer::NoGit,
+                        None => &iwci_deps::git::NoGit,
                     };
                     self.layers
                         .install(&builder, &key, |layer| {
@@ -223,6 +235,35 @@ impl Workspaces for GitWorkspaces {
                             warnings.extend(autoload.warnings);
                             Ok(done)
                         })
+                }
+                Ecosystem::Bundler => {
+                    let mut options = iwci_deps::bundler::BundlerOptions {
+                        ruby: dep.ruby.clone(),
+                        without_extensions: dep.without_extensions.clone().unwrap_or_default(),
+                        parallelism: 0,
+                        ..Default::default()
+                    };
+                    let prebuilt = self.prebuilt.as_ref();
+                    // What the prebuilt extensions are changes what an
+                    // install writes, so it is part of the key.
+                    let key = format!(
+                        "{}\0{}",
+                        options_key("bundler", &dep.dir, &options),
+                        prebuilt.key()
+                    );
+                    options.parallelism = threads;
+                    env.extend(iwci_deps::bundler::env_for(&builder, &dep.dir));
+                    let git = self.trees();
+                    let git: &dyn iwci_deps::git::GitTrees = match &git {
+                        Some(g) => g,
+                        None => &iwci_deps::git::NoGit,
+                    };
+                    self.layers.install(&builder, &key, |layer| {
+                        iwci_deps::bundler::install(
+                            layer, &dep.dir, fetcher, git, prebuilt, &options,
+                        )
+                        .map(|report| report.warnings)
+                    })
                 }
             }
             .map_err(|e| format!("{} in {}: {e}", dep.ecosystem.name(), dep.dir))?;
@@ -273,7 +314,7 @@ impl Committer for GitCommitter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iwci_deps::composer::GitTrees;
+    use iwci_deps::git::GitTrees;
     use std::process::Command;
 
     fn git(dir: &std::path::Path, args: &[&str]) -> String {

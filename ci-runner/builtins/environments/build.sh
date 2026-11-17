@@ -265,6 +265,31 @@ GO_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/go/bin",
 # library's entries are dated 2100 and so is its trim.txt, so Go never trims
 # here: past the limit the runner keeps only what the last run wrote.
 GO_CACHES='{ "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1073741824 }'
+# CRuby, built by ruby/build.sh <minor> for WASIX (README.md, "Ruby"). Each
+# line is the environment's version, the package's, its hash, and the
+# directory gems install into (Gem.user_dir for /root, named after the
+# minor's ruby_version). The environment's version starts as Ruby's own and
+# its patch number is the environment's revision after that, as with Go.
+ruby_pkgs() {
+  case "$1" in
+    3.4) echo "3.4.12 3.4.12-iwci.3 7ce9e52a69378f1f19c4af0a00ae41ec21ddbb4f1210d153da7c4414cb123086 3.4.0" ;;
+    4.0) echo "4.0.9 4.0.9-iwci.3 bb6446fe10cfc4b51b074339c5982169de3d5ce4e357c857828604b79663b22d 4.0.0" ;;
+    *) return 1 ;;
+  esac
+}
+RUBY_MINORS=(3.4 4.0)
+# What Ruby jobs need here (README.md, "Ruby"):
+#   GEM_HOME  where `gem install` and `bundle install` put gems: the user
+#     directory RubyGems would pick for root (Gem.user_dir), since the
+#     interpreter's own is part of the package. BUNDLE_* is left to the job
+#     and to `deps: [bundler]`, which sets them per job.
+#   PATH  that directory's bin/ first, as env:python puts the user site's,
+#     then the default with /opt/ruby/bin (gem, bundle, rake, irb, ...)
+#     ahead of /usr/bin, which has `ruby` itself.
+ruby_env() {
+  printf '"PATH": "/root/.local/share/gem/ruby/%s/bin:/usr/local/bin:/opt/ruby/bin:/usr/bin:/bin",
+    "GEM_HOME": "/root/.local/share/gem/ruby/%s"' "$1" "$1"
+}
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4" build="${5:-$3}"
@@ -300,6 +325,11 @@ fetch() {
     # Ours too: go/build.sh <minor> makes both of a minor's packages.
     local built="$dist/package/go/$version/${name#iwci/}.webc"
     [[ -f "$built" ]] || bash "$here/environments/go/build.sh" "$(cut -d. -f1-2 <<<"$version")" >&2
+    cp "$built" "$file"
+  elif [[ "$name" == iwci/ruby ]]; then
+    # Ours too: ruby/build.sh <minor>.
+    local built="$dist/package/ruby/$version/ruby.webc"
+    [[ -f "$built" ]] || bash "$here/environments/ruby/build.sh" "$(cut -d. -f1-2 <<<"$version")" >&2
     cp "$built" "$file"
   else
     # Once per run: environments share most of their packages.
@@ -357,7 +387,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG" "$GIT_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php go postgres aws az gcloud
+  set -- bash bash-node python php go ruby postgres aws az gcloud
 fi
 for env in "$@"; do
   case "$env" in
@@ -495,8 +525,21 @@ for env in "$@"; do
       build_env clickhouse 26.11.5 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
+    ruby | ruby@*)
+      minors=("${RUBY_MINORS[@]}")
+      [[ "$env" == ruby ]] || minors=("${env#ruby@}")
+      for minor in "${minors[@]}"; do
+        if ! pkgs="$(ruby_pkgs "$minor")"; then
+          echo "error: no Ruby $minor; know ${RUBY_MINORS[*]}" >&2
+          exit 2
+        fi
+        read -r env_version version ruby_sha api <<<"$pkgs"
+        build_env ruby "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CRuby ${version%-iwci.*} (ruby, gem, bundle, rake, irb), built for WASIX" \
+          "$(ruby_env "$api")" "${TOOLS[@]}" "iwci/ruby $version $ruby_sha"
+      done
+      ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
       exit 2
       ;;
   esac

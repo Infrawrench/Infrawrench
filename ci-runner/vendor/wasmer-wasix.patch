@@ -1881,6 +1881,23 @@
                  }
              })
          } else {
+--- a/src/state/linker/mod.rs
++++ b/src/state/linker/mod.rs
+@@ -717,8 +717,12 @@
+         trace!(stack_low, stack_high, "Memory layout");
+ 
+         // WASIX threads initialize their own stack pointer global in wasi_thread_start,
+-        // so no need to initialize it to a value here.
+-        let stack_pointer = create_main_stack_pointer_global(store, &main_module, 0)?;
++        // but side modules' `__wasix_init_tls` (and the main module's allocator it
++        // calls) run before that, below. Start the thread at the top of its own stack,
++        // where wasi_thread_start puts it too, so code there that uses the stack (a
++        // module put through Binaryen's --spill-pointers, env:ruby) does not write
++        // below address 0.
++        let stack_pointer = create_main_stack_pointer_global(store, &main_module, stack_high)?;
+ 
+         let c_longjmp = Tag::new(store, vec![Type::I32]);
+         let cpp_exception = Tag::new(store, vec![Type::I32]);
 --- a/src/syscalls/mod.rs
 +++ b/src/syscalls/mod.rs
 @@ -684,7 +684,88 @@
@@ -2070,7 +2087,7 @@
  
 --- a/src/syscalls/wasi/fd_filestat_get.rs
 +++ b/src/syscalls/wasi/fd_filestat_get.rs
-@@ -55,8 +55,21 @@
+@@ -55,8 +55,31 @@
          return Err(Errno::Access);
      }
  
@@ -2089,6 +2106,16 @@
 +        )
 +    {
 +        stat.st_filetype = Filetype::CharacterDevice;
++    }
++    // A socket's inode has no file type either, so `fstat` gave it none
++    // (no `S_IFSOCK`), and a program that checks a descriptor it was handed
++    // is a socket refused it: Ruby's `BasicSocket.for_fd`, and so pg's
++    // connection to PostgreSQL, which wraps the socket libpq opened. Its
++    // type is the one `fd_fdstat_get` gives (`SO_TYPE`).
++    let socket = stat.st_filetype == Filetype::Unknown
++        && matches!(*fd_entry.inode.read(), Kind::Socket { .. });
++    if socket && let Ok(fdstat) = state.fs.fdstat(fd, None) {
++        stat.st_filetype = fdstat.fs_filetype;
 +    }
 +    Ok(stat)
  }

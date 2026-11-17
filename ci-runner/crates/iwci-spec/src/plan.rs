@@ -479,6 +479,14 @@ pub struct DepSpec {
     /// when unset, so workspaces that do not name one keep their keys.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
+    /// bundler: the Ruby (`major.minor`) gems are installed for, when the
+    /// pipeline names it. Left out of the serialised form when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ruby: Option<String>,
+    /// bundler: gems installed without their native extension when there
+    /// is no build of it. Left out of the serialised form when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub without_extensions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -490,6 +498,7 @@ pub enum Ecosystem {
     Cargo,
     Pip,
     Composer,
+    Bundler,
 }
 
 impl Ecosystem {
@@ -501,6 +510,7 @@ impl Ecosystem {
             "cargo" => Some(Ecosystem::Cargo),
             "pip" => Some(Ecosystem::Pip),
             "composer" => Some(Ecosystem::Composer),
+            "bundler" => Some(Ecosystem::Bundler),
             _ => None,
         }
     }
@@ -513,6 +523,7 @@ impl Ecosystem {
             Ecosystem::Cargo => "cargo",
             Ecosystem::Pip => "pip",
             Ecosystem::Composer => "composer",
+            Ecosystem::Bundler => "bundler",
         }
     }
 }

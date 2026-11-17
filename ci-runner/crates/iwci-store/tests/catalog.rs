@@ -8,7 +8,7 @@ use std::sync::{Arc, Barrier};
 use iwci_store::{
     Abi, Catalog, EnvDraft, EnvEntry, Error, FileSource, LocalStore, ManifestOutcome, Namespace,
     ObjectMeta, ObjectStore, PackageSource, RepoId, Resolved, StoreError, ToolDraft, ToolKind,
-    ToolRef, keys, publish_env, publish_tool,
+    ToolRef, keys, publish_blobs, publish_env, publish_tool,
 };
 
 struct Fixture {
@@ -673,4 +673,19 @@ fn a_native_tool_resolves_to_this_runners_target() {
     assert_eq!(&*module.bytes, b"ELF here");
     assert_eq!(files.len(), 1);
     assert_eq!(&*files[0].1.bytes, b"ld here");
+}
+
+#[test]
+fn blobs_publish_alone_and_read_back_by_digest() {
+    let f = fixture();
+    let archive = f.file("builds.tar.gz", b"gem builds");
+    let digest = keys::sha256_hex(b"gem builds");
+    let (uploaded, skipped) = publish_blobs(&*f.store, std::slice::from_ref(&archive)).unwrap();
+    assert_eq!((uploaded, skipped.len()), (vec![digest.clone()], 0));
+    // Again: already there.
+    let (uploaded, skipped) = publish_blobs(&*f.store, &[archive]).unwrap();
+    assert_eq!((uploaded.len(), skipped), (0, vec![digest.clone()]));
+    let blob = f.catalog().blob(&digest, 10).unwrap();
+    assert_eq!(&*blob.bytes, b"gem builds");
+    assert!(f.catalog().blob(&digest, 11).is_err());
 }

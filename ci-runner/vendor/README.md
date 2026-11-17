@@ -834,6 +834,16 @@ answers `ENOTCONN` for both, and for a receive on a socket that is bound
 but neither listening nor connected. Upstream main still answers all of
 them as 0.705.0 does (checked November 2026, at b72787f1be).
 
+**`fstat` of a socket says it is one.** A socket's inode has no file type,
+so `fd_filestat_get` answered "unknown" and the C library's `fstat` gave no
+`S_IFSOCK`. A program that checks that a descriptor it was handed is a
+socket refused it: Ruby's `BasicSocket.for_fd` raised "not a socket file
+descriptor" for the socket libpq had opened, so the pg gem could not
+connect to PostgreSQL. `src/syscalls/wasi/fd_filestat_get.rs` now gives a
+socket the type `fdstat` gives it (the one `SO_TYPE` reads, above).
+Upstream main still answers "unknown" (checked November 2026, at
+65f18f0054).
+
 **A program can use descriptors 3 and 4 (#1019).** They are the preopens,
 the virtual root and the job's `/`, and `dup2_at` refused to replace one
 with `ENOTSUP`, so bash's `exec 3>&1` (`dup2(1, 3)`) and `exec 4< file`
@@ -1179,6 +1189,24 @@ rewritten to (`builtins/environments/python/build.sh`). The tests are
 file locking (checked November 2026); a later WASIX defines `flock` and
 `fcntl64` as Linux system calls.
 
+**A new thread's stack pointer starts on its stack (env:ruby).** A
+dynamically linked program's new thread is a new instance group
+(`src/state/linker/mod.rs`, `InstanceGroupState::new`), whose
+`__stack_pointer` global was made at 0 on the grounds that
+`wasi_thread_start` sets it. But the group first runs each loaded side
+module's `__wasix_init_tls`, which calls the main module's
+`aligned_alloc` for the module's thread-local block, before
+`wasi_thread_start` runs. A function that keeps a frame on the stack
+there writes below address 0, and env:ruby's interpreter and
+extensions all do (every module goes through Binaryen's
+`--spill-pointers`, `builtins/environments/ruby/build.sh`), so with any
+extension loaded (Ruby loads two encodings at start) every
+`Thread.new` failed: the thread trapped with an out-of-bounds access and
+the process exited with `ENOEXEC` (45). The global now starts at the
+thread's own `stack_upper`, the value `wasi_thread_start` gives it
+anyway. `builtins/test.sh`'s `ruby@*/threads-passes` is the test.
+Upstream main still makes it at 0 (checked November 2026).
+
 **Only the WASI versions a module imports (#996).** Instantiating a module
 (`WasiEnv::instantiate`, `src/state/env.rs`), which every process and each
 of its threads does, built the host functions of all five WASI and WASIX
@@ -1212,7 +1240,8 @@ spawned child stops counting against `max_threads` once it exits
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
-through a symbolic link, WASIX has file locks a C library calls (and
+through a symbolic link, a new thread's stack pointer starts on its
+stack before its side modules' TLS is set up, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a

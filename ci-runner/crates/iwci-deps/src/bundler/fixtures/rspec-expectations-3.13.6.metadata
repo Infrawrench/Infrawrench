@@ -1,0 +1,171 @@
+--- !ruby/object:Gem::Specification
+name: rspec-expectations
+version: !ruby/object:Gem::Version
+  version: 3.13.6
+platform: ruby
+authors:
+- Steven Baker
+- David Chelimsky
+- Myron Marston
+bindir: bin
+cert_chain:
+- |
+  -----BEGIN CERTIFICATE-----
+  MIIFvjCCA6agAwIBAgIJAPXjfUbCjdXWMA0GCSqGSIb3DQEBCwUAMIGAMQswCQYD
+  VQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UEBwwHU2VhdHRsZTEO
+  MAwGA1UECgwFUlNwZWMxEzARBgNVBAMMCnJzcGVjLmluZm8xJTAjBgkqhkiG9w0B
+  CQEWFnJzcGVjQGdvb2dsZWdyb3Vwcy5jb20wHhcNMjYwMjE3MTE0ODM0WhcNMjcw
+  MjE3MTE0ODM0WjCBgDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCldhc2hpbmd0b24x
+  EDAOBgNVBAcMB1NlYXR0bGUxDjAMBgNVBAoMBVJTcGVjMRMwEQYDVQQDDApyc3Bl
+  Yy5pbmZvMSUwIwYJKoZIhvcNAQkBFhZyc3BlY0Bnb29nbGVncm91cHMuY29tMIIC
+  IjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsSmjgcHaKlD0jizRJowi2bGI
+  KMOHnJoExxRNHHxH+3w9kkl95YldvDRVX495b13ZCzwRe0AyqX24wq04tp0G5Z5C
+  e/w2pnNK4ol1eECPwQu+YGpepeODlZICL5gwQspe0cDifbBnHx5QySMiPpvx6bC0
+  tQTox0ppDIaMhch8IPCwyoE4DQK5bpsdwnLSHTsQjUIb7IM8tUMpd/iKrJgNffwc
+  6gC1TmhIlzQoB26nCNh9uK7xZjUM+sGECzvcYuImchUaIgJA/ybrlZS+m/hxzvBo
+  mLnn/xNEC6Vz5HG+3TR0Gb0cSUf6XUu2s51Jk/SJi3MhCZp2gs9OUg4EVZNzQVkZ
+  efLBjAZG2Mxk14JyB4/Omc+Jk0ajprINCBbUNnxzCJrYDM3J9TVWIwyUGNX/U3MO
+  s3tMAT+EVgx/mZMPnBO8EULlyF51MRUp3Wy9Mnw8AYLk30UnMG5AjqgO5JNyFlA7
+  Xeh3EVdWY3vMB1pkhPwlsenpcmj5gOzrd54lELOVbCGHCf48iSqeflY2Lhe0pvzK
+  blXCJBDmtrebvus291rM/dHcbEfK1SVd5Wut/n131iouf6dnNCFskFygDcgBbthC
+  gpEMqf80lEmhX59VUsm0Pv6OEo+ZPHBvXPiJA6DShQh9t3YtpwyA8uVDMbT/i32u
+  2FUsqZbbJcCmkBrGposCAwEAAaM5MDcwCQYDVR0TBAIwADALBgNVHQ8EBAMCBLAw
+  HQYDVR0OBBYEFPPvQ5XT0Nvuhi6k+hrWVv35J+TeMA0GCSqGSIb3DQEBCwUAA4IC
+  AQBaeeGIZtBFDP33D1/4sXldSgwntVcL5qC5pcjamLWM4HK4/a6ePMy1uoX+dEnJ
+  J+BjZWURsUfFOob+xnUe8AMSbv9gupckfVehZoBzOvJDaWcALo8GKjJlmVtzEIqZ
+  TvBLO5zQwR4cWIrg0NWjkDOSQOrNNQ2Degv/aOFrR8dFPJSgxZG/IC0/t6s72cEt
+  V4SIe/NLIU4RyBzfgn/RBsalDEF1yIVlDWspMa78clS3bPmntkNyfLwIUwINDHhn
+  swFA8bEKMQWqRlupuRmEiy3nGe6az46YlPXzK5UWfXJ6Lb1wIE8W80TRx0HpSC7j
+  JfXPfQ0PLgiU4nnQqain2bIn96Ooco8kspeqp8rSJ8sbaMPTNmcFuwD3gzWsRnJ3
+  rIaJbmrUcq6DlJ7jfv3u5TPt4JWzDP7oDPf3nXNiF2Cn48Ne598G5lHH6Heyxe39
+  pYZdhEptKJWPHxbJWHXD02omKprkNuQKHpnXrW+mmbiO4IcqAMggiud+DaEQg20x
+  Dae4cNbvK5p3D+5xqvcEO2G4uCMDmJjrSd61kvTLBnm1qroHqrpi9GauEVWZZmD0
+  n0ph8oFAXOsKQWxZ+4uh6yGISk+WhngCZEVPZUjq7SIGAuVhQy2ZgwdjnLEz//lD
+  x0Qexp5yGeoxAL9qKM/RXYKtuRZBJV1z+L9A1YOtwaXXNg==
+  -----END CERTIFICATE-----
+date: 1980-01-02 00:00:00.000000000 Z
+dependencies:
+- !ruby/object:Gem::Dependency
+  name: rspec-support
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - "~>"
+      - !ruby/object:Gem::Version
+        version: 3.13.0
+  type: :runtime
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - "~>"
+      - !ruby/object:Gem::Version
+        version: 3.13.0
+- !ruby/object:Gem::Dependency
+  name: diff-lcs
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: 1.2.0
+    - - "<"
+      - !ruby/object:Gem::Version
+        version: '2.0'
+  type: :runtime
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: 1.2.0
+    - - "<"
+      - !ruby/object:Gem::Version
+        version: '2.0'
+description: rspec-expectations provides a simple, readable API to express expected
+  outcomes of a code example.
+email: rspec@googlegroups.com
+executables: []
+extensions: []
+extra_rdoc_files: []
+files:
+- ".document"
+- ".yardopts"
+- Changelog.md
+- LICENSE.md
+- README.md
+- lib/rspec/expectations.rb
+- lib/rspec/expectations/block_snippet_extractor.rb
+- lib/rspec/expectations/configuration.rb
+- lib/rspec/expectations/expectation_target.rb
+- lib/rspec/expectations/fail_with.rb
+- lib/rspec/expectations/failure_aggregator.rb
+- lib/rspec/expectations/handler.rb
+- lib/rspec/expectations/minitest_integration.rb
+- lib/rspec/expectations/syntax.rb
+- lib/rspec/expectations/version.rb
+- lib/rspec/matchers.rb
+- lib/rspec/matchers/aliased_matcher.rb
+- lib/rspec/matchers/built_in.rb
+- lib/rspec/matchers/built_in/all.rb
+- lib/rspec/matchers/built_in/base_matcher.rb
+- lib/rspec/matchers/built_in/be.rb
+- lib/rspec/matchers/built_in/be_between.rb
+- lib/rspec/matchers/built_in/be_instance_of.rb
+- lib/rspec/matchers/built_in/be_kind_of.rb
+- lib/rspec/matchers/built_in/be_within.rb
+- lib/rspec/matchers/built_in/change.rb
+- lib/rspec/matchers/built_in/compound.rb
+- lib/rspec/matchers/built_in/contain_exactly.rb
+- lib/rspec/matchers/built_in/count_expectation.rb
+- lib/rspec/matchers/built_in/cover.rb
+- lib/rspec/matchers/built_in/eq.rb
+- lib/rspec/matchers/built_in/eql.rb
+- lib/rspec/matchers/built_in/equal.rb
+- lib/rspec/matchers/built_in/exist.rb
+- lib/rspec/matchers/built_in/has.rb
+- lib/rspec/matchers/built_in/have_attributes.rb
+- lib/rspec/matchers/built_in/include.rb
+- lib/rspec/matchers/built_in/match.rb
+- lib/rspec/matchers/built_in/operators.rb
+- lib/rspec/matchers/built_in/output.rb
+- lib/rspec/matchers/built_in/raise_error.rb
+- lib/rspec/matchers/built_in/respond_to.rb
+- lib/rspec/matchers/built_in/satisfy.rb
+- lib/rspec/matchers/built_in/start_or_end_with.rb
+- lib/rspec/matchers/built_in/throw_symbol.rb
+- lib/rspec/matchers/built_in/yield.rb
+- lib/rspec/matchers/composable.rb
+- lib/rspec/matchers/dsl.rb
+- lib/rspec/matchers/english_phrasing.rb
+- lib/rspec/matchers/fail_matchers.rb
+- lib/rspec/matchers/generated_descriptions.rb
+- lib/rspec/matchers/matcher_delegator.rb
+- lib/rspec/matchers/matcher_protocol.rb
+- lib/rspec/matchers/multi_matcher_diff.rb
+homepage: https://rspec.info
+licenses:
+- MIT
+metadata:
+  bug_tracker_uri: https://github.com/rspec/rspec/issues
+  changelog_uri: https://github.com/rspec/rspec/blob/rspec-expectations-v3.13.6/rspec-expectations/Changelog.md
+  documentation_uri: https://rspec.info/documentation/
+  mailing_list_uri: https://groups.google.com/forum/#!forum/rspec
+  rubygems_mfa_required: 'true'
+  source_code_uri: https://github.com/rspec/rspec/blob/rspec-expectations-v3.13.6/rspec-expectations
+rdoc_options:
+- "--charset=UTF-8"
+require_paths:
+- lib
+required_ruby_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: 1.8.7
+required_rubygems_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: '0'
+requirements: []
+rubygems_version: 4.0.20
+specification_version: 4
+summary: rspec-expectations-3.13.6
+test_files: []

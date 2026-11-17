@@ -241,6 +241,32 @@ pub fn publish_env(
     Ok((manifest, report))
 }
 
+/// Uploads files as blobs alone, with no manifest naming them: for data
+/// the runner pins by digest in its own source (the gem builds), which
+/// needs no version to resolve. Content-addressed, so publishing the same
+/// bytes again changes nothing. Returns the digests uploaded and those
+/// already there.
+pub fn publish_blobs(
+    store: &dyn ObjectStore,
+    files: &[PathBuf],
+) -> Result<(Vec<String>, Vec<String>), Error> {
+    let mut uploaded = Vec::new();
+    let mut skipped = Vec::new();
+    for path in files {
+        let bytes = read_local(path)?;
+        let digest = sha256_hex(&bytes);
+        let key = blob_key(&digest)?;
+        match store.head(&key)? {
+            Some(meta) if meta.size == bytes.len() as u64 => skipped.push(digest),
+            _ => {
+                store.put(&key, &bytes, BLOB_TYPE)?;
+                uploaded.push(digest);
+            }
+        }
+    }
+    Ok((uploaded, skipped))
+}
+
 /// Uploads blobs then the manifest. `same` decides whether an existing
 /// manifest document is the one being published; it compares parsed
 /// manifests, so reformatting alone is not a conflict.

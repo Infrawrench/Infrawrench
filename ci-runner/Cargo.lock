@@ -2883,6 +2883,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "ed25519-dalek",
+ "flate2",
  "getrandom 0.3.4",
  "globset",
  "hex",
