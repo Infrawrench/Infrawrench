@@ -1,6 +1,6 @@
 # The github-watcher on Oracle Cloud's Always Free tier, replacing the GKE
-# `github-watcher` Deployment (the cluster itself stays: ClickHouse and the
-# cloudflared connector run there). The session gateway is on AWS instead
+# `github-watcher` Deployment (the cluster itself stays: the cloudflared
+# connector runs there). The session gateway is on AWS instead
 # (aws-web.tf): Oracle's free Ampere capacity in us-ashburn-1 was exhausted in
 # every availability domain for days.
 #
@@ -70,9 +70,8 @@ locals {
   ocir_host = "${var.oci_region == "us-ashburn-1" ? "iad" : var.oci_region}.ocir.io"
 
   # Same configuration as the Lambda functions: app_env with lambda_app_env's
-  # overrides (ClickHouse through the tunnel hostname, not the cluster DNS
-  # name these VMs cannot resolve). Shell-quoted, with the key list on its own
-  # line, because GITHUB_APP_PRIVATE_KEY is multi-line.
+  # overrides. Shell-quoted, with the key list on its own line, because
+  # GITHUB_APP_PRIVATE_KEY is multi-line.
   oci_env = merge(var.app_env, var.lambda_app_env)
   oci_runtime_env = join("\n", concat(
     ["IW_ENV_KEYS='${join(" ", sort(keys(local.oci_env)))}'"],

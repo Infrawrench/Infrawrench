@@ -49,10 +49,7 @@ variable "lambda_initial_image_tag" {
 
 variable "lambda_app_env" {
   description = <<-EOT
-    Overrides merged over app_env for the Lambda functions only. Typically:
-    CLICKHOUSE_METRICS_URL (the Cloudflare Tunnel hostname, since the
-    in-cluster Service name does not resolve from AWS),
-    CLICKHOUSE_METRICS_HTTP_HEADERS (the Cloudflare Access service token), and
+    Overrides merged over app_env for the Lambda functions only. Typically
     DATABASE_URL pointed at Neon's pooled (`-pooler`) endpoint, since many
     short-lived environments each open their own connections. See
     terraform.tfvars.example.

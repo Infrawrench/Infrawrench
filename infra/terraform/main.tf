@@ -2,8 +2,7 @@
 # GKE cluster running web + poller + github-watcher, and an Artifact Registry
 # repo that CI pushes commit-SHA-tagged images to. The workloads themselves
 # live in infra/k8s (kustomize) and are applied by CI — terraform owns the
-# platform (network, cluster, registry, namespace, secrets, ingress, TLS, and
-# the in-cluster ClickHouse metrics store in clickhouse.tf).
+# platform (network, cluster, registry, namespace, secrets, ingress and TLS).
 
 resource "google_project_service" "required" {
   for_each = toset([
@@ -59,8 +58,7 @@ resource "google_compute_subnetwork" "prod" {
 
 # Nodes have no external IPs, so all egress leaves through Cloud NAT. Pinning
 # it to a reserved address gives the fleet one stable source IP — that is the
-# address to allowlist in Neon (and ClickHouse Cloud, until metrics are cut
-# over to the in-cluster ClickHouse in clickhouse.tf).
+# address to allowlist in Neon.
 resource "google_compute_address" "nat" {
   name         = "${var.cluster_name}-nat"
   region       = var.region
@@ -183,7 +181,7 @@ resource "google_container_cluster" "prod" {
   # replace this cluster. Enabling the addon updates the cluster in place, but
   # GKE then recreates every node (honouring the maintenance window and each
   # pool's surge settings) to start the Calico agents. Without it the policies
-  # in infra/k8s/network-policy.yaml and clickhouse.tf are accepted by the API
+  # in infra/k8s/network-policy.yaml and edge.tf are accepted by the API
   # server and enforce nothing.
   addons_config {
     network_policy_config {

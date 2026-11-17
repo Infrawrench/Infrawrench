@@ -14,7 +14,7 @@ github_repository = "Infrawrench/infrawrench"
 # ---------------------------------------------------------------------------
 
 # Optional, default true. Enforces the NetworkPolicies in
-# infra/k8s/network-policy.yaml and clickhouse.tf through GKE's Calico addon.
+# infra/k8s/network-policy.yaml and edge.tf through GKE's Calico addon.
 # An in-place cluster update (no replacement), after which GKE recreates every
 # node, one surge node at a time. Apply infra/k8s first (CI does on any push)
 # so the allow rules exist before enforcement starts. Setting false leaves the
@@ -39,15 +39,6 @@ github_repository = "Infrawrench/infrawrench"
 #   { cidr_block = "203.0.113.10/32", display_name = "ops-office" },
 # ]
 
-# Optional, default false. ClickHouse replicas authenticate interserver part
-# fetches (port 9009) with a terraform-generated password. Fresh clusters need
-# nothing. On an already-running cluster, apply the change that first adds the
-# credentials with this set to true, wait for both clickhouse pods to finish
-# their rolling restart, then remove it and apply again: without it, the
-# replica that restarts last cannot fetch parts from the one that restarted
-# first for the length of the rollout (fetches retry, nothing is lost).
-# clickhouse_interserver_allow_empty = true
-
 # Runtime env for web + poller + github-watcher (one shared k8s secret).
 app_env = {
   NODE_ENV = "production"
@@ -64,7 +55,7 @@ app_env = {
 
   # WorkOS
   # Read by the poller as well as the web app: the agent trial reaper deletes
-  # the WorkOS organization alongside the Postgres and ClickHouse rows, and
+  # the WorkOS organization alongside the Postgres rows, and
   # without this key it logs a warning and leaves orgs behind in WorkOS.
   WORKOS_API_KEY         = "sk_live_..."
   WORKOS_CLIENT_ID       = "client_..."
@@ -104,29 +95,6 @@ app_env = {
   # the plan and grants capacity seats, and the purchase is not reported.
   # Server-only; leave empty to disable.
   REVNU_EVENT_KEY                     = ""
-
-  # ClickHouse (metrics + costs; the four URL/USER/PASSWORD/DATABASE keys are
-  # required together or writes/reads no-op). Two options:
-  #
-  # In-cluster (default) — clickhouse.tf runs a 2-replica ClickHouse on its
-  # own node pool. Password comes from `terraform output clickhouse_app_password`.
-  # CLICKHOUSE_METRICS_REPLICATED="1" is required here: it makes the schema
-  # migrations create Replicated* table engines so data actually replicates
-  # between the two replicas. Never set it against ClickHouse Cloud, which
-  # rejects ReplicatedMergeTree DDL.
-  CLICKHOUSE_METRICS_URL        = "http://clickhouse.infrawrench.svc.cluster.local:8123"
-  CLICKHOUSE_METRICS_USER       = "infrawrench"
-  CLICKHOUSE_METRICS_PASSWORD   = "<terraform output clickhouse_app_password>"
-  CLICKHOUSE_METRICS_DATABASE   = "infrawrench"
-  CLICKHOUSE_METRICS_REPLICATED = "1"
-  #
-  # ClickHouse Cloud — point the URL at the service endpoint instead, omit
-  # CLICKHOUSE_METRICS_REPLICATED, and if the Cloud IP access list is enabled,
-  # add the `egress_ip` output (the Cloud NAT address) to it.
-  # CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
-  # CLICKHOUSE_METRICS_USER     = "default"
-  # CLICKHOUSE_METRICS_PASSWORD = "..."
-  # CLICKHOUSE_METRICS_DATABASE = "infrawrench"
 
   # GitHub App (workflow git triggers; used by web + github-watcher)
   GITHUB_APP_ID          = "..."
@@ -469,9 +437,7 @@ app_env = {
   # to set here: LAMBDA_GATEWAY_SECRET (generated) and LAMBDA_GATEWAY_URL (the
   # function URL) are merged into infrawrench-env by terraform for the edge
   # Worker, and INFRAWRENCH_APP_ENV_SECRET_ARN is set on the functions
-  # themselves. CLICKHOUSE_METRICS_HTTP_HEADERS (OPTIONAL, a JSON object of
-  # headers sent with every ClickHouse request) belongs in lambda_app_env
-  # below, not here.
+  # themselves.
 }
 
 # AWS Lambda gateway (lambda.tf). OPTIONAL: false creates nothing in AWS and
@@ -483,18 +449,13 @@ app_env = {
 # lambda_initial_image_tag = "<commit sha the deploy-lambda job pushed>"
 #
 # Values that must differ on Lambda, merged over app_env for the functions
-# only (sensitive). Without the first two the Lambda has no metrics store
-# (ClickHouse is in-cluster; this reaches it through a Cloudflare Tunnel
-# public hostname behind a Cloudflare Access service token), and dashboards
-# it serves lose sparklines. Without DATABASE_URL it uses app_env's direct
-# Neon endpoint, which works but spends a connection per warm environment.
+# only (sensitive). Without DATABASE_URL it uses app_env's direct Neon
+# endpoint, which works but spends a connection per warm environment.
 # lambda_app_env = {
-#   CLICKHOUSE_METRICS_URL          = "https://clickhouse-gw.infrawrench.com"
-#   CLICKHOUSE_METRICS_HTTP_HEADERS = "{\"CF-Access-Client-Id\":\"...access\",\"CF-Access-Client-Secret\":\"...\"}"
-#   DATABASE_URL                    = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
+#   DATABASE_URL = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
 # }
 
-# The Cloudflare Tunnel connector the edge Workers reach ClickHouse through
+# The cluster's Cloudflare Tunnel connector, which publishes jeeves
 # (edge.tf). OPTIONAL: empty runs no connector. The token is the `eyJ...`
 # string from Networking > Tunnels > (tunnel) > Add a replica.
 # cloudflare_tunnel_token = "eyJ..."
@@ -519,5 +480,5 @@ app_env = {
 # aws_web_instance_type = "t4g.medium"   # Graviton: CI builds the arm64 image
 # Token of the Cloudflare Tunnel whose routes are app.infrawrench.com and
 # session-gateway.infrawrench.com -> http://localhost:3000 (not the
-# ClickHouse tunnel above).
+# cluster tunnel above).
 # session_gateway_tunnel_token = "eyJ..."
