@@ -1,5 +1,5 @@
 /**
- * Idle-commitment detection: **pure**. No db, no ClickHouse, no clock, no
+ * Idle-commitment detection: **pure**. No db, no clock, no
  * network.
  *
  * Utilization has been computed and rendered since commitments shipped

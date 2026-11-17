@@ -10,7 +10,8 @@
  * it through the human approval flow. Same `accounts:read` / `accounts:write`
  * permissions as the HTTP API.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import { eq, and, asc } from "drizzle-orm";
 import { db } from "../db/client";
 import { sshHostKeys } from "../db/schema";
@@ -62,15 +63,21 @@ export function sshHostKeyTools(): ToolDefinition[] {
         "accepting an unverified fingerprint would let a man-in-the-middle intercept the " +
         "connection. When replacing a changed key, pass previousFingerprint for the audit trail.",
       inputSchema: {
-        host: z.string().min(1).max(253),
-        port: z.number().int().min(1).max(65535).default(22),
-        fingerprint: z
-          .string()
-          .describe("The presented host key fingerprint, 'SHA256:<base64>' (no padding)"),
-        previousFingerprint: z
-          .string()
-          .optional()
-          .describe("When replacing a changed key: the previously-stored fingerprint"),
+        host: Schema.String.check(minLength(1), maxLength(253)),
+        port: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(65535),
+          ).annotate({ default: 22 }),
+        ),
+        fingerprint: Schema.String.annotate({
+          description: "The presented host key fingerprint, 'SHA256:<base64>' (no padding)",
+        }),
+        previousFingerprint: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "When replacing a changed key: the previously-stored fingerprint",
+          }),
+        ),
       },
       risk: "destructive",
       permission: "accounts:write",
@@ -137,8 +144,13 @@ export function sshHostKeyTools(): ToolDefinition[] {
         "Remove a pinned SSH host-key fingerprint. The next connection to that host will fail " +
         "until it is trusted again; use to revoke trust in a decommissioned or compromised host.",
       inputSchema: {
-        host: z.string().min(1).max(253),
-        port: z.number().int().min(1).max(65535).default(22),
+        host: Schema.String.check(minLength(1), maxLength(253)),
+        port: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(65535),
+          ).annotate({ default: 22 }),
+        ),
       },
       risk: "destructive",
       permission: "accounts:write",

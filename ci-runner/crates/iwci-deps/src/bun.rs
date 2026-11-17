@@ -53,6 +53,7 @@
 //! dependencies that are not on GitHub, and `file:` directories.
 
 mod isolated;
+mod key;
 mod lockfile;
 #[cfg(test)]
 mod tests;
@@ -71,6 +72,7 @@ use shared_buffer::OwnedBuffer;
 use crate::fetch::{self, FetchError, Fetcher, Integrity};
 use crate::pnpm::{self, Patch, Platform};
 
+pub use key::KeyIndex;
 pub use lockfile::{
     Deps, Lockfile, MAX_LOCKFILE_VERSION, Package, Resolution, Workspace, parse_lockfile,
 };
@@ -240,9 +242,15 @@ fn patterns(value: &toml::Value) -> Option<Vec<String>> {
 impl Settings {
     /// Reads the settings of the project rooted at `root`.
     pub fn read(builder: &SnapshotBuilder, root: &Path) -> Result<Settings> {
+        Self::read_with(&|path| builder.read(path).ok(), root)
+    }
+
+    /// [`Settings::read`] through `read`, which gives a file's bytes by
+    /// absolute path, or `None` when it is absent.
+    pub fn read_with(read: &dyn Fn(&Path) -> Option<Vec<u8>>, root: &Path) -> Result<Settings> {
         let path = root.join("bunfig.toml");
         let mut settings = Settings::default();
-        let Ok(bytes) = builder.read(&path) else {
+        let Some(bytes) = read(&path) else {
             return Ok(settings);
         };
         let config = |message: String| BunError::Config {
@@ -285,6 +293,18 @@ impl Settings {
         }
         Ok(settings)
     }
+}
+
+/// The linker Bun installs `lock` with: `bunfig.toml`'s, or isolated for a
+/// workspace whose lockfile Bun 1.3.2 or later wrote, hoisted otherwise.
+fn linker_of(lock: &Lockfile, settings: &Settings) -> Linker {
+    settings
+        .linker
+        .unwrap_or(if lock.config_version >= 1 && lock.workspaces.len() > 1 {
+            Linker::Isolated
+        } else {
+            Linker::Hoisted
+        })
 }
 
 /// Whether the optional dependency `package` installs on the options'
@@ -401,6 +421,8 @@ struct Layout<'a> {
     /// Optional dependencies skipped for their platform, by identity.
     skipped: BTreeSet<String>,
     hoisted: usize,
+    /// Of `links`, the ones hoisting made, by path.
+    hoisted_links: HashSet<PathBuf>,
 }
 
 /// The hoisted layout: every reachable entry of `packages` where its key
@@ -693,14 +715,7 @@ pub fn install(
     let text = String::from_utf8(text).map_err(|_| with_path(lockfile_error("not UTF-8")))?;
     let lock = parse_lockfile(&text).map_err(|message| with_path(lockfile_error(message)))?;
     let settings = Settings::read(builder, &root)?;
-    let linker =
-        settings
-            .linker
-            .unwrap_or(if lock.config_version >= 1 && lock.workspaces.len() > 1 {
-                Linker::Isolated
-            } else {
-                Linker::Hoisted
-            });
+    let linker = linker_of(&lock, &settings);
     let layout = match linker {
         Linker::Hoisted => plan_hoisted(&lock, &root, options),
         Linker::Isolated => isolated::plan(&lock, &root, &settings, options),

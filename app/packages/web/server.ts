@@ -25,7 +25,6 @@ import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateWsUpgrade, type WsPrincipal } from "./src/services/ws-auth";
 import { handleAppsSession } from "./src/services/apps-proxy";
 import { handleMcpHttp } from "./src/mcp/http-handler";
-import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
 import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/services/bastion-ws";
 import {
   startDashboardDeliveryLoop,
@@ -107,12 +106,6 @@ function installProcessGuards(): void {
 
 async function start() {
   installProcessGuards();
-  try {
-    await migrateMetrics();
-  } catch (err) {
-    console.error("[clickhouse] migrateMetrics failed:", err);
-    if (!dev) throw err;
-  }
 
   const apiListener = toRequestListener((request) => api.fetch(request));
   let server: ReturnType<typeof createHttpServer>;

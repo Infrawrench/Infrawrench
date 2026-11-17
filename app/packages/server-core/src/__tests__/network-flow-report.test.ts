@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   enabled: true,
 }));
 
-vi.mock("../clickhouse/network-flow-report-readers", () => ({
+vi.mock("../analytics/network-flow-report-readers", () => ({
   readNetworkFlowReportCells: reads.cells,
   readNetworkFlowReportGroups: reads.groups,
   readNetworkFlowReportTalkers: reads.talkers,

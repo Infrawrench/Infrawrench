@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { loadAccountClient } from "../sync-resources";
-import { insertCostRows, toCostDailyRows } from "../clickhouse/cost-writers";
-import { reconcileCollectedChunk } from "../clickhouse/cost-reconcile";
+import { insertCostRows, toCostDailyRows } from "../analytics/cost-writers";
+import { reconcileCollectedChunk } from "../analytics/cost-reconcile";
 import { runListChecked } from "../runtime/request-scope";
 
 import { addDays, isoDay, monthChunks } from "./dates";
@@ -20,12 +20,12 @@ export interface CostCollectionResult {
 }
 
 /**
- * Collect cost data for one account and stream it into ClickHouse.
+ * Collect cost data for one account and write it into `cost_daily`.
  *
  * First run (no costBackfilledAt): backfills `maxHistoryDays` of history in
  * month chunks, inserting after each chunk so a crash loses at most one
  * chunk of work; re-runs re-fetch already-ingested days and the
- * ReplacingMergeTree key dedupes them. Subsequent runs re-fetch only the
+ * upsert on the primary key replaces them. Subsequent runs re-fetch only the
  * trailing restatement window.
  *
  * A backfill only counts as done once it has actually ingested a row: see
@@ -73,10 +73,9 @@ export async function collectAccountCosts(
       // Rows this account has stored for these days that the collection is not
       // rewriting are superseded: a cell the provider restated away, or one
       // whose key moved when the plugin started stamping charge types. They are
-      // zeroed in the same insert, so that hazard needs no operator DELETE
-      // against ClickHouse. See `clickhouse/cost-reconcile.ts` for the guards
-      // that keep this from firing on a merely-incomplete fetch, and for what
-      // it does not repair.
+      // zeroed in the same write, so that hazard needs no operator DELETE. See
+      // `analytics/cost-reconcile.ts` for the guards that keep this from firing
+      // on a merely-incomplete fetch, and for what it does not repair.
       //
       // `periodNative` travels with it because it changes what "a day this
       // collection restated" means: a monthly-native plugin files a whole month

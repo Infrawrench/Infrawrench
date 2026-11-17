@@ -123,7 +123,7 @@ export const VIRTUAL_TAG_LIMITS = {
   /**
    * Longest chain of virtual tags filtering on each other, counting both
    * ends: `unit` → `team` → `owner` is three. Each level nests one more
-   * `multiIf` into every query that reads the outermost tag.
+   * `CASE` into every query that reads the outermost tag.
    */
   maxReferenceDepth: 5,
 } as const;

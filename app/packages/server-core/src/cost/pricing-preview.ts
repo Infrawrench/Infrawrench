@@ -34,7 +34,7 @@ import {
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
-import { getPricingLines, type ShowbackRule } from "../clickhouse/cost-readers";
+import { getPricingLines, type ShowbackRule } from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import {
   BillingRuleError,

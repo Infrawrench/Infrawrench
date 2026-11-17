@@ -29,7 +29,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, managedAccounts, managedInvoices } from "../db/schema";
-import { getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
+import { getShowbackSpend, type ShowbackRule } from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { ManagedAccountError, listManagedAccountRows } from "./managed-accounts";
 

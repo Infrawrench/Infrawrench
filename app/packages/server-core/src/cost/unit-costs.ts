@@ -1,5 +1,5 @@
 /**
- * Unit-cost and margin arithmetic: **pure**. No db, no ClickHouse, no clock,
+ * Unit-cost and margin arithmetic: **pure**. No db, no clock,
  * no network. Everything is a function of its arguments, which is what makes
  * the rules below exhaustively testable rather than merely asserted.
  *

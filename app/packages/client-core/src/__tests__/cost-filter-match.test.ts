@@ -14,7 +14,7 @@ describe("normalizeCostFilterValue", () => {
     for (const s of spellings) expect(normalizeCostFilterValue(s)).toBe("prodenv");
   });
 
-  it("folds ASCII letters only, exactly like ClickHouse lower()", () => {
+  it("folds ASCII letters only, exactly like the SQL side's asciiLower", () => {
     // `toLowerCase` would fold these too, and the editor would then promise a
     // match the query never makes.
     expect(foldCostFilterCase("ÄÖÜ Straße")).toBe("ÄÖÜ straße");

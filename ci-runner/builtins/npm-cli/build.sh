@@ -24,6 +24,12 @@
 # Wrangler's esbuild is esbuild-wasm (the same JavaScript API, the
 # compiler as WebAssembly), and workerd, Cloudflare's local runtime, is
 # stubs/workerd, which explains itself instead of throwing as it loads.
+# They also lift a dependency past a security advisory where the program
+# still pins a vulnerable version (Vercel's and Neon's). Vercel's name the
+# vulnerable range, since its tree holds other majors of the same packages;
+# Neon's are plain names, as npm 10's `npm ci` reads the range form there as
+# a lockfile out of sync. `npm audit --package-lock-only --omit=dev` in a
+# tool's directory says whether an entry is still needed.
 #
 # To update a tool: change the version in its package.json, run
 # `npm install --package-lock-only --ignore-scripts --install-links` in its

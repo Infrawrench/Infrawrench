@@ -4,11 +4,15 @@ packages:
   - "plugingen"
 
 # TypeScript 7 packages depend on this (`"typescript": "catalog:"`). It is
-# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website,
-# mobile and plugingen do not use the catalog: they alias `typescript` to
-# TypeScript 6.
+# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website
+# and plugingen do not use the catalog: they alias `typescript` to TypeScript 6.
 catalog:
   typescript: "npm:@tsc-rs/typescript@0.8.0"
+  # The same compiler under its own name, for mobile: Expo's CLI requires
+  # `typescript` from the project for TypeScript 6's JS API, so mobile keeps
+  # that name on TypeScript 6 and takes tsc-rs's `tsc` from this entry. Keep
+  # the two versions equal.
+  "@tsc-rs/typescript": "0.8.0"
   # The plugin contract is written in Effect (plugin-base and every plugin).
   effect: "4.1.2"
 
@@ -21,6 +25,48 @@ overrides:
   "miniflare>sharp": ">=0.35.4"
   "miniflare>undici": ">=7.29.1 <8"
   "@smithy/middleware-compression>fflate": ">=0.8.3"
+  # Security floors (Dependabot) for transitive packages whose parents
+  # allow the fixed release but whose resolution pnpm keeps, or pin a
+  # vulnerable one (satori's exact fflate). Drop each once nothing in the
+  # lockfile resolves below it without the override.
+  "@xmldom/xmldom@<0.8.15": "^0.8.15"
+  "@xmldom/xmldom@>=0.9.0 <0.9.12": "^0.9.12"
+  "fast-uri@>=3.0.0 <3.1.9": "^3.1.9"
+  "fflate@>=0.7.0 <0.7.5": "^0.7.5"
+  "ip-address@<10.7.4": "^10.7.6"
+  "shell-quote@>=1.8.4 <1.11.0": "^1.12.0"
+  "undici@>=6.0.0 <6.29.1": "^6.29.1"
+  "zod@>=4.0.0 <4.6.6": "^4.6.7"
+  # The fixes for these two are only in new majors (GHSA-g3hv-75wg-m249,
+  # GHSA-3g3m-2fjr-6pw4). Every consumer here (Expo's CLI and config,
+  # electron-builder, @electron/universal, archiver, vsce, oclif) calls only
+  # `minimatch()`/`glob()`, none of the APIs the majors removed (`makeRe`,
+  # `Minimatch#regexp`, `matchOne`, walker Sets).
+  "minimatch@>=7.0.0 <11.0.1": "^11.0.8"
+  "glob@>=9.0.0 <14.0.2": "^14.0.6"
+  # Expo SDK 54's @expo/metro pins the whole metro family at exactly 0.83.3,
+  # whose `image-size` 1.x has GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq;
+  # 0.83.8 is the same minor without image-size. The family moves together
+  # (each package pins its siblings exactly). Drop these with SDK 55, whose
+  # @expo/metro is on 0.83.8 itself.
+  "@expo/metro>metro": "0.83.8"
+  "@expo/metro>metro-core": "0.83.8"
+  "@expo/metro>metro-cache": "0.83.8"
+  "@expo/metro>metro-config": "0.83.8"
+  "@expo/metro>metro-runtime": "0.83.8"
+  "@expo/metro>metro-file-map": "0.83.8"
+  "@expo/metro>metro-resolver": "0.83.8"
+  "@expo/metro>metro-cache-key": "0.83.8"
+  "@expo/metro>metro-source-map": "0.83.8"
+  "@expo/metro>metro-symbolicate": "0.83.8"
+  "@expo/metro>metro-minify-terser": "0.83.8"
+  "@expo/metro>metro-transform-worker": "0.83.8"
+  "@expo/metro>metro-babel-transformer": "0.83.8"
+  "@expo/metro>metro-transform-plugins": "0.83.8"
+  # React Native's metro-config (0.86, under the community CLI plugin) asks
+  # for ^0.84.3; 0.84.6 is the first 0.84 without image-size.
+  "@react-native/metro-config>metro-config": "0.84.6"
+  "@react-native/metro-config>metro-runtime": "0.84.6"
   # @raycast/api depends on an exact @types/react. A third copy can become the
   # hoisted one, and libraries that import React types without declaring them
   # (react-native-svg, @dnd-kit) then resolve it and clash with the app's own
@@ -47,18 +93,7 @@ peerDependencyRules:
   allowAny:
     - typescript
 
-# drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
-# `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
-# `drizzle-orm/clickhouse` (a driver binding for `@clickhouse/client`) from
-# https://github.com/Infrawrench/drizzle-orm/tree/clickhouse-dialect, plus the
-# two type-only branches in `column-builder.d.ts` that teach `BuildColumn` about
-# the new dialect, and the `exports` entries that make them importable.
-#
-# It is additive: no file drizzle already shipped changes behaviour, so a
-# drizzle bump only has to re-run the fork's build (see KNOWLEDGE.md, "The
-# ClickHouse dialect patch"), not re-derive a merge.
 patchedDependencies:
-  drizzle-orm@0.45.2: patches/drizzle-orm@0.45.2.patch
   # versionMajorMinor "7.0" so rolldown-plugin-dts 0.27 emits declarations with
   # the tsc-rs binary. See KNOWLEDGE.md, "Type checking".
   "@tsc-rs/typescript@0.8.0": patches/@tsc-rs__typescript@0.8.0.patch
@@ -70,7 +105,6 @@ patchedDependencies:
   "@generaltranslation/react-core@11.1.6": patches/@generaltranslation__react-core@11.1.6.patch
 
 allowBuilds:
-  "@google/genai": true
   better-sqlite3: true
   cpu-features: true
   electron: true

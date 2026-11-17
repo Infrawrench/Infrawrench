@@ -371,11 +371,6 @@ function excuses(root, dir, file) {
 // package's .reads-digest, each with the test files it runs. The check holds
 // them to it: a file among those that reads outside the package fails.
 const TEST_JOBS_WITHOUT_READS = {
-  "clickhouse-db": {
-    why: "runs the two ClickHouse files of src/__tests__/db/ and the suites that use helpers/fake-clickhouse",
-    runs: (file, text) =>
-      /^src\/__tests__\/db\/clickhouse/.test(file) || text.includes("helpers/fake-clickhouse"),
-  },
   "postgres-db": {
     why: "runs the files of src/__tests__/db/",
     runs: (file) => file.startsWith("src/__tests__/db/"),

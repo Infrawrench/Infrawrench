@@ -77,7 +77,7 @@ pnpm --filter @infrawrench/website dev
 
 ### Cloud stack in Docker Compose
 
-The whole server-side stack (web, poller, github-watcher, Postgres, ClickHouse, [WorkOS emulator](https://github.com/workos/emulate)) can run containerized with hot reload — no WorkOS account or `.env` needed:
+The whole server-side stack (web, poller, github-watcher, Postgres, [WorkOS emulator](https://github.com/workos/emulate)) can run containerized with hot reload — no WorkOS account or `.env` needed:
 
 ```bash
 docker compose -f docker-compose.dev.yml watch

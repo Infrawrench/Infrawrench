@@ -64,9 +64,9 @@ export function rowValues(
   for (const tag of columns.tagColumns) out.push(row[tag] ?? "");
   for (const tag of columns.virtualTagColumns ?? []) out.push(row[tag] ?? "");
   out.push(row["currency"] ?? "");
-  // ClickHouse returns aggregate sums as numbers in JSONEachRow, but Decimal
-  // and large-UInt columns come back as strings; Number() normalises both so
-  // the object never mixes `1.5` and `"1.5"` in one column.
+  // The sums are numbers off the driver, but a `numeric` or `bigint` column
+  // would come back as a string; Number() normalises both so the object never
+  // mixes `1.5` and `"1.5"` in one column.
   out.push(Number(row["amount"] ?? 0));
   out.push(Number(row["usage_amount"] ?? 0));
   out.push(row["usage_unit"] ?? "");

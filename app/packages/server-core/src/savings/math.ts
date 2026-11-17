@@ -431,7 +431,7 @@ export function computeCommitmentRealization(input: CommitmentRealizationInput):
  * The cost centre an event lands in under the org's allocation rules, first
  * match wins (rules already in `orderAllocationRules` order).
  *
- * The same vocabulary the showback `multiIf` matches cost rows on, evaluated
+ * The same vocabulary the showback `CASE` matches cost rows on, evaluated
  * here against the event's snapshot. A rule that names a `service` never
  * matches: an action is about a resource, not a service line, and guessing
  * which service a resource bills under would invent an attribution.

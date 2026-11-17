@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * How much work one digest tick is allowed to take on.
  *
  * The digest runs inside the poller's 15s tick, behind account polling and in
- * front of cost collection and retention. One org costs two ClickHouse queries,
+ * front of cost collection and retention. One org costs two cost queries,
  * an optional Anthropic call bounded at 30s, and a fan-out to Slack, Teams and
  * one request per email address, so the interesting case is the one every
  * deployment hits: every org on the default Monday 07:00 UTC schedule comes due
@@ -215,7 +215,7 @@ vi.mock("../access-review/feed", () => ({
 vi.mock("../backups/feed", () => ({
   listBackupCoverage: async () => ({ kindCounts: { unprotected: 0, "rpo-breach": 0 } }),
 }));
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: async () => [] }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts: async () => [] }));
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam

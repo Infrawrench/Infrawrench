@@ -1,12 +1,12 @@
 /**
  * Metric alerts: `/api/org/:orgId/metric-alerts`, the handlers. The rules
  * and their evaluation live in `services/metric-alerts.ts`; the metric key
- * picker reads ClickHouse directly.
+ * picker reads the raw metric table directly.
  */
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { MetricAlertSelector } from "@infrawrench/api-contract/schemas";
-import { listMetricSeriesKeys } from "@infrawrench/server-core/clickhouse/readers";
+import { listMetricSeriesKeys } from "@infrawrench/server-core/analytics/readers";
 import {
   MetricAlertEvent,
   MetricAlertRule,

@@ -31,7 +31,7 @@ import {
   getKubernetesDimensionValues,
   getKubernetesTagKeys,
   scanKubernetesEfficiency,
-} from "@infrawrench/server-core/clickhouse/k8s-efficiency-readers";
+} from "@infrawrench/server-core/analytics/k8s-efficiency-readers";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 

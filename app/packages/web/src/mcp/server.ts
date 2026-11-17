@@ -1,6 +1,6 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import type { JsonSchemaType } from "@modelcontextprotocol/server";
-import { z, type ZodTypeAny } from "zod";
+import { Schema } from "effect";
 import { getToolRegistry } from "../tools/registry";
 import { toolAnnotations } from "../tools/annotations";
 import { toolInputJsonSchema } from "../tools/json-schema";
@@ -27,24 +27,23 @@ const SERVER_VERSION = "0.1.0";
  * token is not guaranteed to carry an `org_id` claim, so the parameter is the
  * only way for a caller with several orgs to address a non-default one.
  */
-const ORG_ID_PARAM = z
-  .string()
-  .optional()
-  .describe(
-    "Organization to run this call against. Defaults to your oldest membership. " +
+const ORG_ID_PARAM = Schema.optionalKey(
+  Schema.String.annotate({
+    description:
+      "Organization to run this call against. Defaults to your oldest membership. " +
       "Call list_organizations to see the options and which one is the default.",
-  );
+  }),
+);
 
 /**
- * Converts a registry tool's Zod shape (Zod 3, shared with the chat agent) to
- * the Standard Schema the v2 SDK's `registerTool` takes. The SDK is pinned to
- * Zod 4, so the shape cannot be handed over directly; instead it goes through
- * JSON Schema: the same conversion the chat agent sends the model APIs
- * (`toolInputJsonSchema`). The SDK's built-in validator then enforces it on
- * 2026-era and legacy calls alike.
+ * Converts a registry tool's Effect Schema fields (shared with the chat agent)
+ * to the Standard Schema the v2 SDK's `registerTool` takes, through JSON
+ * Schema: the same document the chat agent sends the model APIs
+ * (`toolInputJsonSchema`), so both surfaces describe a tool identically. The
+ * SDK's built-in validator then enforces it on 2026-era and legacy calls alike.
  */
-function toInputSchema(shape: Record<string, ZodTypeAny>) {
-  return fromJsonSchema<Record<string, unknown>>(toolInputJsonSchema(shape) as JsonSchemaType);
+function toInputSchema(fields: Schema.Struct.Fields) {
+  return fromJsonSchema<Record<string, unknown>>(toolInputJsonSchema(fields) as JsonSchemaType);
 }
 
 /**

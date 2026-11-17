@@ -701,7 +701,7 @@ export const costReports = pgTable(
     /**
      * The saved graph: a `CostGraphConfig` from `@infrawrench/ui/cost/config`,
      * the same blob a `cost_graph` widget stores inline, validated against
-     * `costGraphConfigSchema` at the API boundary.
+     * `CostGraphConfig` (`@infrawrench/api-contract/schemas`) at the API boundary.
      */
     config: jsonb("config").notNull(),
     /**
@@ -729,7 +729,7 @@ export const costReports = pgTable(
 
 /**
  * Resource reports: saved inventory tables over the synced `resources` rows,
- * with per-resource cost joined from ClickHouse by provider resource id (see
+ * with per-resource cost joined from `cost_daily` by provider resource id (see
  * `client-core/src/resource-reports.ts`).
  *
  * The cost report's sibling, deliberately shaped like it: soft-deleted, a
@@ -883,7 +883,7 @@ export const customCostSources = pgTable(
 /**
  * One file uploaded into a custom cost source: the history row the Settings
  * page lists, and the handle that deletes exactly the rows it wrote (every
- * ClickHouse row it inserted carries its id in the reserved
+ * `cost_daily` row it inserted carries its id in the reserved
  * `infrawrench:upload` tag).
  *
  * `row_count`, `totals`, and the range are what the upload *still* holds: a
@@ -1245,7 +1245,7 @@ export const costCentres = pgTable(
  * fields it sets (tag key/value, account, provider, service); a rule with an
  * empty match is a catch-all. Evaluation is first-match-wins by ascending
  * `priority`: the showback reader compiles the ordered list into one
- * ClickHouse `multiIf` over `cost_daily`, so rows no rule claims fall into the
+ * first-match `CASE` over `cost_daily`, so rows no rule claims fall into the
  * synthetic "Unallocated" bucket rather than disappearing.
  */
 export const costAllocationRules = pgTable(
@@ -1285,7 +1285,7 @@ export const costAllocationRules = pgTable(
  * pricing, a shared cluster reallocated onto the teams that use it.
  *
  * **Nothing here is ever written into `cost_daily`.** These rows are compiled
- * into the cost query at read time (`clickhouse/cost-readers.ts`), so collected
+ * into the cost query at read time (`analytics/cost-readers.ts`), so collected
  * spend stays exactly what the provider reported (the number an invoice
  * reconciles against) and editing or deleting a rule restates nothing. That is
  * the whole reason this is a rule table and not an ingestion step.
@@ -1561,8 +1561,8 @@ export const managedAccounts = pgTable(
  * changed after it was sent to a customer is the single worst outcome this
  * feature could produce, so `lines`, `totals` and `derivation` are **written on
  * approval** and read back verbatim ever after. A `draft` leaves them null and
- * recomputes on every read; that is the only status that ever touches
- * ClickHouse for its numbers.
+ * recomputes on every read; that is the only status that ever reads
+ * `cost_daily` for its numbers.
  *
  * `derivation` carries the exchange rates and the day they were read, the
  * billing rules in force, and the names everything in scope had at the time.
@@ -2106,7 +2106,7 @@ export const metricAlertRules = pgTable(
     tagKey: text("tag_key"),
     /** Selector: exact value `tagKey` must have; null means "any value". */
     tagValue: text("tag_value"),
-    /** The metric series label as written to ClickHouse (e.g. "CPU %"). */
+    /** The metric series label as written to the metric tables (e.g. "CPU %"). */
     metricKey: text("metric_key").notNull(),
     comparator: text("comparator").$type<">" | ">=" | "<" | "<=">().notNull(),
     threshold: doublePrecision("threshold").notNull(),
@@ -2199,7 +2199,7 @@ export const metricAlertEvents = pgTable(
  * Synthetic HTTP probes: "is this endpoint up, and how fast?" checks run on
  * an interval from the egress-proxy Cloudflare Worker, i.e. from *outside* the
  * cluster, so a probe measures what a user on the internet would see rather
- * than pod-to-pod latency. Results land in ClickHouse as ordinary metric
+ * than pod-to-pod latency. Results land in the metric tables as ordinary metric
  * points (`resource_id = "probe:<id>"`, series "Latency"/"Up"), which is what
  * lets the existing metric readers and chart components render them unchanged.
  *
@@ -4358,7 +4358,7 @@ export const chatConversations = pgTable(
      * explicitly, so this is only reached by a caller that forgets; it points
      * at the cheapest model so forgetting is cheap rather than expensive.
      */
-    model: text("model").notNull().default("gemini-3.7-flash"),
+    model: text("model").notNull().default("claude-sonnet-5-5"),
     /** System prompt override; null means use the default from chat/agent.ts */
     systemPrompt: text("system_prompt"),
     archivedAt: timestamp("archived_at"),
@@ -5142,8 +5142,8 @@ export const fxRateFeedState = pgTable("fx_rate_feed_state", {
  * Cost data is readable through the API and the UI, but neither is a way to
  * feed a finance system: that wants raw rows, on a schedule, landing somewhere
  * it already reads from. This table is the definition of one such feed. The
- * poller claims due rows (`cost_exports/pass.ts`), streams `cost_daily` out of
- * ClickHouse, and writes **one object per period** to the destination.
+ * poller claims due rows (`cost_exports/pass.ts`), streams `cost_daily` out
+ * through a cursor, and writes **one object per period** to the destination.
  *
  * Two things about the design are load-bearing:
  *
@@ -5718,23 +5718,17 @@ export const businessMetrics = pgTable(
 /**
  * One reported day of one business metric.
  *
- * **Postgres, not ClickHouse, and not because it is small.** These values are
- * joined against ClickHouse spend on every unit-cost query, and a cross-store
- * join *per point* would indeed be the thing to avoid, but that is not the
- * join this feature performs. Both sides are aggregated to the query's buckets
- * first (ClickHouse sums the numerator, this table sums the denominator), and
- * the two are combined once, in application code, at the bucket level: at most
- * a few hundred numbers meeting a few hundred numbers, exactly the way
+ * Unit-cost queries never join these rows against `cost_daily` point by
+ * point. Both sides are aggregated to the query's buckets first (the cost
+ * readers sum the numerator, this table sums the denominator), and the two are
+ * combined once, in application code, at the bucket level: at most a few
+ * hundred numbers meeting a few hundred numbers, exactly the way
  * `cost/currency-convert.ts` folds stated rates into an already-aggregated
- * series.
+ * series. The numerator has to be converted to one currency per bucket before
+ * it can be divided, and that conversion already happens there.
  *
- * With the per-point join gone, Postgres wins on everything else: the
- * `(metric, day)` unique index makes restatement a single `ON CONFLICT DO
- * UPDATE` with no ReplacingMergeTree `FINAL` and no "which version won"
- * question; the metric definition is a Postgres row already, so keeping its
- * values here means one store owns the object rather than half of it; and
- * `updated_by_user_id` gives a surprising number an author, which a columnar
- * append-only table would not.
+ * The `(metric, day)` unique index makes restatement a single `ON CONFLICT DO
+ * UPDATE`, and `updated_by_user_id` gives a surprising number an author.
  */
 export const businessMetricValues = pgTable(
   "business_metric_values",
@@ -6158,3 +6152,4 @@ export * from "./seat-schema.js";
 export * from "./idle-finding-schema.js";
 export * from "./starred-schema.js";
 export * from "./ci-schema.js";
+export * from "./analytics-schema.js";

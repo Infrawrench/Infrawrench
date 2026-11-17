@@ -6,7 +6,7 @@ sidebar_order: 12
 
 > **Cloud feature**, billed separately from your seat plan. Available in the web app, the [mobile app](./mobile-app.md), and the desktop app when you're signed in to Infrawrench Cloud.
 
-AI chat lets you work on your infrastructure by asking for what you want. You pick the model for each conversation: Google Gemini or Anthropic Claude. The agent can use the same tools you use in the UI. It can list resources, read outputs, run SQL, run Docker commands, rotate secrets, attach disks and apply manifests. Anything destructive waits for you to approve it first.
+AI chat lets you work on your infrastructure by asking for what you want. You pick the Claude model for each conversation: Sonnet 5.5 or Opus 5.5. The agent can use the same tools you use in the UI. It can list resources, read outputs, run SQL, run Docker commands, rotate secrets, attach disks and apply manifests. Anything destructive waits for you to approve it first.
 
 ![Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/pending-delete-approval.png)
 
@@ -70,7 +70,7 @@ A few limits keep this safe:
 
 Searches cost a small amount per query on top of tokens. They show up in your [chat usage](#billing) like any other spend.
 
-If your deployment has no search backend or web proxy set up, the matching tool isn't offered and the agent tells you what it would have looked up. Self-hosters: see `INFRAWRENCH_CHAT_SEARCH_BACKEND` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
+If your deployment has no search backend or web proxy set up, the matching tool isn't offered and the agent tells you what it would have looked up. Self-hosters: see `AI_GATEWAY_ID` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
 
 ![A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/web-search-turn.png)
 
@@ -131,12 +131,12 @@ Everything the agent does is audited the same way as the UI. Resource creates an
 
 Pick a model when you start a chat (the picker is next to **New chat**). You can switch an existing chat's model any time from the dropdown in its header. The change applies from the next turn.
 
-| Model                      | Best for                                    |
-| -------------------------- | ------------------------------------------- |
-| Gemini 3.7 Flash (default) | Most chats: fast, and the cheapest per turn |
-| Claude Sonnet 5            | Balanced: near-Opus quality at lower cost   |
-| Claude Opus 5              | Complex, multi-step infrastructure work     |
-| Claude Haiku 4.5           | Quick lookups                               |
+| Model                       | Best for                                     |
+| --------------------------- | -------------------------------------------- |
+| Claude Sonnet 5.5 (default) | Most chats: fast, and the cheaper of the two |
+| Claude Opus 5.5             | Complex, multi-step infrastructure work      |
+
+Older chats, including every Gemini chat, now run on Sonnet 5.5 with their history intact.
 
 Switching models mid-chat is safe. Your messages, the replies and every tool call and result carry over.
 
@@ -144,12 +144,9 @@ Switching models mid-chat is safe. Your messages, the replies and every tool cal
 
 Chat is billed as metered usage, separate from your seat plan. You pay exactly **1.5× the model provider's published API rates** per million tokens. There are no other fees.
 
-Caching works differently per provider, and you're only ever charged 1.5× what we're charged:
+Long working sessions usually pay the cheaper cache-read rate after the first turn. Cache writes have their own higher rate. Thinking tokens cost the output rate. You're only ever charged 1.5× what we're charged.
 
-- **Claude:** long working sessions usually pay the cheaper cache-read rate after the first turn. Cache writes have their own higher rate.
-- **Gemini:** caching is automatic. Cached input costs a tenth of the input rate, with no separate cache-write charge. Reasoning tokens cost the output rate.
-
-[Web search](#look-things-up-on-the-web) has one extra charge. Search providers charge per query, not per token, so a `web_search` call costs 1.5× the provider's per-query rate (currently $0.021 per query on Google Search grounding and $0.015 on Anthropic web search), plus 1.5× the tokens of the small model that runs the search. One call can run more than one query when needed, and you pay for the queries actually run. `web_fetch` has no per-request fee. You only pay for the page text that enters the chat as tokens.
+[Web search](#look-things-up-on-the-web) has one extra charge. Search providers charge per query, not per token, so a `web_search` call costs 1.5× the provider's per-query rate (currently $0.015 per query on Anthropic web search), plus 1.5× the tokens of the small model that runs the search. One call can run more than one query when needed, and you pay for the queries actually run. `web_fetch` has no per-request fee. You only pay for the page text that enters the chat as tokens.
 
 One pool covers every AI feature. [`infra.ai(...)` calls from workflows](./workflows.md#asking-a-model-for-help) cost the same and count toward the same monthly spend and caps below.
 

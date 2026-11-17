@@ -65,9 +65,9 @@ import {
   type FocusServiceClassification,
 } from "@infrawrench/plugin-base";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
-import { QueryBuilder } from "drizzle-orm/clickhouse-core";
-import { amortizedAmountExpr } from "../clickhouse/cost-readers";
-import { costDaily } from "../clickhouse/schema";
+import { QueryBuilder } from "drizzle-orm/pg-core";
+import { amortizedAmountExpr } from "../analytics/cost-readers";
+import { costDaily } from "../analytics/schema";
 import {
   EXTERNAL_COST_PLUGIN_ID,
   EXTERNAL_COST_TAG,
@@ -77,7 +77,7 @@ import { WORKFLOW_COST_PLUGIN_ID } from "../cost/workflow-cost-ids";
 import { db } from "../db/client";
 import { accountCommitments, accounts, resources } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
-import { costExportScope, streamExportQuery } from "./rows";
+import { costExportScope, streamExportQuery, type ExportStatement } from "./rows";
 import { csvCell } from "./serialize";
 
 /* ------------------------------------------------------------------ *
@@ -120,7 +120,7 @@ export interface FocusRowQuery {
  * ORDER BY is total for the same reason the native export's is: two runs of
  * one period must write byte-identical objects.
  */
-export function buildFocusExportQuery(q: FocusRowQuery): string {
+export function buildFocusExportQuery(q: FocusRowQuery): ExportStatement {
   const keys = [
     costDaily.day,
     costDaily.account_id,
@@ -135,13 +135,14 @@ export function buildFocusExportQuery(q: FocusRowQuery): string {
   ];
   const query = new QueryBuilder()
     .select({
-      day: sql<string>`toString(${costDaily.day})`.as("day"),
+      day: sql<string>`to_char(${costDaily.day}, 'YYYY-MM-DD')`.as("day"),
       account_id: costDaily.account_id,
       plugin_id: costDaily.plugin_id,
       service: costDaily.service,
       region: costDaily.region,
       resource_id: costDaily.resource_id,
-      tags: sql<Record<string, string>>`any(${costDaily.tags})`.as("tags"),
+      // Every row of a group carries the same map: `tags_hash`, a grouping key, is derived from it.
+      tags: sql<Record<string, string>>`(array_agg(${costDaily.tags}))[1]`.as("tags"),
       currency: costDaily.currency,
       charge_type: costDaily.charge_type,
       commitment_id: costDaily.commitment_id,
@@ -149,16 +150,16 @@ export function buildFocusExportQuery(q: FocusRowQuery): string {
       effective: sql<number>`sum(${amortizedAmountExpr()})`.as("effective"),
       usage_amount: sql<number>`sum(${costDaily.usage_amount})`.as("usage_amount"),
       usage_unit:
-        sql<string>`if(uniqExact(${costDaily.usage_unit}) = 1, any(${costDaily.usage_unit}), '')`.as(
+        sql<string>`CASE WHEN count(DISTINCT ${costDaily.usage_unit}) = 1 THEN min(${costDaily.usage_unit}) ELSE '' END`.as(
           "usage_unit",
         ),
     })
     .from(costDaily)
-    .final()
     .where(costExportScope(q))
     .groupBy(...keys)
     .orderBy(...keys.map((k) => asc(k)));
-  return query.toSQL().sql;
+  const { sql: text, params } = query.toSQL();
+  return { sql: text, params };
 }
 
 /** Stream the raw rows for one FOCUS object. */

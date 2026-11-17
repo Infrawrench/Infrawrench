@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DEFAULT_RESOURCE_REPORT_CONFIG } from "@infrawrench/client-core";
 import { buildTestApi } from "@/http/testing";
 
-// The service is mocked: it reaches the Drizzle client and ClickHouse. These
+// The service is mocked: it reaches the Drizzle client. These
 // tests own the transport contract: permissions, validation, the costs:read
 // hand-off, status codes and audit.
 const mockList = vi.fn();

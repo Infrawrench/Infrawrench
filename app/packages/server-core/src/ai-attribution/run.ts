@@ -5,8 +5,8 @@
  *
  * Runs after every source collection (for the days it collected) and after
  * every cost collection of an org with sources (for the restatement window),
- * so a restated bill is re-split the same day it lands. Cheap: two
- * single-partition ClickHouse reads and one insert per day.
+ * so a restated bill is re-split the same day it lands. Cheap: two indexed
+ * single-day reads and one insert per day.
  */
 import type { AiModelRateCard } from "@infrawrench/plugin-base";
 import { and, eq, sql } from "drizzle-orm";
@@ -19,12 +19,11 @@ import {
   type AiAttributionDayCollection,
   type AiAttributionDaySourceStats,
 } from "../db/schema";
-import { isClickHouseConfigured } from "../clickhouse/client";
 import {
   insertAttributedRows,
   readBilledAiRows,
   readLatestAiAggregates,
-} from "../clickhouse/ai-attribution-store";
+} from "../analytics/ai-attribution-store";
 import { loadPlugins } from "../plugin-loader";
 import { attributeDay } from "./attribute";
 
@@ -71,7 +70,6 @@ export async function recordAiCollection(
 
 /** Re-split one org-day. Returns the number of split rows written. */
 export async function attributeOrgDay(organizationId: string, day: string): Promise<number> {
-  if (!isClickHouseConfigured()) return 0;
   const [dimensions, sources] = await Promise.all([
     db
       .select({

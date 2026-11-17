@@ -10,13 +10,14 @@
  * Permissions mirror the HTTP routes exactly: reads are `costs:read`, writes
  * are `costs:write`, and every mutation is audit-logged.
  */
-import { z } from "zod";
-
+import { Schema } from "effect";
 import {
-  costForecastRunRequestSchema,
-  costReportInputSchema,
-  costReportRunOverridesSchema,
-} from "@infrawrench/ui/cost/config";
+  CostForecastRunRequest,
+  CostReportInput,
+  CostReportRunOverrides,
+} from "@infrawrench/api-contract/schemas";
+
+import {} from "@infrawrench/ui/cost/config";
 import { CostForecastError, runCostReportForecast } from "../services/cost-forecasts";
 import { costReportFolderPaths, type CostReportFolder } from "@infrawrench/client-core";
 import {
@@ -36,6 +37,7 @@ import { applyCostReportBulk, CostReportBulkError } from "../services/cost-repor
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 /**
  * Turn what an agent says about a folder (an id, a full path like
@@ -106,7 +108,7 @@ export function costReportTools(): ToolDefinition[] {
         "Fetch one saved cost report: its name, description, saved graph configuration, and the " +
         "dashboards showing it. This returns the definition, not the numbers; use " +
         "run_cost_report for those.",
-      inputSchema: { reportId: z.string() },
+      inputSchema: { reportId: Schema.String },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -140,15 +142,15 @@ export function costReportTools(): ToolDefinition[] {
         "puts a dimension on the X axis for this run ('date' puts the dates back); its result " +
         "points are keyed by value, listed in `result.xAxis.values`. When the " +
         "result carries `measure`, its amounts are not money: say so.",
-      inputSchema: { reportId: z.string(), ...costReportRunOverridesSchema.shape },
+      inputSchema: { reportId: Schema.String, ...CostReportRunOverrides.fields },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         const { reportId, ...rest } = input as { reportId: string } & Record<string, unknown>;
-        const overrides = costReportRunOverridesSchema.safeParse(rest);
-        if (!overrides.success) return err(`Invalid overrides: ${overrides.error.message}`);
+        const overrides = decodeToolInput(CostReportRunOverrides, rest);
+        if (!overrides.success) return err(`Invalid overrides: ${overrides.message}`);
         try {
           const result = await runCostReport(
             auth.organizationId,
@@ -176,15 +178,15 @@ export function costReportTools(): ToolDefinition[] {
         "forecasts stack scenario models in priority order and may be driven by a business " +
         "metric's planned values. `all: true` returns every named forecast for comparison. " +
         "Quote the band, not just the expected figure: it is a trend estimate, not a bill.",
-      inputSchema: { reportId: z.string(), ...costForecastRunRequestSchema.shape },
+      inputSchema: { reportId: Schema.String, ...CostForecastRunRequest.fields },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         const { reportId, ...rest } = input as { reportId: string } & Record<string, unknown>;
-        const request = costForecastRunRequestSchema.safeParse(rest);
-        if (!request.success) return err(`Invalid request: ${request.error.message}`);
+        const request = decodeToolInput(CostForecastRunRequest, rest);
+        if (!request.success) return err(`Invalid request: ${request.message}`);
         try {
           const result = await runCostReportForecast(auth.organizationId, reportId, request.data);
           if (!result) return err(`Cost report not found: ${reportId}`);
@@ -204,14 +206,14 @@ export function costReportTools(): ToolDefinition[] {
         "dashboard cost card holds (chart type, binning, date range, group-by, filters, topN, " +
         "comparison and forecast toggles, cost basis). The report can then be run by id and " +
         "shown on any number of dashboards, and editing it updates all of them. Audit-logged.",
-      inputSchema: costReportInputSchema.shape,
+      inputSchema: CostReportInput.fields,
       risk: "write",
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = costReportInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid cost report: ${parsed.error.message}`);
+        const parsed = decodeToolInput(CostReportInput, input);
+        if (!parsed.success) return err(`Invalid cost report: ${parsed.message}`);
         let created;
         try {
           created = await createCostReport(auth.organizationId, parsed.data, auth.userId);
@@ -239,7 +241,7 @@ export function costReportTools(): ToolDefinition[] {
         "carrying a card for the report shows the new version; that is what referencing a " +
         "report by id buys, and it is worth saying out loud before changing a shared one. " +
         "Audit-logged.",
-      inputSchema: { reportId: z.string(), ...costReportInputSchema.shape },
+      inputSchema: { reportId: Schema.String, ...CostReportInput.fields },
       risk: "write",
       overwrites: true,
       permission: "costs:write",
@@ -247,8 +249,8 @@ export function costReportTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
         const { reportId, ...rest } = input as { reportId: string } & Record<string, unknown>;
-        const parsed = costReportInputSchema.safeParse(rest);
-        if (!parsed.success) return err(`Invalid cost report: ${parsed.error.message}`);
+        const parsed = decodeToolInput(CostReportInput, rest);
+        if (!parsed.success) return err(`Invalid cost report: ${parsed.message}`);
         let updated;
         try {
           updated = await updateCostReport(auth.organizationId, reportId, parsed.data);
@@ -277,7 +279,7 @@ export function costReportTools(): ToolDefinition[] {
         'a full path ("Finance / Monthly"), or a unique folder name; null moves the report ' +
         "to the top level of the Reports list. Filing changes nothing but where the report " +
         "appears in the list; its id, dashboards and numbers are untouched. Audit-logged.",
-      inputSchema: { reportId: z.string(), folder: z.string().nullable() },
+      inputSchema: { reportId: Schema.String, folder: Schema.NullOr(Schema.String) },
       risk: "write",
       overwrites: true,
       permission: "costs:write",
@@ -324,7 +326,7 @@ export function costReportTools(): ToolDefinition[] {
         "removed too, since a card whose report is gone can only render as an unavailable " +
         "tile; call list_cost_reports first if you need to tell the user which dashboards " +
         "that affects. Audit-logged. The chat surface confirms with the user before invoking.",
-      inputSchema: { reportId: z.string() },
+      inputSchema: { reportId: Schema.String },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {
@@ -357,9 +359,9 @@ export function costReportTools(): ToolDefinition[] {
         "if any fails, nothing moves and the error names each blocking item. Ids come from " +
         "list_cost_reports. Audit-logged per item.",
       inputSchema: {
-        reportIds: z.array(z.string()).default([]),
-        folderIds: z.array(z.string()).default([]),
-        folder: z.string().nullable(),
+        reportIds: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+        folderIds: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+        folder: Schema.NullOr(Schema.String),
       },
       risk: "write",
       overwrites: true,
@@ -409,8 +411,8 @@ export function costReportTools(): ToolDefinition[] {
         "owner), nothing is deleted and the error names each one. Audit-logged per item. The " +
         "chat surface confirms with the user before invoking.",
       inputSchema: {
-        reportIds: z.array(z.string()).default([]),
-        folderIds: z.array(z.string()).default([]),
+        reportIds: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+        folderIds: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
       },
       risk: "destructive",
       permission: "costs:write",

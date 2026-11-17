@@ -1,5 +1,5 @@
 /**
- * Commitment expiry detection: **pure**. No db, no ClickHouse, no clock, no
+ * Commitment expiry detection: **pure**. No db, no clock, no
  * network. The caller hands in the inventory and the day; findings come back.
  *
  * ## Why this exists at all

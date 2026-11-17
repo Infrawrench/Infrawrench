@@ -1,42 +1,40 @@
 /**
  * Streaming row source for scheduled cost exports.
  *
- * Everything else in `clickhouse/cost-readers.ts` returns an array, because
+ * Everything else in `analytics/cost-readers.ts` returns an array, because
  * everything else draws a graph: a few hundred aggregated points. An export is
  * the opposite shape: a year of daily per-resource rows for a large estate is
- * millions of rows, and `await rs.json()` on that is a poller-wide OOM, not a
+ * millions of rows, and materialising that result is a poller-wide OOM, not a
  * slow request.
  *
- * So this module never materialises a result. `@clickhouse/client` (v1, Node
- * build) exposes `ResultSet.stream()`, a `Readable` in object mode that emits
- * arrays of `Row` as they arrive off the socket; {@link streamCostExportRows}
- * wraps it in an async generator and yields one decoded row at a time. Nothing
- * upstream of the destination sink ever holds more than one chunk.
+ * So this module never materialises a result. It reads through a postgres.js
+ * cursor ({@link streamExportQuery}), which fetches a bounded batch of rows per
+ * round trip, and yields one row at a time. Nothing upstream of the
+ * destination sink ever holds more than one batch.
  *
  * The query still carries an explicit `ORDER BY` over the full grouping key.
  * That is not for the database's benefit: it is so two runs of the same period
  * produce byte-identical objects, which is what makes "the key was overwritten"
- * a verifiable claim rather than a hope. If a future client build ever drops
- * `stream()`, that same total order is what a fallback keyset pager would need,
- * and it is already there.
+ * a verifiable claim rather than a hope.
  */
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
 import { and, asc, inArray, sql, type SQL } from "drizzle-orm";
-import { QueryBuilder } from "drizzle-orm/clickhouse-core";
-import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
+import { QueryBuilder } from "drizzle-orm/pg-core";
+import { getAnalyticsDb } from "../analytics/client";
 import {
   costBasisAmountExpr,
   costDailyOrgCondition,
   dayRange,
   membershipCondition,
   resolveVirtualTags,
-} from "../clickhouse/cost-readers";
-import { costDaily } from "../clickhouse/schema";
+} from "../analytics/cost-readers";
+import { tagValueExpr } from "../analytics/cost-sql";
+import { costDaily } from "../analytics/schema";
 import {
   VirtualTagScope,
   withVirtualTagJoins,
   type VirtualTagDefinitions,
-} from "../clickhouse/virtual-tag-sql";
+} from "../analytics/virtual-tag-sql";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {
@@ -159,14 +157,19 @@ export function exportVirtualTagKeys(q: {
   return [...keys];
 }
 
-interface BuiltQuery {
+/** A finished export statement: its text and the values bound into it. */
+export interface ExportStatement {
   sql: string;
+  params: unknown[];
+}
+
+interface BuiltQuery extends ExportStatement {
   columns: CostExportColumns;
 }
 
-/** `tags['key']`, the expression a tag column reads from. */
+/** The expression a tag column reads from: the tag's value, `''` when absent. */
 function tagExpr(key: string): SQL {
-  return sql`${costDaily.tags}[${key}]`;
+  return tagValueExpr(key);
 }
 
 /**
@@ -213,10 +216,10 @@ export function costExportScope(
 /**
  * Assemble the SELECT. Exported for the tests that assert its shape.
  *
- * Built with the query builder, then rendered to text: the streaming read below
- * needs `ResultSet.stream()`, which is on the driver rather than on Drizzle, so
- * this hands the driver a finished statement. Values are literals the dialect
- * escaped, not interpolation: the only thing assembled by hand here is the
+ * Built with the query builder, then rendered to text and parameters: the
+ * streaming read below needs a cursor, which is on the driver rather than on
+ * Drizzle, so this hands the driver a finished statement. Values are bound
+ * parameters, not interpolation: the only thing assembled by hand here is the
  * *column list*, whose names come from `tagColumnName`.
  */
 export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
@@ -248,9 +251,10 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
   const where = costExportScope(q, scope);
 
   // Grouped and ordered by the *output* column names, which for tag columns are
-  // the sanitised `tag_<key>` aliases rather than anything ClickHouse could
-  // resolve back to the map. Quoted, so a dimension named like a keyword cannot
-  // change the statement's meaning.
+  // the sanitised `tag_<key>` aliases rather than the map lookup itself. Where a
+  // name is also a column (`day`, `service`, `currency`), Postgres groups by the
+  // column, which is the same grouping. Quoted, so a dimension named like a
+  // keyword cannot change the statement's meaning.
   const groupKeys = [
     "day",
     ...columns.dimensions,
@@ -266,7 +270,7 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
   const usage = scope.weighted(sql`${costDaily.usage_amount}`);
   const builder = new QueryBuilder()
     .select({
-      day: sql<string>`toString(${costDaily.day})`.as("day"),
+      day: sql<string>`to_char(${costDaily.day}, 'YYYY-MM-DD')`.as("day"),
       ...dimSelect,
       ...tagSelect,
       ...virtualTagSelect,
@@ -278,36 +282,32 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
       // "hours" would be a lie a warehouse cannot detect, so a mixed group
       // reports its total with no unit at all.
       usage_unit:
-        sql<string>`if(uniqExact(${costDaily.usage_unit}) = 1, any(${costDaily.usage_unit}), '')`.as(
+        sql<string>`CASE WHEN count(DISTINCT ${costDaily.usage_unit}) = 1 THEN min(${costDaily.usage_unit}) ELSE '' END`.as(
           "usage_unit",
         ),
     })
     .from(costDaily)
-    .final()
     .$dynamic();
   const query = withVirtualTagJoins(builder, scope)
     .where(where)
     .groupBy(...groupKeys)
     .orderBy(...groupKeys.map((key) => asc(key)));
 
-  return { sql: query.toSQL().sql, columns };
+  const { sql: text, params } = query.toSQL();
+  return { sql: text, params, columns };
 }
 
 /**
- * Stream one period's rows out of ClickHouse.
+ * Stream one period's rows out of `cost_daily`.
  *
  * Yields decoded row objects one at a time. Back-pressure is the consumer's
- * `for await`: the underlying `Readable` stays paused while the destination
- * sink is busy uploading a part, so a slow bucket throttles the query rather
+ * `for await`: the cursor fetches its next batch only once the destination
+ * sink has taken the last one, so a slow bucket throttles the query rather
  * than filling the heap.
- *
- * Returns nothing at all when ClickHouse is unconfigured, matching every other
- * cost reader: an unconfigured deployment has no cost history to export.
  */
 export async function* streamCostExportRows(
   q: CostExportRowQuery,
 ): AsyncGenerator<CostExportRow, void, undefined> {
-  if (!isClickHouseConfigured()) return;
   const virtualTags = await resolveVirtualTags(
     q.organizationId,
     exportVirtualTagKeys(q),
@@ -315,36 +315,29 @@ export async function* streamCostExportRows(
     q.to,
     q.virtualTags,
   );
-  yield* streamExportQuery<CostExportRow>(buildCostExportQuery({ ...q, virtualTags }).sql);
+  yield* streamExportQuery<CostExportRow>(buildCostExportQuery({ ...q, virtualTags }));
 }
+
+/** Rows a cursor fetches per round trip: the most an export holds at once. */
+const EXPORT_CURSOR_BATCH = 1000;
 
 /**
  * Stream a finished export statement's rows, one decoded object at a time.
  * The native and the FOCUS readers both go through here, so both get the same
- * back-pressure and the same socket cleanup on an early exit.
+ * back-pressure and the same cleanup on an early exit.
+ *
+ * Through the postgres.js client underneath Drizzle, because Drizzle has no
+ * cursor. Leaving the loop early (an upload failure aborts the whole run)
+ * closes the cursor and hands its connection back to the pool.
  */
-export async function* streamExportQuery<T>(query: string): AsyncGenerator<T, void, undefined> {
-  if (!isClickHouseConfigured()) return;
-  const rs = await getClickHouseClient().query({
-    query,
-    format: "JSONEachRow",
-  });
-
-  const stream = rs.stream();
-  try {
-    for await (const chunk of stream) {
-      for (const row of chunk) {
-        yield row.json<T>();
-      }
-    }
-  } finally {
-    // Releasing the result set closes the underlying socket if the consumer
-    // bailed out early (an upload failure aborts the whole run), otherwise a
-    // failed export would leak a ClickHouse connection per attempt.
-    try {
-      await rs.close();
-    } catch {
-      // Already closed, or the socket died with the query. Nothing to do.
-    }
+export async function* streamExportQuery<T>(
+  statement: ExportStatement,
+): AsyncGenerator<T, void, undefined> {
+  const client = getAnalyticsDb().$client;
+  const cursor = client
+    .unsafe(statement.sql, statement.params as never[])
+    .cursor(EXPORT_CURSOR_BATCH);
+  for await (const batch of cursor) {
+    for (const row of batch) yield row as T;
   }
 }

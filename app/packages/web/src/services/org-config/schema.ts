@@ -1,5 +1,5 @@
 /**
- * Zod schema for the org config document: what `POST /config/plan` and
+ * Effect schema for the org config document: what `POST /config/plan` and
  * `POST /config/apply` validate their bodies against.
  *
  * The *types* it describes live in `@infrawrench/client-core` (`org-config.ts`)
@@ -10,10 +10,29 @@
  *
  * Where a section's payload is already validated elsewhere (cost filters,
  * budget thresholds, tag policies, widget configs) this schema reuses the
- * existing zod objects rather than restating them, so a config document can
- * never smuggle in a shape the hand-editing route would have refused.
+ * existing request schemas (`@infrawrench/api-contract/schemas`) rather than
+ * restating them, so a config document can never smuggle in a shape the
+ * hand-editing route would have refused.
+ *
+ * Every object in the document is closed: it is decoded with
+ * `STRICT_PARSE_OPTIONS`, so an unknown key anywhere (a typo'd section, a
+ * misspelt field) is refused rather than silently dropped. Dashboard widget
+ * configs are records here and checked against their own schema on apply.
  */
-import { z } from "zod";
+import { Effect, Schema } from "effect";
+import {
+  BudgetPeriod,
+  BudgetThreshold,
+  CostFilter,
+  RequiredTag,
+  STRICT_PARSE_OPTIONS,
+  decodeForm,
+  maxLength,
+  minLength,
+  pattern,
+  tagValueRequiresKey,
+  trimmed,
+} from "@infrawrench/api-contract/schemas";
 import {
   ORG_CONFIG_KEY_MAX_LENGTH,
   ORG_CONFIG_KEY_PATTERN,
@@ -49,10 +68,6 @@ import {
 } from "@infrawrench/client-core";
 import {
   BUDGET_LIMITS,
-  budgetPeriodSchema,
-  budgetThresholdSchema,
-  costFilterSchema,
-  requiredTagSchema,
   TAG_POLICY_LIMITS,
   DASHBOARD_WIDGET_KINDS,
   COST_ANOMALY_LIMITS,
@@ -69,441 +84,428 @@ const ORG_CONFIG_LIMITS = {
   maxCardsPerDashboard: 200,
 } as const;
 
-const key = z
-  .string()
-  .max(ORG_CONFIG_KEY_MAX_LENGTH)
-  .regex(ORG_CONFIG_KEY_PATTERN, "keys are lowercase alphanumerics separated by single hyphens");
+/** A string of `min` to `max` characters, as sent. */
+const bounded = (min: number, max: number) => Schema.String.check(minLength(min), maxLength(max));
 
-const name = z.string().trim().min(1).max(ORG_CONFIG_LIMITS.maxNameLength);
-const description = z.string().max(ORG_CONFIG_LIMITS.maxDescriptionLength).nullish();
-const source = z.string().max(ORG_CONFIG_LIMITS.maxSourceBytes);
-const collection = <T extends z.ZodTypeAny>(item: T) =>
-  z.array(item).max(ORG_CONFIG_LIMITS.maxEntitiesPerSection);
+/** A whole number between `min` and `max`. */
+const intBetween = (min: number, max: number) =>
+  Schema.Int.check(Schema.isBetween({ minimum: min, maximum: max }));
+
+const key = Schema.String.check(
+  maxLength(ORG_CONFIG_KEY_MAX_LENGTH),
+  pattern(ORG_CONFIG_KEY_PATTERN, {
+    message: "keys are lowercase alphanumerics separated by single hyphens",
+  }),
+);
+
+const name = trimmed([minLength(1), maxLength(ORG_CONFIG_LIMITS.maxNameLength)]);
+const description = Schema.optionalKey(
+  Schema.NullOr(Schema.String.check(maxLength(ORG_CONFIG_LIMITS.maxDescriptionLength))),
+);
+const source = Schema.String.check(maxLength(ORG_CONFIG_LIMITS.maxSourceBytes));
+const collection = <S extends Schema.Top>(item: S) =>
+  Schema.mutable(Schema.Array(item)).check(maxLength(ORG_CONFIG_LIMITS.maxEntitiesPerSection));
 
 /* -------------------------------- budgets --------------------------------- */
 
-const budgetSchema = z
-  .object({
-    key,
-    name,
-    amountCents: z.number().int().min(0),
-    currency: z.string().length(3).default("USD"),
-    filters: z.array(costFilterSchema).default([]),
-    thresholds: z.array(budgetThresholdSchema).min(1).max(10),
-    measure: z.literal("usage").optional(),
-    usageUnit: z.string().trim().min(1).max(BUDGET_LIMITS.maxUsageUnitLength).optional(),
-    usageAmount: z.number().positive().max(BUDGET_LIMITS.maxUsageAmount).optional(),
-    period: budgetPeriodSchema.optional(),
-    parentKey: key.optional(),
-  })
-  .strict();
+const budgetSchema = Schema.Struct({
+  key,
+  name,
+  amountCents: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  currency: bounded(3, 3).pipe(Schema.withDecodingDefaultKey(Effect.succeed("USD"))),
+  filters: Schema.mutable(Schema.Array(CostFilter)).pipe(
+    Schema.withDecodingDefaultKey(Effect.sync(() => [])),
+  ),
+  thresholds: Schema.mutable(Schema.Array(BudgetThreshold)).check(minLength(1), maxLength(10)),
+  measure: Schema.optionalKey(Schema.Literal("usage")),
+  usageUnit: Schema.optionalKey(
+    trimmed([minLength(1), maxLength(BUDGET_LIMITS.maxUsageUnitLength)]),
+  ),
+  usageAmount: Schema.optionalKey(
+    Schema.Finite.check(
+      Schema.isGreaterThan(0),
+      Schema.isLessThanOrEqualTo(BUDGET_LIMITS.maxUsageAmount),
+    ),
+  ),
+  period: Schema.optionalKey(BudgetPeriod),
+  parentKey: Schema.optionalKey(key),
+});
 
 /* ------------------------------ custom graphs ------------------------------ */
 
-const customGraphSchema = z.object({ key, name, description, source }).strict();
+const customGraphSchema = Schema.Struct({ key, name, description, source });
 
 /* -------------------------------- workflows -------------------------------- */
 
-const workflowTriggerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("manual") }).strict(),
-  z
-    .object({
-      kind: z.literal("cron"),
-      expression: z.string().min(1).max(200),
-      timezone: z.string().max(100).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("git"),
-      provider: z.string().max(50).optional(),
-      repo: z.string().max(300).optional(),
-      branch: z.string().max(300).optional(),
-      events: z.array(z.string().max(50)).max(20).optional(),
-      installationId: z.number().int().positive().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("budget"),
-      budgetKey: key,
-      percent: z.number().positive().optional(),
-      metric: z.enum(["actual", "forecast"]).optional(),
-    })
-    .strict(),
+const workflowTriggerSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("manual") }),
+  Schema.Struct({
+    kind: Schema.Literal("cron"),
+    expression: bounded(1, 200),
+    timezone: Schema.optionalKey(Schema.String.check(maxLength(100))),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("git"),
+    provider: Schema.optionalKey(Schema.String.check(maxLength(50))),
+    repo: Schema.optionalKey(Schema.String.check(maxLength(300))),
+    branch: Schema.optionalKey(Schema.String.check(maxLength(300))),
+    events: Schema.optionalKey(
+      Schema.mutable(Schema.Array(Schema.String.check(maxLength(50)))).check(maxLength(20)),
+    ),
+    installationId: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("budget"),
+    budgetKey: key,
+    percent: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
+    metric: Schema.optionalKey(Schema.Literals(["actual", "forecast"])),
+  }),
 ]);
 
-const workflowMetricSchema = z
-  .object({
-    key: z.string().min(1).max(100),
-    label: z.string().min(1).max(200),
-    unit: z.string().max(50).nullish(),
-    type: z.string().max(50).optional(),
-  })
-  .strict();
+const workflowMetricSchema = Schema.Struct({
+  key: bounded(1, 100),
+  label: bounded(1, 200),
+  unit: Schema.optionalKey(Schema.NullOr(Schema.String.check(maxLength(50)))),
+  type: Schema.optionalKey(Schema.String.check(maxLength(50))),
+});
 
-const workflowSchema = z
-  .object({
-    key,
-    name,
-    description,
-    source,
-    trigger: workflowTriggerSchema.default({ kind: "manual" }),
-    metrics: z.array(workflowMetricSchema).max(50).default([]),
-    enabled: z.boolean().default(true),
-  })
-  .strict();
+const workflowSchema = Schema.Struct({
+  key,
+  name,
+  description,
+  source,
+  trigger: workflowTriggerSchema.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({ kind: "manual" } as const)),
+  ),
+  metrics: Schema.mutable(Schema.Array(workflowMetricSchema))
+    .check(maxLength(50))
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+});
 
 /* -------------------------------- dashboards ------------------------------- */
 
-const gridSpan = z.number().int().min(1).max(12).optional();
+const gridSpan = Schema.optionalKey(intBetween(1, 12));
 
-const dashboardCardSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("widget"),
-      widgetKind: z.enum(DASHBOARD_WIDGET_KINDS),
-      title: z.string().max(ORG_CONFIG_LIMITS.maxNameLength).default(""),
-      // Validated against `widgetConfigSchemaFor(kind)` on apply, once the
-      // budget/graph reference has been resolved back into it: the kinds that
-      // carry one would fail their own schema while the id is lifted out.
-      config: z.record(z.unknown()).default({}),
-      budgetKey: key.optional(),
-      graphKey: key.optional(),
-      width: gridSpan,
-      height: gridSpan,
-    })
-    .strict(),
-  z.object({ kind: z.literal("workflow"), workflowKey: key }).strict(),
-  z
-    .object({
-      kind: z.literal("resource"),
-      pluginId: z.string().min(1).max(100),
-      resourceTypeId: z.string().min(1).max(100),
-      externalId: z.string().min(1).max(1000),
-      account: z.string().min(1).max(200),
-      width: gridSpan,
-      height: gridSpan,
-    })
-    .strict(),
+const dashboardCardSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("widget"),
+    widgetKind: Schema.Literals(DASHBOARD_WIDGET_KINDS),
+    title: Schema.String.check(maxLength(ORG_CONFIG_LIMITS.maxNameLength)).pipe(
+      Schema.withDecodingDefaultKey(Effect.succeed("")),
+    ),
+    // Validated against `widgetConfigFor(kind)` on apply, once the
+    // budget/graph reference has been resolved back into it: the kinds that
+    // carry one would fail their own schema while the id is lifted out.
+    config: Schema.Record(Schema.String, Schema.Unknown).pipe(
+      Schema.withDecodingDefaultKey(Effect.sync(() => ({}))),
+    ),
+    budgetKey: Schema.optionalKey(key),
+    graphKey: Schema.optionalKey(key),
+    width: gridSpan,
+    height: gridSpan,
+  }),
+  Schema.Struct({ kind: Schema.Literal("workflow"), workflowKey: key }),
+  Schema.Struct({
+    kind: Schema.Literal("resource"),
+    pluginId: bounded(1, 100),
+    resourceTypeId: bounded(1, 100),
+    externalId: bounded(1, 1000),
+    account: bounded(1, 200),
+    width: gridSpan,
+    height: gridSpan,
+  }),
 ]);
 
-const dashboardSchema = z
-  .object({
-    key,
-    name,
-    isDefault: z.boolean().default(false),
-    defaultForRoles: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
-    cards: z.array(dashboardCardSchema).max(ORG_CONFIG_LIMITS.maxCardsPerDashboard).default([]),
-  })
-  .strict();
+const dashboardSchema = Schema.Struct({
+  key,
+  name,
+  isDefault: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  defaultForRoles: Schema.optionalKey(
+    Schema.mutable(Schema.Array(trimmed([minLength(1), maxLength(200)]))).check(maxLength(100)),
+  ),
+  cards: Schema.mutable(Schema.Array(dashboardCardSchema))
+    .check(maxLength(ORG_CONFIG_LIMITS.maxCardsPerDashboard))
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+});
 
 /* ------------------------------- metric alerts ----------------------------- */
 
-const selectorPart = (max: number) => z.string().trim().min(1).max(max).nullable().default(null);
+const selectorPart = (max: number) =>
+  Schema.NullOr(trimmed([minLength(1), maxLength(max)])).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  );
 
-const metricAlertSchema = z
-  .object({
-    key,
-    name: z.string().trim().min(1).max(METRIC_ALERT_LIMITS.maxNameLength),
-    pluginId: selectorPart(100),
-    resourceTypeId: selectorPart(100),
-    tagKey: selectorPart(METRIC_ALERT_LIMITS.maxTagLength),
-    tagValue: selectorPart(METRIC_ALERT_LIMITS.maxTagLength),
-    metricKey: z.string().trim().min(1).max(METRIC_ALERT_LIMITS.maxMetricKeyLength),
-    comparator: z.enum([">", ">=", "<", "<="]),
-    threshold: z.number().finite(),
-    forMinutes: z
-      .number()
-      .int()
-      .min(METRIC_ALERT_LIMITS.minForMinutes)
-      .max(METRIC_ALERT_LIMITS.maxForMinutes)
-      .default(15),
-    cooldownMinutes: z
-      .number()
-      .int()
-      .min(METRIC_ALERT_LIMITS.minCooldownMinutes)
-      .max(METRIC_ALERT_LIMITS.maxCooldownMinutes)
-      .default(60),
-    enabled: z.boolean().default(true),
-  })
-  .strict();
+const metricAlertSchema = Schema.Struct({
+  key,
+  name: trimmed([minLength(1), maxLength(METRIC_ALERT_LIMITS.maxNameLength)]),
+  pluginId: selectorPart(100),
+  resourceTypeId: selectorPart(100),
+  tagKey: selectorPart(METRIC_ALERT_LIMITS.maxTagLength),
+  tagValue: selectorPart(METRIC_ALERT_LIMITS.maxTagLength),
+  metricKey: trimmed([minLength(1), maxLength(METRIC_ALERT_LIMITS.maxMetricKeyLength)]),
+  comparator: Schema.Literals([">", ">=", "<", "<="]),
+  threshold: Schema.Finite,
+  forMinutes: intBetween(METRIC_ALERT_LIMITS.minForMinutes, METRIC_ALERT_LIMITS.maxForMinutes).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(15)),
+  ),
+  cooldownMinutes: intBetween(
+    METRIC_ALERT_LIMITS.minCooldownMinutes,
+    METRIC_ALERT_LIMITS.maxCooldownMinutes,
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(60))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+});
 
 /* ---------------------------------- probes --------------------------------- */
 
-const probeSchema = z
-  .object({
-    key,
-    name,
-    url: z.string().min(1).max(2000),
-    method: z.string().min(1).max(10).default("GET"),
-    intervalSeconds: z
-      .number()
-      .int()
-      .min(PROBE_LIMITS.minIntervalSeconds)
-      .max(PROBE_LIMITS.maxIntervalSeconds)
-      .default(60),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(PROBE_LIMITS.minTimeoutMs)
-      .max(PROBE_LIMITS.maxTimeoutMs)
-      .default(10_000),
-    failureThreshold: z
-      .number()
-      .int()
-      .min(PROBE_LIMITS.minFailureThreshold)
-      .max(PROBE_LIMITS.maxFailureThreshold)
-      .default(3),
-    enabled: z.boolean().default(true),
-  })
-  .strict();
+const probeSchema = Schema.Struct({
+  key,
+  name,
+  url: bounded(1, 2000),
+  method: bounded(1, 10).pipe(Schema.withDecodingDefaultKey(Effect.succeed("GET"))),
+  intervalSeconds: intBetween(
+    PROBE_LIMITS.minIntervalSeconds,
+    PROBE_LIMITS.maxIntervalSeconds,
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(60))),
+  timeoutMs: intBetween(PROBE_LIMITS.minTimeoutMs, PROBE_LIMITS.maxTimeoutMs).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(10_000)),
+  ),
+  failureThreshold: intBetween(
+    PROBE_LIMITS.minFailureThreshold,
+    PROBE_LIMITS.maxFailureThreshold,
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(3))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+});
 
 /* ----------------------------------- SLOs ---------------------------------- */
 
-const sloSchema = z
-  .object({
-    key,
-    name,
-    description: z.string().max(SLO_LIMITS.maxDescriptionLength).nullable().default(null),
-    sliKind: z.enum(["probe_availability", "probe_latency", "metric_threshold"]),
-    probeKey: key.optional(),
-    latencyThresholdMs: z
-      .number()
-      .int()
-      .min(SLO_LIMITS.minLatencyThresholdMs)
-      .max(SLO_LIMITS.maxLatencyThresholdMs)
-      .optional(),
-    resource: z
-      .object({
-        pluginId: z.string().min(1).max(100),
-        resourceTypeId: z.string().min(1).max(100),
-        externalId: z.string().max(1000),
-        account: z.string().min(1).max(ORG_CONFIG_LIMITS.maxNameLength),
-      })
-      .strict()
-      .optional(),
-    metricKey: z.string().trim().min(1).max(SLO_LIMITS.maxMetricKeyLength).optional(),
-    comparator: z.enum(["<", "<=", ">", ">="]).optional(),
-    threshold: z.number().finite().optional(),
-    targetPercent: z.number().min(SLO_LIMITS.minTargetPercent).max(SLO_LIMITS.maxTargetPercent),
-    windowDays: z.union([z.literal(7), z.literal(28), z.literal(30)]).default(30),
-    alertsEnabled: z.boolean().default(true),
-    suggestFreeze: z.boolean().default(true),
-    enabled: z.boolean().default(true),
-  })
-  .strict();
+const sloSchema = Schema.Struct({
+  key,
+  name,
+  description: Schema.NullOr(Schema.String.check(maxLength(SLO_LIMITS.maxDescriptionLength))).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
+  sliKind: Schema.Literals(["probe_availability", "probe_latency", "metric_threshold"]),
+  probeKey: Schema.optionalKey(key),
+  latencyThresholdMs: Schema.optionalKey(
+    intBetween(SLO_LIMITS.minLatencyThresholdMs, SLO_LIMITS.maxLatencyThresholdMs),
+  ),
+  resource: Schema.optionalKey(
+    Schema.Struct({
+      pluginId: bounded(1, 100),
+      resourceTypeId: bounded(1, 100),
+      externalId: Schema.String.check(maxLength(1000)),
+      account: bounded(1, ORG_CONFIG_LIMITS.maxNameLength),
+    }),
+  ),
+  metricKey: Schema.optionalKey(trimmed([minLength(1), maxLength(SLO_LIMITS.maxMetricKeyLength)])),
+  comparator: Schema.optionalKey(Schema.Literals(["<", "<=", ">", ">="])),
+  threshold: Schema.optionalKey(Schema.Finite),
+  targetPercent: Schema.Finite.check(
+    Schema.isBetween({
+      minimum: SLO_LIMITS.minTargetPercent,
+      maximum: SLO_LIMITS.maxTargetPercent,
+    }),
+  ),
+  windowDays: Schema.Literals([7, 28, 30]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed<7 | 28 | 30>(30)),
+  ),
+  alertsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  suggestFreeze: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+});
 
 /* ------------------------------- cost centres ------------------------------ */
 
-const allocationRuleSchema = z
-  .object({
-    priority: z.number().int().min(0).max(100_000),
-    match: z
-      .object({
-        tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength).optional(),
-        tagValue: z.string().max(TAG_POLICY_LIMITS.maxValueLength).optional(),
-        account: z.string().min(1).max(200).optional(),
-        pluginId: z.string().min(1).max(100).optional(),
-        service: z.string().min(1).max(300).optional(),
-      })
-      .strict()
-      .refine((m) => !m.tagValue?.trim() || !!m.tagKey?.trim(), {
-        message: "tagValue requires tagKey",
-        path: ["tagValue"],
-      })
-      .default({}),
+const allocationRuleSchema = Schema.Struct({
+  priority: intBetween(0, 100_000),
+  match: Schema.Struct({
+    tagKey: Schema.optionalKey(bounded(1, TAG_POLICY_LIMITS.maxKeyLength)),
+    tagValue: Schema.optionalKey(Schema.String.check(maxLength(TAG_POLICY_LIMITS.maxValueLength))),
+    account: Schema.optionalKey(bounded(1, 200)),
+    pluginId: Schema.optionalKey(bounded(1, 100)),
+    service: Schema.optionalKey(bounded(1, 300)),
   })
-  .strict();
+    .check(tagValueRequiresKey)
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => ({})))),
+});
 
-const costCentreSchema = z
-  .object({
-    key,
-    name,
-    description,
-    rules: z.array(allocationRuleSchema).max(200).default([]),
-  })
-  .strict();
+const costCentreSchema = Schema.Struct({
+  key,
+  name,
+  description,
+  rules: Schema.mutable(Schema.Array(allocationRuleSchema))
+    .check(maxLength(200))
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+});
 
 /* ------------------------------ alert settings ----------------------------- */
 
-const alertSettingsSchema = z
-  .object({
-    costAnomaly: z
-      .object({
-        sigmas: z.number().min(COST_ANOMALY_LIMITS.sigmasMin).max(COST_ANOMALY_LIMITS.sigmasMax),
-        minDeltaCents: z
-          .number()
-          .int()
-          .min(COST_ANOMALY_LIMITS.minDeltaCentsMin)
-          .max(COST_ANOMALY_LIMITS.minDeltaCentsMax),
-        newSourceMinCents: z
-          .number()
-          .int()
-          .min(COST_ANOMALY_LIMITS.newSourceMinCentsMin)
-          .max(COST_ANOMALY_LIMITS.newSourceMinCentsMax),
-        smsAlerts: z.enum(COST_ANOMALY_SMS_MODES),
-        feedbackTuning: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    drift: z
-      .object({
-        notifyCreated: z.boolean(),
-        notifyUpdated: z.boolean(),
-        notifyDeleted: z.boolean(),
-        cooldownMinutes: z
-          .number()
-          .int()
-          .min(DRIFT_ALERT_LIMITS.cooldownMinutes.min)
-          .max(DRIFT_ALERT_LIMITS.cooldownMinutes.max),
-        minChanges: z
-          .number()
-          .int()
-          .min(DRIFT_ALERT_LIMITS.minChanges.min)
-          .max(DRIFT_ALERT_LIMITS.minChanges.max),
-        accounts: z.array(z.string().min(1).max(200)).max(DRIFT_ALERT_LIMITS.maxAccountIds),
-      })
-      .strict()
-      .optional(),
-    expiry: z
-      .object({
-        enabled: z.boolean(),
-        leadDays: z
-          .number()
-          .int()
-          .min(EXPIRY_ALERT_LIMITS.leadDays.min)
-          .max(EXPIRY_ALERT_LIMITS.leadDays.max),
-      })
-      .strict()
-      .optional(),
-    posture: z.object({ enabled: z.boolean() }).strict().optional(),
-    extendedSupport: z
-      .object({
-        enabled: z.boolean(),
-        leadDays: z
-          .number()
-          .int()
-          .min(EXTENDED_SUPPORT_LIMITS.leadDays.min)
-          .max(EXTENDED_SUPPORT_LIMITS.leadDays.max),
-      })
-      .strict()
-      .optional(),
-    // Metric-based idle rules: the same bounds `PUT /idle-findings/settings`
-    // enforces; unknown rule and threshold keys are rejected at apply time,
-    // against the loaded plugins' declarations.
-    idleFindings: z
-      .object({
-        enabled: z.boolean(),
-        lookbackDays: z
-          .number()
-          .int()
-          .min(IDLE_FINDING_LIMITS.minLookbackDays)
-          .max(IDLE_FINDING_LIMITS.maxLookbackDays),
-        rules: z
-          .record(
-            z.string().min(3).max(130),
-            z
-              .object({
-                enabled: z.boolean().optional(),
-                thresholds: z.record(z.string().min(1).max(64), z.number().finite()).optional(),
-              })
-              .strict(),
-          )
-          .default({}),
-      })
-      .strict()
-      .optional(),
-    digest: z
-      .object({
-        enabled: z.boolean(),
-        timezone: z.string().min(1).max(100),
-        sendDay: z.number().int().min(1).max(7),
-        sendHour: z.number().int().min(0).max(23),
-        narrativeEnabled: z.boolean(),
-        recipients: z.array(z.string().min(3).max(320)).max(100),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
+const alertSettingsSchema = Schema.Struct({
+  costAnomaly: Schema.optionalKey(
+    Schema.Struct({
+      sigmas: Schema.Finite.check(
+        Schema.isBetween({
+          minimum: COST_ANOMALY_LIMITS.sigmasMin,
+          maximum: COST_ANOMALY_LIMITS.sigmasMax,
+        }),
+      ),
+      minDeltaCents: intBetween(
+        COST_ANOMALY_LIMITS.minDeltaCentsMin,
+        COST_ANOMALY_LIMITS.minDeltaCentsMax,
+      ),
+      newSourceMinCents: intBetween(
+        COST_ANOMALY_LIMITS.newSourceMinCentsMin,
+        COST_ANOMALY_LIMITS.newSourceMinCentsMax,
+      ),
+      smsAlerts: Schema.Literals(COST_ANOMALY_SMS_MODES),
+      feedbackTuning: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
+  drift: Schema.optionalKey(
+    Schema.Struct({
+      notifyCreated: Schema.Boolean,
+      notifyUpdated: Schema.Boolean,
+      notifyDeleted: Schema.Boolean,
+      cooldownMinutes: intBetween(
+        DRIFT_ALERT_LIMITS.cooldownMinutes.min,
+        DRIFT_ALERT_LIMITS.cooldownMinutes.max,
+      ),
+      minChanges: intBetween(DRIFT_ALERT_LIMITS.minChanges.min, DRIFT_ALERT_LIMITS.minChanges.max),
+      accounts: Schema.mutable(Schema.Array(bounded(1, 200))).check(
+        maxLength(DRIFT_ALERT_LIMITS.maxAccountIds),
+      ),
+    }),
+  ),
+  expiry: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      leadDays: intBetween(EXPIRY_ALERT_LIMITS.leadDays.min, EXPIRY_ALERT_LIMITS.leadDays.max),
+    }),
+  ),
+  posture: Schema.optionalKey(Schema.Struct({ enabled: Schema.Boolean })),
+  extendedSupport: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      leadDays: intBetween(
+        EXTENDED_SUPPORT_LIMITS.leadDays.min,
+        EXTENDED_SUPPORT_LIMITS.leadDays.max,
+      ),
+    }),
+  ),
+  // Metric-based idle rules: the same bounds `PUT /idle-findings/settings`
+  // enforces; unknown rule and threshold keys are rejected at apply time,
+  // against the loaded plugins' declarations.
+  idleFindings: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      lookbackDays: intBetween(
+        IDLE_FINDING_LIMITS.minLookbackDays,
+        IDLE_FINDING_LIMITS.maxLookbackDays,
+      ),
+      rules: Schema.Record(
+        bounded(3, 130),
+        Schema.Struct({
+          enabled: Schema.optionalKey(Schema.Boolean),
+          thresholds: Schema.optionalKey(Schema.Record(bounded(1, 64), Schema.Finite)),
+        }),
+      ).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => ({})))),
+    }),
+  ),
+  digest: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      timezone: bounded(1, 100),
+      sendDay: intBetween(1, 7),
+      sendHour: intBetween(0, 23),
+      narrativeEnabled: Schema.Boolean,
+      recipients: Schema.mutable(Schema.Array(bounded(3, 320))).check(maxLength(100)),
+    }),
+  ),
+});
 
 /* ------------------------------ savings views ------------------------------ */
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "dates are YYYY-MM-DD");
-const filterValues = z
-  .array(z.string().trim().min(1).max(200))
-  .max(SAVINGS_VIEW_LIMITS.maxFilterValues);
+const isoDay = Schema.String.check(
+  pattern(/^\d{4}-\d{2}-\d{2}$/, { message: "dates are YYYY-MM-DD" }),
+);
+const filterValues = Schema.mutable(Schema.Array(trimmed([minLength(1), maxLength(200)]))).check(
+  maxLength(SAVINGS_VIEW_LIMITS.maxFilterValues),
+);
 
-const savingsViewFilterSchema = z
-  .object({
-    kinds: z.array(z.enum(SAVINGS_FINDING_KINDS)).optional(),
-    pluginIds: filterValues.optional(),
-    accounts: filterValues.optional(),
-    regions: filterValues.optional(),
-    tags: z
-      .array(
-        z
-          .object({ key: z.string().trim().min(1).max(200), values: filterValues.optional() })
-          .strict(),
-      )
-      .max(SAVINGS_VIEW_LIMITS.maxTagTerms)
-      .optional(),
-    minMonthlySavings: z.number().min(0).optional(),
-    detectedFrom: isoDay.optional(),
-    detectedTo: isoDay.optional(),
-    search: z.string().max(SAVINGS_VIEW_LIMITS.maxSearchLength).optional(),
-  })
-  .strict();
+const savingsViewFilterSchema = Schema.Struct({
+  kinds: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.Literals(SAVINGS_FINDING_KINDS)))),
+  pluginIds: Schema.optionalKey(filterValues),
+  accounts: Schema.optionalKey(filterValues),
+  regions: Schema.optionalKey(filterValues),
+  tags: Schema.optionalKey(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          key: trimmed([minLength(1), maxLength(200)]),
+          values: Schema.optionalKey(filterValues),
+        }),
+      ),
+    ).check(maxLength(SAVINGS_VIEW_LIMITS.maxTagTerms)),
+  ),
+  minMonthlySavings: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  detectedFrom: Schema.optionalKey(isoDay),
+  detectedTo: Schema.optionalKey(isoDay),
+  search: Schema.optionalKey(Schema.String.check(maxLength(SAVINGS_VIEW_LIMITS.maxSearchLength))),
+});
 
-const savingsViewSchema = z
-  .object({
-    key,
-    name: z.string().trim().min(1).max(SAVINGS_VIEW_LIMITS.maxNameLength),
-    description: z.string().max(SAVINGS_VIEW_LIMITS.maxDescriptionLength).nullable(),
-    status: z.enum(SAVINGS_FINDING_STATUS_FILTERS),
-    filter: savingsViewFilterSchema,
-    sort: z
-      .object({ field: z.enum(SAVINGS_FINDING_SORT_FIELDS), direction: z.enum(["asc", "desc"]) })
-      .strict(),
-  })
-  .strict();
+const savingsViewSchema = Schema.Struct({
+  key,
+  name: trimmed([minLength(1), maxLength(SAVINGS_VIEW_LIMITS.maxNameLength)]),
+  description: Schema.NullOr(
+    Schema.String.check(maxLength(SAVINGS_VIEW_LIMITS.maxDescriptionLength)),
+  ),
+  status: Schema.Literals(SAVINGS_FINDING_STATUS_FILTERS),
+  filter: savingsViewFilterSchema,
+  sort: Schema.Struct({
+    field: Schema.Literals(SAVINGS_FINDING_SORT_FIELDS),
+    direction: Schema.Literals(["asc", "desc"]),
+  }),
+});
 
 /* -------------------------------- document --------------------------------- */
 
-const orgConfigDocumentSchema = z
-  .object({
-    // Accepted rather than required-equal so a future v2 reader can say
-    // something better than "unrecognized key"; the service refuses anything
-    // it does not know how to apply.
-    version: z.number().int().min(1).default(ORG_CONFIG_VERSION),
-    exportedAt: z.string().max(64).optional(),
-    exportedFrom: z
-      .object({ organizationId: z.string().max(200), organizationName: z.string().max(300) })
-      .strict()
-      .optional(),
-    budgets: collection(budgetSchema).optional(),
-    customGraphs: collection(customGraphSchema).optional(),
-    workflows: collection(workflowSchema).optional(),
-    dashboards: collection(dashboardSchema).optional(),
-    metricAlerts: collection(metricAlertSchema).optional(),
-    probes: collection(probeSchema).optional(),
-    slos: collection(sloSchema).optional(),
-    costCentres: collection(costCentreSchema).optional(),
-    tagPolicy: z
-      .object({
-        requiredTags: z.array(requiredTagSchema).max(TAG_POLICY_LIMITS.maxRequiredTags),
-        enforceOnCreate: z.boolean(),
-      })
-      .strict()
-      .optional(),
-    alertSettings: alertSettingsSchema.optional(),
-    savingsViews: collection(savingsViewSchema).optional(),
-  })
-  .strict();
+const orgConfigDocumentSchema = Schema.Struct({
+  // Accepted rather than required-equal so a future v2 reader can say
+  // something better than "unrecognized key"; the service refuses anything
+  // it does not know how to apply.
+  version: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(ORG_CONFIG_VERSION)),
+  ),
+  exportedAt: Schema.optionalKey(Schema.String.check(maxLength(64))),
+  exportedFrom: Schema.optionalKey(
+    Schema.Struct({
+      organizationId: Schema.String.check(maxLength(200)),
+      organizationName: Schema.String.check(maxLength(300)),
+    }),
+  ),
+  budgets: Schema.optionalKey(collection(budgetSchema)),
+  customGraphs: Schema.optionalKey(collection(customGraphSchema)),
+  workflows: Schema.optionalKey(collection(workflowSchema)),
+  dashboards: Schema.optionalKey(collection(dashboardSchema)),
+  metricAlerts: Schema.optionalKey(collection(metricAlertSchema)),
+  probes: Schema.optionalKey(collection(probeSchema)),
+  slos: Schema.optionalKey(collection(sloSchema)),
+  costCentres: Schema.optionalKey(collection(costCentreSchema)),
+  tagPolicy: Schema.optionalKey(
+    Schema.Struct({
+      requiredTags: Schema.mutable(Schema.Array(RequiredTag)).check(
+        maxLength(TAG_POLICY_LIMITS.maxRequiredTags),
+      ),
+      enforceOnCreate: Schema.Boolean,
+    }),
+  ),
+  alertSettings: Schema.optionalKey(alertSettingsSchema),
+  savingsViews: Schema.optionalKey(collection(savingsViewSchema)),
+});
 
 /** The document after parsing: every collection defaulted, ids resolved later. */
-export type ParsedOrgConfigDocument = z.infer<typeof orgConfigDocumentSchema>;
+export type ParsedOrgConfigDocument = typeof orgConfigDocumentSchema.Type;
 
 /* -------------------------------- validation ------------------------------- */
 
@@ -521,18 +523,17 @@ export class OrgConfigError extends Error {
 /**
  * Validate an inbound document, reporting the first problem in plain words.
  *
- * Three checks the zod schema cannot express on its own, all of which would
+ * Three checks the schema cannot express on its own, all of which would
  * otherwise silently do the wrong thing rather than fail: a document from a
  * newer server, duplicate keys within a section (the second would quietly
  * overwrite the first on apply), and two dashboards both claiming to be the
  * default (an org with two defaults resolves "the" default at random).
  */
 export function parseOrgConfigDocument(raw: unknown): ParsedOrgConfigDocument {
-  const parsed = orgConfigDocumentSchema.safeParse(raw);
+  const parsed = decodeForm(orgConfigDocumentSchema, raw, STRICT_PARSE_OPTIONS);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue?.path.length ? ` at ${issue.path.join(".")}` : "";
-    throw new OrgConfigError(`Invalid config document${where}: ${issue?.message ?? "unknown"}`);
+    const where = parsed.path.length > 0 ? ` at ${parsed.path.map(String).join(".")}` : "";
+    throw new OrgConfigError(`Invalid config document${where}: ${parsed.message}`);
   }
   if (parsed.data.version > ORG_CONFIG_VERSION) {
     throw new OrgConfigError(
@@ -581,7 +582,14 @@ export function orgConfigDocumentSections(doc: ParsedOrgConfigDocument): OrgConf
 
 /* ------------------------------ drift guards ------------------------------- */
 
-type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+/** `| undefined` on a property is ignored: `exactOptionalPropertyTypes` tells them apart, JSON cannot. */
+type Normalize<T> = T extends object ? { [K in keyof T]: Normalize<Exclude<T[K], undefined>> } : T;
+
+type Exact<A, B> = [Normalize<A>] extends [Normalize<B>]
+  ? [Normalize<B>] extends [Normalize<A>]
+    ? true
+    : never
+  : never;
 
 /**
  * Compile-time proof the schema still parses to exactly the shared client-core
@@ -593,20 +601,20 @@ type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
  * is assigning `true` to it that actually fails.
  */
 type SchemaMatchesOrgConfigContract = [
-  Exact<z.infer<typeof budgetSchema>, OrgConfigBudget>,
-  Exact<z.infer<typeof customGraphSchema>, OrgConfigCustomGraph>,
-  Exact<z.infer<typeof workflowTriggerSchema>, OrgConfigWorkflowTrigger>,
-  Exact<z.infer<typeof workflowSchema>, OrgConfigWorkflow>,
-  Exact<z.infer<typeof dashboardCardSchema>, OrgConfigDashboardCard>,
-  Exact<z.infer<typeof dashboardSchema>, OrgConfigDashboard>,
-  Exact<z.infer<typeof metricAlertSchema>, OrgConfigMetricAlert>,
-  Exact<z.infer<typeof probeSchema>, OrgConfigProbe>,
-  Exact<z.infer<typeof sloSchema>, OrgConfigSlo>,
-  Exact<z.infer<typeof allocationRuleSchema>, OrgConfigAllocationRule>,
-  Exact<z.infer<typeof costCentreSchema>, OrgConfigCostCentre>,
-  Exact<z.infer<typeof savingsViewFilterSchema>, OrgConfigSavingsViewFilter>,
-  Exact<z.infer<typeof savingsViewSchema>, OrgConfigSavingsView>,
-  Exact<z.infer<typeof orgConfigDocumentSchema>, OrgConfigDocument>,
+  Exact<typeof budgetSchema.Type, OrgConfigBudget>,
+  Exact<typeof customGraphSchema.Type, OrgConfigCustomGraph>,
+  Exact<typeof workflowTriggerSchema.Type, OrgConfigWorkflowTrigger>,
+  Exact<typeof workflowSchema.Type, OrgConfigWorkflow>,
+  Exact<typeof dashboardCardSchema.Type, OrgConfigDashboardCard>,
+  Exact<typeof dashboardSchema.Type, OrgConfigDashboard>,
+  Exact<typeof metricAlertSchema.Type, OrgConfigMetricAlert>,
+  Exact<typeof probeSchema.Type, OrgConfigProbe>,
+  Exact<typeof sloSchema.Type, OrgConfigSlo>,
+  Exact<typeof allocationRuleSchema.Type, OrgConfigAllocationRule>,
+  Exact<typeof costCentreSchema.Type, OrgConfigCostCentre>,
+  Exact<typeof savingsViewFilterSchema.Type, OrgConfigSavingsViewFilter>,
+  Exact<typeof savingsViewSchema.Type, OrgConfigSavingsView>,
+  Exact<typeof orgConfigDocumentSchema.Type, OrgConfigDocument>,
 ];
 
 const schemaMatchesContract: SchemaMatchesOrgConfigContract = [

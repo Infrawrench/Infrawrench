@@ -14,7 +14,7 @@ import type { CostScenarioModel } from "@infrawrench/client-core";
  */
 
 const mockQueryCosts = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   getCostCoverage: vi.fn(async () => new Map()),
   getCostDimensionValues: vi.fn(async () => []),

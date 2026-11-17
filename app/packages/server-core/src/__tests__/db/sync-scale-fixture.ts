@@ -80,7 +80,7 @@ vi.mock("../../tunnel-resolver", () => ({
   rewriteCredentialsThroughTunnel: async () => undefined,
 }));
 vi.mock("../../host-services", () => ({ buildPluginHostServices: async () => ({}) }));
-vi.mock("../../clickhouse/writers", () => ({
+vi.mock("../../analytics/writers", () => ({
   flattenMetricSeries: () => [],
   insertAccountResourceCounts: async () => undefined,
   insertDashboardStats: async () => undefined,

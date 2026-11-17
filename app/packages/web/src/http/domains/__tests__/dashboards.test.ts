@@ -113,7 +113,7 @@ const mockGetLatestStats = vi.fn();
 const mockGetLatestMetrics = vi.fn();
 const mockGetMetricRange = vi.fn();
 
-vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/readers", () => ({
   getLatestStatsBatch: (...args: unknown[]) => mockGetLatestStatsBatch(...args),
   getLatestMetricsBatch: (...args: unknown[]) => mockGetLatestMetricsBatch(...args),
   getLatestAccountCountsBatch: (...args: unknown[]) => mockGetLatestAccountCountsBatch(...args),
@@ -558,7 +558,7 @@ describe("Dashboard routes", () => {
   });
 
   describe("POST /probe: probe dashboard cards", () => {
-    it("projects ClickHouse stats/metrics into ProbeStatus", async () => {
+    it("projects stored stats/metrics into ProbeStatus", async () => {
       const stats = [{ label: "Status", value: "Healthy", variant: "status-healthy" }];
       const rows = [
         { resourceId: "res-1", resourceTypeId: "mock-type", accountId: "acct-1" },

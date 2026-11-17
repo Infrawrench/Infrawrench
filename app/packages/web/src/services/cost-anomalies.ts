@@ -44,7 +44,7 @@ const MAX_ROWS = 200;
  *
  * Rows detected before contributors existed have none; the first reads after
  * deploy fill them in, newest first, a few at a time so a 90-day window never
- * turns one list request into a hundred ClickHouse statements. Each is one
+ * turns one list request into a hundred cost queries. Each is one
  * grouped read, run in parallel; the rest are picked up by later reads.
  */
 const LAZY_CONTRIBUTOR_LIMIT = 4;
@@ -220,7 +220,7 @@ export async function listRecentCostAnomalies(
 
   // Interactive readers (the list endpoint, the chat agent) fill in breakdowns
   // older rows never got; unattended ones (canvases, digests) read what is
-  // stored and never pay for a ClickHouse statement per row.
+  // stored and never pay for a cost query per row.
   if (opts.backfillContributors) {
     await backfillAnomalyContributors(
       organizationId,

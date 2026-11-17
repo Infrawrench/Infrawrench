@@ -1,6 +1,6 @@
 /**
  * Pure spend-anomaly detection maths. No I/O, no dates beyond ISO strings:
- * the evaluator (`anomaly-eval.ts`) feeds it series read from ClickHouse and
+ * the evaluator (`anomaly-eval.ts`) feeds it series read from `cost_daily` and
  * persists whatever it flags. Kept separate so the statistics are unit-testable
  * without a database.
  *
@@ -289,7 +289,7 @@ export function detectNewSpendSource(
 
 /**
  * Zero-fill a sparse day→amount map into a dense daily array covering
- * [`fromDay`, `toDay`] inclusive, oldest first. ClickHouse only returns days
+ * [`fromDay`, `toDay`] inclusive, oldest first. The readers only return days
  * with rows, and a missing day is a $0 day as far as the baseline goes.
  */
 export function fillDailySeries(

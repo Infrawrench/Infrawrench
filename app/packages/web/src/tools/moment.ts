@@ -7,7 +7,7 @@
  * needing more (costs, workflows, audit, freezes) are omitted
  * per-feed exactly as the HTTP route omits them.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import { computeMoment, parseMomentTimestamp } from "../services/moment";
 import { effectiveToolPermissions } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
@@ -26,20 +26,22 @@ export function momentTools(): ToolDefinition[] {
         "without losing the rest. Events inside a provider incident's span can be " +
         "correlated via the returned incident list.",
       inputSchema: {
-        at: z
-          .string()
-          .optional()
-          .describe(
-            "ISO 8601 centre timestamp, e.g. 2026-08-03T03:14:00Z. A timestamp without an " +
+        at: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "ISO 8601 centre timestamp, e.g. 2026-08-03T03:14:00Z. A timestamp without an " +
               "offset is interpreted as UTC. Defaults to now.",
-          ),
-        window_minutes: z
-          .number()
-          .int()
-          .min(1)
-          .max(4320)
-          .optional()
-          .describe("Half-window in minutes (the ± around `at`). Default 60, max 4320 (±3 days)."),
+          }),
+        ),
+        window_minutes: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(4320),
+          ).annotate({
+            description:
+              "Half-window in minutes (the ± around `at`). Default 60, max 4320 (±3 days).",
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /moment`: the union's floor; per-feed gating happens in

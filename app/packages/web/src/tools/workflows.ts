@@ -13,7 +13,7 @@
  * reads take `workflows:read`, and writing/running/deleting take
  * `workflows:write`, exactly as the matching routes do.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 
 import type {
   InfraDtsNamedType,
@@ -52,49 +52,55 @@ import { ok, okText, err, type ToolDefinition, type ToolResult } from "./types";
  * has to survive conversion to two different providers' JSON-Schema dialects,
  * and the service layer validates the combination anyway.
  */
-const triggerSchema = z
-  .object({
-    kind: z.enum(["manual", "cron", "git", "budget"]),
-    expression: z.string().optional().describe("cron only: 5-field expression, e.g. '0 9 * * 1'."),
-    timezone: z.string().optional().describe("cron only: IANA zone. Defaults to UTC."),
-    repo: z.string().optional().describe("git only: 'owner/name'."),
-    branch: z.string().optional().describe("git only: branch to watch."),
-    installationId: z.number().optional().describe("git only: GitHub App installation id."),
-    budgetId: z
-      .string()
-      .optional()
-      .describe("budget only: the budget to watch. Get ids from list_budgets."),
-    percent: z
-      .number()
-      .optional()
-      .describe("budget only: fire at this percentage of the budget amount. Defaults to 100."),
-    metric: z
-      .enum(["actual", "forecast"])
-      .optional()
-      .describe(
-        "budget only: compare month-to-date 'actual' spend (default) or the projected month-end 'forecast'.",
-      ),
-  })
-  .describe(
-    "How the workflow starts. manual = only when run by hand; cron = on a schedule; " +
-      "git = on a push to a watched branch; budget = when a cost budget crosses a threshold.",
-  );
-
-const metricsSchema = z
-  .array(
-    z.object({
-      key: z.string().describe("Identifier used as infra.metrics.<key>."),
-      label: z.string(),
-      type: z.enum(["number", "string", "boolean"]),
-      unit: z.string().optional(),
+const triggerSchema = Schema.Struct({
+  kind: Schema.Literals(["manual", "cron", "git", "budget"]),
+  expression: Schema.optionalKey(
+    Schema.String.annotate({ description: "cron only: 5-field expression, e.g. '0 9 * * 1'." }),
+  ),
+  timezone: Schema.optionalKey(
+    Schema.String.annotate({ description: "cron only: IANA zone. Defaults to UTC." }),
+  ),
+  repo: Schema.optionalKey(Schema.String.annotate({ description: "git only: 'owner/name'." })),
+  branch: Schema.optionalKey(Schema.String.annotate({ description: "git only: branch to watch." })),
+  installationId: Schema.optionalKey(
+    Schema.Finite.annotate({ description: "git only: GitHub App installation id." }),
+  ),
+  budgetId: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "budget only: the budget to watch. Get ids from list_budgets.",
     }),
-  )
-  .describe(
-    "Metrics the workflow can read/write via infra.metrics.<key>. They become typed properties " +
-      "in the generated typings and render on any dashboard the workflow is pinned to.",
-  );
+  ),
+  percent: Schema.optionalKey(
+    Schema.Finite.annotate({
+      description: "budget only: fire at this percentage of the budget amount. Defaults to 100.",
+    }),
+  ),
+  metric: Schema.optionalKey(
+    Schema.Literals(["actual", "forecast"]).annotate({
+      description:
+        "budget only: compare month-to-date 'actual' spend (default) or the projected month-end 'forecast'.",
+    }),
+  ),
+}).annotate({
+  description:
+    "How the workflow starts. manual = only when run by hand; cron = on a schedule; " +
+    "git = on a push to a watched branch; budget = when a cost budget crosses a threshold.",
+});
 
-type TriggerInput = z.infer<typeof triggerSchema>;
+const metricsSchema = Schema.Array(
+  Schema.Struct({
+    key: Schema.String.annotate({ description: "Identifier used as infra.metrics.<key>." }),
+    label: Schema.String,
+    type: Schema.Literals(["number", "string", "boolean"]),
+    unit: Schema.optionalKey(Schema.String),
+  }),
+).annotate({
+  description:
+    "Metrics the workflow can read/write via infra.metrics.<key>. They become typed properties " +
+    "in the generated typings and render on any dashboard the workflow is pinned to.",
+});
+
+type TriggerInput = typeof triggerSchema.Type;
 
 /** Build a stored trigger from the flat tool input. */
 function toTrigger(input: TriggerInput): WorkflowTrigger {
@@ -222,17 +228,20 @@ export function workflowTools(): ToolDefinition[] {
         "a human-only password prompt whose value never enters model context. MCP exposes the same " +
         "metadata-only tool but cannot accept or change the value; complete it securely in Infrawrench.",
       inputSchema: {
-        secretId: z.string().optional().describe("Omit to create metadata."),
-        name: z.string().describe("Secret name, used in infra.secrets.<name>."),
-        title: z
-          .string()
-          .optional()
-          .describe("Title shown on Infrawrench's secure password prompt."),
-        description: z
-          .string()
-          .nullable()
-          .optional()
-          .describe("Secret description and secure-prompt guidance."),
+        secretId: Schema.optionalKey(
+          Schema.String.annotate({ description: "Omit to create metadata." }),
+        ),
+        name: Schema.String.annotate({ description: "Secret name, used in infra.secrets.<name>." }),
+        title: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Title shown on Infrawrench's secure password prompt.",
+          }),
+        ),
+        description: Schema.optionalKey(
+          Schema.NullOr(Schema.String).annotate({
+            description: "Secret description and secure-prompt guidance.",
+          }),
+        ),
       },
       risk: "write",
       overwrites: true,
@@ -281,7 +290,7 @@ export function workflowTools(): ToolDefinition[] {
       title: "Delete workflow secret",
       description:
         "Delete reusable workflow secret metadata, its encrypted value, and all workflow assignments. Audit-logged.",
-      inputSchema: { secretId: z.string() },
+      inputSchema: { secretId: Schema.String },
       risk: "destructive",
       permission: "secrets:write",
       handler: async (input, auth) => {
@@ -332,8 +341,10 @@ export function workflowTools(): ToolDefinition[] {
         "Fetch one workflow including its full TypeScript source, declared metrics, current metric " +
         "values, and its most recent runs (status, logs, error).",
       inputSchema: {
-        workflowId: z.string(),
-        runLimit: z.number().optional().describe("How many recent runs to include. Default 5."),
+        workflowId: Schema.String,
+        runLimit: Schema.optionalKey(
+          Schema.Finite.annotate({ description: "How many recent runs to include. Default 5." }),
+        ),
       },
       risk: "read",
       permission: "workflows:read",
@@ -389,42 +400,45 @@ export function workflowTools(): ToolDefinition[] {
         "for one you are about to create (a budget trigger types `infra.event` with the " +
         "crossing payload; only manual workflows get `infra.prompt`).",
       inputSchema: {
-        workflowId: z
-          .string()
-          .optional()
-          .describe("Type against an existing workflow's trigger + metrics."),
-        triggerKind: z
-          .enum(["manual", "cron", "git", "budget"])
-          .optional()
-          .describe("Ignored when workflowId is given. Defaults to manual."),
-        metrics: metricsSchema.optional(),
-        secretIds: z
-          .array(z.string())
-          .optional()
-          .describe("Assigned workflow secret ids to include in draft typings."),
-        enrich: z
-          .boolean()
-          .optional()
-          .describe(
-            "When true, hit provider APIs for precise create() field unions and live sidecar " +
+        workflowId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Type against an existing workflow's trigger + metrics.",
+          }),
+        ),
+        triggerKind: Schema.optionalKey(
+          Schema.Literals(["manual", "cron", "git", "budget"]).annotate({
+            description: "Ignored when workflowId is given. Defaults to manual.",
+          }),
+        ),
+        metrics: Schema.optionalKey(metricsSchema),
+        secretIds: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({
+            description: "Assigned workflow secret ids to include in draft typings.",
+          }),
+        ),
+        enrich: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "When true, hit provider APIs for precise create() field unions and live sidecar " +
               "capability flags. Slow on a cold cache; omit for the initial look at the API.",
-          ),
-        scope: z
-          .enum(["full", "global"])
-          .optional()
-          .describe(
-            "Omit for automatic: the full file when it is small, otherwise the global scope plus " +
+          }),
+        ),
+        scope: Schema.optionalKey(
+          Schema.Literals(["full", "global"]).annotate({
+            description:
+              "Omit for automatic: the full file when it is small, otherwise the global scope plus " +
               "an index of named interfaces. 'full' forces the whole file; 'global' forces the " +
               "split view.",
-          ),
-        typeNames: z
-          .array(z.string())
-          .optional()
-          .describe(
-            "Return only these named interface declarations (names come from the index or from " +
+          }),
+        ),
+        typeNames: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({
+            description:
+              "Return only these named interface declarations (names come from the index or from " +
               "references in earlier responses, e.g. 'Account_aws'). A plugin id like 'aws' " +
               "returns every interface generated for that plugin. Overrides scope.",
-          ),
+          }),
+        ),
       },
       risk: "read",
       permission: "workflows:read",
@@ -512,14 +526,15 @@ export function workflowTools(): ToolDefinition[] {
         "WITHOUT saving anything. Returns the same diagnostics the editor would show. Use it to " +
         "iterate on a draft; write_workflow runs the same check before it saves.",
       inputSchema: {
-        source: z.string(),
-        workflowId: z
-          .string()
-          .optional()
-          .describe("Check against an existing workflow's trigger + metrics."),
-        triggerKind: z.enum(["manual", "cron", "git", "budget"]).optional(),
-        metrics: metricsSchema.optional(),
-        secretIds: z.array(z.string()).optional(),
+        source: Schema.String,
+        workflowId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Check against an existing workflow's trigger + metrics.",
+          }),
+        ),
+        triggerKind: Schema.optionalKey(Schema.Literals(["manual", "cron", "git", "budget"])),
+        metrics: Schema.optionalKey(metricsSchema),
+        secretIds: Schema.optionalKey(Schema.Array(Schema.String)),
       },
       risk: "read",
       permission: "workflows:read",
@@ -580,21 +595,29 @@ export function workflowTools(): ToolDefinition[] {
         "trigger, or secretIds, or enables the workflow, waits for the user's approval, so " +
         "send those together in one call.",
       inputSchema: {
-        workflowId: z.string().optional().describe("Omit to create a new workflow."),
-        name: z.string().optional(),
-        description: z.string().optional(),
-        source: z.string().optional().describe("The TypeScript body. Top-level await is allowed."),
-        trigger: triggerSchema.optional(),
-        metrics: metricsSchema.optional(),
-        enabled: z.boolean().optional(),
-        secretIds: z
-          .array(z.string())
-          .optional()
-          .describe("Replace the reusable organization secrets assigned to this workflow."),
-        skipTypecheck: z
-          .boolean()
-          .optional()
-          .describe("Save even when the source has type errors. Use only when deliberate."),
+        workflowId: Schema.optionalKey(
+          Schema.String.annotate({ description: "Omit to create a new workflow." }),
+        ),
+        name: Schema.optionalKey(Schema.String),
+        description: Schema.optionalKey(Schema.String),
+        source: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "The TypeScript body. Top-level await is allowed.",
+          }),
+        ),
+        trigger: Schema.optionalKey(triggerSchema),
+        metrics: Schema.optionalKey(metricsSchema),
+        enabled: Schema.optionalKey(Schema.Boolean),
+        secretIds: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({
+            description: "Replace the reusable organization secrets assigned to this workflow.",
+          }),
+        ),
+        skipTypecheck: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Save even when the source has type errors. Use only when deliberate.",
+          }),
+        ),
       },
       risk: "write",
       overwrites: true,
@@ -725,7 +748,7 @@ export function workflowTools(): ToolDefinition[] {
         "Non-interactive: `infra.prompt()` throws. Use this to verify a workflow you just wrote. " +
         "The workflow's own code may create or delete real infrastructure; read the source first " +
         "if you did not write it. The chat surface confirms with the user before invoking.",
-      inputSchema: { workflowId: z.string() },
+      inputSchema: { workflowId: Schema.String },
       // Destructive-tier despite not deleting anything itself: it executes
       // arbitrary user code that can, so it gets the same confirmation as
       // invoke_action / apply_manifest.
@@ -769,7 +792,7 @@ export function workflowTools(): ToolDefinition[] {
       description:
         "Delete a workflow (soft delete, its run history is retained). Audit-logged. The chat " +
         "surface confirms with the user before invoking.",
-      inputSchema: { workflowId: z.string() },
+      inputSchema: { workflowId: Schema.String },
       risk: "destructive",
       permission: "workflows:write",
       handler: async (input, auth) => {

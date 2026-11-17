@@ -145,7 +145,7 @@ export function costAnnotationInputError(input: CostAnnotationInput): string | n
  * The bucket key a day falls in, or null when the day is not an ISO date.
  *
  * The binning itself is {@link costBucketStart}: the one derivation that has to
- * agree with `bucketExpr` in `server-core/clickhouse/cost-readers` (Monday-start
+ * agree with `bucketExpr` in `server-core/analytics/cost-readers` (Monday-start
  * weeks, first-of-month, daily keys for `cumulative` because it is a running sum
  * over them). Re-deriving it here is exactly how a marker would end up one bar
  * away from the money it explains, so this only adds the guard the overlay

@@ -2,7 +2,7 @@
  * Resolving who sees which cost rows: the database half of cost visibility.
  *
  * `visibility-context.ts` carries a resolved scope through an execution and
- * the ClickHouse readers apply it; this module turns a principal into that
+ * the cost readers apply it; this module turns a principal into that
  * scope. It is the cost-row counterpart of `permissions/resolver.ts` and is
  * called from the same places (the org-tree middleware, the tool dispatcher,
  * Slack commands) plus the unattended evaluators for objects a scoped member

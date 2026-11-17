@@ -5,7 +5,7 @@ import {
   countUnownedOrphans,
   primitiveFields,
 } from "@infrawrench/plugin-base";
-import { getResourceCostTotals } from "../clickhouse/cost-readers.js";
+import { getResourceCostTotals } from "../analytics/cost-readers.js";
 import { lookupResourceOwners } from "../ownership/store.js";
 import { addDays, isoDay } from "../cost/dates.js";
 import type {

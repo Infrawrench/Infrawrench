@@ -24,7 +24,7 @@ import {
   getLatestStats,
   getLatestStatsBatch,
   getMetricRange,
-} from "@infrawrench/server-core/clickhouse/readers";
+} from "@infrawrench/server-core/analytics/readers";
 import { db } from "../../../db/client";
 import {
   accounts,
@@ -593,7 +593,7 @@ export async function unpinWorkflow(organizationId: string, body: unknown) {
 
 /**
  * Build the ProbeStatus dashboard cards consume, from data already fetched
- * out of ClickHouse. Sparkline = first MetricSeries with ≥2 points.
+ * out of the metric tables. Sparkline = first MetricSeries with ≥2 points.
  */
 function projectProbeStatus(row: {
   resourceTypeId: string;

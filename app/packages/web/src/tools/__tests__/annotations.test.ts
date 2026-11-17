@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
+import {
+  UuidRef,
+  maxLength,
+  minLength,
+  normalized,
+  pattern,
+  trimmed,
+} from "@infrawrench/api-contract/schemas";
 
 import { toolAnnotations } from "../annotations";
 import { toolInputJsonSchema } from "../json-schema";
@@ -45,30 +53,92 @@ describe("toolAnnotations", () => {
 });
 
 describe("toolInputJsonSchema", () => {
-  const slug = z
-    .string()
-    .transform((v) => v.trim().toLowerCase())
-    .pipe(
-      z
-        .string()
-        .min(1)
-        .max(40)
-        .regex(/^[a-z0-9-]+$/),
-    );
+  const slug = normalized(
+    (v) => v.trim().toLowerCase(),
+    [minLength(1), maxLength(40), pattern(/^[a-z0-9-]+$/)],
+    { description: "A slug." },
+  );
 
-  it("gives a normalising (transform + pipe) field a type, by what it accepts", () => {
-    const schema = toolInputJsonSchema({ key: slug, label: slug.optional() });
-    expect(schema.properties["key"]).toEqual({ type: "string" });
-    expect(schema.properties["label"]).toEqual({ type: "string" });
+  it("gives a normalising field a type, by what it accepts", () => {
+    const schema = toolInputJsonSchema({ key: slug, label: Schema.optionalKey(slug) });
+    expect(schema.properties["key"]).toEqual({ type: "string", description: "A slug." });
+    expect(schema.properties["label"]).toEqual({ type: "string", description: "A slug." });
     expect(schema.required).toEqual(["key"]);
   });
 
+  it("keeps a trimmed field's bounds, as the raw value can only exceed them", () => {
+    const schema = toolInputJsonSchema({ name: trimmed([minLength(1), maxLength(3)]) });
+    expect(schema.properties["name"]).toEqual({ type: "string", minLength: 1, maxLength: 3 });
+  });
+
   it("keeps plain constraints and descriptions", () => {
-    const schema = toolInputJsonSchema({ limit: z.number().int().max(10).describe("Cap.") });
+    const schema = toolInputJsonSchema({
+      limit: Schema.Int.check(Schema.isLessThanOrEqualTo(10)).annotate({ description: "Cap." }),
+    });
     expect(schema.properties["limit"]).toEqual({
       type: "integer",
       maximum: 10,
       description: "Cap.",
+    });
+  });
+
+  it("states a default that decoding fills in", () => {
+    const schema = toolInputJsonSchema({
+      topN: Schema.Int.pipe(Schema.withDecodingDefaultKey(Effect.succeed(5))),
+      nested: Schema.Struct({
+        on: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+      }),
+    });
+    expect(schema.properties["topN"]).toEqual({ type: "integer", default: 5 });
+    expect(schema.properties["nested"]).toMatchObject({
+      properties: { on: { type: "boolean", default: false } },
+    });
+    expect(schema.required).toEqual(["nested"]);
+  });
+
+  it("writes unions of bare types, literals and closed objects as JSON Schema does", () => {
+    const schema = toolInputJsonSchema({
+      value: Schema.Union([Schema.Finite, Schema.String]),
+      kind: Schema.Literal("dimension"),
+      one: Schema.Literals(["recommended"]),
+      choice: Schema.Union([
+        Schema.Struct({ kind: Schema.Literal("a") }),
+        Schema.Struct({ kind: Schema.Literal("b") }),
+      ]),
+      id: Schema.optionalKey(UuidRef),
+    });
+    expect(schema.properties["value"]).toEqual({ type: ["number", "string"] });
+    expect(schema.properties["kind"]).toEqual({ type: "string", const: "dimension" });
+    expect(schema.properties["one"]).toEqual({ type: "string", const: "recommended" });
+    expect(schema.properties["choice"]).toEqual({
+      anyOf: [
+        {
+          type: "object",
+          properties: { kind: { type: "string", const: "a" } },
+          required: ["kind"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: { kind: { type: "string", const: "b" } },
+          required: ["kind"],
+          additionalProperties: false,
+        },
+      ],
+    });
+    // Documented as a UUID, checked only non-empty: an MCP client must not refuse other ids.
+    expect(schema.properties["id"]).toEqual({ type: "string", minLength: 1 });
+  });
+
+  it("inlines named schemas rather than referring to them", () => {
+    const Named = Schema.Struct({ x: Schema.String }).annotate({ identifier: "Named" });
+    const schema = toolInputJsonSchema({ a: Named, b: Schema.Array(Named) });
+    expect(JSON.stringify(schema)).not.toContain("$ref");
+    expect(schema.properties["a"]).toEqual({
+      type: "object",
+      properties: { x: { type: "string" } },
+      required: ["x"],
+      additionalProperties: false,
     });
   });
 });

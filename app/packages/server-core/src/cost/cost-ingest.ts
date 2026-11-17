@@ -7,10 +7,10 @@
  * - `cost/workflow-costs.ts`: a workflow calling `infra.costs.write(...)`.
  * - `cost/external-costs.ts`: a server calling `POST /costs/rows`.
  *
- * **Why every pushed row carries a reserved tag.** `cost_daily` is a
- * ReplacingMergeTree keyed on
+ * **Why every pushed row carries a reserved tag.** `cost_daily` is
+ * upserted on its primary key
  * `(org, account, day, service, region, resource_id, tags_hash, currency)`:
- * `plugin_id` is NOT in that key, and the ORDER BY is frozen. So attributing a
+ * `plugin_id` is NOT in that key, and the key is frozen. So attributing a
  * pushed row to a real account could otherwise collide with a row the poller
  * collected for the same day/service and silently replace it. Every pushed row
  * therefore carries a reserved `infrawrench:`-prefixed tag naming its source,
@@ -22,8 +22,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
-import { hashTags, insertCostRows, type CostDailyRow } from "../clickhouse/cost-writers";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { hashTags, insertCostRows, type CostDailyRow } from "../analytics/cost-writers";
 import { COST_CHARGE_TYPES } from "@infrawrench/client-core";
 
 /**
@@ -62,7 +61,7 @@ export interface CostIngestSource {
   pluginId: string;
   /**
    * Reserved tag stamped on every row. Its value is what keeps this source's
-   * ReplacingMergeTree key space disjoint from the pollers': see the module
+   * primary-key space disjoint from the pollers': see the module
    * comment. The key must start with {@link RESERVED_TAG_PREFIX}.
    */
   tag: { key: string; value: string };
@@ -206,9 +205,6 @@ export async function validateCostRows(opts: {
       `${source.errorPrefix} accepts at most ${source.maxRows} rows per call (got ${rows.length}).`,
     );
   }
-  if (!isClickHouseConfigured()) {
-    throw new CostIngestError("Cost storage is not configured on this server.");
-  }
 
   if (source.subAccountId) {
     const index = rows.findIndex((r) => r && typeof r === "object" && r.accountId);
@@ -270,7 +266,7 @@ export async function validateCostRows(opts: {
         : source.fallbackAccountId
       : row.accountId || source.fallbackAccountId;
 
-    // The reserved tag is what keeps this row's ReplacingMergeTree key disjoint
+    // The reserved tag is what keeps this row's primary key disjoint
     // from anything a provider collector writes: see the module comment.
     const tags = { ...validateTags(row.tags, fail), [source.tag.key]: source.tag.value };
 

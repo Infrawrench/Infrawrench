@@ -22,8 +22,8 @@ export const METRIC_ALERT_COMPARATORS: readonly MetricAlertComparator[] = [">", 
  * Bounds the API enforces and the forms echo inline. `forMinutes` is floored
  * at 5 because samples are per-minute rollups written on the resource poll
  * cadence: a shorter window has too few samples to claim "held for the whole
- * window". The ceiling is 24h: the evaluator reads the 1m rollup, whose TTL
- * is 30 days, but a day is where "threshold alert" stops and "report" begins.
+ * window". The ceiling is 24h: the evaluator reads the 1m rollup, which keeps
+ * 30 days, but a day is where "threshold alert" stops and "report" begins.
  */
 export const METRIC_ALERT_LIMITS = {
   maxNameLength: 120,

@@ -781,6 +781,24 @@ task-cache:
   it does), never the tool's blobs, so a hit still downloads no tool. A
   job whose tool does not resolve is not looked up: it runs, and fails
   with the reason.
+- **A package's job reads only its package's part of the lockfile.** For
+  a `packages:` job that runs in its package (no `cwd:` outside it), a
+  `pnpm-lock.yaml` or a `bun.lock` installed with Bun's isolated linker is
+  keyed on what that package can resolve, not on the whole file: the
+  package's own dependencies, those of every project at a directory above
+  it (the root's always) and of every workspace package they link to,
+  everything those reach, peer variants included, and, for each name in
+  that set, which version hoisting puts in the shared `node_modules`. So
+  adding, removing or bumping one package's dependency reruns the jobs of
+  the packages that can reach it and leaves the rest cached. The rest of
+  the lockfile, and the other files listed above, still count whole. Not
+  for Bun's hoisted linker, which puts every project's packages in one
+  tree any of them can import from, nor for a job without `packages:`,
+  which can reach every project from where it runs. What it leaves out is
+  a hoisted name nothing in the package's set is called or depends on: a
+  dependency the package imports without declaring, which it gets only
+  because an unrelated project installs it (and which an install limited
+  to it, with `only:`, would already break).
 - **`artifacts: false`** leaves the artifacts a job is handed out of its
   key, for a job that has them only to pass them on, such as a bundler
   that keeps its workspace dependencies external but must hand their
@@ -1152,10 +1170,10 @@ Builtins:
 | `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
 | `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
 | `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
-| `vercel@65`        | `node`     | The Vercel CLI 65.16.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
+| `vercel@65`        | `node`     | The Vercel CLI 65.17.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
 | `wrangler@4`       | `node`     | Wrangler 4.163.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
 | `cf@1.0.0-rc.0`    | `node`     | Cloudflare's CLI, `cf` 1.0.0-rc.0 (a release candidate: name the exact version). See [Deployment CLIs](#deployment-clis).                    |
-| `neon@9`           | `node`     | The Neon CLI 9.5.0 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
+| `neon@9`           | `node`     | The Neon CLI 9.5.1 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
 
 Environments:
 
@@ -1723,7 +1741,10 @@ deploy:
   pinned in the tool's `builtin.json` before it compresses it. The store
   publishes the compressed tar by its own hash like any blob, and a version
   is never republished. Unlike a [global install](#global-installs),
-  nothing is fetched while the job runs.
+  nothing is fetched while the job runs. Where a program still pins a
+  dependency with a security advisory against it, an `overrides` entry in
+  its `package.json` lifts that range to the fixed release, so a changed
+  dependency ships with the program's next version.
 - **Tokens from the environment, no prompts.** Each reads its token from a
   variable: `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` (with
   `CLOUDFLARE_ACCOUNT_ID`), `NEON_API_KEY`. Set them from secrets, as

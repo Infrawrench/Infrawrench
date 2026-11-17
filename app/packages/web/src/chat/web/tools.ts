@@ -24,7 +24,8 @@
  * organization data. Reaching them at all still requires `chat:write` on the
  * endpoint, which is where the human gate for this surface lives.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import { asc, eq } from "drizzle-orm";
 import type { ChatContentBlock } from "@infrawrench/ui";
 import { db } from "../../db/client";
@@ -39,6 +40,7 @@ import {
 } from "@infrawrench/server-core/billing/ai-usage";
 import type { ToolDefinition, ToolResult } from "../../tools/types";
 import { ok, err } from "../../tools/types";
+import { SEARCH_MODEL } from "./anthropic-search";
 import { searchBackend, isWebSearchConfigured } from "./backend";
 import { fetchPage, isWebFetchConfigured, MAX_CONTENT_CHARS } from "./fetch";
 import { recordWebSearchUsage } from "../billing";
@@ -116,20 +118,17 @@ async function conversationBlocks(
 async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult> {
   const backend = searchBackend();
   if (!backend) {
-    return err(
-      "Web search is not configured for this deployment (no Vertex AI project and no Anthropic API key).",
-    );
+    return err("Web search is not configured for this deployment (Claude is not configured).");
   }
 
   // Reserve against the shared AI pool before the sub-model runs: the parent
   // chat turn already released its model-call hold, so without this a search
   // near the cap could clear no check and bill past the line.
-  const reserveModel = backend.id === "vertex" ? "gemini-3.7-flash" : "claude-haiku-4-5";
   let reservationId: string;
   try {
     reservationId = await reserveAiSpend(
       ctx.organizationId,
-      estimateSearchCostMicros(backend.id, query, reserveModel),
+      estimateSearchCostMicros(backend.id, query, SEARCH_MODEL),
     );
   } catch (e) {
     if (e instanceof AiSpendCapExceededError) {
@@ -261,11 +260,9 @@ function available(): WebTool[] {
         title: "Search the web",
         description: SEARCH_DESCRIPTION,
         inputSchema: {
-          query: z
-            .string()
-            .min(2)
-            .max(400)
-            .describe("What to search for, as a natural-language question"),
+          query: Schema.String.check(minLength(2), maxLength(400)).annotate({
+            description: "What to search for, as a natural-language question",
+          }),
         },
         risk: "read",
         permission: null,
@@ -280,7 +277,12 @@ function available(): WebTool[] {
         name: "web_fetch",
         title: "Fetch a web page",
         description: FETCH_DESCRIPTION,
-        inputSchema: { url: z.string().url().describe("Absolute http(s) URL to fetch") },
+        inputSchema: {
+          url: Schema.String.annotate({
+            format: "uri",
+            description: "Absolute http(s) URL to fetch",
+          }),
+        },
         risk: "read",
         permission: null,
       },

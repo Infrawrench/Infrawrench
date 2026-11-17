@@ -12,7 +12,7 @@ import { workflowSshExec } from "./ssh-tunnel";
 import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
 import { sanitizeGitConfigForAgentVm } from "./agent-gitconfig";
 import { getDb, isDialogBlessedPath } from "./main-utils";
-import { z } from "zod";
+import { Predicate, Result, Schema, SchemaIssue } from "effect";
 import { Context, Effect, Layer } from "effect";
 import { errorMessage } from "../shared/rpc/errors";
 import { AgentSetupError } from "../shared/rpc/groups/agent-setup";
@@ -253,25 +253,27 @@ export async function planAgentSetup({
   };
 }
 
-const agentRepoConfigSchema = z
-  .object({
-    env: z.record(z.string()).optional(),
-    resources: z
-      .array(
-        z
-          .object({
-            pluginId: z.string().min(1),
-            resourceTypeId: z.string().min(1),
-            account: z.string().min(1).optional(),
-            name: z.string().min(1).optional(),
-            fields: z.record(z.string()).optional(),
-            env: z.record(z.string()).optional(),
-          })
-          .strict(),
-      )
-      .optional(),
-  })
-  .strict();
+const stringRecord = Schema.Record(Schema.String, Schema.String);
+const nonEmpty = Schema.String.check(Schema.isMinLength(1));
+
+/** `.infrawrench/agent.json`. Every object is closed: decoded with `onExcessProperty: "error"`. */
+const AgentRepoConfigSchema = Schema.Struct({
+  env: Schema.optionalKey(stringRecord),
+  resources: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        pluginId: nonEmpty,
+        resourceTypeId: nonEmpty,
+        account: Schema.optionalKey(nonEmpty),
+        name: Schema.optionalKey(nonEmpty),
+        fields: Schema.optionalKey(stringRecord),
+        env: Schema.optionalKey(stringRecord),
+      }),
+    ),
+  ),
+});
+
+const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 
 /**
  * Read and validate the repo's optional `.infrawrench/agent.json`. Invalid
@@ -294,18 +296,22 @@ function readAgentRepoConfig(localRepoPath: string): {
       ],
     };
   }
-  const parsed = agentRepoConfigSchema.safeParse(raw);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
+  const parsed = Schema.decodeUnknownResult(AgentRepoConfigSchema)(raw, {
+    onExcessProperty: "error",
+  });
+  if (Result.isFailure(parsed)) {
+    const [issue] = formatIssue(parsed.failure.issue).issues;
+    const where = (issue?.path ?? [])
+      .map((segment) => String(Predicate.isPropertyKey(segment) ? segment : segment.key))
+      .join(".");
     return {
       warnings: [
-        `.infrawrench/agent.json is invalid and was ignored: ${issue ? `${issue.path.join(".") || "(root)"}: ${issue.message}` : "schema mismatch"}`,
+        `.infrawrench/agent.json is invalid and was ignored: ${issue ? `${where || "(root)"}: ${issue.message}` : "schema mismatch"}`,
       ],
     };
   }
-  // zod's .optional() infers `| undefined`, which exactOptionalPropertyTypes
-  // rejects against the shared type: the shapes are otherwise identical.
-  return { config: parsed.data as AgentRepoConfig, warnings: [] };
+  // The schema's arrays are read-only; the shared type's are not.
+  return { config: parsed.success as AgentRepoConfig, warnings: [] };
 }
 
 function ensureGitIsAvailable(): void {

@@ -30,7 +30,7 @@ export interface SelectedResource {
 /**
  * Most resources one rule evaluates per pass. A selector matching more than
  * this is almost certainly "any plugin, no tag" on a huge org; the cap bounds
- * the ClickHouse read rather than failing the rule.
+ * the metric read rather than failing the rule.
  */
 export const MAX_SELECTED_RESOURCES = 500;
 
@@ -38,7 +38,7 @@ export const MAX_SELECTED_RESOURCES = 500;
  * Most rows a tag-filtered selector reads from Postgres before matching in
  * JS. Tags live inside the JSON payloads, so the tag half cannot narrow in
  * SQL: this bounds the memory of that scan the way
- * {@link MAX_SELECTED_RESOURCES} bounds the ClickHouse read. Both caps take
+ * {@link MAX_SELECTED_RESOURCES} bounds the metric read. Both caps take
  * rows in `id` order, so an over-cap selector picks a stable subset instead
  * of flapping between passes.
  */

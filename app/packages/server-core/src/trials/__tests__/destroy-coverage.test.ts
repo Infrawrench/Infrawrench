@@ -1,76 +1,50 @@
 import { describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { getTableColumns, is } from "drizzle-orm";
+import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 
-// `destroy.ts` reaches Postgres and ClickHouse at import time through their
-// singleton clients; this check only wants the table list off it.
+// `destroy.ts` reaches Postgres through its singleton client; this check only
+// wants the table list off it.
 vi.mock("../../db/client", () => ({ db: {} }));
-vi.mock("../../clickhouse/client", () => ({
-  isClickHouseConfigured: () => false,
-  getClickHouseClient: () => {
-    throw new Error("not used");
-  },
-}));
 
-import { ORG_SCOPED_CLICKHOUSE_TABLES } from "../destroy";
+import * as analyticsSchema from "../../db/analytics-schema";
+import { ORG_SCOPED_ANALYTICS_TABLES } from "../destroy";
 
 /**
  * The purge list in `destroy.ts` is hand-written, which is the point: a new
- * ClickHouse table should have to be thought about rather than swept up. This
- * is what makes forgetting fail the build instead of leaking a destroyed org's
- * rows forever.
- *
- * Read from the source text rather than by importing the schema module: the
- * ClickHouse schema pulls in the driver, and this check only needs to know
- * which tables were declared and which of them carry an `organization_id`.
+ * analytics table should have to be thought about rather than swept up. The
+ * analytics tables carry no foreign key to `organizations`, so nothing else
+ * deletes their rows; this is what makes forgetting fail the build instead of
+ * leaking a destroyed org's rows forever.
  */
-const schemaSource = readFileSync(
-  fileURLToPath(new URL("../../clickhouse/schema.ts", import.meta.url)),
-  "utf8",
-);
+const declared = Object.values(analyticsSchema as Record<string, unknown>)
+  .filter((value): value is PgTable => is(value, PgTable))
+  .map((table) => ({
+    name: getTableConfig(table).name,
+    orgScoped: "organization_id" in getTableColumns(table),
+  }));
 
-/** Every `clickhouseTable("name", {...})` block, with its column body. */
-function declaredTables(): Array<{ name: string; body: string }> {
-  const out: Array<{ name: string; body: string }> = [];
-  const re = /clickhouseTable\(\s*"([a-z0-9_]+)"/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(schemaSource)) !== null) {
-    const name = match[1]!;
-    // The block runs to the next table declaration, or to end of file.
-    const start = match.index;
-    re.lastIndex = match.index + match[0].length;
-    const next = /clickhouseTable\(\s*"[a-z0-9_]+"/g;
-    next.lastIndex = re.lastIndex;
-    const following = next.exec(schemaSource);
-    out.push({ name, body: schemaSource.slice(start, following ? following.index : undefined) });
-  }
-  return out;
-}
+const purged = ORG_SCOPED_ANALYTICS_TABLES.map((table) => getTableConfig(table).name);
 
-describe("ClickHouse purge coverage", () => {
-  const tables = declaredTables();
-
-  it("finds the ClickHouse schema (guards against this check silently passing)", () => {
-    expect(tables.length).toBeGreaterThan(0);
+describe("analytics purge coverage", () => {
+  it("finds the analytics schema (guards against this check silently passing)", () => {
+    expect(declared.length).toBeGreaterThan(0);
   });
 
   it("purges every table that carries an organization_id", () => {
-    const orgScoped = tables.filter((t) => t.body.includes("organization_id:")).map((t) => t.name);
+    const orgScoped = declared.filter((t) => t.orgScoped).map((t) => t.name);
     expect(orgScoped.length).toBeGreaterThan(0);
 
-    const missing = orgScoped.filter(
-      (name) => !(ORG_SCOPED_CLICKHOUSE_TABLES as readonly string[]).includes(name),
-    );
+    const missing = orgScoped.filter((name) => !purged.includes(name));
     expect(
       missing,
-      `these ClickHouse tables are org-scoped but would survive org destruction: ${missing.join(", ")}. ` +
-        `Add them to ORG_SCOPED_CLICKHOUSE_TABLES in trials/destroy.ts.`,
+      `these analytics tables are org-scoped but would survive org destruction: ${missing.join(", ")}. ` +
+        `Add them to ORG_SCOPED_ANALYTICS_TABLES in trials/destroy.ts.`,
     ).toEqual([]);
   });
 
-  it("does not purge tables that no longer exist", () => {
-    const declared = new Set(tables.map((t) => t.name));
-    const stale = ORG_SCOPED_CLICKHOUSE_TABLES.filter((name) => !declared.has(name));
-    expect(stale, `no longer in the ClickHouse schema: ${stale.join(", ")}`).toEqual([]);
+  it("does not purge tables that are not in the analytics schema", () => {
+    const names = new Set(declared.map((t) => t.name));
+    const stale = purged.filter((name) => !names.has(name));
+    expect(stale, `not in the analytics schema: ${stale.join(", ")}`).toEqual([]);
   });
 });

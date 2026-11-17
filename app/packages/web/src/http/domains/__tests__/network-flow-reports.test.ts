@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// Services are mocked: they reach the Drizzle and ClickHouse clients. These
+// Services are mocked: they reach the Drizzle client. These
 // tests own the transport contract: permissions, validation, status codes and
 // audit.
 vi.mock("@infrawrench/server-core/network-flow/feed", () => ({

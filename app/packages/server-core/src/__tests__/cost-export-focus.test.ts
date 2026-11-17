@@ -371,7 +371,7 @@ describe("serialisation", () => {
 
 describe("buildFocusExportQuery", () => {
   it("keeps the full row grain and orders deterministically", () => {
-    const sql = buildFocusExportQuery({
+    const { sql, params } = buildFocusExportQuery({
       organizationId: "org-1",
       from: "2026-09-01",
       to: "2026-09-30",
@@ -379,10 +379,11 @@ describe("buildFocusExportQuery", () => {
       chargeTypes: ["usage"],
     });
     expect(sql).toContain("group by");
-    expect(sql).toContain("`cost_daily`.`charge_type` asc");
-    expect(sql).toContain("`cost_daily`.`tags_hash`, ");
+    expect(sql).toContain(`"cost_daily"."charge_type" asc`);
+    expect(sql).toContain(`"cost_daily"."tags_hash", `);
     expect(sql).toContain("order by");
-    expect(sql).toMatch(/final/i);
+    // Values are bound, never spliced into the statement.
+    expect(params).toEqual(expect.arrayContaining(["org-1", "aws", "usage"]));
   });
 });
 

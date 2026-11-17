@@ -2,18 +2,19 @@
  * What each cost filter operator means, in JS.
  *
  * The cost readers never evaluate a filter here: every operator compiles to a
- * ClickHouse predicate (`server-core/src/clickhouse/cost-sql.ts`). This module
+ * SQL predicate (`server-core/src/analytics/cost-sql.ts`). This module
  * is the same semantics for the places that test a value outside SQL (the
  * editors' "matches these known values" preview, validation) and the single
  * statement of the normalisation rules both sides follow:
  *
- * - **Case folding is ASCII only.** ClickHouse's `lower()` folds `A-Z` and
- *   nothing else, so JS does exactly that rather than `toLowerCase()`, which
+ * - **Case folding is ASCII only.** The SQL side folds `A-Z` and nothing else
+ *   (`asciiLower`, a `translate`, because Postgres' `lower()` follows the
+ *   collation), so JS does exactly that rather than `toLowerCase()`, which
  *   would also fold `Ä` and make the editor promise a match the query does
  *   not make.
  * - **Flexible matching drops ASCII whitespace, `_` and `-`** after folding:
- *   the characters `[[:space:]_-]` names in RE2, which is what ClickHouse's
- *   `replaceRegexpAll` uses. `Prod_Env`, `prod-env`, `PROD ENV` and `prodenv`
+ *   tab, newline, vertical tab, form feed, carriage return, space, `_` and
+ *   `-`, the same class `flexibleMatchExpr` hands `regexp_replace`. `Prod_Env`, `prod-env`, `PROD ENV` and `prodenv`
  *   all normalise to `prodenv`.
  *
  * `server-core/src/__tests__/cost-filter-sql.test.ts` pins the SQL spelling
@@ -28,18 +29,18 @@ import {
   type CostFilter,
 } from "./costs";
 
-/** `A-Z` to `a-z`, leaving every other character alone (ClickHouse `lower`). */
+/** `A-Z` to `a-z`, leaving every other character alone (the SQL side's `asciiLower`). */
 export function foldCostFilterCase(value: string): string {
   return value.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 
-/** The characters flexible matching ignores: RE2's `[[:space:]_-]`. */
+/** The characters flexible matching ignores: ASCII whitespace, `_` and `-`. */
 const FLEXIBLE_IGNORED = /[\t\n\v\f\r _-]/g;
 
 /**
  * The flexible-match form of a value: ASCII case folded, whitespace,
- * underscores and hyphens removed. The SQL side is
- * `replaceRegexpAll(lower(x), '[[:space:]_-]', '')`.
+ * underscores and hyphens removed. The SQL side is `flexibleMatchExpr` in
+ * `server-core/src/analytics/cost-sql.ts`.
  */
 export function normalizeCostFilterValue(value: string): string {
   return foldCostFilterCase(value).replace(FLEXIBLE_IGNORED, "");
@@ -47,7 +48,7 @@ export function normalizeCostFilterValue(value: string): string {
 
 /**
  * Whether a row whose dimension value is `actual` passes the filter. A
- * missing tag is `''`, exactly as the `cost_daily` map lookup reads it.
+ * missing tag is `''`, exactly as the readers' `coalesce(tags ->> key, '')` reads it.
  */
 export function costFilterMatches(filter: Pick<CostFilter, "op" | "values">, actual: string) {
   switch (filter.op) {

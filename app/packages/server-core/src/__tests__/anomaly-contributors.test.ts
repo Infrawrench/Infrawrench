@@ -1,26 +1,24 @@
 /**
  * Anomaly root-cause attribution: the pure ranking against hand-built facet
- * rows, the naming step, and the one ClickHouse statement the decomposition
+ * rows, the naming step, and the one `cost_daily` statement the decomposition
  * issues (rendered through the real dialect by the fake driver).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fakeClickHouse } from "./helpers/fake-clickhouse";
-import type { AnomalyContributorRow } from "../clickhouse/cost-readers";
+import { fakePostgres } from "./helpers/fake-postgres";
+import { inlineSql } from "./helpers/inline-sql";
+import type { AnomalyContributorRow } from "../analytics/cost-readers";
 
-const ch = fakeClickHouse();
+const pg = fakePostgres();
+const last = () => inlineSql(pg.lastQuery());
 
-vi.mock("../clickhouse/client", () => ({
-  isClickHouseConfigured: () => true,
-  getClickHouseDb: () => ch.db,
-  getClickHouseClient: () => ch.client,
-}));
+vi.mock("../analytics/client", () => ({ getAnalyticsDb: () => pg.db }));
 
 // The naming step reads Postgres; these tests drive the pure halves and the
 // SQL, so the module's db import only has to resolve.
 vi.mock("../db/client", () => ({ db: {} }));
 
-const { getAnomalyContributorRows } = await import("../clickhouse/cost-readers");
+const { getAnomalyContributorRows } = await import("../analytics/cost-readers");
 const { rankAnomalyContributors, toStoredContributors } =
   await import("../cost/anomaly-contributors");
 
@@ -39,7 +37,7 @@ function row(
 }
 
 beforeEach(() => {
-  ch.reset();
+  pg.reset();
 });
 
 describe("rankAnomalyContributors", () => {
@@ -176,7 +174,7 @@ describe("getAnomalyContributorRows", () => {
   };
 
   it("decomposes every facet in one statement over the scope and window", async () => {
-    ch.setRows([
+    pg.setRows([
       {
         facet: "total",
         key: "",
@@ -195,16 +193,18 @@ describe("getAnomalyContributorRows", () => {
       },
     ]);
     const rows = await getAnomalyContributorRows("org_1", q);
-    expect(ch.queries).toHaveLength(1);
-    const sql = ch.lastQuery();
-    expect(sql).toContain("from `cost_daily` final array join arrayConcat(");
-    expect(sql).toContain("mapKeys(`cost_daily`.`tags`)");
-    expect(sql).toContain("`cost_daily`.`service` = 'Amazon EC2'");
-    expect(sql).toContain("`cost_daily`.`currency` = 'USD'");
-    expect(sql).toMatch(/LIMIT 4 BY facet/i);
-    expect(sql).toMatch(/LIMIT 400/i);
+    expect(pg.queries).toHaveLength(1);
+    const sql = last();
+    expect(sql).toContain(`from "cost_daily" cross join lateral (VALUES ('total', '')`);
+    expect(sql).toContain(`jsonb_each_text("cost_daily"."tags")`);
+    expect(sql).toContain(`"cost_daily"."service" = 'Amazon EC2'`);
+    expect(sql).toContain(`"cost_daily"."currency" = 'USD'`);
+    // A few rows per facet, largest rise first, and a cap on the whole answer.
+    expect(sql).toMatch(/row_number\(\) OVER \(PARTITION BY facets\.facet ORDER BY .* DESC\)/);
+    expect(sql).toContain(`"facet_rank" <= 4`);
+    expect(sql).toMatch(/limit 400/i);
     // Scoped through the one org predicate every cost read uses.
-    expect(sql).toContain("`cost_daily`.`organization_id` = 'org_1'");
+    expect(sql).toContain(`"cost_daily"."organization_id" = 'org_1'`);
     expect(rows[1]).toEqual({
       facet: "resource",
       key: "i-1",
@@ -217,6 +217,6 @@ describe("getAnomalyContributorRows", () => {
 
   it("filters a provider anomaly by plugin", async () => {
     await getAnomalyContributorRows("org_1", { ...q, dimension: "provider", dimensionKey: "gcp" });
-    expect(ch.lastQuery()).toContain("`cost_daily`.`plugin_id` = 'gcp'");
+    expect(last()).toContain(`"cost_daily"."plugin_id" = 'gcp'`);
   });
 });

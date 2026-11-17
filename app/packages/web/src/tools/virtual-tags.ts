@@ -7,8 +7,8 @@
  * cost query language spells it `virtual_tag['team'] = 'payments'`. These
  * tools manage the definitions, with the same permissions as the HTTP API.
  */
-import { z } from "zod";
-import { virtualTagInputSchema } from "@infrawrench/ui/cost/config";
+import { Schema } from "effect";
+import { VirtualTagInput } from "@infrawrench/api-contract/schemas";
 import { VIRTUAL_TAG_LIMITS, describeVirtualTagRule } from "@infrawrench/client-core";
 import {
   VirtualTagError,
@@ -23,6 +23,7 @@ import { previewVirtualTag } from "@infrawrench/server-core/cost/virtual-tag-pas
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 function toolError(e: unknown) {
   if (e instanceof VirtualTagKeyConflictError) return err(e.message);
@@ -83,14 +84,14 @@ export function virtualTagTools(): ToolDefinition[] {
         "each rule would claim, spend left unmatched, and the top values. Use it before " +
         "create_virtual_tag or update_virtual_tag to check a rule does what the user meant.\n\n" +
         RULES_HELP,
-      inputSchema: virtualTagInputSchema.shape,
+      inputSchema: VirtualTagInput.fields,
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const parsed = virtualTagInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.error.message}`);
+        const parsed = decodeToolInput(VirtualTagInput, input);
+        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.message}`);
         try {
           return ok(await previewVirtualTag(auth.organizationId, parsed.data));
         } catch (e) {
@@ -107,14 +108,14 @@ export function virtualTagTools(): ToolDefinition[] {
         "reports store it) and must be unique. Processing over stored history is queued at " +
         "once; queries use the rules immediately. Audit-logged.\n\n" +
         RULES_HELP,
-      inputSchema: virtualTagInputSchema.shape,
+      inputSchema: VirtualTagInput.fields,
       risk: "write",
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = virtualTagInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.error.message}`);
+        const parsed = decodeToolInput(VirtualTagInput, input);
+        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.message}`);
         try {
           const tag = await createVirtualTag(auth.organizationId, parsed.data, auth.userId);
           void logAudit({
@@ -139,7 +140,7 @@ export function virtualTagTools(): ToolDefinition[] {
         "Replace a virtual tag's name, description, default value and the whole ordered rule " +
         "list (send every rule, in the order they should evaluate; reorder by reordering the " +
         "array). The key must stay the same. Re-queues processing. Audit-logged.",
-      inputSchema: { virtualTagId: z.string(), ...virtualTagInputSchema.shape },
+      inputSchema: { virtualTagId: Schema.String, ...VirtualTagInput.fields },
       risk: "write",
       overwrites: true,
       permission: "costs:write",
@@ -150,8 +151,8 @@ export function virtualTagTools(): ToolDefinition[] {
           string,
           unknown
         >;
-        const parsed = virtualTagInputSchema.safeParse(rest);
-        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.error.message}`);
+        const parsed = decodeToolInput(VirtualTagInput, rest);
+        if (!parsed.success) return err(`Invalid virtual tag: ${parsed.message}`);
         try {
           const tag = await updateVirtualTag(auth.organizationId, virtualTagId, parsed.data);
           if (!tag) return err(`Virtual tag not found: ${virtualTagId}`);
@@ -177,7 +178,7 @@ export function virtualTagTools(): ToolDefinition[] {
         "Delete a virtual tag. Refused, naming them, while any saved filter, budget, report, " +
         "dashboard card, change alert, allocation rule, cost export or business metric still " +
         "references its key. Audit-logged. The chat surface confirms with the user first.",
-      inputSchema: { virtualTagId: z.string() },
+      inputSchema: { virtualTagId: Schema.String },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {

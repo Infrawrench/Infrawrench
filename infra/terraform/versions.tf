@@ -6,14 +6,6 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.20"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.33"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.17"
-    }
     # The Lambda gateway (lambda.tf). 6.x for `invoked_via_function_url` on
     # aws_lambda_permission, which public function URLs need since October 2025.
     aws = {
@@ -44,23 +36,4 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
-}
-
-# GKE's API server takes an OAuth2 access token rather than a static
-# kubeconfig; this data source mints one from whatever credentials terraform
-# is already running as (gcloud ADC).
-data "google_client_config" "default" {}
-
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.prod.endpoint}"
-  token                  = data.google_client_config.default.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.prod.master_auth[0].cluster_ca_certificate)
-}
-
-provider "helm" {
-  kubernetes {
-    host                   = "https://${google_container_cluster.prod.endpoint}"
-    token                  = data.google_client_config.default.access_token
-    cluster_ca_certificate = base64decode(google_container_cluster.prod.master_auth[0].cluster_ca_certificate)
-  }
 }

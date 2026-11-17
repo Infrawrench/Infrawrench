@@ -147,7 +147,10 @@ export const NETWORK_FLOW_REPORT_LIMITS = {
   chartSeries: 8,
 } as const;
 
-/** How long the flow store keeps a day (its ClickHouse TTL). */
+/**
+ * How long the flow store keeps a day: `network_flow_daily`'s entry in
+ * server-core's `ANALYTICS_RETENTION`, which has to match.
+ */
 export const NETWORK_FLOW_RETENTION_DAYS = 90;
 
 /**

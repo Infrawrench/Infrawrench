@@ -10,7 +10,7 @@
  * ## How a run reads
  *
  * Resources live in Postgres (`resources`, one row per synced resource, the
- * provider's fields as `fields_json`); spend lives in ClickHouse, keyed by
+ * provider's fields as `fields_json`); spend lives in `cost_daily`, keyed by
  * the provider's resource id. A run is two or three steps so an org with tens
  * of thousands of resources never ships every `fields_json` anywhere:
  *
@@ -26,7 +26,7 @@
  *    lean (ids, names and only the JSON keys the run needs, extracted in SQL),
  *    filtered and sorted in memory, capped at `RESOURCE_REPORT_LIMITS.maxScan`.
  * 3. **Fill the page.** Only the page's rows load their fields, and cost and
- *    virtual tag columns are one ClickHouse read each, narrowed to the page's
+ *    virtual tag columns are one `cost_daily` read each, narrowed to the page's
  *    provider ids.
  *
  * Cost and virtual tag values come from `cost_daily` through the readers that
@@ -78,9 +78,8 @@ import {
   getCostDimensionValues,
   getResourceCostWindows,
   getResourceVirtualTagValues,
-} from "@infrawrench/server-core/clickhouse/cost-readers";
-import { isClickHouseConfigured } from "@infrawrench/server-core/clickhouse/client";
-import { VirtualTagUnresolvedError } from "@infrawrench/server-core/clickhouse/virtual-tag-sql";
+} from "@infrawrench/server-core/analytics/cost-readers";
+import { VirtualTagUnresolvedError } from "@infrawrench/server-core/analytics/virtual-tag-sql";
 import { getOrgTagKeySettings } from "@infrawrench/server-core/cost/tag-key-settings";
 import { db } from "../db/client";
 import { accounts, resourceReports, resources } from "../db/schema";
@@ -543,7 +542,7 @@ export async function getResourceReportOptions(
   const { tagKeys, preferredTagKeys } = orderTagKeysForPicker([...tagKeySet].sort(), settings);
 
   let virtualTagKeys: string[] = [];
-  const costAvailable = opts.includeCosts && isClickHouseConfigured();
+  const costAvailable = opts.includeCosts;
   if (opts.includeCosts) {
     const { listVirtualTags } = await import("@infrawrench/server-core/cost/virtual-tags");
     virtualTagKeys = (await listVirtualTags(organizationId)).map((t) => t.key);
@@ -654,7 +653,7 @@ interface LightRow {
   sortField?: unknown;
 }
 
-/** Ids per Postgres bind list or ClickHouse IN list when filling a page. */
+/** Ids per bind list when filling a page. */
 const FILL_CHUNK = 1000;
 
 const SQL_SORTABLE = new Set([
@@ -679,7 +678,6 @@ function tagValue(tags: Record<string, string> | null, key: string): string | nu
 
 function costUnavailableReason(includeCosts: boolean): string | null {
   if (!includeCosts) return "Cost columns need the costs:read permission.";
-  if (!isClickHouseConfigured()) return "No cost data is configured on this server.";
   return null;
 }
 

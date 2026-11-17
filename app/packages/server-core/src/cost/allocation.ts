@@ -1,8 +1,9 @@
 /**
  * Cost centres and allocation rules: the org-defined mapping from spend to
  * named cost centres that powers the showback report. CRUD only; the actual
- * allocation happens in `clickhouse/cost-readers.ts` (`getShowbackSpend`),
- * which compiles the ordered rule list into one `multiIf` over `cost_daily`.
+ * allocation happens in `analytics/cost-readers.ts` (`getShowbackSpend`),
+ * which compiles the ordered rule list into one first-match `CASE` over
+ * `cost_daily`.
  *
  * Centres nest (`parentId`), so "what does Engineering cost" can be answered
  * with a subtree rather than a single bucket. Nesting is presentation and
@@ -168,7 +169,7 @@ export async function updateCostCentre(
  * avoids. A root delete leaves its children as roots, which is the same rule
  * with a null parent.
  *
- * Spend history is untouched: amounts live in ClickHouse and are recomputed
+ * Spend history is untouched: amounts live in `cost_daily` and are recomputed
  * from the rules on every read. The centre's own rules do go with it (FK
  * `on delete cascade`), so the spend they claimed falls through to whatever
  * rule is next: often "Unallocated", which stays a first-class row.
@@ -197,7 +198,7 @@ export async function deleteCostCentre(organizationId: string, id: string): Prom
 
 /**
  * Rules in evaluation order: the order the showback reader compiles into its
- * single `multiIf`, and the order the settings UI renders so "first match wins"
+ * single first-match `CASE`, and the order the settings UI renders so "first match wins"
  * means what the list shows.
  *
  * Ascending priority, then (for ties) the more deeply nested centre first, then

@@ -4,7 +4,8 @@
  * authorizes reads of the org's logs (sometimes billed to its own cloud
  * account) and stays a deliberate act in Settings or Terraform.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { IsoDate } from "@infrawrench/api-contract/schemas";
 import { AI_DIMENSION_KEY_PATTERN } from "@infrawrench/client-core";
 import {
   listAiDimensions,
@@ -17,7 +18,7 @@ import {
 import { denyUnlessPermitted } from "./permissions";
 import { err, ok, type ToolDefinition } from "./types";
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const isoDay = IsoDate;
 
 function range(input: Record<string, unknown>): { from: string; to: string } | null {
   const to = typeof input["to"] === "string" ? input["to"] : new Date().toISOString().slice(0, 10);
@@ -45,9 +46,11 @@ export function aiAttributionTools(): ToolDefinition[] {
         "`dimension` to use the first mapped one. For a time series, query_costs grouped by " +
         "tag key `caller:<dimension>` gives the same split per day.",
       inputSchema: {
-        dimension: z.string().optional().describe("Dimension key, e.g. team."),
-        from: isoDay.optional(),
-        to: isoDay.optional(),
+        dimension: Schema.optionalKey(
+          Schema.String.annotate({ description: "Dimension key, e.g. team." }),
+        ),
+        from: Schema.optionalKey(isoDay),
+        to: Schema.optionalKey(isoDay),
       },
       risk: "read",
       permission: "costs:read",

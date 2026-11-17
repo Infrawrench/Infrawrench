@@ -760,11 +760,11 @@ interface InfraWaitForApproval {
  */
 const AI_INTERFACES = `interface AiOptions {
   /**
-   * Model to ask. "claude-sonnet-5" (default) balances quality and cost;
-   * "claude-haiku-4-5" is the fastest and cheapest; "claude-opus-5" is the
+   * Model to ask. "claude-sonnet-5-5" (default) balances quality and cost;
+   * "claude-haiku-5-5" is the fastest and cheapest; "claude-opus-5-5" is the
    * most capable and the most expensive.
    */
-  model?: "claude-sonnet-5" | "claude-haiku-4-5" | "claude-opus-5";
+  model?: "claude-sonnet-5-5" | "claude-haiku-5-5" | "claude-opus-5-5";
   /** Optional system prompt framing how the model should answer. */
   system?: string;
   /** Cap on the reply length in tokens. Default 1024, max 8192. */
@@ -872,7 +872,7 @@ export interface GenerateInfraDtsInput {
   triggerKind?: WorkflowTriggerKind;
   /**
    * Whether this host can store cost data (cloud only: costs live in
-   * ClickHouse). When false, `infra.costs` is typed `never` so a desktop
+   * the cloud database). When false, `infra.costs` is typed `never` so a desktop
    * author sees it's unavailable while editing instead of at run time.
    */
   costs?: boolean;

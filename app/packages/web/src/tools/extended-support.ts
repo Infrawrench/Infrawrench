@@ -2,7 +2,7 @@
  * Extended-support tool: the MCP/chat view of the Costs panel's Extended
  * support section. Read-only; upgrades are the provider's own operation.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import type { ExtendedSupportStatus } from "@infrawrench/client-core";
 import { listExtendedSupportWithBilling } from "../services/extended-support";
 import { ok, type ToolDefinition } from "./types";
@@ -21,14 +21,16 @@ export function extendedSupportTools(): ToolDefinition[] {
         "(`monthlySurcharge`; `costBasis` says whether it is billed or list price). " +
         "`currentMonthly` totals what is being paid now. Results are cached for a few minutes.",
       inputSchema: {
-        status: z
-          .enum(["end-of-life", "surcharged", "unsupported", "upcoming"])
-          .optional()
-          .describe("Only return findings in this status."),
-        refresh: z
-          .boolean()
-          .optional()
-          .describe("Bypass the short server-side cache and recompute now."),
+        status: Schema.optionalKey(
+          Schema.Literals(["end-of-life", "surcharged", "unsupported", "upcoming"]).annotate({
+            description: "Only return findings in this status.",
+          }),
+        ),
+        refresh: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Bypass the short server-side cache and recompute now.",
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /extended-support`.

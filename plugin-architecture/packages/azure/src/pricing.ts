@@ -12,44 +12,57 @@
  * ours would be the one call that breaks in a locked-down deployment.
  */
 import { followableLink, type HttpHostServices } from "@infrawrench/plugin-base";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 import { azureRequest } from "./http.js";
+
+/** A string the API may leave out, read as empty. */
+const OrEmpty = Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.succeed("")));
+/** A price the API may leave out, read as zero. */
+const OrZero = Schema.Finite.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0)));
 
 // Most fields tolerate empty string defaults: Azure returns rows for
 // many resource types where SKU/family fields are omitted. Validation only
 // blocks responses that drop fields entirely from the JSON shape.
-const retailPriceItemSchema = z.object({
-  currencyCode: z.string().default(""),
-  retailPrice: z.number().default(0),
-  unitPrice: z.number().default(0),
-  armRegionName: z.string().default(""),
-  meterName: z.string().default(""),
-  productName: z.string().default(""),
-  skuName: z.string().default(""),
-  serviceName: z.string().default(""),
-  serviceFamily: z.string().default(""),
-  unitOfMeasure: z.string().default(""),
-  type: z.string().default(""),
-  armSkuName: z.string().default(""),
+const retailPriceItemSchema = Schema.Struct({
+  currencyCode: OrEmpty,
+  retailPrice: OrZero,
+  unitPrice: OrZero,
+  armRegionName: OrEmpty,
+  meterName: OrEmpty,
+  productName: OrEmpty,
+  skuName: OrEmpty,
+  serviceName: OrEmpty,
+  serviceFamily: OrEmpty,
+  unitOfMeasure: OrEmpty,
+  type: OrEmpty,
+  armSkuName: OrEmpty,
   // Read by the price catalog only (price-catalog.ts). `reservationTerm` is
   // set on Reservation rows; `savingsPlan` only comes back on the
   // 2023-01-01-preview api-version, and only on savings-plan-eligible meters.
-  effectiveStartDate: z.string().nullish(),
-  reservationTerm: z.string().nullish(),
-  savingsPlan: z
-    .array(
-      z.object({ retailPrice: z.number(), unitPrice: z.number().optional(), term: z.string() }),
-    )
-    .nullish(),
+  effectiveStartDate: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  reservationTerm: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  savingsPlan: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          retailPrice: Schema.Finite,
+          unitPrice: Schema.optionalKey(Schema.Finite),
+          term: Schema.String,
+        }),
+      ),
+    ),
+  ),
 });
 
-const retailPricesPageSchema = z.object({
-  Items: z.array(retailPriceItemSchema).optional(),
-  // The last page carries `"NextPageLink": null`, not an absent key.
-  NextPageLink: z.string().nullish(),
-});
+const decodeRetailPricesPage = Schema.decodeUnknownSync(
+  Schema.Struct({
+    Items: Schema.optionalKey(Schema.Array(retailPriceItemSchema)),
+    // The last page carries `"NextPageLink": null`, not an absent key.
+    NextPageLink: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  }),
+);
 
-export type RetailPriceItem = z.infer<typeof retailPriceItemSchema>;
+export type RetailPriceItem = typeof retailPriceItemSchema.Type;
 
 export interface AzurePricingRates {
   /** armSkuName (e.g. "Standard_D2s_v5") -> Linux pay-as-you-go hourly USD */
@@ -141,7 +154,7 @@ export async function fetchRetailPrices(
   for (let page = 0; page < maxPages && url; page++) {
     const res = await azureRequest(http, url);
     if (!res.ok) throw new Error(`Azure Retail Prices ${res.status}: ${await res.text()}`);
-    const body = retailPricesPageSchema.parse(await res.json());
+    const body = decodeRetailPricesPage(await res.json());
     items.push(...(body.Items ?? []));
     url = body.NextPageLink
       ? followableLink(body.NextPageLink, url, {

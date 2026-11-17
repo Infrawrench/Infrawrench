@@ -44,7 +44,7 @@ import {
   readNetworkFlowReportTalkers,
   type NetworkFlowReportCellRow,
   type NetworkFlowReportSqlFilters,
-} from "../clickhouse/network-flow-report-readers";
+} from "../analytics/network-flow-report-readers";
 import { isoDay } from "../cost/dates";
 import { strictlyVisibleAccountIds } from "../cost/visibility-context";
 import { db } from "../db/client";

@@ -120,7 +120,7 @@ describe("POST /api/org/:orgId/costs/rows", () => {
   });
 
   it("lets an unexpected failure surface as a 500, not as the caller's fault", async () => {
-    mockWrite.mockRejectedValue(new Error("ClickHouse unreachable"));
+    mockWrite.mockRejectedValue(new Error("database unreachable"));
     const res = await post({ source: "colo", rows: [ROW] });
     expect(res.status).toBe(500);
   });

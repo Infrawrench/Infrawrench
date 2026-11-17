@@ -9,7 +9,8 @@
  * one-time private-key download only exists in the Settings UI.
  */
 import crypto from "node:crypto";
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength } from "@infrawrench/api-contract/schemas";
 import { eq, and } from "drizzle-orm";
 import {
   computeSshPublicKeyFingerprint,
@@ -90,7 +91,9 @@ export function sshKeyTools(): ToolDefinition[] {
         "Infrawrench, they must generate the key in Settings → SSH keys instead. Returns the " +
         "public key (safe to install on remote hosts' authorized_keys).",
       inputSchema: {
-        name: z.string().min(1).describe("Display name for the key"),
+        name: Schema.String.check(minLength(1)).annotate({
+          description: "Display name for the key",
+        }),
       },
       risk: "write",
       permission: "ssh-keys:write",
@@ -151,8 +154,12 @@ export function sshKeyTools(): ToolDefinition[] {
         'format ("ssh-ed25519 AAAA… comment"). Imported keys can be installed on hosts but ' +
         "cannot be used by ssh_exec or tunnels (the server has no private key for them).",
       inputSchema: {
-        name: z.string().min(1).describe("Display name for the key"),
-        publicKey: z.string().min(1).describe("OpenSSH-format public key"),
+        name: Schema.String.check(minLength(1)).annotate({
+          description: "Display name for the key",
+        }),
+        publicKey: Schema.String.check(minLength(1)).annotate({
+          description: "OpenSSH-format public key",
+        }),
       },
       risk: "write",
       permission: "ssh-keys:write",
@@ -210,7 +217,7 @@ export function sshKeyTools(): ToolDefinition[] {
         "another member's key additionally requires the team:role:write permission (offboarding, " +
         "revoking a compromised key). Irreversible.",
       inputSchema: {
-        sshKeyId: z.string().describe("Key id (see list_ssh_keys)"),
+        sshKeyId: Schema.String.annotate({ description: "Key id (see list_ssh_keys)" }),
       },
       risk: "destructive",
       permission: "ssh-keys:write",

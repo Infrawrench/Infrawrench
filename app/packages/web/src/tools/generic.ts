@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { Schema } from "effect";
+import { minLength, maxLength } from "@infrawrench/api-contract/schemas";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, resources, secretFieldStates } from "../db/schema";
@@ -42,19 +43,19 @@ import {
 import { ok, okText, err, type ToolDefinition } from "./types";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
-const parentResourceIdField = z
-  .string()
-  .optional()
-  .describe(
-    "For sidecar (peer plugin) targets only: the id of the parent resource (managed cluster / " +
+const parentResourceIdField = Schema.optionalKey(
+  Schema.String.annotate({
+    description:
+      "For sidecar (peer plugin) targets only: the id of the parent resource (managed cluster / " +
       "database) whose outputs provide the sidecar's credentials. See list_resource_sidecars.",
-  );
+  }),
+);
 
 const resourceTargetSchema = {
-  pluginId: z.string(),
-  accountId: z.string(),
-  resourceTypeId: z.string(),
-  resourceId: z.string(),
+  pluginId: Schema.String,
+  accountId: Schema.String,
+  resourceTypeId: Schema.String,
+  resourceId: Schema.String,
   parentResourceId: parentResourceIdField,
 };
 
@@ -116,7 +117,9 @@ export function genericTools(): ToolDefinition[] {
       description:
         "List the resource types defined by a plugin, including their fields, outputs, and capability flags (supportsCreate, supportsDelete, supportsMetrics).",
       inputSchema: {
-        pluginId: z.string().describe("Plugin id, e.g. 'digitalocean', 'postgres'"),
+        pluginId: Schema.String.annotate({
+          description: "Plugin id, e.g. 'digitalocean', 'postgres'",
+        }),
       },
       risk: "read",
       permission: null,
@@ -205,12 +208,13 @@ export function genericTools(): ToolDefinition[] {
         "<30d, upcoming within lead, ok beyond it). Purely a read over already-synced state; " +
         "no provider API calls. Check this before certificates lapse or tokens rotate out.",
       inputSchema: {
-        severity: z
-          .enum(["expired", "critical", "warning", "upcoming", "ok"])
-          .optional()
-          .describe("Only return deadlines in this severity bucket."),
-        kind: z
-          .enum([
+        severity: Schema.optionalKey(
+          Schema.Literals(["expired", "critical", "warning", "upcoming", "ok"]).annotate({
+            description: "Only return deadlines in this severity bucket.",
+          }),
+        ),
+        kind: Schema.optionalKey(
+          Schema.Literals([
             "tls-cert",
             "domain",
             "api-token",
@@ -221,9 +225,8 @@ export function genericTools(): ToolDefinition[] {
             "lease",
             "extended-support",
             "other",
-          ])
-          .optional()
-          .describe("Only return deadlines of this kind."),
+          ]).annotate({ description: "Only return deadlines of this kind." }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /expiring`: the feed is computed over the org's resource set.
@@ -262,18 +265,22 @@ export function genericTools(): ToolDefinition[] {
         "checking that a new environment matches the one it was cloned from. Purely a read " +
         "over synced state; no provider API calls.",
       inputSchema: {
-        a: z.string().describe("Baseline account: its id, or its exact display name."),
-        b: z
-          .string()
-          .describe("Compared account: its id, or its exact display name. Same provider as `a`."),
-        resourceTypeId: z.string().optional().describe("Compare one resource type only."),
-        includeIdentityFields: z
-          .boolean()
-          .optional()
-          .describe(
-            "Compare ids, links, network addresses and timestamps too. Off by default because " +
+        a: Schema.String.annotate({
+          description: "Baseline account: its id, or its exact display name.",
+        }),
+        b: Schema.String.annotate({
+          description: "Compared account: its id, or its exact display name. Same provider as `a`.",
+        }),
+        resourceTypeId: Schema.optionalKey(
+          Schema.String.annotate({ description: "Compare one resource type only." }),
+        ),
+        includeIdentityFields: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "Compare ids, links, network addresses and timestamps too. Off by default because " +
               "every resource has different ones, which buries the fields that actually diverged.",
-          ),
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /environment-diff`: it reads the same rows as the account pages.
@@ -326,21 +333,27 @@ export function genericTools(): ToolDefinition[] {
         "Findings the organization has dismissed as accepted risks are excluded unless you " +
         "ask for them.",
       inputSchema: {
-        severity: z
-          .enum(["critical", "high", "medium", "low"])
-          .optional()
-          .describe("Only return findings of this severity."),
-        category: z
-          .enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"])
-          .optional()
-          .describe("Only return findings in this category."),
-        includeDismissed: z
-          .boolean()
-          .optional()
-          .describe(
-            "Also return the findings the organization has dismissed, each with who accepted " +
+        severity: Schema.optionalKey(
+          Schema.Literals(["critical", "high", "medium", "low"]).annotate({
+            description: "Only return findings of this severity.",
+          }),
+        ),
+        category: Schema.optionalKey(
+          Schema.Literals([
+            "public-exposure",
+            "encryption",
+            "credential-age",
+            "data-protection",
+            "other",
+          ]).annotate({ description: "Only return findings in this category." }),
+        ),
+        includeDismissed: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "Also return the findings the organization has dismissed, each with who accepted " +
               "it, when, and why. They stay out of `findings` either way.",
-          ),
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /posture`: the findings are computed over the org's resource set.
@@ -384,13 +397,17 @@ export function genericTools(): ToolDefinition[] {
         // `.min(1)` so a blank id is a tool-input error rather than the plain
         // `Error` `dismissPostureFinding` throws past the handler: the HTTP
         // route guards this, and this second entry point has to as well.
-        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
-        ruleId: z.string().min(1).describe("The matched rule's id, as returned on the finding."),
-        reason: z
-          .string()
-          .max(500)
-          .optional()
-          .describe("Why this exposure is acceptable, recorded with the dismissal."),
+        resourceId: Schema.String.check(minLength(1)).annotate({
+          description: "Infrawrench resource id the finding is on.",
+        }),
+        ruleId: Schema.String.check(minLength(1)).annotate({
+          description: "The matched rule's id, as returned on the finding.",
+        }),
+        reason: Schema.optionalKey(
+          Schema.String.check(maxLength(500)).annotate({
+            description: "Why this exposure is acceptable, recorded with the dismissal.",
+          }),
+        ),
       },
       risk: "write",
       // Mirrors `POST /posture/dismissals`: a statement about one resource,
@@ -424,8 +441,12 @@ export function genericTools(): ToolDefinition[] {
         "Use when an accepted risk is no longer acceptable, or when a finding was dismissed " +
         "by mistake.",
       inputSchema: {
-        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
-        ruleId: z.string().min(1).describe("The matched rule's id."),
+        resourceId: Schema.String.check(minLength(1)).annotate({
+          description: "Infrawrench resource id the finding is on.",
+        }),
+        ruleId: Schema.String.check(minLength(1)).annotate({
+          description: "The matched rule's id.",
+        }),
       },
       risk: "write",
       permission: "resources:write",
@@ -461,14 +482,16 @@ export function genericTools(): ToolDefinition[] {
         "handing it over, or to find takeover risks; those also appear in " +
         "`list_posture_findings` as `dns-dangling-target`.",
       inputSchema: {
-        status: z
-          .enum(["owned", "dangling", "external", "not-analysed"])
-          .optional()
-          .describe("Only return records with this status."),
-        domain: z
-          .string()
-          .optional()
-          .describe("Only return zones and records under this domain (suffix match)."),
+        status: Schema.optionalKey(
+          Schema.Literals(["owned", "dangling", "external", "not-analysed"]).annotate({
+            description: "Only return records with this status.",
+          }),
+        ),
+        domain: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only return zones and records under this domain (suffix match).",
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /dns`: the inventory is computed over the org's resource set.
@@ -511,12 +534,11 @@ export function genericTools(): ToolDefinition[] {
         "and an empty dependant list next to a non-empty `unchecked` is not a clean bill of " +
         "health. Call this before proposing or performing delete_resource.",
       inputSchema: {
-        resourceId: z
-          .string()
-          .describe(
+        resourceId: Schema.String.annotate({
+          description:
             "The resource id as returned by list_resources / search_resources (the composite " +
-              "`pluginId:accountId:externalId` form, not the provider's own id).",
-          ),
+            "`pluginId:accountId:externalId` form, not the provider's own id).",
+        }),
       },
       risk: "read",
       // Mirrors `GET /blast-radius`.
@@ -541,14 +563,17 @@ export function genericTools(): ToolDefinition[] {
         "`ownerUserId` set is reachable and one with only `ownerLabel` (a team name) is not. " +
         "Use this before proposing a deletion, or to attribute waste from list_orphaned_resources.",
       inputSchema: {
-        ownerUserId: z
-          .string()
-          .optional()
-          .describe("Only return resources owned by this org member."),
-        unownedOnly: z
-          .boolean()
-          .optional()
-          .describe("Return only records that name nobody; a purpose or ticket with no owner set."),
+        ownerUserId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only return resources owned by this org member.",
+          }),
+        ),
+        unownedOnly: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description:
+              "Return only records that name nobody; a purpose or ticket with no owner set.",
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /ownership`.
@@ -602,10 +627,11 @@ export function genericTools(): ToolDefinition[] {
       description:
         "Substring-match resources across every connected account. Matches against resource display name, account name, plugin name, and resource-type label. Returns up to 50 results.",
       inputSchema: {
-        query: z
-          .string()
-          .optional()
-          .describe("Substring to match. Leave empty to list everything (capped at 50)."),
+        query: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Substring to match. Leave empty to list everything (capped at 50).",
+          }),
+        ),
       },
       risk: "read",
       permission: "resources:read",
@@ -704,12 +730,15 @@ export function genericTools(): ToolDefinition[] {
         "get_resource / describe_resource / invoke_action with pluginId = the sidecar's " +
         "pluginId, the same accountId, and parentResourceId = this resource's id.",
       inputSchema: {
-        accountId: z.string(),
-        resourceId: z.string().describe("The parent resource id (the cluster / database)"),
-        resourceTypeId: z
-          .string()
-          .optional()
-          .describe("The parent's resource type id, if known; skips a lookup"),
+        accountId: Schema.String,
+        resourceId: Schema.String.annotate({
+          description: "The parent resource id (the cluster / database)",
+        }),
+        resourceTypeId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "The parent's resource type id, if known; skips a lookup",
+          }),
+        ),
       },
       risk: "read",
       openWorld: true,
@@ -818,9 +847,9 @@ export function genericTools(): ToolDefinition[] {
         "'k8s-deployment', 'k8s-pod'; see list_resource_types), and parentResourceId = the " +
         "cluster's resource id. Same pattern for managed databases (postgres/mysql/redis/mongodb).",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
         parentResourceId: parentResourceIdField,
       },
       risk: "read",
@@ -916,10 +945,11 @@ export function genericTools(): ToolDefinition[] {
         "Resolve a list of output keys for a resource (e.g. connectionString, ipv4). Outputs marked sensitive are returned in plaintext; handle with care. In chat, a call that includes any sensitive output (or omits outputKeys on a type that has one) waits for the user to approve it; ask only for the non-sensitive keys you need to avoid that.",
       inputSchema: {
         ...resourceTargetSchema,
-        outputKeys: z
-          .array(z.string())
-          .optional()
-          .describe("Output keys to resolve. Defaults to every output declared on the type."),
+        outputKeys: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({
+            description: "Output keys to resolve. Defaults to every output declared on the type.",
+          }),
+        ),
       },
       risk: "read",
       openWorld: true,
@@ -977,7 +1007,7 @@ export function genericTools(): ToolDefinition[] {
       description:
         "Return the resource's user-supplied inputs: non-secret fields plus the secret-field bindings (literal vs output-ref); secret values are NOT included.",
       inputSchema: {
-        resourceId: z.string(),
+        resourceId: Schema.String,
       },
       risk: "read",
       permission: "resources:read",
@@ -1071,8 +1101,8 @@ export function genericTools(): ToolDefinition[] {
         "Fetch time-series metrics (CPU, memory, request rate, etc.) for a resource. Provide startMs/endMs to scope the range; otherwise the plugin picks a default window.",
       inputSchema: {
         ...resourceTargetSchema,
-        startMs: z.number().int().optional(),
-        endMs: z.number().int().optional(),
+        startMs: Schema.optionalKey(Schema.Int),
+        endMs: Schema.optionalKey(Schema.Int),
       },
       risk: "read",
       openWorld: true,
@@ -1159,21 +1189,21 @@ export function genericTools(): ToolDefinition[] {
       description:
         "Generic resource creation. Use list_resource_types to see required `fields` for a given (pluginId, resourceTypeId). Audit-logged.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        fields: z
-          .record(z.string(), z.string())
-          .describe("Form-style key/value pairs matching the type's field definitions."),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        fields: Schema.Record(Schema.String, Schema.String).annotate({
+          description: "Form-style key/value pairs matching the type's field definitions.",
+        }),
         parentResourceId: parentResourceIdField,
-        sshKeyId: z
-          .string()
-          .optional()
-          .describe(
-            "Stored org SSH key id (see list_ssh_keys) to install for SSH access. Only for " +
+        sshKeyId: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Stored org SSH key id (see list_ssh_keys) to install for SSH access. Only for " +
               "resource types that accept an SSH key at create time (VM types); its public " +
               "key is injected into the type's SSH-key field.",
-          ),
+          }),
+        ),
       },
       risk: "write",
       openWorld: true,
@@ -1334,7 +1364,7 @@ export function genericTools(): ToolDefinition[] {
         "Run a plugin-defined action against a resource (start/stop/restart/etc.). actionId is plugin-specific; discover via the resource's detail schema.",
       inputSchema: {
         ...resourceTargetSchema,
-        actionId: z.string(),
+        actionId: Schema.String,
       },
       risk: "destructive",
       openWorld: true,
@@ -1425,7 +1455,7 @@ export function genericTools(): ToolDefinition[] {
         "Apply an updated manifest (YAML/JSON) to a resource, primary edit path for k8s, postgres, and similar plugins. Audit-logged.",
       inputSchema: {
         ...resourceTargetSchema,
-        manifest: z.string(),
+        manifest: Schema.String,
       },
       risk: "destructive",
       openWorld: true,
@@ -1471,12 +1501,12 @@ export function genericTools(): ToolDefinition[] {
       description:
         "Attach a source resource to a target resource (e.g. disk → VM). Both must be in the same account. Plugin-specific semantics; see resource type's attachTargets.",
       inputSchema: {
-        sourceTypeId: z.string(),
-        sourceResourceId: z.string(),
-        targetTypeId: z.string(),
-        targetResourceId: z.string(),
-        accountId: z.string(),
-        pluginId: z.string(),
+        sourceTypeId: Schema.String,
+        sourceResourceId: Schema.String,
+        targetTypeId: Schema.String,
+        targetResourceId: Schema.String,
+        accountId: Schema.String,
+        pluginId: Schema.String,
       },
       risk: "destructive",
       openWorld: true,

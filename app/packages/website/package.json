@@ -12,11 +12,11 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.2.0",
+    "@astrojs/cloudflare": "^14.4.8",
     "@astrojs/markdown-remark": "^7.2.2",
     "@infrawrench/analytics": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "astro": "~7.2.10",
+    "astro": "~7.4.12",
     "lucide-astro": "^0.556.0",
     "tailwindcss": "^4.3.3",
     "unist-util-visit": "^5.1.0"
@@ -28,6 +28,6 @@
     "@emnapi/runtime": "1.11.2",
     "lightningcss-wasm": "1.32.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "wrangler": "^4.120.0"
+    "wrangler": "^4.162.0"
   }
 }

@@ -2,11 +2,11 @@
  * Which days a collection restated: the input to superseded-row
  * reconciliation's second guard.
  *
- * Pure, day-string arithmetic only. No clock, no table, no ClickHouse.
+ * Pure, day-string arithmetic only. No clock, no table.
  *
  * ─── Why a day is not always the unit ─────────────────────────────────────
  *
- * `clickhouse/cost-reconcile.ts` zeroes a stored key the collection did not
+ * `analytics/cost-reconcile.ts` zeroes a stored key the collection did not
  * rewrite, but only on days the collection wrote at least one row to. That
  * guard is what stops a provider that reports the last 24 hours late from
  * wiping yesterday, and for a plugin whose rows *are* daily it is exactly

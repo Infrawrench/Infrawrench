@@ -11,7 +11,7 @@ vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 
 // A single cost group: $500 spent this month, in one bucket.
 const queryCosts = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
@@ -228,7 +228,7 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
 
   it("never throws when evaluation of one budget fails", async () => {
     arrange([budget()], []);
-    queryCosts.mockRejectedValue(new Error("clickhouse down"));
+    queryCosts.mockRejectedValue(new Error("database down"));
     await expect(budgetEval.evaluateBudgetsForOrg("org1", NOW)).resolves.toBeUndefined();
   });
 });

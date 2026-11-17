@@ -8,7 +8,7 @@
  * names the create form and fields a follow-up `create_resource` (or the
  * user's own create form) would use.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import {
   getPriceCatalogService,
   PriceCatalogNotFoundError,
@@ -20,8 +20,8 @@ import {
 } from "@infrawrench/client-core";
 import { err, ok, type ToolDefinition } from "./types";
 
-const area = z
-  .enum([
+const area = Schema.optionalKey(
+  Schema.Literals([
     "north-america",
     "south-america",
     "europe",
@@ -29,15 +29,16 @@ const area = z
     "middle-east",
     "africa",
     "oceania",
-  ])
-  .optional()
-  .describe(
-    "Geography. Each provider is priced in its first region in this area unless `region` names one it has. Default north-america.",
-  );
-const rateType = z
-  .enum(["on-demand", "spot", "reserved", "savings-plan"])
-  .optional()
-  .describe("Which published rate to quote. Default on-demand.");
+  ]).annotate({
+    description:
+      "Geography. Each provider is priced in its first region in this area unless `region` names one it has. Default north-america.",
+  }),
+);
+const rateType = Schema.optionalKey(
+  Schema.Literals(["on-demand", "spot", "reserved", "savings-plan"]).annotate({
+    description: "Which published rate to quote. Default on-demand.",
+  }),
+);
 
 export function priceCatalogTools(): ToolDefinition[] {
   return [
@@ -69,28 +70,47 @@ export function priceCatalogTools(): ToolDefinition[] {
         "`providers[].state` before concluding a provider has nothing: `no-account`, " +
         "`loading` and `error` all mean it was not searched.",
       inputSchema: {
-        q: z.string().optional().describe("Free text over SKU, name, series and GPU model."),
-        pluginIds: z.array(z.string()).optional().describe("Limit to these plugin ids."),
-        serviceIds: z.array(z.string()).optional(),
-        families: z
-          .array(z.enum(["compute", "gpu", "database", "kubernetes-node", "storage"]))
-          .optional(),
-        region: z.string().optional().describe("Exact provider region id."),
+        q: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Free text over SKU, name, series and GPU model.",
+          }),
+        ),
+        pluginIds: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({ description: "Limit to these plugin ids." }),
+        ),
+        serviceIds: Schema.optionalKey(Schema.Array(Schema.String)),
+        families: Schema.optionalKey(
+          Schema.Array(
+            Schema.Literals(["compute", "gpu", "database", "kubernetes-node", "storage"]),
+          ),
+        ),
+        region: Schema.optionalKey(
+          Schema.String.annotate({ description: "Exact provider region id." }),
+        ),
         area,
-        minVcpus: z.number().nonnegative().optional(),
-        maxVcpus: z.number().nonnegative().optional(),
-        minMemoryGb: z.number().nonnegative().optional(),
-        maxMemoryGb: z.number().nonnegative().optional(),
-        gpu: z.enum(["any", "required", "none"]).optional(),
-        gpuModel: z.string().optional().describe("Substring, e.g. H100, L4, A10."),
-        minGpus: z.number().nonnegative().optional(),
-        maxMonthlyPrice: z.number().nonnegative().optional(),
+        minVcpus: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        maxVcpus: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        minMemoryGb: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        maxMemoryGb: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        gpu: Schema.optionalKey(Schema.Literals(["any", "required", "none"])),
+        gpuModel: Schema.optionalKey(
+          Schema.String.annotate({ description: "Substring, e.g. H100, L4, A10." }),
+        ),
+        minGpus: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        maxMonthlyPrice: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
         rateType,
-        term: z.string().optional().describe("`1yr` or `3yr` for reserved / savings plan."),
-        sort: z.enum(["price", "vcpus", "memory", "gpus", "name"]).optional(),
-        order: z.enum(["asc", "desc"]).optional(),
-        limit: z.number().int().min(1).max(200).optional().describe("Default 25."),
-        offset: z.number().int().nonnegative().optional(),
+        term: Schema.optionalKey(
+          Schema.String.annotate({ description: "`1yr` or `3yr` for reserved / savings plan." }),
+        ),
+        sort: Schema.optionalKey(Schema.Literals(["price", "vcpus", "memory", "gpus", "name"])),
+        order: Schema.optionalKey(Schema.Literals(["asc", "desc"])),
+        limit: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(200),
+          ).annotate({ description: "Default 25." }),
+        ),
+        offset: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
       },
       risk: "read",
       permission: "resources:read",
@@ -110,16 +130,18 @@ export function priceCatalogTools(): ToolDefinition[] {
         "spec, plus runners-up, priced in each provider's region for the area. Providers are " +
         "ordered cheapest first. Equivalence is by published specs only, never by name.",
       inputSchema: {
-        vcpus: z.number().nonnegative().optional(),
-        memoryGb: z.number().nonnegative().optional(),
-        gpuCount: z.number().nonnegative().optional(),
-        gpuModel: z.string().optional(),
-        referencePluginId: z.string().optional(),
-        referenceSku: z.string().optional(),
+        vcpus: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        memoryGb: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        gpuCount: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+        gpuModel: Schema.optionalKey(Schema.String),
+        referencePluginId: Schema.optionalKey(Schema.String),
+        referenceSku: Schema.optionalKey(Schema.String),
         area,
         rateType,
-        pluginIds: z.array(z.string()).optional(),
-        alternatives: z.number().int().min(0).max(10).optional(),
+        pluginIds: Schema.optionalKey(Schema.Array(Schema.String)),
+        alternatives: Schema.optionalKey(
+          Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(10)),
+        ),
       },
       risk: "read",
       permission: "resources:read",

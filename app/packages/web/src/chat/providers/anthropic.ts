@@ -1,11 +1,17 @@
 /**
  * Anthropic (Claude) chat provider.
  *
- * Extracted verbatim from the original inline agent loop: the persisted
- * content-block format is Anthropic's, so this provider is a thin pass-through
- * apart from prompt-cache markers and usage normalization.
+ * The persisted content-block format is Anthropic's, so this provider is a
+ * thin pass-through apart from prompt-cache markers and usage normalization.
+ * The client comes from server-core's anthropic-client, which routes through
+ * Cloudflare AI Gateway in production.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  ANTHROPIC_NOT_CONFIGURED,
+  anthropicClient,
+  isAnthropicConfigured,
+} from "@infrawrench/server-core/anthropic-client";
 import type { ChatContentBlock } from "@infrawrench/ui";
 import type { ChatProvider, ProviderEvent, ProviderTool, TurnRequest } from "./types";
 
@@ -26,8 +32,9 @@ function toAnthropicTool(t: ProviderTool): Anthropic.Tool {
 /**
  * Strip anything another provider left behind.
  *
- * A conversation's model can be switched mid-thread, so history may hold blocks
- * Gemini produced. Anthropic rejects both unknown fields on a content block and
+ * Chat used to offer Gemini, and conversations that ran on it were moved to
+ * Claude with their history intact, so stored history can hold blocks Gemini
+ * produced. Anthropic rejects both unknown fields on a content block and
  * thinking signatures it didn't mint, so foreign thinking blocks are dropped
  * (assistant turns without them are accepted) and foreign tool_use blocks are
  * reduced to the fields Anthropic knows. tool_use must survive: dropping one
@@ -55,17 +62,46 @@ export function sanitizeForAnthropic(blocks: ChatContentBlock[]): ChatContentBlo
   return out;
 }
 
+/**
+ * True for the 400 a replayed thinking block gets once the conversation it was
+ * written in has changed: Sonnet 5.5 and Opus 5.5 bind each block to the
+ * system prompt, tool set and earlier messages it saw. Here that happens when
+ * the system prompt moves between turns (a canvas conversation carries the
+ * canvas into it) or the organization's offered tools change.
+ */
+function isThinkingBindingMismatch(err: unknown): boolean {
+  return (
+    err instanceof Anthropic.BadRequestError &&
+    err.message.includes("bound to a different conversation")
+  );
+}
+
+/**
+ * History without its thinking blocks. The API's documented recovery for a
+ * binding mismatch: the turn runs without the earlier reasoning, and text and
+ * tool_use blocks (which tool_results pair with) are untouched. Stored history
+ * keeps the blocks; only this request goes without them.
+ */
+function withoutThinking(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return messages.map((m) =>
+    typeof m.content === "string"
+      ? m
+      : {
+          ...m,
+          content: m.content.filter((b) => b.type !== "thinking" && b.type !== "redacted_thinking"),
+        },
+  );
+}
+
 export const anthropicProvider: ChatProvider = {
   label: "Anthropic",
 
   assertConfigured() {
-    if (!process.env["ANTHROPIC_API_KEY"]) {
-      throw new Error("ANTHROPIC_API_KEY not configured for this deployment");
-    }
+    if (!isAnthropicConfigured()) throw new Error(ANTHROPIC_NOT_CONFIGURED);
   },
 
   async *streamTurn(req: TurnRequest): AsyncGenerator<ProviderEvent> {
-    const client = new Anthropic({ apiKey: process.env["ANTHROPIC_API_KEY"] });
+    const client = anthropicClient();
 
     const tools = req.tools.map(toAnthropicTool);
     // Prompt-cache the system prompt + tool definitions. Both are large and
@@ -104,15 +140,31 @@ export const anthropicProvider: ChatProvider = {
     // loop iteration's request is rejected.
     const thinkingIdx: Record<number, number> = {};
 
-    const stream = await client.messages.stream({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      system: systemBlocks,
-      tools,
-      messages: apiMessages,
-    });
+    const open = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({
+        model: req.model,
+        max_tokens: req.maxTokens,
+        system: systemBlocks,
+        tools,
+        messages,
+      });
+    async function* events() {
+      let started = false;
+      try {
+        for await (const ev of open(apiMessages)) {
+          started = true;
+          yield ev;
+        }
+        return;
+      } catch (err) {
+        // The binding check runs before any output, so a rejection here has
+        // shown the user nothing and the retry repeats nothing.
+        if (started || !isThinkingBindingMismatch(err)) throw err;
+      }
+      yield* open(withoutThinking(apiMessages));
+    }
 
-    for await (const ev of stream) {
+    for await (const ev of events()) {
       if (ev.type === "content_block_start") {
         const block = ev.content_block;
         if (block.type === "text") {

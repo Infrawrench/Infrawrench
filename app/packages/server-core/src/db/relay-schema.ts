@@ -8,9 +8,9 @@
  * `replicas: 2` and round-robin routing roughly half of those requests arrive
  * somewhere else.
  *
- * `infra/k8s/web-ws-ingress.yaml` solves the browser half by consistent-
- * hashing `?sid=` at the ingress, and says plainly that the durable fix is "a
- * cross-replica relay". This table is the registry that relay routes on: a
+ * The GKE ingress (`infra/k8s/web-ws-ingress.yaml`, since removed) solved the
+ * browser half by consistent-hashing `?sid=`, and said plainly that the
+ * durable fix is "a cross-replica relay". This table is the registry that relay routes on: a
  * lease saying *which* pod holds a session, so any other pod can forward to it
  * instead of trying to start a second one.
  *

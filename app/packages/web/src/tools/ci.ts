@@ -20,7 +20,8 @@
  * signed here. Usage is vCPU, memory and storage quantities, never money, as
  * on the routes, which apply no cost visibility to them.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { pattern } from "@infrawrench/api-contract/schemas";
 import {
   CI_EVENTS,
   CI_RUN_STATUSES,
@@ -68,7 +69,7 @@ const LIVE_IDLE_MS = 750;
 /** The most of a live log one call reads; past it, the run's report has the rest. */
 const LIVE_MAX_BYTES = 8 * 1024 * 1024;
 
-const runIdSchema = z.string().describe("The run's `id`, from list_ci_runs.");
+const runIdSchema = Schema.String.annotate({ description: "The run's `id`, from list_ci_runs." });
 
 /** A refusal the CI modules mean for the caller (not found, conflict, bad input) as a tool error. */
 function ciError(e: unknown): ToolResult {
@@ -341,10 +342,11 @@ export function ciTools(): ToolDefinition[] {
         "repository's `installationId` and `repoFullName` and the pipeline's `file` to " +
         "start_ci_run.",
       inputSchema: {
-        repoFullName: z
-          .string()
-          .optional()
-          .describe("Only this repository (`owner/name`). Omit for every repository."),
+        repoFullName: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Only this repository (`owner/name`). Omit for every repository.",
+          }),
+        ),
       },
       risk: "read",
       permission: "ci:read",
@@ -389,30 +391,40 @@ export function ciTools(): ToolDefinition[] {
         "jobs and to get_ci_job_log for a job's output. For the next page, pass the last run's " +
         "`id` as `before`; `nextBefore` is that id when there may be more.",
       inputSchema: {
-        repoFullName: z
-          .string()
-          .optional()
-          .describe("Only runs of this repository (`owner/name`)."),
-        branch: z
-          .string()
-          .optional()
-          .describe("Only runs for this branch: a push's branch or a pull request's head branch."),
-        status: z.enum(CI_RUN_STATUSES).optional().describe("Only runs with this status."),
-        event: z.enum(CI_EVENTS).optional().describe("Only runs started by this event."),
-        pullNumber: z.number().int().optional().describe("Only runs of this pull request."),
-        includeSkipped: z
-          .boolean()
-          .optional()
-          .describe("Also list runs that had nothing to run (`skipped`). Default false."),
-        limit: z
-          .number()
-          .int()
-          .optional()
-          .describe(`Runs per page, 1 to ${MAX_RUN_LIMIT}. Default ${DEFAULT_RUN_LIMIT}.`),
-        before: z
-          .string()
-          .optional()
-          .describe("A run `id`: list the runs older than it (the previous page's `nextBefore`)."),
+        repoFullName: Schema.optionalKey(
+          Schema.String.annotate({ description: "Only runs of this repository (`owner/name`)." }),
+        ),
+        branch: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Only runs for this branch: a push's branch or a pull request's head branch.",
+          }),
+        ),
+        status: Schema.optionalKey(
+          Schema.Literals(CI_RUN_STATUSES).annotate({ description: "Only runs with this status." }),
+        ),
+        event: Schema.optionalKey(
+          Schema.Literals(CI_EVENTS).annotate({ description: "Only runs started by this event." }),
+        ),
+        pullNumber: Schema.optionalKey(
+          Schema.Int.annotate({ description: "Only runs of this pull request." }),
+        ),
+        includeSkipped: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Also list runs that had nothing to run (`skipped`). Default false.",
+          }),
+        ),
+        limit: Schema.optionalKey(
+          Schema.Int.annotate({
+            description: `Runs per page, 1 to ${MAX_RUN_LIMIT}. Default ${DEFAULT_RUN_LIMIT}.`,
+          }),
+        ),
+        before: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "A run `id`: list the runs older than it (the previous page's `nextBefore`).",
+          }),
+        ),
       },
       risk: "read",
       permission: "ci:read",
@@ -501,25 +513,28 @@ export function ciTools(): ToolDefinition[] {
         "pipeline) from get_ci_run.",
       inputSchema: {
         runId: runIdSchema,
-        jobId: z.string().describe("The job's `id`, as get_ci_run lists it."),
-        pipeline: z
-          .string()
-          .optional()
-          .describe("The job's `pipeline`, when more than one pipeline has a job with that id."),
-        stream: z
-          .enum(["stdout", "stderr", "both"])
-          .optional()
-          .describe("Which output to page through. Default both."),
-        lines: z
-          .number()
-          .int()
-          .optional()
-          .describe(`Lines per stream, 1 to ${MAX_LOG_LINES}. Default ${DEFAULT_LOG_LINES}.`),
-        fromLine: z
-          .number()
-          .int()
-          .optional()
-          .describe("The first line to return, counting from 1. Omit for the last lines."),
+        jobId: Schema.String.annotate({ description: "The job's `id`, as get_ci_run lists it." }),
+        pipeline: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "The job's `pipeline`, when more than one pipeline has a job with that id.",
+          }),
+        ),
+        stream: Schema.optionalKey(
+          Schema.Literals(["stdout", "stderr", "both"]).annotate({
+            description: "Which output to page through. Default both.",
+          }),
+        ),
+        lines: Schema.optionalKey(
+          Schema.Int.annotate({
+            description: `Lines per stream, 1 to ${MAX_LOG_LINES}. Default ${DEFAULT_LOG_LINES}.`,
+          }),
+        ),
+        fromLine: Schema.optionalKey(
+          Schema.Int.annotate({
+            description: "The first line to return, counting from 1. Omit for the last lines.",
+          }),
+        ),
       },
       risk: "read",
       permission: "ci:read",
@@ -618,22 +633,26 @@ export function ciTools(): ToolDefinition[] {
         "left out take the pipeline's defaults; a required one must be given. Returns the new " +
         "run (pass its `id` to get_ci_run). Audit-logged with the inputs.",
       inputSchema: {
-        installationId: z
-          .number()
-          .int()
-          .describe("The repository's `installationId`, from list_ci_pipelines."),
-        repoFullName: z.string().describe("`owner/name`."),
-        pipelineFile: z
-          .string()
-          .describe("The pipeline's `file`, e.g. `.infrawrench/ci/deploy.yml`."),
-        branch: z
-          .string()
-          .optional()
-          .describe("A branch of the repository. Default: its default branch."),
-        inputs: z
-          .record(z.union([z.string(), z.boolean(), z.number()]))
-          .optional()
-          .describe("Input values by name: text, true/false for a boolean, a number."),
+        installationId: Schema.Int.annotate({
+          description: "The repository's `installationId`, from list_ci_pipelines.",
+        }),
+        repoFullName: Schema.String.annotate({ description: "`owner/name`." }),
+        pipelineFile: Schema.String.annotate({
+          description: "The pipeline's `file`, e.g. `.infrawrench/ci/deploy.yml`.",
+        }),
+        branch: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "A branch of the repository. Default: its default branch.",
+          }),
+        ),
+        inputs: Schema.optionalKey(
+          Schema.Record(
+            Schema.String,
+            Schema.Union([Schema.String, Schema.Boolean, Schema.Finite]),
+          ).annotate({
+            description: "Input values by name: text, true/false for a boolean, a number.",
+          }),
+        ),
       },
       risk: "destructive",
       permission: "ci:approve",
@@ -682,10 +701,11 @@ export function ciTools(): ToolDefinition[] {
         "get_ci_run).",
       inputSchema: {
         runId: runIdSchema,
-        noTaskCache: z
-          .boolean()
-          .optional()
-          .describe("Run every `task-cache:` job instead of reading the cache. Default false."),
+        noTaskCache: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Run every `task-cache:` job instead of reading the cache. Default false.",
+          }),
+        ),
       },
       risk: "destructive",
       permission: "ci:approve",
@@ -789,16 +809,15 @@ export function ciTools(): ToolDefinition[] {
         "them as `${{ secrets.NAME }}` and `${{ vars.NAME }}`. Get `installationId` from " +
         "list_ci_repositories. Setting values is done in the CI tab.",
       inputSchema: {
-        installationId: z
-          .number()
-          .int()
-          .describe("The GitHub App installation, from list_ci_repositories."),
-        repo: z
-          .string()
-          .optional()
-          .describe(
-            "A repository's name (without the owner) for its own values. Omit for the account's.",
-          ),
+        installationId: Schema.Int.annotate({
+          description: "The GitHub App installation, from list_ci_repositories.",
+        }),
+        repo: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "A repository's name (without the owner) for its own values. Omit for the account's.",
+          }),
+        ),
       },
       risk: "read",
       permission: "ci:write",
@@ -856,11 +875,11 @@ export function ciTools(): ToolDefinition[] {
         "memory GiB-seconds and storage GiB-hours, and `storageBytes` stored now when the " +
         "runners answered. Quantities, not money.",
       inputSchema: {
-        month: z
-          .string()
-          .regex(/^\d{4}-\d{2}$/)
-          .optional()
-          .describe("`YYYY-MM`, in UTC. Default: this month."),
+        month: Schema.optionalKey(
+          Schema.String.check(pattern(/^\d{4}-\d{2}$/)).annotate({
+            description: "`YYYY-MM`, in UTC. Default: this month.",
+          }),
+        ),
       },
       risk: "read",
       permission: "ci:read",

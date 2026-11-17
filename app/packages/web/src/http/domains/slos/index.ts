@@ -22,7 +22,7 @@ import {
 import {
   getSloHourlyBuckets,
   listResourceMetricSeries,
-} from "@infrawrench/server-core/clickhouse/slo-readers";
+} from "@infrawrench/server-core/analytics/slo-readers";
 import {
   SloInputError,
   createSloRecord,

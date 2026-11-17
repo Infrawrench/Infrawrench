@@ -3,7 +3,7 @@
  * and credential-export operations as agent-callable tools. Wraps the same
  * services that back `/api/...` routes used by the React UI.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import { sqlDrivers, kvDrivers, dockerDrivers } from "../services/drivers";
 import { rewriteConnectionForTunnel } from "../services/tunnel-resolver";
 import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
@@ -119,12 +119,12 @@ export function connectionTools(): ToolDefinition[] {
         "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
         "(see list_resource_sidecars).",
       inputSchema: {
-        accountId: z.string(),
-        sql: z.string(),
-        resourceId: z.string().optional(),
-        resourceTypeId: z.string().optional(),
-        pluginId: z.string().optional(),
-        parentResourceId: z.string().optional(),
+        accountId: Schema.String,
+        sql: Schema.String,
+        resourceId: Schema.optionalKey(Schema.String),
+        resourceTypeId: Schema.optionalKey(Schema.String),
+        pluginId: Schema.optionalKey(Schema.String),
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "read",
       openWorld: true,
@@ -180,13 +180,13 @@ export function connectionTools(): ToolDefinition[] {
         "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
         "(see list_resource_sidecars).",
       inputSchema: {
-        accountId: z.string(),
-        sql: z.string(),
-        params: z.array(z.unknown()).optional(),
-        resourceId: z.string().optional(),
-        resourceTypeId: z.string().optional(),
-        pluginId: z.string().optional(),
-        parentResourceId: z.string().optional(),
+        accountId: Schema.String,
+        sql: Schema.String,
+        params: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+        resourceId: Schema.optionalKey(Schema.String),
+        resourceTypeId: Schema.optionalKey(Schema.String),
+        pluginId: Schema.optionalKey(Schema.String),
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "destructive",
       openWorld: true,
@@ -270,10 +270,10 @@ export function connectionTools(): ToolDefinition[] {
         "databases, …), pass `pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database " +
         "resource id (see list_resource_sidecars).",
       inputSchema: {
-        accountId: z.string(),
-        resourceId: z.string().optional(),
-        pluginId: z.string().optional(),
-        parentResourceId: z.string().optional(),
+        accountId: Schema.String,
+        resourceId: Schema.optionalKey(Schema.String),
+        pluginId: Schema.optionalKey(Schema.String),
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "read",
       openWorld: true,
@@ -311,11 +311,11 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Run a Redis/Memcached/MongoDB-style command via the plugin's KV driver. Pass the command verb (e.g. GET, SET, HGETALL) and args. Audit-logged for write commands.",
       inputSchema: {
-        accountId: z.string(),
-        command: z.string(),
-        args: z.array(z.union([z.string(), z.number()])),
-        pluginId: z.string().optional(),
-        parentResourceId: z.string().optional(),
+        accountId: Schema.String,
+        command: Schema.String,
+        args: Schema.Array(Schema.Union([Schema.String, Schema.Finite])),
+        pluginId: Schema.optionalKey(Schema.String),
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "destructive",
       openWorld: true,
@@ -362,9 +362,9 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Run a Docker operation (containers.list, container.start, container.stop, container.restart, container.logs, etc.) via the Docker driver. Audit-logged.",
       inputSchema: {
-        accountId: z.string(),
-        op: z.string(),
-        params: z.record(z.string(), z.unknown()).optional(),
+        accountId: Schema.String,
+        op: Schema.String,
+        params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
       },
       risk: "destructive",
       openWorld: true,
@@ -409,18 +409,24 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Execute a single command on a remote host via SSH. Returns stdout. For plugins that natively expose SSH (Fly machines, Hetzner servers), the plugin's getSshConfig is used and no key id is needed. Otherwise pass sshKeyId (see list_ssh_keys) + sshHost + sshUsername. The host's key must be trusted first (see trust_ssh_host and https://infrawrench.com/docs/team-and-billing/ssh-host-keys/); the command runs as `ssh` would run it (https://man.openbsd.org/ssh.1). Audit-logged.",
       inputSchema: {
-        accountId: z
-          .string()
-          .describe("Connected account the host belongs to (see list_accounts)."),
-        command: z.string().describe("One shell command, run by the remote user's login shell."),
-        sshKeyId: z
-          .string()
-          .optional()
-          .describe(
-            "Organization SSH key id (see list_ssh_keys). Omit for plugins with native SSH.",
-          ),
-        sshHost: z.string().optional().describe("Hostname or IP, when using sshKeyId."),
-        sshUsername: z.string().optional().describe("Remote user, when using sshKeyId."),
+        accountId: Schema.String.annotate({
+          description: "Connected account the host belongs to (see list_accounts).",
+        }),
+        command: Schema.String.annotate({
+          description: "One shell command, run by the remote user's login shell.",
+        }),
+        sshKeyId: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Organization SSH key id (see list_ssh_keys). Omit for plugins with native SSH.",
+          }),
+        ),
+        sshHost: Schema.optionalKey(
+          Schema.String.annotate({ description: "Hostname or IP, when using sshKeyId." }),
+        ),
+        sshUsername: Schema.optionalKey(
+          Schema.String.annotate({ description: "Remote user, when using sshKeyId." }),
+        ),
       },
       risk: "destructive",
       openWorld: true,
@@ -515,9 +521,9 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "List objects in a cloud storage bucket at a given prefix (S3, GCS, R2, Azure Blob, etc.).",
       inputSchema: {
-        accountId: z.string(),
-        bucket: z.string(),
-        prefix: z.string(),
+        accountId: Schema.String,
+        bucket: Schema.String,
+        prefix: Schema.String,
       },
       risk: "read",
       openWorld: true,
@@ -541,9 +547,9 @@ export function connectionTools(): ToolDefinition[] {
       title: "Create storage folder",
       description: "Create a folder/prefix in a cloud storage bucket.",
       inputSchema: {
-        accountId: z.string(),
-        bucket: z.string(),
-        key: z.string(),
+        accountId: Schema.String,
+        bucket: Schema.String,
+        key: Schema.String,
       },
       risk: "write",
       openWorld: true,
@@ -576,9 +582,9 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Permanently delete an object (or folder prefix) from a cloud storage bucket. Audit-logged.",
       inputSchema: {
-        accountId: z.string(),
-        bucket: z.string(),
-        key: z.string(),
+        accountId: Schema.String,
+        bucket: Schema.String,
+        key: Schema.String,
       },
       risk: "destructive",
       openWorld: true,
@@ -611,11 +617,11 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "List the versions of a versioned-secret resource (GCP Secret Manager, etc.). Returns id, state, createdAt per version.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        resourceId: z.string(),
-        parentResourceId: z.string().optional(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        resourceId: Schema.String,
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "read",
       openWorld: true,
@@ -647,12 +653,12 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Return the plaintext value of a specific secret version. Audit-logged as a reveal; handle with care, do NOT echo back the value verbatim in chat unless the user asks.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        resourceId: z.string(),
-        versionId: z.string(),
-        parentResourceId: z.string().optional(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        resourceId: Schema.String,
+        versionId: Schema.String,
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "destructive",
       openWorld: true,
@@ -699,12 +705,12 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Add a new version (rotation) to a versioned-secret resource. Returns the new version id. Audit-logged.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        resourceId: z.string(),
-        value: z.string(),
-        parentResourceId: z.string().optional(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        resourceId: Schema.String,
+        value: Schema.String,
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       // A new version becomes the secret's active value: every consumer that
       // reads "latest" picks it up, so a bad rotation is a production outage.
@@ -753,13 +759,13 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Enable, disable, or destroy a specific secret version. Destroy is irreversible. Audit-logged.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        resourceId: z.string(),
-        versionId: z.string(),
-        action: z.enum(["enable", "disable", "destroy"]),
-        parentResourceId: z.string().optional(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        resourceId: Schema.String,
+        versionId: Schema.String,
+        action: Schema.Literals(["enable", "disable", "destroy"]),
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "destructive",
       openWorld: true,
@@ -816,12 +822,12 @@ export function connectionTools(): ToolDefinition[] {
       description:
         "Generate a downloadable credential (IAM access key, service-account JSON, storage connection string, etc.) for a resource. The secret is shown ONCE. Audit-logged.",
       inputSchema: {
-        pluginId: z.string(),
-        accountId: z.string(),
-        resourceTypeId: z.string(),
-        resourceId: z.string(),
-        formatId: z.string(),
-        parentResourceId: z.string().optional(),
+        pluginId: Schema.String,
+        accountId: Schema.String,
+        resourceTypeId: Schema.String,
+        resourceId: Schema.String,
+        formatId: Schema.String,
+        parentResourceId: Schema.optionalKey(Schema.String),
       },
       risk: "destructive",
       openWorld: true,

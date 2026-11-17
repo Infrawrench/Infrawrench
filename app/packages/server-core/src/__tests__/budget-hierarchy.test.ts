@@ -17,7 +17,7 @@ vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 
 const queryCosts = vi.fn();
 const queryUsageDaily = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, queryUsageDaily }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts, queryUsageDaily }));
 
 // A budget's owner (`visibility_user_id`) resolves to a restricted scope; null
 // to the whole org. The scope's contents do not matter here, only that the

@@ -29,7 +29,7 @@ process.env["DATABASE_URL"] ??= "postgres://test:test@localhost:5432/test";
 
 const mockQueryCosts = vi.fn();
 const mockQueryUsage = vi.fn(async () => [] as Array<{ day: string; value: number }>);
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   queryUsageQuantities: (...args: unknown[]) => mockQueryUsage(...(args as [])),
   getCostUsageUnitSummaries: vi.fn(async () => []),
@@ -173,7 +173,7 @@ describe("runUnitCostQuery — the numerator's scope", () => {
     expect(mockQueryCosts).not.toHaveBeenCalled();
   });
 
-  it("never asks ClickHouse to group — a per-group ratio has no denominator", async () => {
+  it("never asks the cost reader to group: a per-group ratio has no denominator", async () => {
     await runUnitCostQuery("org1", "active-customers", request);
     expect(mockQueryCosts.mock.calls[0]?.[1].groupBy).toBe("none");
   });

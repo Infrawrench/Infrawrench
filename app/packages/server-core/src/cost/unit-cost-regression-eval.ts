@@ -5,7 +5,7 @@
  *
  * The arithmetic lives in `unit-cost-regression.ts` (pure, exhaustively
  * tested: the gap rules, the history minimum, the thresholds); this module
- * reads the numerator from ClickHouse and the denominator from Postgres,
+ * reads the numerator from `cost_daily`, the denominator from the metric values,
  * converts what the org holds rates for, persists what fired, and notifies
  * through the alert routing layer under the `unitCostRegressionAlerts`
  * trigger. **Nothing here talks to a transport**: routing rules, quiet hours
@@ -42,7 +42,7 @@ import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { businessMetrics, unitCostRegressionEvents } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "./anomaly-detect";
 import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";
@@ -84,7 +84,7 @@ const COOLDOWN_DAYS = 14;
 /**
  * Most metrics evaluated per org per pass.
  *
- * Each metric costs one ClickHouse read and one Postgres range read, and an
+ * Each metric costs one `cost_daily` read and one metric-value range read, and an
  * org may define many. The cap is generous enough that no real org hits it and
  * low enough that a pathological one cannot turn a cost collection into a
  * hundred round trips. Metrics are evaluated in creation order so the same

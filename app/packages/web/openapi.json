@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.115.0",
+    "version": "1.116.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -77770,10 +77770,8 @@
           "model": {
             "type": "string",
             "enum": [
-              "gemini-3.7-flash",
-              "claude-sonnet-5",
-              "claude-opus-5",
-              "claude-haiku-4-5"
+              "claude-sonnet-5-5",
+              "claude-opus-5-5"
             ],
             "description": "The model the next turn runs on. Required."
           }
@@ -77805,10 +77803,8 @@
           "model": {
             "type": "string",
             "enum": [
-              "gemini-3.7-flash",
-              "claude-sonnet-5",
-              "claude-opus-5",
-              "claude-haiku-4-5"
+              "claude-sonnet-5-5",
+              "claude-opus-5-5"
             ],
             "description": "The model the conversation runs on. Omitted: the cheapest model."
           },

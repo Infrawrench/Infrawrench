@@ -1,7 +1,7 @@
 // Defense-in-depth guards for LocalDbSelect / LocalDbExecute (local-database.ts).
 // A compromised renderer can still reach any user-owned table: the surface is
 // narrowed, not removed.
-import { z } from "zod";
+import { Schema } from "effect";
 
 export const MAX_SQL_BYTES = 16 * 1024;
 export const MAX_PARAMS = 256;
@@ -14,13 +14,16 @@ const BANNED_LEADING_KEYWORDS = new Set(["ATTACH", "DETACH", "PRAGMA", "VACUUM",
 // Mutations to these tables emit an audit-log entry.
 const AUDIT_TABLES = new Set(["accounts", "ssh_keys", "ssh_tunnel_configs", "cloud_sync_state"]);
 
-const ParamSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-  z.instanceof(Uint8Array),
-]);
+// A number that is not NaN (infinities bind as REAL); text, booleans, NULL, and BLOBs.
+const isParam = Schema.is(
+  Schema.Union([
+    Schema.String,
+    Schema.Number.check(Schema.makeFilter((n: number) => !Number.isNaN(n))),
+    Schema.Boolean,
+    Schema.Null,
+    Schema.Uint8Array,
+  ]),
+);
 
 // Skips whitespace, `-- line` comments, and `/* block */` comments.
 function skipLeadingWhitespaceAndComments(sql: string, from: number): number {
@@ -163,8 +166,7 @@ export function validateParams(params: unknown[] | undefined): unknown[] {
   }
   for (let i = 0; i < arr.length; i++) {
     const v = arr[i];
-    const result = ParamSchema.safeParse(v);
-    if (!result.success) {
+    if (!isParam(v)) {
       throw new Error(`db guard: params[${i}] has unsupported type`);
     }
   }

@@ -44,20 +44,32 @@ const documentationOnly = (check: SchemaAST.Filter<string>) =>
   Schema.makeFilter<string>(() => true, check.annotations);
 
 /**
+ * An annotation on the sent side of a {@link normalized} string whose bounds
+ * hold only once it is normalised by more than a trim (lower- or upper-cased):
+ * `Active-Customers` is a valid metric key as sent, though the documented
+ * slug pattern refuses it. Something that validates the raw value against the
+ * document, as an MCP client does with a tool's input schema, leaves those
+ * bounds out where it finds this. It is not a JSON Schema keyword, so a
+ * generator only writes it when asked (`includeAnnotationKey`).
+ */
+export const NORMALIZED_BEFORE_CHECKS = "x-infrawrench-normalized-before-checks";
+
+/**
  * A string normalised before it is checked: zod's `z.string().trim().min(1)`
  * and `z.string().transform(f).pipe(z.string().regex(...))`. The checks hold
  * on the normalised value, exactly as zod's did, so `"  ab  "` passes a
  * three-character maximum. A request schema is documented by what is sent,
  * so the same bounds are also stated there by checks that never fail;
  * `annotations` (description, examples) go there too, which is the side the
- * spec shows.
+ * spec shows. Those stated bounds carry {@link NORMALIZED_BEFORE_CHECKS},
+ * except on {@link trimmed}, whose bounds a padded value can only exceed.
  */
 type StringChecks = readonly [SchemaAST.Filter<string>, ...Array<SchemaAST.Filter<string>>];
 
-export const normalized = (
+const normalizedString = (
   normalize: (value: string) => string,
   checks: StringChecks,
-  annotations: Schema.Annotations.Documentation<string> = {},
+  annotations: Schema.Annotations.Documentation<string>,
 ) => {
   const [first, ...rest] = checks;
   return Schema.String.check(documentationOnly(first), ...rest.map(documentationOnly))
@@ -70,8 +82,14 @@ export const normalized = (
     );
 };
 
+export const normalized = (
+  normalize: (value: string) => string,
+  checks: StringChecks,
+  annotations: Schema.Annotations.Documentation<string> = {},
+) => normalizedString(normalize, checks, { ...annotations, [NORMALIZED_BEFORE_CHECKS]: true });
+
 /** zod's `z.string().trim()` followed by `checks`. */
 export const trimmed = (
   checks: StringChecks,
-  annotations?: Schema.Annotations.Documentation<string>,
-) => normalized((value) => value.trim(), checks, annotations);
+  annotations: Schema.Annotations.Documentation<string> = {},
+) => normalizedString((value) => value.trim(), checks, annotations);

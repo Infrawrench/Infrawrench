@@ -7,7 +7,7 @@
  * not the price catalog. `permission: null` mirrors those routes, which
  * document no permission: any authenticated caller, no scope.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import { MAX_QUERY_ROWS } from "@infrawrench/server-core/aws-pricing-warehouse/query";
 import {
   InstancePricingNotConfiguredError,
@@ -63,18 +63,16 @@ export function instancePricingTools(): ToolDefinition[] {
         "fresh each source is. Not the organization's spend (query_costs) and not the price " +
         "catalog (search_price_catalog).",
       inputSchema: {
-        sql: z
-          .string()
-          .describe(
+        sql: Schema.String.annotate({
+          description:
             "One SELECT, WITH, DESCRIBE, SHOW or EXPLAIN statement. No FORMAT, SETTINGS or second statement.",
-          ),
-        maxRows: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_QUERY_ROWS)
-          .optional()
-          .describe("Most rows to return. Default 1000, at most 10000."),
+        }),
+        maxRows: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(MAX_QUERY_ROWS),
+          ).annotate({ description: "Most rows to return. Default 1000, at most 10000." }),
+        ),
       },
       risk: "read",
       permission: null,

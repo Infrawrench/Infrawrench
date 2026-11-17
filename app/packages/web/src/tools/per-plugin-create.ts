@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from "zod";
+import { Schema } from "effect";
 import { holdSecretWrites, setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { logAudit } from "../services/audit";
@@ -13,58 +13,59 @@ function safeName(input: string): string {
   return input.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function scalarFor(f: FieldDefinition): ZodTypeAny {
+function scalarFor(f: FieldDefinition): Schema.Top {
   switch (f.kind) {
     case "number":
-      return z.union([z.number(), z.string()]);
+      return Schema.Union([Schema.Finite, Schema.String]);
     case "boolean":
-      return z.union([z.boolean(), z.string()]);
+      return Schema.Union([Schema.Boolean, Schema.String]);
     case "enum":
       if (f.enumValues && f.enumValues.length > 0) {
-        return z.enum(f.enumValues as [string, ...string[]]);
+        return Schema.Literals(f.enumValues);
       }
-      return z.string();
+      return Schema.String;
     case "secret":
     case "association":
     case "string":
     default:
-      return z.string();
+      return Schema.String;
   }
 }
 
-function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTypeAny> {
-  const shape: Record<string, ZodTypeAny> = {
-    accountId: z.string().describe("Connected account id (see list_accounts)"),
-    parentResourceId: z
-      .string()
-      .optional()
-      .describe(
-        "For sidecar plugins (e.g. creating a kubernetes resource inside a managed cluster): " +
+function inputSchemaForType(type: ResourceTypeDefinition): Record<string, Schema.Top> {
+  const shape: Record<string, Schema.Top> = {
+    accountId: Schema.String.annotate({ description: "Connected account id (see list_accounts)" }),
+    parentResourceId: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "For sidecar plugins (e.g. creating a kubernetes resource inside a managed cluster): " +
           "the parent resource id providing credentials; see list_resource_sidecars",
-      ),
+      }),
+    ),
   };
   for (const f of type.fields) {
-    let leaf: ZodTypeAny = scalarFor(f);
-    if (f.description) leaf = leaf.describe(f.description);
-    if (!f.required) leaf = leaf.optional();
-    shape[f.key] = leaf;
+    const scalar = scalarFor(f);
+    const leaf = f.description ? scalar.annotate({ description: f.description }) : scalar;
+    shape[f.key] = f.required ? leaf : Schema.optionalKey(leaf);
   }
   // VM-style types that install an SSH key at create time (agentVm declares
   // which field carries it) additionally accept a stored org key by id.
   const sshKeyFieldKey = type.agentVm?.sshKeyFieldKey;
   if (sshKeyFieldKey) {
-    shape["sshKeyId"] = z
-      .string()
-      .optional()
-      .describe(
-        "Stored org SSH key id (see list_ssh_keys); its public key is installed on the " +
+    shape["sshKeyId"] = Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Stored org SSH key id (see list_ssh_keys); its public key is installed on the " +
           `machine for SSH access. Alternative to ${sshKeyFieldKey}.`,
-      );
+      }),
+    );
     if (!shape[sshKeyFieldKey]) {
-      shape[sshKeyFieldKey] = z
-        .string()
-        .optional()
-        .describe("OpenSSH public key text to install for SSH access (alternative to sshKeyId)");
+      shape[sshKeyFieldKey] = Schema.optionalKey(
+        Schema.String.annotate({
+          description:
+            "OpenSSH public key text to install for SSH access (alternative to sshKeyId)",
+        }),
+      );
     }
   }
   return shape;

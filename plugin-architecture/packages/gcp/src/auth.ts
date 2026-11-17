@@ -1,23 +1,28 @@
 import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
-import { z } from "zod";
+import { Schema } from "effect";
 
-export const serviceAccountKeySchema = z.object({
-  type: z.string(),
-  project_id: z.string(),
-  private_key_id: z.string(),
-  private_key: z.string(),
-  client_email: z.string(),
-  client_id: z.string(),
-  auth_uri: z.string(),
-  token_uri: z.string(),
+export const serviceAccountKeySchema = Schema.Struct({
+  type: Schema.String,
+  project_id: Schema.String,
+  private_key_id: Schema.String,
+  private_key: Schema.String,
+  client_email: Schema.String,
+  client_id: Schema.String,
+  auth_uri: Schema.String,
+  token_uri: Schema.String,
 });
 
-export type ServiceAccountKey = z.infer<typeof serviceAccountKeySchema>;
+export type ServiceAccountKey = typeof serviceAccountKeySchema.Type;
 
-const accessTokenResponseSchema = z.object({
-  access_token: z.string(),
-  expires_in: z.number().optional(),
-});
+/** A service-account key file's JSON, checked for the fields the token exchange signs with. */
+export const decodeServiceAccountKey = Schema.decodeUnknownSync(serviceAccountKeySchema);
+
+const decodeAccessTokenResponse = Schema.decodeUnknownSync(
+  Schema.Struct({
+    access_token: Schema.String,
+    expires_in: Schema.optionalKey(Schema.Finite),
+  }),
+);
 
 const GCP_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
@@ -111,7 +116,7 @@ export async function fetchAccessTokenRaw(
   if (!res.ok) {
     throw new Error(`GCP auth error ${res.status}: ${await res.text()}`);
   }
-  const data = accessTokenResponseSchema.parse(await res.json());
+  const data = decodeAccessTokenResponse(await res.json());
   return { token: data.access_token, expiresInSec: data.expires_in ?? 3600 };
 }
 

@@ -74,7 +74,7 @@ export interface SyntheticProbe {
   lastStateChangeAt: string | null;
   /**
    * Fraction of the trailing 24h the endpoint was up (0–1), computed from the
-   * recorded "Up" series; null before the first result lands in ClickHouse.
+   * recorded "Up" series; null before the first result is recorded.
    */
   uptime24h: number | null;
   createdAt: string;

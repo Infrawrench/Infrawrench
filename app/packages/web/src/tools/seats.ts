@@ -4,7 +4,7 @@
  * `POST /seats/{seatId}/remove` route, where the change freeze and the audit
  * row live.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import type { SeatFindingKind } from "@infrawrench/client-core";
 import { listSeats } from "@infrawrench/server-core/seats/feed";
 import { ok, type ToolDefinition } from "./types";
@@ -23,14 +23,16 @@ export function seatTools(): ToolDefinition[] {
         "with its last activity and `activityBasis` (how activity was determined; `none` is " +
         "never flagged). `savingsMonthly` totals the findings.",
       inputSchema: {
-        kind: z
-          .enum(["inactive", "duplicate", "downgrade"])
-          .optional()
-          .describe("Only return findings of this kind."),
-        includeAllSeats: z
-          .boolean()
-          .optional()
-          .describe("Return every seat, not only the ones a finding is about."),
+        kind: Schema.optionalKey(
+          Schema.Literals(["inactive", "duplicate", "downgrade"]).annotate({
+            description: "Only return findings of this kind.",
+          }),
+        ),
+        includeAllSeats: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: "Return every seat, not only the ones a finding is about.",
+          }),
+        ),
       },
       risk: "read",
       // Mirrors `GET /seats`.

@@ -14,8 +14,7 @@ const hashTags = vi.fn(
   (tags: Record<string, string> | undefined, extras?: { chargeType?: string }) =>
     `${JSON.stringify(tags ?? {})}|${extras?.chargeType ?? "usage"}`,
 );
-vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured: () => true }));
+vi.mock("../analytics/cost-writers", () => ({ insertCostRows, hashTags }));
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 

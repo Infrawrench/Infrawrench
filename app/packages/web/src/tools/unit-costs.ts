@@ -10,13 +10,16 @@
  * as a zero, and treating an average of daily ratios as a period ratio) and a
  * model summarising this data will happily do either unless told not to.
  */
-import { z } from "zod";
-
+import { Schema } from "effect";
 import {
-  businessMetricImporterInputSchema,
-  businessMetricInputSchema,
-  unitCostQueryRequestSchema,
-} from "@infrawrench/ui/cost/config";
+  BusinessMetricImporterInput,
+  BusinessMetricInput,
+  IsoDate,
+  UnitCostQueryRequest,
+  maxLength,
+} from "@infrawrench/api-contract/schemas";
+
+import {} from "@infrawrench/ui/cost/config";
 import {
   BUSINESS_METRIC_IMPORT_AGGREGATIONS,
   BUSINESS_METRIC_IMPORT_SCHEDULES,
@@ -59,8 +62,9 @@ import {
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const isoDay = IsoDate;
 
 /** Map the shared service errors onto tool results. */
 function toolError(e: unknown) {
@@ -81,12 +85,11 @@ async function denyUnlessImporterWrite(auth: Parameters<typeof denyUnlessPermitt
   );
 }
 
-const sourceParams = z
-  .record(z.string(), z.string())
-  .describe(
+const sourceParams = Schema.Record(Schema.String, Schema.String).annotate({
+  description:
     "The source's form values, keyed by the field keys `list_business_metric_sources` returns. " +
-      "Fill `select` fields from `list_business_metric_source_options`, never by guessing ids.",
-  );
+    "Fill `select` fields from `list_business_metric_source_options`, never by guessing ids.",
+});
 
 export function unitCostTools(): ToolDefinition[] {
   return [
@@ -120,14 +123,13 @@ export function unitCostTools(): ToolDefinition[] {
         "a missing day is not a zero, it is a day nobody reported, and it is why the matching " +
         "unit-cost bucket comes back as a gap.",
       inputSchema: {
-        metric: z.string().describe("Metric key or id."),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(BUSINESS_METRIC_LIMITS.maxValuesPageSize)
-          .optional()
-          .describe("Days to return, newest first. Default 90."),
+        metric: Schema.String.annotate({ description: "Metric key or id." }),
+        limit: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(BUSINESS_METRIC_LIMITS.maxValuesPageSize),
+          ).annotate({ description: "Days to return, newest first. Default 90." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -173,19 +175,20 @@ export function unitCostTools(): ToolDefinition[] {
         "be mapped to a cost dimension on the metric (see `list_business_metric_labels`), " +
         "otherwise the query is refused; an unmapped label has no per-value spend to divide.",
       inputSchema: {
-        metric: z
-          .string()
-          .optional()
-          .describe("Metric key or id. Omit only for `mode: usage_unit_cost`."),
-        ...unitCostQueryRequestSchema.shape,
+        metric: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Metric key or id. Omit only for `mode: usage_unit_cost`.",
+          }),
+        ),
+        ...UnitCostQueryRequest.fields,
       },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const parsed = unitCostQueryRequestSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid unit-cost query: ${parsed.error.message}`);
+        const parsed = decodeToolInput(UnitCostQueryRequest, input);
+        if (!parsed.success) return err(`Invalid unit-cost query: ${parsed.message}`);
         try {
           if (parsed.data.mode === "usage_unit_cost") {
             return ok(await runUsageUnitCostQuery(auth.organizationId, parsed.data));
@@ -206,7 +209,7 @@ export function unitCostTools(): ToolDefinition[] {
         "distinct values and its `mapping`: the cost dimension (tag, virtual tag, account, " +
         "service…, or cost centre) whose values the label names. Only a mapped label can split " +
         "or filter a unit cost or margin; any label can split the raw metric.",
-      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      inputSchema: { metric: Schema.String.annotate({ description: "Metric key or id." }) },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -243,14 +246,14 @@ export function unitCostTools(): ToolDefinition[] {
         "the metric divides; leave it empty for all spend, and remember a unit-cost query can " +
         "narrow it further but never widen it. Creating the metric does not populate it: values " +
         "arrive through `write_business_metric_values`, the API, or a workflow.",
-      inputSchema: businessMetricInputSchema.shape,
+      inputSchema: BusinessMetricInput.fields,
       risk: "write",
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = businessMetricInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid business metric: ${parsed.error.message}`);
+        const parsed = decodeToolInput(BusinessMetricInput, input);
+        if (!parsed.success) return err(`Invalid business metric: ${parsed.message}`);
         try {
           const created = await createBusinessMetric(auth.organizationId, parsed.data, auth.userId);
           void logAudit({
@@ -276,8 +279,8 @@ export function unitCostTools(): ToolDefinition[] {
         "old key. Changing `costScope` changes what every unit-cost chart using this metric " +
         "means, so say what the new scope is when reporting the change.",
       inputSchema: {
-        metricId: z.string().describe("Metric id or key."),
-        ...businessMetricInputSchema.shape,
+        metricId: Schema.String.annotate({ description: "Metric id or key." }),
+        ...BusinessMetricInput.fields,
       },
       risk: "write",
       overwrites: true,
@@ -285,8 +288,8 @@ export function unitCostTools(): ToolDefinition[] {
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = businessMetricInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid business metric: ${parsed.error.message}`);
+        const parsed = decodeToolInput(BusinessMetricInput, input);
+        if (!parsed.success) return err(`Invalid business metric: ${parsed.message}`);
         const existing = await getBusinessMetric(
           auth.organizationId,
           String(input["metricId"] ?? ""),
@@ -320,21 +323,19 @@ export function unitCostTools(): ToolDefinition[] {
         '`{"customer": "acme"}`) break a day down; the same day with the same labels restates, ' +
         "and a day's total is the sum of its rows, so send a breakdown or a total, never both.",
       inputSchema: {
-        metric: z.string().describe("Metric key or id."),
-        values: z
-          .array(
-            z.object({
-              date: isoDay,
-              value: z.number(),
-              label: z
-                .string()
-                .max(BUSINESS_METRIC_LIMITS.maxLabelValueLength)
-                .optional()
-                .describe("A single breakdown label, stored as the `label` key of `labels`."),
-              labels: z.record(z.string(), z.string()).optional(),
-            }),
-          )
-          .max(BUSINESS_METRIC_LIMITS.maxValuesPerCall),
+        metric: Schema.String.annotate({ description: "Metric key or id." }),
+        values: Schema.Array(
+          Schema.Struct({
+            date: isoDay,
+            value: Schema.Finite,
+            label: Schema.optionalKey(
+              Schema.String.check(maxLength(BUSINESS_METRIC_LIMITS.maxLabelValueLength)).annotate({
+                description: "A single breakdown label, stored as the `label` key of `labels`.",
+              }),
+            ),
+            labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+          }),
+        ).check(maxLength(BUSINESS_METRIC_LIMITS.maxValuesPerCall)),
       },
       risk: "write",
       overwrites: true,
@@ -383,7 +384,7 @@ export function unitCostTools(): ToolDefinition[] {
         "by it will show an error rather than quietly reverting to plain spend, which is " +
         "deliberate, because a chart that silently changed what it measures is worse than one " +
         "that says it is broken.",
-      inputSchema: { metricId: z.string().describe("Metric id or key.") },
+      inputSchema: { metricId: Schema.String.annotate({ description: "Metric id or key." }) },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {
@@ -432,9 +433,9 @@ export function unitCostTools(): ToolDefinition[] {
         "BigQuery dataset, a Snowflake warehouse), given the values picked so far. Calls the " +
         "provider with the account's credentials.",
       inputSchema: {
-        accountId: z.string(),
-        fieldKey: z.string(),
-        params: sourceParams.optional(),
+        accountId: Schema.String,
+        fieldKey: Schema.String,
+        params: Schema.optionalKey(sourceParams),
       },
       risk: "read",
       permission: "resources:execute",
@@ -465,13 +466,13 @@ export function unitCostTools(): ToolDefinition[] {
         "`{{to_exclusive}}` and `{{timezone}}` placeholders. `dryRun: true` validates the query " +
         "with the provider without reading data, where the source supports it.",
       inputSchema: {
-        accountId: z.string(),
+        accountId: Schema.String,
         params: sourceParams,
-        from: isoDay.optional(),
-        to: isoDay.optional(),
-        timezone: z.string().optional(),
-        aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
-        dryRun: z.boolean().optional(),
+        from: Schema.optionalKey(isoDay),
+        to: Schema.optionalKey(isoDay),
+        timezone: Schema.optionalKey(Schema.String),
+        aggregation: Schema.optionalKey(Schema.Literals(BUSINESS_METRIC_IMPORT_AGGREGATIONS)),
+        dryRun: Schema.optionalKey(Schema.Boolean),
       },
       risk: "read",
       permission: "resources:execute",
@@ -504,7 +505,7 @@ export function unitCostTools(): ToolDefinition[] {
         "window, timezone, aggregation, last status) plus its recent runs with their errors. " +
         "`importer` is null when the metric's values are only pushed. A failing importer means " +
         "the recent days are gaps, not zeros.",
-      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      inputSchema: { metric: Schema.String.annotate({ description: "Metric key or id." }) },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -527,14 +528,16 @@ export function unitCostTools(): ToolDefinition[] {
         "yesterday in `timezone`), replacing every label those days carried. Use " +
         "`preview_business_metric_import` first to check the query returns what you expect.",
       inputSchema: {
-        metric: z.string().describe("Metric key or id."),
-        accountId: z.string(),
+        metric: Schema.String.annotate({ description: "Metric key or id." }),
+        accountId: Schema.String,
         params: sourceParams,
-        schedule: z.enum(BUSINESS_METRIC_IMPORT_SCHEDULES).optional(),
-        backfillDays: z.number().int().min(1).max(730).optional(),
-        timezone: z.string().optional(),
-        aggregation: z.enum(BUSINESS_METRIC_IMPORT_AGGREGATIONS).optional(),
-        enabled: z.boolean().optional(),
+        schedule: Schema.optionalKey(Schema.Literals(BUSINESS_METRIC_IMPORT_SCHEDULES)),
+        backfillDays: Schema.optionalKey(
+          Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(730)),
+        ),
+        timezone: Schema.optionalKey(Schema.String),
+        aggregation: Schema.optionalKey(Schema.Literals(BUSINESS_METRIC_IMPORT_AGGREGATIONS)),
+        enabled: Schema.optionalKey(Schema.Boolean),
       },
       risk: "write",
       overwrites: true,
@@ -545,8 +548,8 @@ export function unitCostTools(): ToolDefinition[] {
         const metric = await getBusinessMetric(auth.organizationId, String(input["metric"] ?? ""));
         if (!metric) return err(`No business metric "${String(input["metric"])}".`);
         const { metric: _metric, ...rest } = input;
-        const parsed = businessMetricImporterInputSchema.safeParse(rest);
-        if (!parsed.success) return err(parsed.error.issues.map((i) => i.message).join("; "));
+        const parsed = decodeToolInput(BusinessMetricImporterInput, rest);
+        if (!parsed.success) return err(parsed.message);
         try {
           const importer = await upsertBusinessMetricImporter(
             auth.organizationId,
@@ -580,9 +583,9 @@ export function unitCostTools(): ToolDefinition[] {
         "Run the importer now and return the finished run (status, days written, error). With no " +
         "`from`/`to` it reads the importer's own window; give them to backfill up to 730 days.",
       inputSchema: {
-        metric: z.string().describe("Metric key or id."),
-        from: isoDay.optional(),
-        to: isoDay.optional(),
+        metric: Schema.String.annotate({ description: "Metric key or id." }),
+        from: Schema.optionalKey(isoDay),
+        to: Schema.optionalKey(isoDay),
       },
       risk: "write",
       overwrites: true,
@@ -627,7 +630,7 @@ export function unitCostTools(): ToolDefinition[] {
       description:
         "Stop importing a metric and drop its run history. Values already imported stay; new days " +
         "will be gaps unless something else reports them.",
-      inputSchema: { metric: z.string().describe("Metric key or id.") },
+      inputSchema: { metric: Schema.String.annotate({ description: "Metric key or id." }) },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {

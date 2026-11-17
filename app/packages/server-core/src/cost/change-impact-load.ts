@@ -16,7 +16,7 @@
  * mirrored every collector's restatement horizon: a rule that is wrong the
  * moment a plugin changes its own. Recomputing on read makes "the number
  * updates as data arrives" a property of the design rather than a background
- * job that must not fail. The cost is two ClickHouse reads per request, both
+ * job that must not fail. The cost is two `cost_daily` reads per request, both
  * of which are the same range-scans the cost graphs already do.
  *
  * It lives in `server-core` rather than `web` because the weekly digest runs in
@@ -26,7 +26,7 @@
 import type { ChangeCostImpact, ChangeCostImpactEntry, CostBasis } from "@infrawrench/client-core";
 import { clampChangeImpactWindowDays, MAX_CHANGE_IMPACT_BATCH } from "@infrawrench/client-core";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
-import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
+import { getCostCoverage, queryCosts } from "../analytics/cost-readers";
 import { db } from "../db/client";
 import { resourceChanges, resources } from "../db/schema";
 import { getPlugin } from "../plugin-loader";

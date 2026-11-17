@@ -11,9 +11,9 @@
  * Permissions mirror the HTTP routes exactly: reads are `costs:read`, writes
  * are `costs:write`, and every mutation is audit-logged.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { CostAlertInput } from "@infrawrench/api-contract/schemas";
 
-import { costAlertInputSchema } from "@infrawrench/ui/cost/config";
 import {
   CostAlertLimitError,
   createCostAlert,
@@ -29,6 +29,7 @@ import {
 } from "@infrawrench/server-core/alerts/email";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 export function costAlertTools(): ToolDefinition[] {
   return [
@@ -78,8 +79,10 @@ export function costAlertTools(): ToolDefinition[] {
         "amounts with the percent change (null percent means new spend with no prior baseline). " +
         "Pass alertId to scope to one alert.",
       inputSchema: {
-        alertId: z.string().optional(),
-        limit: z.number().int().min(1).max(200).optional(),
+        alertId: Schema.optionalKey(Schema.String),
+        limit: Schema.optionalKey(
+          Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(200)),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -106,14 +109,14 @@ export function costAlertTools(): ToolDefinition[] {
         "`thresholdPercent`, `thresholdAmountCents`, or both; when both are set BOTH must " +
         "hold, which is how a 50% jump on $2 of spend stays quiet. `groupBy` watches each " +
         "group (e.g. each service) separately instead of one total. Audit-logged.",
-      inputSchema: costAlertInputSchema.innerType().innerType().shape,
+      inputSchema: CostAlertInput.fields,
       risk: "write",
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = costAlertInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid cost alert: ${parsed.error.message}`);
+        const parsed = decodeToolInput(CostAlertInput, input);
+        if (!parsed.success) return err(`Invalid cost alert: ${parsed.message}`);
         let created;
         try {
           created = await createCostAlert(auth.organizationId, parsed.data, auth.userId);
@@ -141,7 +144,7 @@ export function costAlertTools(): ToolDefinition[] {
         "Delete a change-based cost alert (soft delete). Its fired events leave the org-wide " +
         "event feed with it. Audit-logged. The chat surface confirms with the user before " +
         "invoking.",
-      inputSchema: { alertId: z.string() },
+      inputSchema: { alertId: Schema.String },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {

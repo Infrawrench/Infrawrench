@@ -9,16 +9,16 @@
  * maps Postgres rows onto its input. No plugin clients, no credentials, no
  * provider API calls, ever.
  *
- * The one thing it reaches outside Postgres for is billing: orphaned backups
+ * The one thing it reads beyond synced state is billing: orphaned backups
  * are pure spend, and a number is what makes anyone delete them. That read is
- * best-effort: ClickHouse being unreachable leaves every cost null, never
+ * best-effort: a failed cost read leaves every cost null, never
  * zero, and the coverage itself is unaffected (the `schedules/feed.ts` rule).
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { computeBackupCoverage, type BackupCoverageResponse } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
-import { getResourceCostTotals } from "../clickhouse/cost-readers";
+import { getResourceCostTotals } from "../analytics/cost-readers";
 import { addDays, isoDay } from "../cost/dates";
 import { loadPlugins } from "../plugin-loader";
 import { listBackupPolicies } from "./store";
@@ -31,15 +31,15 @@ export interface ListBackupCoverageOptions {
   now?: number;
   /**
    * Skip the billing join. The digest takes this: it needs the risk counts,
-   * not a spend quote, and a ClickHouse round trip per org per week to
+   * not a spend quote, and a cost query per org per week to
    * populate a number nobody reads is not worth the latency.
    */
   skipCosts?: boolean;
 }
 
 /**
- * Trailing-window spend per `"<accountId> <externalId>"`. Null when ClickHouse
- * is unreachable or unconfigured: the same shape and the same failure stance
+ * Trailing-window spend per `"<accountId> <externalId>"`. Null when the cost
+ * read fails: the same shape and the same failure stance
  * as the schedules preview quote.
  */
 async function loadCostTotals(
@@ -47,8 +47,8 @@ async function loadCostTotals(
 ): Promise<Map<string, { amount: number; currency: string | null }> | null> {
   const to = isoDay(new Date());
   const from = addDays(to, -(BACKUP_COST_WINDOW_DAYS - 1));
-  // Only the ClickHouse read is allowed to fail; a bug in the merge below must
-  // throw, not read as "ClickHouse down".
+  // Only the cost read is allowed to fail; a bug in the merge below must
+  // throw, not read as "no billing data".
   let totals: Awaited<ReturnType<typeof getResourceCostTotals>>;
   try {
     totals = await getResourceCostTotals(organizationId, from, to);

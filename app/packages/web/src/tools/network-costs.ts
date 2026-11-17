@@ -3,7 +3,8 @@
  * report, through the same server-core reads the Costs panel uses, so an
  * agent's figure and the page's are the same figure.
  */
-import { z } from "zod";
+import { Schema } from "effect";
+import { maxLength, pattern } from "@infrawrench/api-contract/schemas";
 import { loadAccountStatuses } from "@infrawrench/server-core/network-flow/feed";
 import {
   getKubernetesNetworkReport,
@@ -36,19 +37,27 @@ export function networkCostTools(): ToolDefinition[] {
         "byte counter only, no destination: weakest). Always mention the method mix and " +
         "whether figures are estimated or allocated.",
       inputSchema: {
-        accountId: z
-          .string()
-          .optional()
-          .describe("Kubernetes account id. Omit to list the clusters available."),
-        from: z.string().regex(ISO_DAY).optional().describe("Inclusive start day, YYYY-MM-DD."),
-        to: z.string().regex(ISO_DAY).optional().describe("Inclusive end day, YYYY-MM-DD."),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(200)
-          .optional()
-          .describe("Top talker pairs to return. Defaults to 25."),
+        accountId: Schema.optionalKey(
+          Schema.String.annotate({
+            description: "Kubernetes account id. Omit to list the clusters available.",
+          }),
+        ),
+        from: Schema.optionalKey(
+          Schema.String.check(pattern(ISO_DAY)).annotate({
+            description: "Inclusive start day, YYYY-MM-DD.",
+          }),
+        ),
+        to: Schema.optionalKey(
+          Schema.String.check(pattern(ISO_DAY)).annotate({
+            description: "Inclusive end day, YYYY-MM-DD.",
+          }),
+        ),
+        limit: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(1),
+            Schema.isLessThanOrEqualTo(200),
+          ).annotate({ description: "Top talker pairs to return. Defaults to 25." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -97,12 +106,10 @@ export function networkCostTools(): ToolDefinition[] {
         "across the cluster's workloads instead of showing list prices. Pass null to clear. A " +
         "query that narrows nothing is refused.",
       inputSchema: {
-        accountId: z.string().describe("Kubernetes account id."),
-        billedQuery: z
-          .string()
-          .max(4000)
-          .nullable()
-          .describe("Cost query language text, or null to clear."),
+        accountId: Schema.String.annotate({ description: "Kubernetes account id." }),
+        billedQuery: Schema.NullOr(Schema.String.check(maxLength(4000))).annotate({
+          description: "Cost query language text, or null to clear.",
+        }),
       },
       risk: "write",
       overwrites: true,

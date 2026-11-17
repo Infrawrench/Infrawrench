@@ -9,8 +9,7 @@
     "test": "turbo test",
     "test:db": "turbo test:db",
     "test:postgres": "turbo test:postgres",
-    "test:clickhouse": "turbo test:clickhouse",
-    "test:clickhouse:shadow": "turbo test:clickhouse:shadow",
+    "test:analytics": "turbo test:analytics",
     "test:postgres:shadow": "turbo test:postgres:shadow",
     "lint": "turbo lint",
     "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
@@ -22,7 +21,6 @@
   "devDependencies": {
     "knip": "^6.32.0",
     "prettier": "^3.9.6",
-    "react-doctor": "^0.2.16",
     "turbo": "^2.10.9",
     "typescript": "catalog:",
     "unrun": "^0.3.1",

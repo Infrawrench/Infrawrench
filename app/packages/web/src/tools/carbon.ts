@@ -7,7 +7,7 @@
  * the same server-core reads the detail view uses, so an agent's figure and
  * the page's are the same figure.
  */
-import { z } from "zod";
+import { Schema } from "effect";
 import { and, eq, isNull } from "drizzle-orm";
 import { CARBON_LIMITS } from "@infrawrench/client-core";
 import { getCarbonEstimate, getResourceCarbon } from "@infrawrench/server-core/cost/carbon";
@@ -32,13 +32,12 @@ export function carbonTools(): ToolDefinition[] {
         "read as complete. Covers processors only: no storage, memory, network or embodied " +
         "emissions.",
       inputSchema: {
-        windowDays: z
-          .number()
-          .int()
-          .min(CARBON_LIMITS.minWindowDays)
-          .max(CARBON_LIMITS.maxWindowDays)
-          .optional()
-          .describe("Days the estimate covers. Defaults to 30."),
+        windowDays: Schema.optionalKey(
+          Schema.Int.check(
+            Schema.isGreaterThanOrEqualTo(CARBON_LIMITS.minWindowDays),
+            Schema.isLessThanOrEqualTo(CARBON_LIMITS.maxWindowDays),
+          ).annotate({ description: "Days the estimate covers. Defaults to 30." }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -63,11 +62,12 @@ export function carbonTools(): ToolDefinition[] {
         "the region or size cannot be placed (`carbon.reason` says which). `carbon.role` " +
         "'aggregate' means a cluster whose machines are counted in their own right.",
       inputSchema: {
-        resourceId: z.string().describe("Infrawrench resource id."),
-        fields: z
-          .record(z.string(), z.string())
-          .optional()
-          .describe("Proposed field values to price instead of the current ones."),
+        resourceId: Schema.String.annotate({ description: "Infrawrench resource id." }),
+        fields: Schema.optionalKey(
+          Schema.Record(Schema.String, Schema.String).annotate({
+            description: "Proposed field values to price instead of the current ones.",
+          }),
+        ),
       },
       risk: "read",
       permission: "resources:read",

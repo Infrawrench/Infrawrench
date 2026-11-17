@@ -4,8 +4,8 @@
  * see. Same permission split as the HTTP routes: the report is `costs:read`,
  * logging is `costs:write`.
  */
-import { z } from "zod";
-import { savingsEventInputSchema } from "@infrawrench/ui/cost/config";
+import { Schema } from "effect";
+import { SavingsEventInput, pattern } from "@infrawrench/api-contract/schemas";
 import {
   createManualSavingsEvent,
   SavingsEventError,
@@ -28,6 +28,7 @@ import { logAudit } from "../services/audit";
 import { listSavingsFindings } from "../services/savings-findings";
 import { denyUnlessPermitted, effectiveToolPermissions } from "./permissions";
 import { err, ok, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 /** Events returned to a model: the newest, so a long history cannot flood its context. */
 const MAX_TOOL_EVENTS = 100;
@@ -49,16 +50,21 @@ export function savingsTools(): ToolDefinition[] {
         "completed automatically (`resolution: resolved`). Purely a read; at most 200 findings, " +
         "largest saving first.",
       inputSchema: {
-        status: z
-          .enum(SAVINGS_FINDING_STATUS_FILTERS)
-          .optional()
-          .describe("`open` (default: ready or in progress), one status, or `all`."),
-        kind: z.enum(SAVINGS_FINDING_KINDS).optional().describe("Only one finder's findings."),
-        minMonthlySavings: z
-          .number()
-          .min(0)
-          .optional()
-          .describe("Only findings saving at least this much per month (own currency)."),
+        status: Schema.optionalKey(
+          Schema.Literals(SAVINGS_FINDING_STATUS_FILTERS).annotate({
+            description: "`open` (default: ready or in progress), one status, or `all`.",
+          }),
+        ),
+        kind: Schema.optionalKey(
+          Schema.Literals(SAVINGS_FINDING_KINDS).annotate({
+            description: "Only one finder's findings.",
+          }),
+        ),
+        minMonthlySavings: Schema.optionalKey(
+          Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)).annotate({
+            description: "Only findings saving at least this much per month (own currency).",
+          }),
+        ),
       },
       risk: "read",
       permission: "resources:read",
@@ -105,16 +111,16 @@ export function savingsTools(): ToolDefinition[] {
         "status, and a `shortfall` when realized falls under the projection or spend grew back. " +
         "Defaults to the last 12 months. Purely a read.",
       inputSchema: {
-        from: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional()
-          .describe("Inclusive first day (YYYY-MM-DD). Defaults to 12 calendar months back."),
-        to: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional()
-          .describe("Inclusive last day (YYYY-MM-DD). Defaults to yesterday."),
+        from: Schema.optionalKey(
+          Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
+            description: "Inclusive first day (YYYY-MM-DD). Defaults to 12 calendar months back.",
+          }),
+        ),
+        to: Schema.optionalKey(
+          Schema.String.check(pattern(/^\d{4}-\d{2}-\d{2}$/)).annotate({
+            description: "Inclusive last day (YYYY-MM-DD). Defaults to yesterday.",
+          }),
+        ),
       },
       risk: "read",
       permission: "costs:read",
@@ -143,14 +149,14 @@ export function savingsTools(): ToolDefinition[] {
         "resource's billing instead of the logged amount. It accrues daily up to the org's " +
         "horizon (or `horizonMonths`), and leaves a note on cost charts at its start date. " +
         "Audit-logged.",
-      inputSchema: savingsEventInputSchema.shape,
+      inputSchema: SavingsEventInput.fields,
       risk: "write",
       permission: "costs:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:write");
         if (denied) return denied;
-        const parsed = savingsEventInputSchema.safeParse(input);
-        if (!parsed.success) return err(`Invalid saving: ${parsed.error.message}`);
+        const parsed = decodeToolInput(SavingsEventInput, input);
+        if (!parsed.success) return err(`Invalid saving: ${parsed.message}`);
         try {
           const created = await createManualSavingsEvent(
             auth.organizationId,

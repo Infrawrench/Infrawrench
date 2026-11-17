@@ -34,7 +34,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { statusPageComponents, statusPages, syntheticProbes } from "../db/schema";
-import { getMetricDailyAverageBatch, getMetricSeriesAverageBatch } from "../clickhouse/readers";
+import { getMetricDailyAverageBatch, getMetricSeriesAverageBatch } from "../analytics/readers";
 import { probeMetricResourceId } from "../probes/metric-ids";
 import { getPublicStatusNotices } from "./notices";
 
@@ -355,8 +355,8 @@ function utcDay(ms: number): string {
  * monitoring topology). A visitor learns what is up and what is not, which is
  * the entire promise of a status page.
  *
- * ClickHouse is best-effort, as everywhere else: an outage costs the uptime
- * numbers and the history, never the page. Current state comes from the probe
+ * The metric reads are best-effort, as everywhere else: a failure costs the
+ * uptime numbers and the history, never the page. Current state comes from the probe
  * rows in Postgres, so the important half survives.
  */
 export async function getPublicStatusPage(slug: string): Promise<PublicStatusPage | null> {
@@ -427,7 +427,7 @@ export async function getPublicStatusPage(slug: string): Promise<PublicStatusPag
   });
 
   const state = rollUpStatusPageState(publicComponents);
-  // Best-effort, exactly like the ClickHouse reads above: a notice query that
+  // Best-effort, exactly like the metric reads above: a notice query that
   // fails costs the sentence, never the page. During an incident this endpoint
   // is the one thing that must stay up.
   const notices = await getPublicStatusNotices(page.id, new Date(now)).catch(() => []);

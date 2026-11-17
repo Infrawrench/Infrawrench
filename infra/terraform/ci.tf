@@ -2,8 +2,8 @@
 # swaps it for a short-lived credential on the service account below — no JSON
 # key exists to leak or rotate. Only main-branch jobs in var.github_repository
 # that run under the var.github_deploy_environment GitHub environment can do it
-# (attribute_condition), and the account can do exactly two things: push to
-# the Artifact Registry repo, and talk to the cluster.
+# (attribute_condition), and the account can do one thing: push to the
+# Artifact Registry repo (and read it back, for the copies to OCIR and ECR).
 
 resource "google_service_account" "ci" {
   account_id   = "${var.cluster_name}-ci"
@@ -30,8 +30,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   # Without the repository check the provider would trust every repository on
   # GitHub. Without the ref and environment checks it would trust every branch
   # of this one: anyone who can push a branch could add a workflow that mints
-  # a token, and the CI account can read cluster Secrets and roll out any
-  # image. `ref` is set by GitHub from the triggering event, so a workflow file
+  # a token, and push any image the deploys then ship. `ref` is set by GitHub from the triggering event, so a workflow file
   # cannot forge it; `environment` is only present when the job declares one,
   # and the environment's deployment branch rule limits which refs may enter
   # it. A missing claim makes the expression error, which STS treats as a
@@ -58,12 +57,4 @@ resource "google_artifact_registry_repository_iam_member" "ci_push" {
   repository = google_artifact_registry_repository.prod.name
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:${google_service_account.ci.email}"
-}
-
-# container.developer is namespace-level Kubernetes access (apply manifests,
-# read rollout status) without the ability to reshape the cluster itself.
-resource "google_project_iam_member" "ci_cluster" {
-  project = var.project_id
-  role    = "roles/container.developer"
-  member  = "serviceAccount:${google_service_account.ci.email}"
 }

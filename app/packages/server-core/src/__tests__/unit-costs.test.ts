@@ -1,5 +1,5 @@
 /**
- * Exhaustive tests for the pure unit-cost layer. No database, no ClickHouse,
+ * Exhaustive tests for the pure unit-cost layer. No database,
  * no clock: every case is a function of its arguments, which is the whole
  * reason `cost/unit-costs.ts` holds no db import.
  *

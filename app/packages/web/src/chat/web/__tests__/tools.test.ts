@@ -30,14 +30,21 @@ import { validateFetchUrl } from "../fetch";
 import { computeSearchCostMicros } from "../../pricing";
 
 const ENV_KEYS = [
-  "GOOGLE_CLOUD_PROJECT",
   "ANTHROPIC_API_KEY",
-  "INFRAWRENCH_CHAT_SEARCH_BACKEND",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "AI_GATEWAY_ID",
+  "AI_GATEWAY_TOKEN",
   "WORKFLOW_FETCH_PROXY_URL",
   "WORKFLOW_FETCH_PROXY_TOKEN",
 ] as const;
 
 let saved: Record<string, string | undefined>;
+
+function configureGateway(): void {
+  process.env["CLOUDFLARE_ACCOUNT_ID"] = "acct";
+  process.env["AI_GATEWAY_ID"] = "app";
+  process.env["AI_GATEWAY_TOKEN"] = "tok";
+}
 
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -57,34 +64,22 @@ describe("searchBackend", () => {
     expect(isWebSearchConfigured()).toBe(false);
   });
 
-  it("prefers Vertex, the credential the default deployment already has", () => {
-    process.env["GOOGLE_CLOUD_PROJECT"] = "proj";
+  it("is not configured by a direct Anthropic key alone", () => {
     process.env["ANTHROPIC_API_KEY"] = "sk-test";
-    expect(searchBackend()?.id).toBe("vertex");
+    expect(searchBackend()).toBeNull();
   });
 
-  it("uses Anthropic when that is the only key present", () => {
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
+  it("uses Anthropic through AI Gateway", () => {
+    process.env["CLOUDFLARE_ACCOUNT_ID"] = "acct";
+    process.env["AI_GATEWAY_ID"] = "app";
+    process.env["AI_GATEWAY_TOKEN"] = "tok";
     expect(searchBackend()?.id).toBe("anthropic");
   });
 
-  it("honours the operator override", () => {
-    process.env["GOOGLE_CLOUD_PROJECT"] = "proj";
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
-    process.env["INFRAWRENCH_CHAT_SEARCH_BACKEND"] = "anthropic";
-    expect(searchBackend()?.id).toBe("anthropic");
-  });
-
-  it("falls back to auto-selection when the override names an unconfigured backend", () => {
-    process.env["GOOGLE_CLOUD_PROJECT"] = "proj";
-    process.env["INFRAWRENCH_CHAT_SEARCH_BACKEND"] = "anthropic";
-    expect(searchBackend()?.id).toBe("vertex");
-  });
-
-  it("falls back to auto-selection when the override is a typo", () => {
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
-    process.env["INFRAWRENCH_CHAT_SEARCH_BACKEND"] = "antropic";
-    expect(searchBackend()?.id).toBe("anthropic");
+  it("needs every gateway variable", () => {
+    process.env["CLOUDFLARE_ACCOUNT_ID"] = "acct";
+    process.env["AI_GATEWAY_ID"] = "app";
+    expect(searchBackend()).toBeNull();
   });
 });
 
@@ -94,7 +89,7 @@ describe("webChatToolSpecs", () => {
   });
 
   it("offers only web_search without an egress proxy", () => {
-    process.env["GOOGLE_CLOUD_PROJECT"] = "proj";
+    configureGateway();
     expect(webChatToolSpecs().map((t) => t.name)).toEqual(["web_search"]);
   });
 
@@ -110,7 +105,7 @@ describe("webChatToolSpecs", () => {
   });
 
   it("keeps both tools read-tier and ungated, so neither prompts for approval", () => {
-    process.env["GOOGLE_CLOUD_PROJECT"] = "proj";
+    configureGateway();
     process.env["WORKFLOW_FETCH_PROXY_URL"] = "https://egress.example.com";
     process.env["WORKFLOW_FETCH_PROXY_TOKEN"] = "tok";
     const specs = webChatToolSpecs();
@@ -140,19 +135,17 @@ describe("validateFetchUrl", () => {
 
 describe("computeSearchCostMicros", () => {
   it("is zero when no query ran", () => {
-    expect(computeSearchCostMicros("vertex", 0)).toBe(0);
+    expect(computeSearchCostMicros("anthropic", 0)).toBe(0);
     expect(computeSearchCostMicros("anthropic", -1)).toBe(0);
   });
 
   it("bills per query at list x1.5", () => {
-    // $0.014 x 1.5 = $0.021
-    expect(computeSearchCostMicros("vertex", 1)).toBe(21_000);
-    expect(computeSearchCostMicros("vertex", 3)).toBe(63_000);
     // $0.010 x 1.5 = $0.015
+    expect(computeSearchCostMicros("anthropic", 1)).toBe(15_000);
     expect(computeSearchCostMicros("anthropic", 2)).toBe(30_000);
   });
 
   it("charges an unknown backend at the most expensive rate", () => {
-    expect(computeSearchCostMicros("mystery", 1)).toBe(21_000);
+    expect(computeSearchCostMicros("mystery", 1)).toBe(15_000);
   });
 });

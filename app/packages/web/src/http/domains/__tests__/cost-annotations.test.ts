@@ -19,7 +19,7 @@ vi.mock("../../../services/cost-annotations", () => ({
 }));
 
 // Same reason: this one reaches server-core's loaders, which reach the Drizzle
-// client and ClickHouse. The transport contract is what these tests own.
+// client. The transport contract is what these tests own.
 const mockWriteImpactAnnotation = vi.fn();
 class FakeChangeImpactAnnotationError extends Error {}
 vi.mock("../../../services/change-cost-impact-annotations", () => ({

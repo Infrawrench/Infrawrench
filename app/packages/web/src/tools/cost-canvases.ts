@@ -3,7 +3,7 @@
  * MCP client reads and refreshes them.
  *
  * `write_cost_canvas` is the only way a model touches a canvas. Its spec is
- * parsed with the strict `costCanvasSpecSchema` (no SQL, no query strings,
+ * parsed with the strict `CostCanvasSpec` (no SQL, no query strings,
  * every reference an id) and a failure comes back as a precise tool error the
  * model can fix. Writing to a canvas that already has blocks needs the
  * user's approval in chat, and `approvalSummary` puts the block diff on the
@@ -15,8 +15,8 @@
  * refresh. Permissions mirror the routes: reads `costs:read`, writes
  * `costs:write`.
  */
-import { z } from "zod";
-import { costCanvasSpecSchema, formatCostCanvasSpecIssues } from "@infrawrench/ui/cost/config";
+import { Schema } from "effect";
+import { CostCanvasSpec, maxLength, minLength } from "@infrawrench/api-contract/schemas";
 import { COST_CANVAS_LIMITS } from "@infrawrench/client-core";
 import {
   canvasHasBlocks,
@@ -31,6 +31,7 @@ import {
 import { logAudit } from "../services/audit";
 import { effectiveToolPermissions } from "./permissions";
 import { ok, err, isNonBlankString, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 const SPEC_GUIDE =
   "The spec is `{ version: 1, blocks: [...] }`, at most " +
@@ -75,7 +76,7 @@ export function costCanvasTools(): ToolDefinition[] {
       description:
         "Fetch one cost canvas with its full spec. Always read the current spec with this before " +
         "editing a canvas with write_cost_canvas.",
-      inputSchema: { canvasId: z.string() },
+      inputSchema: { canvasId: Schema.String },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -94,7 +95,10 @@ export function costCanvasTools(): ToolDefinition[] {
         "budgets, anomalies, rendered narrative. Deterministic and free of any model call; " +
         "relative ranges resolve against today, so quote the returned windows with figures. " +
         "`includeChartData` adds full chart series (large; off by default).",
-      inputSchema: { canvasId: z.string(), includeChartData: z.boolean().optional() },
+      inputSchema: {
+        canvasId: Schema.String,
+        includeChartData: Schema.optionalKey(Schema.Boolean),
+      },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -118,10 +122,12 @@ export function costCanvasTools(): ToolDefinition[] {
         "a diff; keep block ids stable so the diff is honest.\n\n" +
         SPEC_GUIDE,
       inputSchema: {
-        canvasId: z.string().optional(),
-        name: z.string().min(1).max(COST_CANVAS_LIMITS.maxNameLength),
-        description: z.string().max(COST_CANVAS_LIMITS.maxDescriptionLength).optional(),
-        spec: costCanvasSpecSchema,
+        canvasId: Schema.optionalKey(Schema.String),
+        name: Schema.String.check(minLength(1), maxLength(COST_CANVAS_LIMITS.maxNameLength)),
+        description: Schema.optionalKey(
+          Schema.String.check(maxLength(COST_CANVAS_LIMITS.maxDescriptionLength)),
+        ),
+        spec: CostCanvasSpec,
       },
       risk: "write",
       overwrites: true,
@@ -133,7 +139,10 @@ export function costCanvasTools(): ToolDefinition[] {
       },
       async approvalSummary(input, auth) {
         if (!isNonBlankString(input["canvasId"])) return null;
-        const parsed = costCanvasSpecSchema.safeParse(input["spec"]);
+        const parsed = decodeToolInput(CostCanvasSpec, input["spec"], {
+          strict: true,
+          root: "(spec)",
+        });
         if (!parsed.success) return null;
         return await describeCanvasWrite(auth.organizationId, input["canvasId"], {
           name: typeof input["name"] === "string" ? input["name"].trim() : "",
@@ -141,9 +150,12 @@ export function costCanvasTools(): ToolDefinition[] {
         });
       },
       handler: async (input, auth) => {
-        const parsed = costCanvasSpecSchema.safeParse(input["spec"]);
+        const parsed = decodeToolInput(CostCanvasSpec, input["spec"], {
+          strict: true,
+          root: "(spec)",
+        });
         if (!parsed.success) {
-          return err(`Invalid canvas spec: ${formatCostCanvasSpecIssues(parsed.error)}`);
+          return err(`Invalid canvas spec: ${parsed.message}`);
         }
         const name = typeof input["name"] === "string" ? input["name"].trim() : "";
         if (!name) return err("name is required");
@@ -187,7 +199,7 @@ export function costCanvasTools(): ToolDefinition[] {
       description:
         "Delete a cost canvas (soft delete). Its dashboard cards and delivery schedules go with " +
         "it. The chat surface confirms with the user before invoking.",
-      inputSchema: { canvasId: z.string() },
+      inputSchema: { canvasId: Schema.String },
       risk: "destructive",
       permission: "costs:write",
       handler: async (input, auth) => {

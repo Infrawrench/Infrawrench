@@ -1,0 +1,3484 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`request schemas > alertEmailRecipients > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "addresses": [
+      "finance@example.com",
+    ],
+    "userIds": [
+      "u1",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > alertEmailRecipients > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "addresses": [],
+    "userIds": [],
+  },
+}
+`;
+
+exports[`request schemas > allocationRuleInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costCentreId": "c1",
+    "match": {},
+    "priority": 0,
+  },
+}
+`;
+
+exports[`request schemas > allocationRuleInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costCentreId": "c1",
+    "match": {
+      "service": "EC2",
+    },
+    "priority": 100000,
+  },
+}
+`;
+
+exports[`request schemas > allocationRuleMatch > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > allocationRuleMatch > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "tagKey": "team",
+    "tagValue": "web",
+  },
+}
+`;
+
+exports[`request schemas > allocationRuleMatch > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "tagValue": "  ",
+  },
+}
+`;
+
+exports[`request schemas > allocationRuleMatch > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "virtualTagKey": "team",
+    "virtualTagValue": "web",
+  },
+}
+`;
+
+exports[`request schemas > billingProfileInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "EU",
+  },
+}
+`;
+
+exports[`request schemas > billingProfileInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "bank": {
+      "bic": null,
+      "iban": "GB00",
+    },
+    "currency": "EUR",
+    "legalName": null,
+    "logo": null,
+    "name": "EU",
+    "numberPrefix": "INV",
+    "numberStart": 1,
+    "paymentTermsDays": 30,
+    "taxRates": [
+      {
+        "name": "VAT",
+        "rate": 20,
+      },
+    ],
+    "toEmails": [
+      "a@b.c",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > billingRuleAdjustment > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amount": null,
+    "currency": null,
+    "expression": null,
+    "kind": "percentage",
+    "percent": 15,
+    "period": null,
+    "targetId": null,
+    "targetKind": null,
+    "tierMode": null,
+    "tierScope": null,
+    "tiers": null,
+  },
+}
+`;
+
+exports[`request schemas > billingRuleAdjustment > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amount": -50,
+    "currency": "USD",
+    "expression": null,
+    "kind": "fixed",
+    "percent": null,
+    "period": "monthly",
+    "targetId": "a1",
+    "targetKind": "account",
+    "tierMode": null,
+    "tierScope": null,
+    "tiers": null,
+  },
+}
+`;
+
+exports[`request schemas > billingRuleAdjustment > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amount": null,
+    "currency": "USD",
+    "expression": null,
+    "kind": "tiered",
+    "percent": null,
+    "period": null,
+    "targetId": null,
+    "targetKind": null,
+    "tierMode": "marginal",
+    "tierScope": "overall",
+    "tiers": [
+      {
+        "percent": 5,
+        "upTo": 1000,
+      },
+      {
+        "percent": 2,
+        "upTo": null,
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > billingRuleAdjustment > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amount": null,
+    "currency": null,
+    "expression": "cost * 1.1",
+    "kind": "expression",
+    "percent": null,
+    "period": null,
+    "targetId": null,
+    "targetKind": null,
+    "tierMode": null,
+    "tierScope": null,
+    "tiers": null,
+  },
+}
+`;
+
+exports[`request schemas > billingRuleInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "adjustment": {
+      "amount": null,
+      "currency": null,
+      "expression": null,
+      "kind": "percentage",
+      "percent": 0,
+      "period": null,
+      "targetId": null,
+      "targetKind": null,
+      "tierMode": null,
+      "tierScope": null,
+      "tiers": null,
+    },
+    "description": null,
+    "enabled": true,
+    "managedAccountIds": [],
+    "match": {},
+    "name": "Overhead",
+    "priority": 0,
+  },
+}
+`;
+
+exports[`request schemas > billingRuleInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "adjustment": {
+      "amount": null,
+      "currency": null,
+      "expression": null,
+      "kind": "percentage",
+      "percent": 1,
+      "period": null,
+      "targetId": null,
+      "targetKind": null,
+      "tierMode": null,
+      "tierScope": null,
+      "tiers": null,
+    },
+    "description": null,
+    "enabled": true,
+    "match": {},
+    "name": "Min",
+    "priority": 1,
+  },
+}
+`;
+
+exports[`request schemas > billingRuleMatch > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > billingRuleMatch > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "chargeType": "usage",
+    "tagKey": "team",
+    "tagValue": "web",
+  },
+}
+`;
+
+exports[`request schemas > billingRuleReorder > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "ids": [
+      "a",
+      "b",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > budgetAlertNote > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "note": "Expected",
+  },
+}
+`;
+
+exports[`request schemas > budgetInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": 100000,
+    "currency": "USD",
+    "filters": [],
+    "name": "Platform",
+    "thresholds": [
+      {
+        "percent": 80,
+        "type": "actual",
+      },
+      {
+        "percent": 100,
+        "type": "actual",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > budgetInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": 0,
+    "currency": "USD",
+    "filters": [],
+    "name": "Bare",
+    "thresholds": [
+      {
+        "percent": 100,
+        "type": "actual",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > budgetInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": 100000,
+    "currency": "USD",
+    "filters": [],
+    "measure": "usage",
+    "name": "Platform",
+    "thresholds": [
+      {
+        "percent": 80,
+        "type": "actual",
+      },
+      {
+        "percent": 100,
+        "type": "actual",
+      },
+    ],
+    "usageAmount": 10,
+    "usageUnit": "Hrs",
+  },
+}
+`;
+
+exports[`request schemas > budgetInput > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": 100000,
+    "currency": "USD",
+    "filters": [],
+    "name": "Platform",
+    "thresholds": [
+      {
+        "percent": 80,
+        "type": "actual",
+      },
+      {
+        "percent": 100,
+        "type": "actual",
+      },
+    ],
+    "usageUnit": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  },
+}
+`;
+
+exports[`request schemas > budgetInput > accepts #4 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": 100000,
+    "currency": "USD",
+    "emailRecipients": {
+      "addresses": [
+        "finance@example.com",
+      ],
+      "userIds": [
+        "u1",
+      ],
+    },
+    "filters": [],
+    "name": "Platform",
+    "period": {
+      "interval": 2,
+      "kind": "recurring",
+      "startDate": "2026-07-01",
+      "unit": "week",
+    },
+    "thresholds": [
+      {
+        "percent": 80,
+        "type": "actual",
+      },
+      {
+        "percent": 100,
+        "type": "actual",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > budgetPeriod > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "interval": 3,
+    "kind": "recurring",
+    "startDate": "2026-07-01",
+    "unit": "month",
+  },
+}
+`;
+
+exports[`request schemas > budgetPeriod > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "kind": "explicit",
+    "periods": [
+      {
+        "amountCents": 100,
+        "end": "2026-07-31",
+        "start": "2026-07-01",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > budgetThreshold > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "percent": 1,
+    "type": "actual",
+  },
+}
+`;
+
+exports[`request schemas > budgetThreshold > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "percent": 1000,
+    "type": "forecast",
+  },
+}
+`;
+
+exports[`request schemas > budgetWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "budgetId": "b1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > businessMetricForecastValueInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "date": "2026-07-01",
+    "value": 0,
+  },
+}
+`;
+
+exports[`request schemas > businessMetricForecastValuesBody > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "values": [
+      {
+        "date": "2026-07-01",
+        "value": 1,
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > businessMetricImportPreviewRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "dryRun": true,
+    "params": {
+      "q": "x",
+    },
+  },
+}
+`;
+
+exports[`request schemas > businessMetricImportRunRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > businessMetricImportRunRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "from": "2026-07-01",
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > businessMetricImporterInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "params": {},
+  },
+}
+`;
+
+exports[`request schemas > businessMetricImporterInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "aggregation": "max",
+    "backfillDays": 30,
+    "enabled": false,
+    "params": {
+      "query": "select 1",
+    },
+    "schedule": "weekly",
+    "timezone": "UTC",
+  },
+}
+`;
+
+exports[`request schemas > businessMetricInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "key": "active-customers",
+    "kind": "count",
+    "name": "Customers",
+    "unit": "customer",
+  },
+}
+`;
+
+exports[`request schemas > businessMetricInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costScope": [
+      {
+        "dimension": "service",
+        "op": "in",
+        "values": [
+          "AmazonEC2",
+        ],
+      },
+    ],
+    "currency": "USD",
+    "key": "revenue",
+    "kind": "currency",
+    "labelMappings": [
+      {
+        "label": "customer",
+        "target": {
+          "dimension": "tag",
+          "kind": "dimension",
+          "tagKey": "customer",
+        },
+      },
+    ],
+    "name": "Revenue",
+    "thresholds": [
+      {
+        "direction": "below",
+        "groupByLabel": "customer",
+        "mode": "margin",
+        "value": 30,
+        "windowDays": 7,
+      },
+    ],
+    "unit": "USD",
+  },
+}
+`;
+
+exports[`request schemas > businessMetricSourceOptionsRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "fieldKey": "table",
+    "params": {},
+  },
+}
+`;
+
+exports[`request schemas > businessMetricValueInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "date": "2026-07-01",
+    "value": 0,
+  },
+}
+`;
+
+exports[`request schemas > businessMetricValueInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "date": "2026-07-01",
+    "label": "acme",
+    "labels": {
+      "plan": "pro",
+    },
+    "value": -3.5,
+  },
+}
+`;
+
+exports[`request schemas > businessMetricValuesBody > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "values": [],
+  },
+}
+`;
+
+exports[`request schemas > businessMetricValuesBody > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "values": [
+      {
+        "date": "2026-07-01",
+        "value": 1,
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costAlertInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "cadence": "weekly",
+    "direction": "increase",
+    "enabled": true,
+    "filters": [],
+    "groupBy": null,
+    "name": "Spend jump",
+    "thresholdAmountCents": 10000,
+    "thresholdPercent": 25,
+  },
+}
+`;
+
+exports[`request schemas > costAlertInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "cadence": "daily",
+    "direction": "both",
+    "enabled": true,
+    "filters": [],
+    "groupBy": null,
+    "name": "Min",
+    "thresholdAmountCents": null,
+    "thresholdPercent": 10,
+  },
+}
+`;
+
+exports[`request schemas > costAlertInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "cadence": "weekly",
+    "direction": "increase",
+    "emailRecipients": {
+      "addresses": [
+        "finance@example.com",
+      ],
+      "userIds": [
+        "u1",
+      ],
+    },
+    "enabled": true,
+    "filters": [],
+    "groupBy": "tag",
+    "groupByTagKey": "team",
+    "name": "Spend jump",
+    "thresholdAmountCents": 10000,
+    "thresholdPercent": 25,
+  },
+}
+`;
+
+exports[`request schemas > costAlertInput > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "cadence": "weekly",
+    "direction": "increase",
+    "enabled": true,
+    "filters": [],
+    "groupBy": null,
+    "name": "Spend jump",
+    "thresholdAmountCents": 10000,
+    "thresholdPercent": null,
+  },
+}
+`;
+
+exports[`request schemas > costAnnotationInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "startDate": "2026-07-01",
+    "text": "Migrated",
+  },
+}
+`;
+
+exports[`request schemas > costAnnotationInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costReportId": null,
+    "endDate": null,
+    "startDate": "2026-07-01",
+    "text": "Migrated",
+  },
+}
+`;
+
+exports[`request schemas > costAnnotationInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costReportId": "r1",
+    "endDate": "2026-07-08",
+    "startDate": "2026-07-01",
+    "text": "Migrated",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalyAcknowledge > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "explanation": "Planned load test",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalyFeedback > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "verdict": "expected",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalyFeedback > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "explain": true,
+    "note": null,
+    "reason": null,
+    "verdict": "unexpected",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalyFeedback > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "suppress": {
+      "expiresOn": "2026-07-01",
+      "recurrence": "monthly",
+      "scope": "service",
+      "scopeKey": "EC2",
+    },
+    "verdict": "expected",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySettings > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "feedbackTuning": true,
+    "minDeltaCents": 1000,
+    "newSourceMinCents": 2500,
+    "sigmas": 3,
+    "smsAlerts": "off",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySettings > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "feedbackTuning": true,
+    "minDeltaCents": 1000,
+    "newSourceMinCents": 2500,
+    "sigmas": 3,
+    "smsAlerts": "off",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySettings > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "emailRecipients": {
+      "addresses": [
+        "finance@example.com",
+      ],
+      "userIds": [
+        "u1",
+      ],
+    },
+    "feedbackTuning": false,
+    "minDeltaCents": 1000,
+    "newSourceMinCents": 2500,
+    "sigmas": 1,
+    "smsAlerts": "off",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySuppressionInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "anchorDay": "2026-07-01",
+    "expiresOn": "2026-12-31",
+    "recurrence": "weekly",
+    "scope": "service",
+    "scopeKey": "AmazonEC2",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySuppressionInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "anchorDay": "2026-07-01",
+    "expiresOn": "2026-07-01",
+    "note": null,
+    "reason": null,
+    "recurrence": "one_off",
+    "scope": "tag",
+    "scopeKey": "prod",
+    "startsOn": "2026-07-01",
+    "tagKey": "env",
+  },
+}
+`;
+
+exports[`request schemas > costAnomalySuppressionInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "anchorDay": "2026-07-01",
+    "expiresOn": "2026-07-01",
+    "note": "Black Friday",
+    "reason": "seasonal",
+    "recurrence": "seasonal",
+    "scope": "provider",
+    "scopeKey": "aws",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "id": "spend",
+    "kind": "kpi",
+    "metric": {
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "type": "spend",
+    },
+    "title": "Spend",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "id": "intro",
+    "kind": "text",
+    "text": "Spend is {{spend}}.",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "binning": "daily",
+      "chartType": "stacked_bar",
+      "comparePreviousPeriod": false,
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "groupBy": "provider",
+      "showForecast": false,
+      "topN": 5,
+      "version": 1,
+    },
+    "id": "chart",
+    "kind": "chart",
+    "title": "Daily",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "id": "table",
+    "kind": "table",
+    "query": {
+      "binning": "none",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "groupBy": "service",
+      "topN": 10,
+    },
+    "title": "Top",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #4 1`] = `
+{
+  "ok": true,
+  "value": {
+    "days": 30,
+    "id": "anoms",
+    "kind": "anomalies",
+    "limit": 10,
+    "title": "Anomalies",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #5 1`] = `
+{
+  "ok": true,
+  "value": {
+    "id": "r",
+    "kind": "cost_report",
+    "reportId": "r1",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasBlock > accepts #6 1`] = `
+{
+  "ok": true,
+  "value": {
+    "budgetIds": [
+      "b1",
+    ],
+    "id": "b",
+    "kind": "budgets",
+    "title": "B",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasDraftInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "prompt": "spend by team",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasDraftInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "model": "claude",
+    "name": "N",
+    "prompt": "x",
+  },
+}
+`;
+
+exports[`request schemas > costCanvasInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Weekly",
+    "spec": {
+      "blocks": [
+        {
+          "id": "spend",
+          "kind": "kpi",
+          "metric": {
+            "dateRange": {
+              "kind": "relative",
+              "preset": "30d",
+            },
+            "filters": [],
+            "type": "spend",
+          },
+          "title": "Spend",
+        },
+        {
+          "id": "intro",
+          "kind": "text",
+          "text": "Spend is {{spend}}.",
+        },
+        {
+          "config": {
+            "binning": "daily",
+            "chartType": "stacked_bar",
+            "comparePreviousPeriod": false,
+            "dateRange": {
+              "kind": "relative",
+              "preset": "30d",
+            },
+            "filters": [],
+            "groupBy": "provider",
+            "showForecast": false,
+            "topN": 5,
+            "version": 1,
+          },
+          "id": "chart",
+          "kind": "chart",
+          "title": "Daily",
+        },
+        {
+          "id": "table",
+          "kind": "table",
+          "query": {
+            "binning": "none",
+            "dateRange": {
+              "kind": "relative",
+              "preset": "30d",
+            },
+            "filters": [],
+            "groupBy": "service",
+            "topN": 10,
+          },
+          "title": "Top",
+        },
+        {
+          "days": 30,
+          "id": "anoms",
+          "kind": "anomalies",
+          "limit": 10,
+          "title": "Anomalies",
+        },
+      ],
+      "version": 1,
+    },
+  },
+}
+`;
+
+exports[`request schemas > costCanvasInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "description": "",
+    "name": "W",
+    "spec": {
+      "blocks": [],
+      "version": 1,
+    },
+  },
+}
+`;
+
+exports[`request schemas > costCanvasSpec > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "blocks": [
+      {
+        "id": "spend",
+        "kind": "kpi",
+        "metric": {
+          "dateRange": {
+            "kind": "relative",
+            "preset": "30d",
+          },
+          "filters": [],
+          "type": "spend",
+        },
+        "title": "Spend",
+      },
+      {
+        "id": "intro",
+        "kind": "text",
+        "text": "Spend is {{spend}}.",
+      },
+      {
+        "config": {
+          "binning": "daily",
+          "chartType": "stacked_bar",
+          "comparePreviousPeriod": false,
+          "dateRange": {
+            "kind": "relative",
+            "preset": "30d",
+          },
+          "filters": [],
+          "groupBy": "provider",
+          "showForecast": false,
+          "topN": 5,
+          "version": 1,
+        },
+        "id": "chart",
+        "kind": "chart",
+        "title": "Daily",
+      },
+      {
+        "id": "table",
+        "kind": "table",
+        "query": {
+          "binning": "none",
+          "dateRange": {
+            "kind": "relative",
+            "preset": "30d",
+          },
+          "filters": [],
+          "groupBy": "service",
+          "topN": 10,
+        },
+        "title": "Top",
+      },
+      {
+        "days": 30,
+        "id": "anoms",
+        "kind": "anomalies",
+        "limit": 10,
+        "title": "Anomalies",
+      },
+    ],
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costCanvasSpec > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "blocks": [],
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costCanvasWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "canvasId": "c1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costCentreInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Platform",
+  },
+}
+`;
+
+exports[`request schemas > costCentreInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "description": "",
+    "name": "Platform",
+    "parentId": null,
+  },
+}
+`;
+
+exports[`request schemas > costCentreInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Web",
+    "parentId": "c1",
+  },
+}
+`;
+
+exports[`request schemas > costDateRange > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "kind": "relative",
+    "preset": "30d",
+  },
+}
+`;
+
+exports[`request schemas > costDateRange > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "from": "2026-07-01",
+    "kind": "absolute",
+    "to": "2026-07-31",
+  },
+}
+`;
+
+exports[`request schemas > costEfficiencySettings > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "commitmentExpiryAlertOnExpired": true,
+    "commitmentExpiryEnabled": true,
+    "commitmentExpiryHorizonDays": [
+      60,
+      30,
+      7,
+    ],
+    "commitmentIdleEnabled": true,
+    "commitmentIdleMinMeasuredDays": 14,
+    "commitmentIdleMinWasteCents": 5000,
+    "commitmentIdleThresholdPercent": 70,
+    "commitmentIdleWindowDays": 30,
+    "unitCostMinReportedDays": 10,
+    "unitCostMinSpendCents": 10000,
+    "unitCostRegressionEnabled": true,
+    "unitCostThresholdPercent": 20,
+    "unitCostWindowDays": 14,
+  },
+}
+`;
+
+exports[`request schemas > costEfficiencySettings > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "commitmentExpiryAlertOnExpired": true,
+    "commitmentExpiryEnabled": true,
+    "commitmentExpiryHorizonDays": [
+      60,
+      30,
+      7,
+    ],
+    "commitmentIdleEnabled": true,
+    "commitmentIdleMinMeasuredDays": 14,
+    "commitmentIdleMinWasteCents": 5000,
+    "commitmentIdleThresholdPercent": 70,
+    "commitmentIdleWindowDays": 30,
+    "unitCostMinReportedDays": 10,
+    "unitCostMinSpendCents": 10000,
+    "unitCostRegressionEnabled": true,
+    "unitCostThresholdPercent": 20,
+    "unitCostWindowDays": 14,
+  },
+}
+`;
+
+exports[`request schemas > costEfficiencySettings > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "commitmentExpiryAlertOnExpired": true,
+    "commitmentExpiryEnabled": true,
+    "commitmentExpiryHorizonDays": [
+      60,
+      30,
+      7,
+    ],
+    "commitmentIdleEnabled": true,
+    "commitmentIdleMinMeasuredDays": 14,
+    "commitmentIdleMinWasteCents": 5000,
+    "commitmentIdleThresholdPercent": 70,
+    "commitmentIdleWindowDays": 30,
+    "emailRecipients": {
+      "addresses": [
+        "finance@example.com",
+      ],
+      "userIds": [
+        "u1",
+      ],
+    },
+    "unitCostMinReportedDays": 10,
+    "unitCostMinSpendCents": 10000,
+    "unitCostRegressionEnabled": true,
+    "unitCostThresholdPercent": 20,
+    "unitCostWindowDays": 14,
+  },
+}
+`;
+
+exports[`request schemas > costExportJobRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "format": "csv",
+    "reportId": "r1",
+  },
+}
+`;
+
+exports[`request schemas > costExportJobRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "focusVersion": "1.3",
+    "format": "focus",
+    "from": "2026-07-01",
+    "query": {
+      "dimensions": [
+        "service",
+      ],
+      "filters": [
+        {
+          "dimension": "service",
+          "op": "in",
+          "values": [
+            "AmazonEC2",
+          ],
+        },
+      ],
+      "tagKeys": [
+        "env",
+      ],
+    },
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > costFilter > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "dimension": "service",
+    "op": "in",
+    "values": [
+      "AmazonEC2",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costFilter > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "dimension": "tag",
+    "op": "in",
+    "tagKey": "env",
+    "values": [
+      "prod",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costFilter > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "dimension": "tag",
+    "op": "is_set",
+    "tagKey": "env",
+    "values": [],
+  },
+}
+`;
+
+exports[`request schemas > costFilter > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "dimension": "service",
+    "op": "in",
+    "values": [
+      "AmazonEC2",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costForecastInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Plan",
+    "scenarioModelIds": [],
+  },
+}
+`;
+
+exports[`request schemas > costForecastInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "description": null,
+    "driverMetricId": null,
+    "isDefault": true,
+    "name": "Plan",
+    "scenarioModelIds": [
+      "s1",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costForecastRunRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > costForecastRunRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "all": true,
+    "confidenceLevel": 95,
+    "forecastId": "baseline",
+    "from": "2026-07-01",
+    "providers": [
+      "aws",
+    ],
+    "services": [
+      "EC2",
+    ],
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "provider",
+    "showForecast": false,
+    "topN": 5,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "line",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "none",
+    "showForecast": false,
+    "topN": 5,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "line",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "none",
+    "showForecast": false,
+    "topN": 5,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #3 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "costBasis": "amortized",
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [
+      {
+        "dimension": "service",
+        "op": "in",
+        "values": [
+          "AmazonEC2",
+        ],
+      },
+      {
+        "dimension": "tag",
+        "op": "in",
+        "tagKey": "env",
+        "values": [
+          "prod",
+        ],
+      },
+    ],
+    "groupBy": "provider",
+    "showForecast": false,
+    "topN": 15,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #4 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "provider",
+    "measure": "usage",
+    "showForecast": false,
+    "topN": 5,
+    "usageUnit": "Hrs",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #5 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "provider",
+    "showForecast": false,
+    "topN": 5,
+    "unitCostGroupByLabel": "customer",
+    "unitCostMetricId": "m1",
+    "unitCostScale": 1000,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #6 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "provider",
+    "showForecast": false,
+    "topN": 5,
+    "unitCostLabelFilters": [
+      {
+        "key": "plan",
+        "op": "in",
+        "values": [
+          "pro",
+        ],
+      },
+    ],
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costGraphConfig > accepts #7 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "none",
+    "showForecast": false,
+    "topN": 5,
+    "version": 1,
+    "xAxis": "service",
+  },
+}
+`;
+
+exports[`request schemas > costQueryRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "comparePreviousPeriod": false,
+    "filters": [],
+    "forecast": false,
+    "from": "2026-07-01",
+    "groupBy": "none",
+    "to": "2026-07-31",
+    "topN": 5,
+  },
+}
+`;
+
+exports[`request schemas > costQueryRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "monthly",
+    "comparePreviousPeriod": false,
+    "filters": [
+      {
+        "dimension": "tag",
+        "op": "in",
+        "tagKey": "env",
+        "values": [
+          "prod",
+        ],
+      },
+    ],
+    "forecast": true,
+    "from": "2026-07-01",
+    "groupBy": "tag",
+    "groupByTagKey": "env",
+    "to": "2026-07-01",
+    "topN": 15,
+  },
+}
+`;
+
+exports[`request schemas > costQueryRequest > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chargeTypes": [
+      "usage",
+      "credit",
+    ],
+    "comparePreviousPeriod": false,
+    "displayCurrency": "EUR",
+    "filters": [],
+    "forecast": false,
+    "from": "2026-07-01",
+    "groupBy": "none",
+    "measure": "usage",
+    "query": "provider = 'aws'",
+    "to": "2026-07-01",
+    "topN": 5,
+    "usageUnit": "Hrs",
+  },
+}
+`;
+
+exports[`request schemas > costReportBulkRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "action": "delete",
+    "folderIds": [],
+    "reportIds": [
+      "r1",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > costReportBulkRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "action": "move",
+    "folderIds": [
+      "f1",
+    ],
+    "reportIds": [],
+    "targetFolderId": null,
+  },
+}
+`;
+
+exports[`request schemas > costReportBulkRequest > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "action": "move",
+    "folderIds": [
+      "f1",
+    ],
+    "reportIds": [
+      "r1",
+    ],
+    "targetFolderId": "f2",
+  },
+}
+`;
+
+exports[`request schemas > costReportFolderInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Finance",
+  },
+}
+`;
+
+exports[`request schemas > costReportFolderInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Finance",
+    "parentFolderId": null,
+  },
+}
+`;
+
+exports[`request schemas > costReportFolderInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "name": "Finance",
+    "parentFolderId": "p",
+  },
+}
+`;
+
+exports[`request schemas > costReportInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "binning": "daily",
+      "chartType": "stacked_bar",
+      "comparePreviousPeriod": false,
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "groupBy": "provider",
+      "showForecast": false,
+      "topN": 5,
+      "version": 1,
+    },
+    "name": "Spend",
+  },
+}
+`;
+
+exports[`request schemas > costReportInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "binning": "daily",
+      "chartType": "line",
+      "comparePreviousPeriod": false,
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "groupBy": "none",
+      "showForecast": false,
+      "topN": 5,
+      "version": 1,
+    },
+    "description": "",
+    "folderId": null,
+    "name": "Spend",
+  },
+}
+`;
+
+exports[`request schemas > costReportInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "binning": "daily",
+      "chartType": "stacked_bar",
+      "comparePreviousPeriod": false,
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "groupBy": "provider",
+      "showForecast": false,
+      "topN": 5,
+      "version": 1,
+    },
+    "folderId": "f1",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  },
+}
+`;
+
+exports[`request schemas > costReportRunOverrides > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > costReportRunOverrides > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "monthly",
+    "measure": "usage",
+    "usageUnit": "Hrs",
+    "xAxis": "date",
+  },
+}
+`;
+
+exports[`request schemas > costReportRunOverrides > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "cumulative": true,
+  },
+}
+`;
+
+exports[`request schemas > costReportWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "reportId": "r1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > costScenarioAdjustment > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": null,
+    "currency": null,
+    "endDate": null,
+    "id": "a1",
+    "kind": "one_off",
+    "label": "New cluster",
+    "percent": null,
+    "period": null,
+    "scope": [],
+    "startDate": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > costScenarioAdjustment > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "amountCents": null,
+    "currency": null,
+    "endDate": null,
+    "id": "a1",
+    "kind": "rate_change",
+    "label": "New cluster",
+    "percent": -20,
+    "period": null,
+    "scope": [
+      {
+        "dimension": "service",
+        "op": "in",
+        "values": [
+          "AmazonEC2",
+        ],
+      },
+    ],
+    "startDate": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > costScenarioModelInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "adjustments": [],
+    "currency": "USD",
+    "name": "Q4",
+  },
+}
+`;
+
+exports[`request schemas > costScenarioModelInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "adjustments": [
+      {
+        "amountCents": null,
+        "currency": null,
+        "endDate": null,
+        "id": "a1",
+        "kind": "one_off",
+        "label": "New cluster",
+        "percent": null,
+        "period": null,
+        "scope": [],
+        "startDate": "2026-07-01",
+      },
+    ],
+    "currency": "USD",
+    "name": "Q4",
+  },
+}
+`;
+
+exports[`request schemas > currencySettings > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "displayCurrency": null,
+  },
+}
+`;
+
+exports[`request schemas > currencySettings > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "autoRates": true,
+    "displayCurrency": "EUR",
+    "rateBasis": "month_end",
+  },
+}
+`;
+
+exports[`request schemas > customGraphWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "graphId": "g1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > dashboardKpiRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "comparePreviousPeriod": true,
+      "source": {
+        "aggregation": "sum",
+        "kind": "cost_report",
+        "measure": "cost",
+        "reportId": "r1",
+      },
+      "version": 1,
+    },
+  },
+}
+`;
+
+exports[`request schemas > exchangeRateImportRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "csv": "from,to,rate
+",
+  },
+}
+`;
+
+exports[`request schemas > exchangeRateImportRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "csv": "",
+    "dryRun": true,
+    "skipInvalid": false,
+  },
+}
+`;
+
+exports[`request schemas > exchangeRateInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "effectiveFrom": "2026-07-01",
+    "fromCurrency": "EUR",
+    "rate": "1.0850",
+    "toCurrency": "USD",
+  },
+}
+`;
+
+exports[`request schemas > exchangeRateInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "effectiveFrom": "2026-07-01",
+    "effectiveTo": null,
+    "fromCurrency": "JPY",
+    "rate": "0.0067",
+    "toCurrency": "USD",
+  },
+}
+`;
+
+exports[`request schemas > focusExportRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "filters": [],
+    "from": "2026-07-01",
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > focusExportRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "filters": [
+      {
+        "dimension": "service",
+        "op": "in",
+        "values": [
+          "AmazonEC2",
+        ],
+      },
+    ],
+    "from": "2026-07-01",
+    "to": "2026-07-01",
+    "version": "1.4",
+  },
+}
+`;
+
+exports[`request schemas > kpiWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "source": {
+      "aggregation": "sum",
+      "kind": "cost_report",
+      "measure": "cost",
+      "reportId": "r1",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kpiWidgetConfig > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "source": {
+      "kind": "realized_savings",
+    },
+    "upIsGood": true,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kpiWidgetConfig > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "source": {
+      "kind": "commitments",
+      "measure": "savings",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kpiWidgetConfigObject > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "source": {
+      "aggregation": "sum",
+      "kind": "cost_report",
+      "measure": "cost",
+      "reportId": "r1",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kpiWidgetConfigObject > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "source": {
+      "budgetId": "b1",
+      "kind": "budget",
+      "measure": "actual",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kubernetesEfficiencyConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "basis": "total",
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "granularity": "day",
+    "groupBy": "namespace",
+    "idle": "separate",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kubernetesEfficiencyConfig > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "basis": "total",
+    "categories": [
+      "cpu",
+    ],
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [
+      {
+        "dimension": "tag",
+        "op": "in",
+        "tagKey": "namespace",
+        "values": [
+          "web",
+        ],
+      },
+    ],
+    "granularity": "day",
+    "groupBy": "label",
+    "groupByLabelKey": "team",
+    "idle": "separate",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > kubernetesEfficiencyQuery > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "basis": "total",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "granularity": "day",
+      "groupBy": "namespace",
+      "idle": "separate",
+      "version": 1,
+    },
+  },
+}
+`;
+
+exports[`request schemas > kubernetesEfficiencyReportInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "basis": "total",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "granularity": "day",
+      "groupBy": "namespace",
+      "idle": "separate",
+      "version": 1,
+    },
+    "name": "Clusters",
+  },
+}
+`;
+
+exports[`request schemas > kubernetesEfficiencyReportInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "basis": "total",
+      "dateRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": [],
+      "granularity": "day",
+      "groupBy": "namespace",
+      "idle": "separate",
+      "version": 1,
+    },
+    "description": "",
+    "folderId": null,
+    "name": "C",
+  },
+}
+`;
+
+exports[`request schemas > managedAccountAssignment > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "costCentreIds": [],
+    "managedAccountId": null,
+  },
+}
+`;
+
+exports[`request schemas > managedAccountAssignment > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "costCentreIds": [
+      "c1",
+    ],
+    "managedAccountId": "m1",
+  },
+}
+`;
+
+exports[`request schemas > managedAccountAssignmentPreview > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "costCentreIds": [],
+    "managedAccountId": "m1",
+    "periodFrom": "2026-07-01",
+    "periodTo": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > managedAccountInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "billingCurrency": "GBP",
+    "costCentreIds": [],
+    "name": "Northwind",
+  },
+}
+`;
+
+exports[`request schemas > managedAccountInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [
+      "a1",
+    ],
+    "applyBillingRules": false,
+    "billingCurrency": "GBP",
+    "billingProfileId": null,
+    "contactEmail": "a@b.c",
+    "contactName": null,
+    "costBasis": "blended",
+    "costCentreIds": [
+      "c1",
+    ],
+    "name": "Northwind",
+    "pricing": {
+      "commitmentBenefits": {
+        "mode": "pass_through",
+        "passThroughPercent": null,
+      },
+      "credits": {
+        "mode": "pass_through",
+        "passThroughPercent": null,
+      },
+      "discounts": {
+        "mode": "pass_through",
+        "passThroughPercent": null,
+      },
+      "rerate": {
+        "enabled": false,
+        "fallbackUpliftPercent": 0,
+        "scope": [],
+        "uplifts": [],
+      },
+    },
+  },
+}
+`;
+
+exports[`request schemas > managedAccountPricing > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "commitmentBenefits": {
+      "mode": "pass_through",
+      "passThroughPercent": null,
+    },
+    "credits": {
+      "mode": "pass_through",
+      "passThroughPercent": null,
+    },
+    "discounts": {
+      "mode": "pass_through",
+      "passThroughPercent": null,
+    },
+    "rerate": {
+      "enabled": false,
+      "fallbackUpliftPercent": 0,
+      "scope": [],
+      "uplifts": [],
+    },
+  },
+}
+`;
+
+exports[`request schemas > managedAccountPricing > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "commitmentBenefits": {
+      "mode": "pass_through",
+      "passThroughPercent": null,
+    },
+    "credits": {
+      "mode": "pass_through",
+      "passThroughPercent": null,
+    },
+    "discounts": {
+      "mode": "partial",
+      "passThroughPercent": 50,
+    },
+    "rerate": {
+      "enabled": true,
+      "fallbackUpliftPercent": 5,
+      "scope": [
+        {
+          "pluginId": "aws",
+          "service": null,
+        },
+        {
+          "pluginId": "gcp",
+        },
+      ],
+      "uplifts": [
+        {
+          "percent": 3,
+          "pluginId": "aws",
+        },
+      ],
+    },
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "managedAccountId": "m1",
+    "periodFrom": "2026-07-01",
+    "periodTo": "2026-07-31",
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "managedAccountId": "m1",
+    "notes": null,
+    "periodFrom": "2026-07-01",
+    "periodTo": "2026-07-01",
+    "supersedesInvoiceId": "i1",
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceSend > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "resend": false,
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceSend > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "resend": true,
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceUpdate > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "notes": "x",
+    "periodFrom": "2026-07-01",
+    "periodTo": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceVoid > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "reason": "Wrong period",
+    "supersede": false,
+  },
+}
+`;
+
+exports[`request schemas > managedInvoiceVoid > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "reason": "Wrong period",
+    "supersede": true,
+  },
+}
+`;
+
+exports[`request schemas > metricAlertComparator > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": ">",
+}
+`;
+
+exports[`request schemas > metricAlertComparator > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": "<=",
+}
+`;
+
+exports[`request schemas > metricAlertRuleInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparator": ">",
+    "cooldownMinutes": 60,
+    "enabled": true,
+    "forMinutes": 15,
+    "metricKey": "CPU %",
+    "name": "CPU",
+    "pluginId": null,
+    "resourceTypeId": null,
+    "tagKey": null,
+    "tagValue": null,
+    "threshold": 90,
+  },
+}
+`;
+
+exports[`request schemas > metricAlertRuleInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparator": ">",
+    "cooldownMinutes": 0,
+    "enabled": true,
+    "forMinutes": 15,
+    "metricKey": "CPU %",
+    "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "pluginId": null,
+    "resourceTypeId": null,
+    "tagKey": null,
+    "tagValue": null,
+    "threshold": -2.5,
+  },
+}
+`;
+
+exports[`request schemas > metricAlertSelector > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "pluginId": null,
+    "resourceTypeId": null,
+    "tagKey": null,
+    "tagValue": null,
+  },
+}
+`;
+
+exports[`request schemas > metricAlertSelector > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "pluginId": "aws",
+    "resourceTypeId": "ec2",
+    "tagKey": "env",
+    "tagValue": "prod",
+  },
+}
+`;
+
+exports[`request schemas > pricingPreviewRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > pricingPreviewRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "managedAccountId": "m1",
+    "month": "2026-09",
+    "pricing": null,
+    "rule": {
+      "adjustment": {
+        "amount": null,
+        "currency": null,
+        "expression": null,
+        "kind": "percentage",
+        "percent": 0,
+        "period": null,
+        "targetId": null,
+        "targetKind": null,
+        "tierMode": null,
+        "tierScope": null,
+        "tiers": null,
+      },
+      "description": null,
+      "enabled": true,
+      "managedAccountIds": [],
+      "match": {},
+      "name": "Overhead",
+      "priority": 0,
+    },
+    "ruleId": null,
+  },
+}
+`;
+
+exports[`request schemas > pricingPreviewRequest > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "month": null,
+  },
+}
+`;
+
+exports[`request schemas > realizedSavingsSettings > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "baselineWindowDays": 14,
+    "horizonMonths": 12,
+    "shortfallThresholdPercent": 70,
+  },
+}
+`;
+
+exports[`request schemas > realizedSavingsWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "grouping": "kind",
+    "months": 6,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > requiredTag > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "key": "owner",
+  },
+}
+`;
+
+exports[`request schemas > requiredTag > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "allowedValues": [
+      "prod",
+      "dev",
+    ],
+    "key": "env",
+  },
+}
+`;
+
+exports[`request schemas > resourceReportConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "columns": [
+      "core:name",
+      "core:type",
+      "core:account",
+      "core:region",
+      "core:status",
+      "cost:range",
+    ],
+    "costBasis": "cash",
+    "costRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": {
+      "accountIds": [],
+      "createdFrom": null,
+      "createdTo": null,
+      "nameContains": null,
+      "pluginIds": [],
+      "regions": [],
+      "resourceTypes": [],
+      "statuses": [],
+      "tags": [],
+    },
+    "pageSize": 50,
+    "sort": null,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > resourceReportConfig > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "columns": [
+      "core:name",
+      "core:type",
+      "core:account",
+      "core:region",
+      "core:status",
+      "cost:range",
+    ],
+    "costBasis": "cash",
+    "costRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": {
+      "accountIds": [],
+      "createdFrom": null,
+      "createdTo": null,
+      "nameContains": null,
+      "pluginIds": [],
+      "regions": [],
+      "resourceTypes": [],
+      "statuses": [],
+      "tags": [],
+    },
+    "pageSize": 500,
+    "sort": {
+      "column": "cost:range",
+      "direction": "desc",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > resourceReportFilters > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "createdFrom": null,
+    "createdTo": null,
+    "nameContains": null,
+    "pluginIds": [],
+    "regions": [],
+    "resourceTypes": [],
+    "statuses": [],
+    "tags": [],
+  },
+}
+`;
+
+exports[`request schemas > resourceReportFilters > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountIds": [],
+    "createdFrom": "2026-07-01",
+    "createdTo": null,
+    "nameContains": null,
+    "pluginIds": [],
+    "regions": [],
+    "resourceTypes": [
+      {
+        "pluginId": "aws",
+        "resourceTypeId": "ec2",
+      },
+    ],
+    "statuses": [],
+    "tags": [],
+  },
+}
+`;
+
+exports[`request schemas > resourceReportInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "columns": [
+        "core:name",
+        "core:type",
+        "core:account",
+        "core:region",
+        "core:status",
+        "cost:range",
+      ],
+      "costBasis": "cash",
+      "costRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": {
+        "accountIds": [],
+        "createdFrom": null,
+        "createdTo": null,
+        "nameContains": null,
+        "pluginIds": [],
+        "regions": [],
+        "resourceTypes": [],
+        "statuses": [],
+        "tags": [],
+      },
+      "pageSize": 50,
+      "sort": null,
+      "version": 1,
+    },
+    "name": "Fleet",
+  },
+}
+`;
+
+exports[`request schemas > resourceReportInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "columns": [
+        "core:name",
+        "core:type",
+        "core:account",
+        "core:region",
+        "core:status",
+        "cost:range",
+      ],
+      "costBasis": "cash",
+      "costRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": {
+        "accountIds": [],
+        "createdFrom": null,
+        "createdTo": null,
+        "nameContains": null,
+        "pluginIds": [],
+        "regions": [],
+        "resourceTypes": [],
+        "statuses": [],
+        "tags": [],
+      },
+      "pageSize": 50,
+      "sort": null,
+      "version": 1,
+    },
+    "description": "",
+    "folderId": null,
+    "name": "F",
+  },
+}
+`;
+
+exports[`request schemas > resourceReportQueryRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "columns": [
+        "core:name",
+        "core:type",
+        "core:account",
+        "core:region",
+        "core:status",
+        "cost:range",
+      ],
+      "costBasis": "cash",
+      "costRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": {
+        "accountIds": [],
+        "createdFrom": null,
+        "createdTo": null,
+        "nameContains": null,
+        "pluginIds": [],
+        "regions": [],
+        "resourceTypes": [],
+        "statuses": [],
+        "tags": [],
+      },
+      "pageSize": 50,
+      "sort": null,
+      "version": 1,
+    },
+  },
+}
+`;
+
+exports[`request schemas > resourceReportQueryRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "config": {
+      "columns": [
+        "core:name",
+        "core:type",
+        "core:account",
+        "core:region",
+        "core:status",
+        "cost:range",
+      ],
+      "costBasis": "cash",
+      "costRange": {
+        "kind": "relative",
+        "preset": "30d",
+      },
+      "filters": {
+        "accountIds": [],
+        "createdFrom": null,
+        "createdTo": null,
+        "nameContains": null,
+        "pluginIds": [],
+        "regions": [],
+        "resourceTypes": [],
+        "statuses": [],
+        "tags": [],
+      },
+      "pageSize": 50,
+      "sort": null,
+      "version": 1,
+    },
+    "limit": 500,
+    "offset": 0,
+  },
+}
+`;
+
+exports[`request schemas > resourceReportSort > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "column": "core:name",
+    "direction": "asc",
+  },
+}
+`;
+
+exports[`request schemas > resourceReportTagFilter > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "key": "env",
+    "op": "in",
+    "source": "tag",
+    "values": [
+      "prod",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > resourceReportTagFilter > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "key": "team",
+    "op": "exists",
+    "source": "virtual_tag",
+    "values": [],
+  },
+}
+`;
+
+exports[`request schemas > savedCostFilterInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "filters": [],
+    "name": "Prod",
+  },
+}
+`;
+
+exports[`request schemas > savedCostFilterInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "description": "",
+    "filters": [
+      {
+        "dimension": "tag",
+        "op": "in",
+        "tagKey": "env",
+        "values": [
+          "prod",
+        ],
+      },
+    ],
+    "name": "Prod",
+  },
+}
+`;
+
+exports[`request schemas > savedCostFilterInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "filters": [],
+    "name": "Prod",
+    "query": "tag['env'] = 'prod'",
+  },
+}
+`;
+
+exports[`request schemas > savingsEventAnnotation > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {},
+}
+`;
+
+exports[`request schemas > savingsEventAnnotation > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "costCentreId": "c1",
+    "endedOn": "2026-07-01",
+    "horizonMonths": 6,
+    "note": null,
+  },
+}
+`;
+
+exports[`request schemas > savingsEventInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "currency": "USD",
+    "occurredOn": "2026-07-01",
+    "projectedMonthlyAmount": 120.5,
+    "title": "Rightsized db",
+  },
+}
+`;
+
+exports[`request schemas > savingsEventInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "accountId": "a1",
+    "costCentreId": null,
+    "currency": "EUR",
+    "endedOn": null,
+    "horizonMonths": null,
+    "note": null,
+    "occurredOn": "2026-07-01",
+    "projectedMonthlyAmount": 1,
+    "resourceId": null,
+    "title": "X",
+  },
+}
+`;
+
+exports[`request schemas > savingsEventInput > accepts #2 1`] = `
+{
+  "ok": true,
+  "value": {
+    "currency": "USD",
+    "occurredOn": "2026-07-01",
+    "projectedMonthlyAmount": 1,
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  },
+}
+`;
+
+exports[`request schemas > tagKeySettings > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "hidden": [
+      "aws:cloudformation:*",
+      "Name",
+    ],
+    "preferred": [
+      "team",
+      "env",
+    ],
+  },
+}
+`;
+
+exports[`request schemas > tagKeySettings > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "hidden": [],
+    "preferred": [],
+  },
+}
+`;
+
+exports[`request schemas > tagPolicy > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "enforceOnCreate": true,
+    "requiredTags": [
+      {
+        "key": "owner",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > textWidgetConfig > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "markdown": "",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > textWidgetConfig > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "markdown": "# Hi",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > unitCostExportRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "format": "ndjson",
+    "from": "2026-07-01",
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > unitCostQueryRequest > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "from": "2026-07-01",
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > unitCostQueryRequest > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "weekly",
+    "displayCurrency": "USD",
+    "filters": [
+      {
+        "dimension": "service",
+        "op": "in",
+        "values": [
+          "AmazonEC2",
+        ],
+      },
+    ],
+    "from": "2026-07-01",
+    "groupByLabel": "customer",
+    "labelFilters": [
+      {
+        "key": "plan",
+        "op": "not_in",
+        "values": [
+          "free",
+        ],
+      },
+    ],
+    "mode": "margin",
+    "scale": 100,
+    "to": "2026-07-01",
+  },
+}
+`;
+
+exports[`request schemas > virtualTagAllocation > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "metricId": null,
+    "percent": null,
+    "value": "web",
+  },
+}
+`;
+
+exports[`request schemas > virtualTagAllocation > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "metricId": null,
+    "percent": 100,
+    "value": "web",
+  },
+}
+`;
+
+exports[`request schemas > virtualTagInput > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "key": "team",
+    "name": "Team",
+    "rules": [
+      {
+        "allocations": [],
+        "description": null,
+        "endsOn": null,
+        "kind": "value",
+        "query": "",
+        "sources": [],
+        "startsOn": null,
+        "value": "payments",
+        "valueTransform": "none",
+      },
+    ],
+  },
+}
+`;
+
+exports[`request schemas > virtualTagInput > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "defaultValue": null,
+    "description": null,
+    "key": "a:b/c.d-e_f",
+    "name": "X",
+    "rules": [],
+  },
+}
+`;
+
+exports[`request schemas > virtualTagRule > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "allocations": [],
+    "description": null,
+    "endsOn": null,
+    "kind": "value",
+    "query": "",
+    "sources": [],
+    "startsOn": null,
+    "value": "payments",
+    "valueTransform": "none",
+  },
+}
+`;
+
+exports[`request schemas > virtualTagRule > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "allocations": [
+      {
+        "metricId": null,
+        "percent": 50,
+        "value": "a",
+      },
+      {
+        "metricId": null,
+        "percent": 50,
+        "value": "b",
+      },
+    ],
+    "description": null,
+    "endsOn": null,
+    "kind": "split",
+    "query": "",
+    "sources": [],
+    "startsOn": "2026-07-01",
+    "value": null,
+    "valueTransform": "none",
+  },
+}
+`;
+
+exports[`request schemas > virtualTagSource > accepts #0 1`] = `
+{
+  "ok": true,
+  "value": {
+    "query": null,
+    "tagKey": "Environment",
+    "valuePrefix": null,
+  },
+}
+`;
+
+exports[`request schemas > virtualTagSource > accepts #1 1`] = `
+{
+  "ok": true,
+  "value": {
+    "query": "provider = 'azure'",
+    "tagKey": "env",
+    "valuePrefix": "az-",
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > budget 1`] = `
+{
+  "ok": true,
+  "value": {
+    "budgetId": "b1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > cost_canvas 1`] = `
+{
+  "ok": true,
+  "value": {
+    "canvasId": "c1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > cost_graph 1`] = `
+{
+  "ok": true,
+  "value": {
+    "binning": "daily",
+    "chartType": "stacked_bar",
+    "comparePreviousPeriod": false,
+    "dateRange": {
+      "kind": "relative",
+      "preset": "30d",
+    },
+    "filters": [],
+    "groupBy": "provider",
+    "showForecast": false,
+    "topN": 5,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > cost_report 1`] = `
+{
+  "ok": true,
+  "value": {
+    "reportId": "r1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > custom_graph 1`] = `
+{
+  "ok": true,
+  "value": {
+    "graphId": "g1",
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > kpi 1`] = `
+{
+  "ok": true,
+  "value": {
+    "comparePreviousPeriod": true,
+    "source": {
+      "aggregation": "sum",
+      "kind": "cost_report",
+      "measure": "cost",
+      "reportId": "r1",
+    },
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > realized_savings 1`] = `
+{
+  "ok": true,
+  "value": {
+    "grouping": "month",
+    "months": 12,
+    "version": 1,
+  },
+}
+`;
+
+exports[`request schemas > widgetConfigFor picks each kind's schema > text 1`] = `
+{
+  "ok": true,
+  "value": {
+    "markdown": "hi",
+    "version": 1,
+  },
+}
+`;

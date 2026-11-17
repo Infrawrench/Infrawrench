@@ -77,7 +77,7 @@ describe("auth token exchange", () => {
     await expect(fetchAccessToken(creds)).rejects.toThrow(/Azure auth failed: 401 bad creds/);
   });
 
-  it("throws when the token response shape is invalid (zod parse failure)", async () => {
+  it("throws when the token response shape is invalid (schema decode failure)", async () => {
     fetchSpy.mockResolvedValue({
       ok: true,
       status: 200,

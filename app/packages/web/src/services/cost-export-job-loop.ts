@@ -21,7 +21,7 @@ import { claimCostExportJobs, pruneCostExportJobs, runCostExportJob } from "./co
 /** Five seconds: a person is watching a progress bar. */
 const TICK_MS = 5_000;
 
-/** Files written at once by one process. Each is mostly waiting on ClickHouse. */
+/** Files written at once by one process. Each is mostly waiting on the database. */
 const CONCURRENT_JOBS = 2;
 
 /** Expiry sweep cadence. Files expire on a 24h clock; ten minutes is plenty. */

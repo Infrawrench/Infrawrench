@@ -8,7 +8,7 @@
  * trying to understand why a number came out the way it did.
  *
  * The adjustment itself happens nowhere near here. `resolveBillingAdjustments`
- * hands a compiled rule set to `clickhouse/cost-readers.ts`, which folds it into
+ * hands a compiled rule set to `analytics/cost-readers.ts`, which folds it into
  * the statement it was going to run anyway. Nothing in this file writes to
  * `cost_daily`, and nothing ever should: collected spend is the audit trail, and
  * a markup that restated it would be unrecoverable the moment it was saved.

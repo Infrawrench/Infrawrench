@@ -9,7 +9,7 @@
  * WHY THIS IS NOT A SAVED COST REPORT. The obvious home was the `cost_reports`
  * object, and it does not fit, not by a little. That object is a *saved
  * ClickHouse query*: its `config` column is validated against a closed
- * `costGraphConfigSchema`, running one calls `costQueryForConfig(...)` →
+ * `CostGraphConfig` schema, running one calls `costQueryForConfig(...)` →
  * `runCostQuery(...)` against the stored daily cost rows, the run result is
  * typed as a bucketed money series, and the renderer is a single chart card.
  * There is no data-source indirection to hook and no report-kind discriminator

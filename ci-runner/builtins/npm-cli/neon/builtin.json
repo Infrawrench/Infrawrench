@@ -1,9 +1,9 @@
 {
   "name": "neon",
-  "version": "9.5.0",
+  "version": "9.5.1",
   "entry": "node_modules/neon/dist/cli.js",
   "args": ["--no-analytics"],
   "env": {},
-  "description": "The Neon CLI 9.5.0 (neonctl's successor), on the environment's node, with analytics off",
-  "tree_sha256": "06a0496cda6ced5417a3afe56c889f1debacb151061f6244cf339ecc7c82839a"
+  "description": "The Neon CLI 9.5.1 (neonctl's successor), on the environment's node, with analytics off",
+  "tree_sha256": "4f5f6362ba18ef61edd7fa98769c67e8794118958fa4dcc9ec37e75a40a58353"
 }

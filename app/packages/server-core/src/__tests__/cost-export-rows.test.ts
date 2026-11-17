@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { SQL } from "drizzle-orm";
-import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { buildCostExportQuery, resolveColumns, tagColumnName } from "../cost-exports/rows";
 import { csvCell, outputColumns, toCsv, toNdjson } from "../cost-exports/serialize";
-import { amortizedAmountExpr, blendedAmountExpr } from "../clickhouse/cost-readers";
+import { amortizedAmountExpr, blendedAmountExpr } from "../analytics/cost-readers";
 import type { CostExportRow } from "../cost-exports/rows";
+import { inlineSql } from "./helpers/inline-sql";
 
 const stamp = { exportedAt: "2026-08-08T04:00:00.000Z", collectionWatermark: "2026-08-06" };
 
@@ -50,31 +51,35 @@ describe("buildCostExportQuery", () => {
     filters: [],
   };
 
-  const render = (fragment: SQL) => new ClickHouseDialect().sqlToQuery(fragment).sql;
+  const render = (fragment: SQL) => new PgDialect().sqlToQuery(fragment).sql;
+  const sqlOf = (q: Parameters<typeof buildCostExportQuery>[0]) =>
+    inlineSql(buildCostExportQuery(q));
 
   it("orders by the full grouping key so two runs produce identical bytes", () => {
-    const { sql } = buildCostExportQuery(base);
-    expect(sql).toContain("group by `day`, `provider`, `service`, `tag_team`, `currency`");
+    const sql = sqlOf(base);
+    expect(sql).toContain(`group by "day", "provider", "service", "tag_team", "currency"`);
     expect(sql).toContain(
-      "order by `day` asc, `provider` asc, `service` asc, `tag_team` asc, `currency` asc",
+      `order by "day" asc, "provider" asc, "service" asc, "tag_team" asc, "currency" asc`,
     );
   });
 
-  it("reads through FINAL so restated rows never double-count", () => {
-    expect(buildCostExportQuery(base).sql).toContain("from `cost_daily` final");
+  it("reads `cost_daily` directly: a re-fetched row replaces its key, so nothing double-counts", () => {
+    expect(sqlOf(base)).toContain(`from "cost_daily"`);
   });
 
-  it("escapes the org rather than interpolating it", () => {
-    const { sql } = buildCostExportQuery({ ...base, organizationId: "org'1" });
-    expect(sql).toContain("`cost_daily`.`organization_id` = 'org\\'1'");
+  it("binds the org rather than interpolating it", () => {
+    const built = buildCostExportQuery({ ...base, organizationId: "org'1" });
+    expect(built.sql).toMatch(/"cost_daily"\."organization_id" = \$\d+/);
+    expect(built.params).toContain("org'1");
+    expect(built.sql).not.toContain("org'1");
   });
 
   it("suppresses a usage unit the grouped rows disagree on", () => {
-    expect(buildCostExportQuery(base).sql).toContain("uniqExact(`usage_unit`) = 1");
+    expect(sqlOf(base)).toMatch(/CASE WHEN count\(DISTINCT ("cost_daily"\.)?"usage_unit"\) = 1/);
   });
 
   it("sums the amortized column when asked, with the cash fallback", () => {
-    const { sql } = buildCostExportQuery({ ...base, costBasis: "amortized" });
+    const sql = sqlOf({ ...base, costBasis: "amortized" });
     // The *same* expression the graphs use, not a copy of it. An export is what
     // someone reconciles a graph against, so drift between the two is a support
     // ticket that reads "your own numbers disagree".
@@ -85,29 +90,29 @@ describe("buildCostExportQuery", () => {
   });
 
   it("sums the blended column when asked, through the same expression as the graphs", () => {
-    const { sql } = buildCostExportQuery({ ...base, costBasis: "blended" });
+    const sql = sqlOf({ ...base, costBasis: "blended" });
     expect(sql).toContain(render(blendedAmountExpr()));
     expect(sql).toContain("blended_reported");
     // Unblended rows fall back to amortized, which itself falls back to cash.
     expect(sql).toContain(render(amortizedAmountExpr()));
   });
 
-  it("translates filters, including tag filters, into escaped predicates", () => {
-    const { sql } = buildCostExportQuery({
+  it("translates filters, including tag filters, into bound predicates", () => {
+    const sql = sqlOf({
       ...base,
       filters: [
         { dimension: "account", op: "in", values: ["acct-1"] },
         { dimension: "tag", op: "not_in", values: ["retired"], tagKey: "state" },
       ],
     });
-    expect(sql).toContain("`cost_daily`.`account_id` in ('acct-1')");
-    expect(sql).toContain("`cost_daily`.`tags`['state'] not in ('retired')");
+    expect(sql).toContain(`"cost_daily"."account_id" in ('acct-1')`);
+    expect(sql).toContain(`coalesce("cost_daily"."tags" ->> 'state'::text, '') not in ('retired')`);
   });
 
   it("narrows charge types only when asked", () => {
-    expect(buildCostExportQuery(base).sql).not.toContain("charge_type` in");
-    expect(buildCostExportQuery({ ...base, chargeTypes: ["credit"] }).sql).toContain(
-      "`cost_daily`.`charge_type` in ('credit')",
+    expect(sqlOf(base)).not.toContain(`charge_type" in`);
+    expect(sqlOf({ ...base, chargeTypes: ["credit"] })).toContain(
+      `"cost_daily"."charge_type" in ('credit')`,
     );
   });
 });

@@ -55,6 +55,7 @@
 
 mod dep_path;
 pub(crate) mod hoist;
+mod key;
 mod lockfile;
 mod patch;
 pub(crate) mod tarball;
@@ -79,6 +80,7 @@ pub use dep_path::{
     DEFAULT_VIRTUAL_STORE_DIR_MAX_LENGTH, dep_path_to_filename, patch_hash, ref_to_relative,
     remove_peers_suffix, remove_suffix, split_name_version,
 };
+pub use key::KeyIndex;
 pub use lockfile::{
     DepRef, Importer, Lockfile, Package, PatchedDependency, Resolution, Snapshot, parse_lockfile,
 };
@@ -252,13 +254,22 @@ struct RawWorkspace {
 impl WorkspaceSettings {
     /// Reads the settings of the workspace rooted at `root`.
     pub fn read(builder: &SnapshotBuilder, root: &Path) -> Result<WorkspaceSettings> {
+        Self::read_with(&|path| builder.read(path).ok(), root)
+    }
+
+    /// [`WorkspaceSettings::read`] through `read`, which gives a file's
+    /// bytes by absolute path, or `None` when it is absent.
+    pub fn read_with(
+        read: &dyn Fn(&Path) -> Option<Vec<u8>>,
+        root: &Path,
+    ) -> Result<WorkspaceSettings> {
         let mut raw = RawWorkspace::default();
         let npmrc_path = root.join(".npmrc");
-        if let Ok(bytes) = builder.read(&npmrc_path) {
+        if let Some(bytes) = read(&npmrc_path) {
             read_npmrc(&String::from_utf8_lossy(&bytes), &mut raw);
         }
         let workspace_path = root.join("pnpm-workspace.yaml");
-        if let Ok(bytes) = builder.read(&workspace_path) {
+        if let Some(bytes) = read(&workspace_path) {
             let yaml: RawWorkspace =
                 serde_yaml_ng::from_slice(&bytes).map_err(|e| PnpmError::Config {
                     path: workspace_path.display().to_string(),
@@ -267,7 +278,7 @@ impl WorkspaceSettings {
             merge(&mut raw, yaml);
         }
         let mut patched = BTreeMap::new();
-        if let Ok(bytes) = builder.read(root.join("package.json"))
+        if let Some(bytes) = read(&root.join("package.json"))
             && let Ok(manifest) = serde_json::from_slice::<serde_json::Value>(&bytes)
             && let Some(map) = manifest
                 .pointer("/pnpm/patchedDependencies")

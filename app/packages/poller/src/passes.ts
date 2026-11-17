@@ -15,7 +15,7 @@
  *   outright (the workflow isolate) or calls plugin code for arbitrary
  *   accounts, where an account behind a bastion or a socket driver would fail
  *   on the edge with nothing to hand it over; `edge` passes touch only
- *   Postgres, ClickHouse and fixed HTTPS services.
+ *   Postgres and fixed HTTPS services.
  *
  * Every `run` is defensive: it logs and swallows its own failure, so one
  * broken pass never stops the next, on either runtime.
@@ -88,6 +88,10 @@ import {
   pruneSessionRecordings,
   settleAbandonedRecordings,
 } from "@infrawrench/server-core/ssh-recording/retention";
+import {
+  ANALYTICS_RETENTION_INTERVAL_MS,
+  pruneAnalytics,
+} from "@infrawrench/server-core/analytics/retention";
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
@@ -623,6 +627,17 @@ export const PASSES: readonly Pass[] = [
     minIntervalMs: CHANGE_RETENTION_INTERVAL_MS,
     run: runRetention,
   },
+  // Analytics retention: deletes metric, poll, cost, flow and AI rows past
+  // their table's window (`ANALYTICS_RETENTION`), in bounded batches. A pass
+  // of its own rather than a step of `retention` so a slow table never delays
+  // the other prunes. Edge: Postgres only.
+  {
+    kind: "periodic",
+    name: "analytics-retention",
+    runtime: "edge",
+    minIntervalMs: ANALYTICS_RETENTION_INTERVAL_MS,
+    run: guarded("[analytics-retention] tick failed:", () => pruneAnalytics()),
+  },
 
   // Provider status feeds. Claims due feeds with the same SKIP LOCKED lease
   // protocol as accounts (the lease lives in
@@ -755,7 +770,7 @@ export const PASSES: readonly Pass[] = [
   // Trial reaper: destroy unclaimed agent trial orgs past their 24 hours.
   // Sits beside the lease pass because it is the same shape of work (a clock
   // ran out, something gets deleted) but takes no claim, since destruction
-  // is idempotent across all three stores it touches. Unlike every other pass
+  // is idempotent across both stores it touches. Unlike every other pass
   // this one deletes a whole tenant, so the result is logged even when it is
   // zero-work.
   {
@@ -808,7 +823,7 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[poller] log alert tick failed:", () => runLogAlertPass({ limit: 4 })),
   },
 
-  // Metric threshold alert rules, judged against ClickHouse.
+  // Metric threshold alert rules, judged against the metric rollups.
   {
     kind: "periodic",
     name: "metric-alerts",
@@ -818,7 +833,7 @@ export const PASSES: readonly Pass[] = [
 
   // SLOs: SLI, error budget and multiwindow burn rates from the 1m metric
   // rollup, with burn-rate alerts routed through the org's rules. Edge: it
-  // reads Postgres and ClickHouse and calls no plugin code, the metric-alert
+  // reads Postgres and calls no plugin code, the metric-alert
   // pass's footprint exactly.
   {
     kind: "periodic",
@@ -986,7 +1001,7 @@ export const PASSES: readonly Pass[] = [
     }),
   },
 
-  // Scheduled cost exports: streams the org's cost rows out of ClickHouse and
+  // Scheduled cost exports: streams the org's cost rows out of `cost_daily` and
   // writes them to the export's bucket or HTTPS endpoint, through the Node
   // egress path (`cost-exports/egress.ts`).
   {

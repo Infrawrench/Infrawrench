@@ -4,51 +4,14 @@
 
 project_id   = "infrawrench-prod"
 region       = "us-east4"
-cluster_name = "infrawrench-prod"
+cluster_name = "infrawrench-prod" # name prefix for the stack's resources
 
-# owner/repo allowed to push images and deploy via Workload Identity Federation.
+# owner/repo allowed to push images via Workload Identity Federation.
 github_repository = "Infrawrench/infrawrench"
 
-# ---------------------------------------------------------------------------
-# Cluster isolation
-# ---------------------------------------------------------------------------
-
-# Optional, default true. Enforces the NetworkPolicies in
-# infra/k8s/network-policy.yaml and clickhouse.tf through GKE's Calico addon.
-# An in-place cluster update (no replacement), after which GKE recreates every
-# node, one surge node at a time. Apply infra/k8s first (CI does on any push)
-# so the allow rules exist before enforcement starts. Setting false leaves the
-# policies inert: the cluster accepts them and enforces nothing.
-# enable_network_policy = true
-
-# Optional, default true. Turns on the control plane's DNS-based endpoint,
-# which is gated by IAM rather than source IP. CI uses it when the
-# GKE_DNS_ENDPOINT repo variable is "true". Non-disruptive.
-# control_plane_dns_endpoint = true
-
-# Optional, default [] (public IP endpoint open to the internet, still behind
-# IAM). Restricts the control plane's public IP endpoint to these ranges.
-# Order matters, or CI and terraform lock themselves out:
-#   1. apply with control_plane_dns_endpoint = true (the default),
-#   2. set the GKE_DNS_ENDPOINT repo variable to "true" and let one deploy go
-#      green through it,
-#   3. then set this list. Include the address you run terraform from: the
-#      kubernetes and helm providers reach the cluster over the IP endpoint.
-#      Humans can use `get-credentials --dns-endpoint` instead of being listed.
-# master_authorized_networks = [
-#   { cidr_block = "203.0.113.10/32", display_name = "ops-office" },
-# ]
-
-# Optional, default false. ClickHouse replicas authenticate interserver part
-# fetches (port 9009) with a terraform-generated password. Fresh clusters need
-# nothing. On an already-running cluster, apply the change that first adds the
-# credentials with this set to true, wait for both clickhouse pods to finish
-# their rolling restart, then remove it and apply again: without it, the
-# replica that restarts last cannot fetch parts from the one that restarted
-# first for the length of the rollout (fetches retry, nothing is lost).
-# clickhouse_interserver_allow_empty = true
-
-# Runtime env for web + poller + github-watcher (one shared k8s secret).
+# Runtime env for every runtime: the Lambda functions, the AWS session gateway,
+# the Oracle github-watcher (those three merged with lambda_app_env) and the
+# edge Workers (the edge-env secret, lambda.tf).
 app_env = {
   NODE_ENV = "production"
 
@@ -64,7 +27,7 @@ app_env = {
 
   # WorkOS
   # Read by the poller as well as the web app: the agent trial reaper deletes
-  # the WorkOS organization alongside the Postgres and ClickHouse rows, and
+  # the WorkOS organization alongside the Postgres rows, and
   # without this key it logs a warning and leaves orgs behind in WorkOS.
   WORKOS_API_KEY         = "sk_live_..."
   WORKOS_CLIENT_ID       = "client_..."
@@ -104,29 +67,6 @@ app_env = {
   # the plan and grants capacity seats, and the purchase is not reported.
   # Server-only; leave empty to disable.
   REVNU_EVENT_KEY                     = ""
-
-  # ClickHouse (metrics + costs; the four URL/USER/PASSWORD/DATABASE keys are
-  # required together or writes/reads no-op). Two options:
-  #
-  # In-cluster (default) — clickhouse.tf runs a 2-replica ClickHouse on its
-  # own node pool. Password comes from `terraform output clickhouse_app_password`.
-  # CLICKHOUSE_METRICS_REPLICATED="1" is required here: it makes the schema
-  # migrations create Replicated* table engines so data actually replicates
-  # between the two replicas. Never set it against ClickHouse Cloud, which
-  # rejects ReplicatedMergeTree DDL.
-  CLICKHOUSE_METRICS_URL        = "http://clickhouse.infrawrench.svc.cluster.local:8123"
-  CLICKHOUSE_METRICS_USER       = "infrawrench"
-  CLICKHOUSE_METRICS_PASSWORD   = "<terraform output clickhouse_app_password>"
-  CLICKHOUSE_METRICS_DATABASE   = "infrawrench"
-  CLICKHOUSE_METRICS_REPLICATED = "1"
-  #
-  # ClickHouse Cloud — point the URL at the service endpoint instead, omit
-  # CLICKHOUSE_METRICS_REPLICATED, and if the Cloud IP access list is enabled,
-  # add the `egress_ip` output (the Cloud NAT address) to it.
-  # CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
-  # CLICKHOUSE_METRICS_USER     = "default"
-  # CLICKHOUSE_METRICS_PASSWORD = "..."
-  # CLICKHOUSE_METRICS_DATABASE = "infrawrench"
 
   # GitHub App (workflow git triggers; used by web + github-watcher)
   GITHUB_APP_ID          = "..."
@@ -339,32 +279,24 @@ app_env = {
   # app.config.ts. Setting it early degrades pages silently.
   PUSH_CRITICAL_ALERTS = "1"
 
-  # Chat models. The default model (Gemini 3.7 Flash) needs no key at all —
-  # it's served through Vertex AI, and the web pods authenticate with Workload
-  # Identity (infra/terraform/vertex.tf). GOOGLE_CLOUD_PROJECT and
-  # GOOGLE_CLOUD_LOCATION are injected automatically from project_id and
-  # var.vertex_location; set them here only to override.
+  # Claude: the chat models (Sonnet 5.5, Opus 5.5), the chat's `web_search`
+  # tool, `infra.ai()` in workflows (read by the poller as well as web) and
+  # the weekly digest's opt-in AI paragraph. Required for chat: without it a
+  # chat turn returns a configuration error, web_search isn't offered, the
+  # workflow typings mark infra.ai unavailable and a call throws, and the
+  # digest skips its paragraph with a log line.
   #
-  # ANTHROPIC_API_KEY is what enables the Claude models in the picker. Without
-  # it, picking one returns a configuration error and chat falls back to
-  # nothing — leave it set unless you intend Gemini-only. The same key also
-  # backs `infra.ai()` in workflows (read by the poller as well as web —
-  # without it the generated typings mark infra.ai unavailable and a call
-  # throws) and the weekly digest's opt-in AI summary paragraph; without it
-  # that paragraph is skipped with a log line and the digest still sends its
-  # deterministic content.
+  # Production calls Claude through Cloudflare AI Gateway on Unified Billing,
+  # the same arrangement as instances.infrawrench.com, so no Anthropic key is
+  # held here. All three are needed: CLOUDFLARE_ACCOUNT_ID (the entry under
+  # "Bulk pricing data" below; one account serves both), AI_GATEWAY_ID (the
+  # gateway's name, created under AI > AI Gateway in the Cloudflare dashboard,
+  # with AI Gateway credits loaded) and AI_GATEWAY_TOKEN (a Cloudflare API
+  # token with the AI Gateway Run permission). ANTHROPIC_API_KEY is not read;
+  # remove it from app_env.
   # Optional
-  # ANTHROPIC_API_KEY    = "..."
-  # OPENAI_API_KEY       = "..."
-
-  # Which backend the chat agent's `web_search` tool uses. Optional: unset picks
-  # the first configured one, preferring "vertex" (Google Search grounding, uses
-  # the GOOGLE_CLOUD_PROJECT the default Gemini setup already has) over
-  # "anthropic" (Anthropic's server-side web search, needs ANTHROPIC_API_KEY).
-  # With neither configured the tool isn't offered and the agent is told to say
-  # what it would have looked up. Searches are billed on to the org per query on
-  # top of tokens, so this also chooses which per-query rate applies.
-  # INFRAWRENCH_CHAT_SEARCH_BACKEND = "vertex"
+  # AI_GATEWAY_ID        = "infrawrench"
+  # AI_GATEWAY_TOKEN     = "..."
 
   # Ceiling on anonymous agent registrations per hour across every source
   # address — the kill switch for a distributed flood of trial workspaces.
@@ -379,26 +311,25 @@ app_env = {
   # ceiling silently during the incident it was set for.
   # AGENT_TRIAL_GLOBAL_HOURLY_LIMIT = "500"
 
-  # Shared secret for the cross-replica relay. REQUIRED whenever the web
-  # Deployment runs more than one replica, which it does (`replicas: 2` in
-  # infra/k8s/web-deployment.yaml).
+  # Shared secret for the cross-replica relay. REQUIRED whenever the session
+  # gateway runs more than one instance, which it does (two, aws-web.tf).
   #
-  # Some sessions cannot be moved between pods — the compositor behind a Linux
-  # application session exits with the SSH channel that opened it — so
-  # services/replica-relay.ts leases each session to one pod and forwards calls
+  # Some sessions cannot be moved between instances — the compositor behind a
+  # Linux application session exits with the SSH channel that opened it — so
+  # services/replica-relay.ts leases each session to one instance and forwards calls
   # that land elsewhere to it, over POST /api/internal/relay. This is what that
   # endpoint authenticates its siblings with.
   #
   # Any long random string, identical across replicas: `openssl rand -hex 32`.
   # Leaving it unset does not break the build or the boot — it degrades, which
   # is the failure worth naming here: the relay disables itself, and roughly
-  # one call in two for a Linux application session lands on a pod that does
-  # not hold it and fails with "the app server closed before greeting".
+  # one call in two for a Linux application session lands on an instance that
+  # does not hold it and fails with "the app server closed before greeting".
   #
   # The other half of the pair, POD_IP, is deliberately NOT in this map: it is
-  # each pod's own cluster IP, injected by the downward API in
-  # infra/k8s/web-deployment.yaml, and a single fixed value here would point
-  # every replica at the same address.
+  # each instance's own private address, which infra/vm/agent.sh passes to the
+  # container, and a single fixed value here would point every replica at the
+  # same address.
   #
   # The same secret also authenticates Node to the realtime relay (Durable
   # Objects in the web edge Worker, server-core/src/realtime/protocol.ts):
@@ -467,11 +398,9 @@ app_env = {
 
   # AWS Lambda gateway (lambda.tf, infra/README.md "Lambda gateway"). Nothing
   # to set here: LAMBDA_GATEWAY_SECRET (generated) and LAMBDA_GATEWAY_URL (the
-  # function URL) are merged into infrawrench-env by terraform for the edge
-  # Worker, and INFRAWRENCH_APP_ENV_SECRET_ARN is set on the functions
-  # themselves. CLICKHOUSE_METRICS_HTTP_HEADERS (OPTIONAL, a JSON object of
-  # headers sent with every ClickHouse request) belongs in lambda_app_env
-  # below, not here.
+  # function URL) are merged into the edge-env secret by terraform for the
+  # edge Worker, and INFRAWRENCH_APP_ENV_SECRET_ARN is set on the functions
+  # themselves.
 }
 
 # AWS Lambda gateway (lambda.tf). OPTIONAL: false creates nothing in AWS and
@@ -483,21 +412,11 @@ app_env = {
 # lambda_initial_image_tag = "<commit sha the deploy-lambda job pushed>"
 #
 # Values that must differ on Lambda, merged over app_env for the functions
-# only (sensitive). Without the first two the Lambda has no metrics store
-# (ClickHouse is in-cluster; this reaches it through a Cloudflare Tunnel
-# public hostname behind a Cloudflare Access service token), and dashboards
-# it serves lose sparklines. Without DATABASE_URL it uses app_env's direct
-# Neon endpoint, which works but spends a connection per warm environment.
+# only (sensitive). Without DATABASE_URL it uses app_env's direct Neon
+# endpoint, which works but spends a connection per warm environment.
 # lambda_app_env = {
-#   CLICKHOUSE_METRICS_URL          = "https://clickhouse-gw.infrawrench.com"
-#   CLICKHOUSE_METRICS_HTTP_HEADERS = "{\"CF-Access-Client-Id\":\"...access\",\"CF-Access-Client-Secret\":\"...\"}"
-#   DATABASE_URL                    = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
+#   DATABASE_URL = "postgres://...@ep-xxx-pooler.us-east-2.aws.neon.tech/core?sslmode=require"
 # }
-
-# The Cloudflare Tunnel connector the edge Workers reach ClickHouse through
-# (edge.tf). OPTIONAL: empty runs no connector. The token is the `eyJ...`
-# string from Networking > Tunnels > (tunnel) > Add a replica.
-# cloudflare_tunnel_token = "eyJ..."
 
 # Oracle Cloud github-watcher (one Always Free micro VM; oci.tf, runbook in
 # infra/README.md, "Oracle Cloud"). OPTIONAL: false creates nothing in OCI.
@@ -519,5 +438,5 @@ app_env = {
 # aws_web_instance_type = "t4g.medium"   # Graviton: CI builds the arm64 image
 # Token of the Cloudflare Tunnel whose routes are app.infrawrench.com and
 # session-gateway.infrawrench.com -> http://localhost:3000 (not the
-# ClickHouse tunnel above).
+# cluster tunnel above).
 # session_gateway_tunnel_token = "eyJ..."

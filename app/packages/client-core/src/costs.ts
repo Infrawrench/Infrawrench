@@ -277,8 +277,8 @@ export function isCostBasis(value: unknown): value is CostBasis {
  * - `is_set` / `is_not_set`: whether a tag (provider or virtual) has a
  *   non-empty value at all. These take no values.
  *
- * Every operator compiles to one ClickHouse predicate in
- * `server-core/src/clickhouse/cost-sql.ts`; `cost-filter-match.ts` holds the
+ * Every operator compiles to one SQL predicate in
+ * `server-core/src/analytics/cost-sql.ts`; `cost-filter-match.ts` holds the
  * same semantics in JS for anything that evaluates a filter outside SQL.
  */
 export const COST_FILTER_OPS = [
@@ -464,7 +464,7 @@ export const COST_MEASURE_LABELS: Record<CostMeasure, string> = {
  * The granularity cost rows are stored at, per account (GET /costs/status).
  *
  * `daily` for every provider today: the plugin contract's `CostRow.date` is a
- * UTC day and ClickHouse keys `cost_daily` by day. Spelled out as a field so a
+ * UTC day and `cost_daily` is keyed by day. Spelled out as a field so a
  * future hourly store can switch hourly bins on per account without another
  * contract change.
  */
@@ -640,8 +640,8 @@ export interface BudgetThreshold {
 }
 
 /**
- * Create/update payload for a budget (POST/PUT /budgets). `ui/src/cost/config.ts`
- * asserts `budgetInputSchema` still parses to exactly this.
+ * Create/update payload for a budget (POST/PUT /budgets). `BudgetInput` in
+ * `@infrawrench/api-contract/schemas` is asserted to decode to exactly this.
  */
 export interface BudgetInput {
   name: string;
@@ -1569,8 +1569,8 @@ export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
 /**
  * The bucket a UTC day falls into, for a given binning.
  *
- * Must agree exactly with `bucketExpr` in `server-core/clickhouse/cost-readers`:
- * weekly is Monday-start to match `toStartOfWeek(day, 1)`, monthly is the
+ * Must agree exactly with `bucketExpr` in `server-core/analytics/cost-readers`:
+ * weekly is Monday-start to match `date_trunc('week')` (the ISO week), monthly is the
  * first of the month. Anything that has to line a client-side series up against
  * a server-aggregated one (the forecast splice, the unit-cost denominator)
  * calls this rather than re-deriving it, because a client that bucketed Sundays
@@ -1583,7 +1583,7 @@ export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
 export function costBucketStart(day: string, binning: CostBinningId): string {
   if (binning === "monthly") return `${day.slice(0, 7)}-01`;
   if (binning === "quarterly") {
-    // `toStartOfQuarter`: the first of January, April, July or October.
+    // `date_trunc('quarter')`: the first of January, April, July or October.
     const month = Number(day.slice(5, 7));
     const start = Math.floor((month - 1) / 3) * 3 + 1;
     return `${day.slice(0, 4)}-${String(start).padStart(2, "0")}-01`;

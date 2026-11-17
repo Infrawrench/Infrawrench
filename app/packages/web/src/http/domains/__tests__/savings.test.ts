@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-// The services reach Postgres and ClickHouse; these tests are about the
+// The services reach Postgres; these tests are about the
 // transport: the read/write gates, the event refusals' statuses, the delete's
 // existence check, and the audit trail.
 class FakeSavingsEventError extends Error {

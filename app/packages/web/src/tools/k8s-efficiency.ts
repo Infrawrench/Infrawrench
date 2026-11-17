@@ -4,8 +4,8 @@
  * edited in the app. Permissions mirror the routes (`costs:read`), and every
  * read runs under the caller's cost visibility scope (`runToolHandler`).
  */
-import { z } from "zod";
-import { kubernetesEfficiencyConfigSchema } from "@infrawrench/ui/cost/config";
+import { Schema } from "effect";
+import { KubernetesEfficiencyConfig } from "@infrawrench/api-contract/schemas";
 import type { KubernetesEfficiencyResult } from "@infrawrench/client-core";
 import {
   listKubernetesEfficiencyReports,
@@ -13,6 +13,7 @@ import {
   runKubernetesEfficiencyReport,
 } from "../services/k8s-efficiency-reports";
 import { ok, err, type ToolDefinition } from "./types";
+import { decodeToolInput } from "./decode-input";
 
 const CONFIG_GUIDE =
   "Config: `{version: 1, dateRange: {kind:'relative', preset: 7d|30d|90d|mtd|last_month|qtd|ytd|6m|12m} " +
@@ -86,7 +87,7 @@ export function kubernetesEfficiencyTools(): ToolDefinition[] {
         "Run a saved Kubernetes efficiency report and return its totals, per-category split and " +
         "one row per group (at most 50), each with total, used, unused, unmeasured, idle and " +
         "overhead cost and an efficiency between 0 and 1. Quote the returned window with figures.",
-      inputSchema: { reportId: z.string() },
+      inputSchema: { reportId: Schema.String },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
@@ -102,19 +103,14 @@ export function kubernetesEfficiencyTools(): ToolDefinition[] {
       description:
         "Run an unsaved Kubernetes efficiency report over the clusters the caller can see. " +
         CONFIG_GUIDE,
-      inputSchema: { config: z.record(z.unknown()) },
+      inputSchema: { config: Schema.Record(Schema.String, Schema.Unknown) },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
-        const parsed = kubernetesEfficiencyConfigSchema.safeParse(input["config"]);
-        if (!parsed.success) {
-          return err(
-            `Invalid config: ${parsed.error.issues
-              .slice(0, 6)
-              .map((i) => `${i.path.join(".") || "(config)"}: ${i.message}`)
-              .join("; ")}`,
-          );
-        }
+        const parsed = decodeToolInput(KubernetesEfficiencyConfig, input["config"], {
+          root: "(config)",
+        });
+        if (!parsed.success) return err(`Invalid config: ${parsed.message}`);
         return ok(summarize(await queryKubernetesEfficiency(auth.organizationId, parsed.data)));
       },
     },
