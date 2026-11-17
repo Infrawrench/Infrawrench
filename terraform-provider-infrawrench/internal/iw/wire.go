@@ -1513,6 +1513,54 @@ type NetworkFlowReport struct {
 	UpdatedAt       string                  `json:"updatedAt"`
 }
 
+/* ---------------------------- commitment reports --------------------------- */
+
+// CommitmentReportFilters narrows a commitment report. Every list is
+// omitempty because the server refuses an empty one: absent is the only way to
+// say "no filter", and a stored config reads back exactly as it was sent.
+type CommitmentReportFilters struct {
+	Providers       []string `json:"providers,omitempty"`
+	CommitmentTypes []string `json:"commitmentTypes,omitempty"`
+	Services        []string `json:"services,omitempty"`
+	AccountIDs      []string `json:"accountIds,omitempty"`
+	Regions         []string `json:"regions,omitempty"`
+	CommitmentIDs   []string `json:"commitmentIds,omitempty"`
+}
+
+// CommitmentReportConfig is the saved query: window, bucket size, split,
+// filters and the metric the chart draws. Every key but the filter lists is
+// required by the server.
+type CommitmentReportConfig struct {
+	Version     int64                   `json:"version"`
+	DateRange   CostDateRange           `json:"dateRange"`
+	Granularity string                  `json:"granularity"`
+	GroupBy     string                  `json:"groupBy"`
+	Filters     CommitmentReportFilters `json:"filters"`
+	Metric      string                  `json:"metric"`
+}
+
+// CommitmentReportInput is the POST/PUT body. Description is omitted when
+// unset (the server stores absent as null); FolderID is sent as an explicit
+// null to move a report to the top level.
+type CommitmentReportInput struct {
+	Name        string                 `json:"name"`
+	Description *string                `json:"description,omitempty"`
+	Config      CommitmentReportConfig `json:"config"`
+	FolderID    *string                `json:"folderId"`
+}
+
+// CommitmentReport is a saved commitment report.
+type CommitmentReport struct {
+	ID              string                 `json:"id"`
+	Name            string                 `json:"name"`
+	Description     *string                `json:"description"`
+	Config          CommitmentReportConfig `json:"config"`
+	FolderID        *string                `json:"folderId"`
+	CreatedByUserID *string                `json:"createdByUserId"`
+	CreatedAt       string                 `json:"createdAt"`
+	UpdatedAt       string                 `json:"updatedAt"`
+}
+
 // CostReportAnomalyAlertInput is the PUT body for a report's own anomaly alert:
 // a whole replace, one alert per report. Destinations use the alert routing
 // vocabulary (AlertDestination).
