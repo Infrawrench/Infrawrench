@@ -23350,5 +23350,8 @@
   "2cd7ac0befac4616": "Berichtsname",
   "775aa120cca44531": "Beschreibung hinzufügen",
   "22e745b7db60e52f": "Anzeige",
-  "a64f8c72a2ed2778": "Filter {filter} entfernen"
+  "a64f8c72a2ed2778": "Filter {filter} entfernen",
+  "c2e23c6d7c842309": "Datenreihen",
+  "3bfddd583ca00d76": "{name} ausblenden",
+  "aecba76fd1f9fc10": "{name} einblenden"
 }

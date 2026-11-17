@@ -49,6 +49,9 @@ export function CommitmentReportView({ result, initialMetric }: CommitmentReport
   const chart = useChartTheme();
   const metricId = useId();
   const [metric, setMetric] = useState<CommitmentReportMetric>(initialMetric);
+  // Series hidden from the chart through the legend, by series id. The table
+  // keeps every one: hiding a line is for reading the others, not a filter.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
 
   const grouped = result.groupBy !== "none";
   const source = grouped ? result.series : result.overall;
@@ -72,7 +75,9 @@ export function CommitmentReportView({ result, initialMetric }: CommitmentReport
   }, [result.buckets, drawn, metric]);
 
   const observed = rows.flatMap((r) =>
-    drawn.map((_, i) => r[`s${i}`]).filter((v): v is number => typeof v === "number"),
+    drawn
+      .map((s, i) => (hidden.has(s.id) ? null : r[`s${i}`]))
+      .filter((v): v is number => typeof v === "number"),
   );
   const yScale = niceAxis(Math.min(0, ...observed), Math.max(isRatio ? 1 : 0, ...observed));
   const axisCurrency = drawn[0]?.currency ?? "USD";
@@ -134,6 +139,45 @@ export function CommitmentReportView({ result, initialMetric }: CommitmentReport
         </select>
       </div>
 
+      {drawn.length > 1 && (
+        <ul className="flex flex-wrap gap-x-1 gap-y-1" aria-label={gt("Series")}>
+          {drawn.map((s, i) => {
+            const shown = !hidden.has(s.id);
+            const name = seriesName(s);
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  aria-pressed={shown}
+                  title={shown ? gt("Hide {name}", { name }) : gt("Show {name}", { name })}
+                  onClick={() =>
+                    setHidden((current) => {
+                      const next = new Set(current);
+                      if (next.has(s.id)) next.delete(s.id);
+                      else next.add(s.id);
+                      return next;
+                    })
+                  }
+                  className={`inline-flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-overlay ${
+                    shown ? "text-on-surface-secondary" : "text-on-surface-faint line-through"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: shown ? color(i) : "transparent",
+                      boxShadow: `inset 0 0 0 1.5px ${color(i)}`,
+                    }}
+                  />
+                  {name}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       <div className="h-72">
         {drawn.length === 0 ? (
           <T>
@@ -189,6 +233,7 @@ export function CommitmentReportView({ result, initialMetric }: CommitmentReport
                   name={`s${i}`}
                   stroke={color(i)}
                   strokeWidth={2}
+                  hide={hidden.has(s.id)}
                   dot={result.buckets.length < 40}
                   // A gap is a bucket with nothing to measure; bridging it
                   // would draw a measurement nobody took.
