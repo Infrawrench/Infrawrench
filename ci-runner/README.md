@@ -1149,10 +1149,10 @@ Builtins:
 | `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
 | `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
 | `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
-| `vercel@65`        | `node`     | The Vercel CLI 65.16.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
+| `vercel@65`        | `node`     | The Vercel CLI 65.17.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
 | `wrangler@4`       | `node`     | Wrangler 4.163.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
 | `cf@1.0.0-rc.0`    | `node`     | Cloudflare's CLI, `cf` 1.0.0-rc.0 (a release candidate: name the exact version). See [Deployment CLIs](#deployment-clis).                    |
-| `neon@9`           | `node`     | The Neon CLI 9.5.0 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
+| `neon@9`           | `node`     | The Neon CLI 9.5.1 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
 
 Environments:
 
@@ -1719,7 +1719,10 @@ deploy:
   pinned in the tool's `builtin.json` before it compresses it. The store
   publishes the compressed tar by its own hash like any blob, and a version
   is never republished. Unlike a [global install](#global-installs),
-  nothing is fetched while the job runs.
+  nothing is fetched while the job runs. Where a program still pins a
+  dependency with a security advisory against it, an `overrides` entry in
+  its `package.json` lifts that range to the fixed release, so a changed
+  dependency ships with the program's next version.
 - **Tokens from the environment, no prompts.** Each reads its token from a
   variable: `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` (with
   `CLOUDFLARE_ACCOUNT_ID`), `NEON_API_KEY`. Set them from secrets, as
