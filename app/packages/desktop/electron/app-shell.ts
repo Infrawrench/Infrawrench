@@ -76,11 +76,25 @@ const openExternalUrl = Effect.fn("AppShell.openExternalUrl")(function* (url: st
   yield* Effect.promise(() => shell.openExternal(parsed.toString()));
 });
 
-function readClipboardImage(): ClipboardImage | null {
-  const image = clipboard.readImage();
-  if (image.isEmpty()) return null;
-  return { pngBase64: image.toPNG().toString("base64"), mime: "image/png" };
-}
+const PNG = "image/png";
+
+// Electron 44's clipboard is the W3C one: `read()` resolves with the items on
+// the clipboard and an image is the `image/png` entry of one of them (the
+// platform converts other bitmap formats, such as a macOS TIFF screenshot,
+// to PNG). Anything unreadable is "no image", as `readImage().isEmpty()` was.
+const readClipboardImage = Effect.fn("AppShell.readClipboardImage")(
+  function* () {
+    const items = yield* Effect.tryPromise(() => clipboard.read());
+    const item = items.find((entry) => entry.types.includes(PNG));
+    if (!item) return null;
+    const blob = yield* Effect.tryPromise(() => item.getType(PNG));
+    const bytes = Buffer.from(yield* Effect.tryPromise(() => blob.arrayBuffer()));
+    if (bytes.length === 0) return null;
+    const image: ClipboardImage = { pngBase64: bytes.toString("base64"), mime: PNG };
+    return image;
+  },
+  Effect.orElseSucceed(() => null),
+);
 
 export class AppShell extends Context.Service<
   AppShell,
@@ -110,7 +124,7 @@ export class AppShell extends Context.Service<
       showNotification: (title, body) => Effect.sync(() => showNotification(title, body)),
       showOpenDialog: (options) => Effect.promise(() => showOpenDialog(options)),
       openExternalUrl,
-      readClipboardImage: Effect.sync(readClipboardImage),
+      readClipboardImage: readClipboardImage(),
     }),
   );
 }

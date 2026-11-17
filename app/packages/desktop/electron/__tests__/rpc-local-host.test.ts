@@ -118,10 +118,15 @@ vi.mock("electron", async () => {
     BrowserWindow: { getAllWindows: () => [], getFocusedWindow: () => null },
     Notification,
     clipboard: {
-      readImage: () => ({
-        isEmpty: () => h.clipboardPng === null,
-        toPNG: () => h.clipboardPng ?? Buffer.alloc(0),
-      }),
+      read: async () =>
+        h.clipboardPng === null
+          ? []
+          : [
+              {
+                types: ["image/png"],
+                getType: async () => new Blob([new Uint8Array(h.clipboardPng ?? [])]),
+              },
+            ],
     },
     dialog: {
       showOpenDialog: async () => ({ canceled: false, filePaths: h.dialogPaths }),

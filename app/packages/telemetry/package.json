@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hono": "^4.13.7",
+    "hono": "^4.13.18",
     "pg": "^8.22.0"
   },
   "devDependencies": {

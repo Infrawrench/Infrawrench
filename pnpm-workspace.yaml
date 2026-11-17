@@ -21,6 +21,25 @@ overrides:
   "miniflare>sharp": ">=0.35.4"
   "miniflare>undici": ">=7.29.1 <8"
   "@smithy/middleware-compression>fflate": ">=0.8.3"
+  # Security floors (Dependabot) for transitive packages whose parents
+  # allow the fixed release but whose resolution pnpm keeps, or pin a
+  # vulnerable one (satori's exact fflate). Drop each once nothing in the
+  # lockfile resolves below it without the override.
+  "@xmldom/xmldom@<0.8.15": "^0.8.15"
+  "@xmldom/xmldom@>=0.9.0 <0.9.12": "^0.9.12"
+  "fast-uri@>=3.0.0 <3.1.9": "^3.1.9"
+  "fflate@>=0.7.0 <0.7.5": "^0.7.5"
+  "ip-address@<10.7.4": "^10.7.6"
+  "shell-quote@>=1.8.4 <1.11.0": "^1.12.0"
+  "undici@>=6.0.0 <6.29.1": "^6.29.1"
+  "zod@>=4.0.0 <4.6.6": "^4.6.7"
+  # The fixes for these two are only in new majors (GHSA-g3hv-75wg-m249,
+  # GHSA-3g3m-2fjr-6pw4). Every consumer here (Expo's CLI and config,
+  # electron-builder, @electron/universal, archiver, vsce, oclif) calls only
+  # `minimatch()`/`glob()`, none of the APIs the majors removed (`makeRe`,
+  # `Minimatch#regexp`, `matchOne`, walker Sets).
+  "minimatch@>=7.0.0 <11.0.1": "^11.0.8"
+  "glob@>=9.0.0 <14.0.2": "^14.0.6"
   # @raycast/api depends on an exact @types/react. A third copy can become the
   # hoisted one, and libraries that import React types without declaring them
   # (react-native-svg, @dnd-kit) then resolve it and clash with the app's own
