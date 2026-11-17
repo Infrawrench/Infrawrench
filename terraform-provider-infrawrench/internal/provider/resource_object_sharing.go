@@ -22,6 +22,21 @@ var (
 	_ resource.ResourceWithImportState = (*objectSharingResource)(nil)
 )
 
+// objectSharingTypes is every object_type the sharing routes accept, in the
+// order the API's ShareableObjectType enum lists them.
+// TestObjectSharingTypesMatchSpec holds it to that enum, so a kind the server
+// learns to share fails the build here rather than at a user's plan.
+var objectSharingTypes = []string{
+	"cost_report",
+	"cost_report_folder",
+	"dashboard",
+	"cost_canvas",
+	"kubernetes_efficiency_report",
+	"savings_view",
+	"resource_report",
+	"network_flow_report",
+}
+
 // NewObjectSharingResource constructs the infrawrench_object_sharing resource.
 func NewObjectSharingResource() resource.Resource { return &objectSharingResource{} }
 
@@ -53,7 +68,8 @@ func (r *objectSharingResource) Metadata(_ context.Context, req resource.Metadat
 
 func (r *objectSharingResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Who can open or edit one cost report, resource report, report folder, cost canvas or dashboard.\n\n" +
+		MarkdownDescription: "Who can open or edit one cost report, resource report, network flow report, Kubernetes " +
+			"efficiency report, report folder, cost canvas, savings view or dashboard.\n\n" +
 			"Authoritative for the object: the org-wide default and every `grant` block are the whole " +
 			"sharing document, and anything added in the Share dialog outside Terraform shows up as a diff. " +
 			"Destroying the resource resets the object to the default, where everyone in the organization " +
@@ -73,8 +89,8 @@ func (r *objectSharingResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"object_type": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas`, `resource_report`, `network_flow_report`, `dashboard` or `savings_view`. Changing it replaces the resource.",
-				Validators:          []validator.String{oneOfValidator("cost_report", "cost_report_folder", "cost_canvas", "resource_report", "network_flow_report", "dashboard", "savings_view")},
+				MarkdownDescription: "`cost_report`, `cost_report_folder`, `cost_canvas`, `resource_report`, `network_flow_report`, `kubernetes_efficiency_report`, `dashboard` or `savings_view`. Changing it replaces the resource.",
+				Validators:          []validator.String{oneOfValidator(objectSharingTypes...)},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"object_id": schema.StringAttribute{

@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   A saved Kubernetes efficiency report: how much of each cluster's derived cost bought capacity that was used, requested but unused, unmeasured, idle, or cluster overhead, grouped by cluster, namespace, workload, label, node pool or cost category.
   Efficiency on the total basis is used / (total - unmeasured), so idle capacity and overhead count against it; on the allocated basis it is used / (used + unused), what workloads reserved only. The figures are computed when the report runs, under the viewer's cost visibility scope; this resource manages the definition.
-  Write either date_preset (a rolling window) or both date_from and date_to (a fixed span).
+  Write either date_preset (a rolling window) or both date_from and date_to (a fixed span). Share a report with infrawrench_object_sharing using object_type = "kubernetes_efficiency_report".
 ---
 
 # infrawrench_kubernetes_efficiency_report (Resource)
@@ -14,7 +14,7 @@ A saved Kubernetes efficiency report: how much of each cluster's derived cost bo
 
 Efficiency on the `total` basis is `used / (total - unmeasured)`, so idle capacity and overhead count against it; on the `allocated` basis it is `used / (used + unused)`, what workloads reserved only. The figures are computed when the report runs, under the viewer's cost visibility scope; this resource manages the definition.
 
-Write either `date_preset` (a rolling window) or both `date_from` and `date_to` (a fixed span).
+Write either `date_preset` (a rolling window) or both `date_from` and `date_to` (a fixed span). Share a report with `infrawrench_object_sharing` using `object_type = "kubernetes_efficiency_report"`.
 
 ## Example Usage
 
