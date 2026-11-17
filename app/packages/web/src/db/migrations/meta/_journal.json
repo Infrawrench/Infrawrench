@@ -1331,6 +1331,20 @@
       "when": 1794898800595,
       "tag": "0189_chat_models_claude",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1794906727167,
+      "tag": "0190_cost_on_demand_amount",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1794907844966,
+      "tag": "0191_commitment_reports",
+      "breakpoints": true
     }
   ]
 }

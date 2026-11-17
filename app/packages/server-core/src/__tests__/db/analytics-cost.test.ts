@@ -78,6 +78,8 @@ describe.skipIf(!configured)("cost and flow SQL against a real server", () => {
       list_reported: 0,
       blended_amount: 0,
       blended_reported: 0,
+      on_demand_amount: 0,
+      on_demand_reported: 0,
       ...over,
     };
   }

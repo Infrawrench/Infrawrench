@@ -416,6 +416,11 @@ func specChecks() []specCheck {
 		{schema: "NetworkFlowReportConfig", value: NetworkFlowReportConfig{}},
 		{schema: "NetworkFlowReportFilters", value: NetworkFlowReportFilters{}},
 
+		{schema: "CommitmentReport", value: CommitmentReport{}},
+		{schema: "CommitmentReportInput", value: CommitmentReportInput{}},
+		{schema: "CommitmentReportConfig", value: CommitmentReportConfig{}},
+		{schema: "CommitmentReportFilters", value: CommitmentReportFilters{}},
+
 		{schema: "JiraIntegration", value: JiraIntegration{}},
 		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},
 		{schema: "LinearIntegration", value: LinearIntegration{}},

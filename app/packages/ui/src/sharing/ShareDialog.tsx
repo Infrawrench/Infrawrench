@@ -126,7 +126,9 @@ export function ShareDialog({
               ? gt("view")
               : target.objectType === "network_flow_report"
                 ? gt("network flow report")
-                : gt("report");
+                : target.objectType === "commitment_report"
+                  ? gt("commitment report")
+                  : gt("report");
 
   const levelLabel = (level: ObjectAccessLevel) =>
     level === "owner" ? gt("Owner") : level === "editor" ? gt("Can edit") : gt("Can view");

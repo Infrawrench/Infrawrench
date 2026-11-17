@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// `network-reports`, `k8s-efficiency`, `resource-reports`, `recordings`,
+// `network-reports`, `commitments reports`, `k8s-efficiency`, `resource-reports`, `recordings`,
 // `dashboards`, `canvas`, `reports` and `compliance` on effect/cli: the
 // commands that write files (`--format`, `--out`, `--file`). Text and `--json`
 // output, the files they write, refusals and exit codes, against fixtures,
@@ -260,6 +260,190 @@ describe("network-reports", () => {
     expect(await run_("network-reports", "egress", "--format", "xml")).toBe(2);
     expect(out.stderr).toContain("--format takes csv or pairs-csv for network flow reports.");
     expect(out.requests).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// commitments reports / commitments report
+// ---------------------------------------------------------------------------
+
+const commitmentTotals = (covered: number, uncovered: number, unused: number) => ({
+  covered,
+  coveredAll: covered,
+  unused,
+  uncovered,
+  uncoveredEligible: uncovered / 2,
+  coveredOnDemand: covered * 1.4,
+  coveredMeasured: covered,
+});
+
+/** The metrics client-core computes from {@link commitmentTotals}, written out. */
+const commitmentMetrics = (covered: number, uncovered: number, unused: number) => {
+  const net = covered * 0.4 - unused;
+  return {
+    coverage: covered + uncovered > 0 ? covered / (covered + uncovered) : null,
+    eligibleCoverage: covered + uncovered > 0 ? covered / (covered + uncovered / 2) : null,
+    utilization: covered + unused > 0 ? covered / (covered + unused) : null,
+    effectiveSavingsRate: covered + uncovered > 0 ? net / (covered * 1.4 + uncovered) : null,
+    netSavings: net,
+    onDemandRemainder: uncovered,
+    commitmentCost: covered + unused,
+    usedCommitmentCost: covered,
+    unusedCommitmentCost: unused,
+    onDemandEquivalent: covered * 1.4,
+    savingsMeasuredShare: covered > 0 ? 1 : null,
+  };
+};
+
+const commitmentPoint = (bucket: string, covered: number, uncovered: number, unused: number) => ({
+  bucket,
+  totals: commitmentTotals(covered, uncovered, unused),
+  metrics: commitmentMetrics(covered, uncovered, unused),
+});
+
+const commitmentSeries = (
+  groupKey: string,
+  label: string,
+  weeks: Array<[number, number, number]>,
+) => {
+  const sum = weeks.reduce(
+    ([a, b, c], [x, y, z]) => [a + x, b + y, c + z] as [number, number, number],
+    [0, 0, 0] as [number, number, number],
+  );
+  return {
+    id: `${groupKey}\u0000USD`,
+    groupKey,
+    label,
+    currency: "USD",
+    points: weeks.map(([a, b, c], i) =>
+      commitmentPoint(i === 0 ? "2026-10-05" : "2026-10-12", a, b, c),
+    ),
+    total: { totals: commitmentTotals(...sum), metrics: commitmentMetrics(...sum) },
+  };
+};
+
+const COMMITMENT_REPORT = {
+  id: "cr1",
+  name: "EC2 coverage",
+  description: null,
+  config: {
+    version: 1,
+    dateRange: { kind: "relative", preset: "90d" },
+    granularity: "weekly",
+    groupBy: "service",
+    filters: { providers: ["aws"] },
+    metric: "utilization",
+  },
+  folderId: null,
+  createdByUserId: null,
+  createdAt: "2026-10-01T00:00:00.000Z",
+  updatedAt: "2026-10-01T00:00:00.000Z",
+};
+
+const COMMITMENT_RESULT = {
+  from: "2026-10-05",
+  to: "2026-10-18",
+  granularity: "weekly",
+  groupBy: "service",
+  buckets: ["2026-10-05", "2026-10-12"],
+  series: [
+    commitmentSeries("AmazonEC2", "Amazon Elastic Compute Cloud", [
+      [300, 100, 10],
+      [320, 80, 10],
+    ]),
+    commitmentSeries("", "", [
+      [0, 50, 0],
+      [0, 0, 0],
+    ]),
+  ],
+  overall: [
+    commitmentSeries("", "", [
+      [300, 150, 10],
+      [320, 80, 10],
+    ]),
+  ],
+  providers: [
+    { pluginId: "aws", displayName: "AWS", status: "measured", accountCount: 2 },
+    { pluginId: "gcp", displayName: "Google Cloud", status: "inventory_only", accountCount: 1 },
+  ],
+  notices: ["unused_lumped_monthly", "partial_savings_measurement"],
+};
+
+const COMMITMENT_BY_TYPE = {
+  ...COMMITMENT_RESULT,
+  groupBy: "commitment_type",
+  notices: ["unattributed_commitment_usage"],
+  series: [
+    commitmentSeries("savings_plan", "Savings plans", [
+      [200, 0, 10],
+      [220, 0, 10],
+    ]),
+    commitmentSeries("__unattributed__", "Unattributed", [
+      [100, 0, 0],
+      [100, 0, 0],
+    ]),
+    commitmentSeries("__on_demand__", "On demand", [
+      [0, 150, 0],
+      [0, 80, 0],
+    ]),
+  ],
+};
+
+const commitmentRoutes = {
+  "GET /commitments/reports": [
+    COMMITMENT_REPORT,
+    {
+      ...COMMITMENT_REPORT,
+      id: "cr2",
+      name: "All commitments",
+      config: { ...COMMITMENT_REPORT.config, groupBy: "none", metric: "coverage" },
+    },
+  ],
+  "POST /commitments/reports/cr1/run": {
+    ...COMMITMENT_RESULT,
+    reportId: "cr1",
+    name: "EC2 coverage",
+  },
+  "POST /commitments/reports/cr2/run": {
+    ...COMMITMENT_RESULT,
+    groupBy: "none",
+    series: COMMITMENT_RESULT.overall,
+    notices: [],
+    reportId: "cr2",
+    name: "All commitments",
+  },
+  "POST /commitments/report-query": COMMITMENT_BY_TYPE,
+};
+
+describe("commitments reports", () => {
+  it("lists, runs and prints --json", async () => {
+    serveRoutes(out, commitmentRoutes);
+    await same(["commitments", "reports"], 0);
+    await same(["commitments", "reports", "--json"], 0);
+    await same(["commitments", "reports", "ec2"], 0);
+    await same(["commitments", "reports", "all", "commitments", "--metric", "netSavings"], 0);
+    await same(["commitments", "reports", "nope"], 1);
+    await same(["commitments", "reports", "--local"], 1);
+  });
+
+  it("writes the CSV to stdout and to --out/--file", async () => {
+    serveRoutes(out, commitmentRoutes);
+    await same(["commitments", "reports", "ec2", "--format", "csv"], 0);
+    await same(["commitments", "reports", "ec2", "--format", "csv", "--out", "ec2.csv"], 0);
+    expect(read("ec2.csv").startsWith('"bucket","group","currency","coverage"')).toBe(true);
+    await same(
+      ["commitments", "reports", "all", "commitments", "--format", "csv", "-f", "all.csv"],
+      0,
+    );
+    expect(read("all.csv")).toContain('"total"');
+  });
+
+  it("runs an unsaved report by commitment type", async () => {
+    serveRoutes(out, commitmentRoutes);
+    await same(["commitments", "report", "--group-by", "commitment_type", "--bin", "week"], 0);
+    await same(["commitments", "report", "--format", "csv"], 0);
+    await same(["commitments", "report", "--bin", "hour"], 2);
+    await same(["commitments", "report", "--from", "2026-11-09", "--to", "2026-11-01"], 2);
   });
 });
 

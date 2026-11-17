@@ -1,0 +1,2 @@
+ALTER TABLE "cost_daily" ADD COLUMN "on_demand_amount" double precision DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "cost_daily" ADD COLUMN "on_demand_reported" smallint DEFAULT 0 NOT NULL;

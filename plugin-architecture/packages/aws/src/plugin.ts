@@ -169,6 +169,9 @@ export const manifest = {
   commitments: {
     kinds: ["reservation", "savings_plan"],
     discount: { max: 0.66, basis: "upper_bound" },
+    // Cost Explorer's daily amortized `RIFee` and `SavingsPlanRecurringFee`
+    // land the month's unused commitment on the 1st (or the purchase day).
+    unusedFeeBookedMonthly: true,
   },
   // Service Quotas for the ceiling, CloudWatch `AWS/Usage` (and two describe
   // calls) for the usage. Needs servicequotas:ListServiceQuotas,

@@ -1,8 +1,11 @@
 import { StyleSheet, Text, View } from "react-native";
 import {
+  commitmentDaysUntilEnd,
   formatMoney,
+  isCommitmentExpiringSoon,
   type CommitmentCoverageView,
   type CommitmentHolding,
+  type CommitmentPaymentOption,
   type CommitmentRecommendationView,
 } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
@@ -151,6 +154,45 @@ function committedLabel(h: CommitmentHolding): string {
   return "price not reported";
 }
 
+const PAYMENT_OPTION: Record<CommitmentPaymentOption, string> = {
+  all_upfront: "all upfront",
+  partial_upfront: "partial upfront",
+  no_upfront: "no upfront",
+  monthly: "monthly",
+};
+
+/**
+ * The inventory's contract facts, each only when the provider reported it: a
+ * missing term or payment option is "not reported", not "none".
+ */
+function contractLabel(h: CommitmentHolding): string {
+  const parts: string[] = [];
+  if (h.termDays !== null && h.termDays > 0) {
+    // Providers report 365 / 1095 (and leap-year variants): name the years.
+    const years = Math.round(h.termDays / 365);
+    parts.push(
+      years >= 1 && Math.abs(h.termDays / 365 - years) < 0.02
+        ? `${years}-year term`
+        : `${h.termDays}-day term`,
+    );
+  }
+  if (h.paymentOption) parts.push(PAYMENT_OPTION[h.paymentOption]);
+  if (h.startDate) parts.push(`started ${h.startDate.slice(0, 10)}`);
+  if (h.recurringAmount !== null && h.currency) {
+    parts.push(
+      `${formatMoney(h.recurringAmount, h.currency)}/${h.recurringPeriod === "month" ? "month" : "hour"} recurring`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function expiryLabel(h: CommitmentHolding): string | null {
+  const days = commitmentDaysUntilEnd(h);
+  if (!isCommitmentExpiringSoon(h) || days === null) return null;
+  if (days === 0) return "Expires today";
+  return days === 1 ? "Expires in 1 day" : `Expires in ${days} days`;
+}
+
 function utilizationLabel(h: CommitmentHolding): string {
   const u = h.utilization;
   if (u.utilization !== null) {
@@ -167,6 +209,8 @@ function utilizationLabel(h: CommitmentHolding): string {
 }
 
 function HoldingRow({ holding }: { holding: CommitmentHolding }) {
+  const contract = contractLabel(holding);
+  const expiry = expiryLabel(holding);
   return (
     <View style={styles.row}>
       <View style={styles.rowMain}>
@@ -177,6 +221,12 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
           {holding.accountName} · {holding.region ?? "All regions"} · {committedLabel(holding)}
           {holding.endDate ? ` · ends ${holding.endDate.slice(0, 10)}` : ""}
         </Text>
+        {contract !== "" && (
+          <Text style={styles.subtitle} numberOfLines={2}>
+            {contract}
+          </Text>
+        )}
+        {expiry && <Text style={styles.warning}>{expiry}</Text>}
         <Text style={styles.subtitle} numberOfLines={1}>
           {utilizationLabel(holding)}
         </Text>

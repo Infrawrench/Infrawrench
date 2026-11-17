@@ -1,7 +1,7 @@
 /**
  * Per-object sharing for cost reports, Kubernetes efficiency reports, resource
- * reports, network flow reports, report folders, canvases, dashboards and
- * saved savings views.
+ * reports, network flow reports, commitment reports, report folders, canvases,
+ * dashboards and saved savings views.
  *
  * Each object has an org-wide default (`editor`, `viewer` or `none`; no row
  * means `editor`, how every object behaved before sharing existed) plus
@@ -54,6 +54,7 @@ import {
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { db } from "../db/client";
 import {
+  commitmentReports,
   costCanvases,
   costReportFolders,
   costReports,
@@ -76,7 +77,8 @@ function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
     type === "kubernetes_efficiency_report" ||
     type === "savings_view" ||
     type === "resource_report" ||
-    type === "network_flow_report"
+    type === "network_flow_report" ||
+    type === "commitment_report"
   );
 }
 
@@ -86,7 +88,8 @@ function isFiledReport(type: ShareableObjectType): boolean {
     type === "cost_report" ||
     type === "kubernetes_efficiency_report" ||
     type === "resource_report" ||
-    type === "network_flow_report"
+    type === "network_flow_report" ||
+    type === "commitment_report"
   );
 }
 
@@ -359,6 +362,26 @@ export async function loadObjectMeta(
         and(
           eq(networkFlowReports.id, objectId),
           eq(networkFlowReports.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    return row && !row.deletedAt
+      ? { name: row.name, createdByUserId: row.createdByUserId, folderId: row.folderId }
+      : null;
+  }
+  if (type === "commitment_report") {
+    const [row] = await db
+      .select({
+        name: commitmentReports.name,
+        createdByUserId: commitmentReports.createdByUserId,
+        folderId: commitmentReports.folderId,
+        deletedAt: commitmentReports.deletedAt,
+      })
+      .from(commitmentReports)
+      .where(
+        and(
+          eq(commitmentReports.id, objectId),
+          eq(commitmentReports.organizationId, organizationId),
         ),
       )
       .limit(1);

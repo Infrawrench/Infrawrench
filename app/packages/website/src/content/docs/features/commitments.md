@@ -80,7 +80,8 @@ Two alerts cover commitments. See [Commitment & unit-cost alerts](./commitment-a
 
 ## CLI, mobile, API and MCP
 
-- **CLI:** `infrawrench commitments` prints the holdings table, coverage range and planner recommendations. Use `--json` in a weekly cron job to check for commitments expiring soon or utilization dropping.
+- **Reports over time:** [commitment reports](./commitment-reports.md) save coverage, utilization, savings and waste per day, week, month or quarter, filtered and split the way you need, with CSV export and sharing.
+- **CLI:** `infrawrench commitments` prints the holdings table, coverage range and planner recommendations. Use `--json` in a weekly cron job to check for commitments expiring soon or utilization dropping. `infrawrench commitments reports` lists and runs [commitment reports](./commitment-reports.md); `infrawrench commitments report` runs an unsaved one.
 - **Mobile:** a read-only Commitments section on the **Commitments** tab of the Costs screen.
 - **API and MCP:** `GET /api/org/{orgId}/commitments` (permission `costs:read`), and the `get_commitments` tool for AI assistants.
 

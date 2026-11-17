@@ -318,6 +318,19 @@ export const costDaily = pgTable(
      * `amortized_reported` does.
      */
     blended_reported: smallint("blended_reported").notNull().default(0),
+    /**
+     * What a commitment-covered row's consumption would have cost on demand,
+     * at the account's own rates (`CostRow.onDemandAmount`). Only covered rows
+     * carry it; uncovered usage's amortized amount already is its on-demand
+     * cost. Read by commitment reports for savings.
+     */
+    on_demand_amount: doublePrecision("on_demand_amount").notNull().default(0),
+    /**
+     * Whether `on_demand_amount` was reported. Absent means "the provider did
+     * not say", and savings readers count such a row as having saved nothing
+     * rather than reading a zero on-demand cost as a 100% loss.
+     */
+    on_demand_reported: smallint("on_demand_reported").notNull().default(0),
   },
   (t) => [
     primaryKey({

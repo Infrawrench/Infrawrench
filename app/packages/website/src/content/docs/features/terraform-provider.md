@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration as Terraform resources, incl
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 84 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
+The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 85 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
 
 Use it if your team already keeps infrastructure in Terraform and wants the rest of its platform setup to go through the same pull requests and reviews, with a plan that shows exactly what will change.
 
@@ -453,6 +453,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | `infrawrench_savings_view`              | [Saved views over savings findings](./savings-findings.md)                                           |
 | `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                                    |
 | `infrawrench_resource_report`           | [Resource reports](./resource-reports.md): inventory tables with per-resource cost                   |
+| `infrawrench_commitment_report`         | [Commitment reports](./commitment-reports.md): coverage, utilization and savings over time           |
 | `infrawrench_cost_report_folder`        | Report folders                                                                                       |
 | `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                              |
 | `infrawrench_cost_report_anomaly_alert` | A report's own [anomaly alert](./cost-reports.md#anomaly-alerts-for-a-report)                        |

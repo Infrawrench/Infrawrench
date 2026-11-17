@@ -23,6 +23,8 @@ import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
 import { createWebNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
+import { createWebCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { createWebInvoicesClient } from "@/lib/invoices-client";
 import { type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -266,6 +268,16 @@ function getCostsClient(orgId: string): CostsClient {
   return client;
 }
 
+const commitmentReportsClients = new Map<string, CommitmentReportsClient>();
+function getCommitmentReportsClient(orgId: string): CommitmentReportsClient {
+  let client = commitmentReportsClients.get(orgId);
+  if (!client) {
+    client = createWebCommitmentReportsClient(orgId);
+    commitmentReportsClients.set(orgId, client);
+  }
+  return client;
+}
+
 const networkFlowReportsClients = new Map<string, NetworkFlowReportsClient>();
 function getNetworkFlowReportsClient(orgId: string): NetworkFlowReportsClient {
   let client = networkFlowReportsClients.get(orgId);
@@ -434,6 +446,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           key={orgId}
           client={getCostsClient(orgId)}
           networkFlowReports={getNetworkFlowReportsClient(orgId)}
+          commitmentReports={getCommitmentReportsClient(orgId)}
           onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))

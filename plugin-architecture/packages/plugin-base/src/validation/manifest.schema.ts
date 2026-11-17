@@ -331,6 +331,7 @@ export const pluginManifestSchema = Schema.Struct({
           basis: Schema.Literals(["range", "upper_bound"]),
         }),
       ),
+      unusedFeeBookedMonthly: Schema.optional(Schema.Boolean),
     }),
   ),
   seats: Schema.optional(
