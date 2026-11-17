@@ -3,7 +3,7 @@
  *
  * A session that lives in one pod's memory: today a Linux application
  * session, tomorrow the shared-console pty and the bastion registry that
- * `infra/k8s/web-ws-ingress.yaml` says are waiting on the same mechanism; can
+ * the old GKE ingress config said were waiting on the same mechanism; can
  * only be driven by the pod holding it. `services/replica-relay.ts` leases the
  * session to that pod and forwards calls here; this route runs them.
  *
