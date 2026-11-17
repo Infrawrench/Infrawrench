@@ -2802,9 +2802,6 @@ What does not:
   signal while its main thread waits on its socket ends the process at once
   rather than gracefully ([Ruby](#ruby), signals). puma is built without
   TLS.
-- **`bundle exec ruby`** runs Ruby without the bundle ([Ruby](#ruby),
-  `exec`); `bin/rails`, `bundle exec rake` and `ruby -rbundler/setup` load
-  it.
 - **ffi has no libraries to call but the C library.** Active Storage loads
   ffi at boot (through ruby-vips), and `ffi_lib` failing to find libvips is
   the `LoadError` it expects, so the app boots. `attach_function` works,
@@ -3032,9 +3029,11 @@ What works, each in `builtins/test.sh`'s `ruby@*` jobs:
   `spawn`, `Process.wait`, `IO.popen` and `Open3`, with redirections,
   environments and `chdir:`; a failing command fails, a missing one
   returns `nil` from `system` and raises `Errno::ENOENT` from `spawn`, and
-  `exec` replaces the process. `fork` and `IO.popen("-")` raise
-  `NotImplementedError` (`Process.respond_to?(:fork)` is false), as on
-  Windows: WASIX has no fork.
+  `exec` replaces the process, passing the environment as `ENV` has it
+  (so `bundle exec ruby script.rb` runs the script with the bundle).
+  `fork` and `IO.popen("-")` raise `NotImplementedError`
+  (`Process.respond_to?(:fork)` is false), as on Windows: WASIX has no
+  fork.
 - **The standard library's extensions**, each loaded by `require`:
   `etc`, `fcntl`, `zlib`, `psych` (libyaml 0.2.5), `json`, `bigdecimal`,
   `date`, `ripper`, `prism`, `racc`, `strscan`, `digest`, `openssl`,
@@ -3064,13 +3063,6 @@ What does not, or differs:
   until its timeout, `IO.select`'s error set comes back empty, and a wait
   for `IO::READABLE | IO::PRIORITY` (as the pg gem's) is a wait for
   readable.
-- **`exec` passes the environment the process started with**, not one
-  changed through `ENV` since (`system`, `spawn`, backticks and an `exec`
-  given an environment hash pass the current one). So `bundle exec ruby
-script.rb`, which sets `RUBYOPT` and then execs Ruby, runs the script
-  without the bundle; `bundle exec rake`, `rspec` or `rails`, Ruby scripts
-  that Bundler loads in its own process, are not affected. Use `ruby
--rbundler/setup script.rb`.
 - **No JIT** (YJIT and ZJIT generate native code), and each process has at
   most 4 GiB of memory (wasm32).
 - `spawn`'s `rlimit_*:`, `uid:` and `gid:` raise `Errno::ENOTSUP`.

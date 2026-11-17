@@ -4077,6 +4077,27 @@ jobs:
     using: env:ruby@@MINOR@
     run: |
       ruby -e 'system("false", exception: true)'
+  # `exec` passes the environment as ENV has it, not as the process started
+  # with (#1303): a variable set and one changed, through the command form
+  # and the shell's. The bad one expects the wrong value, and the exec'd
+  # program's exit status fails the job.
+  exec-env-passes:
+    using: env:ruby@@MINOR@
+    env:
+      EXEC_CHANGED: before
+    run: |
+      cat > /tmp/exec.rb <<'RUBY'
+      ENV["EXEC_SET"] = "1"
+      ENV["EXEC_CHANGED"] = "after"
+      exec "ruby", "-e", 'exit ENV["EXEC_SET"] == "1" && ENV["EXEC_CHANGED"] == "after"'
+      RUBY
+      ruby /tmp/exec.rb
+      ruby -e 'ENV["EXEC_SET"] = "1"; ENV["EXEC_CHANGED"] = "after"
+        exec %q(test "$EXEC_SET" = 1 && test "$EXEC_CHANGED" = after)'
+  exec-env-fails:
+    using: env:ruby@@MINOR@
+    run: |
+      ruby -e 'ENV["EXEC_SET"] = "1"; exec "ruby", "-e", %q(exit ENV["EXEC_SET"] == "2")'
   # WASIX's C library has no fork(): Ruby says so rather than pretend.
   fork-passes:
     using: env:ruby@@MINOR@
@@ -4136,9 +4157,7 @@ jobs:
   # A lock with gems that have C extensions, installed before the job
   # (`deps: [bundler]`): msgpack's extension is the one built for this Ruby
   # (environments/ruby/gems), placed where RubyGems looks; redcarpet has
-  # none, and the pipeline says the job never loads it. `ruby
-  # -rbundler/setup` rather than `bundle exec ruby`, whose exec of a
-  # binary loses Bundler's changes to the environment in this Ruby.
+  # none, and the pipeline says the job never loads it.
   bundler-extension-passes:
     using: env:ruby@@MINOR@
     cwd: /app/ruby/gems
@@ -4167,6 +4186,24 @@ jobs:
     deps: [{ bundler: { dir: ruby/gems, ruby: "@MINOR@" } }]
     network: false
     run: ruby -rbundler/setup -e 'require "msgpack"'
+  # `bundle exec ruby`, which sets RUBYOPT to load the bundle and then execs
+  # Ruby (#1303): msgpack comes from vendor/bundle, which nothing but the
+  # bundle puts on the load path.
+  bundle-exec-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/gems
+    deps: [{ bundler: { dir: ruby/gems, ruby: "@MINOR@", without-extensions: [redcarpet] } }]
+    network: false
+    timeout: 5m
+    run: |
+      cat > /tmp/bundled.rb <<'RUBY'
+      raise "no bundle (RUBYOPT=#{ENV["RUBYOPT"].inspect})" unless defined?(Bundler)
+      require "msgpack"
+      so = $LOADED_FEATURES.grep(/msgpack\.so$/).first or raise "no msgpack.so"
+      raise "loaded #{so}" unless so.include?("/vendor/bundle/ruby/")
+      puts "bundle exec: msgpack #{MessagePack::VERSION} from #{so}"
+      RUBY
+      bundle exec ruby /tmp/bundled.rb
   # The database drivers' builds: pg (libpq) against PostgreSQL 18, which
   # env:postgres runs as a service (pglite, one connection), and mysql2
   # (MariaDB Connector/C) and trilogy, which have no MySQL to talk to here,
@@ -5413,7 +5450,7 @@ want_reason() {
     npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
-    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails | ruby@*/rails-fails | ruby@*/databases-fails) echo "exited with 1" ;;
+    ruby@*/system-fails | ruby@*/exec-env-fails | ruby@*/rake-fails | ruby@*/raise-fails | ruby@*/rails-fails | ruby@*/databases-fails) echo "exited with 1" ;;
     ruby@*/bundler-unbuilt-errors) echo "redcarpet-3.6.1: has a native extension (ext/redcarpet/extconf.rb), which a job cannot compile, and there is no build of any version of redcarpet" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;
