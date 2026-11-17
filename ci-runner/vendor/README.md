@@ -1179,6 +1179,24 @@ rewritten to (`builtins/environments/python/build.sh`). The tests are
 file locking (checked November 2026); a later WASIX defines `flock` and
 `fcntl64` as Linux system calls.
 
+**A new thread's stack pointer starts on its stack (env:ruby).** A
+dynamically linked program's new thread is a new instance group
+(`src/state/linker/mod.rs`, `InstanceGroupState::new`), whose
+`__stack_pointer` global was made at 0 on the grounds that
+`wasi_thread_start` sets it. But the group first runs each loaded side
+module's `__wasix_init_tls`, which calls the main module's
+`aligned_alloc` for the module's thread-local block, before
+`wasi_thread_start` runs. A function that keeps a frame on the stack
+there writes below address 0, and env:ruby's interpreter and
+extensions all do (every module goes through Binaryen's
+`--spill-pointers`, `builtins/environments/ruby/build.sh`), so with any
+extension loaded (Ruby loads two encodings at start) every
+`Thread.new` failed: the thread trapped with an out-of-bounds access and
+the process exited with `ENOEXEC` (45). The global now starts at the
+thread's own `stack_upper`, the value `wasi_thread_start` gives it
+anyway. `builtins/test.sh`'s `ruby@*/threads-passes` is the test.
+Upstream main still makes it at 0 (checked November 2026).
+
 **Only the WASI versions a module imports (#996).** Instantiating a module
 (`WasiEnv::instantiate`, `src/state/env.rs`), which every process and each
 of its threads does, built the host functions of all five WASI and WASIX
@@ -1212,7 +1230,8 @@ spawned child stops counting against `max_threads` once it exits
 once replace each other in the cache, an unlink of a name is atomic with
 its renames and never asserts, a panic in a syscall ends only its
 process, a process's exit signals only its own threads, a command runs
-through a symbolic link, WASIX has file locks a C library calls (and
+through a symbolic link, a new thread's stack pointer starts on its
+stack before its side modules' TLS is set up, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a

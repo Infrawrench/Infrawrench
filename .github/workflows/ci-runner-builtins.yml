@@ -4,9 +4,9 @@ name: CI runner builtins
 # (binaryen, Node), oxfmt (the WASIX Rust toolchain) and Edge.js (built from
 # source with wasixcc, run under the runner's V8, `--features node`), and the
 # language environments, whose tests install packages from the internet
-# (pip, Composer, Go modules), Go's built from source for each minor,
-# kubectl and gh, built with that Go from modules they download, OpenSSH's
-# clients, built from source with wasixcc and OpenSSL, the cloud CLIs
+# (pip, Composer, Go modules, gems), Go and CRuby, built from source for
+# each minor, kubectl and gh, built with that Go from modules they download,
+# OpenSSH's clients, built from source with wasixcc and OpenSSL, the cloud CLIs
 # (installed by env:python's pip from PyPI and Wasmer's index), and ClickHouse,
 # built from CloudHouse with Emscripten (hours). Each job builds one with its
 # own script in ci-runner/builtins/, then runs builtins/test.sh, which
@@ -594,6 +594,85 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/publish.sh dist/environment/php/*
+
+  ruby:
+    name: ruby ${{ matrix.minor }} (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        minor: ["3.4", "4.0"]
+        # Both architectures: the build must come out byte for byte the same
+        # on each (environments/build.sh pins the package's hash).
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: ci-runner
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ci-runner
+          shared-key: ruby-${{ runner.arch }}
+          save-if: ${{ matrix.minor == '4.0' }}
+
+      # Every environment carries Git, built from source
+      # (builtins/environments/git/build.sh: two or three minutes). See the
+      # bash-node job.
+      - name: Git, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build git
+
+      # The native Ruby the cross build runs is built first, with its own
+      # zlib, OpenSSL and libyaml extensions (RubyGems unpacks the bundled
+      # gems with them).
+      - name: Install a native Ruby's build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libyaml-dev libssl-dev zlib1g-dev libffi-dev
+
+      # CRuby from its release tarball with wasixcc (ten to twenty minutes):
+      # the toolchain, the C library objects, zlib, OpenSSL and libyaml, a
+      # native Ruby, then Ruby for WASIX. The package is checked against the
+      # hash environments/build.sh pins, after a restore as after a build.
+      # Key: environments/ruby/, the C library patches it shares with
+      # Edge.js, lib.sh and the platform.
+      - name: Ruby, built or restored from the build cache
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/build-cache.sh build ruby@${{ matrix.minor }}
+
+      - name: Build the environment
+        run: bash builtins/environments/build.sh ruby@${{ matrix.minor }}
+
+      # Its jobs install gems from rubygems.org.
+      - name: Publish and run it through iwci
+        run: |
+          cargo build -p iwci
+          SKIP_BUILD=1 bash builtins/test.sh ruby@${{ matrix.minor }}
+
+      # Main only, and from one architecture: what passed above becomes what
+      # runners resolve.
+      - name: Publish to the runner pool
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && matrix.runner == 'ubuntu-24.04'
+        env:
+          IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
+          IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
+          IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
+          IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
+        run: bash builtins/publish.sh dist/environment/ruby/*
 
   kubectl:
     name: kubectl (Go for WASIX)

@@ -10,6 +10,7 @@
 #   builtins/test.sh                 gofmt, bash and tools (the default)
 #   builtins/test.sh typescript oxfmt bash-node python php
 #   builtins/test.sh go              every Go minor; go@1.25 for one
+#   builtins/test.sh ruby            every Ruby minor; ruby@4.0 for one
 #   builtins/test.sh python postgres
 #   builtins/test.sh clickhouse      ClickHouse as a service, from Node
 #   builtins/test.sh bash-node-pool  many V8 heaps at once, and large ones
@@ -102,13 +103,19 @@ NEON_FIXTURE_KEY="neon-fixture-key-0451"
 GH_FIXTURE_TOKEN="fixture-installation-token-0451"
 GH_FIXTURE_BASIC="$(printf 'x-access-token:%s' "$GH_FIXTURE_TOKEN" | base64 | tr -d '\n')"
 
-# `go` is every Go minor the environments build.
+# `go` is every Go minor the environments build, and `ruby` every Ruby
+# minor.
 names=()
 for name in "$@"; do
   if [[ "$name" == go ]]; then
     read -ra minors <<<"$(sed -n 's/^GO_MINORS=(\(.*\))$/\1/p' "$here/environments/build.sh")"
     for minor in "${minors[@]}"; do
       names+=("go@$minor")
+    done
+  elif [[ "$name" == ruby ]]; then
+    read -ra minors <<<"$(sed -n 's/^RUBY_MINORS=(\(.*\))$/\1/p' "$here/environments/build.sh")"
+    for minor in "${minors[@]}"; do
+      names+=("ruby@$minor")
     done
   else
     names+=("$name")
@@ -139,17 +146,19 @@ for name in "$@"; do
         dirs+=("$dist"/builtin/"$program"/*)
       done
       ;;
-    bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud)
+    bash | bash-node | python | php | go@* | ruby@* | postgres | clickhouse | aws | az | gcloud)
       if [[ "${SKIP_BUILD:-}" != 1 && "$built_envs" == false ]]; then
         envs=()
         for env in "$@"; do
-          case "$env" in bash | bash-node | python | php | go@* | postgres | clickhouse | aws | az | gcloud) envs+=("$env") ;; esac
+          case "$env" in bash | bash-node | python | php | go@* | ruby@* | postgres | clickhouse | aws | az | gcloud) envs+=("$env") ;; esac
         done
         bash "$here/environments/build.sh" "${envs[@]}"
         built_envs=true
       fi
       if [[ "$name" == go@* ]]; then
         dirs=("$dist"/environment/go/"${name#go@}".*)
+      elif [[ "$name" == ruby@* ]]; then
+        dirs=("$dist"/environment/ruby/"${name#ruby@}".*)
       else
         dirs=("$dist"/environment/"$name"/*)
       fi
@@ -182,7 +191,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh" >&2
       exit 2
       ;;
   esac
@@ -501,6 +510,45 @@ TXT
 mkdir -p "$repo/php/locked/bad"
 cp -R "$repo/php/ok/." "$repo/php/locked/"
 cp "$repo/php/bad/tests/GreeterTest.php" "$repo/php/locked/bad/"
+# A Ruby project tested by minitest through `rake test`, which runs the
+# tests in a child `ruby`; the bad one expects the wrong greeting and must
+# fail (ruby.wasm's `system` ran nothing and reported success).
+for want in "ok:Hello, Ada" "bad:Goodbye, Ada"; do
+  dir="$repo/ruby/${want%%:*}"
+  mkdir -p "$dir/lib" "$dir/test"
+  cat >"$dir/Rakefile" <<'RUBY'
+require "rake/testtask"
+
+Rake::TestTask.new do |t|
+  t.libs << "lib"
+  t.test_files = FileList["test/*_test.rb"]
+end
+task default: :test
+RUBY
+  cat >"$dir/lib/greeter.rb" <<'RUBY'
+class Greeter
+  def greet(name) = "Hello, #{name}"
+end
+RUBY
+  cat >"$dir/test/greeter_test.rb" <<RUBY
+require "minitest/autorun"
+require "greeter"
+
+class GreeterTest < Minitest::Test
+  def test_greets
+    assert_equal "${want#*:}", Greeter.new.greet("Ada")
+  end
+end
+RUBY
+done
+# The C extension each Ruby's build makes with README.md's recipe
+# (environments/ruby/check-ext), loaded in a job by `require`.
+for ext in "$dist"/test/ruby/*/wasix_check.so; do
+  [[ -f "$ext" ]] || continue
+  minor="$(basename "$(dirname "$ext")")"
+  mkdir -p "$repo/ruby/ext/$minor"
+  cp "$ext" "$repo/ruby/ext/$minor/"
+done
 printf 'fixture line\n' >"$repo/data.txt"
 printf '#!/bin/sh\necho run\n' >"$repo/run.sh"
 chmod +x "$repo/run.sh"
@@ -3821,6 +3869,243 @@ jobs:
       test "$(./spawn)" = "600 spawns ok"
 YAML
       ;;
+    ruby@*)
+      # The same jobs for every minor; `ruby --version` says which.
+      sed "s/@MINOR@/${1#ruby@}/g" <<'YAML'
+name: ruby-@MINOR@
+jobs:
+  # The interpreter, its commands, and the standard library's extensions,
+  # each a side module loaded by `require`.
+  interpreter-passes:
+    using: env:ruby@@MINOR@
+    run: |
+      ruby --version | grep -q '^ruby @MINOR@\.[0-9]* .*\[wasm32-wasix\]$'
+      for command in gem bundle bundler rake irb erb rdoc ri racc; do command -v "$command"; done
+      gem --version && bundle --version && rake --version && irb --version
+      cat > /tmp/stdlib.rb <<'RUBY'
+      %w[etc fcntl zlib psych yaml json bigdecimal date ripper prism racc/parser strscan
+         digest openssl io/console io/wait socket stringio monitor objspace coverage erb
+         minitest test/unit rake net/http open3 timeout pathname securerandom].each { |lib| require lib }
+      raise "json" unless JSON.parse(JSON.generate({ "a" => [1, 2.5, nil] })) == { "a" => [1, 2.5, nil] }
+      raise "yaml" unless YAML.load("a: [1, two]") == { "a" => [1, "two"] }
+      raise "zlib" unless Zlib::Inflate.inflate(Zlib::Deflate.deflate("x" * 1000)) == "x" * 1000
+      raise "digest" unless Digest::SHA256.hexdigest("abc").start_with?("ba7816bf")
+      raise "openssl" unless OpenSSL::Digest.hexdigest("SHA256", "abc") == Digest::SHA256.hexdigest("abc")
+      raise "bigdecimal" unless (BigDecimal("0.1") + BigDecimal("0.2")).to_s == "0.3e0"
+      raise "date" unless Date.new(2024, 2, 29).next_year.to_s == "2025-02-28"
+      raise "ripper" unless Ripper.sexp("1 + 2")
+      raise "prism" unless Prism.parse("def f = 1").success?
+      raise "strscan" unless StringScanner.new("ab").scan(/a/) == "a"
+      raise "erb" unless ERB.new("<%= 1 + 1 %>").result == "2"
+      raise "etc" unless Etc.respond_to?(:getpwuid) && Fcntl::O_NONBLOCK
+      raise "socket" unless Socket.gethostname.is_a?(String)
+      raise "console" unless IO.respond_to?(:console)
+      raise "secure" unless SecureRandom.hex(4).size == 8
+      puts OpenSSL::OPENSSL_LIBRARY_VERSION
+      RUBY
+      ruby /tmp/stdlib.rb
+      test "$(ruby -rrbconfig -e 'print RbConfig::CONFIG.values_at("arch", "DLEXT").join(" ")')" = "wasm32-wasix so"
+  # Native threads with the primitives, a timeout, and the collector at
+  # work while several threads, a fiber and an enumerator hold objects.
+  threads-passes:
+    using: env:ruby@@MINOR@
+    timeout: 5m
+    run: |
+      cat > /tmp/threads.rb <<'RUBY'
+      require "timeout"
+      mutex, queue, count = Mutex.new, Queue.new, 0
+      8.times.map { |i| Thread.new { 1000.times { mutex.synchronize { count += 1 } }; queue << i } }.each(&:join)
+      raise "count #{count}" unless count == 8000 && queue.size == 8
+      cv, ready = ConditionVariable.new, false
+      waiter = Thread.new { mutex.synchronize { cv.wait(mutex) until ready; :woke } }
+      sleep 0.1
+      mutex.synchronize { ready = true; cv.signal }
+      raise "condvar" unless waiter.value == :woke
+      begin
+        Timeout.timeout(0.5) { sleep 5 }
+        raise "no timeout"
+      rescue Timeout::Error
+      end
+      # No signal ends a wait on a descriptor here: the waiting thread
+      # looks for Thread#raise and #kill between slices of it.
+      reader, writer = IO.pipe
+      begin
+        Timeout.timeout(0.3) { reader.read }
+        raise "no timeout on a read"
+      rescue Timeout::Error
+      end
+      selecting = Thread.new { IO.select([reader]) }
+      sleep 0.1
+      selecting.kill.join
+      raise "IO#wait_readable" unless (writer << "x") && reader.wait_readable(1) == reader
+      results = 4.times.map do |t|
+        Thread.new do
+          kept = (1..20_000).map { |i| "t#{t}-#{i}" }
+          GC.start
+          kept.each_with_index.all? { |s, i| s == "t#{t}-#{i + 1}" }
+        end
+      end.map(&:value)
+      raise "threads lost objects" unless results.all?
+      fiber = Fiber.new { a = (1..1000).map(&:to_s); Fiber.yield a.size; GC.start; a.join.size }
+      raise "fiber" unless fiber.resume == 1000 && fiber.resume == (1..1000).map(&:to_s).join.size
+      enum = Enumerator.new { |y| 3.times { |i| y << "v#{i}" } }
+      raise "enumerator" unless [enum.next, enum.next, enum.next] == %w[v0 v1 v2]
+      GC.stress = true
+      tree = (1..200).map { |i| [i.to_s, { i => i.to_s * 3 }] }
+      GC.stress = false
+      raise "under GC.stress" unless tree.each_with_index.all? { |(s, h), i| s == (i + 1).to_s && h[i + 1] == s * 3 }
+      def depth(n) = n.zero? ? 0 : 1 + depth(n - 1)
+      raise "recursion" unless depth(5_000) == 5_000
+      puts "threads ok"
+      RUBY
+      ruby /tmp/threads.rb
+  # TCP on the job's loopback, HTTP over it, and TLS with a certificate
+  # made here. The server threads are still waiting in `accept` when the
+  # script ends, which must not keep the process from exiting.
+  sockets-passes:
+    using: env:ruby@@MINOR@
+    timeout: 5m
+    run: |
+      cat > /tmp/sockets.rb <<'RUBY'
+      require "socket"
+      require "net/http"
+      require "openssl"
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.addr[1]
+      Thread.new do
+        loop do
+          client = server.accept
+          while (line = client.gets) && line != "\r\n"; end
+          client.write "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"
+          client.close
+        end
+      end
+      raise "http" unless Net::HTTP.get(URI("http://127.0.0.1:#{port}/")) == "hello"
+      key = OpenSSL::PKey::RSA.new(2048)
+      cert = OpenSSL::X509::Certificate.new
+      cert.version, cert.serial = 2, 1
+      cert.subject = cert.issuer = OpenSSL::X509::Name.parse("/CN=localhost")
+      cert.public_key = key.public_key
+      cert.not_before, cert.not_after = Time.now - 60, Time.now + 3600
+      cert.sign(key, OpenSSL::Digest.new("SHA256"))
+      context = OpenSSL::SSL::SSLContext.new
+      context.cert, context.key = cert, key
+      tls = OpenSSL::SSL::SSLServer.new(TCPServer.new("127.0.0.1", 0), context)
+      tls_port = tls.to_io.addr[1]
+      Thread.new { s = tls.accept; s.write(s.gets.upcase); s.close }
+      store = OpenSSL::X509::Store.new
+      store.add_cert(cert)
+      client_context = OpenSSL::SSL::SSLContext.new
+      client_context.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER, cert_store: store)
+      client = OpenSSL::SSL::SSLSocket.new(TCPSocket.new("127.0.0.1", tls_port), client_context)
+      client.hostname = "localhost"
+      client.connect
+      client.puts "over tls"
+      raise "tls" unless client.gets == "OVER TLS\n"
+      puts "sockets ok"
+      RUBY
+      ruby /tmp/sockets.rb
+  # Child processes: real exit statuses, a missing command, redirections,
+  # environments, working directories, pipes both ways, and exec.
+  system-passes:
+    using: env:ruby@@MINOR@
+    timeout: 5m
+    run: |
+      cat > /tmp/system.rb <<'RUBY'
+      require "open3"
+      raise "true" unless system("true") == true
+      raise "false" unless system("false") == false
+      raise "missing" unless system("no-such-command-iwci").nil?
+      raise "backticks" unless `echo hi` == "hi\n" && $?.success?
+      `sh -c 'exit 3'`
+      raise "status #{$?.exitstatus}" unless $?.exitstatus == 3
+      pid = spawn("sh", "-c", "echo spawned >&2; exit 4", err: "/tmp/err.txt")
+      Process.wait(pid)
+      raise "spawn" unless $?.exitstatus == 4 && File.read("/tmp/err.txt") == "spawned\n"
+      out, err, status = Open3.capture3("cat", stdin_data: "piped")
+      raise "open3" unless out == "piped" && err.empty? && status.success?
+      raise "popen" unless IO.popen(%w[tr a-z A-Z], "r+") { |io| io.write("abc"); io.close_write; io.read } == "ABC"
+      raise "env" unless IO.popen({ "IWCI_X" => "1" }, "echo $IWCI_X", &:read) == "1\n"
+      Dir.mkdir("/tmp/d")
+      raise "chdir" unless IO.popen("pwd", chdir: "/tmp/d", &:read) == "/tmp/d\n"
+      raise "child out" unless IO.popen(["sh", "-c", "echo out; echo err >&2"], err: [:child, :out], &:read) == "out\nerr\n"
+      begin
+        spawn("no-such-command-iwci")
+        raise "spawned nothing"
+      rescue Errno::ENOENT
+      end
+      raise "exec" unless `ruby -e 'exec "echo", "execd"'` == "execd\n"
+      raise "argv" unless IO.popen(["ruby", "-e", "puts 1\nputs 2"], &:read) == "1\n2\n"
+      pid = spawn("ruby", "-e", "trap(:TERM) { exit 7 }; sleep 5")
+      sleep 1
+      Process.kill(:TERM, pid)
+      Process.wait(pid)
+      raise "trap in a child: #{$?.inspect}" unless $?.exitstatus == 7
+      puts "system ok"
+      RUBY
+      ruby /tmp/system.rb
+  system-fails:
+    using: env:ruby@@MINOR@
+    run: |
+      ruby -e 'system("false", exception: true)'
+  # WASIX's C library has no fork(): Ruby says so rather than pretend.
+  fork-passes:
+    using: env:ruby@@MINOR@
+    run: |
+      ruby -e 'raise "has fork" if Process.respond_to?(:fork)
+        begin; fork { exit! }; raise "forked"; rescue NotImplementedError; puts "no fork"; end'
+  rake-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/ok
+    timeout: 5m
+    run: rake test
+  rake-fails:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/bad
+    timeout: 5m
+    run: rake test
+  raise-fails:
+    using: env:ruby@@MINOR@
+    run: ruby -e 'raise "expected"'
+  # The extension the build made with README.md's recipe: calls into Ruby,
+  # raises through its own frames, yields, and holds objects only in its
+  # locals while the collector runs.
+  extension-passes:
+    using: env:ruby@@MINOR@
+    run: |
+      cat > /tmp/ext.rb <<'RUBY'
+      require "wasix_check"
+      raise "add" unless WasixCheck.add(40, 2) == 42 && WasixCheck.add("a", "b") == "ab"
+      begin
+        WasixCheck.raise_in_c
+        raise "no raise"
+      rescue ArgumentError => e
+        raise "message" unless e.message == "raised in C"
+      end
+      raise "each" unless WasixCheck.each_sum { |i| i * 10 } == 60
+      begin
+        WasixCheck.each_sum { |i| raise IndexError, "from block" if i == 2; i }
+        raise "no raise from block"
+      rescue IndexError
+      end
+      raise "churn" unless WasixCheck.churn(200) == 200
+      puts "extension ok"
+      RUBY
+      ruby -I/app/ruby/ext/@MINOR@ /tmp/ext.rb
+  # Gems from rubygems.org, over TLS, into GEM_HOME, with their commands
+  # on PATH, and a Gemfile through Bundler.
+  gem-install-passes:
+    using: env:ruby@@MINOR@
+    timeout: 10m
+    run: |
+      gem install --no-document dotenv
+      dotenv -v
+      mkdir -p /tmp/app && cd /tmp/app
+      printf 'source "https://rubygems.org"\ngem "rack"\ngem "rainbow"\n' > Gemfile
+      bundle install
+      bundle exec ruby -e 'require "rack"; require "rainbow"; puts Rack.release'
+YAML
+      ;;
     python)
       cat <<'YAML'
 name: python
@@ -4898,6 +5183,7 @@ want_reason() {
     npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
+    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails) echo "exited with 1" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;
     clickhouse/rejected-fails) echo "exited with 1" ;;
