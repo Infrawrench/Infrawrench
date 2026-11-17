@@ -4,11 +4,15 @@ packages:
   - "plugingen"
 
 # TypeScript 7 packages depend on this (`"typescript": "catalog:"`). It is
-# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website,
-# mobile and plugingen do not use the catalog: they alias `typescript` to
-# TypeScript 6.
+# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website
+# and plugingen do not use the catalog: they alias `typescript` to TypeScript 6.
 catalog:
   typescript: "npm:@tsc-rs/typescript@0.8.0"
+  # The same compiler under its own name, for mobile: Expo's CLI requires
+  # `typescript` from the project for TypeScript 6's JS API, so mobile keeps
+  # that name on TypeScript 6 and takes tsc-rs's `tsc` from this entry. Keep
+  # the two versions equal.
+  "@tsc-rs/typescript": "0.8.0"
   # The plugin contract is written in Effect (plugin-base and every plugin).
   effect: "4.1.2"
 

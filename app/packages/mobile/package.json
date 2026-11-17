@@ -11,7 +11,7 @@
     "ios": "node scripts/build-terminal-html.mjs && expo run:ios",
     "prebuild:terminal": "node scripts/build-terminal-html.mjs",
     "eas-build-post-install": "pnpm -w exec turbo build --filter='@infrawrench/mobile^...' && node scripts/build-terminal-html.mjs",
-    "typecheck": "node scripts/build-terminal-html.mjs && tsc6 --noEmit",
+    "typecheck": "node scripts/build-terminal-html.mjs && tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf .expo dist assets/generated"
   },
@@ -49,6 +49,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@tsc-rs/typescript": "catalog:",
     "@types/react": "~19.1.17",
     "babel-preset-expo": "~54.0.12",
     "esbuild": "^0.25.12",

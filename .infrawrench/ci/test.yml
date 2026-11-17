@@ -336,21 +336,20 @@ jobs:
     memory: 3GiB
     timeout: 30m
 
-  # The packages that pin TypeScript 6 (mobile, plugingen, website) run
-  # their own compiler, which is JavaScript, under Node.
+  # Mobile's typecheck runs build-terminal-html first (prep writes a stub of
+  # what it generates), so `check` does not match it.
   mobile:
-    name: Typecheck mobile (TypeScript 6)
+    name: Typecheck mobile
     packages: { only: [app/packages/mobile] }
     needs: [prep, "^build", "^source"]
-    using: env:bash-node@24.0.18
-    # The runner's installer writes no node_modules/.bin, so the package's
-    # own entry point, as `tsc6` would run it.
-    run: node node_modules/typescript/bin/tsc6 --noEmit
+    using: builtin:typescript@7.1.0
+    args: [--noEmit, -p, .]
     task-cache: { root-inputs: [tsconfig.base.json] }
-    # Peak 600 MiB.
     memory: 2GiB
     timeout: 30m
 
+  # The packages that pin TypeScript 6 (plugingen, website) run their own
+  # compiler, which is JavaScript, under Node.
   plugingen:
     name: Typecheck plugingen (TypeScript 6)
     using: env:bash-node@24.0.18

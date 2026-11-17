@@ -63,7 +63,7 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 
 ## Type checking (tsc-rs)
 
-TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `typescript`. The catalog entry is `@tsc-rs/typescript` (tsc-rs installed under the name `typescript`), so `tsc` and tsdown's declaration emit both run the Rust compiler. `tsconfig.base.json` turns on its built-in Effect diagnostics (codes TS377xxx), which fail `tsc` like any other error; they need no `@effect/language-service` install. A package on plain `typescript` still builds, silently without tsc-rs. `website`, `mobile` and `plugingen` are the exception: they alias `typescript` to `@typescript/typescript6`. Rationale and the bump procedure are in KNOWLEDGE.md ("Type checking").
+TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `typescript`. The catalog entry is `@tsc-rs/typescript` (tsc-rs installed under the name `typescript`), so `tsc` and tsdown's declaration emit both run the Rust compiler. `tsconfig.base.json` turns on its built-in Effect diagnostics (codes TS377xxx), which fail `tsc` like any other error; they need no `@effect/language-service` install. A package on plain `typescript` still builds, silently without tsc-rs. `website` and `plugingen` are the exception: they alias `typescript` to `@typescript/typescript6`. `mobile` typechecks with tsc-rs but keeps `typescript` on that alias, because Expo SDK 54's CLI requires it for TypeScript 6's JS API; its `tsc` comes from `"@tsc-rs/typescript": "catalog:"`, a second catalog entry kept on the same version. Rationale and the bump procedure are in KNOWLEDGE.md ("Type checking").
 
 ## Editor extensions
 

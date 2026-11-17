@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@tsc-rs/typescript':
+      specifier: 0.8.0
+      version: 0.8.0
     effect:
       specifier: 4.1.2
       version: 4.1.2
@@ -1074,6 +1077,9 @@ importers:
         specifier: 0.5.1
         version: 0.5.1(@babel/core@7.29.7(supports-color@10.2.2))(react-native@0.81.5(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/metro-config@0.86.1(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.1.17)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)(supports-color@10.2.2)
     devDependencies:
+      '@tsc-rs/typescript':
+        specifier: 'catalog:'
+        version: 0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)
       '@types/react':
         specifier: ~19.1.17
         version: 19.1.17
