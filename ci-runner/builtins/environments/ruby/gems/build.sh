@@ -6,6 +6,9 @@
 #
 #   gems/build.sh <minor>   build them for that minor (3.4 or 4.0)
 #
+# ONLY="pg trilogy" builds just those, for working on one; the archive
+# then holds only them, so it is not one to pin.
+#
 # A job has no C compiler, so `bundle install` in a job cannot build a
 # gem's extension, and the installer cannot either: it runs no code of a
 # gem's. These are built here instead, from the same .gem files a lock
@@ -33,10 +36,20 @@
 #             handed over the same way (--enable-system-libraries).
 #   ffi       libffi from wasix-org's port (pinned by commit below), which
 #             calls through WASIX's call_dynamic and makes closures with
-#             its closure_* calls (the runner's Wasmer cannot load a
-#             closure yet, so ffi's attach_function aborts): Rails loads ffi
-#             at boot (Active Storage requires ruby-vips, which requires
-#             ffi, and only a missing libvips is an error it expects).
+#             its closure_* calls (so ffi takes its closures from libffi,
+#             --enable-libffi-alloc): Rails loads ffi at boot (Active
+#             Storage requires ruby-vips, which requires ffi, and only a
+#             missing libvips is an error it expects).
+#   pg        libpq from PostgreSQL 18.7, with OpenSSL.
+#   mysql2    MariaDB Connector/C 3.4.11 (LGPL; MySQL's own client library
+#             builds only with CMake's MySQL server tree), with OpenSSL and
+#             its authentication plugins built in.
+#   trilogy   OpenSSL, for TLS to the server.
+#             OpenSSL is 3.5.9, the interpreter's (toolchain.sh pins it),
+#             and like libpq and Connector/C is compiled with hidden
+#             symbols: each module keeps its own copy to itself rather
+#             than sharing, through the dynamic linker, whichever another
+#             module loaded first.
 #   puma      no OpenSSL (PUMA_DISABLE_SSL): the interpreter's is linked
 #             into it rather than offered to extensions, and a job's server
 #             is reached over its loopback, not TLS.
@@ -69,7 +82,7 @@ read -r RUBY_VERSION RUBY_SHA256 _ BUILT_ON <<<"$(release "$minor")"
 RUBY_URL="https://cache.ruby-lang.org/pub/ruby/$minor/ruby-$RUBY_VERSION.tar.gz"
 # Our build of these gems for this Ruby: a changed gems.txt or a changed
 # build is a new number.
-GEMS_BUILD=1
+GEMS_BUILD=2
 VERSION="$RUBY_VERSION-iwci.$GEMS_BUILD"
 
 # libffi for WASIX: wasix-org's fork of libffi 3.5 with a wasm32 port that
@@ -77,6 +90,13 @@ VERSION="$RUBY_VERSION-iwci.$GEMS_BUILD"
 # modified").
 LIBFFI_REPO="https://github.com/wasix-org/libffi.git"
 LIBFFI_COMMIT="09cbf7d66d232a01dbb0c88fd5ae65fa9c15f7c7"
+# libpq, from PostgreSQL's release (the SHA-256 is the one
+# ftp.postgresql.org publishes beside it).
+POSTGRESQL_URL="https://ftp.postgresql.org/pub/source/v18.7/postgresql-18.7.tar.bz2"
+POSTGRESQL_SHA256="441dfae4280cae3e0425e5f876f80559fb0731c140f1aae22b3e5a54d0411bfd"
+# MariaDB Connector/C, for mysql2: the v3.4.11 tag's commit.
+CONNECTOR_C_REPO="https://github.com/mariadb-corporation/mariadb-connector-c.git"
+CONNECTOR_C_COMMIT="be67a4fc1e0493913732df90e562f122bff9dfe3"
 
 # The package the environment pins (environments/build.sh, ruby_pkgs):
 # version and SHA-256.
@@ -88,11 +108,14 @@ fi
 
 # 1. The toolchain, a native Ruby, and the environment's package unpacked.
 setup_toolchain
-mkdir -p "$work/host-src"
-if [[ ! -f "$work/host-src/version.h" ]]; then
-  tar -xzf "$(download "$RUBY_URL" "$RUBY_SHA256" "ruby-$RUBY_VERSION.tar.gz")" -C "$work/host-src" --strip-components=1
+# The release's source, by version: one RUBY_WORK serves both minors, and
+# host_ruby rebuilds from this when the native Ruby there is the other one.
+host_src="$work/host-src-$RUBY_VERSION"
+mkdir -p "$host_src"
+if [[ ! -f "$host_src/version.h" ]]; then
+  tar -xzf "$(download "$RUBY_URL" "$RUBY_SHA256" "ruby-$RUBY_VERSION.tar.gz")" -C "$host_src" --strip-components=1
 fi
-host_ruby "$work/host-src"
+host_ruby "$host_src"
 webc="$dist/package/ruby/$PKG_VERSION/ruby.webc"
 [[ -f "$webc" ]] || bash "$self/../build.sh" "$minor" >&2
 if ! echo "$PKG_SHA256  $webc" | sha256sum -c --status -; then
@@ -160,20 +183,102 @@ PC
 # autotools <source dir> <configure args...>: a static, position-independent
 # library installed into $deps.
 autotools() {
-  local dir="$1"
+  run "$(basename "$1")" autotools_steps "$@"
+}
+
+autotools_steps() {
+  cd "$1"
   shift
-  (
-    cd "$dir"
-    CC=wasixcc AR=wasixar RANLIB=wasixranlib NM=wasixnm CFLAGS="-O2 $map" \
-      ./configure --host=wasm32-unknown-wasi --build="$(uname -m)-linux-gnu" --prefix="$deps" \
-      --disable-shared --enable-static --with-pic "$@"
-    make -j"$jobs"
-    make install
-  ) >"$work/$(basename "$dir").log" 2>&1 || {
-    tail -n 40 "$work/$(basename "$dir").log" >&2
-    echo "error: building $(basename "$dir") failed" >&2
-    exit 1
-  }
+  CC=wasixcc AR=wasixar RANLIB=wasixranlib NM=wasixnm CFLAGS="-O2 $map ${EXTRA_CFLAGS:-}" \
+    ./configure --host=wasm32-unknown-wasi --build="$(uname -m)-linux-gnu" --prefix="$deps" \
+    --disable-shared --enable-static --with-pic "$@"
+  make -j"$jobs"
+  make install
+}
+
+# build_openssl: OpenSSL's libraries in $deps, once, configured as build.sh
+# configures the interpreter's (its certificates are the environment's,
+# /opt/ruby/ssl/cert.pem), with hidden symbols. Its build compiles relative
+# paths, so it is given no -ffile-prefix-map, which OpenSSL_version() would
+# report among its flags; and the directories it names for modules and
+# engines are the interpreter's, not ones under $deps.
+build_openssl() {
+  [[ -f "$deps/lib/libssl.a" ]] && return
+  local dir="$src/openssl"
+  mkdir -p "$dir"
+  tar -xzf "$(download "$OPENSSL_URL" "$OPENSSL_SHA256" openssl.tar.gz)" -C "$dir" --strip-components=1
+  run openssl openssl_steps "$dir"
+}
+
+openssl_steps() {
+  cd "$1"
+  CC=wasixcc AR=wasixar RANLIB=wasixranlib SOURCE_DATE_EPOCH="$BUILT_ON" ./Configure linux-generic32 \
+    no-asm no-shared no-dso no-module no-engine no-tests no-apps no-docs no-afalgeng no-dgram \
+    no-secure-memory no-ui-console --prefix="$deps" --openssldir=/opt/ruby/ssl --libdir=lib \
+    -fvisibility=hidden
+  SOURCE_DATE_EPOCH="$BUILT_ON" make -j"$jobs" build_libs \
+    ENGINESDIR=/usr/lib/engines-3 MODULESDIR=/usr/lib/ossl-modules
+  make install_dev
+}
+
+# libpq_steps <source dir>: libpq, its static library alone, into $deps.
+libpq_steps() {
+  cd "$1"
+  # configure insists on Bison and Flex, which only the server's parsers
+  # need (the release has none of their output since PostgreSQL 18);
+  # these stand in, and fail if anything does run them.
+  mkdir -p "$src/no-parsers"
+  # shellcheck disable=SC2016 # the stand-ins' own $1
+  printf '#!/bin/sh\n[ "$1" = --version ] && echo "bison (GNU Bison) 3.8.2" && exit 0\nexit 1\n' >"$src/no-parsers/bison"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\n[ "$1" = --version ] && echo "flex 2.6.4" && exit 0\nexit 1\n' >"$src/no-parsers/flex"
+  chmod +x "$src/no-parsers/bison" "$src/no-parsers/flex"
+  # Linux's template (configure knows no WASI one); the client library
+  # alone, so none of the server's options. Its pg_service.conf is
+  # /etc/postgresql's, as a distribution's libpq has it, not under $deps.
+  CC=wasixcc AR=wasixar RANLIB=wasixranlib CFLAGS="-O2 $map -fvisibility=hidden" \
+    CPPFLAGS="-I$deps/include" LDFLAGS="-L$deps/lib" \
+    BISON="$src/no-parsers/bison" FLEX="$src/no-parsers/flex" \
+    ./configure --host=wasm32-unknown-wasi --build="$(uname -m)-linux-gnu" --prefix="$deps" \
+    --sysconfdir=/etc --with-template=linux --with-ssl=openssl --without-readline --without-zlib --without-icu \
+    --without-gssapi --without-ldap --without-llvm --disable-nls --without-perl --without-python \
+    --without-tcl
+  # The headers libpq and its libraries include that are generated (by
+  # Perl), not the server's parsers' (by Bison), which every directory's
+  # build would otherwise make first (NO_GENERATED_HEADERS).
+  make -C src/backend submake-catalog-headers submake-nodes-headers ../../src/include/storage/lwlocknames.h
+  make -C src/backend/utils ../../../src/include/utils/header-stamp
+  make -C src/include NO_GENERATED_HEADERS=1 install
+  make -C src/common NO_GENERATED_HEADERS=1 -j"$jobs" install
+  make -C src/port NO_GENERATED_HEADERS=1 -j"$jobs" install
+  # The static library alone: linking the shared one (which a module could
+  # not use anyway) passes wasm-ld flags it does not know.
+  make -C src/interfaces/libpq NO_GENERATED_HEADERS=1 -j"$jobs" all-static-lib
+  cp src/interfaces/libpq/libpq.a "$deps/lib/"
+  cp src/interfaces/libpq/libpq-fe.h src/interfaces/libpq/libpq-events.h "$deps/include/"
+}
+
+# connector_c_steps <source dir>: MariaDB Connector/C's static library and
+# headers, into $deps, with its own zlib and every authentication plugin
+# compiled in (a job cannot load one from a plugin directory). Its prefix is
+# /usr, which it names its plugin directory under; only the headers are
+# installed, into $deps.
+connector_c_steps() {
+  cmake -S "$1" -B "$1/build" -DCMAKE_TOOLCHAIN_FILE="$src/wasix.cmake" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-O2 $map -fvisibility=hidden" \
+    -DCMAKE_INSTALL_PREFIX=/usr -DWITH_SSL=OPENSSL -DOPENSSL_ROOT_DIR="$deps" \
+    -DWITH_EXTERNAL_ZLIB=OFF -DWITH_CURL=OFF -DWITH_UNIT_TESTS=OFF -DWITH_MYSQLCOMPAT=OFF \
+    -DCLIENT_PLUGIN_DIALOG=STATIC -DCLIENT_PLUGIN_CLIENT_ED25519=STATIC \
+    -DCLIENT_PLUGIN_CACHING_SHA2_PASSWORD=STATIC -DCLIENT_PLUGIN_SHA256_PASSWORD=STATIC \
+    -DCLIENT_PLUGIN_MYSQL_CLEAR_PASSWORD=STATIC -DCLIENT_PLUGIN_MYSQL_OLD_PASSWORD=OFF \
+    -DCLIENT_PLUGIN_AUTH_GSSAPI_CLIENT=OFF -DCLIENT_PLUGIN_REMOTE_IO=OFF
+  cmake --build "$1/build" -j"$jobs" --target mariadbclient
+  # Its headers as it installs them, and the static library alone
+  # (installing the whole project would want the shared one too).
+  cmake -DCMAKE_INSTALL_COMPONENT=Development -DCMAKE_INSTALL_PREFIX="$deps" \
+    -P "$1/build/include/cmake_install.cmake"
+  mkdir -p "$deps/lib/mariadb"
+  cp "$1/build/libmariadb/libmariadbclient.a" "$deps/lib/mariadb/"
 }
 
 # Each gem's libraries and the arguments its extconf.rb takes; the
@@ -186,15 +291,69 @@ prepare() {
       git init -q "$libffi"
       git -C "$libffi" fetch -q --depth 1 "$LIBFFI_REPO" "$LIBFFI_COMMIT"
       git -C "$libffi" checkout -q --detach FETCH_HEAD
-      (cd "$libffi" && ./autogen.sh) >"$work/libffi-autogen.log" 2>&1 || {
-        tail -n 40 "$work/libffi-autogen.log" >&2
-        exit 1
-      }
+      run libffi-autogen env -C "$libffi" ./autogen.sh
       # As its wasix.sh configures it, with -D__wasix__ (which selects its
       # WASIX calls) through CPPFLAGS rather than wasixcc's own variable.
       CPPFLAGS="-D__wasix__=1" autotools "$libffi" --disable-dependency-tracking --disable-builddir \
         --disable-multi-os-directory --disable-raw-api --disable-docs
-      echo "--enable-system-libffi"
+      # Closures from libffi (ffi_closure_alloc): by default ffi makes its
+      # own trampoline pages and hands libffi their address as the code,
+      # and on WebAssembly code is a function table index that only
+      # libffi (WASIX's closure_allocate) can give out.
+      echo "--enable-system-libffi --enable-libffi-alloc"
+      ;;
+    trilogy)
+      build_openssl
+      # Its OpenSSL is ours: dir_config("openssl") would otherwise take the
+      # directory the interpreter's configure was given (RbConfig's
+      # configure_args), which is not there, and never ask pkg-config.
+      echo "--with-openssl-dir=$deps"
+      ;;
+    pg)
+      build_openssl
+      local pgsrc="$src/postgresql"
+      mkdir -p "$pgsrc"
+      tar -xjf "$(download "$POSTGRESQL_URL" "$POSTGRESQL_SHA256" postgresql.tar.bz2)" -C "$pgsrc" --strip-components=1
+      run postgresql libpq_steps "$pgsrc"
+      # libpq.a needs these beside it, which its own libpq.pc leaves to
+      # Libs.private and mkmf's pkg_config does not read.
+      pc libpq 18.7 "-I$deps/include" "-L$deps/lib -lpq -lpgcommon_shlib -lpgport_shlib -lssl -lcrypto"
+      echo "--with-pg-config=ignore"
+      ;;
+    mysql2)
+      build_openssl
+      local mariadb="$src/connector-c"
+      git init -q "$mariadb"
+      git -C "$mariadb" fetch -q --depth 1 "$CONNECTOR_C_REPO" "$CONNECTOR_C_COMMIT"
+      git -C "$mariadb" checkout -q --detach FETCH_HEAD
+      cat >"$src/wasix.cmake" <<CMAKE
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR wasm32)
+set(CMAKE_C_COMPILER wasixcc)
+set(CMAKE_AR "$(command -v wasixar)")
+set(CMAKE_RANLIB "$(command -v wasixranlib)")
+set(CMAKE_FIND_ROOT_PATH "$deps")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+CMAKE
+      run connector-c connector_c_steps "$mariadb"
+      # mysql2 reads its flags from a mysql_config, and Connector/C's is a
+      # program for WASIX: one that prints them.
+      mkdir -p "$deps/bin"
+      cat >"$deps/bin/mysql_config" <<SH
+#!/bin/sh
+case "\$1" in
+  --version) echo 3.4.11 ;;
+  --include | --cflags) echo "-I$deps/include/mariadb" ;;
+  --libs | --libs_r) echo "-L$deps/lib/mariadb -lmariadbclient -L$deps/lib -lssl -lcrypto" ;;
+  *) exit 1 ;;
+esac
+SH
+      chmod +x "$deps/bin/mysql_config"
+      # Its OpenSSL is ours: it would otherwise take the directory the
+      # interpreter's configure was given (RbConfig's configure_args).
+      echo "--with-mysql-config=$deps/bin/mysql_config --without-mysql-rpath --with-openssl-dir=$deps"
       ;;
     io-console)
       # It skips itself on any platform matching /wasi/, which wasm32-wasix
@@ -244,6 +403,20 @@ prepare() {
   esac
 }
 
+# extension_steps <extconf.rb's dir> <gem's lib dir> <dest> <args...>: one
+# extension, built and installed into <dest>.
+extension_steps() {
+  local dest="$3" lib="$2"
+  cd "$1"
+  shift 3
+  # mkmf with the package's rbconfig.rb; -I the gem's own lib, as RubyGems
+  # has it when it builds, for an extconf that requires it.
+  env PUMA_DISABLE_SSL=1 "$host/bin/ruby" --disable-gems -I "$rbconfig" -r rbconfig -I "$lib" \
+    extconf.rb "$@"
+  make -j"$jobs" V=1 debugflags="$map"
+  make install V=1 sitearchdir="$dest" sitelibdir="$dest" DESTDIR=
+}
+
 # build_gem <name> <version>: each of its extensions, installed as RubyGems
 # installs one (`make install` with sitearchdir and sitelibdir at the
 # extension directory), into $out/<name>/<version>/.
@@ -260,31 +433,27 @@ build_gem() {
       echo "error: $name-$version: $ext is not an extconf.rb" >&2
       exit 1
     fi
-    local log
-    log="$work/gem-$name-$(dirname "$ext" | tr / -).log"
-    (
-      cd "$dir/$(dirname "$ext")"
-      # mkmf with the package's rbconfig.rb; -I the gem's own lib, as
-      # RubyGems has it when it builds, for an extconf that requires it.
-      env PUMA_DISABLE_SSL=1 "$host/bin/ruby" --disable-gems -I "$rbconfig" -r rbconfig -I "$dir/lib" \
-        extconf.rb "${args[@]}"
-      make -j"$jobs" V=1 debugflags="$map"
-      make install V=1 sitearchdir="$dest" sitelibdir="$dest" DESTDIR=
-    ) >"$log" 2>&1 || {
-      tail -n 60 "$log" >&2
-      echo "error: $name-$version: $ext failed (log: $log)" >&2
-      exit 1
-    }
+    run "gem-$name-$(dirname "$ext" | tr / -)" extension_steps "$dir/$(dirname "$ext")" "$dir/lib" "$dest" \
+      ${args[@]+"${args[@]}"}
   done <"$dir/.extensions"
   if ! find "$dest" -name '*.so' | grep -q .; then
     echo "error: $name-$version built no .so" >&2
     exit 1
   fi
+  case "$name" in
+    pg)
+      # Where extconf.rb found libpq, which pg reads only on Windows: what
+      # it says when it was built by rake-compiler, rather than this
+      # machine's directory.
+      printf 'module PG\n\tPOSTGRESQL_LIB_PATH = false\nend\n' >"$dest/pg/postgresql_lib_path.rb"
+      ;;
+  esac
 }
 
 # 2. Every gem gems.txt pins.
 while read -r name version sha; do
   [[ -z "$name" || "$name" == \#* ]] && continue
+  [[ -z "${ONLY:-}" || " $ONLY " == *" $name "* ]] || continue
   fetch_gem "$name" "$version" "$sha"
   build_gem "$name" "$version"
   echo "built $name $version: $(cd "$out/$name/$version" && find . -name '*.so' | sort | tr '\n' ' ')"

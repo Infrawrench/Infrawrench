@@ -2761,6 +2761,15 @@ What works:
 - **Models, fixtures, controller and integration tests** against the
   app's SQLite database in `storage/`, which `bin/rails test` prepares from
   `db/schema.rb`.
+- **PostgreSQL through `pg`**, against `env:postgres@18` as a
+  [service](#background-services) (`builtins/test.sh`'s `databases-passes`
+  queries one, and `databases-fails` gets PostgreSQL's error for a missing
+  table). pglite serves one connection at a time, so a test suite holds
+  one; `pglite-server` serves more.
+- **mysql2 and trilogy over TLS** to a server that asks for it: trilogy
+  with OpenSSL, mysql2 with MariaDB Connector/C, which checks the server's
+  certificate and name against `sslca:` (`databases-tls-passes`, against a
+  stand-in that speaks only the handshake and ping).
 - **Tests run in one process.** Rails runs a suite of more than 50 tests in
   forked workers, one per processor (the `parallelize` line in
   `test_helper.rb`), and a job's Ruby has no `fork`. The installer sets `PARALLEL_WORKERS=1` in the jobs' environment
@@ -2796,17 +2805,22 @@ What does not:
 - **`bundle exec ruby`** runs Ruby without the bundle ([Ruby](#ruby),
   `exec`); `bin/rails`, `bundle exec rake` and `ruby -rbundler/setup` load
   it.
-- **ffi loads, and attaching a C function aborts the process.** Active
-  Storage loads ffi at boot (through ruby-vips), and `ffi_lib` failing to
-  find libvips is the `LoadError` it expects, so the app boots. But
-  `attach_function` needs a closure (WASIX `closure_prepare`), which the
-  runner's Wasmer fails to load, so a gem that calls C through ffi does not
-  run; nor does image processing, with no libvips or ImageMagick anyway.
+- **ffi has no libraries to call but the C library.** Active Storage loads
+  ffi at boot (through ruby-vips), and `ffi_lib` failing to find libvips is
+  the `LoadError` it expects, so the app boots. `attach_function` works,
+  with callbacks into Ruby (`builtins/test.sh` sorts with the C library's
+  `qsort` and a Ruby comparison), but a job has no libvips, ImageMagick or
+  other shared library for it to load, and ffi has no `types.conf` for
+  this platform, so typedefs such as `:size_t` do not resolve.
 - **nokogiri reads no gzipped documents**: its libxml2 is built without
   zlib, which the interpreter has but does not offer to extensions.
-- **Other databases' drivers** (`pg`, `mysql2`, `trilogy`) have no build
-  yet; each would be a line in `gems.txt` and its client library in
-  `gems/build.sh`.
+- **No MySQL to test against.** `mysql2` and `trilogy` are built and
+  load, and connect over the job's network to a MySQL or MariaDB server
+  elsewhere (a [lent connection](#connections-ssh-keys-and-resources), say), but no environment
+  runs one as a service: there is no MySQL or MariaDB for WASIX
+  ([Background services](#background-services)). `builtins/test.sh` checks that each loads and
+  that a refused connection is its own error, not that it talks to a
+  server.
 
 **The builds.** `builtins/environments/ruby/gems/gems.txt` lists them,
 one line per gem version, with the SHA-256 of its `.gem`:
@@ -2822,21 +2836,26 @@ one line per gem version, with the SHA-256 of its `.gem`:
 | debug            | 1.11.1  |                                                                                      |
 | ed25519          | 1.4.0   | kamal, through net-ssh                                                               |
 | erb              | 6.0.7   |                                                                                      |
-| ffi              | 1.17.4  | libffi from wasix-org's port; loads, but `attach_function` aborts (above)            |
+| ffi              | 1.17.4  | libffi from wasix-org's port, its closures from libffi (`--enable-libffi-alloc`)     |
 | io-console       | 0.9.5   | its extconf.rb skips any platform matching `wasi`; built as the interpreter's own is |
 | json             | 3.1.0   |                                                                                      |
 | msgpack          | 1.8.7   | bootsnap                                                                             |
+| mysql2           | 0.5.7   | MariaDB Connector/C 3.4.11, with OpenSSL 3.5.9 and its authentication plugins        |
 | nio4r            | 2.7.5   | Action Cable, puma                                                                   |
 | nokogiri         | 1.19.7  | libxml2 2.13.9 and libxslt 1.1.43 from the gem's own archives, with its patches      |
+| pg               | 1.7.0   | libpq from PostgreSQL 18.7, with OpenSSL 3.5.9                                       |
 | prism            | 2.1.0   |                                                                                      |
 | puma             | 8.1.2   | without TLS                                                                          |
 | racc             | 1.8.1   |                                                                                      |
 | rbs              | 4.2.0   |                                                                                      |
 | sqlite3          | 2.10.2  | SQLite 3.54.1 from the gem's own archive, with its packaged build's options          |
+| trilogy          | 2.13.3  | with OpenSSL 3.5.9                                                                   |
 | websocket-driver | 0.9.0   | Action Cable                                                                         |
 
 These are the versions Rails 8.1.4.1's `rails new` locks
-(`crates/iwci-deps/src/bundler/fixtures/rails-8.1.lock`), and bcrypt. A lock with
+(`crates/iwci-deps/src/bundler/fixtures/rails-8.1.lock`), bcrypt, and the
+newest releases of the drivers of the databases `rails new --database`
+offers besides SQLite (pg, mysql2, trilogy). A lock with
 another version of one of them fails the install, naming the versions in
 the table, until that version is added.
 
@@ -3040,8 +3059,11 @@ What does not, or differs:
   process too (`Process.kill(:TERM, pid)` reaches a child's handler), but
   a signal that arrives while the main thread waits on a descriptor takes
   its default action, and a child ended by a signal reports an exit status
-  rather than `termsig`. `IO#wait_priority` and `IO.select` with an error
-  set fail with `ENOSYS`: WASIX cannot wait for exceptional conditions.
+  rather than `termsig`. WASIX cannot wait for exceptional conditions
+  (out-of-band data), so none is ever reported: `IO#wait_priority` waits
+  until its timeout, `IO.select`'s error set comes back empty, and a wait
+  for `IO::READABLE | IO::PRIORITY` (as the pg gem's) is a wait for
+  readable.
 - **`exec` passes the environment the process started with**, not one
   changed through `ENV` since (`system`, `spawn`, backticks and an `exec`
   given an environment hash pass the current one). So `bundle exec ruby

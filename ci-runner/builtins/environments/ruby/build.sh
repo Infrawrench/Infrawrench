@@ -59,10 +59,15 @@
 #   --spill-pointers gave it a stack frame below a stack pointer of 0. The
 #   patch has C initialise the thread's TLS instead.
 #
+#   wasix-libc-select-except.patch. select() refused an except set with
+#   ENOSYS (WASI cannot wait for out-of-band data), and Ruby asks for one in
+#   every wait that includes IO::PRIORITY, as the pg gem's connect does.
+#   The set is emptied instead: nothing exceptional ever arrives.
+#
 # The C library is Edge.js's (edgejs/build.sh): wasix-libc v2026-07-30.1,
 # here its EH+PIC sysroot with legacy exception handling, with the objects
 # edgejs/'s patches change rebuilt from that tag's source, and this
-# directory's thread-start patch.
+# directory's thread-start and select patches.
 #
 # Built into the interpreter, from source: zlib, OpenSSL 3.5.9 and libyaml,
 # for zlib, openssl and psych. Not built: fiddle (no libffi), pty (no
@@ -104,8 +109,6 @@ RUBY_URL="https://cache.ruby-lang.org/pub/ruby/$minor/ruby-$RUBY_VERSION.tar.gz"
 
 ZLIB_URL="https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz"
 ZLIB_SHA256="bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
-OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz"
-OPENSSL_SHA256="603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 LIBYAML_URL="https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz"
 LIBYAML_SHA256="c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4"
 # Mozilla's CA certificates as curl.se extracted them (git/build.sh pins the
@@ -131,6 +134,7 @@ LIBC_PATCHES=(
   "edgejs/wasix-libc-modes.patch libc-bottom-half/sources/posix.o __wasilibc_iwci_fill_fd_mode libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.o __wasilibc_iwci_fill_fd_mode"
   "edgejs/wasix-libc-getrusage.patch libc-top-half/musl/src/misc/getrusage.o __wasilibc_iwci_rusage"
   "ruby/wasix-libc-thread-start.patch libc-top-half/musl/src/thread/wasm32/wasi_thread_start.o !__wasm_init_tls libc-top-half/musl/src/thread/pthread_create.o __wasm_init_tls"
+  "ruby/wasix-libc-select-except.patch libc-bottom-half/cloudlibc/src/libc/sys/select/pselect.o __wasilibc_iwci_no_exceptional"
 )
 
 # 1. The toolchain (toolchain.sh).
@@ -198,17 +202,15 @@ cp "$src/zlib/zlib.h" "$src/zlib/zconf.h" "$deps/usr/include/"
 # modules and engines, secure memory, datagrams, AF_ALG). Its default
 # certificate file is $PREFIX/ssl/cert.pem, which the package carries.
 tar -xzf "$(download "$OPENSSL_URL" "$OPENSSL_SHA256" openssl.tar.gz)" -C "$src/openssl" --strip-components=1
-(
+build_openssl() {
   cd "$src/openssl"
   CC=wasixcc AR=wasixar RANLIB=wasixranlib SOURCE_DATE_EPOCH="$BUILT_ON" ./Configure linux-generic32 \
     no-asm no-shared no-dso no-module no-engine no-tests no-apps no-docs no-afalgeng no-dgram \
     no-secure-memory no-ui-console --prefix=/usr --openssldir="$PREFIX/ssl" --libdir=lib
   SOURCE_DATE_EPOCH="$BUILT_ON" make -j"$jobs" build_libs
   make install_dev DESTDIR="$deps"
-) >"$work/openssl.log" 2>&1 || {
-  tail -n 40 "$work/openssl.log" >&2
-  exit 1
 }
+run openssl build_openssl
 
 # libyaml, for psych, compiled as its Makefile would (its configure
 # script predates WASI and does not know the host).
@@ -262,7 +264,7 @@ build="$work/build"
 stage="$work/stage"
 rm -rf "$build" "$stage"
 mkdir -p "$build"
-(
+configure_ruby() {
   cd "$build"
   # The answers configure cannot find by running a program: the stack grows
   # down, and there is no fork() (wasix-libc's vfork() shares the parent's
@@ -292,10 +294,8 @@ mkdir -p "$build"
     --disable-dtrace --without-gmp --without-valgrind --with-mantype=man \
     --with-out-ext=pty,fiddle,win32,win32ole,readline \
     --with-openssl-dir="$deps/usr" --with-libyaml-dir="$deps/usr" --with-zlib-dir="$deps/usr"
-) >"$work/configure.log" 2>&1 || {
-  tail -n 60 "$work/configure.log" >&2
-  exit 1
 }
+run configure configure_ruby
 # The interpreter links libruby-static.a by its path: wasixcc puts `-l`
 # libraries ahead of the objects, and the archive's own dmyext.o then came
 # in beside the one the link names.

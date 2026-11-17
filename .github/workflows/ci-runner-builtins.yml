@@ -644,13 +644,14 @@ jobs:
 
       # The native Ruby the cross build runs is built first, with its own
       # zlib, OpenSSL and libyaml extensions (RubyGems unpacks the bundled
-      # gems with them). The gems' build reads pkg-config files and makes
-      # libffi's configure script (autoconf, automake, libtool).
+      # gems with them). The gems' build reads pkg-config files, makes
+      # libffi's configure script (autoconf, automake, libtool) and builds
+      # MariaDB Connector/C, for mysql2, with CMake.
       - name: Install a native Ruby's build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libyaml-dev libssl-dev zlib1g-dev libffi-dev \
-            pkg-config autoconf automake libtool libltdl-dev
+            pkg-config autoconf automake libtool libltdl-dev cmake
 
       # CRuby from its release tarball with wasixcc (ten to twenty minutes):
       # the toolchain, the C library objects, zlib, OpenSSL and libyaml, a
@@ -666,8 +667,9 @@ jobs:
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         run: bash builtins/build-cache.sh build ruby@${{ matrix.minor }}
 
-      # The native extensions of gems.txt's gems for that Ruby (five to ten
-      # minutes, libxml2 and libxslt the longest), with the same toolchain
+      # The native extensions of gems.txt's gems for that Ruby (ten to twenty
+      # minutes, the database drivers, each with its own OpenSSL, and
+      # libxml2 and libxslt the longest), with the same toolchain
       # and native Ruby: one archive, checked against the digest
       # crates/iwci/src/gem_builds.rs pins, after a restore as after a build.
       # Key: environments/ruby/gems/, toolchain.sh, lib.sh and the platform.

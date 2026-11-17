@@ -69,6 +69,16 @@ pub(crate) fn fd_filestat_get_internal(
     {
         stat.st_filetype = Filetype::CharacterDevice;
     }
+    // A socket's inode has no file type either, so `fstat` gave it none
+    // (no `S_IFSOCK`), and a program that checks a descriptor it was handed
+    // is a socket refused it: Ruby's `BasicSocket.for_fd`, and so pg's
+    // connection to PostgreSQL, which wraps the socket libpq opened. Its
+    // type is the one `fd_fdstat_get` gives (`SO_TYPE`).
+    let socket = stat.st_filetype == Filetype::Unknown
+        && matches!(*fd_entry.inode.read(), Kind::Socket { .. });
+    if socket && let Ok(fdstat) = state.fs.fdstat(fd, None) {
+        stat.st_filetype = fdstat.fs_filetype;
+    }
     Ok(stat)
 }
 

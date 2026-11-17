@@ -834,6 +834,16 @@ answers `ENOTCONN` for both, and for a receive on a socket that is bound
 but neither listening nor connected. Upstream main still answers all of
 them as 0.705.0 does (checked November 2026, at b72787f1be).
 
+**`fstat` of a socket says it is one.** A socket's inode has no file type,
+so `fd_filestat_get` answered "unknown" and the C library's `fstat` gave no
+`S_IFSOCK`. A program that checks that a descriptor it was handed is a
+socket refused it: Ruby's `BasicSocket.for_fd` raised "not a socket file
+descriptor" for the socket libpq had opened, so the pg gem could not
+connect to PostgreSQL. `src/syscalls/wasi/fd_filestat_get.rs` now gives a
+socket the type `fdstat` gives it (the one `SO_TYPE` reads, above).
+Upstream main still answers "unknown" (checked November 2026, at
+65f18f0054).
+
 **A program can use descriptors 3 and 4 (#1019).** They are the preopens,
 the virtual root and the job's `/`, and `dup2_at` refused to replace one
 with `ENOTSUP`, so bash's `exec 3>&1` (`dup2(1, 3)`) and `exec 4< file`

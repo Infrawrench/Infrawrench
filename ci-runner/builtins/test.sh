@@ -164,7 +164,11 @@ for name in "$@"; do
         if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/blobs/ruby-gems/$minor.*" >/dev/null; then
           bash "$here/environments/ruby/gems/build.sh" "$minor"
         fi
-        dirs=("$dist"/environment/ruby/"$minor".* "$dist"/blobs/ruby-gems/"$minor".*)
+        # And env:postgres, which the pg job uses as a service.
+        if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/postgres/*" >/dev/null; then
+          bash "$here/environments/build.sh" postgres
+        fi
+        dirs=("$dist"/environment/ruby/"$minor".* "$dist"/blobs/ruby-gems/"$minor".* "$dist"/environment/postgres/*)
       else
         dirs=("$dist"/environment/"$name"/*)
       fi
@@ -547,6 +551,9 @@ class GreeterTest < Minitest::Test
 end
 RUBY
 done
+# The three database drivers `rails new --database` offers besides SQLite,
+# locked together (environments/ruby/apps/databases).
+cp -R "$here/environments/ruby/apps/databases" "$repo/ruby/databases"
 # A `rails new` app (Rails 8.1, SQLite, minitest; environments/ruby/apps/
 # rails, made with a native Ruby 4.0.9 and `rails new blog --skip-bundle
 # --skip-git` on the lock of crates/iwci-deps/src/bundler/fixtures/
@@ -4160,6 +4167,113 @@ jobs:
     deps: [{ bundler: { dir: ruby/gems, ruby: "@MINOR@" } }]
     network: false
     run: ruby -rbundler/setup -e 'require "msgpack"'
+  # The database drivers' builds: pg (libpq) against PostgreSQL 18, which
+  # env:postgres runs as a service (pglite, one connection), and mysql2
+  # (MariaDB Connector/C) and trilogy, which have no MySQL to talk to here,
+  # each reporting the refused connection as its own error.
+  databases-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/databases
+    deps: [{ bundler: { dir: ruby/databases, ruby: "@MINOR@" } }]
+    network: false
+    timeout: 10m
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        ready: { port: 5432 }
+    run: |
+      cat > /tmp/databases.rb <<'RUBY'
+      %w[pg mysql2 trilogy].each { |f| require f }
+      loaded = $LOADED_FEATURES.grep(%r{/vendor/bundle/ruby/[^/]+/extensions/wasm32-wasi/}).map { File.basename(_1) }
+      wanted = %w[pg_ext.so mysql2.so cext.so]
+      raise "not loaded from the gems' builds: #{wanted - loaded}" unless (wanted - loaded).empty?
+      puts "libpq #{PG.library_version}, #{Mysql2::Client.info[:version]}"
+
+      conn = PG.connect(host: "postgres", port: 5432, user: "postgres", dbname: "postgres")
+      version = conn.exec("select version()").getvalue(0, 0)
+      raise version unless version.start_with?("PostgreSQL 18")
+      conn.exec("create table t (n int)")
+      conn.exec("insert into t select generate_series(1, 1000)")
+      raise "sum" unless conn.exec("select sum(n) from t").getvalue(0, 0) == "500500"
+      raise "params" unless conn.exec_params("select $1::int + 1", [41]).getvalue(0, 0) == "42"
+      conn.close
+      puts version
+
+      begin
+        Mysql2::Client.new(host: "127.0.0.1", port: 3306, connect_timeout: 5)
+        raise "mysql2 connected"
+      rescue Mysql2::Error::ConnectionError => e
+        puts "mysql2: #{e.message}"
+      end
+      begin
+        Trilogy.new(host: "127.0.0.1", port: 3306, connect_timeout: 5)
+        raise "trilogy connected"
+      rescue Trilogy::ConnectionError => e
+        puts "trilogy: #{e.message}"
+      end
+      RUBY
+      ruby -rbundler/setup /tmp/databases.rb
+  # mysql2 and trilogy over TLS, to a stand-in that speaks only as much of
+  # MySQL's protocol as connecting and pinging take (fake-mysql.rb): each
+  # asks for TLS, and mysql2 checks the server's certificate and name
+  # against the certificate it is given.
+  databases-tls-passes:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/databases
+    deps: [{ bundler: { dir: ruby/databases, ruby: "@MINOR@" } }]
+    network: false
+    timeout: 10m
+    services:
+      mysql:
+        using: env:ruby@@MINOR@
+        run: ruby /app/ruby/databases/fake-mysql.rb /tmp/workflow/fake-mysql.pem
+        ready: { port: 3307 }
+    run: |
+      cat > /tmp/tls.rb <<'RUBY'
+      require "mysql2"
+      require "trilogy"
+      t = Trilogy.new(host: "mysql", port: 3307, username: "u", password: "p", ssl: true,
+        ssl_mode: Trilogy::SSL_REQUIRED_NOVERIFY)
+      t.ping
+      puts "trilogy over TLS to #{t.server_version}"
+      t.close
+      m = Mysql2::Client.new(host: "mysql", port: 3307, username: "u", password: "p",
+        ssl_mode: :verify_identity, sslca: "/tmp/workflow/fake-mysql.pem")
+      m.ping
+      puts "mysql2 over TLS to #{m.server_info[:version]}"
+      m.close
+      RUBY
+      ruby -rbundler/setup /tmp/tls.rb
+  # And a query PostgreSQL refuses, which pg raises as its own error and
+  # the job fails on (with 1 for that error alone; anything else, such as
+  # not connecting, exits 2).
+  databases-fails:
+    using: env:ruby@@MINOR@
+    cwd: /app/ruby/databases
+    deps: [{ bundler: { dir: ruby/databases, ruby: "@MINOR@" } }]
+    network: false
+    timeout: 10m
+    services:
+      postgres:
+        using: env:postgres@18
+        run: pglite
+        ready: { port: 5432 }
+    run: |
+      cat > /tmp/missing.rb <<'RUBY'
+      begin
+        require "pg"
+        conn = PG.connect(host: "postgres", port: 5432, user: "postgres", dbname: "postgres")
+        conn.exec("select * from no_such_table")
+      rescue PG::UndefinedTable => e
+        warn "pg: #{e.message.lines.first.strip}"
+        exit 1
+      rescue Exception => e
+        warn "not the error expected: #{e.class}: #{e.message}"
+        exit 2
+      end
+      RUBY
+      ruby -rbundler/setup /tmp/missing.rb
   # The `rails new` app's tests, through bin/rails test: SQLite (sqlite3),
   # the controller tests' HTML (nokogiri, through rails-dom-testing),
   # bootsnap's cache (bootsnap, msgpack) and the rest of the bundle's
@@ -4193,6 +4307,21 @@ jobs:
       rescue LoadError => e
         raise unless e.message.include?("libvips")
       end
+      # And a C function called through it (WASIX's call_dynamic), and C
+      # calling back into Ruby (a closure): qsort from the C library the
+      # interpreter exports. ffi has no types.conf for this platform, so
+      # typedefs such as :size_t do not resolve.
+      module LibC
+        extend FFI::Library
+        ffi_lib FFI::CURRENT_PROCESS
+        attach_function :strlen, [:string], :ulong
+        callback :compare, [:pointer, :pointer], :int
+        attach_function :qsort, [:pointer, :ulong, :ulong, :compare], :void
+      end
+      raise "strlen" unless LibC.strlen("wasix") == 5
+      numbers = FFI::MemoryPointer.new(:int, 4).write_array_of_int([3, 1, 4, 2])
+      LibC.qsort(numbers, 4, 4, ->(a, b) { a.read_int <=> b.read_int })
+      raise "qsort" unless numbers.read_array_of_int(4) == [1, 2, 3, 4]
       puts "ffi #{FFI::VERSION} on #{FFI::Platform::NAME}"
       RUBY
       ruby -rbundler/setup /tmp/extensions.rb
@@ -5284,7 +5413,7 @@ want_reason() {
     npm-cli/as-a-job-errors) echo "runs on Node: list it in \`tools:\`" ;;
     bash-node/spin-fails | python/idle-server-timeout-fails) echo "timed out" ;;
     go@*/test-fails | go@*/vet-fails | go@*/build-error-fails) echo "exited with 1" ;;
-    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails | ruby@*/rails-fails) echo "exited with 1" ;;
+    ruby@*/system-fails | ruby@*/rake-fails | ruby@*/raise-fails | ruby@*/rails-fails | ruby@*/databases-fails) echo "exited with 1" ;;
     ruby@*/bundler-unbuilt-errors) echo "redcarpet-3.6.1: has a native extension (ext/redcarpet/extconf.rb), which a job cannot compile, and there is no build of any version of redcarpet" ;;
     postgres/not-ready-fails) echo "service \`postgres\` was not ready after 2s: nothing listened on port 5432" ;;
     postgres/exits-early-fails) echo "service \`postgres\` exited with 3 before it was ready" ;;

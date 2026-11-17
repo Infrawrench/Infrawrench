@@ -15,13 +15,13 @@ use iwci_store::{Catalog, ObjectStore};
 pub const GEM_BUILDS: &[BuildPin] = &[
     BuildPin {
         ruby: "3.4",
-        sha256: "d9e7331bbc68489c84f83b72a5e3860af2f0549c569ba4c299556bcf1c230eb5",
-        size: 2141105,
+        sha256: "ae8bce6e4cbd0f3ec8dcc70772f2f580fef0dae4cb16f9ab65db4254c8580726",
+        size: 6657184,
     },
     BuildPin {
         ruby: "4.0",
-        sha256: "54c1bb3a4c2b3b557a2db4422a37f74b96a12cdc0e6abe969b716f430fb32efb",
-        size: 2151647,
+        sha256: "1687f68ccd1deacda0f967719878049d5759309b019729b13d8dcba5e61b51d6",
+        size: 6669640,
     },
 ];
 

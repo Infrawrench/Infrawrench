@@ -11,14 +11,21 @@
 # is given and OpenSSL calls its build date.
 release() {
   case "$1" in
-    3.4) echo "3.4.12 5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479 2 1792724866" ;;
-    4.0) echo "4.0.9 c35350682ff050b79702d57ade4516e7336063f510155d19fb2fb5b3f3909511 2 1792722966" ;;
+    3.4) echo "3.4.12 5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479 3 1792724866" ;;
+    4.0) echo "4.0.9 c35350682ff050b79702d57ade4516e7336063f510155d19fb2fb5b3f3909511 3 1792722966" ;;
     *)
       echo "error: no Ruby $1 here; know 3.4 and 4.0" >&2
       exit 2
       ;;
   esac
 }
+
+# OpenSSL, which the interpreter's openssl extension links and so do the
+# database gems' extensions (gems/build.sh), each its own copy.
+# shellcheck disable=SC2034 # build.sh and gems/build.sh read them
+OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz"
+# shellcheck disable=SC2034
+OPENSSL_SHA256="603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 
 # The toolchain and Wasmer CLI Edge.js is built with (edgejs/build.sh): the
 # wasix-libc EH+PIC sysroot, wasixcc with wasix-org's LLVM, and Binaryen.
@@ -79,15 +86,27 @@ download() {
   printf '%s\n' "$file"
 }
 
-# run <log> <command...>: quiet unless it fails.
+# run <log> <command...>: quiet unless it fails, its output in
+# $work/<log>.log. The command is often one of these scripts' functions,
+# and runs with errexit, so the first step that fails stops it. Not
+# `"$@" || ...` or `( ... ) >log || ...`: bash runs whatever is left of
+# `||` with errexit off, a subshell that sets it again included, so a
+# failed step went unnoticed until a later one failed for want of it.
 run() {
-  local log="$work/$1.log"
+  local log="$work/$1.log" status
   shift
-  "$@" >"$log" 2>&1 || {
+  set +e
+  (
+    set -e
+    "$@"
+  ) >"$log" 2>&1
+  status=$?
+  set -e
+  if [[ "$status" != 0 ]]; then
     tail -n 60 "$log" >&2
     echo "error: $* failed (log: $log)" >&2
     exit 1
-  }
+  fi
 }
 
 # edit <file> <count> <from> <to>: replace text that must be there exactly
@@ -147,15 +166,14 @@ host_ruby() {
   if [[ ! -x "$host/bin/ruby" || "$("$host/bin/ruby" -e 'print RUBY_VERSION')" != "$RUBY_VERSION" ]]; then
     rm -rf "$host" "$work/host-build"
     cp -a "$1" "$work/host-build"
-    (
-      cd "$work/host-build"
-      env -u WASIXCC_SYSROOT_PREFIX -u WASIXCC_LLVM_LOCATION CC=cc ./configure --prefix="$host" \
-        --disable-install-doc --without-gmp
-      make -j"$jobs"
-      make install
-    ) >"$work/host-ruby.log" 2>&1 || {
-      tail -n 40 "$work/host-ruby.log" >&2
-      exit 1
-    }
+    run host-ruby build_host_ruby
   fi
+}
+
+build_host_ruby() {
+  cd "$work/host-build"
+  env -u WASIXCC_SYSROOT_PREFIX -u WASIXCC_LLVM_LOCATION CC=cc ./configure --prefix="$host" \
+    --disable-install-doc --without-gmp
+  make -j"$jobs"
+  make install
 }

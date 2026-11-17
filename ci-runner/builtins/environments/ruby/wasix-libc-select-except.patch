@@ -1,0 +1,46 @@
+select() and pselect() wait on the descriptors they can, and report no
+exceptional conditions, rather than refusing a non-empty except set.
+
+WASI has no way to wait for exceptional conditions (out-of-band data on a
+TCP socket), so pselect() failed with ENOSYS whenever errorfds named a
+descriptor. Ruby asks select() for one whenever a wait includes
+IO::PRIORITY, as the pg gem's connect does
+(`socket_io.wait(IO::WRITABLE | IO::PRIORITY)`), and so do programs that
+call `IO.select(r, w, e)` with the same socket in all three. Since no such
+condition ever arrives, the except set is emptied, as Linux leaves it for a
+socket with no out-of-band data, and the wait goes on for the rest.
+
+--- a/libc-bottom-half/cloudlibc/src/libc/sys/select/pselect.c
++++ b/libc-bottom-half/cloudlibc/src/libc/sys/select/pselect.c
+@@ -9,6 +9,16 @@
+ #include <wasi/api.h>
+ #include <errno.h>
+ 
++// iwci: `errorfds` emptied. WASI cannot wait for exceptional conditions
++// (out-of-band data on a TCP socket), and none ever arrives, so a descriptor
++// waited on for one is never ready, as on Linux for a socket with no
++// out-of-band data; and the rest of the wait goes ahead.
++__attribute__((__visibility__("hidden")))
++void __wasilibc_iwci_no_exceptional(fd_set *errorfds) {
++  if (errorfds != NULL)
++    FD_ZERO(errorfds);
++}
++
+ int pselect(int nfds, fd_set *restrict readfds, fd_set *restrict writefds,
+             fd_set *restrict errorfds, const struct timespec *restrict timeout,
+             const sigset_t *sigmask) {
+@@ -19,11 +29,9 @@
+   }
+ 
+   // This implementation does not support polling for exceptional
+-  // conditions, such as out-of-band data on TCP sockets.
+-  if (errorfds != NULL && errorfds->__nfds > 0) {
+-    errno = ENOSYS;
+-    return -1;
+-  }
++  // conditions, such as out-of-band data on TCP sockets, which it refused
++  // with ENOSYS.
++  __wasilibc_iwci_no_exceptional(errorfds);
+ 
+   // Replace NULL pointers by the empty set.
+   fd_set empty;
