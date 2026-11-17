@@ -35,7 +35,7 @@ use std::time::{Duration, Instant};
 
 use iwci_spec::expr::{self, Name};
 use iwci_spec::{
-    Action, ChangePolicy, CloudSpec, JobAccess, JobResult, JobTemplate, NeedsValues, Plan,
+    Action, ChangePolicy, CloudSpec, DepSpec, JobAccess, JobResult, JobTemplate, NeedsValues, Plan,
     PlannedJob, PlannedService, ToolRef, WorkspaceSpec,
 };
 use iwci_vfs::{Change, Entry, JobFs, Snapshot, WriteBudget};
@@ -91,6 +91,102 @@ struct LazyWorkspace<'a> {
     workspaces: &'a dyn Workspaces,
     built: &'a OnceLock<Result<BuiltWorkspace, String>>,
     checkout: &'a OnceLock<Result<Snapshot, String>>,
+    locks: &'a LockIndexes,
+}
+
+/// A workspace's lockfiles as its task cache keys read them, one per
+/// `deps:` entry, each parsed the first time a key needs it: a `packages:`
+/// job is keyed on the part of its workspace's install its package can
+/// resolve, not on the whole lockfile ([`lockfile_part`]).
+struct LockIndexes {
+    indexes: Vec<OnceLock<Option<LockIndex>>>,
+    /// Each project's digest by `(deps index, project)`: a package has a
+    /// job of every `packages:` key, and the walk is the same for each.
+    digests: Mutex<HashMap<(usize, String), Option<Digest32>>>,
+}
+
+type Digest32 = [u8; 32];
+
+enum LockIndex {
+    Pnpm(iwci_deps::pnpm::KeyIndex),
+    Bun(iwci_deps::bun::KeyIndex),
+}
+
+impl LockIndex {
+    fn digest(&self, project: &str) -> Option<[u8; 32]> {
+        match self {
+            LockIndex::Pnpm(index) => Some(index.digest(project)),
+            LockIndex::Bun(index) => index.digest(project),
+        }
+    }
+
+    fn lockfile(&self) -> &'static str {
+        match self {
+            LockIndex::Pnpm(_) => "pnpm-lock.yaml",
+            LockIndex::Bun(_) => "bun.lock",
+        }
+    }
+}
+
+impl LockIndexes {
+    fn new(spec: &WorkspaceSpec) -> Self {
+        Self {
+            indexes: spec.deps.iter().map(|_| OnceLock::new()).collect(),
+            digests: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// [`LockIndex::digest`] of `spec.deps[index]` for `project`, worked
+    /// out once per run, with the lockfile it stands for.
+    fn digest(
+        &self,
+        index: usize,
+        dep: &DepSpec,
+        snapshot: &Snapshot,
+        project: &str,
+    ) -> Option<(&'static str, [u8; 32])> {
+        let lock = self.get(index, dep, snapshot)?;
+        let key = (index, project.to_string());
+        if let Some(found) = self.digests.lock().unwrap().get(&key) {
+            return found.map(|digest| (lock.lockfile(), digest));
+        }
+        // Outside the lock: two threads may both work one out, and agree.
+        let digest = lock.digest(project);
+        self.digests.lock().unwrap().insert(key, digest);
+        digest.map(|digest| (lock.lockfile(), digest))
+    }
+
+    /// The index of `spec.deps[index]`, or `None` for an ecosystem without
+    /// per-project parts and a lockfile that cannot be read that way (the
+    /// install says why). It plans the install with the options the
+    /// workspace adapter installs with (`adapters/workspace.rs`).
+    fn get(&self, index: usize, dep: &DepSpec, snapshot: &Snapshot) -> Option<&LockIndex> {
+        self.indexes
+            .get(index)?
+            .get_or_init(|| {
+                let read = |path: &std::path::Path| snapshot.read(path).ok();
+                let root = std::path::Path::new(&dep.dir);
+                match dep.ecosystem {
+                    iwci_spec::Ecosystem::Pnpm => {
+                        let options = iwci_deps::pnpm::PnpmOptions {
+                            only_importers: dep.only.clone(),
+                            ..Default::default()
+                        };
+                        iwci_deps::pnpm::KeyIndex::new(&read, root, &options)
+                            .ok()
+                            .map(LockIndex::Pnpm)
+                    }
+                    iwci_spec::Ecosystem::Bun => {
+                        let options = iwci_deps::bun::BunOptions::default();
+                        iwci_deps::bun::KeyIndex::new(&read, root, &options)
+                            .ok()
+                            .map(LockIndex::Bun)
+                    }
+                    _ => None,
+                }
+            })
+            .as_ref()
+    }
 }
 
 impl LazyWorkspace<'_> {
@@ -1905,6 +2001,7 @@ pub fn run<T: Tools>(
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
     let checkouts: Vec<OnceLock<Result<Snapshot, String>>> =
         plan.workspaces.iter().map(|_| OnceLock::new()).collect();
+    let locks: Vec<LockIndexes> = plan.workspaces.iter().map(LockIndexes::new).collect();
     let before = options
         .durations
         .as_ref()
@@ -2028,6 +2125,7 @@ pub fn run<T: Tools>(
                         workspaces,
                         built: &built[job.workspace],
                         checkout: &checkouts[job.workspace],
+                        locks: &locks[job.workspace],
                     };
                     let mut kept = Vec::new();
                     let looked = match waited {
@@ -2378,6 +2476,7 @@ pub fn run<T: Tools>(
                         workspaces,
                         built: &built[job.workspace],
                         checkout: &checkouts[job.workspace],
+                        locks: &locks[job.workspace],
                     };
                     let mut kept = Vec::new();
                     let mut saved = None;
@@ -2859,7 +2958,7 @@ fn look_up<T: Tools>(
         }
     };
     let key = match workspace.files() {
-        Ok(files) => task_cache_key(job, plan, files, &pins, inherited),
+        Ok(files) => task_cache_key(job, plan, files, workspace.locks, &pins, inherited),
         Err(e) => {
             return Looked::Done(Box::new(errored(
                 job,
@@ -3974,18 +4073,57 @@ fn job_tools(job: &PlannedJob) -> impl Iterator<Item = &ToolRef> {
         .chain(job.services.iter().map(|s| &s.tool))
 }
 
+/// For a `packages:` job that runs in its package, the part of
+/// `dep`'s lockfile that package can resolve, as `(lockfile name, digest)`,
+/// to key it on in place of the whole file: pnpm, and Bun's isolated
+/// linker. `None` keys it on the whole file: any other job, which may reach
+/// every project from where it runs; Bun's hoisted linker, which puts every
+/// project's packages where any project can import them; the ecosystems
+/// whose projects `packages:` does not expand over (Go, Cargo, pip,
+/// Composer); and a lockfile the
+/// index cannot read (the install reports why).
+fn lockfile_part(
+    job: &PlannedJob,
+    root: &str,
+    index: usize,
+    dep: &DepSpec,
+    snapshot: &Snapshot,
+    locks: &LockIndexes,
+) -> Option<(&'static str, [u8; 32])> {
+    let package = job.package.as_ref()?;
+    let dir = if package.dir.is_empty() || package.dir == "." {
+        root.to_string()
+    } else {
+        format!("{root}/{}", package.dir)
+    };
+    // A job that moves out of its package (`cwd:`) reaches what is there.
+    let inside =
+        |path: &str, dir: &str| path == dir || dir == "/" || path.starts_with(&format!("{dir}/"));
+    if !inside(&job.cwd, &dir) || !inside(&dir, &dep.dir) {
+        return None;
+    }
+    let project = match dir.strip_prefix(&dep.dir) {
+        Some("") | None => ".".to_string(),
+        Some(rest) => rest.trim_start_matches('/').to_string(),
+    };
+    locks.digest(index, dep, snapshot, &project)
+}
+
 /// The task cache key of a `task-cache:` job: everything that decides what
 /// it does and what it reads. Its definition (tool, arguments or script,
 /// environment, directory, what it keeps), what each of [`job_tools`]
 /// resolves to (`pins`, from [`Tools::pin`], so a version published under
-/// a range is a new key), its workspace's settings and lockfiles, the files
-/// its inputs match as the commit has them (never under `node_modules`),
-/// and the artifacts it is handed, by content, so a change to a package
-/// reaches every job downstream of it. `None` for a job without one.
+/// a range is a new key), its workspace's settings and lockfiles (for a
+/// `packages:` job, of a pnpm or isolated Bun lockfile only what its
+/// package can resolve: [`lockfile_part`]), the files its inputs match as the commit has them
+/// (never under `node_modules`), and the artifacts it is handed, by
+/// content, so a change to a package reaches every job downstream of it.
+/// `None` for a job without one.
 fn task_cache_key(
     job: &PlannedJob,
     plan: &Plan,
     snapshot: &Snapshot,
+    locks: &LockIndexes,
     pins: &[String],
     inherited: &[(String, Arc<Vec<Entry>>)],
 ) -> Option<String> {
@@ -4041,7 +4179,8 @@ fn task_cache_key(
         hash.update(pin.as_bytes());
         hash.update([0]);
     }
-    for dep in &ws.deps {
+    for (index, dep) in ws.deps.iter().enumerate() {
+        let part = lockfile_part(job, &root, index, dep, snapshot, locks);
         // Patch files, which `bun.lock` names without pinning their content.
         let bun_patches;
         let names: Vec<&str> = match dep.ecosystem {
@@ -4065,7 +4204,14 @@ fn task_cache_key(
         };
         for name in names {
             let path = format!("{}/{name}", dep.dir);
-            if let Ok(content) = snapshot.read(&path) {
+            if let Some((lockfile, digest)) = &part
+                && name == *lockfile
+            {
+                // Only what the job's package resolves of it.
+                hash.update(path.as_bytes());
+                hash.update(b"#package\0");
+                hash.update(digest);
+            } else if let Ok(content) = snapshot.read(&path) {
                 add_file(&mut hash, &path, &content);
             }
         }
