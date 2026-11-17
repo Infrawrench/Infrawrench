@@ -40,7 +40,7 @@ import { randomUUID } from "node:crypto";
 import type { CostDimensionId } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costAlertEvents, costAlerts } from "../db/schema";
-import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
+import { queryCosts, type CostFilter } from "../analytics/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { storedAlertEmailRecipients } from "../alerts/email";
 import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";

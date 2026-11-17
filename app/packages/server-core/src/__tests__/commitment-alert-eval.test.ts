@@ -25,7 +25,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 const getAccountDataDays = vi.fn();
 const getCommitmentDeliveredTotals = vi.fn();
-vi.mock("../clickhouse/commitment-readers", () => ({
+vi.mock("../analytics/commitment-readers", () => ({
   getAccountDataDays,
   getCommitmentDeliveredTotals,
 }));

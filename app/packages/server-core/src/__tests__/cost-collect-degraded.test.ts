@@ -30,13 +30,13 @@ vi.mock("../db/schema", () => ({ accounts: { id: "id" } }));
 vi.mock("drizzle-orm", () => ({ eq: (a: unknown, b: unknown) => ({ eq: [a, b] }) }));
 
 const insertCostRows = vi.fn(async () => undefined);
-vi.mock("../clickhouse/cost-writers", () => ({
+vi.mock("../analytics/cost-writers", () => ({
   insertCostRows,
   toCostDailyRows: (_meta: unknown, rows: unknown[]) => rows,
 }));
 
 const reconcileCollectedChunk = vi.fn(async () => [{ tombstone: true }]);
-vi.mock("../clickhouse/cost-reconcile", () => ({ reconcileCollectedChunk }));
+vi.mock("../analytics/cost-reconcile", () => ({ reconcileCollectedChunk }));
 
 const fetchCostData = vi.fn();
 const loadAccountClient = vi.fn();

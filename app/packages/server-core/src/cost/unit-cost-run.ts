@@ -57,7 +57,7 @@ import {
   queryUsageQuantities,
   type CostSeriesGroup,
   type ShowbackRule,
-} from "../clickhouse/cost-readers";
+} from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { convertGroups, mergeConvertedGroups, RateBook } from "./currency-convert";
 import { loadConversionContext, loadOrgRateBook } from "./currency-settings";

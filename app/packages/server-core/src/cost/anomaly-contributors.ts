@@ -37,8 +37,8 @@ import type {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
-import { isClickHouseConfigured } from "../clickhouse/client";
-import { getAnomalyContributorRows, type AnomalyContributorRow } from "../clickhouse/cost-readers";
+import { isClickHouseConfigured } from "../analytics/client";
+import { getAnomalyContributorRows, type AnomalyContributorRow } from "../analytics/cost-readers";
 import { ANOMALY_BASELINE_DAYS } from "./anomaly-detect";
 import { addDays } from "./dates";
 

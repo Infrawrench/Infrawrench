@@ -9,19 +9,19 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
  */
 const ch = fakeClickHouse();
 const isConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => isConfigured(),
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
-let writers: typeof import("../clickhouse/writers");
+let writers: typeof import("../analytics/writers");
 
 beforeEach(async () => {
   vi.clearAllMocks();
   ch.reset();
   isConfigured.mockReturnValue(true);
-  writers = await import("../clickhouse/writers");
+  writers = await import("../analytics/writers");
 });
 
 describe("flattenMetricSeries", () => {

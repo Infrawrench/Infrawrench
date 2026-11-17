@@ -113,7 +113,7 @@ const mockGetLatestStats = vi.fn();
 const mockGetLatestMetrics = vi.fn();
 const mockGetMetricRange = vi.fn();
 
-vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/readers", () => ({
   getLatestStatsBatch: (...args: unknown[]) => mockGetLatestStatsBatch(...args),
   getLatestMetricsBatch: (...args: unknown[]) => mockGetLatestMetricsBatch(...args),
   getLatestAccountCountsBatch: (...args: unknown[]) => mockGetLatestAccountCountsBatch(...args),

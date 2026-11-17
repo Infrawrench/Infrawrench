@@ -34,7 +34,7 @@
  */
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { drizzle } from "drizzle-orm/clickhouse";
-import * as schema from "../../clickhouse/schema";
+import * as schema from "../../analytics/schema";
 
 let shadow: ClickHouseClient | null = null;
 

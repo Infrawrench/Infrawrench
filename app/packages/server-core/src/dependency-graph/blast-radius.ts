@@ -37,8 +37,8 @@ import {
   type DependencyGraphData,
   type FlowPeerIdentities,
 } from "@infrawrench/client-core";
-import { isClickHouseConfigured } from "../clickhouse/client.js";
-import { readTopNetworkFlows } from "../clickhouse/network-flow-readers.js";
+import { isClickHouseConfigured } from "../analytics/client.js";
+import { readTopNetworkFlows } from "../analytics/network-flow-readers.js";
 import { getNetworkFlowSettings } from "../network-flow/settings.js";
 
 import { db } from "../db/client.js";

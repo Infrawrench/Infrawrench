@@ -11,7 +11,7 @@ vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 
 // A single cost group: $500 spent this month, in one bucket.
 const queryCosts = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 

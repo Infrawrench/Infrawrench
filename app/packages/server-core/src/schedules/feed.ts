@@ -29,7 +29,7 @@ import {
 import { db } from "../db/client";
 import { loadPlugins } from "../plugin-loader";
 import { accounts, resources } from "../db/schema";
-import { getResourceCostTotals } from "../clickhouse/cost-readers";
+import { getResourceCostTotals } from "../analytics/cost-readers";
 import { addDays, isoDay } from "../cost/dates";
 import { ScheduleInputError, listScheduleRecords, type ScheduleRecord } from "./store";
 

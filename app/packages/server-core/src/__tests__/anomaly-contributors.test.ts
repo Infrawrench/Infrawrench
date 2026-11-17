@@ -6,11 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeClickHouse } from "./helpers/fake-clickhouse";
-import type { AnomalyContributorRow } from "../clickhouse/cost-readers";
+import type { AnomalyContributorRow } from "../analytics/cost-readers";
 
 const ch = fakeClickHouse();
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
@@ -20,7 +20,7 @@ vi.mock("../clickhouse/client", () => ({
 // SQL, so the module's db import only has to resolve.
 vi.mock("../db/client", () => ({ db: {} }));
 
-const { getAnomalyContributorRows } = await import("../clickhouse/cost-readers");
+const { getAnomalyContributorRows } = await import("../analytics/cost-readers");
 const { rankAnomalyContributors, toStoredContributors } =
   await import("../cost/anomaly-contributors");
 

@@ -49,7 +49,7 @@ import type {
   CompiledVirtualTag,
   CompiledVirtualTagRule,
   VirtualTagDefinitions,
-} from "../clickhouse/virtual-tag-sql";
+} from "../analytics/virtual-tag-sql";
 
 export type { VirtualTag, VirtualTagInput, VirtualTagRule };
 export { VIRTUAL_TAG_LIMITS };

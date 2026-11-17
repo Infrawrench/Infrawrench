@@ -24,8 +24,8 @@ import {
 } from "@infrawrench/plugin-base";
 import { and, eq } from "drizzle-orm";
 
-import { readObservedEgress } from "../clickhouse/network-flow-readers";
-import { insertNetworkFlowRows, toNetworkFlowRows } from "../clickhouse/network-flow-writers";
+import { readObservedEgress } from "../analytics/network-flow-readers";
+import { insertNetworkFlowRows, toNetworkFlowRows } from "../analytics/network-flow-writers";
 import { db } from "../db/client";
 import { accountNetworkFlowPolls } from "../db/schema";
 import { getPlugin } from "../plugin-loader";

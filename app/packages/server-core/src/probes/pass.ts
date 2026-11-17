@@ -27,7 +27,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { syntheticProbes } from "../db/schema";
-import { flattenMetricSeries, insertMetricPoints } from "../clickhouse/writers";
+import { flattenMetricSeries, insertMetricPoints } from "../analytics/writers";
 import { routeAlert } from "../alerts/route";
 import { notifyResourceOwner, ownerContextLine } from "../ownership/notify";
 import { lookupResourceOwner } from "../ownership/store";

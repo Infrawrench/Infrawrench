@@ -23,20 +23,20 @@
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
 import { and, asc, inArray, sql, type SQL } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/clickhouse-core";
-import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
+import { getClickHouseClient, isClickHouseConfigured } from "../analytics/client";
 import {
   costBasisAmountExpr,
   costDailyOrgCondition,
   dayRange,
   membershipCondition,
   resolveVirtualTags,
-} from "../clickhouse/cost-readers";
-import { costDaily } from "../clickhouse/schema";
+} from "../analytics/cost-readers";
+import { costDaily } from "../analytics/schema";
 import {
   VirtualTagScope,
   withVirtualTagJoins,
   type VirtualTagDefinitions,
-} from "../clickhouse/virtual-tag-sql";
+} from "../analytics/virtual-tag-sql";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {

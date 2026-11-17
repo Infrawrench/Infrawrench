@@ -10,7 +10,7 @@
  * side's error vocabulary around it: a missing metric is a 404, anything else
  * the caller can fix is a `CostQueryError`.
  */
-import { getCostUsageUnitSummaries } from "@infrawrench/server-core/clickhouse/cost-readers";
+import { getCostUsageUnitSummaries } from "@infrawrench/server-core/analytics/cost-readers";
 import {
   UnitCostRunError,
   runUnitCostCalculation,

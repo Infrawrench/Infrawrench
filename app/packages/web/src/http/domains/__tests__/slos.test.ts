@@ -24,7 +24,7 @@ vi.mock("@infrawrench/server-core/slos/store", () => ({
   loadSloSourceLabels: vi.fn(async () => new Map()),
   sloToWire: (row: { id: string; name: string }) => ({ id: row.id, name: row.name }),
 }));
-vi.mock("@infrawrench/server-core/clickhouse/slo-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/slo-readers", () => ({
   getSloHourlyBuckets: vi.fn(async () => []),
   listResourceMetricSeries: vi.fn(async () => []),
 }));

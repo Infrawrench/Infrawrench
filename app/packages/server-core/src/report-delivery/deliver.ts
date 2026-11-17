@@ -29,8 +29,8 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, costReports, organizations, reportNotifications } from "../db/schema";
-import { queryCosts, type CostSeriesGroup } from "../clickhouse/cost-readers";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { queryCosts, type CostSeriesGroup } from "../analytics/cost-readers";
+import { isClickHouseConfigured } from "../analytics/client";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { loadPlugins } from "../plugin-loader";

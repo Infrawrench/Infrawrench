@@ -108,7 +108,7 @@ import {
   managedInvoices,
   organizations,
 } from "../db/schema";
-import { getPricingLines, getShowbackSpend, type ShowbackRule } from "../clickhouse/cost-readers";
+import { getPricingLines, getShowbackSpend, type ShowbackRule } from "../analytics/cost-readers";
 import { csvCell } from "../cost-exports/serialize";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import {

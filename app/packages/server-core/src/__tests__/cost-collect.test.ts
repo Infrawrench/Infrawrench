@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isoDay, monthChunks } from "../cost/dates";
-import { hashTags, toCostDailyRows } from "../clickhouse/cost-writers";
+import { hashTags, toCostDailyRows } from "../analytics/cost-writers";
 
 describe("monthChunks", () => {
   it("keeps a same-month range as one chunk", () => {

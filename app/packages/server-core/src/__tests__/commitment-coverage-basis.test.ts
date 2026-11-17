@@ -20,9 +20,9 @@ import {
   CONSUMPTION_CHARGE_TYPES,
   coveredCondition,
   uncoveredCondition,
-} from "../clickhouse/commitment-readers";
-import { amortizedAmountExpr } from "../clickhouse/cost-readers";
-import { toCostDailyRows } from "../clickhouse/cost-writers";
+} from "../analytics/commitment-readers";
+import { amortizedAmountExpr } from "../analytics/cost-readers";
+import { toCostDailyRows } from "../analytics/cost-writers";
 import { computeCommitmentCoverage, type CoverageCell } from "../commitments/coverage";
 import { COST_CHARGE_TYPES } from "@infrawrench/client-core";
 

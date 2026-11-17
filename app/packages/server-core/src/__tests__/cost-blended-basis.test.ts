@@ -17,8 +17,8 @@ import {
   amortizedAmountExpr,
   blendedAmountExpr,
   costBasisAmountExpr,
-} from "../clickhouse/cost-readers";
-import { toCostDailyRows } from "../clickhouse/cost-writers";
+} from "../analytics/cost-readers";
+import { toCostDailyRows } from "../analytics/cost-writers";
 
 const render = (fragment: SQL) => new ClickHouseDialect().sqlToQuery(fragment).sql;
 

@@ -22,17 +22,17 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 const ch = fakeClickHouse();
 const captured = ch.queries;
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
-const readers = await import("../clickhouse/cost-readers");
-const commitmentReaders = await import("../clickhouse/commitment-readers");
-const flowReaders = await import("../clickhouse/network-flow-readers");
-const k8sEfficiencyReaders = await import("../clickhouse/k8s-efficiency-readers");
-const reportReaders = await import("../clickhouse/network-flow-report-readers");
+const readers = await import("../analytics/cost-readers");
+const commitmentReaders = await import("../analytics/commitment-readers");
+const flowReaders = await import("../analytics/network-flow-readers");
+const k8sEfficiencyReaders = await import("../analytics/k8s-efficiency-readers");
+const reportReaders = await import("../analytics/network-flow-report-readers");
 const ctx = await import("../cost/visibility-context");
 const { expandCentreSubtrees } = ctx;
 

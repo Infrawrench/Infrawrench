@@ -35,8 +35,8 @@ import {
   type CostBasis,
   type CostChargeType,
   type CostFilter,
-} from "@infrawrench/server-core/clickhouse/cost-readers";
-import { VirtualTagUnresolvedError } from "@infrawrench/server-core/clickhouse/virtual-tag-sql";
+} from "@infrawrench/server-core/analytics/cost-readers";
+import { VirtualTagUnresolvedError } from "@infrawrench/server-core/analytics/virtual-tag-sql";
 import {
   DEFAULT_FORECAST_CONFIDENCE_LEVEL,
   forecastDailyWithBounds,

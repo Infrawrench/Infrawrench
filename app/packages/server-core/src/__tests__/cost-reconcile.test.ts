@@ -15,8 +15,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { hashTags, toCostDailyRows, type CostDailyRow } from "../clickhouse/cost-writers";
-import { supersededTombstones, type StoredCostRowKey } from "../clickhouse/cost-reconcile";
+import { hashTags, toCostDailyRows, type CostDailyRow } from "../analytics/cost-writers";
+import { supersededTombstones, type StoredCostRowKey } from "../analytics/cost-reconcile";
 import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const META = { organizationId: "org-1", accountId: "acc-1", pluginId: "azure" };
@@ -409,13 +409,13 @@ describe("getStoredCostRowKeys excludes rows that are already zero", () => {
     // but unbounded write amplification against the table whose whole point is
     // retaining years of daily history.
     const ch = fakeClickHouse();
-    vi.doMock("../clickhouse/client", () => ({
+    vi.doMock("../analytics/client", () => ({
       isClickHouseConfigured: () => true,
       getClickHouseDb: () => ch.db,
       getClickHouseClient: () => ch.client,
     }));
     vi.resetModules();
-    const { getStoredCostRowKeys } = await import("../clickhouse/cost-reconcile");
+    const { getStoredCostRowKeys } = await import("../analytics/cost-reconcile");
 
     await getStoredCostRowKeys(META, "2026-07-01", "2026-07-31");
 
@@ -425,7 +425,7 @@ describe("getStoredCostRowKeys excludes rows that are already zero", () => {
     // …and only through `FINAL`, so an un-merged part cannot yield one
     // tombstone per stored version of the same key.
     expect(ch.lastQuery()).toContain("from `cost_daily` final");
-    vi.doUnmock("../clickhouse/client");
+    vi.doUnmock("../analytics/client");
     vi.resetModules();
   });
 });

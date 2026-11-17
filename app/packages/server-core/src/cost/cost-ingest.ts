@@ -22,8 +22,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
-import { hashTags, insertCostRows, type CostDailyRow } from "../clickhouse/cost-writers";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { hashTags, insertCostRows, type CostDailyRow } from "../analytics/cost-writers";
+import { isClickHouseConfigured } from "../analytics/client";
 import { COST_CHARGE_TYPES } from "@infrawrench/client-core";
 
 /**

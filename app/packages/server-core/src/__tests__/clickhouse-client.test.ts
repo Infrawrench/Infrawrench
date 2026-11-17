@@ -20,12 +20,12 @@ function setChEnv() {
   process.env["CLICKHOUSE_METRICS_DATABASE"] = "metrics";
 }
 
-let mod: typeof import("../clickhouse/client");
+let mod: typeof import("../analytics/client");
 
 beforeEach(async () => {
   vi.clearAllMocks();
   clearChEnv();
-  mod = await import("../clickhouse/client");
+  mod = await import("../analytics/client");
   mod.resetClickHouseClientForTests();
 });
 

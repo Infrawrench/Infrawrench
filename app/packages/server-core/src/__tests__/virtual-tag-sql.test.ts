@@ -13,13 +13,13 @@
  * 4. An unresolved key throws; it never degrades to unfiltered spend.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CompiledVirtualTag } from "../clickhouse/virtual-tag-sql";
+import type { CompiledVirtualTag } from "../analytics/virtual-tag-sql";
 import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const ch = fakeClickHouse();
 const captured = ch.queries;
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
@@ -31,9 +31,9 @@ const loadVirtualTagDefinitions = vi.fn(async () => new Map());
 vi.mock("../cost/virtual-tags", () => ({ loadVirtualTagDefinitions }));
 
 const { queryCosts, getShowbackSpend, getVirtualTagStats, getPricingLines } =
-  await import("../clickhouse/cost-readers");
+  await import("../analytics/cost-readers");
 const { buildCostExportQuery } = await import("../cost-exports/rows");
-const { VirtualTagUnresolvedError } = await import("../clickhouse/virtual-tag-sql");
+const { VirtualTagUnresolvedError } = await import("../analytics/virtual-tag-sql");
 
 const env: CompiledVirtualTag = {
   key: "env",

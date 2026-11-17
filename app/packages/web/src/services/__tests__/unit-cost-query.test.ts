@@ -29,7 +29,7 @@ process.env["DATABASE_URL"] ??= "postgres://test:test@localhost:5432/test";
 
 const mockQueryCosts = vi.fn();
 const mockQueryUsage = vi.fn(async () => [] as Array<{ day: string; value: number }>);
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   queryUsageQuantities: (...args: unknown[]) => mockQueryUsage(...(args as [])),
   getCostUsageUnitSummaries: vi.fn(async () => []),

@@ -3,7 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
 import { buildCostExportQuery, resolveColumns, tagColumnName } from "../cost-exports/rows";
 import { csvCell, outputColumns, toCsv, toNdjson } from "../cost-exports/serialize";
-import { amortizedAmountExpr, blendedAmountExpr } from "../clickhouse/cost-readers";
+import { amortizedAmountExpr, blendedAmountExpr } from "../analytics/cost-readers";
 import type { CostExportRow } from "../cost-exports/rows";
 
 const stamp = { exportedAt: "2026-08-08T04:00:00.000Z", collectionWatermark: "2026-08-06" };

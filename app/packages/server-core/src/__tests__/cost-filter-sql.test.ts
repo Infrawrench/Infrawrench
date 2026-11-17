@@ -10,13 +10,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CostFilter } from "@infrawrench/client-core";
-import type { CompiledVirtualTag } from "../clickhouse/virtual-tag-sql";
+import type { CompiledVirtualTag } from "../analytics/virtual-tag-sql";
 import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const ch = fakeClickHouse();
 const captured = ch.queries;
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
@@ -25,7 +25,7 @@ vi.mock("../clickhouse/client", () => ({
 const loadVirtualTagDefinitions = vi.fn(async () => new Map());
 vi.mock("../cost/virtual-tags", () => ({ loadVirtualTagDefinitions }));
 
-const { queryCosts } = await import("../clickhouse/cost-readers");
+const { queryCosts } = await import("../analytics/cost-readers");
 const { buildCostExportQuery } = await import("../cost-exports/rows");
 const { runWithCostVisibility } = await import("../cost/visibility-context");
 

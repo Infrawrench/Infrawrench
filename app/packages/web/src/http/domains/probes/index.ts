@@ -11,7 +11,7 @@ import { normalizeProbeUrl, type ProbeSuggestion } from "@infrawrench/client-cor
 import {
   getMetricRange,
   getMetricSeriesAverageBatch,
-} from "@infrawrench/server-core/clickhouse/readers";
+} from "@infrawrench/server-core/analytics/readers";
 import {
   ProbeInputError,
   createProbeRecord,

@@ -35,7 +35,7 @@ import {
   getCommitmentCoverageCells,
   getCommitmentDeliveredTotals,
   getUncoveredDailySpend,
-} from "../clickhouse/commitment-readers";
+} from "../analytics/commitment-readers";
 import { computeCommitmentCoverage, type CommitmentCoverageReport } from "./coverage";
 import {
   computeCommitmentUtilization,

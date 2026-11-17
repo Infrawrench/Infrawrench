@@ -53,7 +53,7 @@ const insertAccountResourceCounts = vi.fn(async (_opts?: unknown) => undefined);
 const insertDashboardStats = vi.fn(async () => undefined);
 const insertMetricPoints = vi.fn(async () => undefined);
 const insertPollOutcome = vi.fn(async () => undefined);
-vi.mock("../clickhouse/writers", () => ({
+vi.mock("../analytics/writers", () => ({
   flattenMetricSeries,
   insertAccountResourceCounts,
   insertDashboardStats,

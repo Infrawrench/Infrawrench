@@ -26,7 +26,7 @@
 import type { ChangeCostImpact, ChangeCostImpactEntry, CostBasis } from "@infrawrench/client-core";
 import { clampChangeImpactWindowDays, MAX_CHANGE_IMPACT_BATCH } from "@infrawrench/client-core";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
-import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
+import { getCostCoverage, queryCosts } from "../analytics/cost-readers";
 import { db } from "../db/client";
 import { resourceChanges, resources } from "../db/schema";
 import { getPlugin } from "../plugin-loader";

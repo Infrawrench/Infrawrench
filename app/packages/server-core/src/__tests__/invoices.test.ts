@@ -281,7 +281,7 @@ const getPricingLines = vi.fn(async (...args: unknown[]) => {
     listAmount: 0,
   }));
 });
-vi.mock("../clickhouse/cost-readers", () => ({ getShowbackSpend, getPricingLines }));
+vi.mock("../analytics/cost-readers", () => ({ getShowbackSpend, getPricingLines }));
 
 const listCostCentres = vi.fn();
 const listAllocationRules = vi.fn();

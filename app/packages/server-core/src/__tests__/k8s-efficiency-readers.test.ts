@@ -4,14 +4,14 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const ch = fakeClickHouse();
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
 const { scanKubernetesEfficiency, getKubernetesDimensionValues } =
-  await import("../clickhouse/k8s-efficiency-readers");
+  await import("../analytics/k8s-efficiency-readers");
 
 const BASE = {
   from: "2026-09-01",

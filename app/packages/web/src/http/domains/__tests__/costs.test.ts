@@ -14,7 +14,7 @@ const mockGetCostDimensionValues = vi.fn();
 const mockGetCostTagKeys = vi.fn();
 const mockGetCostCoverage = vi.fn();
 
-vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/cost-readers", () => ({
   queryCosts: (...args: unknown[]) => mockQueryCosts(...args),
   getCostDimensionValues: (...args: unknown[]) => mockGetCostDimensionValues(...args),
   getCostTagKeys: (...args: unknown[]) => mockGetCostTagKeys(...args),

@@ -22,7 +22,7 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
 
 const queryCosts = vi.fn();
 const getCostCoverage = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, getCostCoverage }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts, getCostCoverage }));
 
 /** The batched anomaly SMS rides this; the rest of `anomaly-sms.ts` runs real. */
 const sendOneShotPage = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));

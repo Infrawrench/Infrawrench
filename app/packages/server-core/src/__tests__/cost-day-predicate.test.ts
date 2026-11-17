@@ -20,14 +20,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
-import { dayRange } from "../clickhouse/cost-readers";
+import { dayRange } from "../analytics/cost-readers";
 import { buildCostExportQuery } from "../cost-exports/rows";
 
 /** Every module that filters `cost_daily` by day range. */
 const SOURCES = [
-  "../clickhouse/cost-readers.ts",
-  "../clickhouse/commitment-readers.ts",
-  "../clickhouse/cost-reconcile.ts",
+  "../analytics/cost-readers.ts",
+  "../analytics/commitment-readers.ts",
+  "../analytics/cost-reconcile.ts",
   "../cost-exports/rows.ts",
 ] as const;
 

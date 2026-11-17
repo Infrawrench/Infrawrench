@@ -66,8 +66,8 @@ import {
 } from "@infrawrench/plugin-base";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/clickhouse-core";
-import { amortizedAmountExpr } from "../clickhouse/cost-readers";
-import { costDaily } from "../clickhouse/schema";
+import { amortizedAmountExpr } from "../analytics/cost-readers";
+import { costDaily } from "../analytics/schema";
 import {
   EXTERNAL_COST_PLUGIN_ID,
   EXTERNAL_COST_TAG,

@@ -30,7 +30,7 @@ import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
 import { metricAlertEvents, metricAlertRules } from "../db/schema";
-import { getMetricMinuteSeriesBatch } from "../clickhouse/readers";
+import { getMetricMinuteSeriesBatch } from "../analytics/readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { resolveSelectorResources, type SelectedResource } from "./selector";
 import { judgeWindow, type MetricComparator, type WindowSample } from "./window";

@@ -13,21 +13,21 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getClickHouseClient, isClickHouseConfigured } from "../../clickhouse/client";
-import { migrateMetrics } from "../../clickhouse/migrate";
+import { getClickHouseClient, isClickHouseConfigured } from "../../analytics/client";
+import { migrateMetrics } from "../../analytics/migrate";
 import {
   getLatestAccountCounts,
   getLatestMetrics,
   getLatestStats,
   getMetricMinuteSeriesBatch,
   getMetricRange,
-} from "../../clickhouse/readers";
+} from "../../analytics/readers";
 import {
   flattenMetricSeries,
   insertAccountResourceCounts,
   insertDashboardStats,
   insertMetricPoints,
-} from "../../clickhouse/writers";
+} from "../../analytics/writers";
 
 const orgId = `test-org-${randomUUID()}`;
 const accountId = `test-acct-${randomUUID()}`;

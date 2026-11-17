@@ -18,7 +18,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { computeBackupCoverage, type BackupCoverageResponse } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
-import { getResourceCostTotals } from "../clickhouse/cost-readers";
+import { getResourceCostTotals } from "../analytics/cost-readers";
 import { addDays, isoDay } from "../cost/dates";
 import { loadPlugins } from "../plugin-loader";
 import { listBackupPolicies } from "./store";

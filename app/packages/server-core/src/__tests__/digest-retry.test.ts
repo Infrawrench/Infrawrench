@@ -225,7 +225,7 @@ vi.mock("../access-review/feed", () => ({
 vi.mock("../backups/feed", () => ({
   listBackupCoverage: async () => ({ kindCounts: { unprotected: 0, "rpo-breach": 0 } }),
 }));
-vi.mock("../clickhouse/cost-readers", () => ({
+vi.mock("../analytics/cost-readers", () => ({
   queryCosts: async () => {
     if (buildShouldThrow) throw new Error("ClickHouse unavailable");
     return [];

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 // `destroy.ts` reaches Postgres and ClickHouse at import time through their
 // singleton clients; this check only wants the table list off it.
 vi.mock("../../db/client", () => ({ db: {} }));
-vi.mock("../../clickhouse/client", () => ({
+vi.mock("../../analytics/client", () => ({
   isClickHouseConfigured: () => false,
   getClickHouseClient: () => {
     throw new Error("not used");
@@ -25,7 +25,7 @@ import { ORG_SCOPED_CLICKHOUSE_TABLES } from "../destroy";
  * which tables were declared and which of them carry an `organization_id`.
  */
 const schemaSource = readFileSync(
-  fileURLToPath(new URL("../../clickhouse/schema.ts", import.meta.url)),
+  fileURLToPath(new URL("../../analytics/schema.ts", import.meta.url)),
   "utf8",
 );
 

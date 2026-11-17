@@ -24,7 +24,7 @@ import {
   type SavingsEventResult,
 } from "@infrawrench/client-core";
 
-import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
+import { getCostCoverage, queryCosts } from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "../cost/allocation";
 import { addDays, isoDay } from "../cost/dates";
 import { strictlyVisibleAccountIds } from "../cost/visibility-context";

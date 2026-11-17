@@ -14,7 +14,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  */
 
 const queryCosts = vi.fn();
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts }));
 
 const getMetricValues = vi.fn();
 vi.mock("../cost/metric-ingest", () => ({ getMetricValues }));

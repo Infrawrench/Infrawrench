@@ -25,7 +25,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 const updates = () => pg.queries.filter((q) => q.sql.startsWith('update "accounts"'));
 
 const insertCostRows = vi.fn(async () => undefined);
-vi.mock("../clickhouse/cost-writers", () => ({
+vi.mock("../analytics/cost-writers", () => ({
   insertCostRows,
   toCostDailyRows: (_meta: unknown, rows: unknown[]) => rows,
 }));

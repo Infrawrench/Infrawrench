@@ -23,7 +23,7 @@ interface ChCommand {
 }
 const chCommand = vi.fn(async (_opts: ChCommand) => ({}));
 let clickhouseConfigured = true;
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => clickhouseConfigured,
   getClickHouseClient: () => ({ command: chCommand }),
 }));

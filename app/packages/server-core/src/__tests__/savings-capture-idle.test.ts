@@ -27,7 +27,7 @@ vi.mock("../plugin-loader", () => ({
   }),
 }));
 const queryCosts = vi.fn(async () => [] as unknown[]);
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: () => queryCosts() }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts: () => queryCosts() }));
 vi.mock("../org-accounts", () => ({ getOrgAccountClient: async () => null }));
 const findIdle = vi.fn();
 vi.mock("../idle/feed", () => ({

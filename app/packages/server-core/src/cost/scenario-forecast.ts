@@ -45,7 +45,7 @@ import {
   type CostBasis,
   type CostChargeType,
   type CostFilter,
-} from "../clickhouse/cost-readers";
+} from "../analytics/cost-readers";
 import { asRateBook, convertGroups, type RateSource } from "./currency-convert";
 import { forecastDaily, type DailyPoint } from "./forecast";
 import { addDays } from "./dates";

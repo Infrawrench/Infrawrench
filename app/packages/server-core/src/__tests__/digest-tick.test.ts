@@ -215,7 +215,7 @@ vi.mock("../access-review/feed", () => ({
 vi.mock("../backups/feed", () => ({
   listBackupCoverage: async () => ({ kindCounts: { unprotected: 0, "rpo-breach": 0 } }),
 }));
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: async () => [] }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts: async () => [] }));
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam

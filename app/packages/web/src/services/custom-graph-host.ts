@@ -9,7 +9,7 @@
 import { getCarbonEstimate } from "@infrawrench/server-core/cost/carbon";
 import { and, asc, count, eq, ilike, isNull, sql } from "drizzle-orm";
 
-import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
+import { getMetricRange } from "@infrawrench/server-core/analytics/readers";
 import { getOrgAccountClient } from "@infrawrench/server-core/org-accounts";
 import { hasPermission, resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 import { buildWorkflowFetch } from "@infrawrench/server-core/workflows/fetch";

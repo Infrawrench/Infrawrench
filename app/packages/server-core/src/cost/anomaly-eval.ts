@@ -43,7 +43,7 @@ import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
 import { costAnomalies } from "../db/schema";
-import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
+import { getCostCoverage, queryCosts } from "../analytics/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import {
   ANOMALY_BASELINE_DAYS,

@@ -42,7 +42,7 @@ import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { businessMetrics, unitCostRegressionEvents } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "./anomaly-detect";
 import { convertGroups, mergeConvertedGroups, type RateSource } from "./currency-convert";

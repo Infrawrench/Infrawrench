@@ -24,7 +24,7 @@ import {
   type OutputRefValue,
 } from "@infrawrench/plugin-base";
 import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
-import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
+import { getMetricRange } from "@infrawrench/server-core/analytics/readers";
 import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import { getConfigCarbon, getResourceCarbon } from "@infrawrench/server-core/cost/carbon";
 import {

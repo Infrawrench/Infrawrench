@@ -8,7 +8,7 @@ import {
   type RightsizingDeclaration,
   type SizeOption,
 } from "@infrawrench/plugin-base";
-import { getMetricQuantilesBatch } from "../clickhouse/readers.js";
+import { getMetricQuantilesBatch } from "../analytics/readers.js";
 import {
   carbonSaving,
   DEFAULT_RIGHTSIZING_THRESHOLDS,

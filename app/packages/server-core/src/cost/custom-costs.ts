@@ -39,11 +39,11 @@ import {
 import { db } from "../db/client";
 import { users } from "../db/core-schema";
 import { customCostSources, customCostUploads } from "../db/schema";
-import { insertCostRows } from "../clickhouse/cost-writers";
+import { insertCostRows } from "../analytics/cost-writers";
 import {
   getCustomCostUploadHoldings,
   tombstoneCustomCostRows,
-} from "../clickhouse/custom-cost-store";
+} from "../analytics/custom-cost-store";
 import { CostIngestError, validateCostRows, type IngestCostRow } from "./cost-ingest";
 import { CUSTOM_COST_UPLOAD_TAG, customCostAccountId, customCostPluginId } from "./custom-cost-ids";
 

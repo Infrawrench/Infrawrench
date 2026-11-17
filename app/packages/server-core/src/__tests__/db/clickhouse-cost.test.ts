@@ -13,13 +13,13 @@
 import { randomUUID } from "node:crypto";
 import { compileBillingRules, type BillingRule } from "@infrawrench/client-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getClickHouseClient, isClickHouseConfigured } from "../../clickhouse/client";
+import { getClickHouseClient, isClickHouseConfigured } from "../../analytics/client";
 import {
   getCommitmentCoverageCells,
   getAccountDataDays,
   getCommitmentDeliveredTotals,
   getUncoveredDailySpend,
-} from "../../clickhouse/commitment-readers";
+} from "../../analytics/commitment-readers";
 import {
   getCostCoverage,
   getCostDimensionValues,
@@ -29,19 +29,19 @@ import {
   getUntaggedSpend,
   queryCosts,
   type CostSeriesGroup,
-} from "../../clickhouse/cost-readers";
-import { reconcileCollectedChunk } from "../../clickhouse/cost-reconcile";
-import { hashTags, insertCostRows, type CostDailyRow } from "../../clickhouse/cost-writers";
-import { migrateMetrics } from "../../clickhouse/migrate";
+} from "../../analytics/cost-readers";
+import { reconcileCollectedChunk } from "../../analytics/cost-reconcile";
+import { hashTags, insertCostRows, type CostDailyRow } from "../../analytics/cost-writers";
+import { migrateMetrics } from "../../analytics/migrate";
 import {
   readNetworkFlowDaily,
   readNetworkFlowScopeTotals,
   readTopNetworkFlows,
-} from "../../clickhouse/network-flow-readers";
+} from "../../analytics/network-flow-readers";
 import {
   insertNetworkFlowRows,
   type NetworkFlowClickHouseRow,
-} from "../../clickhouse/network-flow-writers";
+} from "../../analytics/network-flow-writers";
 import { streamCostExportRows } from "../../cost-exports/rows";
 
 const orgId = `test-org-${randomUUID()}`;

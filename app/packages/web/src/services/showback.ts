@@ -25,7 +25,7 @@ import {
 } from "@infrawrench/client-core";
 import { listAllocationRules, listCostCentres } from "@infrawrench/server-core/cost/allocation";
 import { resolveBillingAdjustments } from "@infrawrench/server-core/cost/billing-rules";
-import { getShowbackSpend } from "@infrawrench/server-core/clickhouse/cost-readers";
+import { getShowbackSpend } from "@infrawrench/server-core/analytics/cost-readers";
 import { convertTotals } from "@infrawrench/server-core/cost/currency-convert";
 import { loadConversionContext } from "@infrawrench/server-core/cost/currency-settings";
 

@@ -47,9 +47,9 @@ vi.mock("../encryption", () => ({
   decrypt: async () => JSON.stringify({ kind: "http", url: "https://wh.example.com/ingest?sig=x" }),
 }));
 
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured: () => true }));
+vi.mock("../analytics/client", () => ({ isClickHouseConfigured: () => true }));
 
-vi.mock("../clickhouse/cost-readers", () => ({
+vi.mock("../analytics/cost-readers", () => ({
   getCostCoverage: async () => new Map([["acct-1", { lastDay: "2026-08-06" }]]),
 }));
 

@@ -38,8 +38,8 @@ import type {
   CostExportRunResult,
 } from "@infrawrench/client-core";
 import { focusVersionOfSchema } from "@infrawrench/client-core";
-import { getCostCoverage } from "../clickhouse/cost-readers";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { getCostCoverage } from "../analytics/cost-readers";
+import { isClickHouseConfigured } from "../analytics/client";
 import { uploadCostExportObject, CostExportUploadError } from "./destinations";
 import { nextCostExportRunAt, periodsToExport, type CostExportCadence } from "./periods";
 import {

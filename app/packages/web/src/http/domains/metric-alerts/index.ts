@@ -6,7 +6,7 @@
 import { Effect, Schema } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { MetricAlertSelector } from "@infrawrench/api-contract/schemas";
-import { listMetricSeriesKeys } from "@infrawrench/server-core/clickhouse/readers";
+import { listMetricSeriesKeys } from "@infrawrench/server-core/analytics/readers";
 import {
   MetricAlertEvent,
   MetricAlertRule,

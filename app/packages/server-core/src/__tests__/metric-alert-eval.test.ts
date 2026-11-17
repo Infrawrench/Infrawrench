@@ -11,7 +11,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  */
 
 const getMetricMinuteSeriesBatch = vi.fn();
-vi.mock("../clickhouse/readers", () => ({ getMetricMinuteSeriesBatch }));
+vi.mock("../analytics/readers", () => ({ getMetricMinuteSeriesBatch }));
 // Event subscriptions have their own suite (event-subscriptions.test.ts); here
 // the extra query would only shift this file's scripted database responses.
 vi.mock("../events/publish", () => ({

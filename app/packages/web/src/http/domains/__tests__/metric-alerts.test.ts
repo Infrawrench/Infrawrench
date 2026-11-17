@@ -23,7 +23,7 @@ vi.mock("@/services/metric-alerts", () => ({
 }));
 
 const mockListMetricSeriesKeys = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/readers", () => ({
   listMetricSeriesKeys: (...a: unknown[]) => mockListMetricSeriesKeys(...a),
 }));
 

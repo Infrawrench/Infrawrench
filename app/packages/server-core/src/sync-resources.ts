@@ -32,7 +32,7 @@ import {
   insertDashboardStats,
   insertMetricPoints,
   insertPollOutcome,
-} from "./clickhouse/writers";
+} from "./analytics/writers";
 import {
   computeResourceChangeEvents,
   recordResourceChanges,

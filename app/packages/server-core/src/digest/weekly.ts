@@ -48,7 +48,7 @@ import {
   type DigestStatus,
 } from "@infrawrench/client-core";
 import { loadChangeCostImpacts } from "../cost/change-impact-load";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { listExpiring } from "../expiry/feed";

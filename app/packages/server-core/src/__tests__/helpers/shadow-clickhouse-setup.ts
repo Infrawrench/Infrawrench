@@ -4,8 +4,8 @@
  * shadowed statements have real tables to run against. Runs in vitest's own
  * process, where nothing is vi.mocked, so this is the real client.
  */
-import { getClickHouseClient, isClickHouseConfigured } from "../../clickhouse/client";
-import { migrateMetrics } from "../../clickhouse/migrate";
+import { getClickHouseClient, isClickHouseConfigured } from "../../analytics/client";
+import { migrateMetrics } from "../../analytics/migrate";
 
 export default async function setup(): Promise<() => Promise<void>> {
   if (!isClickHouseConfigured()) {

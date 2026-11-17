@@ -12,10 +12,10 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 const insertCostRows = vi.fn(async (_rows: Array<Record<string, unknown>>) => undefined);
 const hashTags = vi.fn((tags: Record<string, string> | undefined) => JSON.stringify(tags ?? {}));
-vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
+vi.mock("../analytics/cost-writers", () => ({ insertCostRows, hashTags }));
 
 const isClickHouseConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
+vi.mock("../analytics/client", () => ({ isClickHouseConfigured }));
 
 // Real Drizzle over a recording driver: the org-membership check renders its
 // actual SQL (and shadow-validates under test:postgres:shadow).

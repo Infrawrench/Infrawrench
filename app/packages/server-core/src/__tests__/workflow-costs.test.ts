@@ -9,10 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const insertCostRows = vi.fn(async (_rows: Array<Record<string, unknown>>) => undefined);
 const hashTags = vi.fn((tags: Record<string, string> | undefined) => JSON.stringify(tags ?? {}));
-vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
+vi.mock("../analytics/cost-writers", () => ({ insertCostRows, hashTags }));
 
 const isClickHouseConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
+vi.mock("../analytics/client", () => ({ isClickHouseConfigured }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 

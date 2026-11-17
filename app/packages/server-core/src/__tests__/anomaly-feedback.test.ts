@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db/client", () => ({ db: {} }));
-vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: vi.fn() }));
+vi.mock("../analytics/cost-readers", () => ({ queryCosts: vi.fn() }));
 
 import {
   anomalyFeedbackButtons,

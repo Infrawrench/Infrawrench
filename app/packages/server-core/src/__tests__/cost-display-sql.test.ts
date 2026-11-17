@@ -10,14 +10,14 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const ch = fakeClickHouse();
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
 const { queryCosts, queryCostCounts, getCostUsageUnits, COST_STORE_GRANULARITY } =
-  await import("../clickhouse/cost-readers");
+  await import("../analytics/cost-readers");
 
 const baseQuery = {
   from: "2026-01-01",

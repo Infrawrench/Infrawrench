@@ -35,9 +35,9 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { slos } from "../db/schema";
-import { getMetricMinuteSeriesBatch } from "../clickhouse/readers";
-import { isClickHouseConfigured } from "../clickhouse/client";
-import { getSloHourlyBuckets, type SloMinuteJudgement } from "../clickhouse/slo-readers";
+import { getMetricMinuteSeriesBatch } from "../analytics/readers";
+import { isClickHouseConfigured } from "../analytics/client";
+import { getSloHourlyBuckets, type SloMinuteJudgement } from "../analytics/slo-readers";
 import { probeMetricResourceId } from "../probes/metric-ids";
 import { alertReached, routeAlert } from "../alerts/route";
 import { orgAppUrl } from "../app-url";

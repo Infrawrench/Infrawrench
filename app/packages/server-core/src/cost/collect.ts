@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { loadAccountClient } from "../sync-resources";
-import { insertCostRows, toCostDailyRows } from "../clickhouse/cost-writers";
-import { reconcileCollectedChunk } from "../clickhouse/cost-reconcile";
+import { insertCostRows, toCostDailyRows } from "../analytics/cost-writers";
+import { reconcileCollectedChunk } from "../analytics/cost-reconcile";
 import { runListChecked } from "../runtime/request-scope";
 
 import { addDays, isoDay, monthChunks } from "./dates";

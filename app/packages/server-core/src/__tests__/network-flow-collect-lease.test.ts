@@ -22,7 +22,7 @@ const watermarks = () =>
     .map((q) => ({ collectedThrough: q.params[0] }));
 const inserted: unknown[][] = [];
 
-vi.mock("../clickhouse/network-flow-writers", () => ({
+vi.mock("../analytics/network-flow-writers", () => ({
   insertNetworkFlowRows: async (rows: unknown[]) => {
     inserted.push(rows);
   },

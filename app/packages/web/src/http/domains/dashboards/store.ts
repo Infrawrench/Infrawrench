@@ -24,7 +24,7 @@ import {
   getLatestStats,
   getLatestStatsBatch,
   getMetricRange,
-} from "@infrawrench/server-core/clickhouse/readers";
+} from "@infrawrench/server-core/analytics/readers";
 import { db } from "../../../db/client";
 import {
   accounts,

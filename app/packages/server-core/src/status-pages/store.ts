@@ -34,7 +34,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { statusPageComponents, statusPages, syntheticProbes } from "../db/schema";
-import { getMetricDailyAverageBatch, getMetricSeriesAverageBatch } from "../clickhouse/readers";
+import { getMetricDailyAverageBatch, getMetricSeriesAverageBatch } from "../analytics/readers";
 import { probeMetricResourceId } from "../probes/metric-ids";
 import { getPublicStatusNotices } from "./notices";
 

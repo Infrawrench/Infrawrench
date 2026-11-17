@@ -28,13 +28,13 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 const ch = fakeClickHouse();
 const captured = ch.queries;
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
-const { queryCosts, getShowbackSpend } = await import("../clickhouse/cost-readers");
+const { queryCosts, getShowbackSpend } = await import("../analytics/cost-readers");
 
 /* ── A tiny evaluator for the emitted expressions ──────────────────────────── */
 

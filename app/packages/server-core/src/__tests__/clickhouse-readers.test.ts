@@ -9,19 +9,19 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
  */
 const ch = fakeClickHouse();
 const isConfigured = vi.fn(() => true);
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => isConfigured(),
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
-let readers: typeof import("../clickhouse/readers");
+let readers: typeof import("../analytics/readers");
 
 beforeEach(async () => {
   vi.clearAllMocks();
   ch.reset();
   isConfigured.mockReturnValue(true);
-  readers = await import("../clickhouse/readers");
+  readers = await import("../analytics/readers");
 });
 
 describe("guard: not configured", () => {

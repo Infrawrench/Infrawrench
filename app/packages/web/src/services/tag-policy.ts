@@ -14,7 +14,7 @@ import {
 } from "@infrawrench/client-core";
 import type { CostBasis, UntaggedSpendReport } from "@infrawrench/client-core";
 import { getOrgTagPolicy } from "@infrawrench/server-core/cost/tag-policy";
-import { getUntaggedSpend } from "@infrawrench/server-core/clickhouse/cost-readers";
+import { getUntaggedSpend } from "@infrawrench/server-core/analytics/cost-readers";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { db } from "@/db/client";
 import { accounts, resources } from "@/db/schema";

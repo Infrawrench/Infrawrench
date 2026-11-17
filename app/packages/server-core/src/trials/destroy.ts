@@ -38,7 +38,7 @@ import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import { agentAuthRegistrations, organizations, users } from "../db/schema.js";
-import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client.js";
+import { getClickHouseClient, isClickHouseConfigured } from "../analytics/client.js";
 import { agentUserId } from "./identity.js";
 import { withTrialOrgLock } from "./lock.js";
 

@@ -27,7 +27,7 @@ vi.mock("@infrawrench/server-core/probes/store", () => ({
 }));
 const mockRange = vi.fn();
 const mockAverages = vi.fn();
-vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
+vi.mock("@infrawrench/server-core/analytics/readers", () => ({
   getMetricRange: (...a: unknown[]) => mockRange(...a),
   getMetricSeriesAverageBatch: (...a: unknown[]) => mockAverages(...a),
 }));

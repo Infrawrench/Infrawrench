@@ -50,7 +50,7 @@ import {
   commitmentIdleEvents,
 } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
-import { getAccountDataDays, getCommitmentDeliveredTotals } from "../clickhouse/commitment-readers";
+import { getAccountDataDays, getCommitmentDeliveredTotals } from "../analytics/commitment-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "../cost/anomaly-detect";
 import { addDays, isoDay } from "../cost/dates";

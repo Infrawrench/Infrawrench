@@ -19,12 +19,12 @@ import {
   type AiAttributionDayCollection,
   type AiAttributionDaySourceStats,
 } from "../db/schema";
-import { isClickHouseConfigured } from "../clickhouse/client";
+import { isClickHouseConfigured } from "../analytics/client";
 import {
   insertAttributedRows,
   readBilledAiRows,
   readLatestAiAggregates,
-} from "../clickhouse/ai-attribution-store";
+} from "../analytics/ai-attribution-store";
 import { loadPlugins } from "../plugin-loader";
 import { attributeDay } from "./attribute";
 

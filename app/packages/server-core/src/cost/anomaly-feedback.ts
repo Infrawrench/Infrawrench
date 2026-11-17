@@ -50,7 +50,7 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costAnomalies, costAnomalySuppressions } from "../db/schema";
-import { queryCosts } from "../clickhouse/cost-readers";
+import { queryCosts } from "../analytics/cost-readers";
 import { listAllocationRules, listCostCentres } from "./allocation";
 import { expandCentreSubtrees, runWithCostVisibility } from "./visibility-context";
 import type { SlackMessageButton } from "../slack";

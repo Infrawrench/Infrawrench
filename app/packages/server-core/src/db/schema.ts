@@ -6158,3 +6158,4 @@ export * from "./seat-schema.js";
 export * from "./idle-finding-schema.js";
 export * from "./starred-schema.js";
 export * from "./ci-schema.js";
+export * from "./analytics-schema.js";

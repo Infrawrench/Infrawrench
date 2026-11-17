@@ -10,13 +10,13 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const ch = fakeClickHouse();
 
-vi.mock("../clickhouse/client", () => ({
+vi.mock("../analytics/client", () => ({
   isClickHouseConfigured: () => true,
   getClickHouseDb: () => ch.db,
   getClickHouseClient: () => ch.client,
 }));
 
-const readers = await import("../clickhouse/network-flow-report-readers");
+const readers = await import("../analytics/network-flow-report-readers");
 
 const ORG = "org-1";
 const range = { from: "2026-09-01", to: "2026-09-30" };

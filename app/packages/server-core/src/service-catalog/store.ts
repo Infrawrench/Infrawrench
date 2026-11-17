@@ -233,7 +233,7 @@ async function virtualTagMatches(
   const out = new Set<string>();
   if (!rule.key || !rule.value) return out;
   try {
-    const { queryCosts } = await import("../clickhouse/cost-readers");
+    const { queryCosts } = await import("../analytics/cost-readers");
     const to = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
     const groups = await queryCosts(organizationId, {

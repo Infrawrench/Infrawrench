@@ -78,9 +78,9 @@ import {
   getCostDimensionValues,
   getResourceCostWindows,
   getResourceVirtualTagValues,
-} from "@infrawrench/server-core/clickhouse/cost-readers";
-import { isClickHouseConfigured } from "@infrawrench/server-core/clickhouse/client";
-import { VirtualTagUnresolvedError } from "@infrawrench/server-core/clickhouse/virtual-tag-sql";
+} from "@infrawrench/server-core/analytics/cost-readers";
+import { isClickHouseConfigured } from "@infrawrench/server-core/analytics/client";
+import { VirtualTagUnresolvedError } from "@infrawrench/server-core/analytics/virtual-tag-sql";
 import { getOrgTagKeySettings } from "@infrawrench/server-core/cost/tag-key-settings";
 import { db } from "../db/client";
 import { accounts, resourceReports, resources } from "../db/schema";

@@ -11,7 +11,7 @@
  * kept-alive promise, including ones registered while it was waiting.
  */
 import { createDb } from "../db/client";
-import { configureClickHouseTransport } from "../clickhouse/client";
+import { configureClickHouseTransport } from "../analytics/client";
 import { markEdgeRuntime } from "./gateway-only";
 import { runInRequestScope } from "./request-scope";
 
