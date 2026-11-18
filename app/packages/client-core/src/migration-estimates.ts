@@ -536,7 +536,7 @@ function rounded(list: MigrationMoney[]): MigrationMoney[] {
  * org's display currency, or the one currency everything is already in).
  */
 export function summarizeMigrationTotals(
-  rows: readonly Pick<MigrationRow, "current" | "target">[],
+  rows: readonly { current: MigrationCost | null; target: { cost: MigrationCost | null } }[],
   unmatched: readonly Pick<MigrationUnmatchedRow, "current">[],
   convert: (money: MigrationMoney) => MigrationMoney | null,
 ): MigrationTotals {
