@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.118.0",
+    "version": "1.119.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -19697,6 +19697,48 @@
           "providerPluginId",
           "providerResourceTypeId",
           "providerAccountId"
+        ],
+        "additionalProperties": false
+      },
+      "AssociationCandidate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "outputKey": {
+            "type": "string",
+            "description": "The output that would fill the field; send it as `providerOutputKey`."
+          },
+          "pluginLogoSvg": {
+            "type": "string",
+            "description": "Inline SVG markup; may be empty."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "displayName",
+          "outputKey",
+          "pluginLogoSvg"
         ],
         "additionalProperties": false
       },
@@ -93080,6 +93122,75 @@
         "operationId": "getOrgOrgIdOwnershipResource"
       }
     },
+    "/api/org/{orgId}/associations/candidates": {
+      "get": {
+        "tags": [
+          "Associations"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId",
+              "description": "The resource holding the field."
+            },
+            "required": true
+          },
+          {
+            "name": "fieldKey",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The secret field to fill, e.g. `connectionString`."
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candidates, sorted by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssociationCandidate"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A candidate is a stored resource whose type hands one of its outputs to the field's plugin under the field's key (a peer integration's credential mapping) and whose fields pass that integration's visibility gates. Send one to `POST /associations` to point the field at it.\n\n_Requires permission: `resources:read`._",
+        "summary": "List the resources whose outputs can fill a secret field",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdAssociationsCandidates"
+      }
+    },
     "/api/org/{orgId}/associations": {
       "post": {
         "tags": [
@@ -93178,8 +93289,19 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
+        "description": "When the resource's plugin applies a new value upstream (resetting a database password, say), it does so first; a refusal there answers 502 and stores nothing.\n\n_Requires permission: `secrets:write`._",
         "summary": "Set a secret field to a literal plaintext value",
         "requestBody": {
           "content": {
@@ -93192,8 +93314,7 @@
           "required": true
         },
         "x-required-permission": "secrets:write",
-        "operationId": "postOrgOrgIdAssociationsLiteral",
-        "description": "_Requires permission: `secrets:write`._"
+        "operationId": "postOrgOrgIdAssociationsLiteral"
       }
     },
     "/api/org/{orgId}/blast-radius": {

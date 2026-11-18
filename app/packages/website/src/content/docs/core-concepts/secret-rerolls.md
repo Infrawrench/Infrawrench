@@ -18,9 +18,19 @@ A reroll points a field at a different output, or at a literal value you paste. 
 4. Pick the new upstream resource, or switch tabs and paste a value.
 5. Click **Confirm**.
 
-<insert [The Reroll dialog open on a connection-string field, showing the From resource / Paste literal value tabs and the Confirm button] here>
+![The Reroll connectionString dialog on a Postgres database, with the From resource tab listing a Neon branch (selected) and a DigitalOcean managed database, the Paste literal value tab beside it, and the Confirm button](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/secret-rerolls/reroll-dialog.png)
 
 The new source is used from the next connection. Existing connections aren't dropped.
+
+## What the From resource tab lists
+
+**From resource** lists the resources in your accounts with an output that can fill the field: mostly the same outputs that give a resource a tab for the field's plugin. For a Postgres connection string that means managed Postgres databases such as a DigitalOcean database or a Neon branch, with each one's provider and output under its name. A resource whose tab wouldn't show (a DigitalOcean MySQL database, for a Postgres field) isn't listed.
+
+Some fields have nothing that can fill them, such as a Cloud SQL root password. The tab then says **No compatible resources found.** and you paste a value instead.
+
+## Pasted values the provider owns
+
+When the field is something the provider itself holds, like the Cloud SQL root password, a pasted value is set at the provider first and stored only once the provider accepts it. If the provider refuses it (a password that's too short, say), you get an error and nothing changes.
 
 ## When to reroll
 

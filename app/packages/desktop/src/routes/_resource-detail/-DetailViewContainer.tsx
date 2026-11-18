@@ -39,6 +39,7 @@ import {
   type DependencyGraphNode,
   type KvBrowserListParams,
   type PeerPaneData,
+  type ProviderResource,
   type QueryResult,
   type RerollSelection,
   type ResourceDependencies,
@@ -131,6 +132,8 @@ interface DetailViewContainerProps {
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) => void;
+  /** The reroll picker's "From resource" list, loaded when it opens. */
+  loadProviderResources?: (fieldKey: string) => Promise<ProviderResource[]>;
   /** Renders the file browser when schema.storageBrowser is set. */
   renderStorageBrowser?: () => React.ReactNode;
 }
@@ -201,6 +204,7 @@ export function DetailViewContainer({
   onChildDelete,
   onChildEdit,
   onReroll,
+  loadProviderResources,
   renderStorageBrowser,
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
@@ -313,6 +317,7 @@ export function DetailViewContainer({
         carbonEstimate={carbonEstimate}
         onQueryInstancePricing={desktopInstancePricingQuery}
         {...(onReroll ? { onReroll } : {})}
+        {...(loadProviderResources ? { loadProviderResources } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (
           <PeerPaneView

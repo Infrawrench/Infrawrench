@@ -45,6 +45,7 @@ import { getDb } from "../db/client";
 import { mirrorEditedResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
+import { loadLocalRerollCandidates, rerollLocalFieldToOutput } from "../lib/local-reroll";
 import { createPluginClient } from "../lib/plugin-client";
 import { makeResourceCarbonEstimator, makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
@@ -928,34 +929,59 @@ export function ResourcePanel({
     handlePeerPaneOpenRef.current = handlePeerPaneOpen;
   }, [handlePeerPaneOpen]);
 
+  // The reroll picker's "From resource" list: the org's candidates from the
+  // cloud, or this machine's own resources in local mode.
+  const rerollPluginId = resource?.pluginId ?? null;
+  const rerollTypeId = resource?.resourceTypeId ?? null;
+  const loadRerollCandidates = useCallback(
+    async (fieldKey: string) => {
+      const cloud = cloudCtxRef.current;
+      if (cloud) {
+        const { fetchCloudRerollCandidates } = await import("../lib/cloud-api");
+        return fetchCloudRerollCandidates(cloud.orgId, decodedResourceId, fieldKey);
+      }
+      if (!rerollPluginId || !rerollTypeId) return [];
+      return loadLocalRerollCandidates(
+        { id: decodedResourceId, pluginId: rerollPluginId, resourceTypeId: rerollTypeId },
+        fieldKey,
+      );
+    },
+    [decodedResourceId, rerollPluginId, rerollTypeId],
+  );
+
   async function handleReroll(
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) {
     if (!resource) return;
-    if (selection.kind !== "literal") {
-      toast.error(gt("This field only accepts a literal value."));
-      return;
-    }
-    const client = clientRef.current;
-    if (!client) {
-      toast.error(gt("Plugin client not ready."));
-      return;
-    }
     try {
-      // Push to the upstream provider first so the local store never holds a
-      // value the provider hasn't accepted. Plugins that don't implement
-      // applySecretReroll skip the upstream call (literal-only persist).
-      if (client.applySecretReroll) {
-        await client.applySecretReroll(
-          resource.resourceTypeId,
-          resource.id,
-          accountId,
-          fieldKey,
-          selection.value,
-        );
+      const cloud = cloudCtxRef.current;
+      if (cloud) {
+        // The server pushes a literal upstream before it stores it.
+        const { rerollCloudField } = await import("../lib/cloud-api");
+        await rerollCloudField(cloud.orgId, decodedResourceId, fieldKey, selection);
+      } else if (selection.kind === "output-ref") {
+        await rerollLocalFieldToOutput(resource.id, fieldKey, selection);
+      } else {
+        const client = clientRef.current;
+        if (!client) {
+          toast.error(gt("Plugin client not ready."));
+          return;
+        }
+        // Push to the upstream provider first so the local store never holds a
+        // value the provider hasn't accepted. Plugins that don't implement
+        // applySecretReroll skip the upstream call (literal-only persist).
+        if (client.applySecretReroll) {
+          await client.applySecretReroll(
+            resource.resourceTypeId,
+            resource.id,
+            accountId,
+            fieldKey,
+            selection.value,
+          );
+        }
+        await persistPlaintextSecret(resource.id, fieldKey, selection.value);
       }
-      await persistPlaintextSecret(resource.id, fieldKey, selection.value);
       toast.success(gt("{field} updated.", { field: fieldKey }));
       dispatchRefreshResource();
     } catch (err) {
@@ -1256,6 +1282,7 @@ export function ResourcePanel({
               onChildDelete={handleChildDelete}
               onChildEdit={handleChildEdit}
               onReroll={handleReroll}
+              loadProviderResources={loadRerollCandidates}
               {...(hasStorageBrowser && account
                 ? {
                     renderStorageBrowser: () => (

@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState, type KeyboardEvent } from "react";
+import React, { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -54,6 +54,7 @@ import {
   dispatchNavigateToResource,
   dispatchPromptNoSqlCommand,
   dispatchRefreshResource,
+  formatErrorMessage,
 } from "../../utils.js";
 import type { HostAction } from "@infrawrench/plugin-base";
 import type { DependencyGraphNode, ResourceDependencies } from "@infrawrench/client-core";
@@ -81,8 +82,12 @@ interface DetailViewProps {
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) => void;
-  /** Available provider resources for the reroll picker */
-  providerResources?: ProviderResource[];
+  /**
+   * The resources whose outputs can fill `fieldKey`: the reroll picker's
+   * "From resource" list, loaded when the picker opens. Keep its identity
+   * stable (`useCallback`); a new function reloads the open picker's list.
+   */
+  loadProviderResources?: (fieldKey: string) => Promise<ProviderResource[]>;
   /**
    * Host-provided SQL executor. Required when schema.sqlEditor is set.
    * The host owns the DB driver: this component only provides the UI.
@@ -272,6 +277,13 @@ type Tab =
   | `custom:${string}`;
 
 const EMPTY_PROVIDER_RESOURCES: ProviderResource[] = [];
+
+/** The reroll picker's "From resource" list, for the field it was loaded for. */
+interface ProviderResourcesState {
+  fieldKey: string;
+  resources: ProviderResource[];
+  error: string | null;
+}
 const EMPTY_PEER_PANES: PeerPaneData[] = [];
 const EMPTY_CHILD_RESOURCE_GROUPS: ChildResourceGroup[] = [];
 
@@ -280,7 +292,7 @@ export function DetailView({
   resourceId,
   pluginLogoSvg,
   onReroll,
-  providerResources = EMPTY_PROVIDER_RESOURCES,
+  loadProviderResources,
   onRunQuery,
   onExecute,
   onEstimateQueryCost,
@@ -328,6 +340,32 @@ export function DetailView({
 }: DetailViewProps) {
   const gt = useGT();
   const { rerollingField, closeReroll } = useUIStore();
+  const rerollFieldKey =
+    rerollingField && rerollingField.resourceId === resourceId ? rerollingField.fieldKey : null;
+  const [providerResources, setProviderResources] = useState<ProviderResourcesState | null>(null);
+  useEffect(() => {
+    if (!rerollFieldKey || !loadProviderResources) return;
+    let cancelled = false;
+    loadProviderResources(rerollFieldKey).then(
+      (resources) => {
+        if (!cancelled) setProviderResources({ fieldKey: rerollFieldKey, resources, error: null });
+      },
+      (err: unknown) => {
+        if (!cancelled) {
+          setProviderResources({
+            fieldKey: rerollFieldKey,
+            resources: EMPTY_PROVIDER_RESOURCES,
+            error: formatErrorMessage(err),
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [rerollFieldKey, loadProviderResources]);
+  const loadedProviderResources =
+    providerResources && providerResources.fieldKey === rerollFieldKey ? providerResources : null;
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
   const hasSettingsEditor = !!schema.settingsEditor && !!onGetManifest;
@@ -1192,12 +1230,14 @@ export function DetailView({
       )}
 
       {/* AssociationPicker modal */}
-      {rerollingField && rerollingField.resourceId === resourceId && (
+      {rerollFieldKey !== null && (
         <AssociationPicker
-          fieldKey={rerollingField.fieldKey}
-          providerResources={providerResources}
+          fieldKey={rerollFieldKey}
+          providerResources={loadedProviderResources?.resources ?? EMPTY_PROVIDER_RESOURCES}
+          providerResourcesLoading={!!loadProviderResources && !loadedProviderResources}
+          providerResourcesError={loadedProviderResources?.error ?? null}
           onConfirm={(selection) => {
-            onReroll?.(rerollingField.fieldKey, selection);
+            onReroll?.(rerollFieldKey, selection);
             closeReroll();
           }}
           onCancel={closeReroll}

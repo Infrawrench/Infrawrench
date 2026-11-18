@@ -32,6 +32,8 @@ import {
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type PeerPaneData,
+  type ProviderResource,
+  type RerollSelection,
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
@@ -66,7 +68,7 @@ import type {
   ResolvedPeerPane,
   ResourceCarbonEstimate,
 } from "@infrawrench/client-core";
-import { metricsRequestRange } from "@infrawrench/client-core";
+import { metricsRequestRange, rerollRequest } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -731,6 +733,37 @@ export function ResourceDetailClient({
       void router.invalidate();
     },
     [orgId, accountId, resourceId, topLevelChildTypeIds, gt],
+  );
+
+  // A secret field's Reroll dialog: the "From resource" list and the confirm
+  // both go through the associations routes.
+  const loadRerollCandidates = useCallback(
+    (fieldKey: string) =>
+      apiGet<ProviderResource[]>(
+        `/api/org/${orgId}/associations/candidates?resourceId=${encodeURIComponent(
+          resourceId,
+        )}&fieldKey=${encodeURIComponent(fieldKey)}`,
+      ),
+    [orgId, resourceId],
+  );
+  const handleReroll = useCallback(
+    async (fieldKey: string, selection: RerollSelection | { kind: "literal"; value: string }) => {
+      const request = rerollRequest(resourceId, fieldKey, selection);
+      try {
+        await apiPost(
+          request.endpoint === "literal"
+            ? `/api/org/${orgId}/associations/literal`
+            : `/api/org/${orgId}/associations`,
+          request.payload,
+        );
+        toast.success(gt("{field} updated.", { field: fieldKey }));
+        dispatchResourcesChanged({ accountId, resourceTypeId });
+        void router.invalidate();
+      } catch (err) {
+        toast.error(gt("Reroll failed: {error}", { error: formatErrorMessage(err) }));
+      }
+    },
+    [orgId, resourceId, accountId, resourceTypeId, gt, router],
   );
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
@@ -1425,6 +1458,8 @@ export function ResourceDetailClient({
               }
               costEstimate={costEstimate}
               carbonEstimate={carbonEstimate}
+              onReroll={handleReroll}
+              loadProviderResources={loadRerollCandidates}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,

@@ -123,4 +123,31 @@ describe("AssociationPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledOnce();
   });
+
+  it("says the list is loading rather than empty while the host fetches it", () => {
+    render(
+      <AssociationPicker
+        fieldKey="X"
+        providerResources={[]}
+        providerResourcesLoading
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Loading resources…")).toBeInTheDocument();
+    expect(screen.queryByText("No compatible resources found.")).toBeNull();
+  });
+
+  it("shows why the list could not be loaded", () => {
+    render(
+      <AssociationPicker
+        fieldKey="X"
+        providerResources={[]}
+        providerResourcesError="Forbidden"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Couldn't load options: Forbidden")).toBeInTheDocument();
+  });
 });

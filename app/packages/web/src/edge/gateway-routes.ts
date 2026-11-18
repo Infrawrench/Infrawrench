@@ -145,6 +145,9 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Leaked credentials: scanning, rotating and closing a finding upstream all
   // call plugin code (the scanner, the issuer's reroll). Reads stay on the edge.
   new RegExp(`${ORG}/leaked-secrets/(scan|[^/]+/(rotate|mark-rotated|dismiss|reopen))$`),
+  // A literal reroll pushes the new value upstream first (the plugin's
+  // `applySecretReroll`), before it stores anything.
+  new RegExp(`${ORG}/associations/literal$`),
   // A pull request check preview prices Terraform through plugin estimators
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.
