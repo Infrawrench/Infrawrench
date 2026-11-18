@@ -179,6 +179,36 @@ describe("listResources - branches/endpoints/databases/roles", () => {
       fields: { primary: true, currentState: "ready" },
       parentResourceId: "acct1:neon-project:p1",
     });
+    expect(res[0]!.fields).not.toHaveProperty("logicalSizeLimit");
+  });
+
+  it("stores the project's branch logical size limit beside the branch's logical size", async () => {
+    api.listProjects.mockResolvedValue(
+      wrap({
+        projects: [
+          { id: "p1", name: "P", pg_version: 16, branch_logical_size_limit_bytes: 536870912 },
+        ],
+      }),
+    );
+    api.listProjectBranches.mockResolvedValue(
+      wrap({
+        branches: [
+          {
+            id: "b1",
+            name: "main",
+            project_id: "p1",
+            default: true,
+            current_state: "ready",
+            logical_size: 31457280,
+            created_at: "c",
+            updated_at: "u",
+          },
+        ],
+      }),
+    );
+    const client = makeClient();
+    const res = await client.listResources("neon-branch", ACCOUNT);
+    expect(res[0]!.fields).toMatchObject({ logicalSize: 31457280, logicalSizeLimit: 536870912 });
   });
 
   it("fails when branches throw, and reads a project that 404s as gone", async () => {

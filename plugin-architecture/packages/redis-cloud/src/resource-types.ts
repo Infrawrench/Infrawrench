@@ -142,7 +142,15 @@ const DatabaseType = rt({
       description: "Total memory including replication overhead. Change it with Resize memory.",
     }),
     f("datasetSizeGb", "Dataset Size (GB)", { kind: "number", required: false, editable: false }),
-    f("memoryUsedMb", "Memory Used (MB)", { kind: "number", required: false, editable: false }),
+    f("memoryUsedMb", "Memory Used (MB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      // Used memory counts replication, and the memory limit is enforced on it
+      // (https://redis.io/docs/latest/operate/rs/references/metrics/resource-usage/,
+      // checked 2026-11-18), so the ceiling is the total limit, not the dataset size.
+      usage: { limit: { field: "memoryLimitGb", scale: 1024 }, unit: "MB", label: "Memory" },
+    }),
     f("memoryUsedPct", "Memory Used (%)", { kind: "number", required: false, editable: false }),
     f("throughput", "Throughput", { required: false, editable: false }),
     f("throughputOpsPerSec", "Provisioned ops/sec", {

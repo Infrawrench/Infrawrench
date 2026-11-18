@@ -1785,10 +1785,17 @@ export class NeonClient implements PluginClient {
 
   private async listAllBranches(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     const branches = await run.branches(accountId);
-    return branches.map((b) => this.buildBranchResource(accountId, b.projectId, b.branch));
+    return branches.map((b) =>
+      this.buildBranchResource(accountId, b.projectId, b.branch, b.logicalSizeLimitBytes),
+    );
   }
 
-  private buildBranchResource(accountId: string, projectId: string, b: Branch): ResourceInstance {
+  private buildBranchResource(
+    accountId: string,
+    projectId: string,
+    b: Branch,
+    logicalSizeLimitBytes?: number,
+  ): ResourceInstance {
     return {
       id: `${accountId}:neon-branch:${projectId}/${b.id}`,
       pluginId: "neon",
@@ -1802,6 +1809,7 @@ export class NeonClient implements PluginClient {
         primary: isDefaultBranch(b),
         currentState: b.current_state,
         ...(b.logical_size !== undefined ? { logicalSize: b.logical_size } : {}),
+        ...(logicalSizeLimitBytes !== undefined ? { logicalSizeLimit: logicalSizeLimitBytes } : {}),
         initSource: b.init_source ?? "",
         lastResetAt: b.last_reset_at ?? "",
         protected: b.protected === true,

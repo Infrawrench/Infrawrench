@@ -55,6 +55,8 @@ Redis Cloud keeps no metric history, so Infrawrench samples current readings ove
 - **Ops/sec, read and write latency, connections, evictions, expirations, hit ratio, keys and traffic** for Pro subscriptions. These are only reachable through private connectivity, for example a bastion in the peered VPC.
 - **Redis ·** series (ops/sec, clients, memory, evictions, hit ratio, command latency), read through the Redis tab's connection. This is what fills the tab for Essentials databases.
 
+Capacity runway tracks each database's memory used against its memory limit.
+
 ## Savings and security
 
 - A paid database holding less than 5 MB shows under **Potential savings**.

@@ -190,6 +190,17 @@ export const orgQuotaSettings = pgTable("org_quota_settings", {
    * two places that could disagree.
    */
   threshold: doublePrecision("threshold").notNull().default(0.8),
+  /**
+   * Capacity runway: alert when a resource will reach its limit within this
+   * many days. Rides the same daily digest and claim as the quota alerts, so
+   * it lives on the same row.
+   */
+  runwayDays: integer("runway_days").notNull().default(14),
+  /**
+   * Capacity runway: alert when a monthly allowance is at this fraction (0–1)
+   * of its limit, or is projected past the whole of it before the cycle resets.
+   */
+  allowanceThreshold: doublePrecision("allowance_threshold").notNull().default(0.8),
   lastNotifiedAt: timestamp("last_notified_at"),
   updatedByUserId: text("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),

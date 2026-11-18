@@ -94,6 +94,7 @@ import {
 } from "@infrawrench/server-core/analytics/retention";
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
+import { pruneCapacitySnapshots } from "@infrawrench/server-core/capacity/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
@@ -342,6 +343,13 @@ async function runRetention(): Promise<void> {
     await pruneQuotaSnapshots();
   } catch (e) {
     console.error("[poller] quota snapshot retention tick failed:", e);
+  }
+  // Capacity runway readings keep four months: the longest read is a billing
+  // cycle, and hourly rows for every declared usage are not worth a year.
+  try {
+    await pruneCapacitySnapshots();
+  } catch (e) {
+    console.error("[poller] capacity snapshot retention tick failed:", e);
   }
   // Org grade readings keep 400 days, a year plus a margin, so "how did we
   // look this time last year" survives a late prune.

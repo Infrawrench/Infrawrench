@@ -3,6 +3,11 @@
  * the org is at or heading for, delivered through the existing alert routing
  * under the `quotaAlerts` trigger.
  *
+ * The capacity runway rides the same digest: resources at or running out of
+ * their own limits (a disk, a plan's storage cap, a monthly allowance). One
+ * message a day about "what will run out" rather than two, under the trigger
+ * people already route, with one on/off switch and one claim.
+ *
  * Invoked from the poller loop (a bounded batch per tick), not from the
  * collection pass: a quota does not get closer to its ceiling because a
  * collector ran, so the cadence is the wall clock's. The claim/cooldown
@@ -10,7 +15,7 @@
  * supplies what is quota's alone: the settings table, the feed, and the
  * message. Never throws: every error is logged with the `[quotas]` prefix.
  */
-import { alertableQuotas } from "@infrawrench/client-core";
+import { alertableQuotas, alertableRunway } from "@infrawrench/client-core";
 import { orgQuotaSettings } from "../db/schema";
 import { routeAlert } from "../alerts/route";
 import {
@@ -20,13 +25,14 @@ import {
   type DailyWindowResult,
   type WindowDelivery,
 } from "../alerts/daily-window";
+import { getRunwayFeed } from "../capacity/feed";
+import { runwayLines, runwayRowLine, runwayTitle, summarizeRunway } from "../capacity/summary";
 import { getQuotaFeed } from "./feed";
 import { getQuotaSettings, type QuotaSettingsRecord } from "./settings";
 import {
   formatQuotaPushBody,
-  formatQuotaSlackBody,
-  formatQuotaTeamsBody,
   quotaContext,
+  quotaLines,
   quotaTitle,
   summarizeQuotas,
 } from "./summary";
@@ -39,8 +45,15 @@ export const QUOTA_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 type QuotaScanOutcome =
   /** The scan completed and found nothing alertable; the window stays spent. */
   | { status: "quiet" }
-  | { status: "sent"; quotas: number; push: number; slack: number; msTeams: number }
-  | { status: "undelivered"; quotas: number };
+  | {
+      status: "sent";
+      quotas: number;
+      runway: number;
+      push: number;
+      slack: number;
+      msTeams: number;
+    }
+  | { status: "undelivered"; quotas: number; runway: number };
 
 /** What one org's scan did. Returned for tests/logs. */
 export type QuotaOrgOutcome = DailyWindowOutcome<QuotaScanOutcome>;
@@ -54,6 +67,8 @@ const store = dailyWindowStore<QuotaSettingsRecord>({
     organizationId,
     enabled: settings.enabled,
     threshold: settings.threshold,
+    runwayDays: settings.runwayDays,
+    allowanceThreshold: settings.allowanceThreshold,
     lastNotifiedAt: now,
   }),
 });
@@ -61,13 +76,22 @@ const store = dailyWindowStore<QuotaSettingsRecord>({
 /** The scan-and-deliver body run under a won claim: see the engine's contract. */
 async function deliverWindow(
   organizationId: string,
-  _settings: QuotaSettingsRecord,
+  settings: QuotaSettingsRecord,
   now: Date,
   delivery: WindowDelivery,
 ) {
-  const feed = await getQuotaFeed(organizationId, now);
+  const [feed, runway] = await Promise.all([
+    getQuotaFeed(organizationId, now),
+    // A runway read that fails must not take the quota digest down with it:
+    // the quota half is the older, trusted signal.
+    getRunwayFeed(organizationId, now).catch((err: unknown) => {
+      console.error(`[quotas] capacity runway feed for org ${organizationId} failed:`, err);
+      return null;
+    }),
+  ]);
   const due = alertableQuotas(feed.rows);
-  if (due.length === 0) {
+  const dueRunway = runway ? alertableRunway(runway.rows) : [];
+  if (due.length === 0 && dueRunway.length === 0) {
     // A completed scan consumes the cooldown even when it found nothing:
     // `last_notified_at` means "last alert scan", and a quiet org re-scanned
     // every tick would only reconfirm the same silence.
@@ -81,15 +105,61 @@ async function deliverWindow(
     return { status: "quiet" as const };
   }
 
-  const summary = summarizeQuotas(due, feed.threshold);
+  const summary = due.length > 0 ? summarizeQuotas(due, feed.threshold) : null;
+  const runwaySummary =
+    dueRunway.length > 0
+      ? summarizeRunway(dueRunway, {
+          runwayDays: settings.runwayDays,
+          allowanceThreshold: settings.allowanceThreshold,
+        })
+      : null;
+
+  const linesFor = (bold: (s: string) => string): string[] => {
+    const lines: string[] = [];
+    if (summary) lines.push(...quotaLines(summary, bold));
+    if (runwaySummary) {
+      if (lines.length > 0) lines.push("");
+      lines.push(...runwayLines(runwaySummary, bold));
+    }
+    return lines;
+  };
+
+  let title: string;
+  if (summary && runwaySummary) {
+    title = `${quotaTitle(summary)}; ${runwaySummary.total} resource limit${
+      runwaySummary.total === 1 ? "" : "s"
+    } running out`;
+  } else if (summary) {
+    title = quotaTitle(summary);
+  } else {
+    title = runwayTitle(runwaySummary!);
+  }
+
+  const firstRunway = runwaySummary?.rows[0];
+  const pushBody = summary
+    ? formatQuotaPushBody(summary)
+    : firstRunway
+      ? runwayRowLine(firstRunway)
+      : title;
+
+  const contextParts: string[] = [];
+  if (summary) contextParts.push(quotaContext(summary));
+  if (runwaySummary) {
+    contextParts.push(
+      `runway alerts within ${runwaySummary.runwayDays} days or past ${Math.round(
+        runwaySummary.allowanceThreshold * 100,
+      )}% of a monthly allowance`,
+    );
+  }
+
   const routed = await routeAlert({
     organizationId,
     trigger: "quotaAlerts",
-    title: quotaTitle(summary),
-    body: formatQuotaSlackBody(summary),
-    teamsBody: formatQuotaTeamsBody(summary),
-    pushBody: formatQuotaPushBody(summary),
-    context: quotaContext(summary),
+    title,
+    body: linesFor((s) => `*${s}*`).join("\n"),
+    teamsBody: linesFor((s) => s).join("\n\n"),
+    pushBody,
+    context: contextParts.join(" · "),
     url: orgAppUrl(organizationId, "quotas"),
     pushData: { type: "quota_alert", orgId: organizationId },
   });
@@ -98,12 +168,13 @@ async function deliverWindow(
   delivery.succeeded += routed.succeeded + routed.held;
 
   if (delivery.succeeded === 0) {
-    return { status: "undelivered" as const, quotas: due.length };
+    return { status: "undelivered" as const, quotas: due.length, runway: dueRunway.length };
   }
 
   return {
     status: "sent" as const,
     quotas: due.length,
+    runway: dueRunway.length,
     push: routed.byTransport.push,
     slack: routed.byTransport.slack,
     msTeams: routed.byTransport.msTeams,

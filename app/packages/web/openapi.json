@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -27987,13 +27987,25 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Whether the poller sends quota alerts for this organization at all."
+            "description": "Whether the poller sends quota and capacity runway alerts for this organization at all."
           },
           "threshold": {
             "type": "number",
             "minimum": 0.5,
             "maximum": 0.99,
             "description": "Utilisation fraction at or above which a quota alerts. Default 0.8. Bounded below at 0.5 (a lower threshold makes every quota critical) and above at 0.99 (at 1.0 the provider is already refusing requests, so the alert reports an outage rather than warning about one). Values outside the range are rejected, not clamped."
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Capacity runway: alert when a resource will reach its limit within this many days on a clean trend. Default 14, from 1 to 90."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 0.99,
+            "description": "Capacity runway: alert when a monthly allowance is at this fraction of its limit, or is projected past the whole of it before the cycle resets. Default 0.8, from 0.5 to 0.99."
           },
           "lastNotifiedAt": {
             "anyOf": [
@@ -28011,6 +28023,8 @@
         "required": [
           "enabled",
           "threshold",
+          "runwayDays",
+          "allowanceThreshold",
           "lastNotifiedAt"
         ],
         "additionalProperties": false
@@ -28025,8 +28039,529 @@
             "type": "number",
             "minimum": 0.5,
             "maximum": 0.99
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 0.99
           }
         },
+        "additionalProperties": false
+      },
+      "ResourceRunwayResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceRunwayRow"
+            }
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The organization's runway alert threshold, in days."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "description": "The organization's monthly allowance alert threshold, as a fraction."
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far back the trend looks, in days."
+          }
+        },
+        "required": [
+          "rows",
+          "runwayDays",
+          "allowanceThreshold",
+          "windowDays"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceRunwayRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The usage's key within the resource: a field or output key, or `metric:<series>`.",
+            "examples": [
+              "storageBytes"
+            ]
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "$ref": "#/components/schemas/ResourceTypeId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "Storage"
+            ]
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What both numbers count. `bytes` is a byte count; anything else is a word."
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "utilization": {
+            "type": "number",
+            "description": "used / limit, not clamped at 1."
+          },
+          "limitSource": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "plan",
+              "constant"
+            ],
+            "description": "Whose number the limit is: `provider` (read from the resource itself, so it follows resizes), `plan` (the provider's published allowance for the plan in `plan`), or `constant` (a fixed documented ceiling)."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "runway",
+              "allowance"
+            ],
+            "description": "`allowance` resets every month; `runway` accumulates until it hits the limit."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "field",
+              "output",
+              "metric"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "description": "When the current reading was taken.",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/RunwayForecast"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunwayCycle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "full",
+              "critical",
+              "watch",
+              "ok"
+            ],
+            "description": "Where the usage sits: `full` (used >= limit now), `critical` (alerting: reaches the limit within the organization's runway days on a clean trend, or a monthly allowance is past the allowance threshold or projected past its limit before the cycle resets), `watch` (inside the runway days but the trend is too noisy to alert on), or `ok`."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunwayPoint"
+            },
+            "description": "The readings the projection used: the trend window for a runway row, the current cycle for an allowance."
+          }
+        },
+        "required": [
+          "key",
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "label",
+          "unit",
+          "used",
+          "limit",
+          "utilization",
+          "limitSource",
+          "plan",
+          "kind",
+          "source",
+          "observedAt",
+          "forecast",
+          "cycle",
+          "status",
+          "history"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayPoint": {
+        "type": "object",
+        "properties": {
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "observedAt",
+          "used",
+          "limit"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayCycle": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "description": "When the allowance resets.",
+            "format": "date-time"
+          },
+          "projectedUsed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Usage projected at the end of the cycle at the current rate."
+          },
+          "projectedUtilization": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "projectedUsed",
+          "projectedUtilization"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayForecast": {
+        "type": "object",
+        "properties": {
+          "perDay": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change in usage per day, in the row's unit. A Theil-Sen slope (the median of every pairwise slope) over the recorded readings, or for a monthly allowance with too few readings this cycle, the average since the cycle started. Null without a rate."
+          },
+          "daysLeft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days until usage reaches the limit at that rate. Null when flat or falling, when already full, when the crossing is more than 365 days out, or (for an allowance) when the cycle resets first."
+          },
+          "fullAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The crossing, when `daysLeft` is set."
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "trend",
+                  "cycle-average"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "noisy",
+              "short"
+            ],
+            "description": "`short`: fewer than 3 readings or less than a day of history, so no projection. `noisy`: the scatter around the trend is as large as the change it explains. `ok` otherwise."
+          },
+          "points": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Readings the fit used."
+          }
+        },
+        "required": [
+          "perDay",
+          "daysLeft",
+          "fullAt",
+          "method",
+          "confidence",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayListResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunwayRow"
+            },
+            "description": "Every declared usage with a reading, soonest to run out first."
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The organization's runway alert threshold, in days."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "description": "The organization's monthly allowance alert threshold, as a fraction."
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far back the trend looks, in days."
+          }
+        },
+        "required": [
+          "rows",
+          "runwayDays",
+          "allowanceThreshold",
+          "windowDays"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The usage's key within the resource: a field or output key, or `metric:<series>`.",
+            "examples": [
+              "storageBytes"
+            ]
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "$ref": "#/components/schemas/ResourceTypeId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "Storage"
+            ]
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What both numbers count. `bytes` is a byte count; anything else is a word."
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "utilization": {
+            "type": "number",
+            "description": "used / limit, not clamped at 1."
+          },
+          "limitSource": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "plan",
+              "constant"
+            ],
+            "description": "Whose number the limit is: `provider` (read from the resource itself, so it follows resizes), `plan` (the provider's published allowance for the plan in `plan`), or `constant` (a fixed documented ceiling)."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "runway",
+              "allowance"
+            ],
+            "description": "`allowance` resets every month; `runway` accumulates until it hits the limit."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "field",
+              "output",
+              "metric"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "description": "When the current reading was taken.",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/RunwayForecast"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunwayCycle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "full",
+              "critical",
+              "watch",
+              "ok"
+            ],
+            "description": "Where the usage sits: `full` (used >= limit now), `critical` (alerting: reaches the limit within the organization's runway days on a clean trend, or a monthly allowance is past the allowance threshold or projected past its limit before the cycle resets), `watch` (inside the runway days but the trend is too noisy to alert on), or `ok`."
+          }
+        },
+        "required": [
+          "key",
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "label",
+          "unit",
+          "used",
+          "limit",
+          "utilization",
+          "limitSource",
+          "plan",
+          "kind",
+          "source",
+          "observedAt",
+          "forecast",
+          "cycle",
+          "status"
+        ],
         "additionalProperties": false
       },
       "QuotaListResponse": {
@@ -76675,6 +77210,10 @@
           "schedulable": {
             "type": "boolean",
             "description": "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule."
+          },
+          "hasCapacityRunway": {
+            "type": "boolean",
+            "description": "The type declares a usage with a limit, so the resource has a capacity runway (`GET /api/org/{orgId}/quotas/runway/resource`)."
           }
         },
         "required": [
@@ -100024,6 +100563,90 @@
         "operationId": "getOrgOrgIdQuotas"
       }
     },
+    "/api/org/{orgId}/quotas/runway": {
+      "get": {
+        "tags": [
+          "Quota radar"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runway rows, soonest to run out first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunwayListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every usage a plugin declares on a resource type (a disk's used bytes against its size, a database against its plan's storage cap, connections against `max_connections`, a monthly allowance of compute hours or sends) with when it reaches its limit at the current rate, soonest first. Monthly allowances report the usage projected at the end of the billing cycle instead of a far-off crossing. A read over stored readings: the sync records each declared usage hourly, so no provider API calls are made here.\n\n_Requires permission: `resources:read`._",
+        "summary": "List capacity runway across the organization's resources",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdQuotasRunway"
+      }
+    },
+    "/api/org/{orgId}/quotas/runway/resource": {
+      "get": {
+        "tags": [
+          "Quota radar"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resource's runway rows with history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceRunwayResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "The runway rows for one resource, each with the readings the projection used, for the resource page's runway chart. An empty `rows` means the resource's type declares no usage, or no reading with a resolvable limit has been recorded yet.\n\n_Requires permission: `resources:read`._",
+        "summary": "Get one resource's capacity runway with its readings",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdQuotasRunwayResource"
+      }
+    },
     "/api/org/{orgId}/quotas/settings": {
       "get": {
         "tags": [
@@ -100056,7 +100679,7 @@
             }
           }
         },
-        "description": "The threshold feeds both the feed's severity buckets and the poller's daily alert scan. An organization that never saved reads the shipped defaults (enabled, 0.8).\n\n_Requires permission: `org:settings:write`._",
+        "description": "The threshold feeds both the feed's severity buckets and the poller's daily alert scan; the runway thresholds feed the capacity runway the same way. An organization that never saved reads the shipped defaults (enabled, 0.8, 14 days, 0.8).\n\n_Requires permission: `org:settings:write`._",
         "summary": "Get the organization's quota alert settings",
         "x-required-permission": "org:settings:write",
         "operationId": "getOrgOrgIdQuotasSettings"

@@ -111,6 +111,41 @@ describe("api", () => {
   });
 });
 
+describe("account usage", () => {
+  it("stores each usage beside its limit and leaves unreported ones out", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname !== "/usage") throw new Error(call.url.pathname);
+      return {
+        object: "usage",
+        emails: {
+          daily: { used: 10, limit: null, sent: 10, received: 0 },
+          monthly: {
+            used: 100,
+            limit: 3000,
+            sent: 80,
+            received: 20,
+            resets_at: "2026-12-01T00:00:00.000Z",
+          },
+        },
+        contacts: { used: 400, limit: 1000 },
+        domains: { used: 1, limit: null },
+      };
+    });
+    const [account] = await c.listResources("resend-account", ACC);
+    expect(account!.fields).toMatchObject({
+      emailsThisPeriod: 100,
+      monthlyLimit: 3000,
+      periodResetsAt: "2026-12-01T00:00:00.000Z",
+      contacts: 400,
+      contactsLimit: 1000,
+      domains: 1,
+    });
+    expect(account!.fields).not.toHaveProperty("domainsLimit");
+    expect(account!.fields).not.toHaveProperty("segments");
+    expect(account!.fields).not.toHaveProperty("segmentsLimit");
+  });
+});
+
 describe("domains and DNS records", () => {
   it("re-reads each domain for its records and qualifies relative names", async () => {
     const { c, calls } = client((call) => {

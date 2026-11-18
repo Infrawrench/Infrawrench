@@ -21,6 +21,7 @@ import { getPlugin } from "./plugin-loader";
 import { decryptAccountCredentials } from "./provider-oauth";
 import { captureSavingsFromChanges } from "./savings/capture";
 import { recordDeployEventsFromSync } from "./dora/record";
+import { recordCapacitySnapshots } from "./capacity/record";
 import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -346,6 +347,7 @@ export async function syncAccountResourceType(
 
   await upsertResources(organizationId, accountId, fetched);
   await recordDeploys(organizationId, accountId, plugin, fetched);
+  await recordCapacitySnapshots(organizationId, accountId, plugin, fetched);
 
   if (prior) {
     await recordChangeTimeline(organizationId, accountId, prior, fetched, [typeId], {
@@ -493,6 +495,7 @@ export async function syncAccountResources(
 
   await upsertResources(organizationId, accountId, allResources);
   await recordDeploys(organizationId, accountId, plugin, allResources);
+  await recordCapacitySnapshots(organizationId, accountId, plugin, allResources);
 
   if (prior) {
     await recordChangeTimeline(

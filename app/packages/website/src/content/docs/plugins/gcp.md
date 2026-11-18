@@ -118,6 +118,8 @@ The **Metrics** tab reads Cloud Monitoring and the **Logs** tab reads Cloud Logg
 
 Charts only appear when Cloud Monitoring has data, so a service with no traffic in the time range shows fewer charts. The service account needs **Monitoring Viewer** (`roles/monitoring.viewer`) for metrics and **Logs Viewer** (`roles/logging.viewer`) for logs.
 
+For resources pinned to a dashboard, capacity runway tracks Cloud SQL disk utilization, Bigtable storage utilization and Filestore used space.
+
 ## Idle resource findings
 
 Once a day, Infrawrench checks your GKE clusters and Cloud NAT gateways and adds idle ones to [Potential savings](../features/idle-resources.md):

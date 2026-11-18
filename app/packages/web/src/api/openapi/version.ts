@@ -545,4 +545,8 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: capacity runway under `/api/org/:orgId/quotas`: `GET /runway` and
+// `GET /runway/resource?resourceId=` with their `Runway*` schemas, and
+// `runwayDays` and `allowanceThreshold` on `QuotaAlertSettings` and its
+// update body. Additive.
+export const API_VERSION = "1.118.0";

@@ -4,6 +4,7 @@ import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
 import type { RunningImageDeclaration } from "./vulnerabilities.js";
 import type { ExtendedSupportDeclaration } from "./extended-support.js";
+import type { CapacityMetricDeclaration, CapacityUsageDeclaration } from "./capacity.js";
 
 export type { AssociationSource };
 
@@ -50,6 +51,15 @@ export interface FieldDefinition {
    * empty values. Not allowed on `secret` or `password` fields.
    */
   showcase?: boolean;
+  /**
+   * This field's value is a usage with a limit (bytes stored, connections
+   * open, hours used this cycle). Feeds the capacity runway: the host records
+   * the value on every sync and projects when it reaches the limit, or what
+   * a monthly allowance will reach by the end of its cycle. See
+   * {@link CapacityUsageDeclaration}. Only declare it on a number the lister
+   * actually stores.
+   */
+  usage?: CapacityUsageDeclaration;
 }
 
 export interface ResourceOutput {
@@ -71,6 +81,11 @@ export interface ResourceOutput {
    * up there without the DNS plugins hearing about it.
    */
   dnsValue?: "ipv4" | "ipv6" | "hostname";
+  /**
+   * This output's value is a usage with a limit; see
+   * {@link FieldDefinition.usage}. Ignored on sensitive outputs.
+   */
+  usage?: CapacityUsageDeclaration;
 }
 
 /**
@@ -1092,6 +1107,16 @@ export interface ResourceTypeDefinition {
   eventSink?: boolean;
   /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
   supportsMetrics?: boolean;
+  /**
+   * Metric series this type's `fetchMetricSeries` emits that are a usage
+   * with a limit (a storage percentage, a connection count), named by exact
+   * label. Metric series have no definition object to carry a `usage` flag,
+   * so this is the one place a type names them, the way
+   * `rightsizing.cpuMetric` does. Only read for resources whose metrics the
+   * host stores. Field and output usages go on the field; see
+   * {@link FieldDefinition.usage}.
+   */
+  capacityMetrics?: CapacityMetricDeclaration[];
   /**
    * Declare downloadable credentials this resource can generate (e.g. AWS IAM access keys,
    * GCP service-account JSON keys). When non-empty, the host shows a "Get credentials" button

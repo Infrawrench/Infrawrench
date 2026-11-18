@@ -18,10 +18,24 @@ export const AccountResourceType = rt({
     f("type", "Plan Type", { showcase: true, required: false, editable: false }),
     f("reputation", "Sender Reputation", { kind: "number", required: false, editable: false }),
     f("creditsTotal", "Email Credits", { kind: "number", required: false, editable: false }),
-    f("creditsUsed", "Credits Used", { kind: "number", required: false, editable: false }),
+    // `used` against `total` from `GET /v3/user/credits`, which also states the
+    // period's `last_reset` and `next_reset` dates (twilio.com/docs/sendgrid/api-reference/
+    // users-api/retrieve-your-credit-balance, checked 2026-11-18).
+    f("creditsUsed", "Credits Used", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "creditsTotal" },
+        unit: "emails",
+        cycle: { period: "monthly", startField: "creditsLastReset", endField: "creditsNextReset" },
+        label: "Email credits",
+      },
+    }),
     f("creditsRemain", "Credits Remaining", { kind: "number", required: false, editable: false }),
     f("creditsOverage", "Overage", { kind: "number", required: false, editable: false }),
     f("creditsResetFrequency", "Credits Reset", { required: false, editable: false }),
+    f("creditsLastReset", "Last Reset", { required: false, editable: false }),
     f("creditsNextReset", "Next Reset", { required: false, editable: false }),
     f("company", "Company", { required: false, editable: false }),
     f("region", "API Region", { showcase: true, required: false, editable: false }),

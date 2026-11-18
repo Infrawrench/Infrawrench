@@ -20,4 +20,10 @@ export const FilestoreInstanceResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
+  // `nfs/server/used_bytes_percent` ("Used space as a percentage of the total
+  // space", 0.0 to 100.0), charted under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_d_h
+  capacityMetrics: [
+    { seriesLabel: "Used Space", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
 });

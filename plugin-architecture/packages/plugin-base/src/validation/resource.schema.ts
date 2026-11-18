@@ -2,6 +2,48 @@ import { Schema } from "effect";
 import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
 import { Int, NonEmpty, Positive, PositiveInt, Url, httpsUrl, rule } from "./primitives.js";
 
+/**
+ * Where a usage's ceiling comes from (`capacity.ts`). A union of three
+ * single-key shapes; a plan table with no entries can never resolve, so it is
+ * rejected rather than shipped as a declaration that yields nothing.
+ */
+const capacityLimitSourceSchema = Schema.Union([
+  Schema.Struct({ field: NonEmpty, scale: Schema.optional(Positive) }),
+  Schema.Struct({
+    plan: Schema.Struct({
+      field: NonEmpty,
+      allowances: Schema.Record(Schema.String, Positive).check(
+        rule<Record<string, number>>(
+          (a) => Object.keys(a).length > 0,
+          "a plan table needs at least one plan",
+        ),
+      ),
+    }),
+  }),
+  Schema.Struct({ constant: Positive }),
+]);
+
+const capacityCycleSchema = Schema.Struct({
+  period: Schema.Literal("monthly"),
+  startField: Schema.optional(NonEmpty),
+  endField: Schema.optional(NonEmpty),
+  anchorDay: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(28))),
+});
+
+const capacityUsageSchema = Schema.Struct({
+  limit: capacityLimitSourceSchema,
+  unit: Schema.optional(NonEmpty),
+  cycle: Schema.optional(capacityCycleSchema),
+  label: Schema.optional(NonEmpty),
+});
+
+const capacityMetricSchema = Schema.Struct({
+  seriesLabel: NonEmpty,
+  limit: capacityLimitSourceSchema,
+  unit: Schema.optional(NonEmpty),
+  label: Schema.optional(NonEmpty),
+});
+
 export const fieldDefinitionSchema = Schema.Struct({
   key: NonEmpty,
   label: NonEmpty,
@@ -22,11 +64,17 @@ export const fieldDefinitionSchema = Schema.Struct({
   allowLiteral: Schema.optional(Schema.Boolean),
   editable: Schema.optional(Schema.Boolean),
   showcase: Schema.optional(Schema.Boolean),
+  usage: Schema.optional(capacityUsageSchema),
 }).check(
   rule(
     (f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"),
     "a secret or password field can't be shown on a tile",
     ["showcase"],
+  ),
+  rule(
+    (f) => !f.usage || (f.kind !== "secret" && f.kind !== "password"),
+    "a secret or password field can't carry a usage",
+    ["usage"],
   ),
 );
 
@@ -37,6 +85,7 @@ const resourceOutputSchema = Schema.Struct({
   description: Schema.optional(Schema.String),
   hidden: Schema.optional(Schema.Boolean),
   dnsValue: Schema.optional(Schema.Literals(["ipv4", "ipv6", "hostname"])),
+  usage: Schema.optional(capacityUsageSchema),
 });
 
 const peerPluginIntegrationSchema = Schema.Struct({
@@ -627,6 +676,7 @@ export const resourceTypeDefinitionSchema = Schema.Struct({
   supportsRestQuery: Schema.optional(Schema.Boolean),
   eventSink: Schema.optional(Schema.Boolean),
   supportsMetrics: Schema.optional(Schema.Boolean),
+  capacityMetrics: Schema.optional(Schema.Array(capacityMetricSchema)),
   credentialFormats: Schema.optional(
     Schema.Array(
       Schema.Struct({

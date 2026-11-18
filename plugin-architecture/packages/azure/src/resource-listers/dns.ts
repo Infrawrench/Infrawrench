@@ -65,6 +65,9 @@ export async function listPrivateDNSZones(
         numberOfRecordSets: Number(props?.["numberOfRecordSets"] ?? 0),
         maxNumberOfRecordSets: Number(props?.["maxNumberOfRecordSets"] ?? 0),
         virtualNetworkLinkCount: Number(props?.["numberOfVirtualNetworkLinks"] ?? 0),
+        ...(typeof props?.["maxNumberOfVirtualNetworkLinks"] === "number"
+          ? { maxVirtualNetworkLinks: props["maxNumberOfVirtualNetworkLinks"] }
+          : {}),
       },
       resolvedOutputs: { resourceId: azureId },
       secretStates: [],

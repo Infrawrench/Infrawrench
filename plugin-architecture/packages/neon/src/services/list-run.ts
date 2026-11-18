@@ -137,8 +137,14 @@ export function projectUnread(accountId: string, project: ProjectParent): Unread
   return { parentResourceIds: [resourceId(accountId, "neon-project", project.id)] };
 }
 
-export type ProjectParent = { id: string };
-export type ProjectBranch = BranchRef & { branch: Branch };
+/**
+ * A project to read children of. Read from the project list, it carries the
+ * per-branch logical size limit Neon reports there, which each branch's row
+ * stores beside its logical size; a single project read alone has none.
+ */
+export type ProjectParent = Pick<ProjectListItem, "id"> &
+  Partial<Pick<ProjectListItem, "branch_logical_size_limit_bytes">>;
+export type ProjectBranch = BranchRef & { branch: Branch; logicalSizeLimitBytes?: number };
 
 /**
  * The reads every list hangs off, for one pass over the account: the requests go through
@@ -189,7 +195,13 @@ export class ListRun {
         this.budget,
         async (p) => {
           const branches = await listBranchesOfProject(this.api, p.id);
-          return branches.map((branch) => ({ projectId: p.id, branchId: branch.id, branch }));
+          const limit = p.branch_logical_size_limit_bytes;
+          return branches.map((branch) => ({
+            projectId: p.id,
+            branchId: branch.id,
+            branch,
+            ...(typeof limit === "number" && limit > 0 ? { logicalSizeLimitBytes: limit } : {}),
+          }));
         },
         (p) => projectUnread(accountId, p),
         { maxParents: this.budget.maxEnumeratedProjects },

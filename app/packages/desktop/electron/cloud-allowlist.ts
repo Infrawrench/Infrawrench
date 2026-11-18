@@ -67,6 +67,7 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/changes/alert-settings$`) },
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/expiring/settings$`) },
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/extended-support/settings$`) },
+  { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/quotas/settings$`) },
   // Saved-filter picker on the Cost Visibility page.
   { methods: ["GET"], pattern: new RegExp(`${ORG}/saved-cost-filters$`) },
   // Customer picker on the Billing Rules page (tiered and expression rules).

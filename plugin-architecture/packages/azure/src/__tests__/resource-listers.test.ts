@@ -653,6 +653,44 @@ describe("simple ARM list mappers", () => {
   }
 });
 
+describe("listPrivateDNSZones capacity fields", () => {
+  const zone = {
+    id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net",
+    name: "privatelink.blob.core.windows.net",
+  };
+
+  it("stores the zone's virtual network link cap beside the link count", async () => {
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          ...zone,
+          properties: {
+            numberOfRecordSets: 12,
+            maxNumberOfRecordSets: 25000,
+            numberOfVirtualNetworkLinks: 3,
+            maxNumberOfVirtualNetworkLinks: 1000,
+          },
+        },
+      ],
+    }));
+    const [out] = await listers.listPrivateDNSZones(ctx, ACCT);
+    expect(out!.fields).toMatchObject({
+      numberOfRecordSets: 12,
+      maxNumberOfRecordSets: 25000,
+      virtualNetworkLinkCount: 3,
+      maxVirtualNetworkLinks: 1000,
+    });
+  });
+
+  it("leaves the cap absent when ARM does not report it", async () => {
+    const ctx = makeCtx(() => ({
+      value: [{ ...zone, properties: { numberOfVirtualNetworkLinks: 3 } }],
+    }));
+    const [out] = await listers.listPrivateDNSZones(ctx, ACCT);
+    expect(out!.fields).not.toHaveProperty("maxVirtualNetworkLinks");
+  });
+});
+
 describe("function-app vs app-service filtering by kind", () => {
   const sites = {
     value: [
