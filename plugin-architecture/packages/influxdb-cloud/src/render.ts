@@ -7,6 +7,7 @@ import type {
   SchemaNode,
   SectionNode,
   SidebarItemSchema,
+  SqlTableMeta,
 } from "@infrawrench/plugin-base";
 import { formatBytes, joinSubtitle } from "@infrawrench/plugin-base";
 import { T } from "./resource-types.js";
@@ -31,6 +32,18 @@ export function statusOf(raw: string): ResourceStatus {
   if (["inactive", "canceled"].includes(s)) return "degraded";
   if (/fail|error|crit/.test(s)) return "error";
   return "info";
+}
+
+/** Measurements the host introspected (`introspectResource`), for the query tab's completion. */
+function introspectedTables(resource: ResourceInstance): SqlTableMeta[] {
+  const raw = resource.resolvedOutputs?.["__tables__"];
+  if (typeof raw !== "string" || raw === "") return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as SqlTableMeta[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function kv(items: Array<[string, string | number | boolean | undefined]>): SchemaNode {
@@ -194,11 +207,16 @@ export function renderInfluxDetail(resource: ResourceInstance): DetailViewSchema
               kind: "text",
               variant: "muted",
               content:
-                "The query tab runs InfluxQL against this bucket (SELECT … FROM measurement), or Flux when the text contains a pipe (from(bucket: …) |> range(…)).",
+                "Queries in the editor tab run as InfluxQL against this bucket (SELECT … FROM measurement), or as Flux when the text contains a pipe (from(bucket: …) |> range(…)).",
             },
           ]),
         ],
         headerActions: [refresh()],
+        sqlEditor: {
+          connectionStringOutputKey: "bucketId",
+          defaultQuery: "SHOW MEASUREMENTS",
+          tables: introspectedTables(resource),
+        },
       };
     }
     case T.token:
