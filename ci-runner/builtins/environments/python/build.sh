@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CPython for env:python and the cloud CLI environments: Wasmer's
-# `python/python` 3.13.20 (CPython 3.13.15) with file locks (#1216).
+# `python/python` 3.13.20 (CPython 3.13.15) with file locks (#1216), which
+# keeps its own PYTHONEXECUTABLE to itself (#1310; keep_executable_to_itself).
 #
 # Its C library has no file locking. `flock` does nothing and answers 0;
 # `fcntl` answers ENOSYS for F_GETLK, F_SETLK and F_SETLKW without asking
@@ -37,7 +38,7 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 source "$here/environments/patch-module.sh"
 
 # Our build of 3.13.20. A changed build is a new number after `iwci.`.
-VERSION="3.13.20-iwci.1"
+VERSION="3.13.20-iwci.2"
 WEBC_SHA256="a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
 MODULE_SHA256="3fc48792e8f667333a6397fd9ce6961a5a76cd69160c5af6af074a32c0baf3f4"
 REWRITTEN_SHA256="15b5dc8fb3b40ee15a36ab1e5dd9df55b8130d81ea564a1994a85fce2e17f12c"
@@ -78,6 +79,46 @@ rewrite_python() {
   python3 "$here/environments/python/file-locks.py" "$work/python.wat" "$work/python-locks.wat"
   "$tools" parse "$work/python-locks.wat" -o "$module"
   rm -f "$work/python.wat" "$work/python-locks.wat"
+  keep_executable_to_itself "${module%/modules/*}"
+}
+
+# The package's Nix `sitecustomize.py`, before and after the lines below.
+SITECUSTOMIZE="fs/nix/store/wf0002v5izqcb7kg59n8cilx58lcp373-python3-static-wasm32-unknown-wasi-3.13.15/lib/python3.13/site-packages/sitecustomize.py"
+SITECUSTOMIZE_SHA256="5778dbc0e4f80ab0f4767d316fc5c2dea842ee349cba02187ce5f88ab56ec078"
+SITECUSTOMIZED_SHA256="1ddba15358c897cc74b077f979f6e5b7d75bbb9e7c5d16beac4ca487ef668d81"
+
+# keep_executable_to_itself <package>: the interpreter does not pass on
+# PYTHONEXECUTABLE (#1310).
+#
+# Each of the package's commands sets it to /bin/python3.13, which tells the
+# interpreter its own path. Every program the interpreter started inherited
+# it, so a venv's interpreter that `python -m venv` started (to run
+# ensurepip) took itself for /bin/python3.13 and missed its venv. That went
+# unseen while a child's environment was laid over its parent's start-up
+# one, which also put back the `PIP_*` variables ensurepip removes, so pip
+# installed into this interpreter instead. Now a child gets only what it is
+# passed, so pip found this interpreter externally managed and refused.
+# The Nix `sitecustomize.py` already keeps its own NIX_PYTHONEXECUTABLE from
+# leaking this way; this does the same for the package's variable, and only
+# when it holds the package's value, so one a job sets itself is left alone.
+keep_executable_to_itself() {
+  local file="$1/$SITECUSTOMIZE"
+  if [[ "$(sha256 "$file")" != "$SITECUSTOMIZE_SHA256" ]]; then
+    echo "error: the package's sitecustomize.py is not the one expected" >&2
+    exit 1
+  fi
+  cat >>"$file" <<'PY'
+
+# iwci (ci-runner/builtins/environments/python/build.sh): PYTHONEXECUTABLE is
+# this package's commands telling the interpreter its own path. A program it
+# starts, such as a venv's interpreter, is not this interpreter (#1310).
+if os.environ.get('PYTHONEXECUTABLE') == '/bin/python3.13':
+    del os.environ['PYTHONEXECUTABLE']
+PY
+  if [[ "$(sha256 "$file")" != "$SITECUSTOMIZED_SHA256" ]]; then
+    echo "error: the changed sitecustomize.py hashed to $(sha256 "$file"), expected $SITECUSTOMIZED_SHA256" >&2
+    exit 1
+  fi
 }
 
 rewrite_package "${PYTHON_WORK:-$SCRATCH/python}" python "$VERSION" "$WEBC_SHA256" "$MODULE_SHA256" \

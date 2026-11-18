@@ -92,9 +92,10 @@ FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe3490
 # Git, built by git/build.sh from its release for WASIX; the hash is its
 # output's, as with Edge.js. Every environment has it (README.md, "Git").
 GIT_PKG="iwci/git 2.56.1-iwci.2 841a8d6b293c94ff2879186dae83989e7b1893c41768532d15cb09c8f415d876"
-# Built by python/build.sh as 3.13.20-iwci.1, keeping Wasmer's version the
-# same way: Wasmer's CPython with file locks (#1216).
-PYTHON_PKG="python/python 3.13.20 d6cd79a53cd7d49798955b1bbc1d9e7c7d4d4e9b10af0acf40d2bc0ff590a9e4 3.13.20-iwci.1"
+# Built by python/build.sh as 3.13.20-iwci.2, keeping Wasmer's version the
+# same way: Wasmer's CPython with file locks (#1216), which does not pass its
+# own PYTHONEXECUTABLE on to the programs it starts (#1310).
+PYTHON_PKG="python/python 3.13.20 b2fa55739ac03c1b23cbe6ffc298bdcc981e5094949944b51c5e83313cc692da 3.13.20-iwci.2"
 PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
 PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
 PHP83_PKG="phpix/phpix-83-64bit 0.3.1 d2ff745903b5c6130662a198d330456daf8cb953438a0d8b8246130a3fb25043"
@@ -467,7 +468,8 @@ for env in "$@"; do
       # 3.13.19: and `pip install --user`, its commands on PATH.
       # 3.13.20: and Git's prompts read /dev/tty, so they end at once (#1264).
       # 3.13.21: and `fcntl.flock` and `fcntl.lockf` lock (#1216).
-      build_env python 3.13.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
+      # 3.13.22: and `python -m venv` installs pip into the venv (#1310).
+      build_env python 3.13.22 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     aws)
@@ -475,13 +477,15 @@ for env in "$@"; do
       # CPython's; its patch number is the environment's own.
       # 1.46.1: Git's prompts read /dev/tty (#1264).
       # 1.46.2: and file locks (#1216).
-      build_env aws 1.46.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
+      # 1.46.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env aws 1.46.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
         "$AWS_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AWS_CLI_PKG"
       ;;
     az)
       # 2.92.1: Git's prompts read /dev/tty (#1264).
       # 2.92.2: and file locks (#1216), so `az` takes its token cache's.
-      build_env az 2.92.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
+      # 2.92.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env az 2.92.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
         "$AZ_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AZURE_CLI_PKG" "$AZURE_CLI_MGMT_PKG"
       ;;
     gcloud)
@@ -489,7 +493,8 @@ for env in "$@"; do
       # number is its own revision.
       # 593.0.1: Git's prompts read /dev/tty (#1264).
       # 593.0.2: and file locks (#1216).
-      build_env gcloud 593.0.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
+      # 593.0.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env gcloud 593.0.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
         "$GCLOUD_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$GCLOUD_PKG" "$GCLOUD_APIS_PKG"
       ;;
     php)
