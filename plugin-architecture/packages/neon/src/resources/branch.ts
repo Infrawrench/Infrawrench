@@ -11,7 +11,19 @@ export const NeonBranchResourceType = rt({
     f("parentId", "Parent Branch", { required: false, editable: false }),
     f("primary", "Primary", { kind: "boolean", required: false, editable: false }),
     f("currentState", "State", { required: false, editable: false }),
-    f("logicalSize", "Logical Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("logicalSize", "Logical Size (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      // Neon reports the per-branch limit on the project
+      // (`branch_logical_size_limit_bytes`), which the lister copies here.
+      usage: { limit: { field: "logicalSizeLimit" }, unit: "bytes", label: "Logical size" },
+    }),
+    f("logicalSizeLimit", "Logical Size Limit (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("initSource", "Created From", { required: false, editable: false }),
     f("lastResetAt", "Last Reset", { required: false, editable: false }),
     f("protected", "Protected", {

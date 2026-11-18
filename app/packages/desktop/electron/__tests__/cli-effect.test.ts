@@ -139,6 +139,7 @@ describe("effect/cli: routing", () => {
       "resource-reports",
       "resources",
       "routing",
+      "runway",
       "savings",
       "scenarios",
       "schedules",

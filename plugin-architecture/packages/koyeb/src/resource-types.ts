@@ -308,7 +308,13 @@ export const VolumeResourceType = rt({
       required: false,
       description: "Volumes can only grow.",
     }),
-    f("usedGb", "Used (GB)", { kind: "number", ...ro }),
+    // `cur_size` and `max_size` on PersistentVolume, both in GB
+    // (https://api.prod.koyeb.com/public.swagger.json, read 2026-11-18).
+    f("usedGb", "Used (GB)", {
+      kind: "number",
+      ...ro,
+      usage: { limit: { field: "sizeGb" }, unit: "GB", label: "Storage" },
+    }),
     f("status", "Status", { ...ro, showcase: true }),
     f("readOnly", "Read Only", { kind: "boolean", ...ro }),
     f("serviceId", "Attached Service", ro),

@@ -297,6 +297,8 @@ COMMANDS
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
   access              break-glass requests & live permission elevations
   credits             prepaid balances with burn rate & runway ("6 days left")
+  runway              resource usage against its limit (disks, plan caps, monthly allowances),
+                      soonest to run out first   [--at-risk]
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
   commitments reports [name|id]

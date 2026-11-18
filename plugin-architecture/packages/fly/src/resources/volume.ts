@@ -34,6 +34,20 @@ export const VolumeResourceType = rt({
     }),
     f("bytesUsed", "Used (bytes)", { kind: "number", required: false, editable: false }),
     f("bytesTotal", "Capacity (bytes)", { kind: "number", required: false, editable: false }),
+    // From the filesystem block counts the volume's Machine last reported
+    // (`blocks`, `blocks_avail`, `block_size`). `bytes_used` is the thinly
+    // provisioned host allocation and never shrinks, so it is not what fills.
+    f("fsUsedBytes", "Filesystem Used (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "fsSizeBytes" }, unit: "bytes", label: "Storage" },
+    }),
+    f("fsSizeBytes", "Filesystem Size (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("hostStatus", "Host Status", { required: false, editable: false }),
     f("attachedMachineId", "Attached Machine", {
       required: false,

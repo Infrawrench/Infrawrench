@@ -42,6 +42,18 @@ export const SQLDatabaseResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display
+  // name: the "Metric" column for `storage_percent` (unit Percent; not
+  // reported for Hyperscale) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-sql-servers-databases-metrics
+  capacityMetrics: [
+    {
+      seriesLabel: "Data space used percent",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Data space",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "mssql",

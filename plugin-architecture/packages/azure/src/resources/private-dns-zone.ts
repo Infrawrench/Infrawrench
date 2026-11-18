@@ -7,12 +7,25 @@ export const PrivateDNSZoneResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
+    // The max* counts are read-only PrivateZoneProperties reported per zone
+    // (Microsoft.Network/privateDnsZones 2020-06-01, azure-rest-api-specs
+    // specification/privatedns/.../stable/2020-06-01/privatedns.json).
+    f("numberOfRecordSets", "Record Sets", {
+      kind: "number",
+      required: false,
+      usage: { limit: { field: "maxNumberOfRecordSets" }, unit: "record sets" },
+    }),
     f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
     f("virtualNetworkLinkCount", "Virtual Network Links", {
       showcase: true,
       kind: "number",
       required: false,
+      usage: { limit: { field: "maxVirtualNetworkLinks" }, unit: "links" },
+    }),
+    f("maxVirtualNetworkLinks", "Max Virtual Network Links", {
+      kind: "number",
+      required: false,
+      editable: false,
     }),
   ],
   outputs: [o("resourceId", "Resource ID")],

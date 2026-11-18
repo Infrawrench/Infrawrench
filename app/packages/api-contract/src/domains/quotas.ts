@@ -11,9 +11,9 @@ import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
 import { BadRequest } from "../http/errors";
 import { OrgAuth } from "../http/middleware-tags";
-import { IsoDateTime, OrgParams, Uuid } from "../http/schemas/common";
+import { IsoDateTime, OrgParams, ResourceId, Uuid } from "../http/schemas/common";
 import { optionalRequestBody } from "../http/schemas/documented";
-import { PluginId } from "../http/schemas/plugin-registry";
+import { PluginId, ResourceTypeId } from "../http/schemas/plugin-registry";
 
 const QuotaSeverity = Schema.Literals(["exhausted", "critical", "trending", "ok"]).annotate({
   description:
@@ -125,11 +125,130 @@ export const QuotaListResponse = Schema.Struct({
   }),
 }).annotate({ identifier: "QuotaListResponse" });
 
+const RunwayStatus = Schema.Literals(["full", "critical", "watch", "ok"]).annotate({
+  description:
+    "Where the usage sits: `full` (used >= limit now), `critical` (alerting: reaches the limit " +
+    "within the organization's runway days on a clean trend, or a monthly allowance is past the " +
+    "allowance threshold or projected past its limit before the cycle resets), `watch` (inside " +
+    "the runway days but the trend is too noisy to alert on), or `ok`.",
+});
+
+const RunwayForecast = Schema.Struct({
+  perDay: Schema.NullOr(Schema.Finite).annotate({
+    description:
+      "Change in usage per day, in the row's unit. A Theil-Sen slope (the median of every " +
+      "pairwise slope) over the recorded readings, or for a monthly allowance with too few " +
+      "readings this cycle, the average since the cycle started. Null without a rate.",
+  }),
+  daysLeft: Schema.NullOr(Schema.Finite).annotate({
+    description:
+      "Days until usage reaches the limit at that rate. Null when flat or falling, when already " +
+      "full, when the crossing is more than 365 days out, or (for an allowance) when the cycle " +
+      "resets first.",
+  }),
+  fullAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "The crossing, when `daysLeft` is set.",
+  }),
+  method: Schema.NullOr(Schema.Literals(["trend", "cycle-average"])),
+  confidence: Schema.Literals(["ok", "noisy", "short"]).annotate({
+    description:
+      "`short`: fewer than 3 readings or less than a day of history, so no projection. " +
+      "`noisy`: the scatter around the trend is as large as the change it explains. `ok` otherwise.",
+  }),
+  points: Schema.Int.annotate({ description: "Readings the fit used." }),
+}).annotate({ identifier: "RunwayForecast" });
+
+const RunwayCycle = Schema.Struct({
+  start: IsoDateTime,
+  end: IsoDateTime.annotate({ description: "When the allowance resets." }),
+  projectedUsed: Schema.NullOr(Schema.Finite).annotate({
+    description: "Usage projected at the end of the cycle at the current rate.",
+  }),
+  projectedUtilization: Schema.NullOr(Schema.Finite),
+}).annotate({ identifier: "RunwayCycle" });
+
+const runwayRowFields = {
+  key: Schema.String.annotate({
+    description:
+      "The usage's key within the resource: a field or output key, or `metric:<series>`.",
+    examples: ["storageBytes"],
+  }),
+  resourceId: ResourceId,
+  resourceName: Schema.String,
+  resourceTypeId: ResourceTypeId,
+  accountId: Uuid,
+  accountName: Schema.String,
+  pluginId: PluginId,
+  label: Schema.String.annotate({ examples: ["Storage"] }),
+  unit: Schema.NullOr(Schema.String).annotate({
+    description: "What both numbers count. `bytes` is a byte count; anything else is a word.",
+  }),
+  used: Schema.Finite,
+  limit: Schema.Finite,
+  utilization: Schema.Finite.annotate({ description: "used / limit, not clamped at 1." }),
+  limitSource: Schema.Literals(["provider", "plan", "constant"]).annotate({
+    description:
+      "Whose number the limit is: `provider` (read from the resource itself, so it follows " +
+      "resizes), `plan` (the provider's published allowance for the plan in `plan`), or " +
+      "`constant` (a fixed documented ceiling).",
+  }),
+  plan: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(["runway", "allowance"]).annotate({
+    description: "`allowance` resets every month; `runway` accumulates until it hits the limit.",
+  }),
+  source: Schema.Literals(["field", "output", "metric"]),
+  observedAt: IsoDateTime.annotate({ description: "When the current reading was taken." }),
+  forecast: RunwayForecast,
+  cycle: Schema.NullOr(RunwayCycle),
+  status: RunwayStatus,
+};
+
+const RunwayRow = Schema.Struct(runwayRowFields).annotate({ identifier: "RunwayRow" });
+
+const RunwayPoint = Schema.Struct({
+  observedAt: IsoDateTime,
+  used: Schema.Finite,
+  limit: Schema.Finite,
+}).annotate({ identifier: "RunwayPoint" });
+
+const ResourceRunwayRow = Schema.Struct({
+  ...runwayRowFields,
+  history: Schema.Array(RunwayPoint).annotate({
+    description:
+      "The readings the projection used: the trend window for a runway row, the current " +
+      "cycle for an allowance.",
+  }),
+}).annotate({ identifier: "ResourceRunwayRow" });
+
+const runwayEnvelopeFields = {
+  runwayDays: Schema.Int.annotate({
+    description: "The organization's runway alert threshold, in days.",
+  }),
+  allowanceThreshold: Schema.Finite.annotate({
+    description: "The organization's monthly allowance alert threshold, as a fraction.",
+  }),
+  windowDays: Schema.Int.annotate({ description: "How far back the trend looks, in days." }),
+};
+
+export const RunwayListResponse = Schema.Struct({
+  rows: Schema.Array(RunwayRow).annotate({
+    description: "Every declared usage with a reading, soonest to run out first.",
+  }),
+  ...runwayEnvelopeFields,
+}).annotate({ identifier: "RunwayListResponse" });
+
+export const ResourceRunwayResponse = Schema.Struct({
+  rows: Schema.Array(ResourceRunwayRow),
+  ...runwayEnvelopeFields,
+}).annotate({ identifier: "ResourceRunwayResponse" });
+
 const Threshold = Schema.Finite.check(Schema.isBetween({ minimum: 0.5, maximum: 0.99 }));
+const RunwayDays = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 90 }));
 
 export const QuotaAlertSettings = Schema.Struct({
   enabled: Schema.Boolean.annotate({
-    description: "Whether the poller sends quota alerts for this organization at all.",
+    description:
+      "Whether the poller sends quota and capacity runway alerts for this organization at all.",
   }),
   threshold: Threshold.annotate({
     description:
@@ -137,6 +256,16 @@ export const QuotaAlertSettings = Schema.Struct({
       "at 0.5 (a lower threshold makes every quota critical) and above at 0.99 (at 1.0 " +
       "the provider is already refusing requests, so the alert reports an outage rather " +
       "than warning about one). Values outside the range are rejected, not clamped.",
+  }),
+  runwayDays: RunwayDays.annotate({
+    description:
+      "Capacity runway: alert when a resource will reach its limit within this many days on a " +
+      "clean trend. Default 14, from 1 to 90.",
+  }),
+  allowanceThreshold: Threshold.annotate({
+    description:
+      "Capacity runway: alert when a monthly allowance is at this fraction of its limit, or is " +
+      "projected past the whole of it before the cycle resets. Default 0.8, from 0.5 to 0.99.",
   }),
   lastNotifiedAt: Schema.NullOr(IsoDateTime).annotate({
     description:
@@ -149,6 +278,8 @@ export const QuotaAlertSettings = Schema.Struct({
 const QuotaAlertSettingsUpdate = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   threshold: Schema.optionalKey(Threshold),
+  runwayDays: Schema.optionalKey(RunwayDays),
+  allowanceThreshold: Schema.optionalKey(Threshold),
 }).annotate({ identifier: "QuotaAlertSettingsUpdate" });
 
 export class QuotasGroup extends HttpApiGroup.make("quotas")
@@ -174,6 +305,36 @@ export class QuotasGroup extends HttpApiGroup.make("quotas")
         SuccessDescription,
         "Quota readings, worst first, with per-account collection status",
       ),
+    HttpApiEndpoint.get("runway", "/runway", {
+      params: OrgParams,
+      success: RunwayListResponse,
+    })
+      .annotate(RequiredPermission, "resources:read")
+      .annotate(OpenApi.Summary, "List capacity runway across the organization's resources")
+      .annotate(
+        OpenApi.Description,
+        "Every usage a plugin declares on a resource type (a disk's used bytes against its size, " +
+          "a database against its plan's storage cap, connections against `max_connections`, a " +
+          "monthly allowance of compute hours or sends) with when it reaches its limit at the " +
+          "current rate, soonest first. Monthly allowances report the usage projected at the end " +
+          "of the billing cycle instead of a far-off crossing. A read over stored readings: the " +
+          "sync records each declared usage hourly, so no provider API calls are made here.",
+      )
+      .annotate(SuccessDescription, "Runway rows, soonest to run out first"),
+    HttpApiEndpoint.get("resourceRunway", "/runway/resource", {
+      params: OrgParams,
+      query: { resourceId: ResourceId },
+      success: ResourceRunwayResponse,
+    })
+      .annotate(RequiredPermission, "resources:read")
+      .annotate(OpenApi.Summary, "Get one resource's capacity runway with its readings")
+      .annotate(
+        OpenApi.Description,
+        "The runway rows for one resource, each with the readings the projection used, for the " +
+          "resource page's runway chart. An empty `rows` means the resource's type declares no " +
+          "usage, or no reading with a resolvable limit has been recorded yet.",
+      )
+      .annotate(SuccessDescription, "The resource's runway rows with history"),
     HttpApiEndpoint.get("getSettings", "/settings", {
       params: OrgParams,
       success: QuotaAlertSettings,
@@ -183,7 +344,8 @@ export class QuotasGroup extends HttpApiGroup.make("quotas")
       .annotate(
         OpenApi.Description,
         "The threshold feeds both the feed's severity buckets and the poller's daily alert " +
-          "scan. An organization that never saved reads the shipped defaults (enabled, 0.8).",
+          "scan; the runway thresholds feed the capacity runway the same way. An organization " +
+          "that never saved reads the shipped defaults (enabled, 0.8, 14 days, 0.8).",
       )
       .annotate(SuccessDescription, "Quota alert settings"),
     HttpApiEndpoint.put("updateSettings", "/settings", {

@@ -22,6 +22,7 @@ import { ownership } from "../commands/ownership";
 import { access } from "../commands/access";
 import { costVisibility } from "../commands/cost-visibility";
 import { credits } from "../commands/credits";
+import { runway } from "../commands/runway";
 import { expiring } from "../commands/expiring";
 import { incidents } from "../commands/incidents";
 import { schedules } from "../commands/schedules";
@@ -108,6 +109,7 @@ const subcommands = [
   expiring,
   schedules,
   credits,
+  runway,
   costVisibility,
   statusPages,
   declaredIncidents,

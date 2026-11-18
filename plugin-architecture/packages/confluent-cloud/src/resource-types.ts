@@ -144,6 +144,11 @@ export const KafkaClusterResourceType = rt({
   supportsUpdate: true,
   supportsDelete: true,
   supportsMetrics: true,
+  // An elastic cluster scales up to `config.max_ecku` and is throttled past
+  // it (cmk v2, https://docs.confluent.io/cloud/current/clusters/update-cluster.html).
+  // "eCKUs" charts `io.confluent.kafka.server/elastic_cku_count`, so it reads
+  // against the stored ceiling. Dedicated clusters have neither.
+  capacityMetrics: [{ seriesLabel: "eCKUs", limit: { field: "maxEcku" }, unit: "eCKUs" }],
   peerIntegrations: [
     {
       // The existing Kafka plugin's topic browser, consumer groups and
@@ -228,7 +233,15 @@ export const FlinkComputePoolResourceType = rt({
       description:
         "The most Confluent Flink Units the pool may scale to. Statements are billed per CFU-minute actually used, up to this ceiling.",
     }),
-    f("currentCfu", "Current CFUs", { kind: "number", required: false, editable: false }),
+    // `status.current_cfu` is the CFUs allocated now; `spec.max_cfu` is the
+    // ceiling the pool auto-scales to (fcpm v2,
+    // https://docs.confluent.io/cloud/current/ccloud/get-fcpm-v-2-compute-pool/).
+    f("currentCfu", "Current CFUs", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "maxCfu" }, unit: "CFUs", label: "Compute" },
+    }),
     f("cloud", "Cloud", { showcase: true, required: false, editable: false }),
     f("region", "Region", { showcase: true, required: false, editable: false }),
     f("phase", "Status", { showcase: true, required: false, editable: false }),
@@ -276,6 +289,12 @@ export const KsqlClusterResourceType = rt({
   dependsOn: [{ fieldKey: "kafkaClusterId", targetTypeId: "kafka-cluster", label: "reads from" }],
   supportsDelete: true,
   supportsMetrics: true,
+  // `io.confluent.kafka.ksql/storage_utilization` (a 0..1 fraction, charted
+  // as a percent). At 100% ksqlDB stops processing records:
+  // https://docs.confluent.io/cloud/current/ksqldb/monitoring-ksqldb.html
+  capacityMetrics: [
+    { seriesLabel: "Storage utilization", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   iconKey: "stream",
 });
 

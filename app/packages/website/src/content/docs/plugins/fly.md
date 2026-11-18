@@ -44,7 +44,7 @@ Apps also chart the Fly Proxy edge: request rate, 5xx rate, p95 response time, d
 
 ## Manage volumes, secrets and networking
 
-- **Volumes**: **Edit** grows a volume (volumes can't shrink) and changes automatic snapshots and snapshot retention. **Snapshot Now** takes a snapshot, and the detail view lists the ones you have.
+- **Volumes**: **Edit** grows a volume (volumes can't shrink) and changes automatic snapshots and snapshot retention. **Snapshot Now** takes a snapshot, and the detail view lists the ones you have. Capacity runway tracks each volume's filesystem use against its size.
 - **App secrets**: create, update (values are write-only) and delete secrets. Machines pick up a changed secret on their next restart or deploy.
 - **Deploy tokens**: export an app-scoped `FLY_API_TOKEN` for CI from an app's credentials menu.
 - **Certificates**: request Let's Encrypt certificates for custom hostnames, see their validation state and any DNS errors, and use **Check DNS** to validate again.

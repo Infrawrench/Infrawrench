@@ -8,7 +8,13 @@ export const DNSZoneResourceType = rt({
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
     f("zoneType", "Zone Type"),
-    f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
+    // maxNumberOfRecordSets is read-only and reported by ARM per zone:
+    // https://learn.microsoft.com/rest/api/dns/zones/list?view=rest-dns-2018-05-01
+    f("numberOfRecordSets", "Record Sets", {
+      kind: "number",
+      required: false,
+      usage: { limit: { field: "maxNumberOfRecordSets" }, unit: "record sets" },
+    }),
     f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
   ],
   outputs: [o("nameServers", "Name Servers")],

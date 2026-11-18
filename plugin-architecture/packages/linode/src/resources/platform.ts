@@ -192,7 +192,14 @@ export const DatabaseResourceType = rt({
     f("primaryHost", "Primary Host", { required: false, editable: false }),
     f("secondaryHost", "Read-only Host", { required: false, editable: false }),
     f("port", "Port", { kind: "number", required: false, editable: false }),
-    f("diskUsedGb", "Disk Used (GB)", { kind: "number", required: false, editable: false }),
+    // `used_disk_size_gb` and `total_disk_size_gb`, both GB, on the Managed
+    // Database object (linode-api-docs openapi.json, read 2026-11-18).
+    f("diskUsedGb", "Disk Used (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "diskTotalGb" }, unit: "GB", label: "Storage" },
+    }),
     f("diskTotalGb", "Disk Total (GB)", { kind: "number", required: false, editable: false }),
     f("platform", "Platform", { required: false, editable: false }),
     f("managedBackups", "Automatic Backups", {
@@ -315,7 +322,21 @@ export const AccountResourceType = rt({
       kind: "number",
       required: false,
     }),
-    f("transferUsedGb", "Transfer Used (GB)", { kind: "number", required: false }),
+    // `GET /account/transfer` reports `used` and `quota` in GB "for the current
+    // month", and the pool resets on the 1st
+    // (https://techdocs.akamai.com/linode-api/reference/get-transfer and
+    // https://techdocs.akamai.com/cloud-computing/docs/network-transfer-usage-and-costs,
+    // read 2026-11-18).
+    f("transferUsedGb", "Transfer Used (GB)", {
+      kind: "number",
+      required: false,
+      usage: {
+        limit: { field: "transferQuotaGb" },
+        unit: "GB",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Network transfer",
+      },
+    }),
     f("transferQuotaGb", "Transfer Pool (GB)", { kind: "number", required: false }),
     f("transferBillableGb", "Billable Transfer (GB)", { kind: "number", required: false }),
     f("billingSource", "Billing Source", { required: false }),

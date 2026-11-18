@@ -347,7 +347,13 @@ export const VolumeResourceType = rt({
     f("name", "Name"),
     f("mountPath", "Mount Path", { description: "Absolute path inside the service, e.g. /data." }),
     f("sizeGb", "Size (GB)", { showcase: true, kind: "number", ...ro }),
-    f("usedGb", "Used (GB)", { kind: "number", ...ro }),
+    // `currentSizeMB` beside `sizeMB` on the public GraphQL API's VolumeInstance
+    // (schema introspected 2026-11-18); the mapper divides both by 1000.
+    f("usedGb", "Used (GB)", {
+      kind: "number",
+      ...ro,
+      usage: { limit: { field: "sizeGb" }, unit: "GB", label: "Storage" },
+    }),
     f("state", "State", { ...ro, showcase: true }),
     f("region", "Region", { ...ro, showcase: true }),
     f("serviceId", "Attached Service", ro),

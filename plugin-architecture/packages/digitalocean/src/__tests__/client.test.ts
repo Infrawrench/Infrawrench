@@ -359,7 +359,9 @@ describe("container-registry", () => {
             created_at: "2026-01-01T00:00:00Z",
           },
         };
-      if (path === "/registry/subscription") return { subscription: { tier: { slug: "basic" } } };
+      if (path === "/registry/subscription") {
+        return { subscription: { tier: { slug: "basic", included_storage_bytes: 5368709120 } } };
+      }
       return undefined;
     });
     const list = await newClient().listResources("container-registry", ACC);
@@ -371,6 +373,7 @@ describe("container-registry", () => {
       subscriptionTier: "basic",
       region: "nyc3",
       storageUsageBytes: 12345,
+      includedStorageBytes: 5368709120,
       createdAt: "2026-01-01T00:00:00Z",
     });
     expect(list[0]!.resolvedOutputs).toEqual({

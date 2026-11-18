@@ -243,6 +243,13 @@ export const ResourceDetail = Schema.Struct({
     description:
       "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule.",
   }),
+  hasCapacityRunway: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The type declares a usage with a limit, so the resource has a capacity runway " +
+        "(`GET /api/org/{orgId}/quotas/runway/resource`).",
+    }),
+  ),
 }).annotate({ identifier: "ResourceDetail" });
 
 export const Manifest = Schema.Struct({ manifest: Schema.String }).annotate({

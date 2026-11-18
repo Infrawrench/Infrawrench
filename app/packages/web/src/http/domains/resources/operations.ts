@@ -21,6 +21,7 @@ import {
   normalizeResourceCreateResult,
   pickShowcaseValues,
   showcaseFields,
+  typeHasCapacity,
   type OutputRefValue,
 } from "@infrawrench/plugin-base";
 import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
@@ -590,6 +591,10 @@ export async function loadResourceDetail(input: DetailRequest) {
     // Sleep/wake eligibility: discovered from the plugin's lifecycle
     // declaration, never from provider names.
     schedulable: !!resourceTypeDef?.lifecycle && !!client.invokeAction,
+    // Capacity runway: the type declares a usage with a limit, so the Metrics
+    // tab carries runway charts. Discovered from the declaration, never from
+    // provider names.
+    hasCapacityRunway: !!resourceTypeDef && typeHasCapacity(resourceTypeDef),
   };
 }
 

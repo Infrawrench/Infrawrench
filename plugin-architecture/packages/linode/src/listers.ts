@@ -424,8 +424,9 @@ export function mapDatabase(d: LinodeDatabase, accountId: string): ResourceInsta
       primaryHost: str(d.hosts?.primary),
       secondaryHost: str(d.hosts?.secondary),
       port: d.port ?? 0,
-      diskUsedGb: d.used_disk_size_gb ?? 0,
-      diskTotalGb: d.total_disk_size_gb ?? 0,
+      // Absent until the database has reported: no reading, rather than 0.
+      ...(d.used_disk_size_gb != null ? { diskUsedGb: d.used_disk_size_gb } : {}),
+      ...(d.total_disk_size_gb != null ? { diskTotalGb: d.total_disk_size_gb } : {}),
       platform: str(d.platform),
       // Every Managed Database takes automatic daily backups; there is no
       // switch to turn them off.

@@ -19,7 +19,7 @@ Connect Koyeb to deploy and scale services, manage databases, secrets, domains a
 - **Instances**: the running replicas, with their region, datacenter and logs.
 - **Secrets**: create, update the value, delete. The value is available as an output.
 - **Domains**: add a custom domain to an app, see the CNAME target, and check DNS again.
-- **Volumes**: create, rename, grow, delete and take snapshots. **Snapshots** are listed and can be deleted.
+- **Volumes**: create, rename, grow, delete and take snapshots. **Snapshots** are listed and can be deleted. Capacity runway tracks each volume's used space against its size.
 
 ## Connect your account
 

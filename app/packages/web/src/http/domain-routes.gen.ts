@@ -286,6 +286,8 @@ export const DOMAIN_ROUTES: readonly DomainRoute[] = [
   ["extendedSupport","GET","/api/org/:orgId/extended-support/settings"],
   ["extendedSupport","PUT","/api/org/:orgId/extended-support/settings"],
   ["quotas","GET","/api/org/:orgId/quotas"],
+  ["quotas","GET","/api/org/:orgId/quotas/runway"],
+  ["quotas","GET","/api/org/:orgId/quotas/runway/resource"],
   ["quotas","GET","/api/org/:orgId/quotas/settings"],
   ["quotas","PUT","/api/org/:orgId/quotas/settings"],
   ["vulnerabilities","GET","/api/org/:orgId/vulnerabilities"],
