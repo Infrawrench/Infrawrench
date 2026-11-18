@@ -105,7 +105,9 @@ export function DesktopPriceCatalogPanel({ view }: { view?: "changes" | undefine
         changesClient={changesClient}
         view={view}
         // The URL owns the view, the services rule: navigating records it.
-        onViewChange={(next) => void navigate(getWorkspaceNavigateArgs(priceCatalogTabTarget(next)))}
+        onViewChange={(next) =>
+          void navigate(getWorkspaceNavigateArgs(priceCatalogTabTarget(next)))
+        }
         onOpenResource={(ref) =>
           void navigateToWorkspaceTarget(navigate, resourceTabTarget(ref.accountId, ref.resourceId))
         }

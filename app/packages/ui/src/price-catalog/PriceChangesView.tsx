@@ -265,7 +265,9 @@ function OrgChanges({ client, onOpenExternal, onOpenResource }: PriceChangesView
                             </span>
                           )}
                           {hasScenario ? (
-                            <span className="text-on-surface-faint">{gt("In a scenario model")}</span>
+                            <span className="text-on-surface-faint">
+                              {gt("In a scenario model")}
+                            </span>
                           ) : (
                             client.createScenario &&
                             c.monthlyImpactUsd !== 0 && (
@@ -413,7 +415,9 @@ function CatalogChanges({ client, onOpenExternal }: PriceChangesViewProps) {
         </p>
       )}
       {data?.available && rows.length === 0 && !loading && (
-        <p className="text-sm text-on-surface-faint">{gt("No list-price changes in this period.")}</p>
+        <p className="text-sm text-on-surface-faint">
+          {gt("No list-price changes in this period.")}
+        </p>
       )}
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">

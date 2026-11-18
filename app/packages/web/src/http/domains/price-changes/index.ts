@@ -145,8 +145,4 @@ const PriceChangesHandlers = HttpApiBuilder.group(PriceChangesApi, "priceChanges
     ),
 );
 
-export const priceChangesDomain = makeDomain(
-  "priceChanges",
-  PriceChangesApi,
-  PriceChangesHandlers,
-);
+export const priceChangesDomain = makeDomain("priceChanges", PriceChangesApi, PriceChangesHandlers);

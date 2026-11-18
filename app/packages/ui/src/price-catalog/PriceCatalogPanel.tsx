@@ -305,7 +305,8 @@ export function PriceCatalogPanel({
   const [localMode, setLocalMode] = useState<Exclude<Mode, "changes">>("search");
   // Without a host recording it, the Changes view is local state like the others.
   const [localChanges, setLocalChanges] = useState(false);
-  const showChanges = changesClient !== undefined && (onViewChange ? view === "changes" : localChanges);
+  const showChanges =
+    changesClient !== undefined && (onViewChange ? view === "changes" : localChanges);
   const mode: Mode = showChanges ? "changes" : localMode;
   const setMode = useCallback(
     (next: Mode) => {

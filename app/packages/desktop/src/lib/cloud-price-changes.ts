@@ -3,10 +3,7 @@
  * `priceChanges` domain over the cloud transport (`./cloud-client.ts`), the
  * same routes web calls.
  */
-import type {
-  CatalogPriceChangeResponse,
-  PriceChangeListResponse,
-} from "@infrawrench/client-core";
+import type { CatalogPriceChangeResponse, PriceChangeListResponse } from "@infrawrench/client-core";
 import { cloudClient } from "./cloud-client";
 import { runRpc } from "./rpc/client";
 

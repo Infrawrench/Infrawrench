@@ -511,7 +511,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | `infrawrench_drift_alert_settings`         | What the [change timeline](./change-timeline.md) notifies about                               |
 | `infrawrench_expiry_alert_settings`        | [Expiry radar](./expiry-radar.md) lead time                                                   |
 | `infrawrench_extended_support_settings`    | [Extended support](./extended-support.md) alert and look-ahead                                |
-| `infrawrench_price_change_settings`        | [Price change watch](./price-change-watch.md) thresholds and expected registration           |
+| `infrawrench_price_change_settings`        | [Price change watch](./price-change-watch.md) thresholds and expected registration            |
 | `infrawrench_idle_finding_settings`        | [Idle resource](./idle-resources.md) rules, thresholds and lookback window                    |
 | `infrawrench_posture_alert_settings`       | Whether [posture findings](./posture-checks.md) notify                                        |
 | `infrawrench_vulnerability_alert_settings` | Which [vulnerability findings](./vulnerabilities.md) notify, and from what severity           |

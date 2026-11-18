@@ -22,7 +22,9 @@ describe("priceChangeKey", () => {
       region: "us-east-1",
       effectiveAt: new Date("2026-11-01T00:00:00Z"),
     };
-    expect(priceChangeKey({ ...base, selection: { tenancy: "Shared", operating_system: "Linux" } })).toBe(
+    expect(
+      priceChangeKey({ ...base, selection: { tenancy: "Shared", operating_system: "Linux" } }),
+    ).toBe(
       priceChangeKey({
         ...base,
         selection: { operating_system: "Linux", tenancy: "Shared" },
@@ -46,9 +48,15 @@ describe("figures", () => {
   it("needs both thresholds, in either direction", () => {
     const settings = { minMonthlyImpactCents: 1000, minPercent: 1 };
     expect(priceChangeCrossesThreshold({ monthlyImpactUsd: 10, percent: 1 }, settings)).toBe(true);
-    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: -10, percent: -5 }, settings)).toBe(true);
-    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: 9.99, percent: 50 }, settings)).toBe(false);
-    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: 500, percent: 0.5 }, settings)).toBe(false);
+    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: -10, percent: -5 }, settings)).toBe(
+      true,
+    );
+    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: 9.99, percent: 50 }, settings)).toBe(
+      false,
+    );
+    expect(priceChangeCrossesThreshold({ monthlyImpactUsd: 500, percent: 0.5 }, settings)).toBe(
+      false,
+    );
   });
 
   it("formats money, hourly prices and percentages", () => {

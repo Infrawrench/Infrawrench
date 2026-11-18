@@ -62,7 +62,7 @@ Cost pushes open the matching tab of the Costs screen in the [mobile app](./mobi
 | ------------------------------------------------------------------------------------------------------------------- | ------------ |
 | Budget alert                                                                                                        | **Overview** |
 | [Cost change alert](./cost-change-alerts.md), [commitment or unit-cost alert](./commitment-and-unit-cost-alerts.md) | **Alerts**   |
-| [Price change](./price-change-watch.md)                                                                              | **Alerts**   |
+| [Price change](./price-change-watch.md)                                                                             | **Alerts**   |
 | Savings finding, [extended support](./extended-support.md) finding                                                  | **Savings**  |
 
 ### Budget alerts

@@ -14,7 +14,11 @@ describe("awsInstancePricingUsage", () => {
   it("bills a running EC2 instance once, as plain Linux in its region", () => {
     expect(
       awsInstancePricingUsage(
-        resource("ec2-instance", { instanceType: "m5.large", region: "us-east-1", state: "running" }),
+        resource("ec2-instance", {
+          instanceType: "m5.large",
+          region: "us-east-1",
+          state: "running",
+        }),
       ),
     ).toEqual([
       {
@@ -30,7 +34,11 @@ describe("awsInstancePricingUsage", () => {
   it("bills nothing for a stopped instance or a resource with no region", () => {
     expect(
       awsInstancePricingUsage(
-        resource("ec2-instance", { instanceType: "m5.large", region: "us-east-1", state: "stopped" }),
+        resource("ec2-instance", {
+          instanceType: "m5.large",
+          region: "us-east-1",
+          state: "stopped",
+        }),
       ),
     ).toEqual([]);
     expect(awsInstancePricingUsage(resource("ec2-instance", { instanceType: "m5.large" }))).toEqual(

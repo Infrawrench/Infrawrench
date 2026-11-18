@@ -166,9 +166,7 @@ describe("settings", () => {
     const app = buildApp(["org:settings:write"]);
     expect((await app.request("/settings", json({}))).status).toBe(400);
     expect((await app.request("/settings", json({ minPercent: 101 }))).status).toBe(400);
-    expect((await app.request("/settings", json({ minMonthlyImpactCents: 1.5 }))).status).toBe(
-      400,
-    );
+    expect((await app.request("/settings", json({ minMonthlyImpactCents: 1.5 }))).status).toBe(400);
     expect(mockUpdateSettings).not.toHaveBeenCalled();
   });
 });
@@ -194,7 +192,9 @@ describe("scenario", () => {
   });
 
   it("answers 400 for a change that moves nothing", async () => {
-    mockScenario.mockRejectedValue(new FakeScenarioError("This change does not move your monthly cost."));
+    mockScenario.mockRejectedValue(
+      new FakeScenarioError("This change does not move your monthly cost."),
+    );
     const res = await buildApp(["costs:write"]).request(`/${CHANGE_ID}/scenario`, {
       method: "POST",
     });

@@ -26,9 +26,9 @@ export function priceChangeTools(): ToolDefinition[] {
         "alert thresholds. Found by a daily scan.",
       inputSchema: {
         days: Schema.optionalKey(
-          Schema.Int.check(Schema.isBetween({ minimum: listDays.min, maximum: listDays.max })).annotate(
-            { description: `How far back, in days. Default ${listDays.default}.` },
-          ),
+          Schema.Int.check(
+            Schema.isBetween({ minimum: listDays.min, maximum: listDays.max }),
+          ).annotate({ description: `How far back, in days. Default ${listDays.default}.` }),
         ),
         includeBelowThreshold: Schema.optionalKey(
           Schema.Boolean.annotate({

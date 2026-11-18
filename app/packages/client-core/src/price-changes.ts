@@ -68,10 +68,7 @@ export interface PriceChangeSettings {
 }
 
 export type PriceChangeSettingsPatch = Partial<
-  Pick<
-    PriceChangeSettings,
-    "enabled" | "minMonthlyImpactCents" | "minPercent" | "registerExpected"
-  >
+  Pick<PriceChangeSettings, "enabled" | "minMonthlyImpactCents" | "minPercent" | "registerExpected">
 >;
 
 /** A settings patch's first problem, or null. The server and the form both run it. */

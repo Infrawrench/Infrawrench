@@ -52,8 +52,7 @@ import { priceWarehouse, type WarehouseRows } from "./warehouse";
 export const PRICE_CHANGE_SCAN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 type PriceChangeScanOutcome =
-  | { status: "unavailable" }
-  | { status: "scanned"; changes: number; alerted: number };
+  { status: "unavailable" } | { status: "scanned"; changes: number; alerted: number };
 
 export type PriceChangeOrgOutcome = DailyWindowOutcome<PriceChangeScanOutcome>;
 export type PriceChangeAlertsResult = DailyWindowResult<PriceChangeScanOutcome>;
@@ -238,4 +237,3 @@ export async function runPriceChangeAlerts(
     now,
   );
 }
-

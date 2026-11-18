@@ -151,9 +151,9 @@ describe("tab target factories", () => {
     expect(getWorkspaceTabId(priceCatalogTabTarget("changes"))).toBe(
       getWorkspaceTabId(priceCatalogTabTarget()),
     );
-    expect(workspaceTabTargetsEqual(priceCatalogTabTarget(), priceCatalogTabTarget("changes"))).toBe(
-      false,
-    );
+    expect(
+      workspaceTabTargetsEqual(priceCatalogTabTarget(), priceCatalogTabTarget("changes")),
+    ).toBe(false);
   });
 
   it("deliveryTabTarget carries no state", () => {

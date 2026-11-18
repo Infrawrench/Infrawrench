@@ -197,7 +197,8 @@ export class PriceChangesGroup extends HttpApiGroup.make("priceChanges")
         platform: Schema.optionalKey(
           documentedAs(
             Schema.String.annotate({
-              description: "The warehouse platform (`ec2`, `rds`, `azure`, `gcp`...). Default `ec2`.",
+              description:
+                "The warehouse platform (`ec2`, `rds`, `azure`, `gcp`...). Default `ec2`.",
             }),
           ),
         ),

@@ -126,9 +126,17 @@ describe("matchPriceMoves", () => {
         units: 1,
       },
     });
-    const later = move({ effectiveAt: new Date("2026-11-08T00:00:00Z"), oldUsd: 0.105, newUsd: 0.11 });
+    const later = move({
+      effectiveAt: new Date("2026-11-08T00:00:00Z"),
+      oldUsd: 0.105,
+      newUsd: 0.11,
+    });
     const changes = matchPriceMoves(
-      [move(), later, move({ dimensions: { operating_system: "Windows" }, oldUsd: 0.188, newUsd: 0.2 })],
+      [
+        move(),
+        later,
+        move({ dimensions: { operating_system: "Windows" }, oldUsd: 0.188, newUsd: 0.2 }),
+      ],
       [entry(), windows],
     );
     expect(changes.map((c) => [c.selection["operating_system"], c.oldHourlyUsd])).toEqual([
@@ -148,7 +156,12 @@ describe("matchPriceMoves", () => {
   });
 
   it("ignores moves in other regions or of other types", () => {
-    expect(matchPriceMoves([move({ region: "eu-west-1" }), move({ instanceType: "m5.xlarge" })], [entry()])).toEqual([]);
+    expect(
+      matchPriceMoves(
+        [move({ region: "eu-west-1" }), move({ instanceType: "m5.xlarge" })],
+        [entry()],
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -199,15 +212,19 @@ describe("shouldAlertPriceChange", () => {
 
   it("alerts an upcoming change", () => {
     expect(
-      shouldAlertPriceChange({ ...row, effectiveAt: new Date("2027-01-01T00:00:00Z") }, settings, now),
+      shouldAlertPriceChange(
+        { ...row, effectiveAt: new Date("2027-01-01T00:00:00Z") },
+        settings,
+        now,
+      ),
     ).toBe(true);
   });
 
   it("needs both the amount and the percentage", () => {
     expect(shouldAlertPriceChange({ ...row, monthlyImpactUsd: 5 }, settings, now)).toBe(false);
-    expect(
-      shouldAlertPriceChange(row, { minMonthlyImpactCents: 1000, minPercent: 20 }, now),
-    ).toBe(false);
+    expect(shouldAlertPriceChange(row, { minMonthlyImpactCents: 1000, minPercent: 20 }, now)).toBe(
+      false,
+    );
     // A cut counts by its size.
     expect(
       shouldAlertPriceChange(

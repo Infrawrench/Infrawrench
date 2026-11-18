@@ -99,7 +99,9 @@ const catalog = Command.make(
   {
     platform: Flag.String("provider").pipe(
       Flag.withMetavar("platform"),
-      Flag.withDescription("Pricing platform: ec2, rds, azure, gcp, alibaba, runpod… (default ec2)"),
+      Flag.withDescription(
+        "Pricing platform: ec2, rds, azure, gcp, alibaba, runpod… (default ec2)",
+      ),
       Flag.optional,
     ),
     days: days.pipe(Flag.withDescription("How far back (default 90, max 365)")),

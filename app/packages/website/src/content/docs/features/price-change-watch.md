@@ -12,13 +12,13 @@ Providers change list prices without asking. Infrawrench checks the price histor
 
 Each day Infrawrench looks at every running resource whose provider says which instance type it pays for by the hour, matches it against the [instance pricing](./instance-pricing-panel.md) warehouse's price history, and records each change that took effect in the last five weeks.
 
-| Provider      | Resources                                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider      | Resources                                                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | AWS           | Running EC2 instances, RDS instances (engine and Multi-AZ matched), ElastiCache clusters, OpenSearch domains, Redshift clusters, EKS node types |
-| Azure         | Virtual machines that aren't deallocated, AKS clusters                                                                                           |
-| Google Cloud  | Running Compute Engine instances, GKE clusters                                                                                                   |
-| Alibaba Cloud | ECS instances (not stopped in economical mode), ACK node pools                                                                                   |
-| RunPod        | Running pods (GPU prices count each GPU)                                                                                                         |
+| Azure         | Virtual machines that aren't deallocated, AKS clusters                                                                                          |
+| Google Cloud  | Running Compute Engine instances, GKE clusters                                                                                                  |
+| Alibaba Cloud | ECS instances (not stopped in economical mode), ACK node pools                                                                                  |
+| RunPod        | Running pods (GPU prices count each GPU)                                                                                                        |
 
 Only on-demand list prices count. That's what a running instance pays per hour at list price. Spot prices move every few hours, and reserved and savings-plan rates are bought up front, so neither is news about a running bill. Prices are in USD and don't include your discounts or negotiated rates.
 
@@ -62,12 +62,12 @@ In **Settings > Notifications**, on the **Alerts & digest** tab:
 
 <insert [Settings > Notifications > Alerts & digest, the Price changes section: the watch checkbox ticked, the two threshold fields set to 10 and 1, and the "Mark price increases as expected" checkbox] here>
 
-| Setting                                                 | Default | What it does                                                                     |
-| ------------------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
-| **Watch list prices of what we run**                    | On      | Turns the daily check, and so its alerts, on or off                              |
-| **Ignore changes under (USD a month)**                  | 10      | Changes with a smaller monthly impact are listed, not alerted (0 to 1,000,000)   |
-| **Ignore changes under (percent)**                      | 1       | Changes smaller than this share of the old price are listed, not alerted (0-100) |
-| **Mark price increases as expected for anomaly detection** | On   | Adds the suppressions described above                                            |
+| Setting                                                    | Default | What it does                                                                     |
+| ---------------------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| **Watch list prices of what we run**                       | On      | Turns the daily check, and so its alerts, on or off                              |
+| **Ignore changes under (USD a month)**                     | 10      | Changes with a smaller monthly impact are listed, not alerted (0 to 1,000,000)   |
+| **Ignore changes under (percent)**                         | 1       | Changes smaller than this share of the old price are listed, not alerted (0-100) |
+| **Mark price increases as expected for anomaly detection** | On      | Adds the suppressions described above                                            |
 
 Changing the settings needs `org:settings:write`. Seeing your organization's changes needs `costs:read`; the catalog-wide list needs `resources:read`, like the rest of the price catalog. The settings are also a [Terraform resource](./terraform-provider.md), `infrawrench_price_change_settings`.
 

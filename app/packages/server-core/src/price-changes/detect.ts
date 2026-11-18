@@ -75,7 +75,12 @@ export async function loadOrgUsage(organizationId: string): Promise<UsageEntry[]
     }
     for (const u of usage) {
       if (!u.instanceType || !u.region || !(u.units > 0)) continue;
-      entries.push({ resourceId: row.id, pluginId: row.pluginId, accountId: row.accountId, usage: u });
+      entries.push({
+        resourceId: row.id,
+        pluginId: row.pluginId,
+        accountId: row.accountId,
+        usage: u,
+      });
     }
   }
   return entries;

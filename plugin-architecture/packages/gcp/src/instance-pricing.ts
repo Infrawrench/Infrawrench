@@ -43,8 +43,7 @@ export function gcpInstancePricingUsage(resource: ResourceInstance): InstancePri
   const panel = gcpInstancePricing(resource);
   const instanceType = panel?.instanceTypes[0];
   if (!panel || !instanceType || !panel.region) return [];
-  const units =
-    resource.resourceTypeId === "gke-cluster" ? count(resource.fields["nodeCount"]) : 1;
+  const units = resource.resourceTypeId === "gke-cluster" ? count(resource.fields["nodeCount"]) : 1;
   return [
     {
       platform: panel.platform,
