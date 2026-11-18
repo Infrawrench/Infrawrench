@@ -554,4 +554,8 @@
 // list), with the `AssociationCandidate` schema. `POST /associations/literal`
 // now applies the value upstream first when the resource's plugin can, and
 // answers 502 when the provider refuses it. Additive.
-export const API_VERSION = "1.119.0";
+// 1.120.0: `POST /associations` reads the provider's plugin, type and account
+// from its stored row; `providerPluginId`, `providerResourceTypeId` and
+// `providerAccountId` in `AssociationRequest` are now optional, deprecated and
+// ignored. Relaxes a request; existing clients are unaffected.
+export const API_VERSION = "1.120.0";

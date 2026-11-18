@@ -17,9 +17,23 @@ const AssociationRequest = Schema.Struct({
   consumerFieldKey: Schema.String,
   providerResourceId: ResourceId,
   providerOutputKey: Schema.String,
-  providerPluginId: Schema.String,
-  providerResourceTypeId: Schema.String,
-  providerAccountId: Uuid,
+  // Accepted so older clients keep working, and ignored: the server reads the
+  // provider's plugin, type and account from its stored row.
+  providerPluginId: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "Deprecated and ignored: read from the stored provider resource.",
+    }),
+  ),
+  providerResourceTypeId: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "Deprecated and ignored: read from the stored provider resource.",
+    }),
+  ),
+  providerAccountId: Schema.optionalKey(
+    Uuid.annotate({
+      description: "Deprecated and ignored: read from the stored provider resource.",
+    }),
+  ),
 }).annotate({ identifier: "AssociationRequest" });
 
 const LiteralAssociationRequest = Schema.Struct({
