@@ -485,7 +485,13 @@ async function work(row: GameDayRow, now: Date, result: GameDayPassResult): Prom
  * throws into the poller; one game day's failure never blocks the rest.
  */
 export async function runGameDayPass(options: GameDayPassOptions = {}): Promise<GameDayPassResult> {
-  const result: GameDayPassResult = { claimed: 0, injected: 0, reverted: 0, completed: 0, failed: 0 };
+  const result: GameDayPassResult = {
+    claimed: 0,
+    injected: 0,
+    reverted: 0,
+    completed: 0,
+    failed: 0,
+  };
   const ids = await claimDueGameDays(options.limit ?? 4);
   result.claimed = ids.length;
   if (ids.length === 0) return result;

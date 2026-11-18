@@ -61,12 +61,7 @@ export type CalendarEventLink =
 
 /** The workspace tab kinds a calendar event can point at. */
 export type CalendarTabTarget =
-  | "expiring"
-  | "incidents"
-  | "workflows"
-  | "costs"
-  | "settings"
-  | "game-days";
+  "expiring" | "incidents" | "workflows" | "costs" | "settings" | "game-days";
 
 export interface CalendarEvent {
   /**

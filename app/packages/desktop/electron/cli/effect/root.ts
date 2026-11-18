@@ -34,6 +34,7 @@ import { extendedSupport } from "../commands/extended-support";
 import { orphans } from "../commands/orphans";
 import { probes } from "../commands/probes";
 import { slos } from "../commands/slos";
+import { gameDays } from "../commands/game-days";
 import { webhooks } from "../commands/webhooks";
 import { alerts } from "../commands/alerts";
 import { carbon } from "../commands/carbon";
@@ -118,6 +119,7 @@ const subcommands = [
   probes,
   webhooks,
   slos,
+  gameDays,
   commitments,
   hygiene,
   carbon,

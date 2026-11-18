@@ -286,7 +286,7 @@ infrawrench export jobs 3f2a91c0 cancel
 
 All of them take `--json`. A job that fails exits with status 1, with `--json` too, so a script waiting on one notices. Finished files are kept for 24 hours.
 
-## Check schedules, probes, SLOs and services
+## Check schedules, probes, SLOs, game days and services
 
 `schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md): each window, its timezone, the next change, how the last run went (including freeze skips and failures), and the projected monthly saving:
 
@@ -309,6 +309,15 @@ infrawrench probes --json
 infrawrench slos
 infrawrench slos checkout         # one SLO: budget, burn rates, burndown sparkline
 infrawrench slos --json
+```
+
+`game-days` lists the org's [game days](./game-days.md), newest start first: status, name, start and time to detect. Give it a game day's id or name for its report: detect, page, acknowledge and recover times, the detector table (fired, did not fire, or not set up), the targets and the alerts sent while it ran. `game-days abort <id|name>` undoes a running game day's failure now, or cancels an armed one; anyone who can read game days can abort. Planning and arming stay on the Game days tab, where the dry run and blast radius are shown first.
+
+```
+infrawrench game-days
+infrawrench game-days "Checkout without its cache"   # one game day's report
+infrawrench game-days abort "Checkout without its cache"
+infrawrench game-days --json
 ```
 
 `services` lists the org's [services](./services.md), the named sets of resources that make up one system across providers. You see each one's tier, owning team or members, member count, and its level on every scorecard that applies. `--tier 1` keeps one criticality tier.

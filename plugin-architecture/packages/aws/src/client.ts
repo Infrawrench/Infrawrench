@@ -1,10 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type {
-  FailureUndoState,
-  PluginEffect,
-  PreparedFailure,
-} from "@infrawrench/plugin-base";
+import type { FailureUndoState, PluginEffect, PreparedFailure } from "@infrawrench/plugin-base";
 import {
   ecsServiceRef,
   injectEcsFailure,

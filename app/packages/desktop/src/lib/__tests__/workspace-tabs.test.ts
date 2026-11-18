@@ -13,6 +13,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
@@ -123,6 +124,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(slosTabTarget("slo-1"));
     expect(detail.to).toBe("/slos");
     expect(detail.search).toEqual({ slo: "slo-1" });
+  });
+
+  it("returns game days route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(gameDaysTabTarget());
+    expect(list.to).toBe("/game-days");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(gameDaysTabTarget("gd-1"));
+    expect(detail.to).toBe("/game-days");
+    expect(detail.search).toEqual({ gameDay: "gd-1" });
   });
 
   it("returns services route args, clearing the params for the list view", () => {
@@ -543,6 +554,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/slos", undefined, "?slo=slo-1")).toEqual({
       kind: "slos",
       sloId: "slo-1",
+    });
+  });
+
+  it("parses the game days path, with and without a selected game day", () => {
+    expect(syncWorkspaceRouteFromPath("/game-days")).toEqual({ kind: "game-days" });
+    expect(syncWorkspaceRouteFromPath("/game-days", undefined, "?gameDay=gd-1")).toEqual({
+      kind: "game-days",
+      gameDayId: "gd-1",
     });
   });
 

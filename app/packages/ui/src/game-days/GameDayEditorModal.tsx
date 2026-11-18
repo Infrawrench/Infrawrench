@@ -46,7 +46,12 @@ export interface GameDayEditorModalProps {
 }
 
 /** Plan or edit a game day. Saving never arms it: that is a separate confirmation. */
-export function GameDayEditorModal({ client, existing, onClose, onSaved }: GameDayEditorModalProps) {
+export function GameDayEditorModal({
+  client,
+  existing,
+  onClose,
+  onSaved,
+}: GameDayEditorModalProps) {
   const gt = useGT();
   const [candidates, setCandidates] = useState<GameDayCandidates | null>(null);
   const [name, setName] = useState(existing?.name ?? "");

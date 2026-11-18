@@ -1,6 +1,15 @@
 import { Schema } from "effect";
 import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
-import { Int, NonEmpty, Positive, PositiveInt, Url, httpsUrl, rule, uniqueBy } from "./primitives.js";
+import {
+  Int,
+  NonEmpty,
+  Positive,
+  PositiveInt,
+  Url,
+  httpsUrl,
+  rule,
+  uniqueBy,
+} from "./primitives.js";
 
 export const fieldDefinitionSchema = Schema.Struct({
   key: NonEmpty,

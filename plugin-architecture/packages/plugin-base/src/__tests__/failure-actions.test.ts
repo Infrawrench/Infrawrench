@@ -19,9 +19,10 @@ describe("failureActionsForType", () => {
   });
 
   it("lists declared actions after the derived stop", () => {
-    expect(failureActionsForType({ lifecycle, failureActions: [scale] }).map((a) => a.id)).toEqual(
-      ["stop", "scale-to-zero"],
-    );
+    expect(failureActionsForType({ lifecycle, failureActions: [scale] }).map((a) => a.id)).toEqual([
+      "stop",
+      "scale-to-zero",
+    ]);
   });
 
   it("lets a declared stop replace the derived one", () => {

@@ -285,6 +285,11 @@ export const homeApps: HomeApp[] = [
         doc: "on-call",
         body: "Rotations and covers, so alerts reach whoever is on call.",
       },
+      {
+        name: "Game days",
+        doc: "game-days",
+        body: "Planned failures with an automatic undo, and how fast each alert noticed.",
+      },
     ],
   },
   {

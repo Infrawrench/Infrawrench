@@ -83,7 +83,10 @@ export async function recordGameDayAlert(alert: RoutedAlertFacts): Promise<void>
       })
       .from(gameDays)
       .where(
-        and(eq(gameDays.organizationId, alert.organizationId), inArray(gameDays.status, [...RECORDING])),
+        and(
+          eq(gameDays.organizationId, alert.organizationId),
+          inArray(gameDays.status, [...RECORDING]),
+        ),
       );
     if (live.length === 0) return;
     const paged = alert.destinationKinds.some((k) => PAGE_KINDS.has(k));
@@ -184,7 +187,11 @@ export async function sampleGameDaySignals(g: SamplingGameDay): Promise<Partial<
       const ids = [...new Set([...g.watchedSloIds, ...linked.map((l) => l.id)])];
       if (ids.length === 0) return null;
       const rows = await db
-        .select({ burnAt: slos.burnAlertChangedAt, exhaustedAt: slos.exhaustedAt, burn: slos.burnAlert })
+        .select({
+          burnAt: slos.burnAlertChangedAt,
+          exhaustedAt: slos.exhaustedAt,
+          burn: slos.burnAlert,
+        })
         .from(slos)
         .where(
           and(
@@ -204,7 +211,9 @@ export async function sampleGameDaySignals(g: SamplingGameDay): Promise<Partial<
       const [row] = await db
         .select({ at: min(incidents.createdAt) })
         .from(incidents)
-        .where(and(eq(incidents.organizationId, g.organizationId), gte(incidents.createdAt, since)));
+        .where(
+          and(eq(incidents.organizationId, g.organizationId), gte(incidents.createdAt, since)),
+        );
       return row?.at ?? null;
     }),
     settle("routed alerts", async () =>
@@ -223,9 +232,14 @@ export async function sampleGameDaySignals(g: SamplingGameDay): Promise<Partial<
   for (const p of probeRows ?? []) {
     if (p.consecutiveFailures > 0 && p.lastProbeAt && p.lastProbeAt >= since) {
       // The streak began this many checks before the latest one.
-      const first = p.lastProbeAt.getTime() - (p.consecutiveFailures - 1) * p.intervalSeconds * 1000;
-      out.probeFailedAt =
-        isoOf(earliest([out.probeFailedAt ? new Date(out.probeFailedAt) : null, new Date(Math.max(first, since.getTime()))]));
+      const first =
+        p.lastProbeAt.getTime() - (p.consecutiveFailures - 1) * p.intervalSeconds * 1000;
+      out.probeFailedAt = isoOf(
+        earliest([
+          out.probeFailedAt ? new Date(out.probeFailedAt) : null,
+          new Date(Math.max(first, since.getTime())),
+        ]),
+      );
     }
     if (p.status === "down" && p.lastStateChangeAt && p.lastStateChangeAt >= since) {
       out.probeDownAt = isoOf(
@@ -285,7 +299,10 @@ export async function watchedProbesRecovered(
     })
     .from(syntheticProbes)
     .where(
-      and(eq(syntheticProbes.organizationId, organizationId), inArray(syntheticProbes.id, [...probeIds])),
+      and(
+        eq(syntheticProbes.organizationId, organizationId),
+        inArray(syntheticProbes.id, [...probeIds]),
+      ),
     );
   // A deleted or paused probe cannot confirm anything, so it does not hold recovery up.
   const live = rows.filter((r) => r.enabled);

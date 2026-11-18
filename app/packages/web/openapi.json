@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -386,6 +386,9 @@
     },
     {
       "name": "Budgets"
+    },
+    {
+      "name": "Game days"
     },
     {
       "name": "Services"
@@ -16162,6 +16165,1182 @@
         ],
         "additionalProperties": false
       },
+      "GameDay": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "serviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "serviceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/GameDayStatus"
+          },
+          "endReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GameDayEndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "recoveryTimeoutMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "freezeDuringRun": {
+            "type": "boolean"
+          },
+          "freezeId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "watchedProbes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDayWatchedProbe"
+            }
+          },
+          "watchedSloIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            }
+          },
+          "armedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "armedByUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "armedByEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "injectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endsAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The time limit, once injected."
+          },
+          "endRequestedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "undoneAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recoveredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signals": {
+            "$ref": "#/components/schemas/GameDaySignals"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDayTarget"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "serviceId",
+          "serviceName",
+          "status",
+          "endReason",
+          "startsAt",
+          "durationMinutes",
+          "recoveryTimeoutMinutes",
+          "freezeDuringRun",
+          "freezeId",
+          "watchedProbes",
+          "watchedSloIds",
+          "armedAt",
+          "armedByUserId",
+          "armedByEmail",
+          "injectedAt",
+          "endsAt",
+          "endRequestedAt",
+          "undoneAt",
+          "recoveredAt",
+          "completedAt",
+          "lastError",
+          "signals",
+          "targets",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "actionId": {
+            "type": "string"
+          },
+          "actionLabel": {
+            "type": "string"
+          },
+          "undoLabel": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "injecting",
+              "injected",
+              "skipped",
+              "inject_failed",
+              "reverted",
+              "undo_failed"
+            ]
+          },
+          "stateBefore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the plugin reported before the inject, e.g. \"3 replicas\"."
+          },
+          "injectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revertedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "resourceId",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "displayName",
+          "actionId",
+          "actionLabel",
+          "undoLabel",
+          "state",
+          "stateBefore",
+          "injectedAt",
+          "revertedAt",
+          "attempts",
+          "lastError"
+        ],
+        "additionalProperties": false
+      },
+      "GameDaySignals": {
+        "type": "object",
+        "properties": {
+          "probeFailedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "probeDownAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metricAlertAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sloBurnAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "incidentDeclaredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alertedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pagedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "acknowledgedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "probeFailedAt",
+          "probeDownAt",
+          "metricAlertAt",
+          "sloBurnAt",
+          "incidentDeclaredAt",
+          "alertedAt",
+          "pagedAt",
+          "acknowledgedAt"
+        ],
+        "additionalProperties": false,
+        "description": "When each detector first noticed; null where it did not."
+      },
+      "GameDayWatchedProbe": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayEndReason": {
+        "type": "string",
+        "enum": [
+          "time_limit",
+          "ended",
+          "aborted",
+          "inject_failed",
+          "interrupted",
+          "freeze"
+        ],
+        "description": "`time_limit`, `ended` (somebody ended it early), `aborted`, `inject_failed` (an inject failed, so everything injected was undone), `interrupted` (found mid-injection after a restart, so undone rather than resumed) or `freeze` (a change freeze was in effect at the start)."
+      },
+      "GameDayStatus": {
+        "type": "string",
+        "enum": [
+          "planned",
+          "armed",
+          "injecting",
+          "running",
+          "reverting",
+          "recovering",
+          "completed",
+          "cancelled",
+          "undo_failed"
+        ],
+        "description": "`planned` (written, not confirmed), `armed` (confirmed; injects at `startsAt`), `injecting`, `running` (the failure is in effect), `reverting`, `recovering` (undone; waiting for the watched probes), `completed`, `cancelled` (never injected) or `undo_failed` (the undo kept failing: the resource may still be broken)."
+      },
+      "GameDayArmRequest": {
+        "type": "object",
+        "properties": {
+          "confirmName": {
+            "type": "string",
+            "description": "The game day's name, typed by the person arming it."
+          }
+        },
+        "required": [
+          "confirmName"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$",
+            "description": "At most 120 characters."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The hypothesis being tested, in prose.",
+            "default": null
+          },
+          "serviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The service the game day exercises. Alerts about any of its members count as detection.",
+            "default": null
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDayTargetInput"
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "What to break, and how. Each resource at most once."
+          },
+          "startsAt": {
+            "type": "string",
+            "description": "When the failure is injected, ISO 8601. At most 90 days ahead; a game day armed after its start is injected straight away.",
+            "format": "date-time"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 240,
+            "description": "The time limit: the failure is undone this long after it was injected, whatever else happens."
+          },
+          "recoveryTimeoutMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 120,
+            "description": "How long after the undo the watched probes have to go green before recovery is reported as not confirmed.",
+            "default": 30
+          },
+          "freezeDuringRun": {
+            "type": "boolean",
+            "description": "Open an org change freeze when the failure is injected, ended when the game day completes.",
+            "default": false
+          },
+          "watchedProbeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "maxItems": 20,
+            "description": "Synthetic probes whose failures count as detection and whose recovery confirms the undo.",
+            "default": []
+          },
+          "watchedSloIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "maxItems": 20,
+            "description": "SLOs whose burn-rate alerts count as detection.",
+            "default": []
+          }
+        },
+        "required": [
+          "name",
+          "targets",
+          "startsAt",
+          "durationMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayTargetInput": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "A synced resource in the organization."
+          },
+          "actionId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "One of the failure actions the resource's plugin declares for its type, as `/game-days/candidates` lists them (`stop`, `scale-to-zero`, ...)."
+          }
+        },
+        "required": [
+          "resourceId",
+          "actionId"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayDetail": {
+        "type": "object",
+        "properties": {
+          "gameDay": {
+            "$ref": "#/components/schemas/GameDay"
+          },
+          "alerts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDayAlert"
+            },
+            "description": "Alerts the routing rules handled while the game day ran, oldest first."
+          },
+          "report": {
+            "$ref": "#/components/schemas/GameDayReport"
+          }
+        },
+        "required": [
+          "gameDay",
+          "alerts",
+          "report"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayReport": {
+        "type": "object",
+        "properties": {
+          "timeToDetectMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeToPageMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeToAcknowledgeMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From the page (or the first alert, when nothing paged) to its acknowledgement."
+          },
+          "timeToRecoverMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From the undo to the watched probes green again."
+          },
+          "injectedForMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detectedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "probe_failure",
+                  "probe_alert",
+                  "metric_alert",
+                  "slo_burn",
+                  "incident",
+                  "alert",
+                  "page",
+                  "acknowledge"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "detector": {
+                  "type": "string",
+                  "enum": [
+                    "probe_failure",
+                    "probe_alert",
+                    "metric_alert",
+                    "slo_burn",
+                    "incident",
+                    "alert",
+                    "page",
+                    "acknowledge"
+                  ]
+                },
+                "at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "afterMs": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "measurable": {
+                  "type": "boolean",
+                  "description": "False when nothing was set up that could fire it."
+                }
+              },
+              "required": [
+                "detector",
+                "at",
+                "afterMs",
+                "measurable"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "final",
+              "in_progress",
+              "not_run"
+            ]
+          }
+        },
+        "required": [
+          "timeToDetectMs",
+          "timeToPageMs",
+          "timeToAcknowledgeMs",
+          "timeToRecoverMs",
+          "injectedForMs",
+          "detectedBy",
+          "detectors",
+          "state"
+        ],
+        "additionalProperties": false,
+        "description": "Computed from the stored timestamps by client-core's `computeGameDayReport`."
+      },
+      "GameDayAlert": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "related": {
+            "type": "boolean",
+            "description": "About a target, a member of the service, a watched probe or SLO, or a declared incident."
+          },
+          "paged": {
+            "type": "boolean",
+            "description": "Routed to an on-call rotation or a paging provider."
+          },
+          "unrouted": {
+            "type": "boolean",
+            "description": "No routing rule sent it anywhere."
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "trigger",
+          "severity",
+          "title",
+          "related",
+          "paged",
+          "unrouted"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayPlan": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "actionId": {
+                  "type": "string"
+                },
+                "actionLabel": {
+                  "type": "string"
+                },
+                "undoLabel": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "inject",
+                    "skip",
+                    "blocked"
+                  ]
+                },
+                "currentState": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "problem": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "pluginId",
+                "actionId",
+                "actionLabel",
+                "undoLabel",
+                "outcome",
+                "currentState",
+                "problem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "blockingFreeze": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "examples": [
+                      "00000000-0000-0000-0000-000000000000"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unmeasured": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "probe_failure",
+                "probe_alert",
+                "metric_alert",
+                "slo_burn",
+                "incident",
+                "alert",
+                "page",
+                "acknowledge"
+              ]
+            }
+          }
+        },
+        "required": [
+          "steps",
+          "blockingFreeze",
+          "unmeasured"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayCandidates": {
+        "type": "object",
+        "properties": {
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "examples": [
+                    "00000000-0000-0000-0000-000000000000"
+                  ]
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "actions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "actionId": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "undoLabel": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "actionId",
+                      "label",
+                      "undoLabel",
+                      "description"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "resourceId",
+                "accountId",
+                "pluginId",
+                "resourceTypeId",
+                "displayName",
+                "actions"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "examples": [
+                    "00000000-0000-0000-0000-000000000000"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "resourceIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "resourceIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDayWatchedProbe"
+            }
+          },
+          "slos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "examples": [
+                    "00000000-0000-0000-0000-000000000000"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "resources",
+          "services",
+          "probes",
+          "slos"
+        ],
+        "additionalProperties": false
+      },
+      "GameDayList": {
+        "type": "object",
+        "properties": {
+          "gameDays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameDay"
+            }
+          }
+        },
+        "required": [
+          "gameDays"
+        ],
+        "additionalProperties": false
+      },
       "ServiceDetail": {
         "type": "object",
         "properties": {
@@ -17195,7 +18374,8 @@
           "required_tags",
           "cost_within_budget",
           "no_critical_vulnerabilities",
-          "change_failure_rate"
+          "change_failure_rate",
+          "game_day_detected"
         ],
         "description": "A check type from the scorecard registry."
       },
@@ -20062,7 +21242,8 @@
                 "expiry",
                 "commitment-expiry",
                 "workflow-schedule",
-                "incident"
+                "incident",
+                "game-day"
               ],
               "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
             },
@@ -20128,11 +21309,12 @@
                 "expiry",
                 "commitment-expiry",
                 "workflow-schedule",
-                "incident"
+                "incident",
+                "game-day"
               ],
               "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
             },
-            "maxItems": 6
+            "maxItems": 7
           }
         },
         "required": [
@@ -20183,7 +21365,8 @@
                 "expiry",
                 "commitment-expiry",
                 "workflow-schedule",
-                "incident"
+                "incident",
+                "game-day"
               ],
               "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
             },
@@ -20199,7 +21382,8 @@
                 "expiry",
                 "commitment-expiry",
                 "workflow-schedule",
-                "incident"
+                "incident",
+                "game-day"
               ],
               "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
             },
@@ -20235,7 +21419,8 @@
               "expiry",
               "commitment-expiry",
               "workflow-schedule",
-              "incident"
+              "incident",
+              "game-day"
             ],
             "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
           },
@@ -20348,7 +21533,8 @@
                   "incidents",
                   "workflows",
                   "costs",
-                  "settings"
+                  "settings",
+                  "game-days"
                 ]
               }
             },
@@ -23647,6 +24833,8 @@
           "ci-access:write",
           "incidents:read",
           "incidents:write",
+          "game-days:read",
+          "game-days:run",
           "tag-policy:override",
           "config:read",
           "config:write",
@@ -56112,6 +57300,7 @@
               "price-catalog",
               "incidents",
               "slos",
+              "game-days",
               "services",
               "delivery",
               "ci",
@@ -56167,6 +57356,13 @@
             ]
           },
           "sloId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "gameDayId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -91149,6 +92345,802 @@
         },
         "x-required-permission": "freezes:write",
         "operationId": "postOrgOrgIdSlosSloIdFreeze"
+      }
+    },
+    "/api/org/{orgId}/game-days": {
+      "get": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game days",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDayList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every game day, newest start first, with its targets and the detection timestamps recorded so far.\n\n_Requires permission: `game-days:read`._",
+        "summary": "List game days",
+        "x-required-permission": "game-days:read",
+        "operationId": "getOrgOrgIdGameDays"
+      },
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The planned game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Stored as `planned`: nothing happens until a person arms it. Every target must be a synced resource whose plugin declares the named failure action. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Plan a game day",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameDayInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDays"
+      }
+    },
+    "/api/org/{orgId}/game-days/candidates": {
+      "get": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets, services, probes and SLOs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDayCandidates"
+                }
+              }
+            }
+          }
+        },
+        "description": "Synced resources whose plugin declares a reversible failure action for their type (with the actions), services with their members, probes and SLOs. Feeds the editor's pickers.\n\n_Requires permission: `game-days:read`._",
+        "summary": "List what a game day can target and watch",
+        "x-required-permission": "game-days:read",
+        "operationId": "getOrgOrgIdGameDaysCandidates"
+      }
+    },
+    "/api/org/{orgId}/game-days/plan": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDayPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "What injecting this game day would do right now, without changing anything: each target's current state as its provider reports it, the ones that would be skipped or cannot run, a change freeze that would stop it, and detectors nothing is set up to measure. A read despite the method.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Dry-run a game day",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameDayInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDaysPlan"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}": {
+      "get": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDayDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read a game day with its report",
+        "x-required-permission": "game-days:read",
+        "operationId": "getOrgOrgIdGameDaysGameDayId",
+        "description": "_Requires permission: `game-days:read`._"
+      },
+      "put": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Only a `planned` game day can be edited; disarm an armed one first. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Replace a planned game day",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameDayInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "game-days:run",
+        "operationId": "putOrgOrgIdGameDaysGameDayId"
+      },
+      "delete": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Refused while it is armed or the failure may be in effect. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Delete a game day",
+        "x-required-permission": "game-days:run",
+        "operationId": "deleteOrgOrgIdGameDaysGameDayId"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}/arm": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The armed game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The confirmation: `confirmName` must repeat the game day's name. The failure is injected at `startsAt`, or straight away when that has passed. Refused to API keys and agents: a person confirms every game day. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Arm a game day",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameDayArmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDaysGameDayIdArm"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}/disarm": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Back to `planned` before it starts. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Disarm a game day",
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDaysGameDayIdDisarm"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}/end": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Undo the failure before its time limit, recorded as ended rather than aborted. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "End a game day now",
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDaysGameDayIdEnd"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}/abort": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Undo the failure now, or cancel an armed game day that has not started. Open to every member: stopping an experiment only ever puts things back. Audit-logged.\n\n_Requires permission: `game-days:read`._",
+        "summary": "Abort a game day",
+        "x-required-permission": "game-days:read",
+        "operationId": "postOrgOrgIdGameDaysGameDayIdAbort"
+      }
+    },
+    "/api/org/{orgId}/game-days/{gameDayId}/retry-undo": {
+      "post": {
+        "tags": [
+          "Game days"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "gameDayId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The game day",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDay"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Put an `undo_failed` game day back to undoing, with its attempts reset. Audit-logged.\n\n_Requires permission: `game-days:run`._",
+        "summary": "Retry a failed undo",
+        "x-required-permission": "game-days:run",
+        "operationId": "postOrgOrgIdGameDaysGameDayIdRetryUndo"
       }
     },
     "/api/org/{orgId}/services": {

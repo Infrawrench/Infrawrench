@@ -19,6 +19,7 @@
  */
 import {
   extractRecordTags,
+  gameDayDetected,
   openVulnerabilitiesByResource,
   SCORECARD_SEVERITIES,
   tagPolicyViolations,
@@ -104,6 +105,49 @@ async function loadVulnerabilityFeed(organizationId: string): Promise<ScorecardV
 
 /** Per-service DORA summaries over a trailing window, keyed by service id. */
 export const doraFeedKey = (windowDays: number) => `dora-service:${windowDays}`;
+
+export const GAME_DAY_FEED_KEY = "game-days";
+const GAME_DAY_WINDOW_DAYS = 90;
+
+export interface GameDayFeed {
+  /** Whether the org has completed any game day at all. */
+  anyCompleted: boolean;
+  /** Each service's most recent completed game day in the window. */
+  latest: Map<string, { name: string; completedAt: Date; detected: boolean }>;
+}
+
+function loadGameDaysByService(now: number) {
+  return async (organizationId: string): Promise<GameDayFeed> => {
+    const [{ db }, { gameDays }, { and, desc, eq }] = await Promise.all([
+      import("../db/client"),
+      import("../db/schema"),
+      import("drizzle-orm"),
+    ]);
+    const rows = await db
+      .select({
+        serviceId: gameDays.serviceId,
+        name: gameDays.name,
+        completedAt: gameDays.completedAt,
+        signals: gameDays.signals,
+      })
+      .from(gameDays)
+      .where(and(eq(gameDays.organizationId, organizationId), eq(gameDays.status, "completed")))
+      .orderBy(desc(gameDays.completedAt))
+      .limit(1000);
+    const since = now - GAME_DAY_WINDOW_DAYS * 86_400_000;
+    const latest: GameDayFeed["latest"] = new Map();
+    for (const row of rows) {
+      if (!row.serviceId || !row.completedAt || row.completedAt.getTime() < since) continue;
+      if (latest.has(row.serviceId)) continue;
+      latest.set(row.serviceId, {
+        name: row.name,
+        completedAt: row.completedAt,
+        detected: gameDayDetected(row.signals),
+      });
+    }
+    return { anyCompleted: rows.length > 0, latest };
+  };
+}
 
 function loadDoraByService(windowDays: number, now: number) {
   return async (organizationId: string): Promise<Map<string | null, DoraSummary>> => {
@@ -312,6 +356,20 @@ export const SCORECARD_CHECK_EVALUATORS = {
     const pct = cfr.value * 100;
     const line = `${cfr.failures} of ${plural(cfr.changes, "production change")} failed in ${plural(days, "day")} (${Math.round(pct)}%, threshold ${max}%)`;
     return pct <= max ? pass(`${line}.`) : fail(`${line}.`);
+  },
+
+  game_day_detected: async ({ service, signals }) => {
+    const feed = await signals.extension(GAME_DAY_FEED_KEY, loadGameDaysByService(signals.now));
+    if (!feed) return unavailable("game day");
+    if (!feed.anyCompleted) return na("The organization has not completed a game day yet.");
+    const latest = feed.latest.get(service.id);
+    if (!latest) {
+      return fail(`No game day in the last ${GAME_DAY_WINDOW_DAYS} days.`);
+    }
+    const when = latest.completedAt.toISOString().slice(0, 10);
+    return latest.detected
+      ? pass(`"${latest.name}" on ${when} was detected.`)
+      : fail(`"${latest.name}" on ${when} went undetected.`);
   },
 } satisfies Record<ScorecardCheckType, CheckEvaluator>;
 

@@ -62,7 +62,8 @@ async function clientFor(target: FailureTarget) {
 
 async function lifecycleOf(target: FailureTarget): Promise<LifecycleActionsDeclaration | null> {
   const type = await resourceTypeFor(target.pluginId, target.resourceTypeId);
-  if (!type) throw new Error(`${target.pluginId}/${target.resourceTypeId} is no longer a known type`);
+  if (!type)
+    throw new Error(`${target.pluginId}/${target.resourceTypeId} is no longer a known type`);
   if (!failureActionsForType(type).some((a) => a.id === target.actionId)) {
     throw new Error(`The type no longer supports the failure action "${target.actionId}"`);
   }
@@ -77,7 +78,11 @@ export async function prepareFailureTarget(target: FailureTarget): Promise<Prepa
   const lifecycle = await lifecycleOf(target);
   const client = await clientFor(target);
   if (lifecycle) {
-    const live = await client.getResource(target.resourceTypeId, target.resourceId, target.accountId);
+    const live = await client.getResource(
+      target.resourceTypeId,
+      target.resourceId,
+      target.accountId,
+    );
     const key = lifecycle.statusFieldKey;
     const value = key ? live.fields[key] : undefined;
     return {

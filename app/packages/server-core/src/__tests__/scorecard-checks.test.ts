@@ -69,14 +69,16 @@ function signals(over: Partial<Record<keyof ServiceSignals, unknown>> = {}): Ser
     onCallSchedule: async () => null,
     onCallNow: async () => null,
     resourceSpend: async () => new Map(),
-    // No scanner has reported and no deploys were recorded: both later feeds
-    // leave their checks not applicable.
+    // No scanner has reported, no deploys were recorded and no game day has
+    // completed: the later feeds leave their checks not applicable.
     extension: async (key: string) =>
       key === "vulnerabilities"
         ? { scanning: false, atOrAbove: () => new Map() }
         : key.startsWith("dora-service:")
           ? new Map()
-          : null,
+          : key === "game-days"
+            ? { anyCompleted: false, latest: new Map() }
+            : null,
   };
   return { ...base, ...over } as unknown as ServiceSignals;
 }
@@ -313,6 +315,38 @@ describe("vulnerability and delivery checks", () => {
     const { sig } = cfrFeed(null);
     expect((await run("change_failure_rate", ctx(service(), sig))).status).toBe("error");
   });
+
+  const gameDayFeed = (feed: unknown) => signals({ extension: async () => feed });
+
+  it("game_day_detected is not applicable before the org has completed a game day", async () => {
+    const sig = gameDayFeed({ anyCompleted: false, latest: new Map() });
+    expect((await run("game_day_detected", ctx(service(), sig))).status).toBe("not_applicable");
+  });
+
+  it("game_day_detected reads the service's latest game day", async () => {
+    const completedAt = new Date("2026-11-01T10:00:00.000Z");
+    const none = gameDayFeed({ anyCompleted: true, latest: new Map() });
+    const missed = await run("game_day_detected", ctx(service(), none));
+    expect(missed.status).toBe("fail");
+    expect(missed.detail).toMatch(/No game day in the last 90 days/);
+
+    const undetected = gameDayFeed({
+      anyCompleted: true,
+      latest: new Map([["svc-1", { name: "Cache down", completedAt, detected: false }]]),
+    });
+    const out = await run("game_day_detected", ctx(service(), undetected));
+    expect(out.status).toBe("fail");
+    expect(out.detail).toBe('"Cache down" on 2026-11-01 went undetected.');
+
+    const detected = gameDayFeed({
+      anyCompleted: true,
+      latest: new Map([["svc-1", { name: "Cache down", completedAt, detected: true }]]),
+    });
+    expect((await run("game_day_detected", ctx(service(), detected))).status).toBe("pass");
+    expect((await run("game_day_detected", ctx(service(), gameDayFeed(null)))).status).toBe(
+      "error",
+    );
+  });
 });
 
 describe("scoreService", () => {
@@ -334,8 +368,8 @@ describe("scoreService", () => {
     );
     // Applicable: owner (2, pass), on-call (2, fail), SLO (2, fail), runbook
     // (1, fail), posture (2, pass), orphans (1, pass). Backups, tags and cost
-    // are not applicable, and so are vulnerabilities and change failure rate
-    // with no scanner and no deploys. 5 of 10.
+    // are not applicable, and so are vulnerabilities, change failure rate and
+    // game days with no scanner, no deploys and no game day. 5 of 10.
     expect(result.score).toBe(50);
     expect(result.level).toBe("bronze");
     expect(result.checks.find((c) => c.type === "backups_verified")?.status).toBe("not_applicable");

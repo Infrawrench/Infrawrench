@@ -70,6 +70,7 @@ const CheckType = knownOr([
   "cost_within_budget",
   "no_critical_vulnerabilities",
   "change_failure_rate",
+  "game_day_detected",
 ]);
 
 const Check = Schema.Struct({

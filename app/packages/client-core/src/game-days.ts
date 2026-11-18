@@ -72,12 +72,7 @@ export const GAME_DAY_ACTIVE_STATUSES: readonly GameDayStatus[] = [
 
 /** Why the failure was taken out (or never put in). */
 export type GameDayEndReason =
-  | "time_limit"
-  | "ended"
-  | "aborted"
-  | "inject_failed"
-  | "interrupted"
-  | "freeze";
+  "time_limit" | "ended" | "aborted" | "inject_failed" | "interrupted" | "freeze";
 
 export const GAME_DAY_END_REASONS: readonly GameDayEndReason[] = [
   "time_limit",
@@ -90,13 +85,7 @@ export const GAME_DAY_END_REASONS: readonly GameDayEndReason[] = [
 
 /** One target's progress. */
 export type GameDayTargetState =
-  | "pending"
-  | "injecting"
-  | "injected"
-  | "skipped"
-  | "inject_failed"
-  | "reverted"
-  | "undo_failed";
+  "pending" | "injecting" | "injected" | "skipped" | "inject_failed" | "reverted" | "undo_failed";
 
 export const GAME_DAY_TARGET_STATES: readonly GameDayTargetState[] = [
   "pending",
@@ -442,7 +431,8 @@ export function computeGameDayReport(
 
   const notRun = gameDay.status === "planned" || gameDay.status === "cancelled" || !injectedAt;
   const state = notRun ? "not_run" : gameDay.status === "completed" ? "final" : "in_progress";
-  const injectedUntil = gameDay.undoneAt ?? (state === "in_progress" ? new Date(now).toISOString() : null);
+  const injectedUntil =
+    gameDay.undoneAt ?? (state === "in_progress" ? new Date(now).toISOString() : null);
 
   return {
     timeToDetectMs: first?.afterMs ?? null,
@@ -480,6 +470,19 @@ export function mergeGameDaySignals(
     if (next !== undefined) out[key] = earliestIso(stored[key], next);
   }
   return out;
+}
+
+/** Whether anything noticed the failure: every detector but the acknowledgement. */
+export function gameDayDetected(signals: Partial<GameDaySignals>): boolean {
+  return Boolean(
+    signals.probeFailedAt ??
+    signals.probeDownAt ??
+    signals.metricAlertAt ??
+    signals.sloBurnAt ??
+    signals.incidentDeclaredAt ??
+    signals.alertedAt ??
+    signals.pagedAt,
+  );
 }
 
 /** Whether a game day can still be aborted (the failure may be in effect, or is about to be). */

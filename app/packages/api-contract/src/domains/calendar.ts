@@ -39,7 +39,14 @@ const CalendarEventLink = Schema.NullOr(
     }),
     Schema.Struct({
       target: Schema.Literal("tab"),
-      tab: Schema.Literals(["expiring", "incidents", "workflows", "costs", "settings", "game-days"]),
+      tab: Schema.Literals([
+        "expiring",
+        "incidents",
+        "workflows",
+        "costs",
+        "settings",
+        "game-days",
+      ]),
     }),
   ]),
 ).annotate({

@@ -89,7 +89,10 @@ interface WireLabels {
   emails: Map<string, string>;
 }
 
-async function loadLabels(organizationId: string, rows: readonly GameDayRow[]): Promise<WireLabels> {
+async function loadLabels(
+  organizationId: string,
+  rows: readonly GameDayRow[],
+): Promise<WireLabels> {
   const probeIds = [...new Set(rows.flatMap((r) => r.watchedProbeIds))];
   const serviceIds = [...new Set(rows.flatMap((r) => (r.serviceId ? [r.serviceId] : [])))];
   const userIds = [...new Set(rows.flatMap((r) => (r.armedByUserId ? [r.armedByUserId] : [])))];
@@ -116,7 +119,10 @@ async function loadLabels(organizationId: string, rows: readonly GameDayRow[]): 
           .where(and(eq(services.organizationId, organizationId), inArray(services.id, serviceIds)))
       : [],
     userIds.length
-      ? db.select({ id: users.id, email: users.email }).from(users).where(inArray(users.id, userIds))
+      ? db
+          .select({ id: users.id, email: users.email })
+          .from(users)
+          .where(inArray(users.id, userIds))
       : [],
   ]);
   return {
@@ -626,7 +632,11 @@ export async function listGameDayCandidates(organizationId: string): Promise<Gam
           .limit(2000)
       : [],
     db
-      .select({ id: syntheticProbes.id, name: syntheticProbes.name, status: syntheticProbes.status })
+      .select({
+        id: syntheticProbes.id,
+        name: syntheticProbes.name,
+        status: syntheticProbes.status,
+      })
       .from(syntheticProbes)
       .where(eq(syntheticProbes.organizationId, organizationId))
       .orderBy(asc(syntheticProbes.name)),

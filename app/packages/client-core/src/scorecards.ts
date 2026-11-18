@@ -43,7 +43,8 @@ export type ScorecardCheckType =
   | "required_tags"
   | "cost_within_budget"
   | "no_critical_vulnerabilities"
-  | "change_failure_rate";
+  | "change_failure_rate"
+  | "game_day_detected";
 
 export type ScorecardParamKind = "number" | "string_list" | "severity_list";
 
@@ -219,6 +220,14 @@ export const SCORECARD_CHECK_TYPES: readonly ScorecardCheckTypeDef[] = [
         max: 90,
       },
     ],
+  },
+  {
+    type: "game_day_detected",
+    label: "Failure detected in a game day",
+    description:
+      "The service's most recent game day in the last 90 days ended with the failure detected (a probe, an alert, an SLO burn or an incident noticed it). Not applicable until the organization has completed a game day.",
+    defaultWeight: 1,
+    params: [],
   },
 ];
 

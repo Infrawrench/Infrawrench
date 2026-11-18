@@ -25,6 +25,7 @@ import {
   QueryMonitorIcon,
   QuotasIcon,
   RunbookIcon,
+  GameDaysIcon,
   ServicesIcon,
   SlosIcon,
   StatusPagesIcon,
@@ -284,6 +285,14 @@ export function useOrgTools(): SidebarToolDef[] {
             label: gt("Incidents"),
             icon: <IncidentsIcon />,
             onClick: () => void navigate({ to: "/incidents" }),
+          },
+          // Cloud-only: the cloud poller injects, watches and undoes a game
+          // day's failure, and its report reads cloud alert records.
+          {
+            key: "game-days",
+            label: gt("Game days"),
+            icon: <GameDaysIcon />,
+            onClick: () => void navigate({ to: "/game-days", search: {} }),
           },
           // Cloud-only: an ephemeral environment is created against org
           // accounts, recorded in org tables and torn down by the cloud lease
