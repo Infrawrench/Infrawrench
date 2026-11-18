@@ -23541,5 +23541,9 @@
   "c2e23c6d7c842309": "Séries",
   "3bfddd583ca00d76": "Masquer {name}",
   "aecba76fd1f9fc10": "Afficher {name}",
-  "7eda6691ee94c927": "Éditeur {language}"
+  "7eda6691ee94c927": "Éditeur {language}",
+  "331ca38354a030fb": "{file} : {rows, plural, one {# ligne} other {# lignes}}",
+  "61c177c14396c61c": "{values, plural, one {# valeur sera écrite} other {# valeurs seront écrites}} sur {days, plural, one {# jour} other {# jours}}.",
+  "47b8d651335b6589": "{count, plural, one {# ligne est illisible et sera ignorée.} other {# lignes sont illisibles et seront ignorées.}}",
+  "2ecdd41521c97973": "{count, plural, one {Rechercher parmi # option…} other {Rechercher parmi # options…}}"
 }

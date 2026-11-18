@@ -63,8 +63,16 @@ interface T3CodePolicyEditorProps {
   onClose: () => void;
 }
 
-const inputClass =
-  "w-full rounded border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint";
+/**
+ * A text field with no width of its own, for inline rows that size it
+ * (`w-20`, `w-32`). Width utilities do not override each other by their order
+ * in the class string, only by their order in the stylesheet, where `w-full`
+ * comes after them: adding one to `inputClass` does nothing.
+ */
+const fieldClass =
+  "rounded border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint";
+/** A full-width text field. */
+const inputClass = `w-full ${fieldClass}`;
 const sectionTitle = "text-xs font-semibold uppercase tracking-wide text-on-surface-tertiary";
 
 function runtimeModeLabel(mode: string, gt: Gt): string {
@@ -1089,7 +1097,7 @@ function KnownSettingValue({
             value={typeof value === "number" ? value : ""}
             onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))}
             aria-label={gt("Days")}
-            className={`${inputClass} w-32`}
+            className={`${fieldClass} w-32`}
           />
           <label className="flex items-center gap-1 text-xs text-on-surface-secondary">
             <input
@@ -1160,7 +1168,7 @@ function ProviderInstanceEditor({
             }
             placeholder="ANTHROPIC_BASE_URL"
             aria-label={gt("Variable name")}
-            className={`${inputClass} w-1/2 font-mono text-xs`}
+            className={`${fieldClass} w-1/2 font-mono text-xs`}
           />
           <input
             value={variable.value}
@@ -1172,7 +1180,7 @@ function ProviderInstanceEditor({
             }
             placeholder={gt("Value")}
             aria-label={gt("Variable value")}
-            className={`${inputClass} w-1/2 font-mono text-xs`}
+            className={`${fieldClass} w-1/2 font-mono text-xs`}
           />
           <button
             type="button"

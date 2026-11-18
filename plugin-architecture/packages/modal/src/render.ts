@@ -43,10 +43,17 @@ const STOPPABLE = new Set([
 
 const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
 
+const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+/** A dollar amount with its sign in front of the symbol: "-$100.00", never "$-100.00". */
+export function formatUsd(n: number): string {
+  return USD.format(n);
+}
+
 function usd(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (value === undefined || value === "" || !Number.isFinite(n)) return "";
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatUsd(n);
 }
 
 function kv(items: Array<[string, unknown, boolean?]>): SchemaNode {

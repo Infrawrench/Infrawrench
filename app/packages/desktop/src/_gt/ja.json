@@ -23335,5 +23335,9 @@
   "c2e23c6d7c842309": "系列",
   "3bfddd583ca00d76": "{name} を非表示",
   "aecba76fd1f9fc10": "{name} を表示",
-  "7eda6691ee94c927": "{language}エディタ"
+  "7eda6691ee94c927": "{language}エディタ",
+  "331ca38354a030fb": "{file}: {rows, plural, other {# 行}}",
+  "61c177c14396c61c": "{days, plural, other {# 日}}分の{values, plural, other {# 件の値}}が書き込まれます。",
+  "47b8d651335b6589": "{count, plural, other {# 行は読み取れないためスキップされます。}}",
+  "2ecdd41521c97973": "{count, plural, other {# 件のオプションを検索…}}"
 }

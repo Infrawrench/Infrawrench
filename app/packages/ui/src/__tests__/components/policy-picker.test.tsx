@@ -50,14 +50,14 @@ describe("PolicyPicker", () => {
 
   it("filters the policy list by search", () => {
     render(<PolicyPicker policies={policies} value="" onChange={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Search policies"), { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText("Search options"), { target: { value: "admin" } });
     expect(screen.getByRole("checkbox", { name: "Admin" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Read" })).not.toBeInTheDocument();
   });
 
   it("shows No matches when search excludes everything", () => {
     render(<PolicyPicker policies={policies} value="" onChange={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Search policies"), { target: { value: "zzz" } });
+    fireEvent.change(screen.getByLabelText("Search options"), { target: { value: "zzz" } });
     expect(screen.getByText("No matches")).toBeInTheDocument();
   });
 
@@ -77,5 +77,15 @@ describe("PolicyPicker", () => {
     );
     const chips = screen.getByText("1 selected").closest("div")!.parentElement!;
     expect(within(chips).getByText("ghost.policy")).toBeInTheDocument();
+  });
+
+  // The picker is every plugin's multi-select, so its search box names no
+  // particular kind of thing (#1356), and counts in the plural only above one.
+  it("labels the search box with a neutral, pluralised count", () => {
+    const { unmount } = render(<PolicyPicker policies={policies} value="" onChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText("Search 3 options…")).toBeInTheDocument();
+    unmount();
+    render(<PolicyPicker policies={policies.slice(0, 1)} value="" onChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText("Search 1 option…")).toBeInTheDocument();
   });
 });
