@@ -707,14 +707,15 @@ fn path_open_internal_with_symlink_depth(
                 )
             };
 
-            {
-                let mut guard = parent_inode.write();
-                if let Kind::Dir { entries, .. } = guard.deref_mut() {
-                    entries.insert(new_entity_name, new_inode.clone());
-                }
-            }
-
-            Ok(Ok(wasi_try_ok_ok!(insert_fd_locked(
+            // iwci patch (#1294): the descriptor is counted on the new inode
+            // before the inode is cached where others find it. The fd map
+            // lock held here keeps out this process's threads, not other
+            // processes, which share the inode tree: one could open the
+            // cached inode, share its handle and close again before the
+            // descriptor here was counted, and its close, the last one it
+            // saw, dropped the handle, so the creator's first write failed
+            // with `EINVAL`.
+            let out_fd = wasi_try_ok_ok!(insert_fd_locked(
                 &mut fd_map,
                 state,
                 adjusted_rights,
@@ -722,9 +723,18 @@ fn path_open_internal_with_symlink_depth(
                 fs_flags,
                 fd_flags,
                 open_flags,
-                new_inode,
+                new_inode.clone(),
                 with_fd,
-            ))))
+            ));
+
+            {
+                let mut guard = parent_inode.write();
+                if let Kind::Dir { entries, .. } = guard.deref_mut() {
+                    entries.insert(new_entity_name, new_inode);
+                }
+            }
+
+            Ok(Ok(out_fd))
         } else {
             Ok(Err(maybe_inode.unwrap_err()))
         }

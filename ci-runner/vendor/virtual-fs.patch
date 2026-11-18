@@ -1,3 +1,77 @@
+--- a/src/mem_fs/file.rs
++++ b/src/mem_fs/file.rs
+@@ -244,45 +244,36 @@
+ 
+     fn unlink(&mut self) -> Result<()> {
+         let filesystem = self.filesystem.clone();
+-        let inode = self.inode;
++        let inode_of_file = self.inode;
+ 
+-        let (inode_of_parent, position, inode_of_file) = {
+-            // Read lock.
+-            let fs = filesystem.inner.read().map_err(|_| FsError::Lock)?;
++        // iwci patch (#1294): the file's place in its parent is found under
++        // the write lock it is removed under. Found under a read lock first,
++        // a name that left the directory in between (a removal, a rename, a
++        // `rmdir`, from any thread) shifted the file down, and the entry at
++        // the old place, its neighbour or past the end, was removed instead.
++        let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
+ 
+-            // The inode of the file.
+-            let inode_of_file = inode;
+-
+-            // Find the position of the file in the parent, and the
+-            // inode of the parent.
+-            let (position, inode_of_parent) = fs
+-                .storage
+-                .iter()
+-                .find_map(|(inode_of_parent, node)| match node {
+-                    Node::Directory(DirectoryNode { children, .. }) => {
+-                        children.iter().enumerate().find_map(|(nth, inode)| {
+-                            if inode == &inode_of_file {
+-                                Some((nth, inode_of_parent))
+-                            } else {
+-                                None
+-                            }
+-                        })
+-                    }
++        // Find the position of the file in the parent, and the
++        // inode of the parent.
++        let (position, inode_of_parent) = fs
++            .storage
++            .iter()
++            .find_map(|(inode_of_parent, node)| match node {
++                Node::Directory(DirectoryNode { children, .. }) => {
++                    children.iter().enumerate().find_map(|(nth, inode)| {
++                        if inode == &inode_of_file {
++                            Some((nth, inode_of_parent))
++                        } else {
++                            None
++                        }
++                    })
++                }
+ 
+-                    _ => None,
+-                })
+-                .ok_or(FsError::BaseNotDirectory)?;
++                _ => None,
++            })
++            .ok_or(FsError::BaseNotDirectory)?;
+ 
+-            (inode_of_parent, position, inode_of_file)
+-        };
+-
+-        {
+-            // Write lock.
+-            let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
+-            fs.unlink_file_inode(inode_of_parent, position, inode_of_file)?;
+-        }
+-
+-        Ok(())
++        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
+     }
+ 
+     fn get_special_fd(&self) -> Option<u32> {
 --- a/src/mem_fs/file_opener.rs
 +++ b/src/mem_fs/file_opener.rs
 @@ -1,4 +1,4 @@
@@ -110,7 +184,46 @@
          test_file_opener::run_open_before_handle_hook();
 --- a/src/mem_fs/filesystem.rs
 +++ b/src/mem_fs/filesystem.rs
-@@ -384,20 +384,21 @@
+@@ -256,20 +256,24 @@
+     }
+ 
+     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
++        // iwci patch (#1294): the parent is looked up under the write lock
++        // the link is added under, as `create_dir` and `open` do. Looked up
++        // under a read lock first, a parent removed in between (and its
++        // slot reused by another node) took the link into the wrong place.
++        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+         let (inode_of_parent, name_of_symlink) = {
+-            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
+-            let path = guard.canonicalize_without_inode(target)?;
++            let path = fs.canonicalize_without_inode(target)?;
+             let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
+             let name_of_symlink = path
+                 .file_name()
+                 .ok_or(FsError::InvalidInput)?
+                 .to_os_string();
+-            let inode_of_parent = match guard.inode_of_parent(parent_of_path)? {
++            let inode_of_parent = match fs.inode_of_parent(parent_of_path)? {
+                 InodeResolution::Found(a) => a,
+-                InodeResolution::Redirect(fs, mut redirected_path) => {
++                InodeResolution::Redirect(redirect_fs, mut redirected_path) => {
+                     redirected_path.push(&name_of_symlink);
+-                    drop(guard);
+-                    let fs_ref: &dyn crate::FileSystem = fs.as_ref();
++                    drop(fs);
++                    let fs_ref: &dyn crate::FileSystem = redirect_fs.as_ref();
+                     if let Some(mem_fs) = fs_ref.downcast_ref::<Self>() {
+                         return mem_fs.create_symlink(source, redirected_path.as_path());
+                     }
+@@ -279,7 +283,6 @@
+             (inode_of_parent, name_of_symlink)
+         };
+ 
+-        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+         if fs.canonicalize(target).is_ok() {
+             return Err(FsError::AlreadyExists);
+         }
+@@ -384,20 +387,21 @@
      }
  
      fn create_dir(&self, path: &Path) -> Result<()> {
@@ -142,7 +255,7 @@
  
              // Check the directory name.
              let name_of_directory = path
-@@ -406,25 +407,29 @@
+@@ -406,26 +410,30 @@
                  .to_os_string();
  
              // Find the parent inode.
@@ -151,24 +264,17 @@
                  InodeResolution::Found(a) => a,
 -                InodeResolution::Redirect(fs, mut path) => {
 -                    drop(guard);
+-                    path.push(name_of_directory);
+-                    return fs.create_dir(path.as_path());
 +                InodeResolution::Redirect(redirect_fs, mut path) => {
 +                    drop(fs);
-                     path.push(name_of_directory);
--                    return fs.create_dir(path.as_path());
++                    path.push(name_of_directory);
 +                    return redirect_fs.create_dir(path.as_path());
                  }
              };
  
 -            (inode_of_parent, name_of_directory)
 -        };
--
--        if self.read_dir(path).is_ok() {
--            return Err(FsError::AlreadyExists);
--        }
--
--        {
--            // Write lock.
--            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
 +            // Anything of that name, a directory or not, is in the way.
 +            let taken = match fs.storage.get(inode_of_parent) {
 +                Some(Node::Directory(DirectoryNode { children, .. })) => {
@@ -184,9 +290,18 @@
 +                return Err(FsError::AlreadyExists);
 +            }
  
+-        if self.read_dir(path).is_ok() {
+-            return Err(FsError::AlreadyExists);
+-        }
+-
+-        {
+-            // Write lock.
+-            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+-
              // Creating the directory in the storage.
              let inode_of_directory = fs.storage.vacant_entry().key();
-@@ -465,73 +470,64 @@
+             let real_inode_of_directory = fs.storage.insert(Node::Directory(DirectoryNode {
+@@ -465,72 +473,63 @@
      }
  
      fn remove_dir(&self, path: &Path) -> Result<()> {
@@ -288,20 +403,19 @@
      fn rename<'a>(&'a self, from: &'a Path, to: &'a Path) -> BoxFuture<'a, Result<()>> {
          Box::pin(async move {
 -            let name_of_to;
+-
+-            // Read lock.
+-            let (name_of_from, inode_of_from_parent, name_of_to, inode_of_to_parent) = {
+-                let fs = self.inner.read().map_err(|_| FsError::Lock)?;
 +            let (inode_of_from_parent, inode_of_to_parent) = {
 +                // The write lock is held from the lookups through the
 +                // mutation, so concurrent operations cannot invalidate the
 +                // resolved inodes and child positions in between.
 +                let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
  
--            // Read lock.
--            let (name_of_from, inode_of_from_parent, name_of_to, inode_of_to_parent) = {
--                let fs = self.inner.read().map_err(|_| FsError::Lock)?;
--
                  let from = fs.canonicalize_without_inode(from)?;
                  let to = fs.canonicalize_without_inode(to)?;
- 
-@@ -544,7 +540,7 @@
+@@ -544,7 +543,7 @@
                      .file_name()
                      .ok_or(FsError::InvalidInput)?
                      .to_os_string();
@@ -310,7 +424,7 @@
  
                  // Find the parent inodes.
                  let inode_of_from_parent = match fs.inode_of_parent(parent_of_from)? {
-@@ -562,96 +558,22 @@
+@@ -562,96 +561,22 @@
                      }
                  };
  
@@ -323,7 +437,7 @@
 -            };
 -
 -            match (inode_of_from_parent, inode_of_to_parent) {
--                // Rename within this MemFS instance
+                 // Rename within this MemFS instance
 -                (Either::Left(inode_of_from_parent), Either::Left(inode_of_to_parent)) => {
 -                    let fs = self.inner.read().map_err(|_| FsError::Lock)?;
 -
@@ -348,7 +462,6 @@
 -                        (position_of_from, inode, inode_of_from_parent),
 -                        (inode_of_to_parent, name_of_to),
 -                        maybe_position_and_inode_of_file,
-+                // Rename within this MemFS instance
 +                if let (Either::Left(inode_of_from_parent), Either::Left(inode_of_to_parent)) =
 +                    (&inode_of_from_parent, &inode_of_to_parent)
 +                {
@@ -420,7 +533,7 @@
                  // Rename within the same mounted FS instance
                  (Either::Right((from_fs, from_path)), Either::Right((to_fs, to_path)))
                      if Arc::ptr_eq(&from_fs, &to_fs) =>
-@@ -701,55 +623,47 @@
+@@ -701,55 +626,47 @@
      }
  
      fn remove_file(&self, path: &Path) -> Result<()> {
@@ -505,12 +618,10 @@
      }
  
      fn new_open_options(&self) -> OpenOptions<'_> {
-@@ -815,6 +729,75 @@
-         }
- 
+@@ -817,6 +734,75 @@
          self.remove_child_from_node(inode_of_parent, position)
-+    }
-+
+     }
+ 
 +    /// Renames the child `name_of_from` of `inode_of_from_parent` to
 +    /// `name_of_to` in `inode_of_to_parent`, replacing an existing file there.
 +    fn rename_child(
@@ -578,14 +689,15 @@
 +        }
 +
 +        Ok(())
-     }
- 
++    }
++
      /// Get the inode associated to a path if it exists.
-@@ -1652,7 +1635,67 @@
-                 ),
+     pub(super) fn inode_of(&self, path: &Path) -> Result<InodeResolution> {
+         // SAFETY: The root node always exists, so it's safe to unwrap here.
+@@ -1653,6 +1639,66 @@
                  "`hello2.txt` has been renamed to `world2.txt`",
              );
-+        }
+         }
 +    }
 +
 +    #[tokio::test]
@@ -602,7 +714,7 @@
 +                .open(path!(path))
 +                .unwrap();
 +            file.write_all(contents).await.unwrap();
-         }
++        }
 +
 +        let mut replaced = fs
 +            .new_open_options()
@@ -649,21 +761,23 @@
      }
  
      #[tokio::test]
-@@ -1824,9 +1867,8 @@
+@@ -1824,9 +1870,8 @@
  
          drop(file);
  
 -        let fs_inner = fs.inner.read().unwrap();
-         assert_eq!(
+-        assert_eq!(
 -            fs_inner.storage.len(),
++        assert_eq!(
 +            fs.inner.read().unwrap().storage.len(),
              1,
              "storage drops the file once the last open handle closes"
          );
-@@ -2096,4 +2138,168 @@
+@@ -2095,5 +2140,169 @@
+         f.read_to_end(&mut buf).await.unwrap();
  
          assert_eq!(buf, b"a");
-     }
++    }
 +
 +    #[tokio::test]
 +    async fn test_rename_onto_itself_keeps_the_file() {
@@ -695,7 +809,7 @@
 +            .unwrap();
 +        assert_eq!(contents, "contents");
 +        assert_eq!(fs.inner.read().unwrap().storage.len(), 2);
-+    }
+     }
 +
 +    /// Rename, remove and open resolve an entry and then act on it. When the
 +    /// two steps ran under separate lock acquisitions, a concurrent operation

@@ -99,9 +99,18 @@ pub(crate) fn path_unlink_file_internal(
         return Ok(Errno::Isdir);
     }
 
+    // iwci patch (#1294): the parent's write lock is held from taking the
+    // name's entry out until the file is removed. A lookup of the name
+    // caches it under that lock, after checking the file system again
+    // there, so it finds the name either still there with its file or gone
+    // with it. The lock used to be let go between the two, and a lookup
+    // that had found the file before it was removed cached it once it was
+    // gone: the directory went on listing a name that `stat` and `unlink`
+    // said was not there, and an exclusive create of it failed with
+    // `EEXIST`.
+    let mut parent_guard = parent_inode.write();
     let removed_inode = {
-        let mut guard = parent_inode.write();
-        let entry = match guard.deref_mut() {
+        let entry = match parent_guard.deref_mut() {
             Kind::Dir { entries, .. } => {
                 // iwci patch (#1139): what the name holds now is what goes,
                 // as on Linux; a directory stays where it is (see above).
@@ -118,7 +127,7 @@ pub(crate) fn path_unlink_file_internal(
             ),
         };
         let Some(removed_inode) = entry else {
-            drop(guard);
+            drop(parent_guard);
 
             let inode_is_symlink = matches!(inode.read().deref(), Kind::Symlink { .. });
             if !inode_is_symlink {
@@ -174,6 +183,7 @@ pub(crate) fn path_unlink_file_internal(
             }
         }
     }
+    drop(parent_guard);
 
     Ok(Errno::Success)
 }

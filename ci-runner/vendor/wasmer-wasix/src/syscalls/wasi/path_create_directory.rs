@@ -98,6 +98,20 @@ pub(crate) fn path_create_directory_internal(
                 return Err(Errno::Exist);
             }
 
+            // iwci patch (#1294): the directory is made and cached under
+            // the parent's write lock, as `rmdir` removes it and takes its
+            // entry out under that lock. Made with the lock let go, an
+            // `rmdir` of the new directory could run between the two, and
+            // its entry was cached after it was gone: listed, but not
+            // there to `stat` or remove, and `mkdir` of it said `EEXIST`.
+            let mut guard = parent_inode.write();
+            let Kind::Dir { entries, .. } = guard.deref_mut() else {
+                unreachable!();
+            };
+            if entries.contains_key(&dir_name) {
+                return Err(Errno::Exist);
+            }
+
             state.fs_create_dir(&new_dir_path)?;
 
             let kind = Kind::Dir {
@@ -109,15 +123,7 @@ pub(crate) fn path_create_directory_internal(
                 .fs
                 .create_inode(inodes, kind, false, dir_name.clone())?;
 
-            // reborrow to insert
-            {
-                let mut guard = parent_inode.write();
-                let Kind::Dir { entries, .. } = guard.deref_mut() else {
-                    unreachable!();
-                };
-
-                entries.insert(dir_name, new_inode.clone());
-            }
+            entries.insert(dir_name, new_inode.clone());
         }
         Kind::Root { .. } => {
             trace!("the root node can only contain pre-opened directories");

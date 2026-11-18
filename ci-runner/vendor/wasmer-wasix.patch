@@ -763,7 +763,76 @@
          let mut guard = inode.write();
          match guard.deref_mut() {
              Kind::File { handle, .. } => {
-@@ -1758,7 +1776,13 @@
+@@ -1539,7 +1557,27 @@
+                 // The cur_inode is definitely a directory (Kind::Dir) at this
+                 // stage, and we need to create an inode (new_inode) and cache
+                 // as an entry in current directory (entry_name => cur_inode).
+-                let (entry_name, new_inode, should_insert, should_return) =
++                // iwci patch (#1294): what the entry is cached for, a file
++                // or a directory at a path, which is checked again below.
++                let cached_path = match &component_resolution {
++                    ComponentResolution::Create {
++                        kind: Kind::File { path, .. },
++                        is_ephemeral: false,
++                        ..
++                    } => Some((path.clone(), false)),
++                    ComponentResolution::Create {
++                        kind: Kind::Dir { path, .. },
++                        is_ephemeral: false,
++                        ..
++                    } => Some((path.clone(), true)),
++                    #[cfg(unix)]
++                    ComponentResolution::Special {
++                        kind: Kind::File { path, .. },
++                        ..
++                    } => Some((path.clone(), false)),
++                    _ => None,
++                };
++                let (entry_name, mut new_inode, should_insert, should_return) =
+                     match component_resolution {
+                         ComponentResolution::Create {
+                             kind,
+@@ -1588,8 +1626,38 @@
+                         unreachable!("Attempted to insert special device into non-directory");
+                     };
+ 
++                    // iwci patch (#1294): the entry is cached only if the
++                    // name is still uncached and the file system still has
++                    // it, both checked under the write lock it is cached
++                    // under. The file system was read before, under the
++                    // read lock, and an unlink that took the name's entry
++                    // out and removed the file in between left this lookup
++                    // caching a file that was gone: the directory listed the
++                    // name (its listing adds the cached entries), `stat` and
++                    // `unlink` said it was not there, and an exclusive
++                    // create of it failed with `EEXIST`. An unlink holds
++                    // this lock from taking the entry out to removing the
++                    // file, so the file system is checked wholly before or
++                    // after it. An entry another lookup or a creation cached
++                    // meanwhile is kept, not replaced.
+                     if should_insert {
+-                        entries.insert(entry_name, new_inode.clone());
++                        if let Some(entry) = entries.get(&entry_name) {
++                            new_inode = entry.clone();
++                        } else if let Some((path, is_dir)) = &cached_path {
++                            match self.root_fs.symlink_metadata(path) {
++                                Ok(md)
++                                    if md.file_type().is_dir() == *is_dir
++                                        && !md.file_type().is_symlink() =>
++                                {
++                                    entries.insert(entry_name, new_inode.clone());
++                                }
++                                // Something else is there now: look again.
++                                Ok(_) => continue 'component_lookup,
++                                Err(_) => return Err(Errno::Noent),
++                            }
++                        } else {
++                            entries.insert(entry_name, new_inode.clone());
++                        }
+                     }
+ 
+                     if should_return {
+@@ -1758,7 +1826,13 @@
          path: &str,
          follow_symlinks: bool,
      ) -> Result<InodeGuard, Errno> {
@@ -778,7 +847,7 @@
          let mut symlink_count = 0;
          self.get_inode_at_path_inner(
              inodes,
-@@ -1797,7 +1821,7 @@
+@@ -1797,7 +1871,7 @@
      ) -> Result<(InodeGuard, String), Errno> {
          let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
          if parent_dir.as_str().is_empty() {
@@ -787,7 +856,7 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1816,9 +1840,51 @@
+@@ -1816,9 +1890,51 @@
              Ok(Self::virtual_root_fd(self.root_inode.clone()))
          } else {
              ret
@@ -839,7 +908,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,68 +1899,100 @@
+@@ -1833,68 +1949,100 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -980,7 +1049,7 @@
                  },
                  _ => Filetype::Unknown,
              },
-@@ -1905,10 +2003,21 @@
+@@ -1905,10 +2053,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -1003,7 +1072,7 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2135,7 @@
+@@ -2026,6 +2185,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -1011,7 +1080,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2204,7 @@
+@@ -2094,6 +2254,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -1019,7 +1088,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2243,7 @@
+@@ -2132,6 +2293,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -1027,7 +1096,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2283,29 @@
+@@ -2171,18 +2333,29 @@
                  return Ok(None);
              }
  
@@ -1060,7 +1129,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2722,7 @@
+@@ -2599,6 +2772,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -1068,7 +1137,7 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,9 +2798,26 @@
+@@ -2674,9 +2848,26 @@
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -2430,6 +2499,44 @@
  
      if !working_dir
          .inner
+@@ -98,6 +98,20 @@
+                 return Err(Errno::Exist);
+             }
+ 
++            // iwci patch (#1294): the directory is made and cached under
++            // the parent's write lock, as `rmdir` removes it and takes its
++            // entry out under that lock. Made with the lock let go, an
++            // `rmdir` of the new directory could run between the two, and
++            // its entry was cached after it was gone: listed, but not
++            // there to `stat` or remove, and `mkdir` of it said `EEXIST`.
++            let mut guard = parent_inode.write();
++            let Kind::Dir { entries, .. } = guard.deref_mut() else {
++                unreachable!();
++            };
++            if entries.contains_key(&dir_name) {
++                return Err(Errno::Exist);
++            }
++
+             state.fs_create_dir(&new_dir_path)?;
+ 
+             let kind = Kind::Dir {
+@@ -109,15 +123,7 @@
+                 .fs
+                 .create_inode(inodes, kind, false, dir_name.clone())?;
+ 
+-            // reborrow to insert
+-            {
+-                let mut guard = parent_inode.write();
+-                let Kind::Dir { entries, .. } = guard.deref_mut() else {
+-                    unreachable!();
+-                };
+-
+-                entries.insert(dir_name, new_inode.clone());
+-            }
++            entries.insert(dir_name, new_inode.clone());
+         }
+         Kind::Root { .. } => {
+             trace!("the root node can only contain pre-opened directories");
 --- a/src/syscalls/wasi/path_filestat_get.rs
 +++ b/src/syscalls/wasi/path_filestat_get.rs
 @@ -67,7 +67,7 @@
@@ -2656,9 +2763,21 @@
                  crate::fs::PosixPath::from_path(path)
                      .join(&crate::fs::PosixPath::new(&target_entry_name))
                      .into_path_buf()
-@@ -168,7 +177,16 @@
-         let mut guard = source_parent_inode.write();
-         match guard.deref_mut() {
+@@ -164,11 +173,26 @@
+         return Ok(Errno::Inval);
+     }
+ 
++    // iwci patch (#1294): the source's parent stays write-locked from taking
++    // the source's entry out until the file system has moved it, as
++    // `path_unlink_file` holds it until the file is removed. A lookup of
++    // the source caches it under that lock after checking the file system
++    // again, so it sees the source either not yet moved, its entry still
++    // there, or moved; in between, it cached a name that had just gone.
++    let mut source_parent_guard = source_parent_inode.write();
+     let source_entry = {
+-        let mut guard = source_parent_inode.write();
+-        match guard.deref_mut() {
++        match source_parent_guard.deref_mut() {
              Kind::Dir { entries, .. } => {
 -                wasi_try_ok!(entries.remove(&source_entry_name).ok_or(Errno::Noent))
 +                match entries.remove(&source_entry_name) {
@@ -2674,7 +2793,17 @@
              }
              Kind::Root { .. } => return Ok(Errno::Notcapable),
              Kind::Socket { .. }
-@@ -210,12 +228,13 @@
+@@ -201,8 +225,7 @@
+                 };
+                 // if the above operation failed we have to revert the previous change and then fail
+                 if let Err(e) = result {
+-                    let mut guard = source_parent_inode.write();
+-                    if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                    if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
+                         entries.insert(source_entry_name, source_entry);
+                         return Ok(e);
+                     }
+@@ -210,12 +233,13 @@
                      let mut guard = source_entry.write();
                      if let Kind::File { path, .. } = guard.deref_mut() {
                          *path = target_guest_path.clone();
@@ -2689,7 +2818,7 @@
                  let cloned_path = path.clone();
                  let res = {
                      let state = state;
-@@ -227,6 +246,12 @@
+@@ -227,6 +251,12 @@
                  if let Err(e) = res {
                      return Ok(e);
                  }
@@ -2702,9 +2831,21 @@
                  {
                      let source_dir_path = path.clone();
                      drop(guard);
-@@ -284,27 +309,20 @@
+@@ -251,8 +281,7 @@
+                 match (res, is_ephemeral) {
+                     (Ok(()), _) | (Err(Errno::Noent), true) => {}
+                     (Err(e), _) => {
+-                        let mut guard = source_parent_inode.write();
+-                        if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                        if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
+                             entries.insert(source_entry_name, source_entry.clone());
+                             return Ok(e);
+                         }
+@@ -283,28 +312,22 @@
+             Kind::Root { .. } => unreachable!("The root can not be moved"),
          }
      }
++    drop(source_parent_guard);
  
 -    let source_size = source_entry.stat.read().unwrap().st_size;
 -
@@ -2739,7 +2880,7 @@
      // If the rename replaced an existing destination entry, clear any stale
      // ephemeral symlink mapping for that path.
      if !moved_ephemeral_symlink {
-@@ -323,10 +341,12 @@
+@@ -323,10 +346,12 @@
      match guard.deref_mut() {
          Kind::File { path, .. } => {
              *path = adjust_path(path, source_dir_path, target_dir_path);
@@ -2752,7 +2893,7 @@
              children = entries.values().cloned().collect::<Vec<_>>();
          }
          _ => return,
-@@ -338,6 +358,18 @@
+@@ -338,6 +363,18 @@
      }
  }
  
@@ -2822,7 +2963,7 @@
      let inode = wasi_try_ok!(state.fs.get_inode_at_path(inodes, fd, path, false));
      let (parent_inode, child_name) = wasi_try_ok!(state.fs.get_parent_inode_at_path(
          inodes,
-@@ -73,10 +90,28 @@
+@@ -73,17 +90,44 @@
          }
      };
  
@@ -2835,10 +2976,21 @@
 +        return Ok(Errno::Isdir);
 +    }
 +
++    // iwci patch (#1294): the parent's write lock is held from taking the
++    // name's entry out until the file is removed. A lookup of the name
++    // caches it under that lock, after checking the file system again
++    // there, so it finds the name either still there with its file or gone
++    // with it. The lock used to be let go between the two, and a lookup
++    // that had found the file before it was removed cached it once it was
++    // gone: the directory went on listing a name that `stat` and `unlink`
++    // said was not there, and an exclusive create of it failed with
++    // `EEXIST`.
++    let mut parent_guard = parent_inode.write();
      let removed_inode = {
-         let mut guard = parent_inode.write();
-         let entry = match guard.deref_mut() {
+-        let mut guard = parent_inode.write();
+-        let entry = match guard.deref_mut() {
 -            Kind::Dir { entries, .. } => entries.remove(&child_name),
++        let entry = match parent_guard.deref_mut() {
 +            Kind::Dir { entries, .. } => {
 +                // iwci patch (#1139): what the name holds now is what goes,
 +                // as on Linux; a directory stays where it is (see above).
@@ -2852,7 +3004,15 @@
              Kind::Root { .. } => return Ok(Errno::Access),
              _ => unreachable!(
                  "Internal logic error in wasi::path_unlink_file, parent is not a directory"
-@@ -96,16 +131,19 @@
+             ),
+         };
+         let Some(removed_inode) = entry else {
+-            drop(guard);
++            drop(parent_guard);
+ 
+             let inode_is_symlink = matches!(inode.read().deref(), Kind::Symlink { .. });
+             if !inode_is_symlink {
+@@ -96,16 +140,19 @@
              }
              return Ok(state.fs.remove_symlink_file(host_adjusted_path.as_path()));
          };
@@ -2877,6 +3037,14 @@
      };
      if st_nlink == 0 {
          {
+@@ -136,6 +183,7 @@
+             }
+         }
+     }
++    drop(parent_guard);
+ 
+     Ok(Errno::Success)
+ }
 --- a/src/syscalls/wasix/call_dynamic.rs
 +++ b/src/syscalls/wasix/call_dynamic.rs
 @@ -6,7 +6,10 @@
@@ -3300,6 +3468,51 @@
          Ok(fd) => fd,
          Err(err) => return Ok(Err(err)),
      };
+@@ -694,14 +707,15 @@
+                 )
+             };
+ 
+-            {
+-                let mut guard = parent_inode.write();
+-                if let Kind::Dir { entries, .. } = guard.deref_mut() {
+-                    entries.insert(new_entity_name, new_inode.clone());
+-                }
+-            }
+-
+-            Ok(Ok(wasi_try_ok_ok!(insert_fd_locked(
++            // iwci patch (#1294): the descriptor is counted on the new inode
++            // before the inode is cached where others find it. The fd map
++            // lock held here keeps out this process's threads, not other
++            // processes, which share the inode tree: one could open the
++            // cached inode, share its handle and close again before the
++            // descriptor here was counted, and its close, the last one it
++            // saw, dropped the handle, so the creator's first write failed
++            // with `EINVAL`.
++            let out_fd = wasi_try_ok_ok!(insert_fd_locked(
+                 &mut fd_map,
+                 state,
+                 adjusted_rights,
+@@ -709,9 +723,18 @@
+                 fs_flags,
+                 fd_flags,
+                 open_flags,
+-                new_inode,
++                new_inode.clone(),
+                 with_fd,
+-            ))))
++            ));
++
++            {
++                let mut guard = parent_inode.write();
++                if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                    entries.insert(new_entity_name, new_inode);
++                }
++            }
++
++            Ok(Ok(out_fd))
+         } else {
+             Ok(Err(maybe_inode.unwrap_err()))
+         }
 --- a/src/syscalls/wasix/proc_exec4.rs
 +++ b/src/syscalls/wasix/proc_exec4.rs
 @@ -83,6 +83,12 @@
