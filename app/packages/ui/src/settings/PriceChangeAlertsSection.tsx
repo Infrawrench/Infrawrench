@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { T, useGT } from "gt-react";
+import { useGT } from "gt-react";
 import {
   PRICE_CHANGE_LIMITS,
   type PriceChangeSettings,
@@ -73,12 +73,11 @@ export function PriceChangeAlertsSection() {
     <section className="border border-border rounded-xl p-5 space-y-4">
       <div>
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Price changes")}</h2>
-        <T>
-          <p className="text-xs text-on-surface-muted mt-1">
-            One alert per list-price change on an instance type you run. Turn the{" "}
-            <strong>Price changes</strong> trigger on for a channel or your phone above to route it.
-          </p>
-        </T>
+        <p className="text-xs text-on-surface-muted mt-1">
+          {gt(
+            "One alert per list-price change on an instance type you run. Turn the Price changes trigger on for a channel or your phone above to route it.",
+          )}
+        </p>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
