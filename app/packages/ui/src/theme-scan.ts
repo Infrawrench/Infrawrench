@@ -80,6 +80,45 @@ export function scanPaletteText(src: string): ThemeScan {
   return scan(src, PALETTE_TEXT, ["__tests__"]);
 }
 
+/**
+ * A colour utility naming one of the theme's token families: status, surface,
+ * accent, border or series. Tailwind v4 generates a colour utility only for a
+ * `--color-*` token that exists, so a `danger-surface` background with no
+ * `--color-danger-surface` compiles to nothing and fails silently. The group
+ * is the token name; an opacity suffix (`/10`) is not part of it.
+ */
+const TOKEN_UTILITY =
+  /(?<![\w-])(?:bg|text|border(?:-[trblxyse])?|ring|outline|fill|stroke|from|via|to|divide|decoration|placeholder|caret)-((?:on-)?(?:surface|accent|border|danger|warning|success|info|severe|notice|series)(?:-[a-z0-9]+)*)(?![\w-])/g;
+
+/** Every `--color-*` name `css` defines, in any block. */
+export function themeColorTokens(css: string): Set<string> {
+  return new Set([...css.matchAll(/--color-([a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
+}
+
+/**
+ * Colour utilities under `src` naming a theme token that `themeCss` does not
+ * define. They render as no style at all, with nothing to say so.
+ */
+export function scanUndefinedTokens(src: string, themeCss: string): ThemeScan {
+  const defined = themeColorTokens(themeCss);
+  const root = src.replace(/\/+$/, "");
+  const offenders: string[] = [];
+  let files = 0;
+  for (const file of sources(root, ["__tests__"])) {
+    files++;
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        for (const hit of line.matchAll(TOKEN_UTILITY)) {
+          if (!defined.has(hit[1]!)) {
+            offenders.push(`${file.slice(root.length + 1)}:${i + 1} → ${hit[0]}`);
+          }
+        }
+      });
+  }
+  return { files, offenders };
+}
+
 /** What a failing palette text scan tells whoever reads it. */
 export const PALETTE_TEXT_ADVICE =
   "uses fixed palette text colours, which cannot clear WCAG AA in both schemes: replace each with a semantic token (text-danger / text-warning / text-success / text-info / text-severe / text-notice / text-series-N)";

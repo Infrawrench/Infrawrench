@@ -198,10 +198,10 @@ export function HostSetupPanel({
               aria-hidden="true"
               className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-xs ${
                 requirement.ok
-                  ? "bg-success-surface text-success-on-surface"
+                  ? "bg-success/10 text-success"
                   : requirement.severity === "required"
-                    ? "bg-danger-surface text-danger-on-surface"
-                    : "bg-warning-surface text-warning-on-surface"
+                    ? "bg-danger/10 text-danger"
+                    : "bg-warning/10 text-warning"
               }`}
             >
               {requirement.ok ? "✓" : "!"}
@@ -213,7 +213,7 @@ export function HostSetupPanel({
                 </span>
                 <span className="sr-only">{requirement.ok ? gt("installed") : gt("missing")}</span>
                 {!requirement.ok && requirement.severity === "recommended" && (
-                  <span className="rounded border border-warning-border px-1 text-[10px] uppercase text-warning-on-surface">
+                  <span className="rounded border border-warning/40 px-1 text-[10px] uppercase text-warning">
                     <T>optional</T>
                   </span>
                 )}
@@ -230,7 +230,7 @@ export function HostSetupPanel({
 
       {!preflight.staging && (
         // No package fixes this, so it is said separately and without a button.
-        <p className="rounded-lg border border-danger-border bg-danger-surface p-3 text-sm text-danger-on-surface">
+        <p className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
           <T>
             Applications can&apos;t run on this host: /tmp and /dev/shm are unwritable or mounted
             noexec. One of them must allow execution.
@@ -259,7 +259,7 @@ export function HostSetupPanel({
       )}
 
       {plan && !plan.canInstall && (
-        <p className="text-sm text-warning-on-surface" role="status">
+        <p className="text-sm text-warning" role="status">
           {plan.blockedReason === undefined ? (
             <T>These packages have to be installed on the host by hand.</T>
           ) : (
@@ -272,7 +272,7 @@ export function HostSetupPanel({
       )}
 
       {error && (
-        <p className="text-sm text-danger-on-surface" role="alert">
+        <p className="text-sm text-danger" role="alert">
           {error}
         </p>
       )}

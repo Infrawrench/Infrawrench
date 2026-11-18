@@ -97,11 +97,18 @@ patchedDependencies:
   # versionMajorMinor "7.0" so rolldown-plugin-dts 0.27 emits declarations with
   # the tsc-rs binary. See KNOWLEDGE.md, "Type checking".
   "@tsc-rs/typescript@0.8.0": patches/@tsc-rs__typescript@0.8.0.patch
-  # A shared empty translations snapshot instead of a new `{}` per call. Both
-  # apps call initializeGTSPA() with no GTProvider, so the context is empty
-  # and the fresh object made `useGT()` return a new function on every
-  # render: every effect depending on `gt` re-ran forever (#925). Drop once
-  # react-core returns a stable fallback itself.
+  # Keeps `useGT()`'s function stable across renders, so an effect that
+  # depends on `gt` runs once rather than after every render it causes.
+  # 1. A shared empty translations snapshot instead of a new `{}` per call.
+  #    Both apps call initializeGTSPA() with no GTProvider, so the context is
+  #    empty and the fresh object changed `gt` on every render (#925).
+  # 2. Outside production, the dev hot-reload queue behind
+  #    useHandleMissingTranslation (and the dictionary variants) allocated a
+  #    new Map and returned a new setter on every render, so `gt` still
+  #    changed on every render under `vite dev` and fetch effects keyed on it
+  #    looped (#1336). The patch keeps the Map in a ref, memoises the setter
+  #    and flushes (then clears) the queue after every commit, as before.
+  # Drop each part once react-core is stable there itself.
   "@generaltranslation/react-core@11.1.6": patches/@generaltranslation__react-core@11.1.6.patch
 
 allowBuilds:

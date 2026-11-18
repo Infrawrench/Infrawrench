@@ -182,7 +182,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
       </div>
 
       {data.usingDefaults && !dirty && (
-        <div className="rounded-lg border border-border/60 bg-surface-muted/40 p-3 space-y-2">
+        <div className="rounded-lg border border-border/60 bg-surface-sunken/40 p-3 space-y-2">
           <p className="text-xs text-on-surface-secondary">
             {gt(
               "You haven't written any rules, so alerts follow the default: everything except drift goes to every connected channel and to mobile push.",

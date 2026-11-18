@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PALETTE_TEXT_ADVICE, scanBlueFills, scanPaletteText } from "../theme-scan";
+import {
+  PALETTE_TEXT_ADVICE,
+  scanBlueFills,
+  scanPaletteText,
+  scanUndefinedTokens,
+  themeColorTokens,
+} from "../theme-scan";
 
 /**
  * WCAG AA contrast guard for the semantic colour tokens.
@@ -222,6 +228,26 @@ describe("no blue in the interface", () => {
     // A mis-resolved root would otherwise scan nothing and pass.
     expect(files, `no sources found under ${UI_SRC}`).toBeGreaterThan(50);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("no utilities for undefined tokens", () => {
+  /**
+   * Tailwind v4 emits a colour utility only for a `--color-*` token that
+   * exists, so a `danger-surface` background with no such token produced no
+   * CSS at all: error banners rendered with no border, fill or red text (#1341).
+   * A tint of a status colour is its opacity step (`bg-danger/10`,
+   * `border-danger/40`), not a token of its own.
+   */
+  it("is true of every component in ui", () => {
+    const { files, offenders } = scanUndefinedTokens(UI_SRC, themeCss);
+    expect(files, `no sources found under ${UI_SRC}`).toBeGreaterThan(50);
+    expect(offenders).toEqual([]);
+  });
+
+  it("flags a status family token the theme does not define", () => {
+    expect(themeColorTokens(themeCss).has("danger")).toBe(true);
+    expect(themeColorTokens(themeCss).has("danger-surface")).toBe(false);
   });
 });
 

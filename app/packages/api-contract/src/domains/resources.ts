@@ -137,6 +137,12 @@ const ChildTypeRef = Schema.Struct({
   supportsCreate: Schema.Boolean,
   /** Field schema, shipped only for child types that support update. */
   fields: Schema.optionalKey(Schema.Array(JsonObject)),
+  topLevel: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "A top-level type shown on the account root's detail view beside its children. Its resources have no parent: send no `parentResourceId` when creating, editing or deleting one.",
+    }),
+  ),
 }).annotate({ identifier: "ChildTypeRef" });
 
 const ChildResourceRef = Schema.Struct({

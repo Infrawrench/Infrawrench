@@ -202,10 +202,12 @@ export interface AgentLaunchDefaults {
  * The single "nothing rehydrated" value for {@link AgentLaunchDefaults}.
  *
  * Both hosts clear these defaults from an effect whose dependency list contains
- * `gt` (per the project's i18n rule), and `useGT()` does not return a
- * referentially stable function, so that effect re-runs on *every* render.
- * Writing a fresh `{}` there is therefore a self-sustaining render loop:
+ * `gt` (per the project's i18n rule). Before our gt-react patch made it stable
+ * (#925, #1336), `useGT()` returned a new function on every render, so that
+ * effect re-ran on *every* render, and writing a fresh `{}` there was a
+ * self-sustaining render loop:
  * new object → state change → render → new `gt` → effect → new object → …
+ * Any other unstable dependency would bring the same loop back.
  *
  * A shared frozen constant makes the clear idempotent, because React bails out
  * of a `setState` whose next value is `Object.is`-equal to the current one.

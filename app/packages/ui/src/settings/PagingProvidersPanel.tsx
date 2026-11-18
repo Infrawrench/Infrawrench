@@ -227,7 +227,7 @@ function PagingAccountCard({
               )}
           </p>
           {settings.webhookUrl ? (
-            <code className="block text-xs break-all rounded bg-surface-muted/60 px-2 py-1">
+            <code className="block text-xs break-all rounded bg-surface-sunken px-2 py-1">
               {settings.webhookUrl}
             </code>
           ) : (

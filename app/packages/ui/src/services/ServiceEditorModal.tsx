@@ -31,6 +31,7 @@ import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   errorMessage,
+  fieldClass,
   inputClass,
   labelClass,
   primaryButtonClass,
@@ -155,7 +156,7 @@ function RuleEditor({
         </span>
         <select
           aria-label={gt("Rule {n} kind", { n })}
-          className={`${inputClass} w-auto`}
+          className={`${fieldClass} w-auto`}
           value={rule.kind}
           onChange={(e) => onChange(emptyRule(e.target.value as ServiceRuleKind))}
         >
@@ -660,7 +661,7 @@ export function ServiceEditorModal({
                   <input
                     type="text"
                     aria-label={gt("Link {n} label", { n: i + 1 })}
-                    className={`${inputClass} w-40 shrink-0`}
+                    className={`${fieldClass} w-40 shrink-0`}
                     maxLength={SERVICE_LIMITS.linkLabelMaxLength}
                     placeholder={gt("Label")}
                     value={link.label}
@@ -671,7 +672,7 @@ export function ServiceEditorModal({
                   <input
                     type="url"
                     aria-label={gt("Link {n} URL", { n: i + 1 })}
-                    className={inputClass}
+                    className={`${fieldClass} min-w-0 flex-1`}
                     maxLength={SERVICE_LIMITS.linkUrlMaxLength}
                     placeholder="https://"
                     value={link.url}

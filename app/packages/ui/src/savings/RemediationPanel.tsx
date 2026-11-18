@@ -104,10 +104,7 @@ export function RemediationPanel({ remediation, oneClickLabel }: RemediationPane
       </div>
 
       {iac && (
-        <div
-          role="note"
-          className="rounded-md border border-warning-border bg-warning-surface px-3 py-2"
-        >
+        <div role="note" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2">
           <T>
             <p className="text-on-surface">
               Managed by Terraform at{" "}
@@ -162,7 +159,7 @@ export function RemediationPanel({ remediation, oneClickLabel }: RemediationPane
                 {remediationToolLabel(command.tool)}
               </span>
               {command.destructive && (
-                <span className="rounded-md border border-danger-border px-2 py-0.5 font-medium text-danger">
+                <span className="rounded-md border border-danger/40 px-2 py-0.5 font-medium text-danger">
                   {gt("Destructive")}
                 </span>
               )}

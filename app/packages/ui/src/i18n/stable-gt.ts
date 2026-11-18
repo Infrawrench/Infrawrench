@@ -4,28 +4,30 @@ import { useGT } from "gt-react";
 type GTFunction = ReturnType<typeof useGT>;
 
 /**
- * `useGT()` with a referentially stable identity.
+ * `useGT()` with an identity that never changes, not even with the locale.
  *
- * gt-react's `useGT()` returns a **new function on every render**: its
- * `useCallback` depends on the tracked translation resolver, which in turn
- * depends on `useHandleMissingTranslation()`, and outside production builds
- * that hook allocates a fresh closure (over a fresh `Map`) each render. So the
- * whole chain re-creates itself every time, and `gt` is never `Object.is`-equal
- * to the previous render's `gt`.
+ * Plain `useGT()` is stable across ordinary renders, but only because of
+ * `patches/@generaltranslation__react-core@11.1.6.patch`. Unpatched,
+ * gt-react 11.1.6 hands back a new function on every render: its
+ * `useCallback` depends on the tracked translation resolver, which depends on
+ * the translations snapshot (a fresh `{}` with no `GTProvider`, #925) and, in
+ * dev builds, on `useHandleMissingTranslation()`, whose hot-reload queue
+ * allocated a new `Map` and setter per render (#1336). A fetch effect keyed on
+ * `[gt]` then re-fired on its own `setState`: ~270 custom-graph renders a
+ * second in #122, thousands of warehouse-option requests in #1336.
+ * `__tests__/i18n/stable-gt.test.tsx` fails if the patch stops applying.
  *
- * That is harmless in JSX, but corrosive in a dependency array. A `useMemo`
- * keyed on `[gt]` rebuilds every render; anything derived from it rebuilds too;
- * and once such a value reaches a `useEffect` that fetches and sets state, the
- * effect re-fires on its own output. That is what turned one custom-graph card
- * into ~270 render requests a second (#122).
+ * What `useGT()` still does, by design, is change identity when the locale or
+ * the loaded catalog changes, so a memo keyed on it recomputes its labels and
+ * an effect keyed on it runs once more. This wrapper keeps the latest `gt` in
+ * a ref and hands out one permanent delegate, so `[stableGt]` never re-runs
+ * anything while every call still goes through the current locale's resolver.
  *
- * This wrapper keeps the latest `gt` in a ref and hands out one permanent
- * delegate, so `[stableGt]` is inert as a dependency while every call still
- * runs through the current locale's resolver.
- *
- * **Use it where `gt()` is called lazily**: inside async closures, event
- * handlers, `catch` blocks, transport clients, i.e. anywhere the dependency
- * array is about the *closure*, not about the translated text.
+ * **Use it where `gt()` is called lazily** and an extra run is not wanted:
+ * inside async closures, event handlers, `catch` blocks, transport clients,
+ * i.e. anywhere the dependency array is about the *closure*, not about the
+ * translated text. It is also the belt to the patch's braces for a value that
+ * feeds an effect which fetches and sets state.
  *
  * **Keep plain `useGT()` where `gt()` is called eagerly** to produce a value
  * the memo returns (a label, an option list). Those memos are meant to

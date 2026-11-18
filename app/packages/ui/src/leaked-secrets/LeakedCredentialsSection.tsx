@@ -397,9 +397,7 @@ export function LeakedCredentialsSection({
                           {isOpen && (
                             <span
                               className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
-                                critical
-                                  ? "bg-danger-surface text-danger"
-                                  : "bg-warning-surface text-warning"
+                                critical ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning"
                               }`}
                             >
                               {critical ? gt("Critical") : gt("High")}
@@ -712,7 +710,7 @@ export function AccountLeakBanner({
   return (
     <div
       role="alert"
-      className="mb-4 rounded-xl border border-danger/40 bg-danger-surface px-4 py-3 text-sm text-on-surface"
+      className="mb-4 rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-on-surface"
     >
       <p className="font-medium text-danger">
         {leaks.length === 1

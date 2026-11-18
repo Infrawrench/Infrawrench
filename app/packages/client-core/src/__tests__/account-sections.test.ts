@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  getDetailChildTypes,
   getVisibleAccountCategories,
+  isDetailChildRow,
   pickDefaultAccountSectionId,
   type SectionCategoryState,
   type SectionResource,
@@ -143,5 +145,69 @@ describe("pickDefaultAccountSectionId", () => {
   it("falls back to the first category when none have resources", () => {
     const cats = [cat({ id: "first" }), cat({ id: "second" })];
     expect(pickDefaultAccountSectionId(cats)).toBe("first");
+  });
+});
+
+type TypeRow = { id: string; parentTypeId?: string; accountRoot?: boolean };
+
+function grouped(types: TypeRow[], of: string): Array<[string, boolean]> {
+  return getDetailChildTypes(types, of).map((c) => [c.typeDef.id, c.topLevel]);
+}
+
+describe("getDetailChildTypes", () => {
+  // Twilio's shape: an account root and every other type top-level beside it.
+  const siblings: TypeRow[] = [
+    { id: "account", accountRoot: true },
+    { id: "subaccount" },
+    { id: "phone-number" },
+    { id: "usage-trigger" },
+  ];
+  // UploadThing's shape: everything hangs off the root.
+  const nested: TypeRow[] = [
+    { id: "app", accountRoot: true },
+    { id: "file", parentTypeId: "app" },
+  ];
+
+  it("groups the account root's top-level siblings as top-level members", () => {
+    expect(grouped(siblings, "account")).toEqual([
+      ["subaccount", true],
+      ["phone-number", true],
+      ["usage-trigger", true],
+    ]);
+  });
+
+  it("keeps a root's real children as children", () => {
+    expect(grouped(nested, "app")).toEqual([["file", false]]);
+  });
+
+  it("mixes both when a root parents only some types", () => {
+    expect(grouped([...siblings, { id: "key", parentTypeId: "account" }], "account")).toEqual([
+      ["subaccount", true],
+      ["phone-number", true],
+      ["usage-trigger", true],
+      ["key", false],
+    ]);
+  });
+
+  it("leaves non-root types and plugins without a root to their declared children", () => {
+    expect(grouped(siblings, "subaccount")).toEqual([]);
+    const plain = [{ id: "project" }, { id: "droplet", parentTypeId: "project" }, { id: "vpc" }];
+    expect(grouped(plain, "project")).toEqual([["droplet", false]]);
+  });
+
+  it("ignores a root flag on a nested type, like getAccountRootType", () => {
+    const bad = [{ id: "org" }, { id: "app", parentTypeId: "org", accountRoot: true }, { id: "x" }];
+    expect(grouped(bad, "app")).toEqual([]);
+  });
+});
+
+describe("isDetailChildRow", () => {
+  it("matches a child's rows by parent and a top-level type's rows by having none", () => {
+    expect(isDetailChildRow({ parentResourceId: "r1" }, { topLevel: false }, "r1")).toBe(true);
+    expect(isDetailChildRow({ parentResourceId: "r2" }, { topLevel: false }, "r1")).toBe(false);
+    expect(isDetailChildRow({}, { topLevel: false }, "r1")).toBe(false);
+    expect(isDetailChildRow({}, { topLevel: true }, "r1")).toBe(true);
+    expect(isDetailChildRow({ parentResourceId: null }, { topLevel: true }, "r1")).toBe(true);
+    expect(isDetailChildRow({ parentResourceId: "r1" }, { topLevel: true }, "r1")).toBe(false);
   });
 });

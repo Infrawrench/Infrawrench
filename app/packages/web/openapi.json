@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -76856,6 +76856,10 @@
             "items": {
               "$ref": "#/components/schemas/JsonObject"
             }
+          },
+          "topLevel": {
+            "type": "boolean",
+            "description": "A top-level type shown on the account root's detail view beside its children. Its resources have no parent: send no `parentResourceId` when creating, editing or deleting one."
           }
         },
         "required": [

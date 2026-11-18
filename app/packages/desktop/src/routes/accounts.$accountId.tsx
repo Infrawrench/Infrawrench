@@ -995,7 +995,10 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   // type, and that instance *is* the account, so the account opens straight
   // to its detail view rather than to an inventory whose only content is a
   // section holding one pill. Tab, route, and sidebar selection stay the
-  // account's; only the body is swapped.
+  // account's; only the body is swapped. That detail view also groups the
+  // plugin's other top-level types with their Create buttons
+  // (`getDetailChildTypes`), so nothing the inventory would have listed goes
+  // missing.
   //
   // Derived from already-loaded rows rather than asserted, so an account whose
   // first sync hasn't landed yet falls through to the normal inventory instead
