@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   /**
@@ -102,7 +103,7 @@ export function Modal({ onClose, children, className, ariaLabel, fullScreen }: M
     };
   }, [onClose]);
 
-  return (
+  const dialog = (
     <dialog
       ref={ref}
       aria-label={ariaLabel}
@@ -143,4 +144,13 @@ export function Modal({ onClose, children, className, ariaLabel, fullScreen }: M
       `}</style>
     </dialog>
   );
+
+  // Rendered into `body`, not where the caller mounts it. `showModal()` puts
+  // the dialog in the top layer, which fixes its position and stacking, but
+  // inherited CSS still follows the DOM tree: a dialog opened from a table cell
+  // took the cell's `text-align: right` and `white-space: nowrap` (#1340), and
+  // one opened from the sidebar took the `.surface-sidebar` palette. React
+  // events and context still travel the React tree, so callers see no change
+  // there.
+  return createPortal(dialog, document.body);
 }

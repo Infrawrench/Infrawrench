@@ -254,7 +254,7 @@ export function AlertEmailRecipientsField({
             />
             <button
               type="button"
-              className="shrink-0 rounded-lg border border-border px-2.5 text-xs text-on-surface-secondary hover:bg-surface-hover disabled:opacity-50"
+              className="shrink-0 rounded-lg border border-border px-2.5 text-xs text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50"
               disabled={!draft.trim() || atAddressLimit}
               onClick={addAddress}
             >

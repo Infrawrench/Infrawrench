@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import type { ChatMessage, ChatPanelCapability, ChatStreamEvent } from "@infrawrench/plugin-base";
+import { LazyChatMarkdown } from "../../chat/LazyChatMarkdown.js";
 
 interface Props {
   capability: ChatPanelCapability;
@@ -271,17 +272,20 @@ function ChatTurn({ turn }: { turn: Turn }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
+        className={`max-w-[80%] min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed ${
           isUser
-            ? "bg-accent text-on-accent"
+            ? "bg-accent text-on-accent whitespace-pre-wrap break-words"
             : "bg-surface-overlay text-on-surface border border-border"
         }`}
       >
         {turn.error ? (
-          <div className="text-danger font-mono text-xs">
+          <div className="text-danger font-mono text-xs whitespace-pre-wrap break-words">
             <div className="font-semibold mb-1">{gt("Error")}</div>
             {turn.error}
           </div>
+        ) : turn.content && !isUser ? (
+          // Assistant replies are Markdown; what the user typed is shown as typed.
+          <LazyChatMarkdown text={turn.content} />
         ) : turn.content ? (
           turn.content
         ) : turn.pending ? (
