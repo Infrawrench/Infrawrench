@@ -525,49 +525,55 @@ export function DetailView({
             dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
             aria-hidden
           />
-          <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-1">
-              <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
-              {titleAccessory}
+          {/* Title and actions share a wrapping row. The title keeps at least
+              its basis; when the actions don't fit beside it they drop to
+              their own lines under it (wrapping among themselves) instead of
+              squeezing the title to nothing. */}
+          <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-[1_1_20rem]">
+              <div className="flex min-w-0 items-center gap-1">
+                <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
+                {titleAccessory}
+              </div>
+              {schema.subtitle && (
+                <p className="text-sm text-on-surface-muted mt-0.5">{schema.subtitle}</p>
+              )}
             </div>
-            {schema.subtitle && (
-              <p className="text-sm text-on-surface-muted mt-0.5">{schema.subtitle}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0 pt-1">
-            {carbonEstimate?.estimate && (
-              <CarbonEstimateChip
-                footprint={carbonEstimate.estimate}
-                aggregate={carbonEstimate.role === "aggregate"}
-              />
-            )}
-            {costEstimate && (
-              <CostEstimateChip
-                label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
-                estimate={costEstimate}
-              />
-            )}
-            {schema.status && <StatusDotNodeRenderer node={schema.status} />}
-            {onOpenConsole && (
-              <button
-                type="button"
-                onClick={onOpenConsole}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary transition-colors"
-              >
-                {gt("Console")}
-              </button>
-            )}
-            {(() => {
-              // Custom tabs can override the top-bar header actions when
-              // active, otherwise we fall back to the schema-level ones.
-              const activeCustom = activeTab.startsWith("custom:")
-                ? customTabs.find((t) => `custom:${t.id}` === activeTab)
-                : null;
-              const actions = activeCustom?.headerActions ?? schema.headerActions ?? [];
-              return actions.map((action, i) => (
-                <SchemaRenderer key={i} node={action} resourceId={resourceId} />
-              ));
-            })()}
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pt-1">
+              {carbonEstimate?.estimate && (
+                <CarbonEstimateChip
+                  footprint={carbonEstimate.estimate}
+                  aggregate={carbonEstimate.role === "aggregate"}
+                />
+              )}
+              {costEstimate && (
+                <CostEstimateChip
+                  label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
+                  estimate={costEstimate}
+                />
+              )}
+              {schema.status && <StatusDotNodeRenderer node={schema.status} />}
+              {onOpenConsole && (
+                <button
+                  type="button"
+                  onClick={onOpenConsole}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary transition-colors"
+                >
+                  {gt("Console")}
+                </button>
+              )}
+              {(() => {
+                // Custom tabs can override the top-bar header actions when
+                // active, otherwise we fall back to the schema-level ones.
+                const activeCustom = activeTab.startsWith("custom:")
+                  ? customTabs.find((t) => `custom:${t.id}` === activeTab)
+                  : null;
+                const actions = activeCustom?.headerActions ?? schema.headerActions ?? [];
+                return actions.map((action, i) => (
+                  <SchemaRenderer key={i} node={action} resourceId={resourceId} />
+                ));
+              })()}
+            </div>
           </div>
         </div>
         {/* Tab bar: its own full-width row so the right-side actions never
@@ -611,7 +617,9 @@ export function DetailView({
               if (key === "sql") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("sql")}>
-                    {gt("SQL Editor")}
+                    {schema.sqlEditor?.queryLanguage
+                      ? gt("{language} Editor", { language: schema.sqlEditor.queryLanguage })
+                      : gt("SQL Editor")}
                   </TabButton>
                 );
               }

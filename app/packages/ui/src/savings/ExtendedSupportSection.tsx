@@ -212,7 +212,7 @@ export function ExtendedSupportSection({
                   </td>
                   <td className="px-3 py-2.5 w-full text-on-surface-secondary">
                     <span
-                      className={`mr-2 rounded-md border px-2 py-0.5 text-xs ${STATUS_TONE[f.status]}`}
+                      className={`mr-2 inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-xs ${STATUS_TONE[f.status]}`}
                     >
                       {statusLabel(f.status)}
                     </span>
@@ -234,7 +234,14 @@ export function ExtendedSupportSection({
                             })}
                       </div>
                     )}
-                    {f.note && <div className="mt-1 text-xs text-on-surface-faint">{f.note}</div>}
+                    {/* A note can carry a long URL: let it break anywhere so it
+                        wraps inside this column instead of widening the table
+                        and pushing the surcharge column out of view. */}
+                    {f.note && (
+                      <div className="mt-1 text-xs text-on-surface-faint wrap-anywhere">
+                        {f.note}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-right text-on-surface">
                     {f.monthlySurcharge !== null && f.currency ? (

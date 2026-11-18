@@ -8,7 +8,7 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 
 ## What you can manage
 
-- **Tenant**: counts of monitors, collections, dashboards and SLOs, plus a **Query** tab that runs PromQL and shows the result as a table.
+- **Tenant**: counts of monitors, collections, dashboards and SLOs, plus a **PromQL Editor** tab that runs PromQL and shows the result as a table.
 - **Monitors**: query, warn and critical conditions, interval, collection or bucket, notification policy, labels and signal grouping. Create PromQL monitors (pick the collection and notification policy from lists), edit the name, description, query and interval, delete them, and chart the query on the Metrics tab.
 - **Notification policies** and **notifiers**: where each severity routes. Rename them, choose whether a notifier sends resolves, or delete them.
 - **Collections**, **buckets** and **teams**: create (pick the team and default notification policy from lists), edit and delete. You edit team members as a list of email addresses.
@@ -33,7 +33,7 @@ A personal access token also works and carries your own permissions. A restricte
 
 ## Chart metrics and run PromQL
 
-Monitors and recording rules have a **Metrics** tab that charts their PromQL over the selected window, up to 20 series. The tenant's **Query** tab runs an instant query.
+Monitors and recording rules have a **Metrics** tab that charts their PromQL over the selected window, up to 20 series. The tenant's **PromQL Editor** tab runs an instant query.
 
 ## Costs and status
 

@@ -920,7 +920,7 @@ describe("detailViewSchema", () => {
 
   it("keeps declared capabilities instead of stripping them", () => {
     const declared = {
-      sqlEditor: { connectionStringOutputKey: "dsn" },
+      sqlEditor: { connectionStringOutputKey: "dsn", queryLanguage: "PromQL" },
       logs: { defaultTailLines: 100 },
       speechPanel: { modes: ["tts"] },
     };

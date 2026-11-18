@@ -153,6 +153,7 @@ function body(r: ResourceInstance): DetailViewSchema {
           connectionStringOutputKey: "name",
           defaultQuery: `${aplDataset(name)}\n| sort by _time desc\n| take 100`,
           tables: [{ name: aplDataset(name), columns: [] }],
+          queryLanguage: "APL",
         },
         logs: { defaultTailLines: 200 },
       };

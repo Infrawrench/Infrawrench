@@ -195,7 +195,7 @@ function renderEnvironment(r: ResourceInstance): DetailViewSchema {
     section("Query", [
       muted(
         grail
-          ? "Run DQL against Grail from the Query tab, for example fetch logs or fetch dt.entity.host."
+          ? "Run DQL against Grail from the DQL Editor tab, for example fetch logs or fetch dt.entity.host."
           : "Add a platform token (Edit credentials) to run DQL against Grail. Managed environments have no Grail.",
       ),
     ]),
@@ -216,6 +216,7 @@ function renderEnvironment(r: ResourceInstance): DetailViewSchema {
             connectionStringOutputKey: DQL_OUTPUT_KEY,
             defaultQuery: DEFAULT_DQL,
             tables: DQL_TABLES,
+            queryLanguage: "DQL",
           },
         }
       : {}),
