@@ -132,9 +132,14 @@ export interface CapacityDeclarationEntry {
   declaration: CapacityUsageDeclaration;
 }
 
+/**
+ * The parts of a resource type the capacity helpers read. Optional so a
+ * partial type (a test double, an older edge registry entry) reads as
+ * declaring nothing rather than throwing.
+ */
 interface CapacityTypeShape {
-  fields: ReadonlyArray<{ key: string; label: string; usage?: CapacityUsageDeclaration }>;
-  outputs: ReadonlyArray<{
+  fields?: ReadonlyArray<{ key: string; label: string; usage?: CapacityUsageDeclaration }>;
+  outputs?: ReadonlyArray<{
     key: string;
     label: string;
     sensitive: boolean;
@@ -150,7 +155,7 @@ interface CapacityTypeShape {
  */
 export function capacityDeclarations(type: CapacityTypeShape): CapacityDeclarationEntry[] {
   const out: CapacityDeclarationEntry[] = [];
-  for (const field of type.fields) {
+  for (const field of type.fields ?? []) {
     if (!field.usage) continue;
     out.push({
       key: field.key,
@@ -160,7 +165,7 @@ export function capacityDeclarations(type: CapacityTypeShape): CapacityDeclarati
       declaration: field.usage,
     });
   }
-  for (const output of type.outputs) {
+  for (const output of type.outputs ?? []) {
     if (!output.usage || output.sensitive) continue;
     out.push({
       key: output.key,
@@ -185,8 +190,8 @@ export function capacityDeclarations(type: CapacityTypeShape): CapacityDeclarati
 /** True when the type declares at least one usage with a limit. */
 export function typeHasCapacity(type: CapacityTypeShape): boolean {
   return (
-    type.fields.some((f) => f.usage !== undefined) ||
-    type.outputs.some((o) => o.usage !== undefined && !o.sensitive) ||
+    (type.fields ?? []).some((f) => f.usage !== undefined) ||
+    (type.outputs ?? []).some((o) => o.usage !== undefined && !o.sensitive) ||
     (type.capacityMetrics?.length ?? 0) > 0
   );
 }

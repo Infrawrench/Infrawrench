@@ -44,14 +44,16 @@ describe("capacityReadings", () => {
         id: "v1",
         resourceTypeId: "volume",
         fields: { usedBytes: 3 * GiB, sizeGb: "10", hours: "40", plan: "Free" },
+        resolvedOutputs: {},
       },
       // No limit: no reading. Unparseable usage: no reading.
       {
         id: "v2",
         resourceTypeId: "volume",
         fields: { usedBytes: GiB, hours: "lots", plan: "pro" },
+        resolvedOutputs: {},
       },
-      { id: "o1", resourceTypeId: "other", fields: { x: 1 } },
+      { id: "o1", resourceTypeId: "other", fields: { x: 1 }, resolvedOutputs: {} },
     ]);
     expect(readings).toEqual([
       { resourceId: "v1", capacityKey: "usedBytes", used: 3 * GiB, limit: 10 * GiB },
@@ -61,7 +63,7 @@ describe("capacityReadings", () => {
 
   it("never records metric usages, which the metrics writer already stores", () => {
     const readings = capacityReadings(plugin, [
-      { id: "v1", resourceTypeId: "volume", fields: {}, resolvedOutputs: { "Disk %": 50 } },
+      { id: "v1", resourceTypeId: "volume", fields: {}, resolvedOutputs: { "Disk %": "50" } },
     ]);
     expect(readings).toEqual([]);
   });
