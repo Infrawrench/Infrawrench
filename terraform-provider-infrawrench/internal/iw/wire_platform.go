@@ -1239,6 +1239,26 @@ type ExtendedSupportSettings struct {
 	LastNotifiedAt *string `json:"lastNotifiedAt"`
 }
 
+// PriceChangeSettingsUpdate is the PUT body for the price-change watch.
+type PriceChangeSettingsUpdate struct {
+	Enabled               *bool    `json:"enabled,omitempty"`
+	MinMonthlyImpactCents *int64   `json:"minMonthlyImpactCents,omitempty"`
+	MinPercent            *float64 `json:"minPercent,omitempty"`
+	RegisterExpected      *bool    `json:"registerExpected,omitempty"`
+}
+
+// PriceChangeSettings is the org singleton for the daily price-change scan:
+// whether it runs, the two alert thresholds and whether an alerted increase
+// is registered as expected for anomaly detection. LastNotifiedAt is owned by
+// the poller's cooldown claim and is not writable.
+type PriceChangeSettings struct {
+	Enabled               bool    `json:"enabled"`
+	MinMonthlyImpactCents int64   `json:"minMonthlyImpactCents"`
+	MinPercent            float64 `json:"minPercent"`
+	RegisterExpected      bool    `json:"registerExpected"`
+	LastNotifiedAt        *string `json:"lastNotifiedAt"`
+}
+
 // IdleRuleOverride is what an organization changed about one metric-based
 // idle rule; absent fields keep the rule's declared default.
 type IdleRuleOverride struct {

@@ -397,6 +397,8 @@ func specChecks() []specCheck {
 		{schema: "ExpiryAlertSettingsUpdate", value: ExpiryAlertSettingsUpdate{}},
 		{schema: "ExtendedSupportSettings", value: ExtendedSupportSettings{}},
 		{schema: "ExtendedSupportSettingsUpdate", value: ExtendedSupportSettingsUpdate{}},
+		{schema: "PriceChangeSettings", value: PriceChangeSettings{}},
+		{schema: "PriceChangeSettingsUpdate", value: PriceChangeSettingsUpdate{}},
 		{schema: "IdleFindingSettings", value: IdleFindingSettings{}},
 		{schema: "IdleFindingSettingsUpdate", value: IdleFindingSettingsUpdate{}},
 		{schema: "IdleRuleOverride", value: IdleRuleOverride{}},

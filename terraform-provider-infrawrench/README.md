@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 85 resources and 8 data
+accounts and access control, and alert delivery. 86 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -591,7 +591,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`, `seat_settings`,
-`drift_alert_settings`, `dora_settings`, `expiry_alert_settings`, `extended_support_settings`, `idle_finding_settings`, `posture_alert_settings`,
+`drift_alert_settings`, `dora_settings`, `expiry_alert_settings`, `extended_support_settings`, `price_change_settings`, `idle_finding_settings`, `posture_alert_settings`,
 `vulnerability_alert_settings`, `session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
@@ -735,6 +735,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_drift_alert_settings`         | by org id                     | Org singleton; destroy is a no-op                            |
 | `infrawrench_expiry_alert_settings`        | by org id                     | Org singleton; destroy is a no-op                            |
 | `infrawrench_extended_support_settings`    | by org id                     | Org singleton; destroy is a no-op                            |
+| `infrawrench_price_change_settings`        | by org id                     | Org singleton; destroy is a no-op                            |
 | `infrawrench_idle_finding_settings`        | by org id                     | Org singleton; destroy is a no-op                            |
 | `infrawrench_posture_alert_settings`       | by org id                     | Org singleton; destroy is a no-op                            |
 | `infrawrench_vulnerability_alert_settings` | by org id                     | Org singleton; destroy is a no-op                            |

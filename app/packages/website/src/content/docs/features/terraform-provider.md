@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration as Terraform resources, incl
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 85 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
+The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 86 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
 
 Use it if your team already keeps infrastructure in Terraform and wants the rest of its platform setup to go through the same pull requests and reviews, with a plan that shows exactly what will change.
 
@@ -511,6 +511,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | `infrawrench_drift_alert_settings`         | What the [change timeline](./change-timeline.md) notifies about                               |
 | `infrawrench_expiry_alert_settings`        | [Expiry radar](./expiry-radar.md) lead time                                                   |
 | `infrawrench_extended_support_settings`    | [Extended support](./extended-support.md) alert and look-ahead                                |
+| `infrawrench_price_change_settings`        | [Price change watch](./price-change-watch.md) thresholds and expected registration           |
 | `infrawrench_idle_finding_settings`        | [Idle resource](./idle-resources.md) rules, thresholds and lookback window                    |
 | `infrawrench_posture_alert_settings`       | Whether [posture findings](./posture-checks.md) notify                                        |
 | `infrawrench_vulnerability_alert_settings` | Which [vulnerability findings](./vulnerabilities.md) notify, and from what severity           |
