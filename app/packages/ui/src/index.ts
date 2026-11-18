@@ -1146,8 +1146,12 @@ export {
   type DrillSummary,
   type RestoreDrill,
   type RestoreDrillInput,
+  type RestoreDrillRun,
+  type RestoreDrillSchedule,
+  type RestoreDrillScheduleInput,
+  type RestoreDrillTargetRow,
 } from "@infrawrench/client-core";
-export type { DrillCoverage } from "./backups/BackupsSection.js";
+export type { DrillCoverage, DrillAutomation } from "./backups/BackupsSection.js";
 // Query monitors. Types, validation and the read-only SQL guard come from
 // client-core like every other section's; only the section and icon live here.
 export {

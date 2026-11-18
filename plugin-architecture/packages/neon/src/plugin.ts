@@ -22,6 +22,7 @@ import { NeonAuthOauthProviderResourceType } from "./resources/auth-oauth-provid
 import { NeonAuthDomainResourceType } from "./resources/auth-domain.js";
 import { neonTerraformExport } from "./terraform.js";
 import { neonRemediationCommands } from "./remediation.js";
+import { neonRestoreDrill } from "./restore-drill.js";
 
 export const manifest = {
   id: "neon",
@@ -60,6 +61,8 @@ export const manifest = {
       "The connection's API key as NEON_API_KEY, which the Neon CLI reads, to create and delete branches for a job.",
     shortLived: false,
   },
+  // Drills copy a branch into a throwaway branch (restore-drill.ts).
+  restoreDrill: neonRestoreDrill,
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

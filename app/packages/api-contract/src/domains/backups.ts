@@ -5,7 +5,9 @@
  * policies take `org:settings:write`, the posture-settings stance: a recovery
  * objective is an org-wide statement, and a member who can read the screen
  * deliberately cannot relax the target that judges it. Recording or deleting
- * a restore drill is `resources:write`: it reports what somebody did.
+ * a restore drill is `resources:write`: it reports what somebody did. Automatic
+ * drill schedules take `resources:execute`, the query monitors' permission: a
+ * schedule runs a query against a copy of a customer database unattended.
  */
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
@@ -17,6 +19,7 @@ import { OrgAuth } from "../http/middleware-tags";
 import { IsoDateTime, OrgId, OrgParams, Uuid } from "../http/schemas/common";
 import { documentedAs, optionalRequestBody } from "../http/schemas/documented";
 import { PluginId } from "../http/schemas/plugin-registry";
+import { QueryMonitorMode, QueryMonitorOperator } from "./query-monitors";
 
 const BackupSeverity = Schema.Literals(["critical", "high", "medium", "low"]).annotate({
   description: "How bad the gap is. Orphaned backups are always `low`: they cost money, not data.",
@@ -281,6 +284,14 @@ export const RestoreDrill = Schema.Struct({
       "Measured wall-clock minutes. Null when the drill never got that far; a blocked drill has " +
       "no RTO, and an invented one would be the most dangerous number on the page.",
   }),
+  rpoMinutes: Schema.NullOr(Schema.Int).annotate({
+    description:
+      "Minutes between the restore point and the drill. Recorded by automatic drills, which know " +
+      "when their restore point was; null when nobody measured it.",
+  }),
+  runId: Schema.NullOr(Uuid).annotate({
+    description: "The automatic drill run that recorded this; null for a drill a person recorded.",
+  }),
   restoredFrom: Schema.NullOr(Schema.String).annotate({
     description: "Snapshot id, S3 key, a date, free text.",
   }),
@@ -346,6 +357,136 @@ const RestoreDrillCreate = Schema.Struct({
   notes: Schema.optionalKey(Schema.NullOr(Schema.String.check(maxLength(4000)))),
 }).annotate({ identifier: "RestoreDrillCreate" });
 
+const DrillRestorePoint = Schema.Literals(["latest-backup", "point-in-time"]).annotate({
+  description:
+    "Where an automatic drill restores from: the newest backup the provider lists, or a moment " +
+    "inside the provider's recovery window.",
+});
+
+export const RestoreDrillTarget = Schema.Struct({
+  resourceId: Schema.String,
+  resourceName: Schema.String,
+  resourceTypeId: Schema.String,
+  resourceTypeName: Schema.String,
+  accountId: Uuid,
+  accountName: Schema.String,
+  pluginId: PluginId,
+  pluginName: Schema.String,
+  copyNoun: Schema.String.annotate({
+    description: "The provider's word for the copy a drill makes.",
+    examples: ["branch", "fork"],
+  }),
+  restorePoints: Schema.Array(DrillRestorePoint),
+  maxLookbackHours: Schema.NullOr(Schema.Int).annotate({
+    description: "Furthest back a point-in-time copy can reach on the most generous plan.",
+  }),
+  typicalReadyMinutes: Schema.NullOr(Schema.Int),
+  costSummary: Schema.NullOr(Schema.String).annotate({
+    description: "What a copy costs while it exists, as the provider publishes it.",
+  }),
+  costUrl: Schema.NullOr(Schema.String),
+}).annotate({ identifier: "RestoreDrillTarget" });
+
+export const RestoreDrillTargetList = Schema.Struct({
+  targets: Schema.Array(RestoreDrillTarget),
+}).annotate({ identifier: "RestoreDrillTargetList" });
+
+export const RestoreDrillRun = Schema.Struct({
+  id: Uuid,
+  scheduleId: Schema.NullOr(Uuid),
+  resourceId: Schema.String,
+  trigger: Schema.Literals(["schedule", "manual"]),
+  state: Schema.Literals(["starting", "restoring", "cleaning", "done"]).annotate({
+    description:
+      "`cleaning` lasts until the provider confirms the copy is gone, however many attempts that " +
+      "takes.",
+  }),
+  outcome: Schema.NullOr(Schema.Literals(["verified", "restored-unverified", "failed"])),
+  copyName: Schema.String.annotate({ description: "The name the copy carries at the provider." }),
+  restoredFrom: Schema.NullOr(Schema.String),
+  restorePointAt: Schema.NullOr(IsoDateTime),
+  startedAt: IsoDateTime,
+  readyAt: Schema.NullOr(IsoDateTime),
+  finishedAt: Schema.NullOr(IsoDateTime),
+  deadlineAt: IsoDateTime,
+  restoreSeconds: Schema.NullOr(Schema.Int).annotate({
+    description: "Seconds from asking for the copy to it taking connections.",
+  }),
+  rpoMinutes: Schema.NullOr(Schema.Int),
+  verifyValue: Schema.NullOr(Schema.Finite),
+  detail: Schema.NullOr(Schema.String),
+  cleanupState: Schema.Literals(["none", "pending", "failed", "done"]).annotate({
+    description:
+      "`failed` means a delete attempt failed and the pass is still retrying; the copy may still " +
+      "be running at the provider.",
+  }),
+  cleanupError: Schema.NullOr(Schema.String),
+  cleanupAttempts: Schema.Int,
+  restoreDrillId: Schema.NullOr(Uuid).annotate({
+    description: "The drill record this run wrote once it reached an outcome.",
+  }),
+}).annotate({ identifier: "RestoreDrillRun" });
+
+export const RestoreDrillRunList = Schema.Struct({
+  runs: Schema.Array(RestoreDrillRun),
+}).annotate({ identifier: "RestoreDrillRunList" });
+
+export const RestoreDrillSchedule = Schema.Struct({
+  id: Uuid,
+  resourceId: Schema.String,
+  resourceName: Schema.NullOr(Schema.String),
+  accountId: Uuid,
+  accountName: Schema.NullOr(Schema.String),
+  resourceTypeId: Schema.String,
+  pluginId: PluginId,
+  intervalDays: Schema.Int,
+  restorePoint: DrillRestorePoint,
+  pointInTimeHoursAgo: Schema.NullOr(Schema.Int),
+  verifySql: Schema.NullOr(Schema.String),
+  verifyMode: QueryMonitorMode,
+  verifyOperator: QueryMonitorOperator,
+  verifyThreshold: Schema.Finite,
+  timeLimitMinutes: Schema.Int,
+  enabled: Schema.Boolean,
+  nextRunAt: IsoDateTime,
+  lastRun: Schema.NullOr(RestoreDrillRun),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+}).annotate({ identifier: "RestoreDrillSchedule" });
+
+export const RestoreDrillScheduleList = Schema.Struct({
+  schedules: Schema.Array(RestoreDrillSchedule),
+}).annotate({ identifier: "RestoreDrillScheduleList" });
+
+const DrillIntervalDays = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 365 }));
+const DrillTimeLimit = Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 720 }));
+
+const drillScheduleOptionalFields = {
+  pointInTimeHoursAgo: Schema.optionalKey(
+    Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 840 }))),
+  ),
+  verifySql: Schema.optionalKey(Schema.NullOr(Schema.String.check(maxLength(8000)))),
+  verifyMode: Schema.optionalKey(QueryMonitorMode),
+  verifyOperator: Schema.optionalKey(QueryMonitorOperator),
+  verifyThreshold: Schema.optionalKey(Schema.Finite),
+  enabled: Schema.optionalKey(Schema.Boolean),
+};
+
+const RestoreDrillScheduleCreate = Schema.Struct({
+  resourceId: Schema.String.check(minLength(1)),
+  intervalDays: DrillIntervalDays,
+  restorePoint: DrillRestorePoint,
+  timeLimitMinutes: DrillTimeLimit,
+  ...drillScheduleOptionalFields,
+}).annotate({ identifier: "RestoreDrillScheduleCreate" });
+
+const RestoreDrillScheduleUpdate = Schema.Struct({
+  intervalDays: Schema.optionalKey(DrillIntervalDays),
+  restorePoint: Schema.optionalKey(DrillRestorePoint),
+  timeLimitMinutes: Schema.optionalKey(DrillTimeLimit),
+  ...drillScheduleOptionalFields,
+}).annotate({ identifier: "RestoreDrillScheduleUpdate" });
+
 const TAG = "Backup coverage";
 
 export class BackupsGroup extends HttpApiGroup.make("backups")
@@ -370,12 +511,101 @@ export class BackupsGroup extends HttpApiGroup.make("backups")
         OpenApi.Description,
         "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long " +
           "does it take'; a different question, and the one routinely answered wrongly on the day.\n\n" +
-          "A drill is a **record that somebody tried**, not an automated restore: restoring a " +
-          "customer's database unattended costs real money, can collide with production, and cannot " +
-          "be generically verified. What the product can do is make the exercise scheduled, recorded " +
-          "and visible when it lapses.",
+          "A drill is a **record that somebody tried**. For providers with isolated, disposable " +
+          "copies (database branches and forks) an automatic drill schedule makes the record " +
+          "itself; see `/drills/schedules`. Everything else is recorded by hand.",
       )
       .annotate(SuccessDescription, "Standings and the summary"),
+    HttpApiEndpoint.get("drillTargets", "/drills/targets", {
+      params: OrgParams,
+      success: RestoreDrillTargetList,
+    })
+      .annotate(RequiredPermission, "resources:read")
+      .annotate(OpenApi.Summary, "List resources that can be drilled automatically")
+      .annotate(
+        OpenApi.Description,
+        "Protected resources whose provider can copy them from a restore point into an isolated " +
+          "branch or fork and delete it again, with the restore points each one supports and the " +
+          "provider's published cost of a copy. Read from synced inventory and plugin metadata; no " +
+          "provider calls.",
+      )
+      .annotate(SuccessDescription, "Drillable resources"),
+    HttpApiEndpoint.get("listDrillSchedules", "/drills/schedules", {
+      params: OrgParams,
+      success: RestoreDrillScheduleList,
+    })
+      .annotate(RequiredPermission, "resources:read")
+      .annotate(OpenApi.Summary, "List automatic restore drill schedules")
+      .annotate(SuccessDescription, "Schedules, newest first, each with its latest run"),
+    HttpApiEndpoint.post("createDrillSchedule", "/drills/schedules", {
+      params: OrgParams,
+      payload: RestoreDrillScheduleCreate,
+      success: RestoreDrillSchedule,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "resources:execute")
+      .annotate(OpenApi.Summary, "Schedule automatic restore drills of a resource")
+      .annotate(
+        OpenApi.Description,
+        "Every `intervalDays`, Infrawrench asks the provider for an isolated copy of the resource " +
+          "from the chosen restore point, times how long it takes to accept connections, runs " +
+          "`verifySql` (read-only statements only) against the copy and compares the result with " +
+          "the expected condition, records the outcome in the drill log, and deletes the copy. " +
+          "The copy is deleted on every path, including failure and the time limit; a delete that " +
+          "keeps failing is retried and alerted on.\n\n" +
+          "Takes `resources:execute`, the SQL editor's permission: a schedule runs a query against " +
+          "a copy of a customer database unattended. One schedule per resource. The first run is " +
+          "one interval out; use the run endpoint to run one now.",
+      )
+      .annotate(SuccessDescription, "The created schedule"),
+    HttpApiEndpoint.patch("updateDrillSchedule", "/drills/schedules/:scheduleId", {
+      params: { orgId: OrgId, scheduleId: Uuid },
+      payload: RestoreDrillScheduleUpdate,
+      success: RestoreDrillSchedule,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "resources:execute")
+      .annotate(OpenApi.Summary, "Update an automatic restore drill schedule")
+      .annotate(
+        OpenApi.Description,
+        "Omitted fields are left alone; `null` clears `verifySql` or `pointInTimeHoursAgo`. Set " +
+          "`enabled` to false to pause the schedule without losing it.",
+      )
+      .annotate(SuccessDescription, "The updated schedule"),
+    HttpApiEndpoint.delete("deleteDrillSchedule", "/drills/schedules/:scheduleId", {
+      params: { orgId: OrgId, scheduleId: Uuid },
+      success: HttpApiSchema.NoContent,
+      error: NotFound,
+    })
+      .annotate(RequiredPermission, "resources:execute")
+      .annotate(OpenApi.Summary, "Delete an automatic restore drill schedule")
+      .annotate(
+        OpenApi.Description,
+        "A run already in progress continues to its end, deleting its copy included. Drills it " +
+          "recorded stay in the drill log.",
+      )
+      .annotate(SuccessDescription, "The schedule was deleted"),
+    HttpApiEndpoint.post("runDrillSchedule", "/drills/schedules/:scheduleId/run", {
+      params: { orgId: OrgId, scheduleId: Uuid },
+      success: RestoreDrillRun,
+      error: [BadRequest, NotFound, Conflict],
+    })
+      .annotate(RequiredPermission, "resources:execute")
+      .annotate(OpenApi.Summary, "Run an automatic restore drill now")
+      .annotate(
+        OpenApi.Description,
+        "Queues a run that starts on the poller's next pass. Refused with 409 while a run of the " +
+          "same schedule is still going or still deleting its copy.",
+      )
+      .annotate(SuccessDescription, "The queued run"),
+    HttpApiEndpoint.get("listDrillRuns", "/drills/runs", {
+      params: OrgParams,
+      query: { scheduleId: Schema.optionalKey(Uuid) },
+      success: RestoreDrillRunList,
+    })
+      .annotate(RequiredPermission, "resources:read")
+      .annotate(OpenApi.Summary, "List automatic restore drill runs")
+      .annotate(SuccessDescription, "Runs, newest first"),
     HttpApiEndpoint.get("drillLog", "/drills/log", {
       params: OrgParams,
       query: { resourceId: Schema.optionalKey(Schema.String) },

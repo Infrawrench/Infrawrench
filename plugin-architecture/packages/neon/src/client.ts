@@ -18,6 +18,9 @@ import type {
   StorageObject,
   CostFetchRange,
   CostRow,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
 } from "@infrawrench/plugin-base";
 import {
   decodePromptArgs,
@@ -42,6 +45,11 @@ import {
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
 import { fetchNeonCostData } from "./cost-data.js";
+import {
+  checkNeonRestoreDrill,
+  endNeonRestoreDrill,
+  startNeonRestoreDrill,
+} from "./restore-drill.js";
 import { hostAdapter } from "./host-adapter.js";
 import { fetchBranchLogs } from "./logs.js";
 import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
@@ -204,6 +212,19 @@ export class NeonClient implements PluginClient {
   /** `NEON_API_KEY` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
   lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
     return attempt(async () => lendNeonKey(this.apiKey));
+  }
+
+  /** Automatic restore drills (`manifest.restoreDrill`, restore-drill.ts). */
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(() => startNeonRestoreDrill(this.api, request));
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(() => checkNeonRestoreDrill(this.api, ref));
+  }
+
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(() => endNeonRestoreDrill(this.api, ref));
   }
 
   private async listType(

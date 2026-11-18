@@ -38,6 +38,23 @@ export const manifest = {
     },
   ]),
   statusFeed,
+  // A drill forks the service from its last snapshot or a point in time,
+  // checks the fork, and deletes it (client.ts, startRestoreDrill).
+  restoreDrill: {
+    copyNoun: "fork",
+    targets: [
+      {
+        resourceTypeId: "ts-service",
+        restorePoints: ["latest-backup", "point-in-time"],
+        typicalReadyMinutes: 10,
+      },
+    ],
+    cost: {
+      summary:
+        "A fork is a service of its own, billed for compute by the hour and for any storage it writes while it exists.",
+      url: "https://www.tigerdata.com/pricing",
+    },
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

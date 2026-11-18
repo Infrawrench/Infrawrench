@@ -39,6 +39,23 @@ export const manifest = {
   quotas: { label: "Organization limits", partial: true, increaseUrl: "https://xata.io/contact" },
   statusFeed,
   preflight: XATA_PREFLIGHT,
+  // A drill restores a branch's continuous backup into a new branch, checks
+  // it, and deletes it (client.ts, startRestoreDrill).
+  restoreDrill: {
+    copyNoun: "branch",
+    targets: [
+      {
+        resourceTypeId: "xata-branch",
+        restorePoints: ["latest-backup", "point-in-time"],
+        typicalReadyMinutes: 5,
+      },
+    ],
+    cost: {
+      summary:
+        "A drill branch is billed for its instance hours and storage while it exists; it runs without replicas.",
+      url: "https://xata.io/pricing",
+    },
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

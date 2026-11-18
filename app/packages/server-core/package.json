@@ -242,6 +242,8 @@
     "./calendar/feed": "./src/calendar/feed.ts",
     "./calendar/subscriptions": "./src/calendar/subscriptions.ts",
     "./backups/drills": "./src/backups/drills.ts",
+    "./backups/drill-schedules": "./src/backups/drill-schedules.ts",
+    "./backups/drill-pass": "./src/backups/drill-pass.ts",
     "./posture/settings": "./src/posture/settings.ts",
     "./posture/summary": "./src/posture/summary.ts",
     "./dns/feed": "./src/dns/feed.ts",

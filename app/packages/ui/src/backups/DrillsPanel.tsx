@@ -11,6 +11,7 @@ import {
   type RestoreDrill,
   type RestoreDrillInput,
 } from "@infrawrench/client-core";
+import { DrillScheduleControls, type DrillAutomation } from "./DrillSchedule.js";
 
 type Gt = ReturnType<typeof useGT>;
 
@@ -73,8 +74,10 @@ export function DrillsPanel({
   drills,
   onRecordDrill,
   onOpenResource,
+  automation,
 }: {
   drills: DrillCoverage | null;
+  automation?: DrillAutomation | undefined;
   onRecordDrill: ((input: RestoreDrillInput) => Promise<void>) | undefined;
   onOpenResource: ((target: { accountId: string; resourceId: string }) => void) | undefined;
 }) {
@@ -128,6 +131,8 @@ export function DrillsPanel({
   }
 
   const summary = drills.summary;
+  const targets = new Map((automation?.targets ?? []).map((t) => [t.resourceId, t]));
+  const schedules = new Map((automation?.schedules ?? []).map((s) => [s.resourceId, s]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -230,6 +235,14 @@ export function DrillsPanel({
                 )}
               </div>
 
+              {automation && targets.has(row.resourceId) && (
+                <DrillScheduleControls
+                  target={targets.get(row.resourceId)!}
+                  schedule={schedules.get(row.resourceId) ?? null}
+                  automation={automation}
+                />
+              )}
+
               {recordFor?.resourceId === row.resourceId && (
                 <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border p-3">
                   <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
@@ -302,6 +315,7 @@ export function DrillsPanel({
               <li key={drill.id}>
                 {new Date(drill.performedAt).toLocaleDateString()}:{" "}
                 {outcomeLabel(gt, drill.outcome)}
+                {drill.runId ? ` · ${gt("Automatic")}` : ""}
                 {drill.notes ? ` · ${drill.notes}` : ""}
               </li>
             ))}

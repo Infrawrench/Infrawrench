@@ -47,6 +47,13 @@ export const restoreDrills = pgTable(
      * dangerous number on the page.
      */
     rtoMinutes: integer("rto_minutes"),
+    /**
+     * Minutes between the restore point and the drill. Recorded by automatic
+     * drills, which know when their restore point was; null otherwise.
+     */
+    rpoMinutes: integer("rpo_minutes"),
+    /** The automatic drill run that recorded this; null for one a person recorded. */
+    runId: text("run_id"),
     /** Snapshot id, S3 key, a date: whatever form the operator has it in. */
     restoredFrom: text("restored_from"),
     /** What was checked, or what went wrong. The most re-read field here. */

@@ -16,6 +16,9 @@ import type {
   QuotaUsage,
   ResourceCreateReturn,
   ResourceInstance,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
   SidebarItemSchema,
   SqlTableMeta,
   StorageObject,
@@ -114,6 +117,12 @@ function randomPassword(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+function drillRefParts(ref: string): [string, string] {
+  const [projectRef = "", branchId = ""] = ref.split("/");
+  if (!projectRef || !branchId) throw new Error("Supabase plugin: malformed drill handle.");
+  return [projectRef, branchId];
+}
+
 /** The postgres-protocol percent encoding a password needs inside a URI. */
 function uriPassword(password: string): string {
   return encodeURIComponent(password);
@@ -145,6 +154,75 @@ export class SupabaseClient implements PluginClient {
   }
 
   // ---- listing ---------------------------------------------------------------
+
+  // ---- automatic restore drills (`manifest.restoreDrill`) ----------------------
+  //
+  // A drill creates a branch of the project with its data (`with_data`, which
+  // Supabase fills from the project's point-in-time backups and only offers
+  // with that add-on), checks it, and deletes it. The project itself is never
+  // touched.
+
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(async () => {
+      if (request.resourceTypeId !== "supabase-project") {
+        throw new Error(`Supabase plugin: ${request.resourceTypeId} cannot be drilled.`);
+      }
+      if (request.restorePoint.kind !== "latest-backup") {
+        throw new Error(
+          "Supabase branches copy the project's latest data; they cannot start from a point in time.",
+        );
+      }
+      const ref = externalIdOf(request.resourceId).split("/")[0] ?? "";
+      if (!ref) throw new Error("Supabase plugin: cannot parse the project ref.");
+      const branch = await this.api.post(`/v1/projects/${pathEncode(ref)}/branches`, {
+        body: { branch_name: request.copyName, with_data: true, persistent: false },
+      });
+      return { ref: `${ref}/${branch.id}`, restoredFrom: `${ref}, latest data` };
+    });
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(async (): Promise<RestoreDrillStatus> => {
+      const [, branchId] = drillRefParts(ref);
+      const cfg = await this.api.get(`/v1/branches/${pathEncode(branchId)}`);
+      if (
+        cfg.status === "INIT_FAILED" ||
+        cfg.status === "RESTORE_FAILED" ||
+        cfg.status === "REMOVED"
+      ) {
+        return { state: "failed", message: `The branch is ${cfg.status.toLowerCase()}.` };
+      }
+      if (cfg.status !== "ACTIVE_HEALTHY" || !cfg.db_pass) {
+        return { state: "pending", detail: `The branch is ${cfg.status.toLowerCase()}.` };
+      }
+      return {
+        state: "ready",
+        connection: {
+          driver: "postgres",
+          connectionString: `postgresql://${cfg.db_user ?? "postgres"}:${uriPassword(cfg.db_pass)}@${cfg.db_host}:${cfg.db_port}/postgres?sslmode=require`,
+        },
+      };
+    });
+  }
+
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const [projectRef, branchId] = drillRefParts(ref);
+      const branches = await this.api.get(`/v1/projects/${pathEncode(projectRef)}/branches`);
+      const branch = branches.find((b) => b.id === branchId);
+      if (!branch) return;
+      // Only ever a branch a drill made: the name is the proof.
+      if (!branch.name.startsWith("iw-drill-")) {
+        throw new Error(`Supabase plugin: refusing to delete ${branch.name}, which no drill made.`);
+      }
+      try {
+        await this.api.delete(`/v1/branches/${pathEncode(branchId)}`);
+      } catch (err) {
+        if (statusOf(err) === 404) return;
+        throw err;
+      }
+    });
+  }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {

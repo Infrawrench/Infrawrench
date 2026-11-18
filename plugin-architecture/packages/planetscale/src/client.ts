@@ -16,6 +16,9 @@ import type {
   MetricSeries,
   RegionOption,
   SelectOption,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
 } from "@infrawrench/plugin-base";
 import {
   decodePromptArgs,
@@ -1924,6 +1927,132 @@ export class PlanetScaleClient implements PluginClient {
       accountId,
       new Date().toISOString(),
     );
+  }
+
+  // ---- automatic restore drills (`manifest.restoreDrill`) ----------------------
+  //
+  // A drill restores a backup (or, on Postgres, a point in time) into a new
+  // branch of the same database. The source branch is never touched. The new
+  // branch is a real cluster of the source's size, so it is deleted the moment
+  // the drill is over.
+
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(async () => {
+      if (request.resourceTypeId !== "ps-branch") {
+        throw new Error(`PlanetScale plugin: ${request.resourceTypeId} cannot be drilled.`);
+      }
+      const { databaseName, branchName } = PlanetScaleClient.parseBranchId(request.resourceId);
+      const source = unwrap(
+        await this.fetch<PsBranch | { data: PsBranch }>(this.branchPath(databaseName, branchName)),
+      );
+      const clusterSize = source.cluster_name;
+      if (!clusterSize) throw new Error("PlanetScale did not report the branch's cluster size.");
+
+      const body: Record<string, unknown> = {
+        name: request.copyName,
+        parent_branch: branchName,
+        cluster_size: clusterSize,
+      };
+      let restoredFrom: string;
+      let restorePointAt: string | undefined;
+      if (request.restorePoint.kind === "point-in-time") {
+        if (source.kind !== "postgresql") {
+          throw new Error("PlanetScale restores to a point in time only on Postgres branches.");
+        }
+        body["restore_point"] = request.restorePoint.at;
+        restoredFrom = `${branchName} at ${request.restorePoint.at}`;
+        restorePointAt = request.restorePoint.at;
+      } else {
+        const latest = (await this.fetchBackups(databaseName, branchName))
+          .filter((b) => b.state === "success")
+          .sort(
+            (a, b) =>
+              Date.parse(b.completed_at ?? b.created_at ?? "") -
+              Date.parse(a.completed_at ?? a.created_at ?? ""),
+          )[0];
+        if (!latest) throw new Error("This branch has no successful backup to restore.");
+        body["backup_id"] = latest.id;
+        restoredFrom = `backup ${latest.name}`;
+        restorePointAt = latest.started_at ?? latest.created_at;
+      }
+      await this.fetch(`${this.dbPath(databaseName)}/branches`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        ref: `${databaseName}/${request.copyName}`,
+        restoredFrom,
+        ...(restorePointAt ? { restorePointAt } : {}),
+      };
+    });
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(async (): Promise<RestoreDrillStatus> => {
+      const { databaseName, branchName } = PlanetScaleClient.parseDrillRef(ref);
+      const path = this.branchPath(databaseName, branchName);
+      const branch = unwrap(await this.fetch<PsBranch | { data: PsBranch }>(path));
+      if (!branch.ready) return { state: "pending", detail: "The branch is being restored." };
+      const name = `${branchName}-check`;
+      if (branch.kind === "postgresql" || branch.kind === "neki") {
+        // A read-only login: the check only ever reads.
+        const role = unwrap(
+          await this.fetch<PsRole | { data: PsRole }>(`${path}/roles`, {
+            method: "POST",
+            body: JSON.stringify({ name, inherited_roles: ["pg_read_all_data"] }),
+          }),
+        );
+        return {
+          state: "ready",
+          connection: {
+            driver: "postgres",
+            connectionString: postgresUrl(
+              role.username ?? "",
+              role.password ?? "",
+              role.access_host_url ?? "",
+            ),
+          },
+        };
+      }
+      const pw = unwrap(
+        await this.fetch<{ data: PsPassword } | PsPassword>(`${path}/passwords`, {
+          method: "POST",
+          body: JSON.stringify({ name, role: "reader" }),
+        }),
+      );
+      const user = encodeURIComponent(pw.username);
+      const pass = encodeURIComponent(pw.plain_text ?? "");
+      return {
+        state: "ready",
+        connection: {
+          driver: "mysql-planetscale",
+          connectionString: `mysql://${user}:${pass}@${pw.access_host_url}/${databaseName}`,
+        },
+      };
+    });
+  }
+
+  /** Deleting the branch takes its role or password with it. */
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const { databaseName, branchName } = PlanetScaleClient.parseDrillRef(ref);
+      try {
+        await this.fetch(this.branchPath(databaseName, branchName), { method: "DELETE" });
+      } catch (err) {
+        if (err instanceof Error && /API error 404\b/.test(err.message)) return;
+        throw err;
+      }
+    });
+  }
+
+  private static parseDrillRef(ref: string): { databaseName: string; branchName: string } {
+    const [databaseName = "", branchName = ""] = ref.split("/");
+    // A drill copy is always one this plugin named; anything else is refused
+    // rather than deleted.
+    if (!databaseName || !branchName.startsWith("iw-drill-")) {
+      throw new Error("PlanetScale plugin: malformed drill handle.");
+    }
+    return { databaseName, branchName };
   }
 
   async promoteBranch(resourceId: string): Promise<void> {

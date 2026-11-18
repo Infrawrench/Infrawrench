@@ -307,6 +307,18 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // A backup that did not restore is the finding the whole feature exists
+    // for, and a drill copy that could not be deleted is money running with
+    // nobody watching, so both say so the moment they happen. `warning` by
+    // default; the pass raises a stranded copy as `critical`.
+    id: "restoreDrillAlerts",
+    label: "Restore drills",
+    description: "An automatic restore drill failed, or the copy it made could not be deleted.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     // Money already leaving the account on a schedule the provider set, so a
     // weekly reminder rather than a page: `info`, not `warning`. Upcoming
     // surcharges are deadlines and ride `expiryAlerts` instead.

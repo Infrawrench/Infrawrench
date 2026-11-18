@@ -17,6 +17,7 @@ import {
   type BackupSeverity,
 } from "@infrawrench/client-core";
 import { DrillsPanel, type DrillCoverage } from "./DrillsPanel.js";
+import type { DrillAutomation } from "./DrillSchedule.js";
 import {
   EMPTY_DRAFT,
   draftToInput,
@@ -64,6 +65,11 @@ export interface BackupsSectionProps {
   drills?: DrillCoverage | null | undefined;
   /** Record a drill. Omitted, the drill list is read-only. */
   onRecordDrill?: ((input: RestoreDrillInput) => Promise<void>) | undefined;
+  /**
+   * Automatic drills: the resources whose provider can make isolated copies,
+   * their schedules and the schedule actions. Undefined hides the controls.
+   */
+  drillAutomation?: DrillAutomation | undefined;
 }
 
 type Tab = "findings" | "coverage" | "policies" | "drills";
@@ -400,6 +406,7 @@ export function BackupsSection({
   resourceTypeOptions,
   drills,
   onRecordDrill,
+  drillAutomation,
 }: BackupsSectionProps) {
   const gt = useGT();
   const [tab, setTab] = useState<Tab>("findings");
@@ -827,6 +834,7 @@ export function BackupsSection({
               drills={drills ?? null}
               onRecordDrill={onRecordDrill}
               onOpenResource={onOpenResource}
+              automation={drillAutomation}
             />
           )}
         </>
@@ -835,3 +843,4 @@ export function BackupsSection({
   );
 }
 export type { DrillCoverage } from "./DrillsPanel.js";
+export type { DrillAutomation } from "./DrillSchedule.js";

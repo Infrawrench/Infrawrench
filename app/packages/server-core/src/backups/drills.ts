@@ -46,6 +46,8 @@ function selectDrills() {
       performedAt: restoreDrills.performedAt,
       outcome: restoreDrills.outcome,
       rtoMinutes: restoreDrills.rtoMinutes,
+      rpoMinutes: restoreDrills.rpoMinutes,
+      runId: restoreDrills.runId,
       restoredFrom: restoreDrills.restoredFrom,
       notes: restoreDrills.notes,
       performedByUserId: restoreDrills.performedByUserId,
@@ -62,6 +64,8 @@ interface DrillRow {
   performedAt: Date;
   outcome: RestoreDrill["outcome"];
   rtoMinutes: number | null;
+  rpoMinutes: number | null;
+  runId: string | null;
   restoredFrom: string | null;
   notes: string | null;
   performedByUserId: string | null;
@@ -86,6 +90,8 @@ function toWire(row: DrillRow): RestoreDrill {
     performedAt: row.performedAt.toISOString(),
     outcome: row.outcome,
     rtoMinutes: row.rtoMinutes,
+    rpoMinutes: row.rpoMinutes,
+    runId: row.runId,
     restoredFrom: row.restoredFrom,
     notes: row.notes,
     performedByUserId: row.performedByUserId,

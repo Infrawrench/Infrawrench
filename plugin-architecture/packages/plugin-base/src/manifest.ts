@@ -403,6 +403,13 @@ export interface PluginManifest {
    * and an organization can opt the connection in to lending. See `ci.ts`.
    */
   ciCredential?: CiCredentialDeclaration;
+  /**
+   * If present, this plugin can copy a database from a restore point into an
+   * isolated branch, fork or database and delete it again, and the host offers
+   * automatic restore drills for the listed resource types. See
+   * `restore-drill.ts`.
+   */
+  restoreDrill?: RestoreDrillDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -1182,6 +1189,19 @@ export interface PluginClient {
    */
   lendCiCredential?(request: CiCredentialRequest): PluginEffect<CiLentMaterial>;
   /**
+   * Ask the provider for an isolated copy of one resource from a restore point,
+   * returning as soon as the request is accepted. Required when the manifest
+   * declares `restoreDrill`. See `restore-drill.ts`.
+   */
+  startRestoreDrill?(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle>;
+  /** Whether a drill copy is ready, and how to connect to it. Required with `restoreDrill`. */
+  checkRestoreDrill?(ref: string, accountId: string): PluginEffect<RestoreDrillStatus>;
+  /**
+   * Delete a drill copy and everything made for it. Required with
+   * `restoreDrill`. Must succeed when the copy is already gone.
+   */
+  endRestoreDrill?(ref: string, accountId: string): PluginEffect<void>;
+  /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.
@@ -1735,6 +1755,12 @@ import type {
   CiTaggedCompute,
 } from "./ci.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+import type {
+  RestoreDrillDeclaration,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
+} from "./restore-drill.js";
 import type {
   IdleFindingRecord,
   IdleFindingsCapabilityDeclaration,

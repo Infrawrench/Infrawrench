@@ -11,6 +11,11 @@ export const TursoDatabaseResourceType = rt({
     f("regions", "Regions", { required: false, editable: false }),
     f("version", "Version", { showcase: true, required: false, editable: false }),
     f("isSchema", "Schema Database", { kind: "boolean", required: false, editable: false }),
+    f("pointInTimeRecovery", "Point-in-Time Recovery", {
+      kind: "boolean",
+      required: false,
+      editable: false,
+    }),
     f("schema", "Parent Schema", { required: false, editable: false }),
     f("parent", "Branched From", { required: false, editable: false }),
     f("branchedAt", "Branched At", { required: false, editable: false }),
@@ -70,6 +75,8 @@ export const TursoDatabaseResourceType = rt({
       ],
     },
   ],
+  // Point-in-time recovery is always on and has no listable backups.
+  backupPolicy: { protectedBy: [], automatedBackupFieldKey: "pointInTimeRecovery" },
   resourceSqlDriver: {
     driver: "libsql",
     connectionStringOutputKey: "connectionString",

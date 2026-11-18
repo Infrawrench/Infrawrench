@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -31799,6 +31799,34 @@
             ],
             "description": "Measured wall-clock minutes. Null when the drill never got that far; a blocked drill has no RTO, and an invented one would be the most dangerous number on the page."
           },
+          "rpoMinutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Minutes between the restore point and the drill. Recorded by automatic drills, which know when their restore point was; null when nobody measured it."
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The automatic drill run that recorded this; null for a drill a person recorded."
+          },
           "restoredFrom": {
             "anyOf": [
               {
@@ -31858,6 +31886,8 @@
           "performedAt",
           "outcome",
           "rtoMinutes",
+          "rpoMinutes",
+          "runId",
           "restoredFrom",
           "notes",
           "performedByUserId",
@@ -31925,6 +31955,703 @@
           "resourceId",
           "performedAt",
           "outcome"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillRunList": {
+        "type": "object",
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDrillRun"
+            }
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "scheduleId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "manual"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "restoring",
+              "cleaning",
+              "done"
+            ],
+            "description": "`cleaning` lasts until the provider confirms the copy is gone, however many attempts that takes."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "verified",
+                  "restored-unverified",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "copyName": {
+            "type": "string",
+            "description": "The name the copy carries at the provider."
+          },
+          "restoredFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "restorePointAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadlineAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "restoreSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds from asking for the copy to it taking connections."
+          },
+          "rpoMinutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifyValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanupState": {
+            "type": "string",
+            "enum": [
+              "none",
+              "pending",
+              "failed",
+              "done"
+            ],
+            "description": "`failed` means a delete attempt failed and the pass is still retrying; the copy may still be running at the provider."
+          },
+          "cleanupError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanupAttempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "restoreDrillId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The drill record this run wrote once it reached an outcome."
+          }
+        },
+        "required": [
+          "id",
+          "scheduleId",
+          "resourceId",
+          "trigger",
+          "state",
+          "outcome",
+          "copyName",
+          "restoredFrom",
+          "restorePointAt",
+          "startedAt",
+          "readyAt",
+          "finishedAt",
+          "deadlineAt",
+          "restoreSeconds",
+          "rpoMinutes",
+          "verifyValue",
+          "detail",
+          "cleanupState",
+          "cleanupError",
+          "cleanupAttempts",
+          "restoreDrillId"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "intervalDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "restorePoint": {
+            "type": "string",
+            "enum": [
+              "latest-backup",
+              "point-in-time"
+            ],
+            "description": "Where an automatic drill restores from: the newest backup the provider lists, or a moment inside the provider's recovery window."
+          },
+          "pointInTimeHoursAgo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifySql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifyMode": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "rowCount"
+            ],
+            "description": "How the result is reduced to one number. `scalar` reads the first column of the first row; `rowCount` counts the rows, which is what lets `SELECT … WHERE broken` be a monitor."
+          },
+          "verifyOperator": {
+            "type": "string",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "eq",
+              "neq"
+            ]
+          },
+          "verifyThreshold": {
+            "type": "number"
+          },
+          "timeLimitMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "nextRunAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastRun": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RestoreDrillRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "resourceId",
+          "resourceName",
+          "accountId",
+          "accountName",
+          "resourceTypeId",
+          "pluginId",
+          "intervalDays",
+          "restorePoint",
+          "pointInTimeHoursAgo",
+          "verifySql",
+          "verifyMode",
+          "verifyOperator",
+          "verifyThreshold",
+          "timeLimitMinutes",
+          "enabled",
+          "nextRunAt",
+          "lastRun",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillScheduleUpdate": {
+        "type": "object",
+        "properties": {
+          "intervalDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "restorePoint": {
+            "type": "string",
+            "enum": [
+              "latest-backup",
+              "point-in-time"
+            ],
+            "description": "Where an automatic drill restores from: the newest backup the provider lists, or a moment inside the provider's recovery window."
+          },
+          "timeLimitMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "pointInTimeHoursAgo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 840
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifySql": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifyMode": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "rowCount"
+            ],
+            "description": "How the result is reduced to one number. `scalar` reads the first column of the first row; `rowCount` counts the rows, which is what lets `SELECT … WHERE broken` be a monitor."
+          },
+          "verifyOperator": {
+            "type": "string",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "eq",
+              "neq"
+            ]
+          },
+          "verifyThreshold": {
+            "type": "number"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RestoreDrillScheduleCreate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "intervalDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "restorePoint": {
+            "type": "string",
+            "enum": [
+              "latest-backup",
+              "point-in-time"
+            ],
+            "description": "Where an automatic drill restores from: the newest backup the provider lists, or a moment inside the provider's recovery window."
+          },
+          "timeLimitMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 720
+          },
+          "pointInTimeHoursAgo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 840
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifySql": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verifyMode": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "rowCount"
+            ],
+            "description": "How the result is reduced to one number. `scalar` reads the first column of the first row; `rowCount` counts the rows, which is what lets `SELECT … WHERE broken` be a monitor."
+          },
+          "verifyOperator": {
+            "type": "string",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "eq",
+              "neq"
+            ]
+          },
+          "verifyThreshold": {
+            "type": "number"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "resourceId",
+          "intervalDays",
+          "restorePoint",
+          "timeLimitMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillScheduleList": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDrillSchedule"
+            }
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillTargetList": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDrillTarget"
+            }
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillTarget": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "copyNoun": {
+            "type": "string",
+            "description": "The provider's word for the copy a drill makes.",
+            "examples": [
+              "branch",
+              "fork"
+            ]
+          },
+          "restorePoints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "latest-backup",
+                "point-in-time"
+              ],
+              "description": "Where an automatic drill restores from: the newest backup the provider lists, or a moment inside the provider's recovery window."
+            }
+          },
+          "maxLookbackHours": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Furthest back a point-in-time copy can reach on the most generous plan."
+          },
+          "typicalReadyMinutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "costSummary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a copy costs while it exists, as the provider publishes it."
+          },
+          "costUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "copyNoun",
+          "restorePoints",
+          "maxLookbackHours",
+          "typicalReadyMinutes",
+          "costSummary",
+          "costUrl"
         ],
         "additionalProperties": false
       },
@@ -37378,6 +38105,7 @@
           "sloAlerts",
           "scorecardAlerts",
           "quotaAlerts",
+          "restoreDrillAlerts",
           "extendedSupportAlerts",
           "incidentAlerts",
           "weeklyDigest"
@@ -101186,7 +101914,7 @@
             }
           }
         },
-        "description": "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long does it take'; a different question, and the one routinely answered wrongly on the day.\n\nA drill is a **record that somebody tried**, not an automated restore: restoring a customer's database unattended costs real money, can collide with production, and cannot be generically verified. What the product can do is make the exercise scheduled, recorded and visible when it lapses.\n\n_Requires permission: `resources:read`._",
+        "description": "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long does it take'; a different question, and the one routinely answered wrongly on the day.\n\nA drill is a **record that somebody tried**. For providers with isolated, disposable copies (database branches and forks) an automatic drill schedule makes the record itself; see `/drills/schedules`. Everything else is recorded by hand.\n\n_Requires permission: `resources:read`._",
         "summary": "Where every protected resource stands on restore",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdBackupsDrills"
@@ -101255,6 +101983,429 @@
         },
         "x-required-permission": "resources:write",
         "operationId": "postOrgOrgIdBackupsDrills"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/targets": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Drillable resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillTargetList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Protected resources whose provider can copy them from a restore point into an isolated branch or fork and delete it again, with the restore points each one supports and the provider's published cost of a copy. Read from synced inventory and plugin metadata; no provider calls.\n\n_Requires permission: `resources:read`._",
+        "summary": "List resources that can be drilled automatically",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdBackupsDrillsTargets"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/schedules": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules, newest first, each with its latest run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillScheduleList"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List automatic restore drill schedules",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdBackupsDrillsSchedules",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "post": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The created schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every `intervalDays`, Infrawrench asks the provider for an isolated copy of the resource from the chosen restore point, times how long it takes to accept connections, runs `verifySql` (read-only statements only) against the copy and compares the result with the expected condition, records the outcome in the drill log, and deletes the copy. The copy is deleted on every path, including failure and the time limit; a delete that keeps failing is retried and alerted on.\n\nTakes `resources:execute`, the SQL editor's permission: a schedule runs a query against a copy of a customer database unattended. One schedule per resource. The first run is one interval out; use the run endpoint to run one now.\n\n_Requires permission: `resources:execute`._",
+        "summary": "Schedule automatic restore drills of a resource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreDrillScheduleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:execute",
+        "operationId": "postOrgOrgIdBackupsDrillsSchedules"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/schedules/{scheduleId}": {
+      "patch": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated schedule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Omitted fields are left alone; `null` clears `verifySql` or `pointInTimeHoursAgo`. Set `enabled` to false to pause the schedule without losing it.\n\n_Requires permission: `resources:execute`._",
+        "summary": "Update an automatic restore drill schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreDrillScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:execute",
+        "operationId": "patchOrgOrgIdBackupsDrillsSchedulesScheduleId"
+      },
+      "delete": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The schedule was deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A run already in progress continues to its end, deleting its copy included. Drills it recorded stay in the drill log.\n\n_Requires permission: `resources:execute`._",
+        "summary": "Delete an automatic restore drill schedule",
+        "x-required-permission": "resources:execute",
+        "operationId": "deleteOrgOrgIdBackupsDrillsSchedulesScheduleId"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/schedules/{scheduleId}/run": {
+      "post": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The queued run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Queues a run that starts on the poller's next pass. Refused with 409 while a run of the same schedule is still going or still deleting its copy.\n\n_Requires permission: `resources:execute`._",
+        "summary": "Run an automatic restore drill now",
+        "x-required-permission": "resources:execute",
+        "operationId": "postOrgOrgIdBackupsDrillsSchedulesScheduleIdRun"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/runs": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "scheduleId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrillRunList"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List automatic restore drill runs",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdBackupsDrillsRuns",
+        "description": "_Requires permission: `resources:read`._"
       }
     },
     "/api/org/{orgId}/backups/drills/log": {

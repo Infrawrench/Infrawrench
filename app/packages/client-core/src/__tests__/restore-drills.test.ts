@@ -24,6 +24,8 @@ function drill(overrides: Partial<RestoreDrill> = {}): RestoreDrill {
     performedAt: new Date(NOW - 10 * DAY).toISOString(),
     outcome: "verified",
     rtoMinutes: 45,
+    rpoMinutes: null,
+    runId: null,
     restoredFrom: "snap-123",
     notes: null,
     performedByUserId: null,
