@@ -201,7 +201,7 @@ impl CpuMeter {
     }
 
     /// The job the calling thread is working for, if any.
-    #[cfg(any(feature = "node", test))]
+    #[cfg(any(feature = "node", all(test, target_os = "linux")))]
     pub(crate) fn current() -> Option<Arc<Self>> {
         CURRENT.with(|current| current.borrow().clone())
     }
