@@ -897,7 +897,7 @@ function renderPanel(
     case "quotas":
       return <DesktopQuotasPanel />;
     case "price-catalog":
-      return <DesktopPriceCatalogPanel />;
+      return <DesktopPriceCatalogPanel view={t.view} />;
     case "incidents":
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":

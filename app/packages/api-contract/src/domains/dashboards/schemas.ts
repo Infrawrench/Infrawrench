@@ -398,9 +398,12 @@ const TabTarget = Schema.Struct({
   serviceId: Schema.optionalKey(Uuid),
   /**
    * The sub-view a tab was on: `scorecards` for the Services tab's scorecard
-   * matrix, or a resource tab's `details` / `ssh` / `sftp` / `apps`.
+   * matrix, `changes` for the Price catalog tab's list-price changes, or a
+   * resource tab's `details` / `ssh` / `sftp` / `apps`.
    */
-  view: Schema.optionalKey(Schema.Literals(["details", "ssh", "sftp", "apps", "scorecards"])),
+  view: Schema.optionalKey(
+    Schema.Literals(["details", "ssh", "sftp", "apps", "scorecards", "changes"]),
+  ),
   /**
    * Which framework the Compliance tab was last on (`soc2`, `iso27001`).
    * Never used to invalidate the tab: an unknown framework lands on the first.

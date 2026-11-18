@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -37379,6 +37379,7 @@
           "scorecardAlerts",
           "quotaAlerts",
           "extendedSupportAlerts",
+          "priceChangeAlerts",
           "incidentAlerts",
           "weeklyDigest"
         ],
@@ -56194,7 +56195,8 @@
               "ssh",
               "sftp",
               "apps",
-              "scorecards"
+              "scorecards",
+              "changes"
             ]
           },
           "framework": {
@@ -60394,6 +60396,442 @@
           "error",
           "fetchedAt",
           "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChangeScenarioResponse": {
+        "type": "object",
+        "properties": {
+          "scenarioModelId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "created": {
+            "type": "boolean",
+            "description": "False when the change already had a scenario model, which is returned."
+          }
+        },
+        "required": [
+          "scenarioModelId",
+          "created"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChangeSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the daily scan (and so its alerts) runs. Default true."
+          },
+          "minMonthlyImpactCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Changes moving the organization's month by less than this, in cents of USD, are not alerted. Default 1000 ($10)."
+          },
+          "minPercent": {
+            "type": "number",
+            "description": "Changes under this percentage of the old price are not alerted. Default 1."
+          },
+          "registerExpected": {
+            "type": "boolean",
+            "description": "Register an alerted increase as expected (a one-off anomaly suppression per affected account) so anomaly detection does not fire on the step. Default true."
+          },
+          "lastNotifiedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the last daily scan completed. Owned by the poller; read-only."
+          }
+        },
+        "required": [
+          "enabled",
+          "minMonthlyImpactCents",
+          "minPercent",
+          "registerExpected",
+          "lastNotifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChangeSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "minMonthlyImpactCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "minPercent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "registerExpected": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogPriceChangeResponse": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every platform the warehouse prices."
+          },
+          "platform": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogPriceChange"
+            },
+            "description": "Newest first."
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "platforms",
+          "platform",
+          "days",
+          "changes",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "CatalogPriceChange": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "instanceType": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string",
+            "description": "The variant in words (`PostgreSQL, Multi-AZ`); empty for a plain instance."
+          },
+          "oldHourlyUsd": {
+            "type": "number"
+          },
+          "newHourlyUsd": {
+            "type": "number"
+          },
+          "percent": {
+            "type": "number"
+          },
+          "effectiveAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "vcpu": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memoryGib": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pageUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "instanceType",
+          "region",
+          "variant",
+          "oldHourlyUsd",
+          "newHourlyUsd",
+          "percent",
+          "effectiveAt",
+          "vcpu",
+          "memoryGib",
+          "pageUrl"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChangeListResponse": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceChange"
+            },
+            "description": "Newest effective date first."
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when the server has no pricing warehouse to read price history from."
+          },
+          "lastScannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minMonthlyImpactCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "minPercent": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "changes",
+          "available",
+          "lastScannedAt",
+          "minMonthlyImpactCents",
+          "minPercent"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChange": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "platform": {
+            "type": "string",
+            "description": "The pricing warehouse's platform: `ec2`, `rds`, `azure`, `gcp`...",
+            "examples": [
+              "ec2"
+            ]
+          },
+          "instanceType": {
+            "type": "string",
+            "examples": [
+              "m5.large"
+            ]
+          },
+          "region": {
+            "type": "string",
+            "examples": [
+              "us-east-1"
+            ]
+          },
+          "selection": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The variant matched (operating system, database engine...), keyed by the warehouse's `prices` columns or `variant.<key>`."
+          },
+          "oldHourlyUsd": {
+            "type": "number"
+          },
+          "newHourlyUsd": {
+            "type": "number"
+          },
+          "percent": {
+            "type": "number",
+            "description": "(new / old - 1) x 100."
+          },
+          "effectiveAt": {
+            "type": "string",
+            "description": "When the new price takes or took effect.",
+            "format": "date-time"
+          },
+          "upcoming": {
+            "type": "boolean",
+            "description": "True while `effectiveAt` is in the future."
+          },
+          "units": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "approximate": {
+            "type": "boolean"
+          },
+          "monthlyImpactUsd": {
+            "type": "number",
+            "description": "(new - old) x 730 hours x units: what the change does to the organization's month at list price. Negative for a cut."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceChangeResource"
+            },
+            "description": "The affected resources (at most 50 named; the figure covers all of them)."
+          },
+          "belowThreshold": {
+            "type": "boolean",
+            "description": "True when it falls under the organization's thresholds: listed, never alerted."
+          },
+          "alertedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suppressionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Anomaly suppressions registered so detection does not fire on the step."
+          },
+          "scenarioModelId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scenario model made from this change, while it exists."
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pageUrl": {
+            "type": "string",
+            "description": "The instance's page with its price history."
+          }
+        },
+        "required": [
+          "id",
+          "pluginId",
+          "platform",
+          "instanceType",
+          "region",
+          "selection",
+          "oldHourlyUsd",
+          "newHourlyUsd",
+          "percent",
+          "effectiveAt",
+          "upcoming",
+          "units",
+          "approximate",
+          "monthlyImpactUsd",
+          "resources",
+          "belowThreshold",
+          "alertedAt",
+          "suppressionIds",
+          "scenarioModelId",
+          "detectedAt",
+          "pageUrl"
+        ],
+        "additionalProperties": false
+      },
+      "PriceChangeResource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Instances, nodes or GPUs of the type it runs."
+          },
+          "approximate": {
+            "type": "boolean",
+            "description": "True when `units` is a lower bound (a cluster whose node count is not synced)."
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "resourceTypeId",
+          "accountId",
+          "accountName",
+          "units",
+          "approximate"
         ],
         "additionalProperties": false
       },
@@ -125348,6 +125786,296 @@
         "summary": "Compare equivalent instances across providers",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdPriceCatalogCompare"
+      }
+    },
+    "/api/org/{orgId}/price-changes": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "description": "How far back, in days. Default 180.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 730
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Price changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceChangeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "One row per change (never per resource): the instance type, region and variant, the old and new hourly list price, when it took or takes effect, which of the organization's resources run it and what it does to their month. Found by a daily scan of the pricing warehouse's price history.\n\n_Requires permission: `costs:read`._",
+        "summary": "List list-price changes on instance types the organization runs",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdPriceChanges"
+      }
+    },
+    "/api/org/{orgId}/price-changes/catalog": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The warehouse platform (`ec2`, `rds`, `azure`, `gcp`...). Default `ec2`."
+            },
+            "required": false
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "description": "How far back, in days. Default 90.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog price changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPriceChangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every on-demand list-price change on a platform over the last `days`, whether or not the organization runs the instance type: the headline variant only (Linux, shared tenancy, standard priority). Cached for an hour.\n\n_Requires permission: `resources:read`._",
+        "summary": "List every list-price change on one platform",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdPriceChangesCatalog"
+      }
+    },
+    "/api/org/{orgId}/price-changes/settings": {
+      "get": {
+        "tags": [
+          "Price catalog"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Price-change watch settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceChangeSettings"
+                }
+              }
+            }
+          }
+        },
+        "description": "An organization that never saved reads the shipped defaults (enabled, $10 a month, 1%, registering increases as expected).\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Get the organization's price-change watch settings",
+        "x-required-permission": "org:settings:write",
+        "operationId": "getOrgOrgIdPriceChangesSettings"
+      },
+      "put": {
+        "tags": [
+          "Price catalog"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceChangeSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every field is optional. `minMonthlyImpactCents` is a whole number from 0 to 100000000; `minPercent` is from 0 to 100. Saving never resets the scan's cooldown.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Update the price-change watch settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceChangeSettingsUpdate"
+              }
+            }
+          }
+        },
+        "x-required-permission": "org:settings:write",
+        "operationId": "putOrgOrgIdPriceChangesSettings"
+      }
+    },
+    "/api/org/{orgId}/price-changes/{changeId}/scenario": {
+      "post": {
+        "tags": [
+          "Price catalog"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "changeId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scenario model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceChangeScenarioResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a scenario model in USD with one recurring monthly amount (the change's monthly impact) from the day it takes effect, scoped to the change's provider and the accounts running it, so forecasts can show it before the trend catches up. Calling it again returns the model already made, while it exists.\n\n_Requires permission: `costs:write`._",
+        "summary": "Make a scenario model from a price change",
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdPriceChangesChangeIdScenario"
       }
     },
     "/api/org/{orgId}/savings/realized": {

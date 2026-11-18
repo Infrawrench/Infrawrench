@@ -428,6 +428,14 @@ infrawrench extended-support --local
 infrawrench extended-support --json
 ```
 
+`price-changes` lists [list-price changes](./price-change-watch.md) on instance types you run, one row per change with the monthly impact and whether it was alerted. `--all` includes changes under your thresholds. `price-changes catalog` lists every change on one pricing platform. Cloud only:
+
+```
+infrawrench price-changes
+infrawrench price-changes --all --days 365 --json
+infrawrench price-changes catalog --provider rds --days 30
+```
+
 ## Look up prices, estimates and carbon
 
 `prices` searches the [price catalog](./price-catalog.md): providers' published list prices, filtered by provider, specs, GPU and price, cheapest first. `prices compare` finds the cheapest instance per provider that meets a vCPU, memory or GPU target, or that matches a product you name. Cloud only; both take `--json`:

@@ -979,6 +979,22 @@ func (c *Client) PutExtendedSupportSettings(ctx context.Context, in ExtendedSupp
 	return &out, nil
 }
 
+func (c *Client) GetPriceChangeSettings(ctx context.Context) (*PriceChangeSettings, error) {
+	var out PriceChangeSettings
+	if err := c.Get(ctx, "/price-changes/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutPriceChangeSettings(ctx context.Context, in PriceChangeSettingsUpdate) (*PriceChangeSettings, error) {
+	var out PriceChangeSettings
+	if err := c.Put(ctx, "/price-changes/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetIdleFindingSettings(ctx context.Context) (*IdleFindingSettings, error) {
 	var out IdleFindingSettings
 	if err := c.Get(ctx, "/idle-findings/settings", &out); err != nil {

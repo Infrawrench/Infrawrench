@@ -392,7 +392,9 @@ app_env = {
   # CloudHouse warehouse behind instances.infrawrench.com, which
   # `/api/v1/instance-pricing/query` (and its deprecated alias
   # `/api/v1/aws-pricing/query`) runs SQL against; without it that route
-  # answers 503. The same value is the instances Worker's PRICING_WAREHOUSE_READ_TOKEN.
+  # answers 503. The price change watch (poller pass `price-changes` and the
+  # Price changes view) reads price history with it too, and finds nothing
+  # without it. The same value is the instances Worker's PRICING_WAREHOUSE_READ_TOKEN.
   # PRICING_WAREHOUSE_URL is optional (defaults to the public endpoint).
   # PRICING_WAREHOUSE_READ_TOKEN = "..."
 

@@ -11,6 +11,7 @@ import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { AWS_IDLE_FINDINGS } from "./idle-findings.js";
 import { awsTerraformExport } from "./terraform.js";
 import { awsRemediationCommands } from "./remediation.js";
+import { awsInstancePricingUsage } from "./instance-pricing.js";
 import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
 import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
@@ -330,4 +331,5 @@ export const plugin = definePlugin({
   policyTemplate: buildAwsPolicyTemplate,
   terraformExport: awsTerraformExport,
   remediationCommands: awsRemediationCommands,
+  instancePricingUsage: awsInstancePricingUsage,
 });

@@ -15,6 +15,7 @@ import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
 import { gcpTerraformExport } from "./terraform.js";
 import { gcpBusinessMetricSource } from "./business-metric-source.js";
 import { gcpRemediationCommands } from "./remediation.js";
+import { gcpInstancePricingUsage } from "./instance-pricing.js";
 import { GcpProjectResourceType } from "./resources/project.js";
 import { GceInstanceResourceType } from "./resources/gce-instance.js";
 import { GceDiskResourceType } from "./resources/gce-disk.js";
@@ -297,4 +298,5 @@ export const plugin = definePlugin({
   policyTemplate: buildGcpPolicyTemplate,
   terraformExport: gcpTerraformExport,
   remediationCommands: gcpRemediationCommands,
+  instancePricingUsage: gcpInstancePricingUsage,
 });

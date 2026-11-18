@@ -131,6 +131,7 @@ describe("effect/cli: routing", () => {
       "paging",
       "posture",
       "pr-check",
+      "price-changes",
       "prices",
       "probes",
       "recordings",

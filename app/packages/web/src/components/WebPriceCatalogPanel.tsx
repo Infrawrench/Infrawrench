@@ -3,19 +3,25 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   PriceCatalogPanel,
   dispatchResourcesChanged,
+  priceCatalogTabTarget,
   type PriceCatalogAccount,
   type PriceCatalogClient,
   type PriceCatalogEstimateTarget,
+  type PriceChangeResourceRef,
+  type PriceChangesClient,
 } from "@infrawrench/ui";
 import {
   priceCatalogQueryString,
+  type CatalogPriceChangeResponse,
+  type PriceChangeListResponse,
   type PriceCatalogCompareQuery,
   type PriceCatalogCompareResponse,
   type PriceCatalogSearchQuery,
   type PriceCatalogSearchResponse,
 } from "@infrawrench/client-core";
 import type { AccountListItem } from "@/lib/api-types";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 
 /**
@@ -23,7 +29,13 @@ import { CreateResourceModal } from "./CreateResourceModal";
  * create form for "use in estimate". Rendered as a workspace tab (the
  * "price-catalog" kind) by WebWorkspaceTabsViewport.
  */
-export function WebPriceCatalogPanel({ orgId }: { orgId: string }) {
+export function WebPriceCatalogPanel({
+  orgId,
+  view,
+}: {
+  orgId: string;
+  view?: "changes" | undefined;
+}) {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<PriceCatalogAccount[]>([]);
   const [target, setTarget] = useState<PriceCatalogEstimateTarget | null>(null);
@@ -45,6 +57,29 @@ export function WebPriceCatalogPanel({ orgId }: { orgId: string }) {
     };
   }, [orgId]);
 
+  const changesClient = useMemo<PriceChangesClient>(() => {
+    const base = `/api/org/${encodeURIComponent(orgId)}/price-changes`;
+    return {
+      list: (days) => apiGet<PriceChangeListResponse>(`${base}?days=${days}`),
+      catalog: ({ platform, days }) =>
+        apiGet<CatalogPriceChangeResponse>(
+          `${base}/catalog?${new URLSearchParams({ ...(platform ? { platform } : {}), days: String(days) }).toString()}`,
+        ),
+      createScenario: (changeId) =>
+        apiPost<{ scenarioModelId: string; created: boolean }>(
+          `${base}/${encodeURIComponent(changeId)}/scenario`,
+          {},
+        ),
+    };
+  }, [orgId]);
+
+  const openResource = (ref: PriceChangeResourceRef) =>
+    void navigate(
+      getWorkspaceNavigateArgs(
+        resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+      ),
+    );
+
   return (
     <>
       <PriceCatalogPanel
@@ -52,6 +87,13 @@ export function WebPriceCatalogPanel({ orgId }: { orgId: string }) {
         accounts={accounts}
         onUseInEstimate={setTarget}
         onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
+        changesClient={changesClient}
+        view={view}
+        // The URL owns the view, the services rule: navigating records it.
+        onViewChange={(next) =>
+          void navigate(getWorkspaceNavigateArgs(priceCatalogTabTarget(next)))
+        }
+        onOpenResource={openResource}
       />
       {target && (
         <CreateResourceModal

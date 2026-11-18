@@ -31,6 +31,7 @@ import { issues } from "../commands/issues";
 import { statusPages } from "../commands/status-pages";
 import { commitments } from "../commands/commitments";
 import { extendedSupport } from "../commands/extended-support";
+import { priceChanges } from "../commands/price-changes";
 import { orphans } from "../commands/orphans";
 import { probes } from "../commands/probes";
 import { slos } from "../commands/slos";
@@ -115,6 +116,7 @@ const subcommands = [
   estimate,
   orphans,
   extendedSupport,
+  priceChanges,
   probes,
   webhooks,
   slos,

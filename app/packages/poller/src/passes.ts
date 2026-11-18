@@ -40,6 +40,7 @@ import {
 } from "@infrawrench/server-core/vulnerabilities/kev";
 import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
 import { runExtendedSupportAlerts } from "@infrawrench/server-core/extended-support/alerts";
+import { runPriceChangeAlerts } from "@infrawrench/server-core/price-changes/alerts";
 import {
   ISSUE_STATUS_PASS_INTERVAL_MS,
   runIssueStatusPass,
@@ -743,6 +744,17 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[extended-support] alert tick failed:", () =>
       runExtendedSupportAlerts({ limit: 4 }),
     ),
+  },
+
+  // Provider price-change watch: a daily scan per org (the same claim engine
+  // on a one-day window, `org_price_change_settings.last_notified_at`).
+  // Gateway, because what a resource is billed for comes from each plugin's
+  // `instancePricingUsage`, which the edge build stubs out.
+  {
+    kind: "periodic",
+    name: "price-changes",
+    runtime: "gateway",
+    run: guarded("[price-changes] scan tick failed:", () => runPriceChangeAlerts({ limit: 4 })),
   },
 
   // Sleep/wake schedules. Claims due transitions with the accounts lease

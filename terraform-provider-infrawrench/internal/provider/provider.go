@@ -221,6 +221,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewDoraSettingsResource,
 		NewExpiryAlertSettingsResource,
 		NewExtendedSupportSettingsResource,
+		NewPriceChangeSettingsResource,
 		NewIdleFindingSettingsResource,
 		NewPostureAlertSettingsResource,
 		NewVulnerabilityAlertSettingsResource,

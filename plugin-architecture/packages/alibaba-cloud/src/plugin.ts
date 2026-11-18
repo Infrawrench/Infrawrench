@@ -17,6 +17,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { alibabaTerraformExport } from "./terraform.js";
 import { alibabaRemediationCommands } from "./remediation.js";
+import { alibabaInstancePricingUsage } from "./instance-pricing.js";
 
 const ACCESS_KEY_DOCS =
   "https://www.alibabacloud.com/help/en/ram/user-guide/create-an-accesskey-pair";
@@ -134,6 +135,7 @@ export const plugin = definePlugin({
   parseStatusFeed,
   terraformExport: alibabaTerraformExport,
   remediationCommands: alibabaRemediationCommands,
+  instancePricingUsage: alibabaInstancePricingUsage,
   listCredentialOptions(fieldKey, credentials, services) {
     return attempt(async () => {
       if (fieldKey !== "regions") return [];

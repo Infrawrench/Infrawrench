@@ -1,4 +1,8 @@
-import type { InstancePricingCapability, ResourceInstance } from "@infrawrench/plugin-base";
+import type {
+  InstancePricingCapability,
+  InstancePricingUsage,
+  ResourceInstance,
+} from "@infrawrench/plugin-base";
 
 /**
  * The pricing panel's reading of a pod or serverless endpoint. GPU types go by
@@ -36,4 +40,30 @@ export function runpodInstancePricing(
     region: "global",
     ...(cloud ? { selection: { "variant.cloudType": cloud } } : {}),
   };
+}
+
+/**
+ * What a pod pays for by the hour, for the price-change watch: its GPU type
+ * times its GPU count (RunPod prices GPUs each), or its CPU flavor. A stopped
+ * pod pays no GPU hours. Serverless endpoints scale with requests, so they are
+ * not billed per running hour and have none.
+ */
+export function runpodInstancePricingUsage(resource: ResourceInstance): InstancePricingUsage[] {
+  if (resource.resourceTypeId !== "pod") return [];
+  const status = String(resource.fields["status"] ?? "");
+  if (status === "stopped" || status === "terminated") return [];
+  const panel = runpodInstancePricing(resource);
+  const instanceType = panel?.instanceTypes[0];
+  if (!panel || !instanceType) return [];
+  const gpus = Math.floor(Number(resource.fields["gpuCount"] ?? 0));
+  const isGpu = String(resource.fields["gpuTypeId"] ?? "") !== "";
+  return [
+    {
+      platform: panel.platform,
+      instanceType,
+      region: panel.region ?? "global",
+      ...(panel.selection ? { selection: panel.selection } : {}),
+      units: isGpu && gpus > 0 ? gpus : 1,
+    },
+  ];
 }

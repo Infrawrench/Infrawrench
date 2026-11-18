@@ -346,6 +346,19 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A provider changed the list price of an instance type the org runs
+       * (see server-core `price-changes/alerts.ts`). One notification per
+       * change, never one per resource.
+       *
+       * Target route: the Costs screen's Alerts tab, whose price-changes
+       * section lists the org's recent changes.
+       */
+      type: "price_change";
+      orgId: string;
+      changeId: string;
+    }
+  | {
+      /**
        * A saved log-workspace query with alerting enabled found matching log
        * lines (see server-core `log-workspaces/pass.ts`). At most one
        * notification per cooldown window, never one per matching line.

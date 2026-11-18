@@ -57,7 +57,11 @@ export type WorkspaceTabTarget =
   | { kind: "status-pages" }
   | { kind: "quotas" }
   /** Provider list prices: search, filter, compare. Single-instance. */
-  | { kind: "price-catalog" }
+  /**
+   * The price catalog. Single-instance, remembering whether the Changes view
+   * (list-price changes) is showing, the services shape.
+   */
+  | { kind: "price-catalog"; view?: "changes" }
   /**
    * Declared incidents (incident mode). Single-instance like Probes; the
    * detail view is addressed inside the panel rather than by tab, so an
@@ -414,8 +418,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "probes":
     case "status-pages":
     case "quotas":
-    case "price-catalog":
       return true;
+    case "price-catalog":
+      // The settings trick: one tab by id, the view compared so the route
+      // sync records whether the Changes view is showing.
+      return a.view === (b as { view?: "changes" }).view;
     case "linux-app":
       return (
         a.sessionId === (b as { sessionId: string }).sessionId &&

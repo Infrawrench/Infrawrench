@@ -89,6 +89,7 @@ import { getRealizedSavingsReport } from "../savings/realized";
 import { getDoraReport } from "../dora/load";
 import { getDoraSettings } from "../dora/settings";
 import { listSeats } from "../seats/feed";
+import { digestPriceChanges } from "../price-changes/digest";
 import { summarizeIdleFindings } from "../idle/feed";
 
 /**
@@ -324,6 +325,7 @@ export async function buildWeeklyDigest(
     realizedSavings: await buildRealizedSavings(organizationId, window),
     delivery: await buildDelivery(organizationId, window),
     seats: await buildSeats(organizationId),
+    priceChanges: await digestPriceChanges(organizationId, window),
     idleFindings: await buildIdleFindings(organizationId),
   });
 }

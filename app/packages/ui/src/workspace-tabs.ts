@@ -186,8 +186,12 @@ export function quotasTabTarget(): WorkspaceTabTarget {
   return { kind: "quotas" };
 }
 
-export function priceCatalogTabTarget(): WorkspaceTabTarget {
-  return { kind: "price-catalog" };
+/**
+ * The price catalog. One tab, optionally remembering that the Changes view
+ * (list-price changes) is showing.
+ */
+export function priceCatalogTabTarget(view?: "changes"): WorkspaceTabTarget {
+  return { kind: "price-catalog", ...(view ? { view } : {}) };
 }
 
 /**

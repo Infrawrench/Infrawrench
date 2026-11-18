@@ -319,6 +319,19 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "info",
   },
   {
+    // A provider moved the list price of something the org runs. Not a cost
+    // change alert (nothing about the org moved) and not an anomaly (it is
+    // announced, not statistical): one message per change, naming the
+    // resources and the monthly impact. `warning` for increases (the caller
+    // passes `info` for cuts).
+    id: "priceChangeAlerts",
+    label: "Price changes",
+    description: "A provider changed the list price of an instance type you run.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     // The one trigger a *person* raises. Every other entry in this list is a
     // detector noticing something; this one fires because somebody declared an
     // incident (or mitigated or resolved one), which is why it is `critical` by
@@ -363,6 +376,7 @@ export const COST_FIGURE_TRIGGERS: readonly AlertTrigger[] = [
   "unitCostRegressionAlerts",
   "savingsFindings",
   "extendedSupportAlerts",
+  "priceChangeAlerts",
   "weeklyDigest",
 ];
 
