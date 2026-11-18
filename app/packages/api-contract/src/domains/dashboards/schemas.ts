@@ -342,6 +342,7 @@ const TAB_KINDS = [
   "ssh-fanout",
   "metric-alerts",
   "probes",
+  "heartbeats",
   "status-pages",
   "quotas",
   "price-catalog",

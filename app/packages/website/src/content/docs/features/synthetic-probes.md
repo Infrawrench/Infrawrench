@@ -59,5 +59,6 @@ Probes only target endpoints the internet can reach. Private, loopback and clust
 
 ## Related
 
+- [Heartbeat monitors](./heartbeat-monitors.md): the other direction, for scheduled jobs that ping in when they run.
 - [Status pages](./status-pages.md): publish a chosen set of these probes.
 - [Incident mode](./incident-mode.md): a down probe has a **Declare incident** button that opens the form pre-filled with the probe's name, its error and when it went down.

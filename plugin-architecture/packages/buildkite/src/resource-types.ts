@@ -478,6 +478,7 @@ export const ScheduleResourceType = rt({
   fields: [
     f("label", "Label"),
     f("cronline", "Schedule", {
+      schedule: "cron",
       description:
         "Cron syntax in UTC (0 2 * * 1-5), a time zone suffix (0 2 * * * Europe/Berlin), or @hourly, @daily, @weekly, @monthly.",
     }),

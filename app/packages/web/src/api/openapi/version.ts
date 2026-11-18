@@ -558,4 +558,10 @@
 // from its stored row; `providerPluginId`, `providerResourceTypeId` and
 // `providerAccountId` in `AssociationRequest` are now optional, deprecated and
 // ignored. Relaxes a request; existing clients are unaffected.
-export const API_VERSION = "1.120.0";
+// 1.121.0: heartbeat monitors. `/api/org/:orgId/heartbeats` (list,
+// suggestions, create, update, rotate-token, delete, pings) with the
+// `Heartbeat*` schemas, and the unauthenticated ping URL `GET|POST
+// /api/ping/:token[/start|/fail]`; `heartbeats` joins the `TabTarget` enum,
+// `heartbeatAlerts` the alert trigger enum, and `ResourceDetail` gains an
+// optional `hasSchedule`. Additive.
+export const API_VERSION = "1.121.0";

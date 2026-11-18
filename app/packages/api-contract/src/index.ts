@@ -148,6 +148,7 @@ export * from "./domains/posture";
 export * from "./domains/pr-checks";
 export * from "./domains/price-catalog";
 export * from "./domains/probes";
+export * from "./domains/heartbeats";
 export * from "./domains/profile";
 export * from "./domains/provider-oauth";
 export * from "./domains/push";
@@ -306,6 +307,7 @@ import { PostureApi } from "./domains/posture";
 import { PrChecksApi } from "./domains/pr-checks";
 import { PriceCatalogApi } from "./domains/price-catalog";
 import { ProbesApi } from "./domains/probes";
+import { HeartbeatsApi } from "./domains/heartbeats";
 import { ProfileApi } from "./domains/profile";
 import { ProviderOAuthApi } from "./domains/provider-oauth";
 import { PushApi } from "./domains/push";
@@ -437,6 +439,7 @@ export const API_DEFINITIONS = {
   "extended-support": ExtendedSupportApi,
   github: GithubApi,
   "github-issues": GithubIssuesApi,
+  heartbeats: HeartbeatsApi,
   iac: IacApi,
   "idle-findings": IdleFindingsApi,
   incidents: IncidentsApi,

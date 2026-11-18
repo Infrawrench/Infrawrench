@@ -22,6 +22,7 @@ import {
   PostureIcon,
   PriceCatalogIcon,
   ProbesIcon,
+  HeartbeatsIcon,
   QueryMonitorIcon,
   QuotasIcon,
   RunbookIcon,
@@ -225,6 +226,14 @@ export function useOrgTools(): SidebarToolDef[] {
             label: gt("Probes"),
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
+          },
+          // Cloud-only like probes: pings land on the cloud app and the
+          // deadline sweep runs in the cloud poller.
+          {
+            key: "heartbeats",
+            label: gt("Heartbeats"),
+            icon: <HeartbeatsIcon />,
+            onClick: () => void navigate({ to: "/heartbeats" }),
           },
           // Cloud-only: an SLO is evaluated by the cloud poller over the cloud
           // metric store, the probes stance.

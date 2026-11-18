@@ -307,6 +307,10 @@ export function pushDataToPath(data: MobilePushData): string {
     // latency and history (mobile has no probe editor: web/desktop own that).
     case "probe_alert":
       return `/org/${data.orgId}/probes`;
+    // A heartbeat alert names a scheduled job; heartbeats are listed on the
+    // same screen as probes, read-only.
+    case "heartbeat_alert":
+      return `/org/${data.orgId}/probes`;
     // An SLO alert names one objective; its screen has the budget and burn
     // rates that say how bad and whether it is still burning.
     case "slo_alert":
@@ -606,6 +610,12 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       const status = data["status"];
       if (typeof probeId !== "string" || (status !== "down" && status !== "up")) return null;
       return { type: "probe_alert", orgId, probeId, status };
+    }
+    case "heartbeat_alert": {
+      const heartbeatId = data["heartbeatId"];
+      const status = data["status"];
+      if (typeof heartbeatId !== "string" || (status !== "down" && status !== "up")) return null;
+      return { type: "heartbeat_alert", orgId, heartbeatId, status };
     }
     case "slo_alert": {
       const sloId = data["sloId"];

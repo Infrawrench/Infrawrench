@@ -75,6 +75,7 @@ export function useToolDescriptions(): Record<string, string> {
       logs: gt("Logs from several resources in one searchable pane."),
       "metric-alerts": gt("Threshold rules on the metrics we collect."),
       probes: gt("Uptime and latency checks from outside your infrastructure."),
+      heartbeats: gt("Alerts when a scheduled job stops checking in."),
       slos: gt("Objectives, error budgets and burn-rate alerts."),
       "query-monitors": gt("Scheduled SQL queries with a threshold and an alert."),
       wallboard: gt("Everything that is wrong right now, readable from across the room."),

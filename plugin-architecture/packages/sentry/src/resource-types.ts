@@ -272,11 +272,13 @@ export const CronMonitorResourceType = rt({
     f("schedule", "Schedule", {
       showcase: true,
       required: false,
+      schedule: "cron",
       description:
         "A crontab expression such as 0 * * * *, or an interval such as 10 minute (units: minute, hour, day, week, month, year).",
     }),
     f("timezone", "Timezone", {
       required: false,
+      schedule: "timezone",
       description: "IANA timezone the crontab is evaluated in, e.g. UTC or Europe/Berlin.",
     }),
     f("checkinMargin", "Check-in Margin (minutes)", {

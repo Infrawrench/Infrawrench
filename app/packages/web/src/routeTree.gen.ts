@@ -35,6 +35,7 @@ import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdEnvironmentsRouteImport } from './routes/org.$orgId.environments'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdHeartbeatsRouteImport } from './routes/org.$orgId.heartbeats'
 import { Route as OrgOrgIdHomeRouteImport } from './routes/org.$orgId.home'
 import { Route as OrgOrgIdIacRouteImport } from './routes/org.$orgId.iac'
 import { Route as OrgOrgIdIncidentsRouteImport } from './routes/org.$orgId.incidents'
@@ -241,6 +242,11 @@ const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdHeartbeatsRoute = OrgOrgIdHeartbeatsRouteImport.update({
+  id: '/heartbeats',
+  path: '/heartbeats',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdHomeRoute = OrgOrgIdHomeRouteImport.update({
@@ -688,6 +694,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/heartbeats': typeof OrgOrgIdHeartbeatsRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
@@ -791,6 +798,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/heartbeats': typeof OrgOrgIdHeartbeatsRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
@@ -896,6 +904,7 @@ export interface FileRoutesById {
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/heartbeats': typeof OrgOrgIdHeartbeatsRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
@@ -1003,6 +1012,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/heartbeats'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
@@ -1106,6 +1116,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/heartbeats'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
@@ -1210,6 +1221,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/heartbeats'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
@@ -1483,6 +1495,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/org/$orgId/graph'
       preLoaderRoute: typeof OrgOrgIdGraphRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/heartbeats': {
+      id: '/org/$orgId/heartbeats'
+      path: '/heartbeats'
+      fullPath: '/org/$orgId/heartbeats'
+      preLoaderRoute: typeof OrgOrgIdHeartbeatsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/home': {
@@ -2281,6 +2300,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdEnvironmentsRoute: typeof OrgOrgIdEnvironmentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdHeartbeatsRoute: typeof OrgOrgIdHeartbeatsRoute
   OrgOrgIdHomeRoute: typeof OrgOrgIdHomeRouteWithChildren
   OrgOrgIdIacRoute: typeof OrgOrgIdIacRoute
   OrgOrgIdIncidentsRoute: typeof OrgOrgIdIncidentsRouteWithChildren
@@ -2330,6 +2350,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdEnvironmentsRoute: OrgOrgIdEnvironmentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdHeartbeatsRoute: OrgOrgIdHeartbeatsRoute,
   OrgOrgIdHomeRoute: OrgOrgIdHomeRouteWithChildren,
   OrgOrgIdIacRoute: OrgOrgIdIacRoute,
   OrgOrgIdIncidentsRoute: OrgOrgIdIncidentsRouteWithChildren,

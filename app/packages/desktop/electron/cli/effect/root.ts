@@ -33,6 +33,7 @@ import { commitments } from "../commands/commitments";
 import { extendedSupport } from "../commands/extended-support";
 import { orphans } from "../commands/orphans";
 import { probes } from "../commands/probes";
+import { heartbeats } from "../commands/heartbeats";
 import { slos } from "../commands/slos";
 import { webhooks } from "../commands/webhooks";
 import { alerts } from "../commands/alerts";
@@ -116,6 +117,7 @@ const subcommands = [
   orphans,
   extendedSupport,
   probes,
+  heartbeats,
   webhooks,
   slos,
   commitments,

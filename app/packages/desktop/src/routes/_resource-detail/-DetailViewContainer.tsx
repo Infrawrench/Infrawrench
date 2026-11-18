@@ -62,7 +62,11 @@ import {
   navigateToWorkspaceTarget,
   resourceTabTarget,
   servicesTabTarget,
+  heartbeatsTabTarget,
 } from "../../lib/workspace-tabs";
+import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
+import type { HeartbeatsClient } from "@infrawrench/ui/heartbeats/types";
+import { createDesktopHeartbeatsClient } from "../../lib/heartbeats-client";
 import { fetchDesktopServicesForResource } from "../../lib/services-client";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
@@ -150,6 +154,12 @@ function getLeasesClient(): LeasesClient {
   return desktopLeasesClient;
 }
 
+let desktopHeartbeatsClient: HeartbeatsClient | null = null;
+function getHeartbeatsClient(): HeartbeatsClient {
+  if (!desktopHeartbeatsClient) desktopHeartbeatsClient = createDesktopHeartbeatsClient();
+  return desktopHeartbeatsClient;
+}
+
 let desktopOwnershipClient: OwnershipClient | null = null;
 function getOwnershipClient(): OwnershipClient {
   if (!desktopOwnershipClient) desktopOwnershipClient = createDesktopOwnershipClient();
@@ -215,6 +225,9 @@ export function DetailViewContainer({
   // start/stop pair. Discovered from the local plugin definition, never from
   // provider names.
   const [schedulable, setSchedulable] = useState(false);
+  // Heartbeat tab: cloud mode only, for types whose plugin flags the field
+  // holding the schedule the resource runs on (`schedule: "cron"`).
+  const [hasSchedule, setHasSchedule] = useState(false);
   // Depend on the two identifying strings rather than the resource object:
   // a refetched (new-identity) resource of the same type must not re-run the
   // plugin load.
@@ -223,12 +236,17 @@ export function DetailViewContainer({
   useEffect(() => {
     let cancelled = false;
     setSchedulable(false);
+    setHasSchedule(false);
     if (!activeCloudOrgId || !resourcePluginId || !resourceTypeId) return undefined;
     getPlugin(resourcePluginId)
       .then((loaded) => {
         if (cancelled) return;
         const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
         setSchedulable(!!typeDef?.lifecycle);
+        setHasSchedule(
+          typeDef?.fields.some((f) => f.schedule === "cron") === true ||
+            typeDef?.outputs.some((o) => o.schedule === "cron") === true,
+        );
       })
       .catch(() => {
         if (!cancelled) setSchedulable(false);
@@ -450,6 +468,22 @@ export function DetailViewContainer({
                     accountId,
                     resourceName: resource?.displayName ?? decodedResourceId,
                   }}
+                />
+              ),
+            }
+          : {})}
+        {...(hasSchedule && activeCloudOrgId
+          ? {
+              renderHeartbeatTab: () => (
+                <ResourceHeartbeatPanel
+                  client={getHeartbeatsClient()}
+                  resourceId={decodedResourceId}
+                  resourceName={resource?.displayName ?? decodedResourceId}
+                  onOpenHeartbeats={() =>
+                    void navigateToWorkspaceTarget(navigate, heartbeatsTabTarget(), {
+                      mode: "pin",
+                    })
+                  }
                 />
               ),
             }

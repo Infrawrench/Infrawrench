@@ -177,6 +177,11 @@ export function probesTabTarget(): WorkspaceTabTarget {
   return { kind: "probes" };
 }
 
+/** Heartbeat monitors for scheduled jobs. */
+export function heartbeatsTabTarget(): WorkspaceTabTarget {
+  return { kind: "heartbeats" };
+}
+
 /** Public status-page configuration. Kept separate from probe operations. */
 export function statusPagesTabTarget(): WorkspaceTabTarget {
   return { kind: "status-pages" };

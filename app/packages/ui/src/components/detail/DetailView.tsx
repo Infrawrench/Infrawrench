@@ -187,6 +187,13 @@ interface DetailViewProps {
    */
   renderLeaseTab?: (() => React.ReactNode) | undefined;
   /**
+   * When set, a "Heartbeat" tab renders the heartbeats watching this
+   * scheduled job, with "Watch with a heartbeat". Host-driven like
+   * `renderScheduleTab`: hosts wire it only for types whose plugin flags a
+   * field as the resource's schedule, and only in cloud mode.
+   */
+  renderHeartbeatTab?: (() => React.ReactNode) | undefined;
+  /**
    * When set, an "Ownership" tab renders who owns the resource, what it is
    * for, and its authorizing ticket. Host-driven like `renderLeaseTab`, and
    * ungated for the same reason: any resource can have an owner, so hosts
@@ -263,6 +270,7 @@ type Tab =
   | "changes"
   | "schedule"
   | "lease"
+  | "heartbeat"
   | "ownership"
   | "blast-radius"
   | "artifacts"
@@ -326,6 +334,7 @@ export function DetailView({
   renderChangesTab,
   renderScheduleTab,
   renderLeaseTab,
+  renderHeartbeatTab,
   renderOwnershipTab,
   renderBlastRadiusTab,
   renderNoSqlBrowser,
@@ -398,6 +407,7 @@ export function DetailView({
   const hasChangesTab = !!renderChangesTab;
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
+  const hasHeartbeatTab = !!renderHeartbeatTab;
   const hasOwnershipTab = !!renderOwnershipTab;
   const hasBlastRadiusTab = !!renderBlastRadiusTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
@@ -439,6 +449,7 @@ export function DetailView({
     hasChangesTab ||
     hasScheduleTab ||
     hasLeaseTab ||
+    hasHeartbeatTab ||
     hasOwnershipTab ||
     hasBlastRadiusTab ||
     hasArtifacts ||
@@ -470,6 +481,7 @@ export function DetailView({
   if (hasChangesTab) tabKeys.push("changes");
   if (hasScheduleTab) tabKeys.push("schedule");
   if (hasLeaseTab) tabKeys.push("lease");
+  if (hasHeartbeatTab) tabKeys.push("heartbeat");
   if (hasOwnershipTab) tabKeys.push("ownership");
   if (hasBlastRadiusTab) tabKeys.push("blast-radius");
   if (hasArtifacts) tabKeys.push("artifacts");
@@ -725,6 +737,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("lease")}>
                     {gt("Lease")}
+                  </TabButton>
+                );
+              }
+              if (key === "heartbeat") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("heartbeat")}>
+                    {gt("Heartbeat")}
                   </TabButton>
                 );
               }
@@ -1044,6 +1063,18 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderLeaseTab!()}
+        </div>
+      )}
+
+      {hasHeartbeatTab && activeTab === "heartbeat" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("heartbeat")}
+          aria-labelledby={tabIdFor("heartbeat")}
+          tabIndex={0}
+          className="flex-1 overflow-auto p-4"
+        >
+          {renderHeartbeatTab!()}
         </div>
       )}
 

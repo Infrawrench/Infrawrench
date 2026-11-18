@@ -573,6 +573,7 @@ export async function listCronJobs(
         namespace: c.metadata.namespace ?? "default",
         qualifiedName: qualify(c.metadata.namespace, c.metadata.name),
         schedule: c.spec.schedule,
+        timeZone: c.spec.timeZone ?? "",
         suspended: String(c.spec.suspend ?? false),
         lastSchedule: c.status.lastScheduleTime ?? "",
       },

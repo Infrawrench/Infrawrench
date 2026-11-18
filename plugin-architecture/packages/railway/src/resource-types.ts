@@ -198,6 +198,7 @@ export const ServiceResourceType = rt({
     f("healthcheckTimeout", "Healthcheck Timeout (s)", { kind: "number", required: false }),
     f("cronSchedule", "Cron Schedule", {
       required: false,
+      schedule: "cron",
       description: "Run as a cron job on this UTC schedule instead of staying up.",
     }),
     f("nextCronRunAt", "Next Cron Run", ro),

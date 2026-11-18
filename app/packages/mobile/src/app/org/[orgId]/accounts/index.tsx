@@ -72,7 +72,7 @@ export default function AccountsScreen() {
         />
         <Row
           title="Probes"
-          subtitle="Uptime and latency checks from outside your infra"
+          subtitle="Uptime checks from outside your infra, and scheduled-job heartbeats"
           onPress={() => router.push(`/org/${orgId}/probes`)}
         />
         <Row

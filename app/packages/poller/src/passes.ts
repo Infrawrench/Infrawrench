@@ -62,6 +62,7 @@ import {
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
+import { pruneHeartbeatPings, runHeartbeatPass } from "@infrawrench/server-core/heartbeats/pass";
 import {
   pruneRevnuCheckoutHandoffs,
   runRevnuReportPass,
@@ -363,6 +364,12 @@ async function runRetention(): Promise<void> {
     await pruneEventDeliveries();
   } catch (e) {
     console.error("[poller] event delivery retention failed:", e);
+  }
+  // Heartbeat ping history past its 30-day window.
+  try {
+    await pruneHeartbeatPings();
+  } catch (e) {
+    console.error("[poller] heartbeat ping retention failed:", e);
   }
   // Uploaded Terraform state documents, same hourly slot. The newest per
   // org+account scope is always kept: retention here is about superseded
@@ -909,6 +916,15 @@ export const PASSES: readonly Pass[] = [
     name: "probes",
     runtime: "edge",
     run: guarded("[poller] probe tick failed:", () => runProbePass({ limit: 8 })),
+  },
+
+  // Heartbeat monitors: flip heartbeats whose ping is past its deadline to
+  // down and alert once. One indexed range scan; Postgres and routeAlert only.
+  {
+    kind: "periodic",
+    name: "heartbeats",
+    runtime: "edge",
+    run: guarded("[poller] heartbeat tick failed:", () => runHeartbeatPass({ limit: 50 })),
   },
 
   // Alert follow-up: releases quiet-hours holds whose window has closed and

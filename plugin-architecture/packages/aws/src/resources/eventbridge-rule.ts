@@ -8,7 +8,7 @@ export const EventBridgeRuleResourceType = rt({
     f("name", "Name"),
     f("state", "State", { showcase: true, kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
     f("eventBusName", "Event Bus", { required: false }),
-    f("scheduleExpression", "Schedule", { required: false }),
+    f("scheduleExpression", "Schedule", { required: false, schedule: "cron" }),
     f("description", "Description", { required: false }),
   ],
   outputs: [o("ruleArn", "Rule ARN")],

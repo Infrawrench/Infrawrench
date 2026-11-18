@@ -162,7 +162,14 @@ const JobType = rt({
     f("schedule", "Schedule", {
       showcase: true,
       required: false,
-      description: "Cron expression (cron jobs only), e.g. 0 3 * * * for 03:00 UTC daily.",
+      description: "Cron expression (cron jobs only), e.g. 0 3 * * * for 03:00 daily.",
+      schedule: "cron",
+    }),
+    f("timeZone", "Time Zone", {
+      required: false,
+      editable: false,
+      schedule: "timezone",
+      description: "IANA zone the schedule is read in. Empty means UTC.",
     }),
     f("concurrencyPolicy", "Concurrency", {
       kind: "enum",

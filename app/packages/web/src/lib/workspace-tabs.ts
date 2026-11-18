@@ -32,6 +32,7 @@ import {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -55,6 +56,7 @@ import {
 // Re-export shared target factories
 export {
   homeTabTarget,
+  heartbeatsTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
@@ -378,6 +380,12 @@ export function getWorkspaceNavigateArgs(
     case "probes":
       return {
         to: "/org/$orgId/probes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "heartbeats":
+      return {
+        to: "/org/$orgId/heartbeats",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -730,6 +738,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "probes") {
     return probesTabTarget();
+  }
+  if (s[0] === "heartbeats") {
+    return heartbeatsTabTarget();
   }
   if (s[0] === "status-pages") {
     return statusPagesTabTarget();

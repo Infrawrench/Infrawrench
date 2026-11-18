@@ -16,7 +16,7 @@ Infrawrench is one application made of several apps. Each app covers one job, ha
 | ----------------- | ------------------------------------------------------------------------------------------- |
 | Infrastructure    | Graph, Services, Changes, IaC, Resource reports, Domains, Quotas, Fan-out                   |
 | Costs             | Costs, Reports, Canvases, Kubernetes efficiency, Invoices, Price catalog                    |
-| Observability     | Logs, Alerts, Probes, SLOs, Query monitors, Wallboard                                       |
+| Observability     | Logs, Alerts, Probes, Heartbeats, SLOs, Query monitors, Wallboard                           |
 | Incident response | Incidents, Status pages, Runbooks, Calendar                                                 |
 | Security          | Posture, Vulnerabilities, Compliance, Access review, Just-in-time access, Expiring, Backups |
 | Delivery          | CI, Delivery, Environments, Env diff                                                        |

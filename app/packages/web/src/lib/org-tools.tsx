@@ -29,6 +29,7 @@ import {
   LogsIcon,
   MetricAlertIcon,
   ProbesIcon,
+  HeartbeatsIcon,
   StatusPagesIcon,
   QuotasIcon,
   PriceCatalogIcon,
@@ -234,6 +235,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Probes"),
       icon: <ProbesIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
+    },
+    {
+      key: "heartbeats",
+      label: gt("Heartbeats"),
+      icon: <HeartbeatsIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/heartbeats", params: { orgId: orgId! } }),
     },
     {
       key: "slos",

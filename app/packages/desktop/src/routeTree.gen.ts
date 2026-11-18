@@ -27,6 +27,7 @@ import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as HeartbeatsRouteImport } from './routes/heartbeats'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IacRouteImport } from './routes/iac'
 import { Route as IncidentsRouteImport } from './routes/incidents'
@@ -144,6 +145,11 @@ const ExpiringRoute = ExpiringRouteImport.update({
 const GraphRoute = GraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HeartbeatsRoute = HeartbeatsRouteImport.update({
+  id: '/heartbeats',
+  path: '/heartbeats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -307,6 +313,7 @@ export interface FileRoutesByFullPath {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -355,6 +362,7 @@ export interface FileRoutesByTo {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -404,6 +412,7 @@ export interface FileRoutesById {
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -454,6 +463,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -502,6 +512,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -550,6 +561,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -599,6 +611,7 @@ export interface RootRouteChildren {
   EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  HeartbeatsRoute: typeof HeartbeatsRoute
   HomeRoute: typeof HomeRoute
   IacRoute: typeof IacRoute
   IncidentsRoute: typeof IncidentsRoute
@@ -755,6 +768,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/graph'
       preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/heartbeats': {
+      id: '/heartbeats'
+      path: '/heartbeats'
+      fullPath: '/heartbeats'
+      preLoaderRoute: typeof HeartbeatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -975,6 +995,7 @@ const rootRouteChildren: RootRouteChildren = {
   EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  HeartbeatsRoute: HeartbeatsRoute,
   HomeRoute: HomeRoute,
   IacRoute: IacRoute,
   IncidentsRoute: IncidentsRoute,

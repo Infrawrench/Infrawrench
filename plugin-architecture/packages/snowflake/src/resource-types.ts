@@ -297,6 +297,7 @@ export const TaskResourceType = rt({
     f("name", "Name", { editable: false }),
     f("schedule", "Schedule", {
       showcase: true,
+      schedule: "cron",
       required: false,
       description: "e.g. 60 MINUTE or USING CRON 0 9 * * * UTC. Empty for child tasks.",
     }),

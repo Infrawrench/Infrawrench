@@ -11,7 +11,17 @@ export const JobResourceType = rt({
     f("format", "Format", { showcase: true, required: false }),
     f("lastRunState", "Last Run State", { required: false }),
     f("lastRunResult", "Last Run Result", { required: false }),
-    f("schedule", "Schedule", { showcase: true, required: false }),
+    f("schedule", "Schedule", {
+      showcase: true,
+      required: false,
+      schedule: "cron",
+      description: "Quartz cron expression (seconds first).",
+    }),
+    f("timezoneId", "Time Zone", {
+      required: false,
+      schedule: "timezone",
+      description: "Java time zone id the schedule is read in.",
+    }),
     f("taskCount", "Tasks", { showcase: true, kind: "number", required: false }),
     f("maxConcurrentRuns", "Max Concurrent Runs", { kind: "number", required: false }),
     f("scheduleStatus", "Schedule Status", { required: false }),

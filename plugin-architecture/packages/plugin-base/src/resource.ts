@@ -50,6 +50,17 @@ export interface FieldDefinition {
    * empty values. Not allowed on `secret` or `password` fields.
    */
   showcase?: boolean;
+  /**
+   * This value is the recurring schedule a job, pipeline or function runs on
+   * (`"cron"`), or the IANA time zone that schedule is read in
+   * (`"timezone"`). The host offers "Watch with a heartbeat" on any resource
+   * whose type flags a `"cron"` value, prefilled from it, so a scheduled job
+   * that silently stops running raises an alert. Provider dialects (AWS
+   * `cron()`/`rate()`, Quartz seconds fields, `@hourly`, a trailing zone) are
+   * normalised by the host; a value it cannot read is offered raw for the user
+   * to correct.
+   */
+  schedule?: "cron" | "timezone";
 }
 
 export interface ResourceOutput {
@@ -71,6 +82,17 @@ export interface ResourceOutput {
    * up there without the DNS plugins hearing about it.
    */
   dnsValue?: "ipv4" | "ipv6" | "hostname";
+  /**
+   * This value is the recurring schedule a job, pipeline or function runs on
+   * (`"cron"`), or the IANA time zone that schedule is read in
+   * (`"timezone"`). The host offers "Watch with a heartbeat" on any resource
+   * whose type flags a `"cron"` value, prefilled from it, so a scheduled job
+   * that silently stops running raises an alert. Provider dialects (AWS
+   * `cron()`/`rate()`, Quartz seconds fields, `@hourly`, a trailing zone) are
+   * normalised by the host; a value it cannot read is offered raw for the user
+   * to correct.
+   */
+  schedule?: "cron" | "timezone";
 }
 
 /**

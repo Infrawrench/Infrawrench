@@ -346,6 +346,8 @@ COMMANDS
                       star or unstar one (kind and id as "search --json" prints them)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
+  heartbeats [id|name] heartbeat monitors for scheduled jobs: status, schedule, last ping & last
+                      run (give an id/name for its ping URL, recent pings & run durations)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
                       share and as time) & burn rate (give an id/name for its burn rates & charts)
   services [list]     services (resources grouped across providers): tier, owners, member count

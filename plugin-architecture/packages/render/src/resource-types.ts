@@ -110,6 +110,7 @@ export const ServiceResourceType = rt({
     }),
     f("schedule", "Schedule", {
       required: false,
+      schedule: "cron",
       description: "Cron jobs only: a cron expression in UTC, e.g. 0 * * * *.",
     }),
     f("healthCheckPath", "Health Check Path", {

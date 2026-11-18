@@ -157,6 +157,9 @@ const DesktopMetricAlertsPanel = lazyPanel(() =>
 const DesktopProbesPanel = lazyPanel(() =>
   import("@/components/DesktopProbesPanel").then((m) => m.DesktopProbesPanel),
 );
+const DesktopHeartbeatsPanel = lazyPanel(() =>
+  import("@/components/DesktopHeartbeatsPanel").then((m) => m.DesktopHeartbeatsPanel),
+);
 const DesktopStatusPagesPanel = lazyPanel(() =>
   import("@/components/DesktopStatusPagesPanel").then((m) => m.DesktopStatusPagesPanel),
 );
@@ -892,6 +895,8 @@ function renderPanel(
       return <DesktopMetricAlertsPanel />;
     case "probes":
       return <DesktopProbesPanel />;
+    case "heartbeats":
+      return <DesktopHeartbeatsPanel />;
     case "status-pages":
       return <DesktopStatusPagesPanel />;
     case "quotas":

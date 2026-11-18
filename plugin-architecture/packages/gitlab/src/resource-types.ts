@@ -353,9 +353,13 @@ export const PipelineScheduleResourceType = rt({
     "A scheduled pipeline: cron, time zone, ref, whether it is active, its owner, next run and last pipeline status. Create, edit, activate or deactivate it, run it now, take ownership or delete it.",
   fields: [
     f("description", "Description"),
-    f("cron", "Cron Schedule", { description: "Five fields, e.g. 0 3 * * 1-5." }),
+    f("cron", "Cron Schedule", {
+      description: "Five fields, e.g. 0 3 * * 1-5.",
+      schedule: "cron",
+    }),
     f("cronTimezone", "Time Zone", {
       required: false,
+      schedule: "timezone",
       description: "An IANA zone such as Europe/Berlin, or UTC.",
     }),
     f("ref", "Branch or Tag", { required: false }),
