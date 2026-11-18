@@ -28,7 +28,7 @@ vi.mock("../drivers", () => ({
 }));
 vi.mock("../egress-guard", () => ({ guardDriverConnection: vi.fn(async () => {}) }));
 
-const routeAlert = vi.fn(async () => ({}));
+const routeAlert = vi.fn(async (..._args: unknown[]) => ({}));
 vi.mock("../alerts/route", () => ({ routeAlert: (...a: unknown[]) => routeAlert(...a) }));
 
 const { advanceDrillRun, runRestoreDrillPass } = await import("../backups/drill-pass");
