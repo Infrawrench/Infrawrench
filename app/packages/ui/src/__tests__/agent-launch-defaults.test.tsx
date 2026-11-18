@@ -4,8 +4,8 @@
  *
  * The editors were never the problem. Both resource-detail hosts clear the
  * agent SSH launch defaults from an effect that lists `gt` (from `useGT()`) in
- * its dependency array, and `gt` is not referentially stable, so the effect
- * re-runs on every render. Writing a fresh `{}` there made the write a real
+ * its dependency array, and `gt` was not referentially stable then (it is now,
+ * through our gt-react patch, #1336), so the effect re-ran on every render. Writing a fresh `{}` there made the write a real
  * state change every time, and the page re-rendered forever. A page that never
  * stops rendering never goes idle, and Monaco tokenises its viewport from
  * `requestIdleCallback`, so every editor on the page stayed at the default

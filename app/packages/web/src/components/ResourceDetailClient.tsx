@@ -451,9 +451,9 @@ export function ResourceDetailClient({
 
   useEffect(() => {
     if (!launchLookupKey || !agentSessionId) {
-      // Shared constant, not a fresh `{}`: `gt` is in this effect's deps and
-      // is not referentially stable, so the effect re-runs on every render and
-      // a new object here would loop forever. See NO_AGENT_LAUNCH_DEFAULTS.
+      // Shared constant, not a fresh `{}`: a new object here loops the page
+      // forever as soon as any dependency of this effect becomes
+      // referentially unstable, as `gt` once was. See NO_AGENT_LAUNCH_DEFAULTS.
       setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
       setResolvedLaunchLookupKey(null);
       setAgentLaunchError(null);
