@@ -23826,5 +23826,104 @@
   "51137f36fc3c828c": "Rechercher par nom",
   "bd3d87dee985e997": "Par nom",
   "b42c55d7a720a720": "Par ID",
-  "8ac9eef081af2cab": "Nom de la ressource"
+  "8ac9eef081af2cab": "Nom de la ressource",
+  "29db0190c5625725": "Limite atteinte.",
+  "b49dd0706a5830f1": "Pas encore assez d'historique pour dégager une tendance.",
+  "298acb8896c69ec2": "Prévision : {percent} du volume inclus d'ici le {date}, sur une tendance irrégulière.",
+  "82882e1e84e29846": "Prévision : {percent} du volume inclus d'ici le {date}.",
+  "97e8ac72f22ed0d3": "Autonomie : {duration} au rythme actuel, sur une tendance irrégulière.",
+  "57bc6eae1ebbbcd3": "Autonomie : {duration} au rythme actuel.",
+  "53f6c692d515b941": "Ne se dirige pas vers la limite.",
+  "163774e0a4d4955e": "Autonomie de capacité",
+  "537677d0a8478124": "{used} sur {limit}",
+  "7ab6e75e1876e2de": "Graphique d'autonomie de {label} : {used} sur {limit}",
+  "11e00e583519f046": "Autonomie",
+  "8425c92ad8090b07": "moins d'un jour",
+  "f44fa58b5ce6d6bf": "{count, plural, one {# jour} other {# jours}}",
+  "a314264293dcb8ba": "{count, plural, one {# semaine} other {# semaines}}",
+  "8b488e1be2e9f8fe": "{count, plural, one {# mois} other {# mois}}",
+  "f56aac68220a9f1e": "Disque utilisé (instance la plus remplie, %)",
+  "43b45db69032edfe": "Taille du système de fichiers (octets)",
+  "85dc6dd0e914fa18": "Système de fichiers utilisé (octets)",
+  "96360c45be532dd7": "Stockage inclus",
+  "d1abea929a45b0e3": "Limite de taille logique (octets)",
+  "c1decaeeec99f084": "Nombre max. de liens de réseau virtuel",
+  "a82c2fae0fe9f9b0": "limite atteinte",
+  "24b957b3765b676f": "Pas encore assez d'historique pour dégager une tendance. Cela ne veut pas dire qu'il reste de la place.",
+  "cd1841d081775f4c": "Les mesures se dispersent autant qu'elles suivent une tendance : il s'agit donc d'une projection approximative.",
+  "f8f33cb42033ef70": "épuisé dans {duration}, réinitialisé le {date}",
+  "9e19d40fdae2e292": "{percent} d'ici le {date}",
+  "187c81ecef439e7a": "plus d'un an",
+  "5c96f8080bf341e7": "Le volume inclus publié par le fournisseur pour ce forfait.",
+  "492f3d5a8f837dc5": "forfait {plan}",
+  "3f07974c1337bac5": "forfait",
+  "49674ba6f872f3d0": "Une limite fixe documentée par le fournisseur pour ce type de ressource.",
+  "4017a1ef06cc8d6f": "documenté",
+  "827737d27858bf47": "Lecture de l'utilisation enregistrée…",
+  "3ebfc698a42196ed": "Aucune ressource avec une utilisation et une limite suivies pour l'instant.",
+  "e2430f7b0dc8dc96": "Rien ne s'épuise.",
+  "3319cabd631d7216": "De la limite",
+  "2a1b4a47913ab146": "Enregistré à chaque synchronisation. Les tendances sont ajustées sur les {windowDays} derniers jours ; les volumes inclus mensuels sont projetés jusqu'à la fin de leur cycle de facturation. Alertes à {runwayDays} jours d'autonomie ou à {allowance} d'un volume inclus.",
+  "a6410ca8919e5d59": "Impossible d'enregistrer les paramètres d'alerte de quota",
+  "971dee48de52336d": "Quotas et autonomie de capacité",
+  "06b83b86d8ec4b15": "Envoyer les alertes de quota et d'autonomie",
+  "716f5e14bcbb956b": "Seuil de quota (%)",
+  "cefa57c966636bf3": "Alerte d'autonomie (jours)",
+  "ec39ecefec7e1f3f": "Volume inclus mensuel (%)",
+  "294611212a9b4f1b": "Dernière analyse des alertes de quota : {date}.",
+  "178f718d28805f5e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Impossible de charger l'autonomie de capacité : ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "629cb747688ac20c": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Impossible de charger l'autonomie de capacité : ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "ba0d7750f776c4c9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Actualisation impossible ; affichage de la dernière autonomie chargée. ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "cef06446a25ed4c9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Acheminé par le déclencheur ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Quotas"
+      },
+      " ci-dessus."
+    ]
+  }
 }

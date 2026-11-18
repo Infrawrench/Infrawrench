@@ -23632,5 +23632,104 @@
   "51137f36fc3c828c": "Nach Namen suchen",
   "bd3d87dee985e997": "Nach Name",
   "b42c55d7a720a720": "Nach ID",
-  "8ac9eef081af2cab": "Ressourcenname"
+  "8ac9eef081af2cab": "Ressourcenname",
+  "29db0190c5625725": "Am Limit.",
+  "b49dd0706a5830f1": "Noch nicht genug Verlauf für einen Trend.",
+  "298acb8896c69ec2": "Voraussichtlich {percent} des Inklusivvolumens bis {date}, bei schwankendem Trend.",
+  "82882e1e84e29846": "Voraussichtlich {percent} des Inklusivvolumens bis {date}.",
+  "97e8ac72f22ed0d3": "Reichweite: {duration} beim aktuellen Tempo, bei schwankendem Trend.",
+  "57bc6eae1ebbbcd3": "Reichweite: {duration} beim aktuellen Tempo.",
+  "53f6c692d515b941": "Steuert nicht auf das Limit zu.",
+  "163774e0a4d4955e": "Kapazitätsreichweite",
+  "537677d0a8478124": "{used} von {limit}",
+  "7ab6e75e1876e2de": "Reichweitendiagramm für {label}: {used} von {limit}",
+  "11e00e583519f046": "Reichweite",
+  "8425c92ad8090b07": "unter einem Tag",
+  "f44fa58b5ce6d6bf": "{count, plural, one {# Tag} other {# Tage}}",
+  "a314264293dcb8ba": "{count, plural, one {# Woche} other {# Wochen}}",
+  "8b488e1be2e9f8fe": "{count, plural, one {# Monat} other {# Monate}}",
+  "f56aac68220a9f1e": "Datenträgerbelegung (vollste Instanz, %)",
+  "43b45db69032edfe": "Dateisystemgröße (Bytes)",
+  "85dc6dd0e914fa18": "Belegter Dateisystemspeicher (Bytes)",
+  "96360c45be532dd7": "Inklusivspeicher",
+  "d1abea929a45b0e3": "Logische Größengrenze (Bytes)",
+  "c1decaeeec99f084": "Max. virtuelle Netzwerkverknüpfungen",
+  "a82c2fae0fe9f9b0": "am Limit",
+  "24b957b3765b676f": "Noch nicht genug Verlauf für einen Trend. Das heißt nicht, dass noch Platz ist.",
+  "cd1841d081775f4c": "Die Messwerte streuen ebenso stark, wie sie einem Trend folgen; dies ist daher nur eine grobe Prognose.",
+  "f8f33cb42033ef70": "noch {duration}, Zurücksetzung am {date}",
+  "9e19d40fdae2e292": "{percent} bis {date}",
+  "187c81ecef439e7a": "über ein Jahr",
+  "5c96f8080bf341e7": "Das vom Anbieter veröffentlichte Inklusivvolumen dieses Plans.",
+  "492f3d5a8f837dc5": "Plan {plan}",
+  "3f07974c1337bac5": "Plan",
+  "49674ba6f872f3d0": "Ein festes Limit, das der Anbieter für diesen Ressourcentyp dokumentiert.",
+  "4017a1ef06cc8d6f": "dokumentiert",
+  "827737d27858bf47": "Erfasste Nutzung wird gelesen…",
+  "3ebfc698a42196ed": "Noch keine Ressourcen mit erfasster Nutzung und Limit.",
+  "e2430f7b0dc8dc96": "Nichts geht zur Neige.",
+  "3319cabd631d7216": "Vom Limit",
+  "2a1b4a47913ab146": "Bei jeder Synchronisierung erfasst. Trends werden an die letzten {windowDays} Tage angepasst; monatliche Inklusivvolumen werden bis zum Ende ihres Abrechnungszeitraums hochgerechnet. Warnungen bei {runwayDays} Tagen Reichweite oder {allowance} eines Inklusivvolumens.",
+  "a6410ca8919e5d59": "Einstellungen für Kontingentwarnungen konnten nicht gespeichert werden",
+  "971dee48de52336d": "Kontingente und Kapazitätsreichweite",
+  "06b83b86d8ec4b15": "Kontingent- und Reichweitenwarnungen senden",
+  "716f5e14bcbb956b": "Kontingent-Schwellenwert (%)",
+  "cefa57c966636bf3": "Reichweitenwarnung (Tage)",
+  "ec39ecefec7e1f3f": "Monatliches Inklusivvolumen (%)",
+  "294611212a9b4f1b": "Letzte Prüfung auf Kontingentwarnungen: {date}.",
+  "178f718d28805f5e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Die Kapazitätsreichweite konnte nicht geladen werden: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "629cb747688ac20c": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Die Kapazitätsreichweite konnte nicht geladen werden: ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "ba0d7750f776c4c9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aktualisierung fehlgeschlagen; die zuletzt geladene Reichweite wird angezeigt. ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "cef06446a25ed4c9": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Wird über den obigen Auslöser ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Kontingente"
+      },
+      " weitergeleitet."
+    ]
+  }
 }
