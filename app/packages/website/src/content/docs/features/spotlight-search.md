@@ -6,7 +6,7 @@ sidebar_order: 2
 
 Press **Cmd + K** (macOS) or **Ctrl + K** (Windows and Linux) from anywhere in the app. The command palette opens over whatever you were doing. Type to find something and press **Enter** to open it.
 
-<insert [The command palette open on an empty query: a Starred section with a cost report and a dashboard, each marked with a star, a Recent section listing the last few tabs, and a Quick actions section with Create cost report, Create dashboard, Create budget, New SLO and Connect account] here>
+![The command palette open on an empty query: a Starred section with a cost report and a dashboard, each marked with a star, a Recent section listing the last few tabs, and a Quick actions section with Create cost report, Create dashboard, Create budget, New SLO and Connect account](https://agent-assets.infrawrench.com/docs-screenshots/features/spotlight-search/palette-empty.png)
 
 ## What it finds
 
@@ -22,7 +22,7 @@ Results only include what you could open yourself. A report or dashboard that ha
 
 Matching is forgiving. Every word you type has to match the name or a supporting label (the folder, the account, the kind), either as part of a word or as letters in order. So `prod db` finds `db-primary` in the Production account, and `cstrpt` finds "Cost report".
 
-<insert [The command palette with the query "checkout" typed: results grouped under Services, SLOs and Cost reports, the top Services result highlighted with the Enter hint, and a star shown next to one starred SLO] here>
+![The command palette with the query "checkout" typed: results grouped under Services, SLOs and Cost reports, the top Services result highlighted with the Enter hint, and a star shown next to one starred SLO](https://agent-assets.infrawrench.com/docs-screenshots/features/spotlight-search/palette-checkout.png)
 
 ## Starred items
 
@@ -33,7 +33,7 @@ Star the things you open every day and they appear first when the palette opens.
 
 Stars are personal and are kept per organization, so they follow you between the web app and the desktop app. If you lose access to a starred object, it drops off the list. It comes back if you get access again. You can have up to 200 starred items in each organization.
 
-<insert [A cost report's page header with the filled star button next to the report name, and its tooltip "Starred: listed first in ⌘K"] here>
+![A cost report's page header with the filled star button next to the report name (its "Starred: listed first in ⌘K" tooltip is a native browser tooltip, which screenshots don't capture)](https://agent-assets.infrawrench.com/docs-screenshots/features/spotlight-search/starred-report-header.png)
 
 ## Recent
 
@@ -50,7 +50,7 @@ Quick actions do things instead of opening an object. Type **>** to show only ac
 
 The palette only offers actions you have permission to use.
 
-<insert [The command palette with ">bud" typed, showing only the Actions group with Create budget highlighted] here>
+![The command palette with "\>bud" typed, showing only the Actions group with Create budget highlighted](https://agent-assets.infrawrench.com/docs-screenshots/features/spotlight-search/palette-actions.png)
 
 ## Keyboard
 

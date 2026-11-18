@@ -26,7 +26,7 @@ Connect an Upstash account to manage its serverless Redis databases, Vector and 
 - **Teams**: members and roles. Create and delete teams, **Add member** and remove members.
 - **Account**: the audit log in the Logs tab.
 
-<insert [Upstash Redis database detail page showing the Database, Limits and This month sections with the Change plan and Read regions actions in the header] here>
+![Upstash Redis database detail page showing the Database, Limits and This month sections with the Change plan and Read regions actions in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/upstash/redis-detail.png)
 
 ## Connect your account
 
@@ -36,7 +36,7 @@ Only accounts created on upstash.com can use the Developer API. Accounts created
 
 You never need to paste a QStash token. Infrawrench gets each region's token for you.
 
-<insert [Upstash Add-account form with the Email and Developer API Key fields filled in] here>
+![Upstash Add-account form with the Email and Developer API Key fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/upstash/add-account.png)
 
 ## Metrics
 

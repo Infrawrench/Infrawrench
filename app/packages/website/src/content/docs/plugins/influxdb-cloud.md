@@ -35,7 +35,7 @@ For InfluxDB 3 Cloud Dedicated (under **Advanced options**):
 
 Fill in either set, or both.
 
-<insert [InfluxDB Cloud Add-account form with the Region, API Token and Organization fields, and the Advanced options section expanded] here>
+![InfluxDB Cloud Add-account form with the Region, API Token and Organization fields, and the Advanced options section expanded](https://agent-assets.infrawrench.com/docs-screenshots/plugins/influxdb-cloud/add-account.png)
 
 ## Metrics and quotas
 

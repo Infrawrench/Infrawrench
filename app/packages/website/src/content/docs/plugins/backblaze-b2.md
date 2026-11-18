@@ -17,7 +17,7 @@ Connect a Backblaze B2 account to manage its buckets and application keys, and t
 - **Application keys**: every key with its capabilities, bucket and prefix restrictions and expiry. Create keys with any capabilities (the secret is saved as the key's **Application Key** output so you can export it later), and delete keys.
 - **Get credentials**: on a bucket, create a read/write or read-only key limited to that bucket. On the account, create one for all buckets. You get an S3-style credentials file with the endpoint and region filled in.
 
-<insert [Backblaze B2 bucket detail page showing the Rules tab with lifecycle, CORS and replication rule tables] here>
+![Backblaze B2 bucket detail page showing the Rules tab with lifecycle, CORS and replication rule tables](https://agent-assets.infrawrench.com/docs-screenshots/plugins/backblaze-b2/bucket-rules.png)
 
 ## Connect your account
 
@@ -28,7 +28,7 @@ Connect a Backblaze B2 account to manage its buckets and application keys, and t
 
 The add-account checklist reads the key's capabilities and tells you what is missing for each feature.
 
-<insert [Backblaze B2 Add-account form with the Application Key ID and Application Key fields filled in] here>
+![Backblaze B2 Add-account form with the Application Key ID and Application Key fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/backblaze-b2/add-account.png)
 
 ## Usage, metrics and costs
 

@@ -30,7 +30,7 @@ Devin is Cognition's AI software engineer. Connect Devin to see what your organi
 
 You don't need your organization ID. Infrawrench reads it from the key.
 
-<insert [Devin Add-account form with the API Key filled in and the Price per ACU field showing the default 2.25] here>
+![Devin Add-account form with the API Key filled in and the Price per ACU field showing the default 2.25](https://agent-assets.infrawrench.com/docs-screenshots/plugins/devin/add-account.png)
 
 **Price per ACU** is the rate used to estimate cost (see below). Change it any time with **Edit credentials** on the account.
 

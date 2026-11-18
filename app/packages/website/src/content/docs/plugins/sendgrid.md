@@ -16,7 +16,7 @@ Connect a Twilio SendGrid account to manage what it sends mail with and keep an 
 - **Subusers**: enable or disable them, change their credit allocation, see their reputation and daily sending metrics, create and delete them.
 - **Event webhooks**, **Inbound Parse** hosts, **templates**, **unsubscribe groups**, **verified senders** and **alerts**: create, edit and delete, plus **Send test event**, **Resend verification**, and adding or removing addresses on an unsubscribe group.
 
-<insert [SendGrid account overview showing email credits, the last 30 days stats and the Suppressions tab] here>
+![SendGrid account overview showing email credits, the last 30 days stats and the Suppressions tab in the tab bar](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sendgrid/account-overview.png)
 
 ## Connect your account
 
@@ -24,7 +24,7 @@ Create an API key in SendGrid under **Settings > API Keys > Create API Key**. **
 
 Pick the **EU** region only for an EU regional subuser. With a parent account's key, **Act as Subuser** (under advanced options) manages one subuser instead of the parent.
 
-<insert [SendGrid Add-account form with the API Key filled in and the Region set to Global] here>
+![SendGrid Add-account form with the API Key filled in and the Region set to Global](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sendgrid/add-account.png)
 
 ## Quotas
 

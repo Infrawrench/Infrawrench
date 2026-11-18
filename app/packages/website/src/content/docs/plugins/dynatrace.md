@@ -19,7 +19,7 @@ Connect a Dynatrace environment to see what it monitors, act on what it finds, a
 - **Maintenance windows**: once, daily, weekly or monthly windows that pause alerting or problem detection, optionally for tagged entities only. Create, edit, turn off and on, and delete them.
 - **Access tokens**: owner, scopes, expiry and last use for every token in the environment. Rename, turn off and on, or revoke them. Expiring tokens show on the Expiry radar.
 
-<insert [Dynatrace environment detail page showing the environment counts, the Cost section by capability and the Query tab] here>
+![Dynatrace environment detail page showing the environment counts, the Cost section by capability and the Query section; the DQL editor is the SQL Editor tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/dynatrace/environment-detail.png)
 
 ## Connect your environment
 
@@ -28,7 +28,7 @@ Connect a Dynatrace environment to see what it monitors, act on what it finds, a
 3. **Platform token** (optional, SaaS only): at [myaccount.dynatrace.com](https://myaccount.dynatrace.com/platformTokens), select **Platform token**, pick this environment, and add `storage:buckets:read` plus the `storage:*:read` scopes for the data you want to query (`storage:logs:read`, `storage:events:read`, `storage:bizevents:read`, `storage:spans:read`, `storage:metrics:read`, `storage:entities:read`). It turns on DQL and host and service logs from Grail.
 4. **Cost** (optional, under Advanced options): in **Account Management > Identity & access management > OAuth clients**, create a client with the **View usage and consumption** (`account-uac-read`) account permission. Enter the account UUID (from the Account Management address bar), the client id and the client secret.
 
-<insert [Dynatrace Add-account form with the Environment URL, Access Token and Platform Token fields filled in and Advanced options expanded] here>
+![Dynatrace Add-account form with the Environment URL, Access Token and Platform Token fields filled in and Advanced options expanded](https://agent-assets.infrawrench.com/docs-screenshots/plugins/dynatrace/add-account.png)
 
 ## Metrics
 

@@ -14,7 +14,7 @@ Use one for an inventory of production databases with their owners, every instan
 
 Click **Resource reports** in the sidebar, next to **Reports**. The page lists your organization's saved resource reports, grouped by folder.
 
-<insert [The Resource reports list with three saved reports, two at the top level and one inside a "Platform" folder, each showing its column and filter counts, and the New report button at the top right] here>
+![The Resource reports list with three saved reports, two at the top level and one inside a "Platform" folder, each showing its column and filter counts, and the New report button at the top right](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-reports/reports-list.png)
 
 ## Build a report
 
@@ -26,7 +26,7 @@ To change a saved report's columns, filters or sort, do the same and click **Sav
 
 ### Choose columns
 
-<insert [The Columns dialog: the Available list on the left with Resource, Cost, Metadata, Tags and Virtual tags groups and a search box, the Shown list on the right with up, down and remove buttons on each column, and the Accrued cost over and Cost basis pickers underneath] here>
+![The Columns dialog: the Available list on the left with a search box and its Resource and Cost groups showing (Metadata, Tags and Virtual tags are further down the list), the Shown list on the right with up, down and remove buttons on each column, and the Accrued cost over and Cost basis pickers underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-reports/columns-dialog.png)
 
 Every column list is built from your own data:
 
@@ -50,7 +50,7 @@ Cost and virtual tag columns respect [cost visibility](../team-and-billing/cost-
 
 ### Filter resources
 
-<insert [The Filters dialog with Providers set to AWS, two accounts picked, the Resource types picker open listing EC2 Instance (42) and RDS Instance (7), a Name contains field, the created date range, and one tag condition "env is any of prod"] here>
+![The Filters dialog with Providers set to AWS, two accounts picked, the Resource types picker open listing EC2 Instance (42) and RDS Instance (7), a Name contains field, the created date range, and one tag condition "env is any of prod"](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-reports/filters-dialog.png)
 
 Every filter is a picker filled from your own resources, showing how many resources have each value:
 
@@ -68,7 +68,7 @@ Click a column heading to sort by it, and click again to reverse. Cost columns s
 
 **Export CSV** downloads every matching row (up to 50,000) with all the report's columns, including tag and cost columns. Each cost column becomes one numeric column per currency, for example `Accrued cost (USD)`, so a spreadsheet can add it up. Resource and account ids are added at the end of each row.
 
-<insert [A saved resource report open on its table: name, type, region, the instanceType metadata column, a team tag column and two cost columns, sorted by Month to date with the down arrow on that heading, and the paging controls underneath showing 1 to 50 of 312] here>
+![A saved resource report open on its table: name, type, region, the instanceType metadata column, a team tag column and two cost columns, sorted by Month to date with the down arrow on that heading, and the paging controls underneath showing 1 to 25 of 312](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-reports/report-table.png)
 
 ## Folders and sharing
 

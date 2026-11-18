@@ -13,7 +13,7 @@ Two things are always true:
 
 > **Cloud only.** Request logs are collected by Infrawrench Cloud. In the desktop app, you can set up and read attribution while signed into a cloud org.
 
-<insert [Settings → AI Attribution with two sources (Bedrock S3 and a Cloudflare AI Gateway), a Team dimension, and the match-rate table] here>
+![Settings → AI Attribution with two sources (Bedrock S3 and a Cloudflare AI Gateway), a Team dimension, and the match-rate table](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-attribution/settings-sources.png)
 
 ## What you get
 

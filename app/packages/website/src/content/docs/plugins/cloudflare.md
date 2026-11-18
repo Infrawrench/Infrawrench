@@ -90,7 +90,7 @@ You can edit DNS records, all five rule types (WAF custom, rate limiting, redire
 
 To change workflow settings (class, script, step limits, schedules), redeploy the Worker. Uses the **Workers Scripts** permission.
 
-<insert [Cloudflare Workflow detail page showing the Workflow Details list and the Recent Instances table with Pause/Terminate/Restart row buttons] here>
+![Cloudflare Workflow detail page showing the Workflow Details list and the Recent Instances table with Pause/Terminate/Restart row buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/workflow-detail.png)
 
 ## Secrets Store
 
@@ -133,7 +133,7 @@ Basin Catalogs and Basin Tables have a **SQL Editor** tab, the same one D1 and B
 
 Basin SQL is read-only (`SELECT`, `EXPLAIN`, CTEs, joins, window functions). It's billed per byte scanned with a 10 MB minimum per query, so add a `LIMIT` and filter on partition columns while you explore.
 
-<insert [Basin Table detail page showing the SQL Editor tab with a SELECT against default.events and a result grid] here>
+![Basin Table detail page showing the SQL Editor tab with a SELECT against default.events and a result grid](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/basin-table-sql.png)
 
 ### Metrics
 
@@ -215,9 +215,9 @@ Workers Observability stores a Worker's logs and traces. Turn it on per Worker i
 
 Both tabs need **Account · Workers Observability:Edit**, even though they only read data. That's the permission Cloudflare requires, and the "Create a token with these scopes" link asks for it. Without it, the Logs tab shows a missing-permission message and the Metrics tab leaves out the log-level and span charts.
 
-<insert [Cloudflare Worker detail page with the Logs tab open, the filter dropdown set to "failed invocations", showing invocation summary lines with status, outcome, CPU and wall time] here>
+![Cloudflare Worker detail page with the Logs tab open, the filter dropdown set to "failed invocations", showing invocation summary lines with status, outcome, CPU and wall time](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/worker-logs-tab.png)
 
-<insert [Cloudflare Worker detail page with the Traces tab open, showing a table of recent traces with root span, span count, duration, services and errors] here>
+![Cloudflare Worker detail page with the Traces tab open, showing a table of recent traces with root span, span count, duration, services and errors](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/worker-traces-tab.png)
 
 ## Cache
 

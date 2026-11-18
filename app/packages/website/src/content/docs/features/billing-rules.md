@@ -103,7 +103,7 @@ Every invoice line goes through these steps in order, and each step records what
 
 Reallocation decides which customer a line belongs to before any of this, and fixed amounts are still their own invoice lines.
 
-<insert [Settings → Billing Rules with the editor open on a Custom expression rule: the expression box, the green "The expression is valid" note, the Insert pickers, the customer checkboxes, and a preview underneath showing Without/With totals for last month] here>
+![Settings → Billing Rules with the editor open on a Custom expression rule: the expression box, the green "The expression is valid" note, the Insert pickers, the customer checkboxes, and a preview underneath showing Without/With totals for last month](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/expression-editor.png)
 
 ### Preview a rule
 

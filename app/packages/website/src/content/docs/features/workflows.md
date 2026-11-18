@@ -759,4 +759,4 @@ The header shows the number of runs. The list shows the ten most recent, with a 
 
 The mobile app's workflow screen shows the same history (tap a run to see its logs), and `GET /api/org/:orgId/workflows/:id/runs` returns the same rows if you'd rather read them from a script.
 
-<insert [Screenshot of a workflow's run history list with statuses and durations, one run expanded to show logs] here>
+![A workflow's Run history list with statuses, start times and durations, the failed run expanded to show its log lines and error](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/run-history-logs.png)

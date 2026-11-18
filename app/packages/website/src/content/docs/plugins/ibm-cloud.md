@@ -13,7 +13,7 @@ Connect an IBM Cloud account with an API key to manage servers, networking, clus
 3. Pick a **default region**. New resources use it by default.
 4. Optionally pick **regions to scan**. The list loads from your account once you enter the key. Leave it empty to scan every VPC region.
 
-<insert [IBM Cloud add-account form with the API key, default region and the regions-to-scan picker filled in] here>
+![IBM Cloud add-account form with the API key, default region and the regions-to-scan picker filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/ibm-cloud/add-account.png)
 
 ### Access you need to grant
 

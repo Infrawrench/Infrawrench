@@ -30,13 +30,13 @@ Connect a Prometheus server, or anything that speaks its HTTP API, to query it, 
 3. Optionally enter the **Alertmanager URL**, for example `http://alertmanager.internal:9093` or Mimir's `/alertmanager`. It uses the same credentials.
 4. If the endpoint's certificate is signed by a private CA, paste the CA certificate under **Advanced options**.
 
-<insert [Prometheus Add-account form with the Prometheus URL and Alertmanager URL filled in] here>
+![Prometheus Add-account form with the Prometheus URL and Alertmanager URL filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/add-account.png)
 
 **Check credentials** tests queries, targets, rules, server status and the Alertmanager one by one, so if a Thanos, Mimir or VictoriaMetrics endpoint lacks some of them, you see exactly which.
 
-<insert [Prometheus server page with the Query tab running sum by (job) (up)] here>
+![Prometheus server page with the SQL Editor tab running sum by (job) (up)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/query-tab.png)
 
-<insert [Prometheus Create silence dialog filled in from a firing alert] here>
+![Prometheus Create silence dialog filled in from a firing alert](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/create-silence.png)
 
 ## Import a business metric
 

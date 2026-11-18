@@ -62,7 +62,7 @@ In Netlify, go to **User settings > Applications > Personal access tokens > New 
 - **Form submissions**: a form's detail view lists its 20 most recent submissions.
 - **DNS records**: view and manage records like in the other DNS plugins.
 
-<insert [Netlify site detail view showing the Trigger Deploy, Roll Back, and Purge CDN Cache header actions and the TLS certificate rows] here>
+![Netlify site detail view showing the Trigger Deploy, Roll Back, and Purge CDN Cache header actions and the TLS certificate rows](https://agent-assets.infrawrench.com/docs-screenshots/plugins/netlify/site-detail.png)
 
 ## Tips and limits
 

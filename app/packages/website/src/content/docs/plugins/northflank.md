@@ -19,7 +19,7 @@ Connect a Northflank team to see and run everything it hosts: deploy and scale s
 - **BYOC clusters**: provider, region, state, node pools and the running nodes, with **Cordon**, **Uncordon** and **Drain** per node.
 - **Account**: the token's team or organisation, its API role and expiry (which shows on the Expiry radar), the invoice history and this month's spend so far.
 
-<insert [Northflank service detail page showing the Service section, Ports table and Recent deployments table, with the Scale and Deploy image actions in the header] here>
+![Northflank service detail page showing the Service section, Ports table and Recent deployments table, with the Scale and Deploy image actions in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/northflank/service-detail.png)
 
 ## Open a database console
 
@@ -31,7 +31,7 @@ PostgreSQL, MySQL, MongoDB and Redis addons open in the matching Infrawrench con
 2. Give its **API role** read access to projects, services, jobs, addons, secrets, volumes, pipelines, domains and clusters for the inventory, the matching Manage permissions for the actions you plan to use, and **Billing > Read** for costs.
 3. Paste the token into Infrawrench. For an organisation token, pick the team from the **Team** list, since it acts for one team at a time. Team tokens already belong to their team, so leave **Team** empty.
 
-<insert [Northflank Add-account form with the API Token filled in and the Team picker open, listing the organisation's teams] here>
+![Northflank Add-account form with the API Token filled in and the Team picker set to one of the organisation's teams](https://agent-assets.infrawrench.com/docs-screenshots/plugins/northflank/add-account.png)
 
 ## Logs and metrics
 

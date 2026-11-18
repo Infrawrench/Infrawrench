@@ -22,7 +22,7 @@ Crusoe Cloud is a GPU cloud. Connect it to manage what you run there and see wha
 
 Create forms offer your projects, locations, instance types, images, VPC networks, disks, clusters and Kubernetes versions as pickers, so you never type an ID.
 
-<insert [The Crusoe Cloud account page showing the Projects, VMs, Disks and Kubernetes Clusters sections, with one GPU VM selected and its Stop and Reset buttons visible in the header] here>
+![A Crusoe Cloud GPU VM page (h100-80gb-sxm-ib.8x) with its Stop and Reset buttons in the header, and the Crusoe Cloud account expanded in the sidebar to its projects](https://agent-assets.infrawrench.com/docs-screenshots/plugins/crusoe/gpu-vm-header-actions.png)
 
 ## Connect your account
 
@@ -36,7 +36,7 @@ Good to know:
 - **Monitoring token** (optional): Crusoe has a separate monitoring token (`crusoe monitoring tokens create`) for its metrics API. If VM metrics stay empty, create one and add it here.
 - Your secret key is used to sign each request and is never sent itself.
 
-<insert [The Add account form for Crusoe Cloud with the Access Key, Secret Key and optional Monitoring Token fields] here>
+![The Add account form for Crusoe Cloud with the Access Key, Secret Key and optional Monitoring Token fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/crusoe/add-account.png)
 
 ## Metrics
 
@@ -58,7 +58,7 @@ Not included, because Crusoe leaves them out too:
 
 Credits are shown in the [credit burndown](../features/credit-burndown.md) section and aren't subtracted from spend.
 
-<insert [The Costs panel grouped by service for a Crusoe Cloud account, showing GPU product lines such as h100-80gb-sxm-ib alongside persistent-ssd] here>
+![The Costs panel drilled into a Crusoe Cloud account and broken down by service, showing GPU product lines such as h100-80gb-sxm-ib alongside persistent-ssd](https://agent-assets.infrawrench.com/docs-screenshots/plugins/crusoe/cost-by-service.png)
 
 ## Savings and governance
 

@@ -17,11 +17,11 @@ sidebar_order: 43
 
 The key is checked with a free request when you add the account.
 
-<insert [SambaNova Add-account form with the API Key field and the Create an API key help link] here>
+![SambaNova Add-account form with the API Key field and the Create an API key help link](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sambanova/add-account.png)
 
 ## Try a model in the Playground
 
-<insert [SambaNova model detail page showing pricing and limits, with the Playground tab streaming a reply from gpt-oss-120b] here>
+![SambaNova model detail page for gpt-oss-120b on the Playground tab, with a reply to a question](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sambanova/model-playground.png)
 
 ## Status
 

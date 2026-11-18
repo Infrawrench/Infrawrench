@@ -27,7 +27,7 @@ Once you **connect** a stack (see below), its own objects are listed too:
 - **Access policy token**: a Grafana Cloud access policy token (`glc_…`). In the Grafana Cloud portal open **Security > Access policies**, create a policy whose realm is your organization, give it the scopes below, then **Add token**. Infrawrench works out the organization from the token, so there is nothing else to fill in.
 - **Organization slug** (optional): leave it blank. You only need it if Infrawrench says it cannot tell which organization the token belongs to. It is the part after `grafana.com/orgs/` in your portal address.
 
-<insert [Grafana Cloud Add-account form with the access policy token field filled and the Check credentials panel showing the capability checklist] here>
+![Grafana Cloud Add-account form with the access policy token field filled and the Check credentials panel showing the capability checklist](https://agent-assets.infrawrench.com/docs-screenshots/plugins/grafana-cloud/add-account-check.png)
 
 ### Scopes
 
@@ -57,7 +57,7 @@ For synthetic checks, **Edit** the stack and paste a **Synthetic Monitoring acce
 
 Tokens are write-only. They are never shown again, and leaving the field blank on a later edit keeps the stored one.
 
-<insert [Grafana Cloud stack page showing the usage and endpoints sections, the Connect stack button, and the Stack access note] here>
+![Grafana Cloud stack page showing the usage and endpoints sections, the Connect stack button, and the Stack access note](https://agent-assets.infrawrench.com/docs-screenshots/plugins/grafana-cloud/stack.png)
 
 ## Cost graphs
 
@@ -69,7 +69,7 @@ Grafana Cloud accounts feed [cost graphs & budgets](../features/cloud-costs.md) 
 
 The figures are usage charges only. The platform fee, taxes and any credits are invoiced separately and are not included. Amounts are in US dollars.
 
-<insert [Cost graph grouped by service for a Grafana Cloud account, showing Metrics, Logs and Traces stacked by month] here>
+![Cost report grouped by service for a Grafana Cloud account, showing Metrics, Logs and Traces stacked by month](https://agent-assets.infrawrench.com/docs-screenshots/plugins/grafana-cloud/cost-by-service.png)
 
 ## Export to Terraform
 

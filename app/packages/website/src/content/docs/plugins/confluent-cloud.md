@@ -24,7 +24,7 @@ The Confluent Cloud plugin manages your Confluent organization: environments, Ka
 
 - **Cloud API key** and **Cloud API secret**: create them under **Administration > Cloud API keys** in the Confluent Cloud Console. Use a Cloud API key, not a key scoped to one cluster. Only Cloud keys can reach management, billing and metrics.
 
-<insert [Confluent Cloud Add-account form with the Cloud API key and secret fields filled] here>
+![Confluent Cloud Add-account form with the Cloud API key and secret fields filled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/confluent-cloud/add-account.png)
 
 ### Roles
 

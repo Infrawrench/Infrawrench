@@ -29,7 +29,7 @@ PlanetScale doesn't let connected accounts change a branch's safe migrations. **
 
 Connect with PlanetScale works in the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop use a service token.
 
-<insert [PlanetScale add-account form showing the Connect with PlanetScale button above the service token fields] here>
+![PlanetScale add-account form showing the Connect with PlanetScale button above the service token fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/planetscale/add-account-connect.png)
 
 ## Use a service token instead
 

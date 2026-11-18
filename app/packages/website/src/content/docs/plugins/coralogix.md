@@ -42,7 +42,7 @@ You need three things:
 - **API key**: a **Team** key from **Settings > API Keys**. A **Personal** key also works, with its owner's permissions. Send-Your-Data keys only ingest data and are rejected.
 - **Price per unit (USD)**: what one Coralogix unit costs on your plan. It defaults to Coralogix's published **$1.50**. Enter your contracted rate if it differs. You can change it later by editing the account.
 
-<insert [Coralogix Add-account form with the region picker open on EU2, the API key filled and the price per unit at 1.50] here>
+![Coralogix Add-account form with the region picker open on EU2, the API key filled and the price per unit at 1.50](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coralogix/add-account.png)
 
 ### Permissions
 
@@ -71,9 +71,9 @@ Coralogix accounts feed [cost graphs & budgets](../features/cloud-costs.md) from
 - **History.** Up to a year of history appears after you connect, as far back as Coralogix keeps usage. Late usage and a price you changed recently show up within a few days.
 - Each day's total matches Coralogix's own daily total, the number your quota is counted against.
 
-<insert [Cost graph for a Coralogix account grouped by the priority tag, showing Frequent Search, Monitoring and Compliance stacked by day] here>
+![Cost graph for a Coralogix account grouped by the priority tag, showing Frequent Search, Monitoring and Compliance stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coralogix/cost-by-priority.png)
 
-<insert [Coralogix team page showing this month's units, GB and estimated cost, the per-pillar and per-priority tables, and the daily quota section] here>
+![Coralogix team page showing this month's units, GB and estimated cost, the per-pillar and per-priority tables, and the daily quota section](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coralogix/team-usage.png)
 
 ## Quota radar
 

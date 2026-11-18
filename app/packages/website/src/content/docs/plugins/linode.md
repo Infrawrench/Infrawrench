@@ -20,7 +20,7 @@ Connect Akamai Cloud Computing (formerly Linode) with a personal access token to
 - **Reserved IPs**: reserve an address in a region, and drag it onto a Linode to assign it.
 - **Images** you've captured, **StackScripts** you own (create, edit the script, compatible images and revision note), the **billing account** (balance, uninvoiced charges, promotions and the network transfer pool by region) and your **invoices** with every line item.
 
-<insert [Linode account page showing the resource sections: Linodes, Volumes, NodeBalancers, Kubernetes Clusters, Buckets, Managed Databases] here>
+![Linode account page with the resource section tabs (Buckets, Kubernetes Clusters, Linodes, Managed Databases, NodeBalancers and more) and the Linodes section open](https://agent-assets.infrawrench.com/docs-screenshots/plugins/linode/account-page.png)
 
 ## Connect your account
 
@@ -45,7 +45,7 @@ In Cloud Manager, open your profile > **API Tokens** > **Create a Personal Acces
 
 For a read-only account, choose **Read Only** everywhere. Linode then refuses edits and actions. After adding the account, **Check credentials** tests every area and lists the scopes that are missing, and the template generator gives you the exact scope list for the features you pick ([credential preflight](../core-concepts/credential-preflight.md)).
 
-<insert [Linode add-account form with the Personal Access Token field and the Check credentials panel showing one missing scope] here>
+![Linode add-account form with the Personal Access Token field and the Credential check panel showing one missing scope](https://agent-assets.infrawrench.com/docs-screenshots/plugins/linode/add-account-check.png)
 
 ## Cost
 
@@ -56,7 +56,7 @@ Linode bills hourly up to a monthly cap per service, and invoices each month on 
 
 You can break costs down by service (Linodes, Backups, Block Storage, NodeBalancers, Kubernetes (LKE), Managed Databases, Object Storage, Reserved IPs, Network Transfer, ...), region and resource. Up to a year of invoices is loaded when you add the account. All amounts are in US dollars.
 
-<insert [Costs panel filtered to a Linode account, grouped by service, showing last month from the invoice and the current month with an Other uninvoiced charges slice] here>
+![Cost report filtered to a Linode account, grouped by service, showing last month from the invoice and the current month with an Other uninvoiced charges slice](https://agent-assets.infrawrench.com/docs-screenshots/plugins/linode/costs-by-service.png)
 
 ### Credits
 

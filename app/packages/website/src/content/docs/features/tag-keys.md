@@ -32,7 +32,7 @@ If something you saved uses a key you later hide, its picker still shows the key
 
 Open **Settings > Tag Keys** on the web app, or the Settings tab on the desktop app.
 
-<insert [Settings → Tag Keys page: the Preferred keys card with team, env and cost-centre in order, the Hidden keys card with aws:cloudformation:* and two suggested patterns, and the discovered keys table below] here>
+![Settings → Tag Keys page: the Preferred keys card with team, env and cost-centre in order, the Hidden keys card with aws:cloudformation:* and two suggested patterns, and the discovered keys table below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-keys/settings-tag-keys.png)
 
 The **Discovered tag keys** table lists every key in the last 90 days of cost data and in your resource inventory, busiest first, with:
 

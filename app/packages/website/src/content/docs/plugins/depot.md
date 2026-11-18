@@ -40,7 +40,7 @@ Each project exports `DEPOT_PROJECT_ID`, and a newly created project token expor
 
 You can change the plan or the overrides at any time from the account's **Edit credentials**. New values apply to the next cost update.
 
-<insert [Depot Add-account form with the organization token filled, the plan picker open on Startup, and the rate overrides field showing two example lines] here>
+![Depot Add-account form with the organization token filled, the plan picker open on Startup with each plan listed by its allowance and id, and the rate overrides field showing two example lines](https://agent-assets.infrawrench.com/docs-screenshots/plugins/depot/add-account.png)
 
 ## Costs
 

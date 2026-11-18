@@ -59,7 +59,7 @@ On a metric's row, choose **Costs > Unit costs > Import…**. Pick a source acco
 | [Datadog](../plugins/datadog.md)                                    | A Datadog metric: metric, scope and an optional tag to break it down by are pickers, read hourly   | The API is read-only                                  |
 | [Metronome](../plugins/metronome.md)                                | Usage of a billable metric, or invoiced revenue, optionally broken down by customer                | The API is read-only                                  |
 
-<insert [Importer modal for a business metric with a BigQuery account selected, the dataset picker open, a SQL query in the editor and the preview table showing 14 days of values] here>
+![Importer modal for a business metric with a BigQuery account selected, project, dataset and table picked, a SQL query in the editor and the preview table showing 14 days of values](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/importer-bigquery.png)
 
 **SQL sources** run one `SELECT` or `WITH` statement that returns a `day` column and a `value` column, plus an optional `label` column for a breakdown. You can use four placeholders, which are filled in as quoted values before the query runs:
 
@@ -115,7 +115,7 @@ date,value,customer,plan
 
 An empty cell in a label column leaves that label off the row. A file without a header can still carry one unnamed breakdown in the **Label column**, saved as the `label` label.
 
-<insert [CSV upload modal with a file selected, the day, value and label columns mapped and the preview table showing the first rows and one unreadable line] here>
+![CSV upload modal with a file selected, the day, value and label columns mapped and the preview table showing the first rows and one unreadable line](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/csv-upload.png)
 
 ### From a workflow
 
@@ -176,7 +176,7 @@ To see a unit cost or margin **per label value** (cost per customer, margin per 
 
 Set mappings in the metric editor under **Label mappings**. The label picker lists the labels your values already carry, and the tag-key picker lists your tags.
 
-<insert [Business metric editor's Label mappings section with "customer" mapped to Tag > customer and "team" mapped to Cost centre] here>
+![Business metric editor's Label mappings section with "customer" mapped to Tag \> customer and "team" mapped to Cost centre](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/label-mappings.png)
 
 An **unmapped** label can still split or filter the raw metric, but you can't use it in a ratio. Without matching spend per value, Infrawrench would be dividing all your spend by one customer's volume.
 
@@ -202,7 +202,7 @@ For a metric with labels, two more pickers appear:
 
 In a ratio calculation, both pickers list only [mapped labels](#map-a-label-to-spend). Unmapped ones are shown but disabled, with the reason.
 
-<insert [Cost graph config modal with Calculation set to Gross margin, metric Revenue, Split by label set to customer, and the margin-per-customer chart behind it] here>
+![Cost graph config modal with Calculation set to Gross margin, metric Revenue, Split by label set to customer, and the margin-per-customer chart behind it](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/graph-config-gross-margin.png)
 
 Four spend-graph options don't apply here, and the editor tells you:
 
@@ -281,7 +281,7 @@ Hover a unit-cost card and click the download arrow to save what it shows as **C
 
 **A gap is an empty cell, never 0**, with the reason in `gap`, so summing or charting the column in a spreadsheet won't invent cheap periods. Text starting with `=`, `+`, `-` or `@` (a label value from your own data, say) gets a `'` in front so a spreadsheet won't run it as a formula.
 
-<insert [A unit-cost card on a dashboard with the download menu open under the arrow button, showing Download CSV and Download NDJSON] here>
+![A unit-cost card on a dashboard with the download menu open under the arrow button, showing Download CSV and Download NDJSON](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/unit-cost-card-download.png)
 
 You can get the same file from the API with `POST /api/org/{orgId}/business-metrics/{id}/unit-costs/export` (or `…/usage-unit-costs/export`), sending the unit-cost query plus `"format": "csv"` or `"ndjson"`, and from the CLI with `--format` (below). A [cost report's](./cost-reports.md) CSV export adds per-day unit-cost columns when the report shows a unit cost. See [Large exports](./cost-reports.md#large-exports-in-the-background).
 

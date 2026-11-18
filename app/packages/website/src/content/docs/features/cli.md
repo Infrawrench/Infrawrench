@@ -105,7 +105,7 @@ infrawrench metrics <resource-id> --local        # a local resource, live from t
 
 Cloud resources [pinned to a dashboard](./dashboard.md#historical-metrics) keep history, so you can ask for long ranges. Unpinned ones are fetched live from the provider, so you still get a chart, limited to whatever window the provider offers. Local resources are always fetched live.
 
-<insert [Terminal showing `infrawrench metrics` output with two colored area charts (CPU and memory series) including y-axis labels and a time axis] here>
+![Terminal showing `infrawrench metrics` output with two colored area charts (CPU utilization and available memory) including y-axis labels and a time axis](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/metrics.png)
 
 Cost graphs use the same data as the dashboard cost widgets:
 
@@ -134,7 +134,7 @@ Options you'll use most:
 
 See [display options](./cloud-costs.md#display-options).
 
-<insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>
+![Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/costs.png)
 
 If an account's daily cost collection is failing, it's called out above the chart with the provider link that fixes it. `--json` lists these as `collectionFailures`. Accounts that collected fine but have no spend yet are listed the same way, as `awaitingData`. See [when collection fails](./cloud-costs.md#when-collection-fails) and [when there is nothing to collect yet](./cloud-costs.md#when-there-is-nothing-to-collect-yet).
 
@@ -180,7 +180,7 @@ infrawrench reports anomalies "Platform" --json
 
 `--format pdf` downloads the [PDF](./dashboard-pdf.md) instead of drawing a chart. It saves to `--out <path>` (or `--file`), or to a file named after the report in the current directory.
 
-<insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
+![Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/reports.png)
 
 ### Resource reports
 
@@ -234,7 +234,7 @@ infrawrench canvas refresh "AI spend by team" --json
 infrawrench canvas refresh "AI spend by team" --format pdf --out ai-spend.pdf
 ```
 
-<insert [Terminal showing `infrawrench canvas refresh "AI spend by team"` with KPI lines, a monthly table by team, and a chart total with its sparkline] here>
+![Terminal showing `infrawrench canvas refresh "AI spend by team"` with KPI lines, a monthly table by team, and a chart total with its sparkline](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/canvas-refresh.png)
 
 ### Scheduled cost exports
 
@@ -258,7 +258,7 @@ All three take `--json`.
 
 `exports run` starts a run now and lists the objects it wrote. It exits non-zero if the destination rejected it, so a CI step can depend on it.
 
-<insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table] here>
+![Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/exports-failed.png)
 
 ### One-off cost downloads
 
@@ -505,7 +505,7 @@ infrawrench ai-spend sources      # request-log sources and their collection sta
 infrawrench ai-spend team --json
 ```
 
-<insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
+![Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/tags.png)
 
 `tag-keys` lists every tag key in your organization's cost data and resources, with the providers that use it, how much, and whether your [tag key settings](./tag-keys.md) hide it from pickers or pin it to the top. Four commands edit those settings. Quote a prefix pattern so your shell leaves the `*` alone:
 
@@ -849,7 +849,7 @@ infrawrench config apply -f infrawrench.json
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:
 
-<insert [Full-screen TUI showing the org tabs across the top, the accounts list on the left, resources of the selected account on the right, and the key-hint footer] here>
+![Full-screen TUI showing the org tabs across the top, the accounts list on the left, resources of the selected account on the right, and the key-hint footer](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/tui.png)
 
 | Key                | Action                                       |
 | ------------------ | -------------------------------------------- |

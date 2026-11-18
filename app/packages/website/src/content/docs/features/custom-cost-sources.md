@@ -20,7 +20,7 @@ Open **Settings > Custom Cost Sources** and add one. A source has:
 
 You can edit every field later from the same page. You can also manage sources as code with the [Terraform provider](./terraform-provider.md) (`infrawrench_custom_cost_source`).
 
-<insert [Settings → Custom Cost Sources with two sources listed, one expanded to show its upload history table] here>
+![Settings → Custom Cost Sources with two sources listed, one expanded to show its upload history table](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-cost-sources/sources-history.png)
 
 ## Upload a file
 
@@ -83,7 +83,7 @@ Before you upload, the preview shows:
 
 Unreadable lines are skipped, never guessed at.
 
-<insert [The upload panel with a CSV loaded: column mapping pickers, the preview table, and one skipped line listed with its reason] here>
+![The upload panel with a CSV loaded: column mapping pickers, the preview table, and one skipped line listed with its reason](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-cost-sources/upload-preview.png)
 
 ## Overlapping uploads: append or replace
 

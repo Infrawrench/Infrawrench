@@ -58,7 +58,7 @@ Each row shows the token type, where it was found (repository, file and line), w
 
 Filter by status: **Open**, **Rotated**, **Dismissed**, and **Resolved upstream** for findings someone closed on the scanner before rotating them here. Under the header, each scanner account shows when it last scanned and, if it failed, why. A scan that could read only part of a scanner (more findings than one scan reads, or part of the account that could not be read) says so: leaks it did not see may be missing from the list, but nothing already listed is closed because a scan missed it.
 
-<insert [Posture tab with the Leaked credentials section at the top, Open filter selected, showing two open leaks: a referenced output matched by fingerprint with a Rotate button, and an account match with "Manage keys at DigitalOcean" and "Mark rotated" buttons] here>
+![Posture tab with the Leaked credentials section at the top, Open filter selected, showing two open leaks: a referenced output matched by fingerprint with a Rotate button, and an account match with "Manage keys at DigitalOcean" and "Mark rotated" buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/leaked-credentials/posture-leaks.png)
 
 Scans run every 30 minutes. **Scan now** checks every scanner account immediately and tells you how many new leaks it found.
 
@@ -85,7 +85,7 @@ Some findings aren't a risk. **Dismiss** asks for a reason (**False positive**, 
 
 When an open leak matches an account, or might belong to it, the account's page shows a banner naming the token and where it was found, with **Review in Posture** to jump to the row. For a match by token type, the banner says it might be another key from the same provider.
 
-<insert [Account page for a DigitalOcean account with the red "A credential for this account was found committed to code" banner above the resource list, naming the token type, the repository and file, with the Review in Posture link] here>
+![Account page for a DigitalOcean account with the red "A credential for this account was found committed to code" banner above the resource list, naming the token type, the repository and file, with the Review in Posture link](https://agent-assets.infrawrench.com/docs-screenshots/features/leaked-credentials/account-banner.png)
 
 ## Alerts and events
 

@@ -24,9 +24,9 @@ Connect a Docker Hub account to manage the images you publish and the organizati
 2. In Infrawrench, enter your **Docker ID** and paste the token. The **Namespaces** picker lists your account and your organizations. Pick the ones to manage, or leave it empty for all.
 3. To connect a single organization with an **organization access token** instead (Admin Console > **Access tokens**), enter the organization's name as the Docker ID.
 
-<insert [Docker Hub Add-account form with the Docker ID, access token and the Namespaces picker open] here>
+![Docker Hub Add-account form with the Docker ID, access token and the Namespaces picker open](https://agent-assets.infrawrench.com/docs-screenshots/plugins/docker-hub/add-account.png)
 
-<insert [Docker Hub repository detail page with the Tags tab open] here>
+![Docker Hub repository detail page with the Artifacts tab open, listing the repository's tags with size, digest and last push](https://agent-assets.infrawrench.com/docs-screenshots/plugins/docker-hub/repository-tags-tab.png)
 
 ## Seats
 

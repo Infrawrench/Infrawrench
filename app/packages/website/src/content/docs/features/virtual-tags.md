@@ -10,7 +10,7 @@ A virtual tag fixes that. You define the answer you want to report on once, as a
 
 Open **Settings > Virtual Tags** to create and edit them.
 
-<insert [Settings > Virtual Tags list with two tags, one Ready with coverage stats and top values, one Processing] here>
+![Settings \> Virtual Tags list with two tags, one Ready with coverage stats and top values, one Processing](https://agent-assets.infrawrench.com/docs-screenshots/features/virtual-tags/list.png)
 
 ## How a virtual tag picks a value
 
@@ -55,7 +55,7 @@ A few rules apply. If you break one, saving is refused with a message naming the
 - **At most five deep.** A chain of tags building on each other can be at most five long, counting both ends (`division > business_unit > team > owner > env` is five). Deeper chains would slow every report that uses the top tag. Filter on the provider tags a deep tag is built from instead.
 - A tag can't filter on itself, so the editor leaves it out of the virtual tag picker.
 
-<insert [Virtual tag editor for business_unit with a rule whose filter row reads Virtual tag team is payments, checkout] here>
+![Virtual tag editor for business_unit with a rule whose filter row reads Virtual tag team is payments, checkout](https://agent-assets.infrawrench.com/docs-screenshots/features/virtual-tags/business-unit-filter-on-team.png)
 
 ### Splits never change a total
 
@@ -63,7 +63,7 @@ A split shares a row's cost, it doesn't copy it. A $100 row split 60/40 gives $6
 
 For a metric split, a day where every share has a metric value is weighted by that day's values. If any share is missing a value for a day, the most recent complete day's weights are used, or the split is even if there's none. A missing report means "unknown", not zero, so it never hands one team's share to the others.
 
-<insert [Virtual tag editor showing a Copy from tag keys rule and a Split by percentage rule, with the 30-day preview open] here>
+![Virtual tag editor showing a Copy from tag keys rule and a Split by percentage rule, with the 30-day preview open](https://agent-assets.infrawrench.com/docs-screenshots/features/virtual-tags/copy-and-split-preview.png)
 
 ## Preview before you save
 

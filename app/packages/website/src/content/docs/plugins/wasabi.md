@@ -18,7 +18,7 @@ Connect a Wasabi account to manage its buckets, sub-users and (for Account Contr
 - **Get credentials on a bucket**: creates an IAM user whose policy only covers that bucket (read/write or read-only) plus an access key, and gives you an S3 credentials file with the bucket's regional endpoint.
 - **Sub-accounts** (Wasabi Account Control customers): list, create (paid or trial), edit quota, FTP, activation and self-delete permission, convert trials to paid, reset access keys, delete, and chart each sub-account's daily usage. Keys of sub-accounts you create here are kept as outputs.
 
-<insert [Wasabi bucket detail page showing the Rules tab with lifecycle and CORS rules and the Bucket Policy tab] here>
+![Wasabi bucket detail page showing the Rules tab with lifecycle and CORS rules, next to the Bucket Policy tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/wasabi/bucket-rules.png)
 
 ## Connect your account
 
@@ -26,7 +26,7 @@ In the Wasabi console, open **Access Keys** and choose **Create Access Key** for
 
 **Account Control API key** (optional, under Advanced): only for Wasabi Account Control (WACM) control accounts. It's a separate key Wasabi issues for managing sub-accounts. Leave it empty on a normal account.
 
-<insert [Wasabi Add-account form with Access Key and Secret Key filled in and the Advanced options section expanded showing the Account Control API Key field] here>
+![Wasabi Add-account form with Access Key and Secret Key filled in and the Advanced options section expanded showing the Account Control API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/wasabi/add-account.png)
 
 ## Usage, metrics and costs
 

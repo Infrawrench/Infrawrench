@@ -19,7 +19,7 @@ Connect CoreWeave to manage your GPU clusters, Node Pools, networks and storage,
 
 Clusters and Node Pools chart GPU metrics: average GPU utilization, tensor core activity, GPUs reporting, idle GPUs, GPU memory used and power draw. Clusters also chart billable GPU-hours per day.
 
-<insert [CoreWeave CKS cluster page showing the Node Pools table with instance type, target and current Nodes, GPUs and USD/hour, and the Metrics tab with GPU utilization] here>
+![CoreWeave CKS cluster page showing the Node Pools table with instance type, target and current Nodes, GPUs and USD/hour, with GPU utilization one click away on the Metrics tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coreweave/cks-cluster-overview.png)
 
 ## Credentials
 
@@ -32,7 +32,7 @@ Clusters and Node Pools chart GPU metrics: average GPU utilization, tensor core 
 
   You can change these any time by editing the account's credentials. The next cost collection uses the new rates.
 
-<insert [CoreWeave Add-account form with the API access token filled and the Negotiated rates field showing a few instance-type rates] here>
+![CoreWeave Add-account form with the API access token filled and the Negotiated rates field showing a few instance-type rates](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coreweave/add-account.png)
 
 ### Permissions
 
@@ -58,7 +58,7 @@ CoreWeave accounts feed [cost graphs & budgets](../features/cloud-costs.md) from
 
 The export covers CKS usage only for now. Object Storage cost is estimated per bucket on the bucket page instead.
 
-<insert [CoreWeave organization page showing this month's GPU-hours and estimated spend with the By instance type, By cluster and By capacity plan tables] here>
+![CoreWeave organization page showing this month's GPU-hours and estimated spend with the By instance type, By cluster and By capacity plan tables](https://agent-assets.infrawrench.com/docs-screenshots/plugins/coreweave/organization-usage.png)
 
 ## Export to Terraform
 

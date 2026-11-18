@@ -26,7 +26,7 @@ Get your keys from **Settings > API Keys** in the [Algolia dashboard](https://da
 - **Analytics Region** (optional): United States or Germany, wherever the application's analytics live. Leave it empty to let Algolia choose.
 - **Crawler User ID** and **Crawler API Key** (optional): from the settings page of the [Crawler](https://crawler.algolia.com/admin/), to manage crawlers.
 
-<insert [Algolia Add-account form with the application ID, Admin API key and the optional usage and monitoring keys] here>
+![Algolia Add-account form with the application ID, Admin API key and the optional usage and monitoring keys](https://agent-assets.infrawrench.com/docs-screenshots/plugins/algolia/add-account.png)
 
 ## Metrics
 
@@ -35,7 +35,7 @@ Get your keys from **Settings > API Keys** in the [Algolia dashboard](https://da
 
 Ranges up to a week are hourly. Longer ranges are daily.
 
-<insert [Algolia index detail page showing the Metrics tab with searches, no-result rate and click-through rate] here>
+![Algolia index detail page showing the Metrics tab with searches, users, no-result rate and click-through rate](https://agent-assets.infrawrench.com/docs-screenshots/plugins/algolia/index-metrics.png)
 
 ## Status
 

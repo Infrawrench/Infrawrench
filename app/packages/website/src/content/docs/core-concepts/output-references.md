@@ -32,7 +32,7 @@ You have a DigitalOcean managed Postgres database and want the [SQL editor](../f
 
 That's it. The connection string and CA certificate come straight from the database, and the Postgres side follows whatever DigitalOcean returns.
 
-<insert [A DigitalOcean managed Postgres database detail page with the PostgreSQL peer tab open and the SQL editor connected through it] here>
+![A DigitalOcean managed Postgres database detail page with the PostgreSQL peer tab open, listing the databases and schemas it reaches through the database's own connection string](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/output-references/do-postgres-peer-tab.png)
 
 ## Resources that expose outputs
 

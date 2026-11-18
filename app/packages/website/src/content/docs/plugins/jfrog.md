@@ -32,13 +32,13 @@ Connect a JFrog Platform, on JFrog Cloud or self-hosted, to manage its Artifacto
 2. Create an access token. For full coverage, open **Administration** > **User Management** > **Access Tokens** > **Generate Token**, choose **Admin** as the scope and copy the token. A user's identity token (**Edit Profile** > **Generate an Identity Token**) also works but only sees what that user may see. Users, groups, permissions and the storage summary need an admin token.
 3. For a self-hosted platform signed by a private CA, paste the CA certificate under **Advanced options**.
 
-<insert [JFrog Add-account form with the platform URL and access token filled in] here>
+![JFrog Add-account form with the platform URL and access token filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/jfrog/add-account.png)
 
 **Check credentials** tests repositories, storage, builds, Xray, users and groups, permissions and tokens separately, so you can see which parts a narrower token reaches.
 
-<insert [JFrog platform detail page showing the storage summary and the largest repositories table] here>
+![JFrog platform detail page showing the storage summary and the largest repositories table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/jfrog/platform.png)
 
-<insert [JFrog repository Files tab browsing a Maven repository's folders] here>
+![JFrog repository Files tab browsing a Maven repository's folders](https://agent-assets.infrawrench.com/docs-screenshots/plugins/jfrog/repository-files.png)
 
 ## Vulnerability findings
 

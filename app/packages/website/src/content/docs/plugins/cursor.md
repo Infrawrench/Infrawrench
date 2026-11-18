@@ -24,7 +24,7 @@ You need one key, plus optional seat prices.
 
 You can change these later from the account page with **Update credentials**. The next cost collection uses the new prices.
 
-<insert [Cursor add-account form showing the Admin API Key field and the three optional seat price fields] here>
+![Cursor add-account form showing the Admin API Key field, the two optional seat price fields (Standard and Premium) and the optional Premium seat members field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cursor/add-account.png)
 
 ## What you can manage
 
@@ -37,7 +37,7 @@ You can change these later from the account page with **Update credentials**. Th
 
 To change a group's members, edit the **Member emails** field. The group ends up with exactly the members you list. Every address must belong to a team member; if one doesn't, the edit is refused and the unknown addresses are named. You can also remove one member with the **Remove** button in the group's member table.
 
-<insert [Cursor team member detail page showing an idle seat, the spend section with member, team and effective limits, and the Edit button] here>
+![Cursor team member detail page showing an idle seat, the spend section with member, team and effective limits, and the Edit Team Member button](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cursor/member-detail.png)
 
 ## Seats
 
@@ -61,7 +61,7 @@ Cost data lands on the Costs page every day, broken down by **service** (the mod
 
 Because seat costs are estimated, the account is labelled as an **estimate** wherever its costs appear. Usage-based spend goes back 90 days.
 
-<insert [Costs page filtered to a Cursor account, grouped by service, showing spend per model alongside Standard seat rows] here>
+![Costs page drilled into a Cursor account and broken down by service, showing spend per model alongside Standard seat and Premium seat](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cursor/cost-by-service.png)
 
 ## Metrics
 

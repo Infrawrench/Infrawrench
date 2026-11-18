@@ -17,9 +17,9 @@ Runpod is a GPU cloud with on-demand pods and autoscaling Serverless endpoints. 
 
 Pods with SSH show a ready-to-run `ssh` command through Runpod's SSH proxy, and the built-in terminal connects the same way. Pods that expose `22/tcp` also get a direct command over the public IP and mapped port, which supports SCP and SFTP.
 
-<insert [The Runpod account page listing Pods, Serverless Endpoints and Network Volumes, with one running GPU pod selected and its Stop, Restart and Lock buttons visible in the header] here>
+![A running Runpod GPU pod's detail page with its Stop, Restart and Lock buttons in the header, and the account expanded in the sidebar listing its pods, serverless endpoint and network volume](https://agent-assets.infrawrench.com/docs-screenshots/plugins/runpod/account-pod.png)
 
-<insert [The Runpod create pod form with the GPU type picker open, showing VRAM, Secure and Community prices and stock for several GPUs] here>
+![The Runpod create pod form with the GPU type picker showing VRAM, Secure and Community prices and stock for several GPUs](https://agent-assets.infrawrench.com/docs-screenshots/plugins/runpod/create-pod-gpu.png)
 
 ## Connect your account
 
@@ -29,7 +29,7 @@ In the Runpod console, open **Settings**, then **API Keys**, and click **Create 
 - A **Restricted** key scoped to individual Serverless endpoints can't list pods or read billing, so it isn't enough here.
 - The key is shown once, so copy it before closing the dialog. Keys start with `rpa_`.
 
-<insert [The Add account form for Runpod with the API Key field] here>
+![The Add account form for Runpod with the API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/runpod/add-account.png)
 
 ## Cost
 
@@ -45,7 +45,7 @@ Your **account balance** appears in the [credit burndown](../features/credit-bur
 
 The create pod form also shows a monthly estimate from the GPU's list price for the cloud you picked. Disk storage is billed on top and isn't in the estimate.
 
-<insert [The Costs panel for a Runpod account grouped by service, showing Pods, Serverless and Network Volumes] here>
+![The Costs panel for a Runpod account grouped by service, showing Pods, Serverless and Network Volumes](https://agent-assets.infrawrench.com/docs-screenshots/plugins/runpod/cost-by-service.png)
 
 ## Savings and governance
 

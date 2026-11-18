@@ -29,13 +29,13 @@ Connect a Vault cluster, self-hosted or HCP Vault Dedicated, to browse and manag
 3. Paste a **Token**. Or fill in **AppRole Role ID** and **AppRole Secret ID** instead, and Infrawrench logs in and renews the login for you. A periodic token (`vault token create -policy=<policy> -period=768h`) works well for a long-lived connection. Listing tokens, leases and audit devices needs a policy with `sudo` on those paths. Without it, those tabs keep what they last showed instead of failing on every refresh on the web, and show the refusal in the desktop app.
 4. If Vault's certificate is signed by a private CA, paste the CA certificate under **Advanced options**.
 
-<insert [HashiCorp Vault Add-account form with the address, namespace and token filled in] here>
+![HashiCorp Vault Add-account form with the address, namespace and token filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hashicorp-vault/add-account.png)
 
 **Check credentials** tests secrets engines and auth methods, policies, tokens, leases and audit devices one by one, and lists the policy path each missing capability needs.
 
-<insert [Vault KV secret detail page with the Versions tab listing versions and the Add version form] here>
+![Vault KV secret detail page with the Versions tab listing versions and the + Add version button](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hashicorp-vault/kv-versions.png)
 
-<insert [Vault policy Edit policy dialog showing the HCL editor] here>
+![Vault policy Edit policy dialog showing the HCL editor](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hashicorp-vault/edit-policy.png)
 
 ## Tips and limits
 

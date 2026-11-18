@@ -38,7 +38,7 @@ Both deprecated tiers stay in the picker, labelled as such, until Rev AI stops a
 
 "Reverb", "Reverb Turbo" and "Whisper" are marketing names for the engines behind these tiers, not values Rev AI accepts, so they aren't in the picker.
 
-<insert [Rev AI Speech tab on the account, with the Transcriber picker open showing Machine, Low cost and Fusion] here>
+![Rev AI Speech tab on the account, with Low cost (deprecated) chosen in the Transcriber picker and its deprecation note shown](https://agent-assets.infrawrench.com/docs-screenshots/plugins/revai/speech-tab.png)
 
 ## Metrics
 

@@ -8,7 +8,7 @@ sidebar_order: 4
 
 Open it from the **Price catalog** tile in the sidebar. It opens as a workspace tab in the web app and in the desktop app (cloud mode).
 
-<insert [Price catalog tab in Search mode, filtered to 4+ vCPU and 16+ GB in Europe, with rows from several providers sorted by monthly price and the "Use in estimate" link visible on a row] here>
+![Price catalog tab in Search mode, filtered to 4+ vCPU and 16+ GB in Europe, with rows from several providers sorted by monthly price and the "Use in estimate" link visible on a row](https://agent-assets.infrawrench.com/docs-screenshots/features/price-catalog/search-europe.png)
 
 ## Search instance types
 
@@ -31,7 +31,7 @@ Filter by text (instance name, family, GPU model), provider, vCPU and memory ran
 
 Matches are based on published specs only. An `m7i.large` and a `CX22` are compared because both list 2 vCPUs, not because they're the same class of machine.
 
-<insert [Compare providers mode for 8 vCPU / 32 GB in North America, showing one row per provider with the cheapest match, its monthly price and runners-up] here>
+![Compare providers mode for 8 vCPU / 32 GB in North America, showing one row per provider with the cheapest match, its monthly price and runners-up](https://agent-assets.infrawrench.com/docs-screenshots/features/price-catalog/compare-providers.png)
 
 ## Use in estimate
 

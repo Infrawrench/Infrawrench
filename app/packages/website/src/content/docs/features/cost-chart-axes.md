@@ -24,7 +24,7 @@ Every cost chart starts as spend over time: dates along the bottom, one coloured
 
 Values are ranked by spend over the whole range. The top values (set with **Top groups**) get their own bar and everything else goes into **Other**, as series do on a date axis. Segments work the same way.
 
-<insert [Cost graph editor with X axis set to Service, Segment by set to Region, and the hint under it explaining that values are ranked by spend and the rest fold into Other] here>
+![Cost graph editor with X axis set to Service, Segment by set to Region, and the hint under it explaining that values are ranked by spend and the rest fold into Other](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-chart-axes/editor-x-axis-segment.png)
 
 Some options only make sense over time, so they're switched off when a dimension is on the X axis (and the API rejects them): **Forecast** (and any scenario), **Cumulative**, the **Count** measure and unit costs. Pie and donut charts have no X axis, so they aren't offered either. The table view is, and lists one row per value.
 
@@ -41,7 +41,7 @@ Hover a bar for the previous figure with the change beside it, in money and as a
 
 On a date axis, the first day (or week) of the previous period is compared with the first of this one, and so on. On a dimension axis, each value is compared with **itself**, so a service that ranked lower last month is still compared with its own figure, not with whatever was in "Other" then.
 
-<insert [A stacked-bar cost card with Service on the X axis and the previous period drawn as muted paired bars to the left of each bar, with the tooltip open showing the previous figure and its change] here>
+![A stacked-bar cost card with Service on the X axis segmented by region and the previous period drawn as muted paired bars to the left of each bar, with the tooltip open showing the previous figure and its change](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-chart-axes/paired-previous-bars.png)
 
 ## Drill down
 
@@ -56,7 +56,7 @@ A row of breadcrumbs appears under the title: **All › AWS › AmazonEC2**. Cli
 
 Drilling never changes the chart. The saved report or dashboard card, and what everyone else sees, stay as they were, and reloading starts from the top again. To keep a drilled view, click **Save as new report** on the report's page. It's saved as a new report named after the path ("Monthly spend › AWS › AmazonEC2"), in the same folder as the original.
 
-<insert [A cost report page after drilling from provider into AWS and then into a service, showing the All › AWS › AmazonEC2 breadcrumbs under the title, the chart now grouped by region, and the Save as new report button] here>
+![A cost report page after drilling from provider into AWS and then into a service, showing the All › AWS › AmazonEC2 breadcrumbs under the card title, the chart now grouped by region, and the Save as new report button](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-chart-axes/drill-breadcrumbs.png)
 
 ### Without a mouse
 

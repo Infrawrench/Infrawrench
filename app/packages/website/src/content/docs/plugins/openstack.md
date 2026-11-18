@@ -21,7 +21,7 @@ One plugin covers every OpenStack cloud, public or private. You sign in through 
 
 In **Create Server**, choose a flavor (with vCPU and RAM), an image, a network (or auto-allocation), a key pair or an SSH key to import, a security group and an availability zone. You can also add a boot volume, a floating IP from an external network, and cloud-init user data.
 
-<insert [OpenStack Create Server form showing the flavor size picker, image picker, network and floating IP selects] here>
+![OpenStack Create Server form showing the flavor size picker, image picker, and the network and floating IP choices](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openstack/create-server.png)
 
 ## Connect your cloud
 
@@ -31,7 +31,7 @@ You'll find the values in Horizon under **Project > API Access** (download the O
 - **Username and password**: enter the Keystone URL, username, password and user domain (usually `Default`), then pick your project from the list.
 - Pick a **Region** if your cloud has more than one. **Endpoint Interface** (advanced) switches between public and internal endpoints.
 
-<insert [OpenStack add-account form with Keystone URL, application credential fields and the region picker] here>
+![OpenStack add-account form with Keystone URL, application credential fields and the region picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openstack/add-account.png)
 
 ## Quotas, metrics and logs
 
@@ -40,7 +40,7 @@ You'll find the values in Horizon under **Project > API Access** (download the O
 - **Logs** shows a server's console log and a stack's events.
 - **Export to Terraform** writes `terraform-provider-openstack/openstack` blocks for servers, key pairs, volumes, networks, subnets, routers, floating IPs, security groups and rules, load balancers, containers, DNS zones and record sets, each with its import id.
 
-<insert [OpenStack server detail view with power actions, Addresses section and the console log in the Logs tab] here>
+![OpenStack server detail view with the power actions in the header and the console log in the Logs tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openstack/server-console-log.png)
 
 ## Run CI jobs
 

@@ -26,7 +26,7 @@ This is an inference key, not a management key, and OpenRouter only creates mana
 
 Connect with OpenRouter works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
 
-<insert [OpenRouter add-account form showing the Connect with OpenRouter button above the Management Key and Inference API Key fields] here>
+![OpenRouter add-account form showing the Connect with OpenRouter button above the Management Key and Inference API Key fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/add-account-connect.png)
 
 ## Add keys by hand
 
@@ -65,7 +65,7 @@ Pick everything the guardrail references from lists: allowed and blocked provide
 
 When you edit a guardrail you can change its limit, reset interval, flags and policy lists. Enter the lists as comma-separated provider slugs or model ids, the same way the detail page shows them. Assign keys when you create the guardrail, or in the OpenRouter dashboard.
 
-<insert [OpenRouter Create Guardrail form with the allowed providers multi-select open and two API keys ticked under Apply to API keys] here>
+![OpenRouter Create Guardrail form with Anthropic and Amazon Bedrock ticked under Allowed providers and two API keys ticked under Apply to API keys](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/create-guardrail.png)
 
 ### Set workspace budgets
 
@@ -88,7 +88,7 @@ Models, API keys and workspaces each have a **Metrics** tab, with the same data 
 
 Buckets are per minute for ranges up to six hours, hourly up to a week, and daily beyond that. OpenRouter only gives latency and throughput for ranges up to 31 days, so wider ranges show usage only. If OpenRouter's analytics refuse your key, a model's tab shows daily spend, requests and tokens instead.
 
-<insert [OpenRouter API key Metrics tab showing requests, spend and time to first token over the last 30 days] here>
+![OpenRouter API key Metrics tab showing requests and spend over the last 30 days](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/api-key-metrics.png)
 
 Your remaining credit shows on API key cards.
 

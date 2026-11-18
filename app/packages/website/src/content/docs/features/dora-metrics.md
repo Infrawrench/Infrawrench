@@ -6,7 +6,7 @@ sidebar_order: 13
 
 The four DORA metrics are the standard way to measure how well a team ships software: **how often** it deploys to production, **how long** a commit takes to get there, **how often** a change breaks something, and **how fast** it recovers. Most teams never measure them because the data is spread across a CI system, a hosting provider and an incident tool. Infrawrench already sees all three, so the **Delivery** page shows them with nothing new to install.
 
-<insert [The Delivery tab: four metric tiles (Deployment frequency 3.4/day Elite, Lead time 6.5h Elite, Change failure rate 8.3% High, Time to restore 45m Elite) each with "Better than the previous period", above the three trend charts] here>
+![The Delivery tab: four metric tiles (Deployment frequency 3.4/day Elite, Lead time for changes 6.5h Elite, Change failure rate 8.3% High, Time to restore 45m Elite) each with "Better than the previous period", above the three trend charts](https://agent-assets.infrawrench.com/docs-screenshots/features/dora-metrics/delivery-tiles-trends.png)
 
 Open **Delivery** from the sidebar on the web or desktop app (cloud mode), or run [`infrawrench dora`](./cli.md). The mobile app has a read-only Delivery screen under Resources.
 
@@ -56,7 +56,7 @@ The **Breakdown** table splits the four numbers by:
 
 Click a row, or use the **Scope** picker, to see just that one. "Not known" collects deploys with no repository, owner or service recorded, which is usually where untracked services hide. A resource that belongs to several services counts toward the most critical one (the lowest tier number, then by name), so every change is counted once. Deploys recorded through the API without a resource aren't placed in a service.
 
-<insert [The Delivery tab's Breakdown table grouped by repository, three repositories with their deploys, frequency, lead time, failure rate and restore time, and below it the Changes list filtered to failed changes, one row showing "Incident: Checkout 500s" in red] here>
+![The Delivery tab's Breakdown table grouped by repository, three repositories with their deploys, frequency, lead time, failure rate and restore time, and below it the Changes list filtered to failed changes, one row showing "Incident: Checkout 500s" in red](https://agent-assets.infrawrench.com/docs-screenshots/features/dora-metrics/breakdown-failed-changes.png)
 
 Below the breakdown, **Changes** lists every production change behind the numbers, newest first, with its commit, lead time and, for a failed one, what it was blamed on. **Recoveries** lists the incidents resolved and deploys rolled back.
 

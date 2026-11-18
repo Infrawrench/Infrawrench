@@ -26,7 +26,7 @@ sidebar_order: 50
 
 Use **Check credentials** on the account to see what the key can do.
 
-<insert [Temporal Cloud Add-account form with the API key, metrics key, plan and price fields] here>
+![Temporal Cloud Add-account form with the API key, metrics key, plan and price fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/temporal-cloud/add-account.png)
 
 ## Costs
 
@@ -40,7 +40,7 @@ A namespace's Metrics tab charts actions per second and the limit, throttled act
 
 Temporal Cloud only reports the latest minute, so history builds up while the namespace is pinned to a dashboard. There's no schedule-to-start latency metric. Task backlog, tasks with no poller and schedule start delay are the closest signals.
 
-<insert [A Temporal Cloud namespace detail page with the Fail over, Add search attribute and Connectivity rules buttons] here>
+![A Temporal Cloud namespace detail page with the Fail over, Add search attribute and Connectivity rules buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/temporal-cloud/namespace-detail.png)
 
 ## Notes
 

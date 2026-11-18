@@ -21,7 +21,7 @@ Connect a Bitbucket Cloud workspace to run and watch Pipelines and manage the se
 - **Deploy keys** on repositories and projects, with when each was last used. **Add**, relabel (repository keys) or remove.
 - **Runners**: workspace and repository runners with status, labels, version and whether a newer version is out. **Create** one (its OAuth client ID and secret are kept as sensitive outputs so you can start the runner), rename it or change labels, **Enable** or **Disable** it, or delete it.
 
-<insert [Bitbucket pipeline detail page with the Steps table and the Logs tab open on a failed step] here>
+![Bitbucket pipeline detail page with the Logs tab open on the failed Unit tests step, with every step listed in the step picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/bitbucket/pipeline-logs.png)
 
 ## Connect with Bitbucket
 
@@ -33,7 +33,7 @@ The connection renews itself. If you revoke Infrawrench in Bitbucket (**Personal
 
 Connect with Bitbucket is available on the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop use an API token, as below.
 
-<insert [Bitbucket add-account form showing the Connect with Bitbucket button above the email and API token fields] here>
+![Bitbucket add-account form showing the Connect with Bitbucket button above the email and API token fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/bitbucket/add-account-connect.png)
 
 ## Connect with an API token
 
@@ -41,7 +41,7 @@ Connect with Bitbucket is available on the web app and in the desktop app's clou
 2. Select the scopes. To look around: `read:workspace:bitbucket`, `read:project:bitbucket`, `read:repository:bitbucket`, `read:pipeline:bitbucket`, `read:runner:bitbucket` and `read:webhook:bitbucket`. To make changes, add `admin:repository:bitbucket`, `admin:project:bitbucket`, `write:pipeline:bitbucket`, `admin:pipeline:bitbucket`, `write:runner:bitbucket`, `write:webhook:bitbucket` and `delete:webhook:bitbucket`. Deploy keys also need `write:ssh-key:bitbucket` and `delete:ssh-key:bitbucket`.
 3. In Infrawrench, enter your **Atlassian account email** (not your Bitbucket username), paste the token, and pick the **Workspace**.
 
-<insert [Bitbucket Add-account form with the email and API token filled in and the Workspace picker open] here>
+![Bitbucket Add-account form with the email and API token filled in and a workspace chosen in the Workspace picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/bitbucket/add-account-workspace.png)
 
 A workspace access token (Premium) also works. Leave the email empty and type the workspace slug, since access tokens can't list workspaces. App passwords stopped working in 2026 and aren't supported.
 

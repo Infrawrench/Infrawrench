@@ -21,7 +21,7 @@ Connect a PostHog organization to manage its flags, experiments and data pipelin
 
 Deleting a flag, experiment, cohort, dashboard, insight, action, annotation or destination here marks it deleted, just like PostHog's own UI. Batch exports are deleted for real.
 
-<insert [PostHog feature flag detail page showing the rollout, release conditions and the Metrics tab charting evaluations] here>
+![PostHog feature flag detail page showing the rollout and release conditions, with the Metrics tab (which charts evaluations) next to Overview](https://agent-assets.infrawrench.com/docs-screenshots/plugins/posthog/feature-flag-detail.png)
 
 ## Connect with PostHog
 
@@ -35,7 +35,7 @@ The connection renews itself. If you revoke Infrawrench in PostHog, or don't use
 
 Connect with PostHog works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). Self-hosted PostHog uses a personal API key, as below.
 
-<insert [PostHog add-account form showing the Connect with PostHog button above the Region and Personal API Key fields] here>
+![PostHog add-account form showing the Connect with PostHog button above the Region and Personal API Key fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/posthog/add-account-connect.png)
 
 ## Use a personal API key instead
 
@@ -43,7 +43,7 @@ Connect with PostHog works in the web app, in the desktop app's cloud mode, and 
 2. **Personal API key**: in PostHog, open your account settings, then **Personal API keys**, then **+ Create a personal API key**. Limit it to your organization and pick the scopes you need. **Check credentials** lists them, and the policy generator prints the exact list. You need `billing:read` for costs and `query:read` for HogQL and metrics.
 3. **Organization**: pick it from the list once the key is in, or leave it on the key's current organization.
 
-<insert [PostHog Add-account form with the region picker, Personal API Key and the Organization picker filled from the key] here>
+![PostHog Add-account form with the region picker, the Personal API Key and the Organization picker filled from the key](https://agent-assets.infrawrench.com/docs-screenshots/plugins/posthog/add-account-organization.png)
 
 ## Costs
 

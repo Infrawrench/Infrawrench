@@ -24,7 +24,7 @@ Connect one Capella organization with one API key to manage its clusters, bucket
 - **Users**: invite with organization roles and a project role, change roles, remove.
 - **API keys**: create with roles, allowed CIDRs and expiry (the token is shown once in the new resource's outputs), **Rotate**, revoke.
 
-<insert [Couchbase Capella cluster detail page showing the Capacity section and the Turn off, On/off schedule and Load sample data buttons] here>
+![Couchbase Capella cluster detail page showing the Capacity section and the Turn off, On/off schedule and Load sample data buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/couchbase-capella/cluster-detail.png)
 
 ## Connect your organization
 
@@ -33,7 +33,7 @@ Connect one Capella organization with one API key to manage its clusters, bucket
 3. Add the address Infrawrench connects from (or your bastion's) to the key's **Allowed CIDRs**.
 4. Paste the token, then pick the **Organization** from the list that loads.
 
-<insert [Couchbase Capella Add-account form with the API Key Token field and the Organization picker] here>
+![Couchbase Capella Add-account form with the API Key Token field and the Organization picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/couchbase-capella/add-account.png)
 
 ## Cost and credits
 

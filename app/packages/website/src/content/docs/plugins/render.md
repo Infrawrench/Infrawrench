@@ -24,7 +24,7 @@ sidebar_order: 21
 1. In the Render dashboard, open the avatar menu, then **Account Settings > API Keys > Create API Key**. Render keys belong to your user and can reach every workspace you're in. There are no scopes to choose.
 2. Paste the key. The **Workspace** picker lists the workspaces it can reach. Pick one to limit the account to it, or leave **All workspaces**.
 
-<insert [Render Add-account form with the API Key field filled in and the Workspace picker open, listing a personal and a team workspace] here>
+![Render Add-account form with the API Key field filled in and a team workspace chosen in the Workspace picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/render/add-account.png)
 
 ## Things you can do
 
@@ -38,9 +38,9 @@ sidebar_order: 21
 - **Environment groups**: create one from `KEY=value` lines, add or change variables, and drag the group onto a service (or use **Link to Service**) to link it.
 - **Point-in-time recovery**: create a new database from a Postgres instance as it was at the moment you pick. The detail view shows how far back you can go.
 
-<insert [Render web service detail view showing the Deploy, Scale and Autoscaling header actions, the Details section and the Recent Events table] here>
+![Render web service detail view showing the Deploy, Scale and Autoscaling header actions, the Details section and the Recent Events table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/render/web-service-detail.png)
 
-<insert [Render Postgres detail view showing the Endpoints section, Database Users table and Point-in-Time Recovery status] here>
+![Render Postgres detail view showing the Endpoints section, Database Users table and Point-in-Time Recovery status](https://agent-assets.infrawrench.com/docs-screenshots/plugins/render/postgres-detail.png)
 
 ## Status, security and Terraform
 

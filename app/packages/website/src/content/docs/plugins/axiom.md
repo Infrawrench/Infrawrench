@@ -22,7 +22,7 @@ Connect an Axiom organization to manage its datasets and alerting, query your da
 - **API tokens**: create a token with ingest or query access to the datasets you pick and read access to the parts of the organization you pick, **Regenerate** it, or delete it. Axiom shows a token only once. For tokens you create or regenerate here, it's saved as the token's **Token** output, ready to export to a Kubernetes secret or a server.
 - **Users**: list members with their role, and remove them.
 
-<insert [Axiom dataset detail page with the query editor running an APL query and the Metrics tab showing Events and Ingested (GB) charts] here>
+![Axiom dataset detail page with the SQL Editor tab running an APL query and showing its results](https://agent-assets.infrawrench.com/docs-screenshots/plugins/axiom/dataset-query.png)
 
 ## Connect your organization
 
@@ -33,7 +33,7 @@ Use an **advanced API token**. In Axiom, open **Settings > API tokens > New API 
 
 A **personal access token** (Settings > Profile > Personal tokens) also works and can do everything your user can. It needs the **Organization** field, which you pick from the organizations the token can see. With a personal token, queries only reach your organization's default edge deployment.
 
-<insert [Axiom Add-account form with the API Token field filled in and the Organization field left on The token's organization] here>
+![Axiom Add-account form with the API Token field filled in and the Organization field left on The token's organization](https://agent-assets.infrawrench.com/docs-screenshots/plugins/axiom/add-account.png)
 
 ## Metrics and usage
 

@@ -8,7 +8,7 @@ Most teams keep their procedures in three places: a wiki page nobody updated, a 
 
 Open it from the sidebar.
 
-<insert [The Runbooks workspace tab on the Runbooks view, showing three runbooks with their step counts and "run N times" lines, one expanded to show its ordered steps] here>
+![The Runbooks workspace tab on the Runbooks view, showing three runbooks with their step counts and "run N times" lines, one expanded to show its ordered steps](https://agent-assets.infrawrench.com/docs-screenshots/features/runbooks/runbooks-list.png)
 
 ## Write a runbook
 
@@ -28,7 +28,7 @@ You can say which **resource types** and which **tag** a runbook is about. This 
 
 Press **Run**. Every step becomes a row you can mark done, skipped or failed, with an optional note (the output, or why you skipped it).
 
-<insert [A runbook run in progress, showing the progress bar, the "Next:" line, and per-step Done / Skipped / Failed buttons with a note field] here>
+![A runbook run in progress, showing the progress bar, the "Next:" line, and per-step Done / Skipped / Failed buttons with a note field](https://agent-assets.infrawrench.com/docs-screenshots/features/runbooks/run-in-progress.png)
 
 A few things to know:
 

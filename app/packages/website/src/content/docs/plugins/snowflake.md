@@ -42,7 +42,7 @@ Generate the key pair with `openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt 
 
 To manage objects (resize warehouses, create monitors, disable users), grant the role the matching privileges: `MODIFY` and `OPERATE` on warehouses, and ownership or `MANAGE GRANTS` for users and roles. Creating and assigning resource monitors needs `ACCOUNTADMIN`.
 
-<insert [Snowflake add-account form with the account, user and key fields filled in, and the Role and Warehouse pickers open] here>
+![Snowflake add-account form with the account, user and key fields filled in, and a role and a warehouse chosen in the Role and Warehouse pickers](https://agent-assets.infrawrench.com/docs-screenshots/plugins/snowflake/add-account.png)
 
 ## Costs
 
@@ -61,7 +61,7 @@ The account page breaks the last 30 days of query credits down by **query tag**,
 
 This only covers query execution. Idle warehouse time, queries of about 100 ms or less, cloud services and serverless features aren't included, so it adds up to less than the warehouse bill. Infrawrench's own queries are tagged `infrawrench`.
 
-<insert [Snowflake account detail page showing spend this month by service and the query cost attribution tables] here>
+![Snowflake account detail page showing spend this month by service and the query cost attribution tables](https://agent-assets.infrawrench.com/docs-screenshots/plugins/snowflake/account-detail.png)
 
 ## Recommendations
 

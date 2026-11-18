@@ -33,7 +33,7 @@ sidebar_order: 54
 2. In Infrawrench, paste the token and pick the **Organization**.
 3. Pick your **Pulumi Plan**. Pulumi reports usage but not your plan, and Infrawrench uses the plan's published rates to turn usage into cost.
 
-<insert [Pulumi Cloud Add-account form with the access token filled in, the Organization picker open and the Pulumi Plan picker showing Individual, Essentials, Pro and Enterprise] here>
+![Pulumi Cloud Add-account form with the access token filled in, an organization chosen in the Organization picker, and the Pulumi Plan picker listing the plans with their per-resource-hour rates](https://agent-assets.infrawrench.com/docs-screenshots/plugins/pulumi-cloud/add-account.png)
 
 If you pay a negotiated price, set **Rate Overrides** under **Advanced options**. For self-hosted Pulumi Cloud, enter its **API URL** there too, plus a CA certificate if it uses a private certificate authority.
 

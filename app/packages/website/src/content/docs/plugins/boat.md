@@ -16,7 +16,7 @@ boat runs persistent Ubuntu sandboxes for AI agents, automation and people, bill
 
 Sizes, environments, saved snapshots and sandboxes are all pickers filled from your account, so you never type an ID.
 
-<insert [The boat create sandbox form with the size picker open, showing small, default, large and xlarge with monthly prices and xlarge marked as needing a higher plan] here>
+![The boat Create Sandbox form with the size picker showing small, default, large and xlarge, each with vCPUs, memory, disk and a monthly price, and xlarge's label carrying its plan note](https://agent-assets.infrawrench.com/docs-screenshots/plugins/boat/create-sandbox.png)
 
 ## Work with a sandbox
 
@@ -30,7 +30,7 @@ The sandbox header changes with its state:
 
 **Host a port** serves a port at `https://<subdomain>-<port>.on.boat.dev`. A private URL carries an access token, and a public one works for anyone. Ports hosted from Infrawrench are listed under **Hosted Port URLs** in the Connect section.
 
-<insert [A running boat sandbox detail page showing size, state, environment, auto-stop and this month's cost, the Connect section with the SSH command, and the header actions] here>
+![A running boat sandbox detail page showing size, state, environment, auto-stop and this month's cost, the Connect section with the SSH command, and the header actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/boat/sandbox-detail.png)
 
 ## Connect to a sandbox
 
@@ -44,7 +44,7 @@ Use **Authorize SSH key** first: boat only accepts keys installed on that sandbo
 
 A read-only key can list sandboxes, snapshots, environments and webhooks. Creating, stopping, prompting and editing need a key whose actions allow them. Only a full-access key sees the account's API keys: boat answers a scoped key with an empty list. Revoking a key needs a full-access key too, or the key itself.
 
-<insert [The Add account form for boat with the API Key field and the Organization picker open] here>
+![The Add account form for boat with the API Key filled in and the Organization picker loaded, left on The active wallet](https://agent-assets.infrawrench.com/docs-screenshots/plugins/boat/add-account.png)
 
 ## Cost
 

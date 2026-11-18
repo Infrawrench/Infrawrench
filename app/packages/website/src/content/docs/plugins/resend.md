@@ -22,7 +22,7 @@ Connect a Resend team to manage what your application sends mail with, check tha
 - **Automations**: see the steps and recent runs, enable or disable, **Stop runs** in progress, rename, duplicate or delete.
 - **OAuth grants**: third-party apps your team has authorised, with their scopes. Delete one to revoke it.
 
-<insert [Resend domain detail page showing the DNS Records table with one verified and one failed record, and the Verify header action] here>
+![Resend domain detail page showing the DNS Records table with one verified and one failed record, and the Verify header action](https://agent-assets.infrawrench.com/docs-screenshots/plugins/resend/domain-detail.png)
 
 ## Connect with Resend
 
@@ -40,7 +40,7 @@ The account is named after the team's first verified domain.
 
 In the Resend dashboard, open **API Keys > Create API Key**, choose **Full access** and copy the `re_…` key. It's only shown once. A **Sending access** key can only send email, so it can't list or manage anything and the account won't connect.
 
-<insert [Resend Add-account form with the API Key field filled in] here>
+![Resend Add-account form with the API Key field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/resend/add-account.png)
 
 ## Metrics
 

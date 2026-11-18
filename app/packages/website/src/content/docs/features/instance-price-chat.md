@@ -17,7 +17,7 @@ The home page of [instances.infrawrench.com](https://instances.infrawrench.com) 
 
 It also knows every incident AWS has posted on its public Health Dashboard since 2008, so you can ask about outages too. You don't need an account.
 
-<insert [The instances.infrawrench.com home page: the "What do you want to know about Amazon EC2?" headline, the question box and the four suggestion cards] here>
+![The instances.infrawrench.com home page: the "What do you want to know about Amazon EC2?" headline, the question box and the four suggestion cards](https://agent-assets.infrawrench.com/docs-screenshots/features/instance-price-chat/home.png)
 
 Some things to ask:
 
@@ -54,7 +54,7 @@ When an answer is a list, you get an interactive table. When a graph works bette
   Posted on X, the link shows the table or chart as an interactive card inside the post on the web, and opens it in a popup on mobile. X decides whether to show the card, so a post may show only its image.
 - **Email if this changes** subscribes an email address to the table (see below).
 
-<insert [A chat answer showing an interactive table of ARM EC2 instances, with the footer actions (SQL, CSV, Email if this changes, Copy link) visible] here>
+![A chat answer showing an interactive table of ARM EC2 instances, with the footer actions (SQL, CSV, Email if this changes, Copy link) visible](https://agent-assets.infrawrench.com/docs-screenshots/features/instance-price-chat/chat-arm-table.png)
 
 ## Email alerts
 

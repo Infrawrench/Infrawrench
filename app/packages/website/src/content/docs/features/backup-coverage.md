@@ -88,7 +88,7 @@ Everything above tells you _is there a backup, and how old is it_. It can't tell
 
 Plenty can go wrong between a backup and a working restore: a snapshot that restores into a region with no capacity, a dump taken from a replica that was already broken, an encrypted volume whose key was rotated last quarter.
 
-<insert [The Backups Drills tab showing the four summary cards (Verified, Stale, Never verified, Worst measured RTO) above a list of protected resources with their standings, one expanded to show the record-a-drill form] here>
+![The Backups Drills tab showing the four summary cards (Verified, Stale, Never verified, Worst measured RTO) above a list of protected resources with their standings, one expanded to show the record-a-drill form](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/drills-tab.png)
 
 ### Infrawrench records drills, it doesn't run them
 

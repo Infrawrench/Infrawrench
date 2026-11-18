@@ -14,7 +14,7 @@ Use them to feed a SIEM, open tickets in a tool Infrawrench doesn't integrate wi
 
 Open **Settings > Notifications > Event subscriptions** and choose **Add subscription**. You need the `org:settings:write` permission.
 
-<insert [Settings > Notifications > Event subscriptions tab with two subscriptions listed: one webhook (On, secret hint shown) and one EventBridge destination, with the Add subscription button above] here>
+![Settings \> Notifications \> Event subscriptions tab with two subscriptions listed: one webhook (On, secret hint shown) and one EventBridge destination, with the Add subscription button above](https://agent-assets.infrawrench.com/docs-screenshots/features/event-subscriptions/subscriptions-list.png)
 
 1. **Name** it.
 2. Pick a **destination**:
@@ -24,7 +24,7 @@ Open **Settings > Notifications > Event subscriptions** and choose **Add subscri
 4. Optionally, narrow it with a **minimum severity**, **accounts** and **environments**.
 5. Save. For a webhook, the **signing secret is shown only once**. Copy it into your receiver now.
 
-<insert [The one-time signing secret panel after creating a webhook subscription, with the Copy button and the "How to verify a request" section expanded] here>
+![The one-time signing secret panel after creating a webhook subscription, with the Copy button and the "How to verify a request" section expanded](https://agent-assets.infrawrench.com/docs-screenshots/features/event-subscriptions/signing-secret.png)
 
 ### Filters
 
@@ -185,7 +185,7 @@ Events are usually delivered within a minute of happening. A webhook must answer
 
 **Deliveries** on each subscription shows the last 30 days: state, attempts, the receiver's status code, the first kilobyte of its reply, and the envelope as sent. **Redeliver** sends a fresh copy of any delivery with the same event `id`.
 
-<insert [The Deliveries panel of a webhook subscription showing one Delivered row, one Retrying row with its next attempt time, and one expanded Failed row with its attempts and the JSON envelope] here>
+![The Deliveries panel of a webhook subscription showing one Delivered row, one Retrying row with its next attempt time, and one expanded Failed row with its attempts and the JSON envelope](https://agent-assets.infrawrench.com/docs-screenshots/features/event-subscriptions/deliveries.png)
 
 **Send test event** sends an `infrawrench.test` event right away and shows what your receiver answered. Tests are tried once, never retried, and don't count toward the subscription's health. They work on a subscription that's turned off, so you can check a fix before turning it back on.
 

@@ -36,7 +36,7 @@ Give it **Organization Read Only** and **Organization Billing Viewer** to see ev
 
 Once both fields are filled, the **Organization** picker lists the organizations the credential can see. A service account belongs to one organization, so it's picked for you.
 
-<insert [MongoDB Atlas Add-account form with the client ID and secret filled in and the Organization picker showing the organization] here>
+![MongoDB Atlas Add-account form with the client ID and secret filled in and the Organization picker set to the organization](https://agent-assets.infrawrench.com/docs-screenshots/plugins/mongodb-atlas/add-account.png)
 
 If your organization requires an **API access list** for programmatic access, add the address Infrawrench calls Atlas from: your own address for the desktop app, or the address shown under the account's bastion settings for the cloud app.
 

@@ -18,9 +18,9 @@ Paperspace, part of DigitalOcean since 2023, rents GPU and CPU virtual machines 
 - **Projects** and their **deployments**: create, rename and delete projects. Each deployment shows its image, machine type, replicas and endpoint URL, with request rate, request duration, CPU, memory and GPU charts, and can be deleted.
 - **Container registry credentials**: create, edit (including replacing the password), test the connection from the header, delete.
 
-<insert [The Paperspace create machine form with the template picker open showing OS templates and My Templates, and the machine type select] here>
+![The Paperspace Create Machine form with the template picker showing My Templates and Linux templates, and the machine type picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/paperspace/create-machine.png)
 
-<insert [A Paperspace deployment detail page showing the endpoint URL and the request rate and GPU utilization charts] here>
+![A Paperspace deployment's Metrics tab showing the request rate and GPU utilization charts](https://agent-assets.infrawrench.com/docs-screenshots/plugins/paperspace/deployment-metrics.png)
 
 ## Connect your team
 
@@ -29,7 +29,7 @@ Paperspace, part of DigitalOcean since 2023, rents GPU and CPU virtual machines 
 
 Keys belong to a team, so the account sees every machine and deployment in that team. Add one account per team.
 
-<insert [The Add account form for Paperspace with the API Key field] here>
+![The Add account form for Paperspace with the API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/paperspace/add-account.png)
 
 ## Cost
 

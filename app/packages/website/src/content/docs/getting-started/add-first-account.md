@@ -42,7 +42,7 @@ Apps your organization has turned off under **Settings > Apps** are not offered 
 
 You can change the choice later. Open the account page and click **Change apps**. Adding an app starts collecting for it straight away, so give the credential that app's permissions first; the same dialog shows what they are. An account connected for Costs only has no resource list, and its page says so.
 
-<insert [Account page of an AWS account connected for Costs only: the "Connected for Costs only" notice in place of the resource sections, with the Change apps button] here>
+![Account page of an AWS account connected for Costs only: the "Connected for Costs only" notice in place of the resource sections, with the Change apps button](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/add-first-account/costs-only-account.png)
 
 Providers that power a single app don't show the choice. In the desktop app without a cloud organization, the choice only shapes the policy template: nothing is collected in the background there, so nothing is stored.
 

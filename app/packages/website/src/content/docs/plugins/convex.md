@@ -18,7 +18,7 @@ Connect a Convex team to manage its projects and deployments from Infrawrench.
 - **Usage limits**: warn or disable a deployment when a metric crosses a daily or monthly limit. Create, edit (metric, window, limit, action, enabled) and delete them. Each shows its current usage.
 - **Team**: members (change a member between admin and developer), invitations (invite, resend, cancel), custom roles (create from a permission picker, rename, delete) and the team access tokens you created (delete).
 
-<insert [Convex deployment detail page showing the Usage table and the Pause and Unpause actions] here>
+![Convex deployment detail page showing the Usage table and the Pause and Unpause actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/convex/deployment-usage.png)
 
 ## Connect with Convex
 
@@ -35,7 +35,7 @@ Members, invitations and custom roles can't be managed through this kind of conn
 
 Connect with Convex works in the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop use a token.
 
-<insert [Convex add-account form showing the Connect with Convex button above the Team Access Token field] here>
+![Convex add-account form showing the Connect with Convex button above the Team Access Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/convex/add-account-connect.png)
 
 ## Connect with a token
 
@@ -46,7 +46,7 @@ The token acts with your role on the team, so use an admin's token to manage mem
 
 Deploy keys and project tokens won't work, because they can't see the team.
 
-<insert [Convex Add-account form with the Team Access Token field filled in and the permission checklist below it] here>
+![Convex Add-account form with the Team Access Token field filled in and the permission checklist below it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/convex/add-account.png)
 
 ## Quotas
 

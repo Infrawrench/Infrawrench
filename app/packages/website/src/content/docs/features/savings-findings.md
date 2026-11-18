@@ -17,7 +17,7 @@ Findings is a cloud feature. On web and desktop (signed in to a cloud organizati
 section (with its **Apply**, **Remove seat** and fix actions) is below it. Findings is also in the
 CLI, over MCP, and read-only on mobile.
 
-<insert [Costs panel Savings tab showing the Findings section: the four summary tiles, the status tabs with counts, the filter row, and the findings table with a mix of Ready for review and In progress rows] here>
+![Costs panel Savings tab showing the Findings section: the four summary tiles, the status tabs with counts, the filter row, and the findings table with a mix of Ready for review and In progress rows](https://agent-assets.infrawrench.com/docs-screenshots/features/savings-findings/findings-section.png)
 
 ## Statuses
 
@@ -44,7 +44,7 @@ Changing a status needs the `resources:write` permission, the same as acting on 
 since archiving a finding takes it off everyone's list. Anyone with `resources:read` can see the
 list.
 
-<insert [The Change status dialog for three selected findings moving to Archived, with a note filled in] here>
+![The Change status dialog for three selected findings moving to Archived, with a note filled in](https://agent-assets.infrawrench.com/docs-screenshots/features/savings-findings/change-status-archived.png)
 
 ### Automatic completion
 
@@ -104,7 +104,7 @@ Views are shared like [cost reports](./cost-reports.md). The creator owns a view
 opens the same sharing dialog, where you can give the organization, a role or a member view or
 edit access, or make the view private. Deleting a view needs owner access.
 
-<insert [The View picker open with three saved views, and the Share dialog for one of them] here>
+![A saved view (Prod right-sizing over $100) opened from the View picker, with the Share dialog for it showing org, role and member access](https://agent-assets.infrawrench.com/docs-screenshots/features/savings-findings/view-share-dialog.png)
 
 You can also manage saved views with [config as code](./config-as-code.md) (the `savingsViews`
 section, with accounts named by display name) and with the

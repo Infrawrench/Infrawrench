@@ -125,7 +125,7 @@ In clients that support [MCP Apps](https://modelcontextprotocol.io/extensions/ap
 
 A view's buttons call the same tools with your permissions, so your client's permission prompts still apply. Views load nothing from outside your MCP client, and clients without MCP Apps support ignore them.
 
-<insert [A query_costs view in Claude, showing spend stacked by provider with the regroup buttons] here>
+![The query_costs MCP App view, showing spend stacked by provider with the Total, Provider, Account, Service and Region regroup buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/mcp/query-costs-view.png)
 
 ## Audit and safety
 

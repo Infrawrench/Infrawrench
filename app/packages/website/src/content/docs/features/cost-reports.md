@@ -50,7 +50,7 @@ Grouping, binning and cost basis don't apply here. The file carries both cost ba
 
 One download covers at most 366 days. For anything longer, or for a recurring feed, set up a scheduled export.
 
-<insert [A cost report's detail page with the "Download FOCUS CSV" link highlighted in the header row, beside Dashboards and Rename] here>
+![A cost report's detail page with the pointer on the "Download FOCUS CSV" link in the header row, beside Export…, Share, Dashboards and Rename](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/focus-csv-link.png)
 
 ### Large exports in the background
 
@@ -71,7 +71,7 @@ Good to know:
 - Rows follow your own [cost visibility](../team-and-billing/cost-visibility.md), the same as your charts.
 - Each export covers at most 731 days and 256 MB, and you can run three at once.
 
-<insert [The Export dialog on a cost report: the format picker set to CSV, report columns, the date range, and Your recent exports listing one export at 45% with a progress bar and one Ready with a Download link] here>
+![The Export dialog on a cost report: the format picker set to CSV, report columns, the date range, and Your recent exports listing one export at 45% with a progress bar and one Ready with a Download link](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/export-dialog.png)
 
 ![A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-detail.png)
 
@@ -104,7 +104,7 @@ A bulk move or delete is **all or nothing**. Before anything changes, Infrawrenc
 
 Moved folders keep their contents. Deleting works the same as deleting one at a time: reports take their dashboard cards with them and their delivery schedules stop, and anything left in a deleted folder moves to the top level. The confirmation lists what goes and what moves, and each item gets its own [audit log](../team-and-billing/audit-log.md) entry.
 
-<insert [Reports page with three reports ticked, the selection bar showing "3 selected · Move to folder… · Delete…", and the Folders sidebar with one folder highlighted as a drop target during a drag] here>
+![Reports page with three reports ticked, the selection bar showing "3 selected · Move to folder… · Delete…", and the Folders sidebar with the FinOps folder highlighted as a drop target during a drag](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/bulk-move-drag.png)
 
 On the command line, `infrawrench reports` shows each report's folder path (`Finance / Monthly`) in its own column, and `--json` includes the folder list. The [mobile app](#on-your-phone) groups its read-only list the same way. In chat and MCP, `list_cost_reports` returns each item's `folderPath` and `move_cost_report` files a report by folder path, name or id.
 
@@ -173,7 +173,7 @@ Click **Set up**, then choose:
 - **Minimum rise per day**: how far above the average a day must be, in the spend's own currency, before you're alerted. This stops a small report from paging you over a few dollars.
 - **Send to**: the same destination picker as [alert routing](./alert-routing.md): Slack channels, Teams webhooks, mobile push, whoever is on call on a rotation, members by email or an extra address, GitHub issues, or a paging provider.
 
-<insert [A report's page with the Anomaly alert section in edit mode: sensitivity 2.5, minimum rise 50, and the destination picker with a Slack channel and an email address selected] here>
+![A report's page with the Anomaly alert section in edit mode: sensitivity 2.5, minimum rise 50, and the destination picker with a Slack channel and an email address selected](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-anomaly-alert-edit.png)
 
 The alert watches the report's **total**: its filters and saved filter, per currency, ignoring grouping and display options. If you edit the report's filters, the alert follows. It checks after each cost collection and rechecks the last three days as late data arrives. Once it sends about a day, it stays quiet about that report and currency for seven days, the same as organization-wide detection.
 

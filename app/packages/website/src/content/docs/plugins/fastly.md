@@ -24,7 +24,7 @@ Connect your Fastly account to see what you spend, watch traffic, purge cache an
 - **TLS certificates** (custom certificates you uploaded) and **TLS subscriptions** (Fastly-managed certificates from Let's Encrypt, Certainly or GlobalSign) with their domains, state and expiry. Both appear on the [Expiring](../features/expiry-radar.md) page, and a certificate Fastly flags for key rotation shows up on the security posture page.
 - **API tokens**: the token owner's tokens with their scope, services, last use and expiry. **Revoke** a token you no longer need (you can't revoke the token this account uses from here). Tokens appear in the [access review](../features/access-review.md), and global tokens that never expire are flagged on the security posture page.
 
-<insert [Fastly service detail page showing the Live panel, the last-24-hours totals and the purge actions in the header] here>
+![Fastly service detail page showing the Live panel, the last-24-hours totals and the purge actions in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fastly/service-detail.png)
 
 ## Connect an account
 
@@ -42,7 +42,7 @@ What the token can do depends on its **scope** and its **owner's role**:
 
 Scopes combine: `global:read purge_all` reads everything and can purge. **Check credentials** on the add-account form or the account page tells you which of these your token can do. Its [least-privilege generator](../core-concepts/credential-preflight.md) tells you which token settings to choose for the features you tick. A token limited to some services only shows those services. If you narrow a token later, what Infrawrench already stored for a type or a service the token can no longer read stays listed with its last known details instead of disappearing. The desktop app keeps nothing between syncs, so there a type the token can't read shows the refusal instead.
 
-<insert [Fastly Check credentials panel listing inventory and costs as OK and purge and change configuration as missing for a global:read token] here>
+![Fastly Check credentials panel listing inventory and costs as OK and purge and change configuration as missing for a global:read token](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fastly/check-credentials.png)
 
 ## Costs
 

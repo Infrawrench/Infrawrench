@@ -70,7 +70,7 @@ The **Logs** tab shows the same logs as `az containerapp logs show`. On an app, 
 
 Jobs show their trigger (manual, schedule with its cron expression, or event), parallelism, timeout and retry limit. Environments show their default domain, static IP, workload profiles, zone redundancy, whether they're internal-only, and their infrastructure subnet.
 
-<insert [Azure Container App detail page showing the image, CPU/memory, replica and ingress fields, the URL output, and Stop in the header] here>
+![Azure Container App detail page showing the image, CPU/memory, replica and ingress fields, the URL output, and Stop in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/container-app-detail.png)
 
 ## Azure Managed Redis
 

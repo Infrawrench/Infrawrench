@@ -17,7 +17,7 @@ sidebar_order: 46
 
 Checking the key when you add the account uses no tokens.
 
-<insert [Voyage AI Add-account form with the API Key field and the Create an API key help link] here>
+![Voyage AI Add-account form with the API Key field and the Create an API key help link](https://agent-assets.infrawrench.com/docs-screenshots/plugins/voyage/add-account.png)
 
 ## Test a model
 
@@ -27,7 +27,7 @@ Every model page has a **Test** tab that runs the model on what you type:
 - **Contextualized models** treat paragraphs separated by blank lines as chunks of one document and embed each in context.
 - **Rerankers** take the query on the first line and one document per line after it, and return the documents ranked by relevance score.
 
-<insert [Voyage rerank-3 model page with the Test tab showing a query, three documents and the ranked result] here>
+![Voyage rerank-3 model page with the Test tab showing a query, three documents and the ranked result](https://agent-assets.infrawrench.com/docs-screenshots/plugins/voyage/rerank-test.png)
 
 ## Create a batch
 

@@ -28,7 +28,7 @@ Connect a Better Stack organization to manage uptime monitoring, incidents, stat
 
 - **Team members** with their role, and pending invitations with when they were sent. You can remove members and cancel invitations from here. When a global token covers several teams, members are listed per team, for the teams your monitors, heartbeats, on-call calendars and sources belong to, and someone in two teams appears once for each. Members of a team none of those belong to aren't listed, and members removed in Better Stack stay listed here until the token covers a single team again.
 
-<insert [Better Stack monitor detail page showing the Pause button, 30-day availability and the Metrics tab with response times per region] here>
+![Better Stack monitor detail page showing the Pause button and the Metrics tab with response times per region](https://agent-assets.infrawrench.com/docs-screenshots/plugins/better-stack/monitor-metrics.png)
 
 ## Connect your organization
 
@@ -41,7 +41,7 @@ A team-scoped token also works:
 
 Team tokens can't read cost data or team members, and only see their own team.
 
-<insert [Better Stack Add-account form with the API Token field filled in and the optional Telemetry API Token left blank] here>
+![Better Stack Add-account form with the API Token field filled in and the optional Telemetry API Token left blank](https://agent-assets.infrawrench.com/docs-screenshots/plugins/better-stack/add-account.png)
 
 ## Query logs with SQL
 

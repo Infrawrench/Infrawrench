@@ -6,7 +6,7 @@ sidebar_order: 11
 
 A synthetic probe answers one question: **can the internet reach this endpoint, and how fast?** Point a probe at a URL and Infrawrench requests it on an interval (every 60 seconds by default) from outside your clusters and clouds. It records latency and status, and alerts you by push, Slack or Microsoft Teams when the endpoint fails enough checks in a row.
 
-<insert [The Probes tab showing a list of probes: one down (warning triangle next to its name, with the failure reason), several up with uptime percentages and last latencies, with one row expanded into its 24-hour latency chart] here>
+![The Probes tab showing a list of probes: one down (warning triangle next to its name, with the failure reason), several up with uptime percentages and last latencies, with one row expanded into its 24-hour latency chart](https://agent-assets.infrawrench.com/docs-screenshots/features/synthetic-probes/probes-list.png)
 
 ## Where to find it
 

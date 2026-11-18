@@ -19,7 +19,7 @@ Compliance maps that evidence onto framework controls, shows which controls have
 
 Open it from the **Compliance** tile in the sidebar. It's a cloud feature, since the evidence lives in your organization's data.
 
-<insert [The Compliance tab with SOC 2 selected: count chips (evidence, gaps, not applicable, unowned), the controls table grouped by family with one control expanded to show its evidence sources] here>
+![The Compliance tab with SOC 2 selected: count chips (evidence, gaps, not applicable, unowned), the controls table grouped by family with one control expanded to show its evidence sources](https://agent-assets.infrawrench.com/docs-screenshots/features/compliance/soc2-controls.png)
 
 ## Frameworks
 
@@ -139,7 +139,7 @@ How each destination receives it:
 
 **Send now** builds and sends the pack the next delivery would cover. Scheduled packs include every source, whoever set them up. Creating a schedule needs `org:settings:write`.
 
-<insert [The Pack schedules section with a quarterly schedule to two email recipients, showing its next send time and last delivery status] here>
+![The Pack schedules section with a quarterly schedule to two email recipients, showing its next send time and last delivery status](https://agent-assets.infrawrench.com/docs-screenshots/features/compliance/pack-schedules.png)
 
 ## Mobile
 

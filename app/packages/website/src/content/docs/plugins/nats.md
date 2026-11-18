@@ -44,7 +44,7 @@ Consumers are listed under their stream, with push or pull mode, deliver and ack
 - **Key-value buckets** show history depth, expiry, size limits, storage, replicas, keys and values. **Create** and **Edit** set the history, expiry, size limits and replicas. The **Keys** tab reads, writes and deletes keys. The overview lists the bucket's latest revisions (puts and deletes), and the **Describe** tab shows every key's revisions.
 - **Object stores** show expiry, size limit, storage, replicas and size. **Create** and **Edit** set the expiry, size limit and replicas. The **Files** tab lists objects (a `/` in a name shows as a folder), uploads files up to 32 MB and deletes objects. The overview lists each object's size, chunks, modified time and digest.
 
-<insert [NATS stream detail page with the Keys tab open on a message, showing its subject, headers and body] here>
+![NATS stream detail page with the Keys tab open on a message, showing its subject, headers and body](https://agent-assets.infrawrench.com/docs-screenshots/plugins/nats/stream-keys-message.png)
 
 ## Connect your account
 
@@ -60,7 +60,7 @@ Consumers are listed under their stream, with push or pull mode, deliver and ack
 
 To manage JetStream, the user needs permission to publish and subscribe on `$JS.API.>` and `_INBOX.>`, plus the subjects you publish to.
 
-<insert [NATS Add-account form with the server URL, user and password, and monitoring URL filled in] here>
+![NATS Add-account form with the server URL, user and password, and monitoring URL filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/nats/add-account.png)
 
 **Check credentials** tells you separately whether the monitoring endpoint answers, whether the client port accepts your credentials, and whether JetStream is enabled for your account.
 

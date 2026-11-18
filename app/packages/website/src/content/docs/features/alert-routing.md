@@ -57,7 +57,7 @@ The same picker also offers **whoever is on call** on a PagerDuty schedule or es
 
 If a send fails because the provider is down or rate limited, it's retried in the background. If it's refused (a deleted service, a revoked key), Infrawrench stops trying and shows it under **Settings > On-call > Paging providers**.
 
-<insert [The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker] here>
+![The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/paging-provider-destinations.png)
 
 ## Conditions
 

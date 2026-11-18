@@ -15,7 +15,7 @@ Here's how it works:
 
 This is for roles **inside your clouds**. [Break-glass access](../team-and-billing/break-glass-access.md) is the same idea for **Infrawrench's own** permissions and never touches a cloud.
 
-<insert [The Just-in-time access workspace tab with one pending request at the top (Approve and Deny buttons visible), one active grant with its countdown under "Granted now", and a few ended requests in History] here>
+![The Just-in-time access workspace tab with one pending request at the top (Approve and Deny buttons visible), one active grant with its countdown under "Granted now", and a few ended requests in History](https://agent-assets.infrawrench.com/docs-screenshots/features/just-in-time-access/jit-tab.png)
 
 ## Supported providers
 
@@ -35,7 +35,7 @@ Standing access is never touched. If the person already holds the role some othe
 
 Policies live in **Settings > Just-in-time Access** and need `org:settings:write`.
 
-<insert [Settings, Just-in-time Access, with the policy editor open: an AWS account selected, two targets added (AdministratorAccess on production, ReadOnlyAccess on staging), a longest window of 2h, approvers set to an on-call rotation and a team role, and the incident self-approval box ticked] here>
+![The Just-in-time Access policy editor: an AWS account selected, two targets added (AdministratorAccess on production, ReadOnlyAccess on staging), a longest window of 2h, approvers set to an on-call rotation and a team role, and the incident self-approval box ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/just-in-time-access/policy-editor.png)
 
 A policy sets:
 
@@ -56,7 +56,7 @@ Deleting a policy doesn't cut anyone off early: grants it already made still end
 
 Open **Just-in-time access** from the sidebar and choose **Request access**.
 
-<insert [The request form: a policy selected, the role and scope picked, the 1h duration chip pressed, "Granted to" showing the resolved Identity Center user, and a reason and ticket filled in] here>
+![The request form: a policy selected, the permission set and AWS account picked, the 1h duration chip pressed, "Identity Center user" showing the resolved user, and a reason and ticket filled in](https://agent-assets.infrawrench.com/docs-screenshots/features/just-in-time-access/request-form.png)
 
 1. Pick a policy and one of its roles.
 2. Pick how long you need it.

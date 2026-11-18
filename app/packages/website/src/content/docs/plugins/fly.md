@@ -57,7 +57,7 @@ Apps also chart the Fly Proxy edge: request rate, 5xx rate, p95 response time, d
 - Start a full backup with **Back Up Now**.
 - Drag a cluster onto an app to record the attachment in Fly. Attaching doesn't set a `DATABASE_URL` secret, so add one as an app secret.
 
-<insert [Fly Managed Postgres cluster detail view showing the Cluster, Storage, and Connection sections and the Back Up Now action] here>
+![Fly Managed Postgres cluster detail view showing the Cluster, Storage, and Connection (private network) sections and the Back Up Now action](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fly/managed-postgres.png)
 
 ## Run CI jobs
 

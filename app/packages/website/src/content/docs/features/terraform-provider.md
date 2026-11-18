@@ -104,7 +104,7 @@ An API key can manage everything in the provider except two things, whatever sco
 
 If you manage API keys or roles in Terraform, keep them in a separate Terraform root that a person applies while signed in with a WorkOS access token. If a key hits this restriction, the provider tells you which resource is affected.
 
-<insert [The Create API Key dialog under Settings > API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
+![The Create API Key dialog under Settings \> API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-provider/create-api-key-costs-scopes.png)
 
 ## A worked example
 

@@ -8,7 +8,7 @@ Every savings tool in Infrawrench tells you what an action _would_ save: [orphan
 
 Realized savings needs Infrawrench Cloud. You'll find it at the bottom of the **Savings** tab of the **Costs** panel on web and desktop (signed in to a cloud org), as a dashboard card, in the weekly digest, in the CLI and over MCP, and read-only on mobile.
 
-<insert [Costs panel Savings tab showing the Realized savings section: the realized vs projected tiles, the bar breakdown by month, and the list of actions with one flagged as falling short] here>
+![Costs panel Savings tab showing the Realized savings section: the realized vs projected tiles, the bar breakdown by month, and the list of actions with one flagged as falling short](https://agent-assets.infrawrench.com/docs-screenshots/features/realized-savings/savings-tab-realized.png)
 
 ## What gets recorded
 
@@ -62,7 +62,7 @@ You can edit manual entries in full. For automatic ones, what was observed stays
 
 Logging, editing and removing need `costs:write`. Viewing the report needs `costs:read`.
 
-<insert [The Log a saving modal filled in with a title, monthly amount, start date and a linked resource] here>
+![The Log a saving modal filled in with a title, monthly amount, start date and a linked resource](https://agent-assets.infrawrench.com/docs-screenshots/features/realized-savings/log-a-saving.png)
 
 ## Settings
 

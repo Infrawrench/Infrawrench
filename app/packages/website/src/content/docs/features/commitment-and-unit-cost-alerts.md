@@ -98,7 +98,7 @@ Set thresholds on the metric: **Costs > Unit costs > Edit > Alert thresholds**. 
 | **Window**      | Trailing complete days the ratio is summed over (1 to 90, default 7).                                           |
 | **Per label**   | Judge each value of a label separately. The label must be [mapped to a cost dimension](./unit-costs.md#labels). |
 
-<insert [Business metric editor's Alert thresholds section with two rows: "Margin below 30% over 7 days per customer" and "Cost per 1K request above 0.40 USD over 14 days"] here>
+![Business metric editor's Alert thresholds section with two rows: Margin below 30% over 7 days per customer, and Cost per request above 0.4 USD per thousand over 14 days](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/metric-alert-thresholds.png)
 
 Thresholds are checked once a day, after cost data comes in, using the same numbers as the [unit-cost chart](./unit-costs.md): the window's total spend over its total metric, not the worst single day. A window with fewer than half its days reported isn't judged. The "Other" group in a label split never fires.
 

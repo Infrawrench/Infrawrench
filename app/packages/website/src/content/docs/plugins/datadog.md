@@ -26,7 +26,7 @@ You fill in three fields:
 - **API key**: from **Organization Settings > API Keys**. It identifies your organization.
 - **Application key**: from **Organization Settings > Application Keys** (or **Personal Settings > Application Keys** for your own). It has the permissions of the user or service account that owns it.
 
-<insert [Datadog Add-account form with the site picker open on EU and the API key and application key fields filled] here>
+![Datadog Add-account form with the site picker open on EU and the API key and application key fields filled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datadog/add-account.png)
 
 ### Permissions
 
@@ -72,9 +72,9 @@ Datadog accounts feed [cost graphs & budgets](../features/cloud-costs.md) with D
 
 Amounts are in US dollars, the currency Datadog prices contracts in.
 
-<insert [Cost graph grouped by service for a Datadog account, showing Infrastructure Hosts, APM Hosts and Indexed Logs stacked by day] here>
+![Cost graph grouped by service for a Datadog account, showing Infrastructure Hosts, APM Hosts and Indexed Logs stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datadog/cost-by-service.png)
 
-<insert [Datadog organization page showing month-to-date and projected month-end cost, the per-product table, and the cost attribution by tag table] here>
+![Datadog organization page showing month-to-date and projected month-end cost, the per-product table, and the cost attribution by tag table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datadog/organization-cost.png)
 
 ## Import business metrics
 

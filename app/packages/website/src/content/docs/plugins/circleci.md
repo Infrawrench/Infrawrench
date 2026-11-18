@@ -34,14 +34,14 @@ The token lasts 90 days and can't be refreshed. When it expires, open **Edit cre
 
 The web app and the desktop app's cloud mode can't use this sign-in, so use a token there, as below.
 
-<insert [CircleCI add-account form in the desktop app showing the Connect with CircleCI button above the Personal API Token field] here>
+![CircleCI add-account form in the desktop app showing the Connect with CircleCI button above the Personal API Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/circleci/add-account-desktop-connect.png)
 
 ## Connect with a token
 
 1. In CircleCI, open **User Settings > Personal API Tokens** and create a token. It acts as your user, so it sees the organizations and projects you can. Cost reporting needs a user who can see the organization's plan usage, normally an organization admin. Project API tokens don't work.
 2. In Infrawrench, paste the token. The **Organization** picker lists every organization you belong to. Pick one.
 
-<insert [CircleCI Add-account form with the personal API token filled in and the Organization picker open on the list of organizations] here>
+![CircleCI Add-account form with the personal API token filled in and an organization chosen in the Organization picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/circleci/add-account.png)
 
 The other two fields set how credits turn into money (see below). You can change them any time with **Edit credentials** on the account. Personal tokens can expire. CircleCI emails you beforehand, and you can paste the new one in **Edit credentials**.
 

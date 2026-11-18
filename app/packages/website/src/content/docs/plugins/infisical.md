@@ -27,7 +27,7 @@ Infrawrench signs in as a **machine identity** with Universal Auth:
 3. Add the identity to each project you want to manage (**Project Settings > Access Control > Machine Identities**). The identity can't see projects it isn't a member of.
 4. In Infrawrench, enter the **Instance URL** (`https://app.infisical.com` for US Cloud, `https://eu.infisical.com` for EU Cloud, or your own URL), the client ID and the client secret. If your self-hosted instance uses a private CA, add its certificate under **Advanced options**.
 
-<insert [Infisical add-account form showing the Instance URL, Client ID and Client Secret fields] here>
+![Infisical add-account form showing the Instance URL, Client ID and Client Secret fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/infisical/add-account.png)
 
 ## What you can do
 
@@ -40,7 +40,7 @@ Infrawrench signs in as a **machine identity** with Universal Auth:
 - **Audit logs and metrics**: projects, environments, secrets and machine identities have a Logs tab from Infisical's audit log. A project's Metrics tab charts secret reads, secret changes, identity logins and failed logins.
 - **Terraform export** for projects, environments, folders, secrets (values as variables) and machine identities, using the official `Infisical/infisical` provider.
 
-<insert [Infisical secret sync detail view showing a failed sync status, its last error message, and the Sync now and Import from destination actions] here>
+![Infisical secret sync detail view showing a failed sync status, its last error message, and the Sync now and Import from destination actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/infisical/secret-sync-failed.png)
 
 ## Tips and limits
 

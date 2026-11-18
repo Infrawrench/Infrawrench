@@ -10,7 +10,7 @@ Connect Jira and you can turn any of those findings into a real issue in your te
 
 Use Linear instead, or as well? See [Linear issues](./linear.md). With both connected, you choose the tracker each time you file, and a finding filed to both shows both links.
 
-<insert [The Costs panel Anomalies table with a "File in Jira" link on one row and a filed issue key like OPS-412 on another] here>
+![The Costs panel Anomalies table with a "File in Jira" link on one row and a filed issue key like OPS-412 on another](https://agent-assets.infrawrench.com/docs-screenshots/features/jira/anomalies-file-in-jira.png)
 
 ## What you can file
 
@@ -72,14 +72,14 @@ Once a finding is filed, its row shows the issue key and links straight to the i
 
 Next to every filed issue key you'll see where the issue stands in Jira: its status (`To Do`, `In Review`, `Done`, whatever your workflow calls it), a coloured dot for not started, in progress or finished, and the assignee and last change when you hover it. At a glance, you can tell which anomalies someone is working on and which were filed and forgotten.
 
-<insert [A Costs panel Anomalies row showing a filed issue key OPS-412 followed by a blue dot and "In Review", with the hover tooltip "Assigned to Sam Lee · Updated 16/10/2026, 09:12"] here>
+![A Costs panel Anomalies row showing a filed issue key OPS-412 followed by a status dot and "In Review"](https://agent-assets.infrawrench.com/docs-screenshots/features/jira/anomaly-issue-status.png)
 
 Statuses update in two ways:
 
 - **A webhook** keeps them current within seconds. Under **Settings > Jira > Live status**, press **Set up webhook**. Infrawrench creates a signed webhook in your Jira site for issue updates and deletions. Jira only lets administrators create webhooks this way, so if the connected account isn't a Jira admin, you'll get a webhook URL and a secret instead. A Jira admin pastes them into **Jira settings > System > WebHooks** (events: issue updated and issue deleted). The secret is shown once; if you lose it, set the webhook up again. **Add it by hand** goes straight to that option.
 - **A regular check** runs either way: every 30 minutes for unfinished issues and daily for finished ones (issues get reopened), for issues filed in the last year. It also covers you if someone deletes the webhook. **Refresh statuses** checks up to 200 issues right now.
 
-<insert [Settings → Jira Live status card showing "Webhook on", "Created in Jira by Infrawrench. Last delivery 16/10/2026, 09:14.", and the Recreate webhook, Remove webhook and Refresh statuses buttons] here>
+![Settings → Jira Live status card showing "Webhook on", "Created in Jira by Infrawrench. Last delivery 16/10/2026, 09:14.", and the Recreate webhook, Remove webhook and Refresh statuses buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/jira/settings-live-status.png)
 
 The settings section shows when the last webhook delivery arrived, so you can tell whether the webhook still works or a Jira admin removed it. Removing the webhook in Infrawrench also deletes it in Jira if Infrawrench created it, and disconnecting Jira removes it too.
 

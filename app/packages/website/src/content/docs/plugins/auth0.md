@@ -28,7 +28,7 @@ You connect with a Machine to Machine application authorized for the Auth0 Manag
 2. Select the scopes. For full management, grant the `read:`, `create:`, `update:` and `delete:` scopes for clients, resource servers, connections, users, roles, organizations (plus members, connections and invitations), actions, log streams and custom domains. Also grant `read:tenant_settings`, `update:tenant_settings`, `read:branding`, `update:branding`, `read:attack_protection`, `update:attack_protection`, `create:user_tickets`, `read:client_keys`, `update:client_keys`, `read:logs` and `read:stats`. A read-only account needs only the `read:` scopes.
 3. In Infrawrench, enter the tenant's canonical domain (for example `acme.us.auth0.com`, even if you use a custom domain), the application's **Client ID** and its **Client Secret**.
 
-<insert [Auth0 add-account form showing the Tenant Domain, Client ID and Client Secret fields] here>
+![Auth0 add-account form showing the Tenant Domain, Client ID and Client Secret fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/auth0/add-account.png)
 
 ## Common tasks
 
@@ -41,7 +41,7 @@ You connect with a Machine to Machine application authorized for the Auth0 Manag
 - **Rate limit**: the Management API's rate-limit bucket, as Auth0 reports it, appears on the Quotas page.
 - **Terraform export** for the tenant, applications, APIs, roles, organizations, Actions and custom domains, using the official `auth0/auth0` provider.
 
-<insert [Auth0 Action detail view showing the code section and the Edit code, Deploy and Add to flow actions] here>
+![Auth0 Action detail view showing the code section and the Edit code, Deploy and Add to flow actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/auth0/action-detail.png)
 
 ## Tips & limits
 

@@ -20,7 +20,7 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 - **Service accounts**: see which exist and whether they are unrestricted, and delete one to revoke its token. Old ones show on the Expiry radar when they are due for rotation.
 - **Services**: what Chronosphere discovered, with the owning team.
 
-<insert [Chronosphere monitor detail page showing the conditions, the PromQL query and the Metrics tab chart] here>
+![Chronosphere monitor detail page showing the conditions and the PromQL query](https://agent-assets.infrawrench.com/docs-screenshots/plugins/chronosphere/monitor-overview.png)
 
 ## Connect your tenant
 
@@ -29,7 +29,7 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 
 A personal access token also works and carries your own permissions. A restricted (telemetry-only) service account can only run PromQL. Click **Check credentials** to see which areas your token can reach.
 
-<insert [Chronosphere Add-account form with the Organization and API Token fields filled in] here>
+![Chronosphere Add-account form with the Organization and API Token fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/chronosphere/add-account.png)
 
 ## Chart metrics and run PromQL
 

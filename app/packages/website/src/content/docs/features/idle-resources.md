@@ -29,7 +29,7 @@ Findings appear in **Potential savings**, alongside the [orphan finder](./orphan
 
 A resource younger than the lookback window is never flagged, and neither is one whose metrics don't cover the whole window. Missing data isn't treated as zero. The one exception is a metric the provider only publishes when it's non-zero (like an Application Load Balancer's request count), where a missing day counts as zero as long as other metrics confirm the resource was read correctly.
 
-<insert [Costs page Savings tab, Potential savings section showing an "Idle NAT gateway" row with its evidence lines (bytes sent, peak connections, the 14-day window and "flagged since" date) and a "/ mo est." figure in the cost column] here>
+![Costs page Savings tab, Potential savings section showing an "Idle NAT gateway" row with its evidence lines (bytes sent, peak connections, the 14-day window and "flagged since" date) and a "/ mo est." figure in the cost column](https://agent-assets.infrawrench.com/docs-screenshots/features/idle-resources/idle-nat-row.png)
 
 ## What each finding shows
 
@@ -52,7 +52,7 @@ When you save, every account is read again on the next collection. **Re-scan now
 
 Under the rules, **Collection** shows each account's last read, how many findings it produced, and the last error. If an account's credentials can't read metrics, it says so there with a link to the fix, so an empty list never falsely reads as "nothing is idle".
 
-<insert [Idle rules dialog: the "Run idle rules for this organization" switch and a 14-day lookback, the AWS group with "Idle NAT gateway" expanded to its two threshold fields and their defaults, and the Collection list with one account showing a missing-permission error] here>
+![Idle rules dialog: the "Run idle rules for this organization" checkbox and a 14-day lookback, the AWS group with "Idle NAT gateway" and its two threshold fields and their defaults, and the Collection list with one account showing a missing-permission error](https://agent-assets.infrawrench.com/docs-screenshots/features/idle-resources/idle-rules-dialog.png)
 
 Changing the settings needs the **Manage organization settings** permission. Anyone who can see resources can open the form to read the rules and the collection status. You can also manage these settings with the `infrawrench_idle_finding_settings` [Terraform resource](./terraform-provider.md) and `alertSettings.idleFindings` in [config as code](./config-as-code.md).
 

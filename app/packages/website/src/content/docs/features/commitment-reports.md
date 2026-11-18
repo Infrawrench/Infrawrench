@@ -8,7 +8,7 @@ The [Commitments](./commitments.md) section answers "how are our commitments doi
 
 Reports live on the Costs page's **Commitments & credits** tab, under **Commitment reports**. They file into the same folders as [cost reports](./cost-reports.md) and are shared the same way.
 
-<insert [The Commitment reports section on the Commitments & credits tab: a list of three saved reports, two at the top level and one under a "FinOps" folder heading, each showing its chart metric, granularity and grouping] here>
+![The Commitment reports section on the Commitments & credits tab: a list of three saved reports, two at the top level and one under a "FinOps" folder heading, each showing its chart metric, granularity and grouping](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-reports/reports-list.png)
 
 ## Creating a report
 
@@ -21,7 +21,7 @@ Click **New report** and choose:
 - **Chart metric**: the metric the chart draws. The table always shows every metric.
 - **Filters**: providers, commitment types, accounts, services, regions and specific commitments, each picked from what your org actually has.
 
-<insert [The New commitment report dialog with "Last 90 days", "Weekly" and "Group by: Commitment type" selected, the chart metric set to Utilization, and the Providers filter open showing AWS and Azure, with GCP listed as "holdings only, not measurable"] here>
+![The New commitment report dialog with "Last 90 days", "Weekly" and "Group by: Commitment type" selected, the chart metric set to Utilization, and the Providers filter open showing Amazon Web Services and Microsoft Azure, with Google Cloud listed as "holdings only, not measurable"](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-reports/new-report-dialog.png)
 
 ### Why there is no hourly option
 
@@ -31,7 +31,7 @@ Spend is collected one row per day per provider, account, service and region. An
 
 Opening a report shows which providers were measured, any notices, a headline row per currency, a chart of the chosen metric over time, and a table with every metric (per period without grouping, per group otherwise, with a total row).
 
-<insert [An open commitment report: the headline tiles (Coverage "62.0% to 78.4%", Utilization 91.3%, Effective savings rate 18.2%, Net savings $41,200, On-demand remainder $96,500, Commitment cost $187,000 with "$170,700 used, $16,300 unused" underneath), a weekly utilization line chart with one line per commitment type, and the metrics table below] here>
+![An open commitment report: the headline tiles (Coverage "62.0% to 78.4%", Utilization 91.3%, Effective savings rate 12.7%, Net savings $41,200, On-demand remainder $96,500, Commitment cost $187,000 with "$170,700 used, $16,300 unused" underneath), a weekly utilization line chart with one line per commitment type, and the metrics table below](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-reports/report-view.png)
 
 A dash means there was nothing to measure in that bucket, never zero: a week with no usage was not 0% covered, it had nothing to cover. A gap in the chart is drawn as a gap for the same reason.
 

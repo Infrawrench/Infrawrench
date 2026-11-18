@@ -19,7 +19,7 @@ Both only narrow what a role already allows. Neither can grant a permission the 
 2. Choose **Add a scope**.
 3. Pick who it applies to, then what they can see.
 
-<insert [Settings → Cost Visibility with two scopes listed (a role scoped to a cost centre, an API key scoped to one account) and the scope editor open, showing the cost centre and account pickers and the "Will see" summary] here>
+![Settings → Cost Visibility with two scopes listed (a role scoped to a cost centre, an API key scoped to one account) and the scope editor open, showing the cost centre and account pickers and the "Will see" summary](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/cost-visibility/scopes-editor.png)
 
 A scope applies to one of:
 
@@ -86,7 +86,7 @@ Every cost report, commitment report, [resource report](../features/resource-rep
 - **Everyone in the organization**: _Can edit_ (the default until somebody shares it), _Can view_, or _No access_.
 - **People and roles**: _Owner_, _Can edit_ or _Can view_ for individual members or whole roles.
 
-<insert [Share dialog on a cost report: "Everyone in the organization" set to "Can view", the Finance role with "Can edit", one member as "Owner"] here>
+![Share dialog on a cost report: "Everyone in the organization" set to "Can view", the Finance role with "Can edit", one member as "Owner"](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/cost-visibility/share-dialog.png)
 
 How it works:
 

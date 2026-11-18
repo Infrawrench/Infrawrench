@@ -94,7 +94,7 @@ To set it up, open the Agents configuration menu with **Interface** set to **T3 
 
 The **JSON** view shows the exact document sent to the server and accepts anything T3 Code's format does, including keys the form doesn't cover.
 
-<insert [T3 Code policy editor open over the Agents page, with an organization name, a permission mode limit, and two locked settings] here>
+![T3 Code policy editor open over the Agents page, with an organization name, a support link and a permission mode limit](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/policy-editor.png)
 
 The editor checks your policy as you type, using T3 Code's own rules. T3 Code won't start with a policy it can't fully enforce, so an unknown key, a value of the wrong type, or a default permission mode broader than the limit blocks saving. It's also checked against your defaults: if the policy forbids the provider your **Tool** runs, or turns off the T3 Connect your servers use, the menu tells you and won't create a server.
 
@@ -113,7 +113,7 @@ Every user on the server can read the policy, so keep credentials out of it. The
 
 Rolling out a policy runs commands on your servers and may restart them, so it needs permission to run commands on resources, the same as **Authorize server**.
 
-<insert [T3 Code policy editor footer with two existing servers, showing the "Now, restarting T3 Code" and "At their next restart" choices, and the Agents list below with one server showing "Policy installed. T3 Code applies it when it next restarts." and its Restart T3 Code button] here>
+![T3 Code policy editor with two locked settings and its footer for two existing servers, with "At their next restart" chosen beside "Now, restarting T3 Code"](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/policy-rollout-choices.png)
 
 Each T3 Code server in the list shows **Managed by** with the organization of the policy it last received. The policy controls T3 Code only. The agent CLIs it drives read their own configuration, so restrict those with their own managed settings if you need to.
 

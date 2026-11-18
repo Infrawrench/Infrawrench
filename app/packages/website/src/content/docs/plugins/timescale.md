@@ -25,7 +25,7 @@ Use this plugin to manage Tiger Cloud from Tiger Data (the company formerly call
 - **IP allow lists** (preview): create, edit the description and CIDR blocks, delete.
 - **Backups** (preview): the full and incremental backups Tiger Cloud took, with size, duration and which regions hold a copy.
 
-<insert [Tiger Cloud service detail page showing the Compute and storage section and the Pause, Set password, Fork and Attach exporter buttons] here>
+![Tiger Cloud service detail page showing the Compute and storage section and the Pause, Set password, Fork, Attach to VPC and Attach exporter buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/timescale/service-detail.png)
 
 ## Connect your project
 
@@ -36,7 +36,7 @@ Tiger Cloud uses a **client credential**: a public key and a secret key.
 
 A client credential belongs to one project and has full access to it. To manage several projects, add one account per project.
 
-<insert [Tiger Cloud Add-account form with the Public Key and Secret Key fields] here>
+![Tiger Cloud Add-account form with the Public Key and Secret Key fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/timescale/add-account.png)
 
 ## Open the PostgreSQL tab
 

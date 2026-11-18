@@ -17,7 +17,7 @@ Open **Costs** and click **Remediate** on a row in any of these sections:
 
 Every command has its own **Copy** button. **Copy all** copies the whole sequence as a script, with each step's description as a comment.
 
-<insert [Costs page, Potential savings section, with the Remediate panel open under an unattached EBS volume: the snapshot, wait and delete-volume commands with their Copy buttons, the Destructive badge on delete-volume, and the AWS_PROFILE note] here>
+![Costs page, Potential savings section, with the Remediate panel open under an unattached EBS volume: the snapshot, wait and delete-volume commands with their Copy buttons, the Destructive badge on delete-volume, and the AWS_PROFILE note](https://agent-assets.infrawrench.com/docs-screenshots/features/remediation-commands/remediate-ebs-volume.png)
 
 ## What the commands look like
 

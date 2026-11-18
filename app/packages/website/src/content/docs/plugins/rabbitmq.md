@@ -43,15 +43,15 @@ The cluster's resource limits (file descriptors, sockets, Erlang processes and m
 3. If the broker uses OAuth 2 (`rabbitmq_auth_backend_oauth2`), paste an access token under **Advanced options** instead of a username and password.
 4. If the management listener's certificate is signed by a private CA, paste the CA certificate under **Advanced options**.
 
-<insert [RabbitMQ Add-account form with the management URL, username and password filled in] here>
+![RabbitMQ Add-account form with the management URL, username and password filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/rabbitmq/add-account.png)
 
 **Check credentials** shows which of the management, monitoring, policy and administrator capabilities the user has, and names the tag each missing one needs. A list the user's tags don't cover (for example users and permissions, for a non-administrator) doesn't fail the sync. In the cloud app it keeps whatever was already stored for it, so a new account just shows it empty. The desktop app shows the refusal on that list instead.
 
-<insert [RabbitMQ queue detail page with depth and rates, the Consumers and Bindings tables, and the Purge button] here>
+![RabbitMQ queue detail page with depth and rates, the Consumers and Bindings tables, and the Purge button](https://agent-assets.infrawrench.com/docs-screenshots/plugins/rabbitmq/queue-detail.png)
 
-<insert [RabbitMQ queue Describe tab showing peeked messages] here>
+![RabbitMQ queue Describe tab showing peeked messages](https://agent-assets.infrawrench.com/docs-screenshots/plugins/rabbitmq/queue-describe.png)
 
-<insert [RabbitMQ exchange Publish tab with routing key, headers and a message body] here>
+![RabbitMQ exchange Publish tab with routing key, headers and a message body](https://agent-assets.infrawrench.com/docs-screenshots/plugins/rabbitmq/exchange-publish.png)
 
 ## Tips & limits
 

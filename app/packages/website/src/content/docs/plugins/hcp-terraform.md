@@ -38,7 +38,7 @@ Workspaces, projects, variables, variable sets and their variables, agent pools,
 2. In Infrawrench, paste the token. Leave **Hostname** as `app.terraform.io`, change it to `app.eu.terraform.io` for HCP Europe, or enter your Terraform Enterprise hostname.
 3. Pick the **Organization** from the list of organizations the token can see. For Terraform Enterprise with a private certificate authority, paste the CA certificate under **Advanced options**.
 
-<insert [HCP Terraform Add-account form with the API token filled in, the hostname left at app.terraform.io and the Organization picker open] here>
+![HCP Terraform Add-account form with the API token filled in, the hostname left at app.terraform.io and an organization chosen in the Organization picker (a native dropdown, shown closed)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hcp-terraform/add-account.png)
 
 Tokens have no scopes. You can do whatever the token's user or team is allowed to do, and anything that needs more fails with a permission error.
 

@@ -8,7 +8,7 @@ Put the Wallboard on a TV and your team can see at a glance whether anything is 
 
 To use it, open **Wallboard** from the sidebar, go full screen and leave it running.
 
-<insert [The Wallboard on the overview panel, dark background, four large tiles (Open incidents, Probes up, Monitors breaching, Accounts syncing) with numbers in very large type] here>
+![The Wallboard on the overview panel, dark background, four large tiles (Open incidents, Probes up, Monitors breaching, Accounts syncing) with numbers in very large type](https://agent-assets.infrawrench.com/docs-screenshots/features/wallboard/overview.png)
 
 ## What it shows
 

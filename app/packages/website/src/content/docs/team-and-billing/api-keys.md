@@ -100,7 +100,7 @@ Every change made with a key is credited to that key in the [audit log](./audit-
 
 Click the chip, or pick the key from the audit log's key dropdown, to see everything that key did. Over the API, add `?apiKeyId=<id>` to `GET /api/org/<orgId>/audit-logs`. Filtering by user isn't enough here, because a person and all their keys share one user id.
 
-<insert [Audit log filtered to one API key, showing the key name and prefix in the actor column next to the owner's name] here>
+![Audit log filtered to one API key, showing the key name and prefix as a chip in the actor column with the owner's name under it](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/api-keys/audit-log-key-filter.png)
 
 ## Find keys nobody uses
 

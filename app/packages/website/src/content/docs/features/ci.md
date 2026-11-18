@@ -8,7 +8,7 @@ Infrawrench CI runs the pipelines in a repository's `.infrawrench/ci/` folder on
 
 Moving from GitHub Actions? [Migrate from GitHub Actions](./ci-migrate-from-github-actions.md) has an agent skill that converts your workflows.
 
-<insert [The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons] here>
+![The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/ci-tab-overview.png)
 
 ## Turn it on for your repositories
 
@@ -285,7 +285,7 @@ The runs table lists the latest runs, newest first, with their status, where the
 
 Open a run to see its jobs. The sidebar lists every job, with a matrix's entries and a `packages:` job's packages grouped under the job they were written as. **Summary** draws each pipeline as a graph: a box per job, below the jobs it needs, each with its status and how long it took. Drag to move around it, zoom with the buttons (or Ctrl and the scroll wheel), **Fit** to see all of it and **Expand** to fill the window. Click a job, in the graph or the sidebar, to read its output.
 
-<insert [The CI run page: the sidebar of jobs with a package group expanded, and the Summary graph of a running run with passed, running, failed and waiting jobs] here>
+![The CI run page: the sidebar of jobs with a package group expanded, and the Summary graph of a running run with passed, running, failed and waiting jobs](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-summary-graph-running.png)
 
 While a run is going, the page follows it live: jobs change state as they start and finish, and an open job's output appears as it is printed. Runs from before the graph view show their jobs without the lines between them.
 
@@ -306,7 +306,7 @@ A failed or cancelled run also has a **Retry** button in the runs table. The ret
 
 Retrying takes the `ci:approve` permission, the same as approving a fork's pull request. A run waiting for approval is approved rather than retried, and a rejected one cannot be retried. A retry of a fork's pull request still runs without your secrets.
 
-<insert [A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry] here>
+![A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-failed-retry.png)
 
 A retry joins its pipelines' [concurrency groups](#concurrency-groups) like any other run, as the newest run of each.
 
@@ -316,7 +316,7 @@ A run that has not finished (**Queued**, **Waiting** or **Running**) has a **Can
 
 Cancelling takes the `ci:approve` permission, like retrying, and is recorded in the audit log. A run waiting for approval is rejected rather than cancelled.
 
-<insert [A running CI run's page with the Cancel button beside "Open on GitHub", and below the header the line "Concurrency groups: ci-main"] here>
+![A running CI run's page with the Cancel button beside "Open on GitHub", and below the header the line "Concurrency groups: ci-main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-running-cancel.png)
 
 ## Concurrency groups
 
@@ -366,7 +366,7 @@ When a cron is due, that one pipeline runs on the head of your default branch, a
 
 Schedules are read from the default branch each time you push to it, so the push that adds, changes or removes a schedule is what makes it take effect. A repository that already had scheduled pipelines when you turned CI on for it starts with its next push to the default branch. The **Schedules** card on the CI page lists each repository's scheduled pipelines, their crons and when each runs next, and says when a pipeline file could not be read.
 
-<insert [The CI page's Schedules card: one repository on main with a "Nightly" pipeline (0 3 * * *) and its next run time, and a second repository with a red "The last read failed" line] here>
+![The CI page's Schedules card: one repository on main with a "Nightly" pipeline (0 3 * * *) and its next run time, and a second repository with a red "The last read failed" line](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/schedules-card.png)
 
 A scheduled run starts in the minute it is due. If runs could not be started for a few minutes, the ones missed in the last five start as soon as they can; older ones are skipped rather than run late. A scheduled run can use what [CI access](#ci-access) allows on your default branch, joins its pipeline's [concurrency group](#concurrency-groups) like any other run, and is billed like any other: your plan has to include CI. A repository the GitHub App can no longer read stops running its schedules after a day.
 
@@ -402,7 +402,7 @@ An input is a `string` (the default), a `boolean`, a `choice` among its `options
 
 The **Manual runs** card on the CI page lists each repository's pipelines with `on.manual`, as read from its default branch. **Run** opens a form built from the inputs: pick the branch (your default branch unless you change it), fill in the values and **Start run**. The values are checked against the inputs before the run starts (a missing required input, a number that is not one), and again by the runner against the pipeline file on the branch you chose, so a branch that changes the inputs gets its own checked. The run opens as soon as it is queued.
 
-<insert [The CI page's Manual runs card listing "Purge the CDN cache" with its inputs and a Run button, and the Run dialog open over it with the branch field, a urls text box, a zone dropdown on "www" and a dry-run checkbox] here>
+![The Run dialog for "Purge the CDN cache" open over the CI page's Manual runs card, with the branch field, a urls text box, a zone dropdown on "www" and a dry-run checkbox](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/manual-run-dialog.png)
 
 A run started by hand runs that one pipeline on the head of the branch, the way a push to that branch would: with your secrets, only what [CI access](#ci-access) allows on that branch, and that branch's caches. The runs table shows it as **Started by hand** with the pipeline file, its page lists the inputs it was started with and who started it, and GitHub shows it on the commit as **Infrawrench CI / manual**, a check of its own, so it never stands in for a branch protection rule's required check. It joins its pipeline's [concurrency group](#concurrency-groups) like any other run, can be retried and cancelled, and is billed like any other.
 
@@ -430,7 +430,7 @@ jobs:
       when: always
 ```
 
-<insert [The CI run page on Summary, below the graph: the Downloads list with app.tar.gz from the build job and junit.xml from the e2e job, each with its size, "Kept until" date and a Download button] here>
+![The CI run page on Summary, below the graph: the Downloads list with app.tar.gz from the build job and junit.xml from the e2e job, each with its size, "Kept until" date and a Download button](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-downloads.png)
 
 - **What is kept**: the files the job wrote under the paths you list. A directory keeps every file in it, each as its own download; put them in an archive in your script to download them as one.
 - **When**: after the job passes, unless `when:` says `failure` (for a report of what failed) or `always`.
@@ -484,7 +484,7 @@ Under **Secrets and variables**, choose an account and a scope: **Every reposito
 
 Names are letters, digits and `_`, not starting with a digit. Managing them takes `ci:write`.
 
-<insert [The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below] here>
+![The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/secrets-and-variables.png)
 
 ## CI access
 
@@ -492,9 +492,9 @@ Jobs can use what your organization has connected to Infrawrench, once someone t
 
 Everyone who can see runs can see the **CI access** card. It lists each connection that runs jobs or lends its credentials on one line, with what it does and for which repositories and branches; choose a line, or **Manage connections**, to open every connection that can do either, with the chosen one's settings beside the list. On a phone the list comes first, and choosing a connection opens its settings with a way back. Changes to a connection take effect when you **Save**; leaving with changes unsaved asks first. While a change could not be saved (running jobs with no kind chosen, say), **Save** stays off and the reason is shown beside it, as is anything the server refuses. Lending a connection, granting a resource and running cloud jobs on a connection take `ci-access:write`, which admins and owners hold; `ci:write` alone can only remove a grant or revoke a lent key. An SSH key is lent by its owner, with `ssh-keys:write`. None of this can be changed with an API key or by an agent: a person decides what CI jobs may use. Every change, and every time a run is lent something, is recorded in the [audit log](../team-and-billing/audit-log.md), with who allowed it.
 
-<insert [The CI access card: a Google Cloud connection "Infrawrench GCP" on one line with the chips "Runs jobs · Compute Engine instance, Cloud Run job" and "All repositories · main, release/*", a Kubernetes connection "Production cluster" with "Lends credentials" and "acme/web · main", the Manage connections button above them, the wide "Search for resources" field, and one granted resource and one lent SSH key as compact rows] here>
+![The CI access card: a Google Cloud connection "Infrawrench GCP" on one line with the chips "Runs jobs · Compute Engine instance, Cloud Run job" and "All repositories · main, release/*", a Kubernetes connection "Production cluster" with "Lends credentials" and "acme/web · main", the Manage connections button above them, the wide "Search for resources" field, and one granted resource and one lent SSH key as compact rows](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/access-card.png)
 
-<insert [The Manage connections dialog: the connection list on the left with a search field and an on dot beside Infrawrench GCP and Production cluster, and Infrawrench GCP's settings on the right with "Run jobs on it" switched on, Compute Engine instance and Cloud Run job ticked and "Ready", 2 jobs at once and 60 minutes per job, the branches "main, release/*", and Cancel and Save at the bottom] here>
+![The Manage connections dialog: the connection list on the left with a search field and an on dot beside Infrawrench GCP and Production cluster, and Infrawrench GCP's settings on the right with "Run jobs on it" switched on, Compute Engine instance and Cloud Run job ticked and "Ready", 2 jobs at once and 60 minutes per job, the branches "main, release/*", and Cancel and Save at the bottom](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/manage-connections.png)
 
 ### Repositories and branches
 
@@ -593,7 +593,7 @@ A job that does not run as root (some images, every Heroku dyno) gets the same: 
 
 An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. `ssh` reads its configuration from the user's real home directory, which is not the job's, so a job on an SSH host that is lent another SSH connection has its `ssh`, `scp` and `sftp` pointed at the lent configuration: `ssh web-1` works as written. Nothing is installed on the host: a job that is lent an SSH connection needs the host to have `ssh`.
 
-<insert [A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below] here>
+![A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/cloud-job-running.png)
 
 ### Connections
 
@@ -630,7 +630,7 @@ Two databases lent to one job share the plain variable names (`DATABASE_URL`, `P
 
 Vercel, Cloudflare and Neon lend the connection's own token or key, not a short-lived one, and the databases lend the password their connection string holds; each is masked in the job's log like a secret. A job installs the CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
 
-<insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
+![A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/deploy-job-lent.png)
 
 #### A cluster or database in a cloud account
 
@@ -665,13 +665,13 @@ A grant holds for the resource it was made for: if the resource is deleted and o
 
 Ticking a job kind checks, through the cluster, that it can run there, and refuses the grant with what is missing when it cannot. Jobs run where the kind was checked (a cluster's own namespace) unless the grant lists other places in **Other places jobs may run**; each one is checked when it is added, and a job that names anywhere else in `cloud.region` is refused.
 
-<insert [The grant form for the GKE cluster "prod-cluster": no outputs ticked, Use it in CI as a connection set to "As a Kubernetes connection", the Credential, Reach and Lifetime lines, Lend it to jobs unticked, Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, Other places jobs may run empty, and the branch pattern "main"] here>
+![The grant form for the GKE cluster "prod-cluster": no outputs ticked, Use it in CI as a connection set to "As a Kubernetes connection", the Credential, Reach and Lifetime lines, Lend it to jobs unticked, Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, Other places jobs may run empty, and the branch pattern "main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/grant-gke-cluster.png)
 
 ### SSH keys
 
 `ssh-keys: [deploy]` writes one of your SSH keys to `/root/.ssh/id_deploy`, used for every host. Only a key's owner can lend it: under **Settings**, **SSH keys**, choose **Use in CI jobs** on your key, give it its name in pipelines, and say which repositories and branches may use it. Only keys Infrawrench generated can be lent, since an imported key's private half is not stored. Admins can revoke a lent key from the CI access card.
 
-<insert [The SSH keys settings page with "Use in CI jobs" on the caller's own generated key, and the dialog open with its name in pipelines "deploy" and branches "main"] here>
+![The SSH keys settings page with the "Use in CI jobs" dialog open for the caller's own generated key "deploy", with its name in pipelines "deploy" and branches "main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/ssh-key-use-in-ci.png)
 
 ### Resources
 
@@ -688,7 +688,7 @@ jobs:
 
 `${{ resources.<name>.<output> }}` works where `${{ secrets.NAME }}` does, in `env:` values. Values are read fresh for every run, so a rotated secret takes effect on the next one, and they are masked in every log and output.
 
-<insert [The grant form under Resources jobs may read, opened from the "Search for resources" results: the database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive adminPassword unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel] here>
+![The grant form under Resources jobs may read, opened from the "Search for resources" results: the DigitalOcean database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive password unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/grant-database.png)
 
 ### When a job is refused
 
@@ -702,7 +702,7 @@ To start a repository from nothing, for example after a cache that keeps restori
 
 Everyone who can see runs can see the card; clearing a cache takes `ci:write` and is recorded in the [audit log](../team-and-billing/audit-log.md).
 
-<insert [The Caches card listing two repositories of the acme account with their entries and sizes, and the "Clear the cache of acme/web?" dialog open over it saying how many entries and how much space it deletes] here>
+![The "Clear the cache of acme/web?" dialog open over the CI page's Caches card, saying it deletes 214 cache entries (6.00 GiB)](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/caches-clear-dialog.png)
 
 ### Runs shared between runners
 

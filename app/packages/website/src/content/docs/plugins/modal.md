@@ -29,7 +29,7 @@ You need both halves of a Modal API token:
 
 Create a token under **Settings > API Tokens** in the Modal dashboard, or run `modal token new` and copy `token_id` and `token_secret` from `~/.modal.toml`. A token belongs to one workspace and sees every environment in it.
 
-<insert [Modal Add-account form with the Token ID and Token secret fields filled] here>
+![Modal Add-account form with the Token ID and Token Secret fields filled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/modal/add-account.png)
 
 ## Read your costs
 
@@ -41,9 +41,9 @@ Modal spend shows in [cost graphs and budgets](../features/cloud-costs.md), usin
 
 **Modal only offers billing data on the Team and Enterprise plans.** On the Starter plan you still see everything above, and a notice tells you spend is only visible in the Modal dashboard.
 
-<insert [Cost graph grouped by service for a Modal account, showing H100 GPU, CPU and Memory stacked by day] here>
+![Cost report grouped by service for a Modal account, showing GPU (H100), CPU and Memory stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/modal/cost-by-service.png)
 
-<insert [Modal workspace page showing metered and billed cost this cycle, the adjustments table and the rate card] here>
+![Modal workspace page showing metered and billed cost this cycle, the adjustments table and the rate card](https://agent-assets.infrawrench.com/docs-screenshots/plugins/modal/workspace-detail.png)
 
 ## Watch caps and spend limits
 

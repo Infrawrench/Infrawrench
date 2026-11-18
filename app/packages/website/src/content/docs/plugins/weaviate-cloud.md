@@ -31,7 +31,7 @@ You can use either without the other. A sign-in alone lists your clusters and le
 
 Fill in a sign-in, an endpoint, or both.
 
-<insert [Weaviate Cloud Add-account form showing the Weaviate Cloud Sign-in, REST Endpoint, API Key and More Clusters fields] here>
+![Weaviate Cloud Add-account form showing the Weaviate Cloud Sign-in, REST Endpoint, API Key and More Clusters fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/weaviate-cloud/add-account.png)
 
 ## Clusters
 
@@ -43,7 +43,7 @@ The account opens on its clusters, side by side with their status:
 
 The **REST URL**, **gRPC host** and API key are outputs. The **Weaviate environment variables** export writes `WEAVIATE_URL` and `WEAVIATE_API_KEY` into a Kubernetes secret or a server's environment.
 
-<insert [Weaviate Cloud account page listing several clusters with their tier, region, lifecycle and node health, one of them marked Not connected] here>
+![Weaviate Cloud account page listing several clusters with their region, node health, node count and objects, one of them marked Not connected](https://agent-assets.infrawrench.com/docs-screenshots/plugins/weaviate-cloud/account-clusters.png)
 
 ### Connect a listed cluster
 
@@ -63,7 +63,7 @@ Weaviate Cloud shows a new cluster's first API key exactly once. If nobody has s
 - **Create a new Weaviate Cloud cluster** (needs a sign-in): pick a region your organization offers and the tier. Leave the name empty and Weaviate Cloud picks one. Only free sandbox clusters can be created this way (one collection, 100,000 objects, no backups or replication, one per user across all of their organizations). The new cluster appears once it's ready, usually a few minutes later, and connects itself with its one-time key.
 - **Connect an existing cluster by endpoint**: paste a REST endpoint and API key. This works for any Weaviate, including self-hosted. Clusters your organization lists keep their key alongside them. Anything else is added to **More Clusters**.
 
-<insert [New Weaviate cluster form with the region picker and the free tier selected] here>
+![New Weaviate cluster form with the region picker and the free tier selected](https://agent-assets.infrawrench.com/docs-screenshots/plugins/weaviate-cloud/create-cluster.png)
 
 ## Inside a cluster
 
@@ -80,7 +80,7 @@ Each of these lists objects from every connected cluster and names the cluster t
 
 Weaviate keeps no history Infrawrench can read, so Infrawrench records current values from each cluster and builds the charts from those: objects, shards, healthy nodes and the vector indexing queue per cluster, and objects, shards and queue per collection.
 
-<insert [Weaviate collection detail page showing properties, shards and the Metrics tab] here>
+![Weaviate collection detail page showing properties and shards, with the Metrics tab next to Overview](https://agent-assets.infrawrench.com/docs-screenshots/plugins/weaviate-cloud/collection-detail.png)
 
 ## Limits and quirks
 

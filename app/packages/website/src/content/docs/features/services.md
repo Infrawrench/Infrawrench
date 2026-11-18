@@ -14,7 +14,7 @@ A **scorecard** then grades every service against the bar you set: does it have 
 on-call rotation, an SLO within budget, tested backups? Above the scorecards sits one
 [org grade](#org-grade) for your whole organisation, with a 90-day trend.
 
-<insert [The Services tab listing several services: name, Tier 1 / Tier 2 badges, owning team, member count and a Gold / Silver / Bronze level badge per scorecard] here>
+![The Services tab listing several services: name, Tier 1 / Tier 2 / Tier 3 labels, owning team and owners, member count, and a Gold / Silver / Bronze level badge per scorecard](https://agent-assets.infrawrench.com/docs-screenshots/features/services/services-list.png)
 
 ## Where to find it
 
@@ -58,11 +58,11 @@ If you remove a resource that a rule matched, it's **excluded** rather than dele
 doesn't add it straight back. Excluded resources are listed at the bottom of the members table
 with a **Restore** button.
 
-<insert [The service editor: name and tier filled in, the owners picker with two members chosen, the on-call schedule, SLO and runbook pickers, and the membership rules section with a tag rule "service = checkout" and a name rule "starts with checkout-" narrowed to the AWS provider] here>
+![The service editor: name and tier filled in, the owners picker with two members chosen, the on-call schedule, SLO and runbook pickers, and the membership rules section with a tag rule "service = checkout" and a name rule "starts with checkout-" narrowed to the AWS provider](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor.png)
 
 ## What the service page shows
 
-<insert [One service's page: the header with tier, owners and links; summary cards for 30-day cost by currency, SLO standing, who is on call now and next, and open findings; the members table with resource, provider, account, how it joined (rule or picked) and owner; and the scorecard section with a score, a Silver badge and the failing checks] here>
+![One service's page: the header with tier, owners and links; summary cards for 30-day cost by currency, SLO standing, who is on call now and next, and open findings; the members table with resource, provider, account, how it joined (rule or picked) and owner; and the scorecard section with a score, a Silver badge and the failing checks](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-page.png)
 
 - **Cost**: the last 30 days of spend on the service's resources, per currency and per provider.
   Only resources with per-resource cost rows can be priced, and the page says how many were. If
@@ -98,7 +98,7 @@ New organisations start with a **Production readiness** scorecard that uses ever
 and three levels: **Bronze** at 50%, **Silver** at 75% and **Gold** at 90%. You can edit it, add
 your own scorecards, or delete it. A deleted default doesn't come back.
 
-<insert [The Scorecards view: a matrix with services down the side and two scorecards across the top, each cell showing a score percentage on the level's colour, filters for scorecard, tier, level and team above it] here>
+![The Scorecards view: a matrix with services down the side and two scorecards across the top, each cell showing a score percentage on a badge in the level's colour, with filters for scorecard, tier, level, owning team and failing check above it](https://agent-assets.infrawrench.com/docs-screenshots/features/services/scorecards-matrix.png)
 
 ### Built-in checks
 
@@ -126,7 +126,7 @@ raise a service's level. A service where no check applies is **not scored**, nev
 
 ### Edit a scorecard
 
-<insert [The scorecard editor: name, the "Applies to" tier selector with Tier 1 and Tier 2 chosen, the checks list with weights and a parameter field (Restore drill within 90 days), and the levels list with Bronze, Silver and Gold, their minimum scores and colours] here>
+![The scorecard editor: name, the "Applies to" tier selector with Tier 1 and Tier 2 chosen, the checks list with weights and a parameter field (Restore drill within 90 days), and the levels list with Bronze, Silver and Gold, their minimum scores and colours](https://agent-assets.infrawrench.com/docs-screenshots/features/services/scorecard-editor.png)
 
 - **Checks**: add any check type, set its weight from 1 to 10, rename it, and set its parameters.
 - **Levels**: up to six, each with a name, a minimum score from 0 to 100 and a colour.
@@ -148,7 +148,7 @@ and a score out of 100, a 90-day trend line, the pillar pulling the grade down t
 card per pillar. Each card says what it measured, what would move it, and links to the page it
 comes from.
 
-<insert [The top of the Scorecards view: the org grade header showing a B and 84, a 90-day trend sparkline, the "Biggest drag" callout naming Recoverability, and the grid of seven pillar cards (one marked "Not assessed"), with the service scorecard matrix starting below] here>
+![The top of the Scorecards view: the org grade header showing a B and 84, a 90-day trend sparkline, the "Biggest drag" callout naming Recoverability, and the grid of seven pillar cards (one marked "Not assessed"), with the service scorecard matrix starting below](https://agent-assets.infrawrench.com/docs-screenshots/features/services/org-grade.png)
 
 ### The seven pillars
 

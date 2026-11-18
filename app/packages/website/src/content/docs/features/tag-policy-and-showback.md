@@ -46,7 +46,7 @@ x-tag-policy-override: true
 
 Every block and every override is recorded in the [audit log](../team-and-billing/audit-log.md) as `tag_policy.block` or `tag_policy.override`.
 
-<insert [Resource create modal showing the amber "Org policy requires tags: owner, env (prod | staging | dev)" notice above the form fields, with the tags field pre-filled with "owner=, env="] here>
+![Resource create modal showing the amber "Org policy requires tags: owner, env (prod | staging | dev)" notice above the form fields, with the tags field pre-filled with "owner=, env="](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/create-modal-required-tags.png)
 
 ## Find untagged spend
 

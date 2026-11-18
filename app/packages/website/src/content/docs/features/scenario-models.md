@@ -17,7 +17,7 @@ The two answer different questions and are never merged into one number:
 
 When you apply a scenario, the chart draws **both** lines. The trend stays where it was, and the adjusted line sits beside it under the model's name. Every place that shows a scenario says which model is applied and what it added.
 
-<insert [A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title] here>
+![A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/cost-graph-scenario.png)
 
 ## What goes in a model
 

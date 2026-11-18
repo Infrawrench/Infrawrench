@@ -22,7 +22,7 @@ Connect a Checkly account to manage your synthetic checks and uptime monitors ne
 - **Status pages**: rename them, change their description, or delete them.
 - **Environment variables**: create them (optionally as secrets), and change values and locking. Secret values are never shown.
 
-<insert [Checkly check detail page showing the Run now, Deactivate and Mute buttons, the Last 7 days availability section and the Metrics tab with response time per location] here>
+![Checkly check detail page showing the Run now, Deactivate and Mute buttons and the Metrics tab with response time per location](https://agent-assets.infrawrench.com/docs-screenshots/plugins/checkly/check-metrics.png)
 
 ## Connect your account
 
@@ -33,7 +33,7 @@ Connect a Checkly account to manage your synthetic checks and uptime monitors ne
 2. Paste the key into Infrawrench.
 3. Pick the **Account** from the list of accounts the key belongs to.
 
-<insert [Checkly Add-account form with the API Key filled in and the Account picker open showing the accounts the key can access] here>
+![Checkly Add-account form with the API Key filled in and an account chosen in the Account picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/checkly/add-account.png)
 
 ## Metrics
 

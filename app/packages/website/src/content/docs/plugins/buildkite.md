@@ -29,7 +29,7 @@ Pipelines, clusters, queues, schedules, pipeline templates and cluster secrets c
 1. In Buildkite, open **Personal Settings**, then **API Access Tokens**, and create a token. The link under the token field in Infrawrench opens the form with every scope you need already ticked. Give the token access to the organization you are connecting.
 2. In Infrawrench, paste the token. The **Organization** picker lists every organization the token can access. Pick one.
 
-<insert [Buildkite Add-account form with the API access token filled in and the Organization picker open on the list of organizations] here>
+![Buildkite Add-account form with the API access token filled in and an organization chosen in the Organization picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/buildkite/add-account.png)
 
 The scopes each feature needs:
 

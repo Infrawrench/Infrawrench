@@ -24,7 +24,7 @@ If the endpoint is MinIO and the key can read server info (the root user can, or
 - Buckets show their size and object count.
 - A **Metrics** tab charts used and free capacity, objects, servers online and offline drives on the endpoint, drive usage per server, and size and objects per bucket.
 
-<insert [S3-compatible endpoint detail page for a MinIO cluster showing the MinIO cluster section with servers and drives online] here>
+![S3-compatible endpoint detail page for a MinIO cluster showing the MinIO cluster section with servers and drives online](https://agent-assets.infrawrench.com/docs-screenshots/plugins/s3-compatible/endpoint-minio.png)
 
 ## Connect your storage
 
@@ -35,7 +35,7 @@ If the endpoint is MinIO and the key can read server info (the root user can, or
 
 The endpoint must be reachable from wherever Infrawrench runs. For a server on a private network, use the desktop app on a machine that can reach it. A [bastion](../features/bastion-vms.md) can carry this account's calls to an endpoint on a public address, but not to a private one. With virtual-hosted addressing, the bastion also reaches each bucket's hostname (`my-bucket.s3.example.com`), as long as it's public too. That only works when the endpoint is a hostname with at least three parts, like `s3.example.com`. With an IP address or a two-part name like `example.com`, use path-style addressing. Bastion agents older than 0.3.0 refuse bucket hostnames, so pull the latest image if you use virtual-hosted addressing.
 
-<insert [S3-compatible Add-account form with Endpoint URL, Region, Access Key and Secret Key filled in and Advanced options expanded showing Addressing and CA Certificate] here>
+![S3-compatible Add-account form with Endpoint URL, Region, Access Key and Secret Key filled in and Advanced options expanded showing Addressing and CA Certificate](https://agent-assets.infrawrench.com/docs-screenshots/plugins/s3-compatible/add-account.png)
 
 ## Limits
 

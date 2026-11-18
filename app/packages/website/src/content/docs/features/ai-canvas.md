@@ -18,9 +18,9 @@ A canvas saves the **queries**, not the numbers. Opening it, clicking **Refresh*
 
 The canvas opens with the assistant's conversation beside it. The assistant looks up what it needs (provider and service names, tag values, your business metrics, budgets and saved reports), then writes the canvas. You can follow each step in the conversation, and the canvas fills in when it's done.
 
-<insert [Canvases page: the prompt box with "Monthly AI spend by team for the last 6 months, with cost per active user" typed in, and two existing canvases listed below] here>
+![Canvases page: the prompt box with "Monthly AI spend by team for the last 6 months, with cost per active user" typed in, and two existing canvases listed below](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-canvas/canvases-page.png)
 
-<insert [A freshly built canvas: KPI tiles for this month's AI spend and cost per active user, a monthly table of AI spend by team, a short narrative paragraph, and the assistant's conversation open on the right] here>
+![A freshly built canvas: KPI tiles for this month's AI spend and cost per active user, a monthly table of AI spend by team, a short narrative paragraph, and the assistant's conversation open on the right](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-canvas/built-canvas.png)
 
 ## What a canvas can show
 
@@ -45,7 +45,7 @@ Click **Edit with AI** and ask for the change: "split the table by region", "add
 - The canvas page shows a banner with the same list and a **Preview proposed** toggle. It shows the proposed canvas with changed blocks outlined, so you can check the result first.
 - Click **Approve** in the conversation to apply the edit, or **Reject** to leave the canvas as it was.
 
-<insert [A canvas with the "The assistant proposed changes to this canvas" banner showing "+ Add table "Spend by region"" and the approval card in the conversation alongside] here>
+![A canvas with the "The assistant proposed changes to this canvas" banner showing "+ Add table "Spend by region"" and the approval card in the conversation alongside](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-canvas/proposed-changes.png)
 
 Some edits don't need the assistant. Hover over a block to move it up or down or remove it, and click **Edit** on a chart to open the regular cost graph editor. **Rename** and **Delete** are in the header.
 
