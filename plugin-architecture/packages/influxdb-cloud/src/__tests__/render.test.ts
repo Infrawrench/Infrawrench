@@ -26,6 +26,7 @@ describe("renderInfluxDetail", () => {
       connectionStringOutputKey: "bucketId",
       defaultQuery: "SHOW MEASUREMENTS",
       tables: [],
+      queryLanguage: "InfluxQL",
     });
   });
 

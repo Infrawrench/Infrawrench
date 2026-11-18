@@ -20,7 +20,7 @@ export const EnvironmentResourceType = rt({
   name: "Environment",
   id: "environment",
   description:
-    "The Dynatrace environment the access token belongs to: its version, how many hosts, services and open problems it has, and this month's platform subscription cost. Run DQL against Grail from the Query tab when a platform token is set.",
+    "The Dynatrace environment the access token belongs to: its version, how many hosts, services and open problems it has, and this month's platform subscription cost. Run DQL against Grail from the DQL Editor tab when a platform token is set.",
   fields: [
     f("environmentId", "Environment ID", { editable: false }),
     f("url", "URL", { required: false, editable: false }),

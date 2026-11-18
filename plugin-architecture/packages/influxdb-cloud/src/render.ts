@@ -34,7 +34,7 @@ export function statusOf(raw: string): ResourceStatus {
   return "info";
 }
 
-/** Measurements the host introspected (`introspectResource`), for the query tab's completion. */
+/** Measurements the host introspected (`introspectResource`), for the InfluxQL Editor tab's completion. */
 function introspectedTables(resource: ResourceInstance): SqlTableMeta[] {
   const raw = resource.resolvedOutputs?.["__tables__"];
   if (typeof raw !== "string" || raw === "") return [];
@@ -207,7 +207,7 @@ export function renderInfluxDetail(resource: ResourceInstance): DetailViewSchema
               kind: "text",
               variant: "muted",
               content:
-                "Queries in the editor tab run as InfluxQL against this bucket (SELECT … FROM measurement), or as Flux when the text contains a pipe (from(bucket: …) |> range(…)).",
+                "Queries in the InfluxQL Editor tab run as InfluxQL against this bucket (SELECT … FROM measurement), or as Flux when the text contains a pipe (from(bucket: …) |> range(…)).",
             },
           ]),
         ],
@@ -216,6 +216,7 @@ export function renderInfluxDetail(resource: ResourceInstance): DetailViewSchema
           connectionStringOutputKey: "bucketId",
           defaultQuery: "SHOW MEASUREMENTS",
           tables: introspectedTables(resource),
+          queryLanguage: "InfluxQL",
         },
       };
     }

@@ -15,7 +15,7 @@ export const TenantResourceType = rt({
   name: "Tenant",
   id: "tenant",
   description:
-    "The Chronosphere tenant the token belongs to, with counts of what it holds. The Query tab runs PromQL against it.",
+    "The Chronosphere tenant the token belongs to, with counts of what it holds. The PromQL Editor tab runs PromQL against it.",
   fields: [
     f("org", "Organization", { editable: false }),
     f("url", "URL", { required: false, editable: false }),
