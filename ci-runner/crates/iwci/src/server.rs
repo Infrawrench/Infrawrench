@@ -1513,6 +1513,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    // Native tools have Linux targets only.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn warming_leaves_a_native_tool_as_it_is() {
+        // builtin:bun is a native program gVisor runs, not a module: the
+        // warmer read it as WebAssembly and reported a problem every pass.
+        let (server, dir) = server("warm-native", 0);
+        let program = dir.join("bun");
+        std::fs::write(&program, b"\x7fELF not a wasm module").unwrap();
+        let draft = iwci_store::ToolDraft {
+            name: "bun".into(),
+            version: "1.4.4".parse().unwrap(),
+            abi: iwci_store::Abi::NativeGvisor,
+            module: None,
+            files: Vec::new(),
+            args: Vec::new(),
+            env: Default::default(),
+            description: None,
+            targets: [(
+                iwci_store::host_target(),
+                iwci_store::TargetSource {
+                    program,
+                    files: Vec::new(),
+                },
+            )]
+            .into(),
+            aliases: vec!["bunx".into()],
+        };
+        iwci_store::publish_tool(
+            server.runner.store.as_ref(),
+            &iwci_store::Namespace::Builtin,
+            &draft,
+        )
+        .unwrap();
+        let out = server.runner.warm_published();
+        assert_eq!(out.problems, Vec::<String>::new());
+        assert_eq!(out.warmed, vec!["builtin:bun@1.4.4".to_string()]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn a_runner_that_helps_no_run_takes_no_offer() {
         let (server, dir) = server("no-help", 0);

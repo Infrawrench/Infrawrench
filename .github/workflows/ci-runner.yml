@@ -204,7 +204,7 @@ jobs:
           bash builtins/npm-cli/build.sh
 
   builtins:
-    name: Builtins (gofmt, bash, tools)
+    name: Builtins (gofmt, bash, tools, bun)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     defaults:
@@ -267,6 +267,22 @@ jobs:
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh gofmt bash tools
 
+      # builtin:bun is the official release run natively in a gVisor
+      # sandbox (`abi: native-gvisor`), so its test needs gVisor, pinned as
+      # the runner hosts pin it, and root in a scope with a cgroup subtree
+      # of its own, as the runner's unit delegates one on the hosts (see
+      # the sandbox job above). The build only downloads and checks pinned
+      # files.
+      - name: gVisor, pinned
+        run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"
+
+      - name: Build Bun and run it in gVisor through iwci
+        run: |
+          bash builtins/bun/build.sh
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env PATH="$PATH" SKIP_BUILD=1 IWCI_NATIVE_SANDBOX="$IWCI_TEST_GVISOR" \
+            bash builtins/test.sh bash bun
+
       # Main only: what passed above becomes what runners resolve.
       - name: Publish to the runner pool
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -276,4 +292,4 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         # bash-node is published by ci-runner-builtins.yml, whose job runs it under V8.
-        run: bash builtins/publish.sh dist/builtin/gofmt/* dist/environment/bash/*
+        run: bash builtins/publish.sh dist/builtin/gofmt/* dist/environment/bash/* dist/builtin/bun/*

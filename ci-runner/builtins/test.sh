@@ -19,6 +19,7 @@
 #   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
 #   builtins/test.sh npm-cli         the deployment CLIs against fake APIs
 #   builtins/test.sh bash gh         gh and git push against a fake GitHub
+#   builtins/test.sh bash bun        native Bun in a gVisor sandbox (root)
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
 # bash earlier in the same list. `postgres` runs PostgreSQL as a service
@@ -46,6 +47,14 @@
 # token lent the way the app lends one (`github-token:`, `IWCI_LENT_FILE`),
 # so it needs bash in the same list and the internet to build (Go's
 # archive, gh's source and modules).
+#
+# `bun` runs the official Bun (`builtin:bun`, `abi: native-gvisor`) from
+# bash scripts, so it needs bash in the same list, and a runner that runs
+# native tools: IWCI_NATIVE_SANDBOX set to gVisor's release (as
+# crates/iwci-sandbox/tests/fixtures.sh leaves it), run as root (the
+# sandbox starts in new user namespaces, which Ubuntu keeps from other
+# users) in a scope with a delegated cgroup subtree, as the runner hosts'
+# unit gives it: `sudo systemd-run --scope -p Delegate=yes env ...`.
 #
 # `aws`, `az` and `gcloud` run each cloud CLI's environment against a fake
 # of the calls they make (`environments/cloud-clis/fake-cloud.py`), a
@@ -139,6 +148,14 @@ for name in "$@"; do
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/gh/build.sh" 2.104
       dirs=("$dist"/builtin/gh/*)
       ;;
+    bun)
+      if [[ -z "${IWCI_NATIVE_SANDBOX:-}" ]]; then
+        echo "error: bun needs IWCI_NATIVE_SANDBOX (gVisor's release) and root; see the top of this script" >&2
+        exit 2
+      fi
+      [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/bun/build.sh"
+      dirs=("$dist"/builtin/bun/*)
+      ;;
     openssh)
       [[ "${SKIP_BUILD:-}" == 1 ]] || bash "$here/openssh/build.sh"
       dirs=()
@@ -201,7 +218,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh, bun" >&2
       exit 2
       ;;
   esac
@@ -1665,6 +1682,38 @@ jobs:
     using: builtin:neon@9
     services: false
     args: [--version]
+YAML
+      ;;
+    bun)
+      # The official Bun, natively in a gVisor sandbox beside bash's
+      # environment: Bun runs, its alias is there, `bun test` reports a
+      # failing test as a failed job, and the environment's commands run
+      # from Bun by name (stand-ins that start them as WASIX processes).
+      cat <<'YAML'
+name: bun
+jobs:
+  bun-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4]
+    timeout: 5m
+    run: |
+      test "$(bun --version)" = 1.4.4
+      command -v bunx
+      test "$(bun -e 'console.log(Bun.version, process.platform)')" = "1.4.4 linux"
+      test "$(bun -e 'console.log(Bun.spawnSync(["bash", "-c", "echo from-bash"]).stdout.toString().trim())')" = from-bash
+      mkdir -p /tmp/bun && cd /tmp/bun
+      printf '%s\n' '{ "name": "probe", "private": true, "scripts": { "hello": "echo hello-from-script" } }' > package.json
+      test "$(bun run --silent hello)" = hello-from-script
+      printf '%s\n' 'import { expect, test } from "bun:test";' 'test("adds", () => { expect(1 + 1).toBe(2); });' > add.test.ts
+      bun test
+  bun-test-fails:
+    using: env:bash@5
+    tools: [builtin:bun@1.4]
+    timeout: 5m
+    run: |
+      mkdir -p /tmp/bun && cd /tmp/bun
+      printf '%s\n' 'import { expect, test } from "bun:test";' 'test("adds", () => { expect(1 + 1).toBe(3); });' > add.test.ts
+      bun test
 YAML
       ;;
     tools)
@@ -5459,6 +5508,7 @@ want_reason() {
     clickhouse/rejected-fails) echo "exited with 1" ;;
     clickhouse/not-ready-fails) echo "service \`clickhouse\` was not ready after 20s: nothing listened on port 8123" ;;
     bash/signal-fails) echo "exited with 127" ;;
+    bun/bun-test-fails) echo "exited with 1" ;;
     bash-node/hang-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/idle-timer-fails) echo "stalled: no output and no CPU use for 15s" ;;
     bash-node/heap-objects-fails | bash-node/workers-refused-fails) echo "ran out of its 512 MiB of memory" ;;
