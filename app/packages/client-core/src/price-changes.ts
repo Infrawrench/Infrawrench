@@ -324,13 +324,14 @@ export function priceChangeSentence(
   >,
 ): string {
   const verb = change.upcoming ? "goes" : "went";
-  const units = `${change.approximate ? "at least " : ""}${change.units} ${
-    change.units === 1 ? "instance" : "instances"
-  }`;
+  const noun = change.units === 1 ? "instance" : "instances";
+  const whose = change.approximate
+    ? `for at least ${change.units} ${noun} you run`
+    : `for your ${change.units} ${noun}`;
   return (
     `${priceChangeSubject(change)} ${verb} from ${formatPriceChangeHourly(change.oldHourlyUsd)} ` +
     `to ${formatPriceChangeHourly(change.newHourlyUsd)} on ${priceChangeDay(change.effectiveAt)}, ` +
-    `${formatPriceChangeUsd(change.monthlyImpactUsd, { signed: true })}/mo for your ${units}`
+    `${formatPriceChangeUsd(change.monthlyImpactUsd, { signed: true })}/mo ${whose}`
   );
 }
 

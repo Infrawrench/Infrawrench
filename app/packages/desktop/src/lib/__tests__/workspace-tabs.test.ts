@@ -88,9 +88,13 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.to).toBe("/quotas");
   });
 
-  it("returns price catalog route args", () => {
+  it("returns price catalog route args, clearing the view for Search", () => {
     const args = getWorkspaceNavigateArgs(priceCatalogTabTarget());
     expect(args.to).toBe("/price-catalog");
+    expect(args.search).toEqual({});
+    const changes = getWorkspaceNavigateArgs(priceCatalogTabTarget("changes"));
+    expect(changes.to).toBe("/price-catalog");
+    expect(changes.search).toEqual({ view: "changes" });
   });
 
   it("returns incidents route args, clearing the param for the list view", () => {
@@ -518,8 +522,12 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/quotas")).toEqual({ kind: "quotas" });
   });
 
-  it("parses the price catalog path", () => {
+  it("parses the price catalog path, with or without the changes view", () => {
     expect(syncWorkspaceRouteFromPath("/price-catalog")).toEqual({ kind: "price-catalog" });
+    expect(syncWorkspaceRouteFromPath("/price-catalog", undefined, "?view=changes")).toEqual({
+      kind: "price-catalog",
+      view: "changes",
+    });
   });
 
   it("parses the incidents path, with and without a selected incident", () => {

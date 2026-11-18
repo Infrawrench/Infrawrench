@@ -144,20 +144,18 @@ export async function listPriceChanges(
   const now = opts.now ?? new Date();
   const days = opts.days ?? PRICE_CHANGE_LIMITS.listDays.default;
   const since = new Date(now.getTime() - days * 86_400_000);
-  const [settings, rows] = await Promise.all([
-    getPriceChangeSettings(organizationId),
-    db
-      .select()
-      .from(priceChangeEvents)
-      .where(
-        and(
-          eq(priceChangeEvents.organizationId, organizationId),
-          gte(priceChangeEvents.effectiveAt, since),
-        ),
-      )
-      .orderBy(desc(priceChangeEvents.effectiveAt))
-      .limit(MAX_ORG_CHANGES),
-  ]);
+  const settings = await getPriceChangeSettings(organizationId);
+  const rows = await db
+    .select()
+    .from(priceChangeEvents)
+    .where(
+      and(
+        eq(priceChangeEvents.organizationId, organizationId),
+        gte(priceChangeEvents.effectiveAt, since),
+      ),
+    )
+    .orderBy(desc(priceChangeEvents.effectiveAt))
+    .limit(MAX_ORG_CHANGES);
   return {
     changes: await namePriceChanges(organizationId, rows, now, settings),
     available: priceWarehouse() !== null,

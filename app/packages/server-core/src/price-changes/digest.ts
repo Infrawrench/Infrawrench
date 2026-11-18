@@ -23,26 +23,25 @@ export async function digestPriceChanges(
   try {
     const from = new Date(`${window.weekStart}T00:00:00Z`);
     const to = new Date(Date.parse(`${window.weekEnd}T00:00:00Z`) + 86_400_000);
-    const [settings, rows] = await Promise.all([
-      getPriceChangeSettings(organizationId),
-      db
-        .select()
-        .from(priceChangeEvents)
-        .where(
-          and(
-            eq(priceChangeEvents.organizationId, organizationId),
-            or(
-              and(gte(priceChangeEvents.effectiveAt, from), lt(priceChangeEvents.effectiveAt, to)),
-              and(
-                gte(priceChangeEvents.effectiveAt, to),
-                gte(priceChangeEvents.detectedAt, from),
-                lt(priceChangeEvents.detectedAt, to),
-              ),
+    const settings = await getPriceChangeSettings(organizationId);
+    if (!settings.enabled) return null;
+    const rows = await db
+      .select()
+      .from(priceChangeEvents)
+      .where(
+        and(
+          eq(priceChangeEvents.organizationId, organizationId),
+          or(
+            and(gte(priceChangeEvents.effectiveAt, from), lt(priceChangeEvents.effectiveAt, to)),
+            and(
+              gte(priceChangeEvents.effectiveAt, to),
+              gte(priceChangeEvents.detectedAt, from),
+              lt(priceChangeEvents.detectedAt, to),
             ),
           ),
         ),
-    ]);
-    if (!settings.enabled || rows.length === 0) return null;
+      );
+    if (rows.length === 0) return null;
     const changes = (await namePriceChanges(organizationId, rows, now, settings)).filter(
       (c) => !c.belowThreshold,
     );

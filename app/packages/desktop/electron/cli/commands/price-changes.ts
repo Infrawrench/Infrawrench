@@ -90,6 +90,8 @@ const cloudOnly = Effect.gen(function* () {
 
 const all = Flag.Boolean("all").pipe(
   Flag.withDescription("Include changes under the organization's alert thresholds"),
+  Flag.withDefault(false),
+  Flag.withoutNegation,
 );
 
 const catalog = Command.make(
