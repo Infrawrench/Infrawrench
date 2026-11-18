@@ -11,6 +11,8 @@ use iwci_spec::VmOs;
 #[derive(Default)]
 struct Seen {
     env: HashMap<String, Vec<(String, String)>>,
+    /// The job's `cpus:` as the machine was given it.
+    cpus: HashMap<String, Option<u32>>,
     collect: HashMap<String, crate::machines::Collecting>,
     /// The files under `/app/out` and in the scratch when it started.
     started_with: HashMap<String, Vec<String>>,
@@ -55,6 +57,7 @@ impl Machines for FakeMachines {
         {
             let mut seen = self.seen.lock().unwrap();
             seen.env.insert(run.job.id.clone(), run.env.clone());
+            seen.cpus.insert(run.job.id.clone(), run.job.cpus);
             seen.collect.insert(run.job.id.clone(), run.collect.clone());
             let mut start = files(run.fs, "/app/out");
             start.extend(
@@ -127,6 +130,14 @@ impl Machines for FakeMachines {
 }
 
 fn run_machines(plan: &Plan, machines: Option<Arc<dyn Machines>>) -> (RunReport, FakeExecutor) {
+    run_machines_with(plan, machines, None)
+}
+
+fn run_machines_with(
+    plan: &Plan,
+    machines: Option<Arc<dyn Machines>>,
+    slots: Option<Arc<Slots>>,
+) -> (RunReport, FakeExecutor) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -147,7 +158,7 @@ fn run_machines(plan: &Plan, machines: Option<Arc<dyn Machines>>) -> (RunReport,
         memory: None,
         caches: None,
         logs: None,
-        slots: None,
+        slots,
         secrets: BTreeMap::from([("TOKEN".into(), "s3cr3t-value".into())]),
         skip_task_cache: false,
         durations: None,
@@ -360,6 +371,37 @@ jobs:
         Status::Error { message } if message.contains("no Linux virtual machines (`platform: linux`)")
     ));
     assert_eq!(job(&report, "wasm").status, Status::Passed);
+}
+
+#[test]
+fn a_machine_gets_the_vcpus_its_job_holds() {
+    let p = plan(
+        "name: t
+jobs:
+  wide:
+    platform: linux
+    cpus: 8
+    run: share
+  narrow:
+    platform: linux
+    run: share
+",
+    );
+    let machines = Arc::new(FakeMachines {
+        seen: Mutex::default(),
+    });
+    // A runner with 2 vCPUs gives a job asking for 8 all of its own.
+    let (report, _) = run_machines_with(
+        &p,
+        Some(machines.clone()),
+        Some(Arc::new(Slots::for_cpus(2, 4))),
+    );
+    assert_eq!(job(&report, "wide").status, Status::Passed);
+    let seen = machines.seen.lock().unwrap();
+    assert_eq!(seen.cpus["wide"], Some(2));
+    assert!(seen.env["wide"].contains(&("IWCI_CPUS".into(), "2".into())));
+    // Without `cpus:` the machine gets the runner's `--machine-cpus`.
+    assert_eq!(seen.cpus["narrow"], None);
 }
 
 #[test]

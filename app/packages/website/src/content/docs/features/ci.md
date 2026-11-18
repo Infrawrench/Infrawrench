@@ -756,6 +756,7 @@ jobs:
 - **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
 - **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count the runtime reports to its programs. Without `cpus:`, `$IWCI_CPUS` is not set.
 - **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
+- A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
 - A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
 
 ## Usage and billing

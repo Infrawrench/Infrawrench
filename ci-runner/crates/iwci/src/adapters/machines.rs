@@ -70,6 +70,8 @@ impl Machines for VmMachines {
             id: &run.job.id,
             os: os(run.vm.os),
             memory_bytes: run.job.memory_bytes,
+            // The scheduler has already cut it to what this runner holds.
+            cpus: run.job.cpus,
             timeout: run.job.timeout,
             network: run.job.network,
             shell,

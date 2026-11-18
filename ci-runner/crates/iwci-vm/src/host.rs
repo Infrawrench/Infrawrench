@@ -70,6 +70,9 @@ pub struct Job<'a> {
     pub os: Os,
     /// The machine's memory: the job's `memory:`.
     pub memory_bytes: u64,
+    /// The machine's vCPUs: what the job holds of its `cpus:`, or the
+    /// runner's `cpus` per machine when it has none.
+    pub cpus: Option<u32>,
     pub timeout: Duration,
     pub network: bool,
     pub shell: Shell,
@@ -313,7 +316,7 @@ impl Host {
                     rootfs: &image.rootfs,
                     workspace: workspace.as_deref(),
                     memory_mib,
-                    cpus: self.config.cpus,
+                    cpus: job.cpus.unwrap_or(self.config.cpus),
                     sockets: &sockets,
                 });
                 (args, LINUX_BOOT)
@@ -323,7 +326,7 @@ impl Host {
                     .windows
                     .as_ref()
                     .ok_or("this runner has no Windows image")?;
-                let cpus = self.config.cpus.max(2);
+                let cpus = job.cpus.unwrap_or(self.config.cpus).max(2);
                 let restore = image.state(memory_mib, cpus);
                 // A restored machine's disk goes on its state's own disk,
                 // which holds what that boot wrote; a cold boot's on the

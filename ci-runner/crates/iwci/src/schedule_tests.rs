@@ -1549,6 +1549,7 @@ fn run_on_slots(p: &Plan, slots: &Arc<Slots>) -> (RunReport, FakeExecutor) {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),

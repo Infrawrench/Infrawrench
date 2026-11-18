@@ -603,7 +603,8 @@ jobs:
 - **Where.** Only a runner started with `--machines <dir>` (or
   `IWCI_MACHINES`) runs them: it needs KVM and the image
   `images/linux/build.sh` builds into that directory. Each machine gets
-  `--machine-cpus` vCPUs (default 2). `/v1/capacity` lists what a runner
+  the vCPUs its job holds with `cpus:`, or `--machine-cpus` (default 2)
+  without one. `/v1/capacity` lists what a runner
   runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
   log, whatever the host lacks, and the proxy places a run whose pipelines
   need a machine on a runner that has it. A runner without one fails just
