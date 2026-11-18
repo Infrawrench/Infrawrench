@@ -5,10 +5,11 @@ export const ContainerRegistryResourceType = rt({
   plural: "Container Registries",
   id: "azure-container-registry",
   description: "An Azure Container Registry (ACR)",
+  equivalence: "container-registry",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("sku", "SKU", { showcase: true }),
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("adminEnabled", "Admin Enabled", { kind: "boolean", required: false }),

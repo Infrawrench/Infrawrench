@@ -89,6 +89,8 @@ You can't delete a model a budget is using (see below), so a budget never quietl
 
 ![Budget editor showing the Scenario dropdown with "Q4 plan" selected and the warning text explaining that forecast thresholds will be judged against the adjusted figure](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/budget-scenario-picker.png)
 
+A [migration estimate](./migration-estimates.md) can write its change straight into a model: **Create scenario** on the estimate makes one recurring monthly amount from the migration date.
+
 ## Create and edit models
 
 Go to the **Costs** panel, open the **Allocation** tab, and find the **Scenario models** section (next to saved filters).

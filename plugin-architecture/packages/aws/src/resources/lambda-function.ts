@@ -8,8 +8,10 @@ export const LambdaFunctionResourceType = rt({
   // Edit = UpdateFunctionConfiguration. Only the settings it accepts without
   // a new deployment package are editable; the architecture and package type
   // are fixed by the code that was uploaded.
+  equivalence: "serverless-function",
   fields: [
     f("name", "Function Name", { editable: false }),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("runtime", "Runtime", {
       showcase: true,
       required: false,
@@ -35,6 +37,7 @@ export const LambdaFunctionResourceType = rt({
     f("memorySize", "Memory (MB)", {
       kind: "number",
       required: false,
+      sizing: "memory-mb",
       description: "128 to 32768 MB. CPU is allocated in proportion to memory",
     }),
     f("timeout", "Timeout (s)", {

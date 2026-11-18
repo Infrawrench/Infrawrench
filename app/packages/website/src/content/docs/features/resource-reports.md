@@ -70,6 +70,10 @@ Click a column heading to sort by it, and click again to reverse. Cost columns s
 
 ![A saved resource report open on its table: name, type, region, the instanceType metadata column, a team tag column and two cost columns, sorted by Month to date with the down arrow on that heading, and the paging controls underneath showing 1 to 25 of 312](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-reports/report-table.png)
 
+## Estimate a migration
+
+Tick resources in a report (the selection can span pages) and click **Estimate migration** to see what they would cost on another provider. See [Migration estimates](./migration-estimates.md).
+
 ## Folders and sharing
 
 Resource reports go in the same folders as cost reports, so a "Platform" folder can hold both the spend graphs and the inventory tables for that team. Pick the folder when you save, or under **Details**. You need edit access to a folder to put a report in it.

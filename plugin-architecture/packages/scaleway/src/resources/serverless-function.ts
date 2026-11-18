@@ -5,6 +5,7 @@ export const ServerlessFunctionResourceType = rt({
   id: "serverless-function",
   name: "Serverless Function",
   description: "A Scaleway Serverless Function (functions/v1beta1)",
+  equivalence: "serverless-function",
   fields: [
     f("name", "Name", { editable: false }),
     f("region", "Region", {
@@ -12,13 +13,19 @@ export const ServerlessFunctionResourceType = rt({
       kind: "enum",
       enumValues: SCW_REGIONS,
       editable: false,
+      sizing: "region",
     }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("runtime", "Runtime", { showcase: true, required: false, editable: false }),
     f("handler", "Handler", { required: false }),
     f("minScale", "Min Scale", { kind: "number", required: false }),
     f("maxScale", "Max Scale", { kind: "number", required: false }),
-    f("memoryMb", "Memory (MB)", { showcase: true, kind: "number", required: false }),
+    f("memoryMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "memory-mb",
+    }),
     f("privacy", "Privacy", { required: false, editable: false }),
     f("errorMessage", "Error", { required: false, editable: false }),
     f("namespaceId", "Namespace", { required: false, editable: false }),

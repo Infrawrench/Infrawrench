@@ -568,4 +568,9 @@
 // `LiveTicketRequest`, `LiveTicket` and `LiveSealedQuery` schemas: a poll
 // ticket, or a sealed Neon Realtime change-signal query for one topic.
 // Additive.
-export const API_VERSION = "1.122.0";
+// 1.123.0: migration estimates under `/api/org/:orgId/migration-estimates`:
+// `GET /targets`, `POST /preview`, `GET`/`POST /`, `GET`/`PUT`/`DELETE /:id`,
+// `GET /:id/result`, `GET /:id/terraform` and `POST /:id/scenario`, with their
+// `Migration*` schemas; `migration-estimates` joins the workspace `TabTarget`
+// enum. Additive.
+export const API_VERSION = "1.123.0";

@@ -4,8 +4,10 @@ export const ALBResourceType = rt({
   name: "Load Balancer",
   id: "alb",
   description: "An AWS Elastic Load Balancer (ALB/NLB/GLB)",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("type", "Type", {
       showcase: true,
       kind: "enum",

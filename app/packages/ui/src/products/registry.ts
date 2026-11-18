@@ -55,6 +55,7 @@ export const PRODUCTS: readonly ProductDef[] = [
       "k8s-efficiency",
       "invoices",
       "price-catalog",
+      "migration-estimates",
     ],
   },
   {

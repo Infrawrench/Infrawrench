@@ -4,14 +4,18 @@ export const VMResourceType = rt({
   name: "Virtual Machine",
   id: "azure-vm",
   description: "An Azure Virtual Machine",
+  equivalence: "vm",
   fields: [
     // Azure VM names are immutable; the only editable field is vmSize (the
     // right-sizing resize path), so everything else is locked out of Edit.
     f("name", "Name", { editable: false }),
     f("resourceGroup", "Resource Group", { showcase: true, editable: false }),
-    f("location", "Location", { showcase: true, editable: false }),
+    f("location", "Location", { showcase: true, editable: false, sizing: "region" }),
+    // The stored spelling; the create form calls it `size`, and the estimator
+    // accepts both.
     f("vmSize", "VM Size", {
       showcase: true,
+      sizing: "instance-type",
       description:
         "ARM SKU, e.g. Standard_D2s_v5. Changing it resizes the VM (Azure restarts it during the change)",
     }),

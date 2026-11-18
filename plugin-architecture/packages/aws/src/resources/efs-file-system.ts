@@ -4,9 +4,11 @@ export const EFSFileSystemResourceType = rt({
   name: "EFS File System",
   id: "efs-file-system",
   description: "An Amazon Elastic File System",
+  equivalence: "file-storage",
   fields: [
     f("name", "Name", { required: false }),
     f("fileSystemId", "File System ID"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("lifeCycleState", "State", {
       kind: "enum",
       enumValues: ["creating", "available", "updating", "deleting", "deleted", "error"],

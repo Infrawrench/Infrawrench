@@ -4,6 +4,7 @@ import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
 import type { RunningImageDeclaration } from "./vulnerabilities.js";
 import type { ExtendedSupportDeclaration } from "./extended-support.js";
+import type { EquivalenceDeclaration, SizingRole } from "./equivalence.js";
 
 export type { AssociationSource };
 
@@ -61,6 +62,15 @@ export interface FieldDefinition {
    * to correct.
    */
   schedule?: "cron" | "timezone";
+  /**
+   * Which sizing dimension this field carries (instance type, vCPUs, memory,
+   * disk, GPUs, node count, region), for the cross-provider migration
+   * estimate; see {@link SizingRole}. Read from the stored fields when the
+   * type is the source, written into the create form's same-keyed field when
+   * it is the target. One field per role. Not allowed on `secret`,
+   * `password` or `association` fields.
+   */
+  sizing?: SizingRole;
 }
 
 export interface ResourceOutput {
@@ -1224,6 +1234,14 @@ export interface ResourceTypeDefinition {
    * an image.
    */
   runningImages?: RunningImageDeclaration;
+  /**
+   * What this type is across providers (a VM, a managed Postgres, a bucket),
+   * so a migration estimate can match it to another provider's type of the
+   * same category; see {@link EquivalenceDeclaration}. The sizing comes from
+   * the fields flagged with `sizing`. Absent = the type has no equivalent and
+   * is listed as such.
+   */
+  equivalence?: EquivalenceDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

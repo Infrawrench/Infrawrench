@@ -13,12 +13,14 @@ export const ManagedKubeResourceType = rt({
   name: "Managed Kubernetes",
   plural: "Managed Kubernetes",
   description: "An OVHcloud Managed Kubernetes Service cluster",
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
     f("region", "Region", {
       showcase: true,
       description: "OpenStack region, e.g. GRA11, EU-WEST-PAR",
       editable: false,
+      sizing: "region",
     }),
     f("version", "Kubernetes Version", {
       description: "e.g. 1.33. Use the upgrade actions to move to a newer version",
@@ -29,11 +31,13 @@ export const ManagedKubeResourceType = rt({
       required: false,
       description: "Flavor of the first node pool, e.g. b3-8",
       editable: false,
+      sizing: "instance-type",
     }),
     f("nodeCount", "Node Count", {
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "Total desired nodes. Editing it resizes the first node pool",
     }),
     f("nodePoolCount", "Node Pools", {

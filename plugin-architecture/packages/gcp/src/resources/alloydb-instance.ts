@@ -6,11 +6,19 @@ export const AlloyDbInstanceResourceType = rt({
   id: "alloydb-instance",
   iconKey: "database",
   description: "An instance within a Google Cloud AlloyDB cluster",
+  // AlloyDB is PostgreSQL-compatible; the instance is what runs (and bills)
+  // the compute, so it stands for the managed Postgres.
+  equivalence: "managed-postgres",
   fields: [
     f("name", "Name"),
     f("instanceType", "Instance Type", { showcase: true, required: false }),
     f("state", "State", { showcase: true, required: false }),
-    f("cpuCount", "CPU Count", { showcase: true, kind: "number", required: false }),
+    f("cpuCount", "CPU Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "vcpus",
+    }),
     f("ipAddress", "IP Address", { showcase: true, required: false }),
     f("availabilityType", "Availability Type", { required: false }),
     f("cluster", "Cluster", {

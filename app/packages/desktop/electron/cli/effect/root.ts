@@ -27,6 +27,7 @@ import { incidents } from "../commands/incidents";
 import { schedules } from "../commands/schedules";
 import { declaredIncidents } from "../commands/declared-incidents";
 import { estimate } from "../commands/estimate";
+import { migrateEstimate } from "../commands/migrate-estimate";
 import { issues } from "../commands/issues";
 import { statusPages } from "../commands/status-pages";
 import { commitments } from "../commands/commitments";
@@ -114,6 +115,7 @@ const subcommands = [
   declaredIncidents,
   issues,
   estimate,
+  migrateEstimate,
   orphans,
   extendedSupport,
   probes,

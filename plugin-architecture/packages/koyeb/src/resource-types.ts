@@ -91,6 +91,18 @@ export const ServiceResourceType = rt({
   description: "A Koyeb web service, worker or managed Postgres database",
   parentTypeId: "app",
   showInSidebar: true,
+  equivalence: [
+    {
+      category: "container-app",
+      when: { fieldKey: "type", oneOf: ["WEB", "WORKER"] },
+      createFields: { type: "WEB" },
+    },
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "type", oneOf: ["DATABASE"] },
+      createFields: { type: "DATABASE" },
+    },
+  ],
   fields: [
     f("name", "Name", { editable: false }),
     f("type", "Type", { kind: "enum", enumValues: ["WEB", "WORKER", "DATABASE"], ...ro }),
@@ -110,7 +122,7 @@ export const ServiceResourceType = rt({
       ],
       ...ro,
     }),
-    f("region", "Region", { ...ro, showcase: true }),
+    f("region", "Region", { ...ro, showcase: true, sizing: "region" }),
     f("regions", "Regions", {
       required: false,
       description: "Comma-separated region ids (fra, was, sin, …). Changing them redeploys.",
@@ -118,12 +130,14 @@ export const ServiceResourceType = rt({
     f("instanceType", "Instance Type", {
       showcase: true,
       required: false,
+      sizing: "instance-type",
       description:
         "nano, micro, small, medium, large, … or an eco or GPU type. Changing it redeploys.",
     }),
     f("minScale", "Min Instances", {
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "0 enables scale-to-zero on plans that allow it.",
     }),
     f("maxScale", "Max Instances", {
@@ -299,13 +313,15 @@ export const VolumeResourceType = rt({
   name: "Volume",
   id: "volume",
   description: "A Koyeb persistent volume (block storage in one region)",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { ...ro, showcase: true }),
+    f("region", "Region", { ...ro, showcase: true, sizing: "region" }),
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "disk-gb",
       description: "Volumes can only grow.",
     }),
     f("usedGb", "Used (GB)", { kind: "number", ...ro }),

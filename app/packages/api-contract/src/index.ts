@@ -147,6 +147,7 @@ export * from "./domains/paging-providers";
 export * from "./domains/posture";
 export * from "./domains/pr-checks";
 export * from "./domains/price-catalog";
+export * from "./domains/migration-estimates";
 export * from "./domains/probes";
 export * from "./domains/heartbeats";
 export * from "./domains/live";
@@ -307,6 +308,7 @@ import { PagingProvidersApi } from "./domains/paging-providers";
 import { PostureApi } from "./domains/posture";
 import { PrChecksApi } from "./domains/pr-checks";
 import { PriceCatalogApi } from "./domains/price-catalog";
+import { MigrationEstimatesApi } from "./domains/migration-estimates";
 import { ProbesApi } from "./domains/probes";
 import { HeartbeatsApi } from "./domains/heartbeats";
 import { LiveApi } from "./domains/live";
@@ -474,6 +476,7 @@ export const API_DEFINITIONS = {
   posture: PostureApi,
   "pr-checks": PrChecksApi,
   "price-catalog": PriceCatalogApi,
+  "migration-estimates": MigrationEstimatesApi,
   probes: ProbesApi,
   profile: ProfileApi,
   "provider-oauth": ProviderOAuthApi,

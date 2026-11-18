@@ -4,6 +4,7 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   id: "load-balancer",
   description: "A Hetzner Cloud Load Balancer with services, targets, and public IPs",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
     f("targetHealth", "Target Health", {
@@ -16,7 +17,12 @@ export const LoadBalancerResourceType = rt({
       editable: false,
     }),
     f("type", "Type", { required: false, editable: false }),
-    f("location", "Location", { showcase: true, required: false, editable: false }),
+    f("location", "Location", {
+      showcase: true,
+      required: false,
+      editable: false,
+      sizing: "region",
+    }),
     f("ipv4", "IPv4", { required: false, editable: false }),
     f("ipv6", "IPv6", { required: false, editable: false }),
     f("targetCount", "Targets", {

@@ -122,6 +122,7 @@ describe("effect/cli: routing", () => {
       "login",
       "logout",
       "metrics",
+      "migrate-estimate",
       "moment",
       "network-reports",
       "orgs",

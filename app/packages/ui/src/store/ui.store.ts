@@ -60,6 +60,11 @@ export type WorkspaceTabTarget =
   /** Provider list prices: search, filter, compare. Single-instance. */
   | { kind: "price-catalog" }
   /**
+   * Migration estimates: what a service or a set of resources would cost on
+   * another provider. Single-instance, remembering the open estimate.
+   */
+  | { kind: "migration-estimates"; estimateId?: string }
+  /**
    * Declared incidents (incident mode). Single-instance like Probes; the
    * detail view is addressed inside the panel rather than by tab, so an
    * operator flipping between two incidents keeps one tab.
@@ -248,6 +253,9 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "quotas";
     case "price-catalog":
       return "price-catalog";
+    case "migration-estimates":
+      // One tab, the open estimate is remembered state, like Resource reports.
+      return "migration-estimates";
     case "incidents":
       return "incidents";
     case "slos":
@@ -359,6 +367,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Quotas";
     case "price-catalog":
       return "Price catalog";
+    case "migration-estimates":
+      return "Migration estimates";
     case "incidents":
       return "Incidents";
     case "slos":
@@ -422,6 +432,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "quotas":
     case "price-catalog":
       return true;
+    case "migration-estimates":
+      // The Resource reports trick: compare the estimate so the route sync
+      // records which one the tab is on and reactivation restores it.
+      return a.estimateId === (b as { estimateId?: string }).estimateId;
     case "linux-app":
       return (
         a.sessionId === (b as { sessionId: string }).sessionId &&

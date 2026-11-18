@@ -21,8 +21,12 @@ export const EKSClusterResourceType = rt({
     "An Amazon Elastic Kubernetes Service cluster. Creating one also provisions a default " +
     "managed node group once the control plane is ACTIVE (~10-15 min). Node counts show 0 " +
     "until then.",
+  // EKS has no node group type here: the cluster carries its managed node
+  // groups' instance types, total node count and first group's disk.
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("version", "Kubernetes Version", { showcase: true }),
     f("status", "Status", {
       showcase: true,
@@ -37,15 +41,24 @@ export const EKSClusterResourceType = rt({
     }),
     f("roleArn", "Role ARN", { required: false }),
     f("nodeGroupCount", "Node Groups", { kind: "number", required: false }),
-    f("nodeCount", "Node Count", { showcase: true, kind: "number", required: false }),
+    f("nodeCount", "Node Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "node-count",
+    }),
+    // The stored spelling; the create form calls it `instanceType`, and the
+    // estimator accepts both.
     f("instanceTypes", "Instance Types", {
       required: false,
+      sizing: "instance-type",
       description: "Instance types used across managed node groups",
     }),
     f("diskSizeGb", "Disk Size (GB)", {
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "disk-gb",
       description: "Disk size of the first node group",
     }),
     f("vpcId", "VPC ID", { required: false }),

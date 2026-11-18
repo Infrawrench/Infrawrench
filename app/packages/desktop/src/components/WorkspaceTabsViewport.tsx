@@ -169,6 +169,11 @@ const DesktopQuotasPanel = lazyPanel(() =>
 const DesktopPriceCatalogPanel = lazyPanel(() =>
   import("@/components/DesktopPriceCatalogPanel").then((m) => m.DesktopPriceCatalogPanel),
 );
+const DesktopMigrationEstimatesPanel = lazyPanel(() =>
+  import("@/components/DesktopMigrationEstimatesPanel").then(
+    (m) => m.DesktopMigrationEstimatesPanel,
+  ),
+);
 const DesktopIncidentsPanel = lazyPanel(() =>
   import("@/components/DesktopIncidentsPanel").then((m) => m.DesktopIncidentsPanel),
 );
@@ -903,6 +908,8 @@ function renderPanel(
       return <DesktopQuotasPanel />;
     case "price-catalog":
       return <DesktopPriceCatalogPanel />;
+    case "migration-estimates":
+      return <DesktopMigrationEstimatesPanel estimateId={t.estimateId} />;
     case "incidents":
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":

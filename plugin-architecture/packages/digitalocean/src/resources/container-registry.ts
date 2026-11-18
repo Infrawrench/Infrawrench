@@ -12,6 +12,7 @@ export const ContainerRegistryResourceType = rt({
   plural: "Container Registries",
   id: "container-registry",
   description: "The account's DigitalOcean Container Registry (one per account)",
+  equivalence: "container-registry",
   fields: [
     f("name", "Name"),
     f("subscriptionTier", "Subscription Tier", {
@@ -19,7 +20,7 @@ export const ContainerRegistryResourceType = rt({
       enumValues: ["starter", "basic", "professional"],
       required: false,
     }),
-    f("region", "Region", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false, sizing: "region" }),
     f("storageUsageBytes", "Storage Used", { kind: "number", required: false, editable: false }),
     f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],

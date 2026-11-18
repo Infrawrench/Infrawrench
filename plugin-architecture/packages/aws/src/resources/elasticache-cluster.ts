@@ -16,12 +16,23 @@ export const ElastiCacheClusterResourceType = rt({
     countFieldKey: "numNodes",
   },
   description: "An Amazon ElastiCache Valkey, Redis OSS or Memcached cluster",
+  // Memcached has no cross-provider category. The stored `nodeType` and
+  // `numNodes` are `cacheNodeType` and `numCacheNodes` on the create form;
+  // the estimator reads both spellings.
+  equivalence: [
+    {
+      category: "managed-redis",
+      when: { fieldKey: "engine", oneOf: ["redis", "valkey"] },
+      createFields: { engine: "redis" },
+    },
+  ],
   fields: [
     f("clusterId", "Cluster ID"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("engine", "Engine", { kind: "enum", enumValues: ["valkey", "redis", "memcached"] }),
     f("engineVersion", "Engine Version"),
-    f("nodeType", "Node Type", { showcase: true }),
-    f("numNodes", "Number of Nodes", { showcase: true, kind: "number" }),
+    f("nodeType", "Node Type", { showcase: true, sizing: "instance-type" }),
+    f("numNodes", "Number of Nodes", { showcase: true, kind: "number", sizing: "node-count" }),
     f("status", "Status", { showcase: true }),
     f("availabilityZone", "Availability Zone", { showcase: true, required: false }),
     f("securityGroupIds", "Security Groups", {

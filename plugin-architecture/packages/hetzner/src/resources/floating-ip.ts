@@ -4,6 +4,7 @@ export const FloatingIpResourceType = rt({
   name: "Floating IP",
   id: "floating-ip",
   description: "A Hetzner Cloud floating IP address",
+  equivalence: "static-ip",
   fields: [
     f("name", "Name", { required: false }),
     f("description", "Description", { required: false }),
@@ -16,6 +17,7 @@ export const FloatingIpResourceType = rt({
     }),
     f("location", "Location", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,

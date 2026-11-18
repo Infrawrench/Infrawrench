@@ -72,6 +72,7 @@ export function useToolDescriptions(): Record<string, string> {
       "k8s-efficiency": gt("How much of your clusters' cost bought capacity you used."),
       invoices: gt("Invoices for the cloud spend you bill on to customers."),
       "price-catalog": gt("Instance types and list prices compared across providers."),
+      "migration-estimates": gt("What your services would cost on another provider."),
       logs: gt("Logs from several resources in one searchable pane."),
       "metric-alerts": gt("Threshold rules on the metrics we collect."),
       probes: gt("Uptime and latency checks from outside your infrastructure."),

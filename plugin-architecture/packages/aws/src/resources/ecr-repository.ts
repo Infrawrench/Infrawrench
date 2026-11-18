@@ -5,8 +5,10 @@ export const ECRRepositoryResourceType = rt({
   plural: "ECR Repositories",
   id: "ecr-repository",
   description: "An Amazon Elastic Container Registry repository",
+  equivalence: "container-registry",
   fields: [
     f("repositoryName", "Repository Name"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("registryId", "Registry ID", { required: false }),
     f("imageCount", "Image Count", { showcase: true, kind: "number", required: false }),
     f("imageScanOnPush", "Scan on Push", { kind: "boolean", required: false }),

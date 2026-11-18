@@ -37,6 +37,7 @@ import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
 import { type KubernetesEfficiencyClient } from "@infrawrench/ui/k8s-efficiency";
 import { createWebKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import {
+  migrationEstimatesTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
   costCanvasesTabTarget,
@@ -153,6 +154,9 @@ const WebStatusPagesPanel = lazyPanel(() =>
 const WebQuotasPanel = lazyPanel(() => import("./WebQuotasPanel").then((m) => m.WebQuotasPanel));
 const WebPriceCatalogPanel = lazyPanel(() =>
   import("./WebPriceCatalogPanel").then((m) => m.WebPriceCatalogPanel),
+);
+const WebMigrationEstimatesPanel = lazyPanel(() =>
+  import("./WebMigrationEstimatesPanel").then((m) => m.WebMigrationEstimatesPanel),
 );
 const WebIncidentsPanel = lazyPanel(() =>
   import("./WebIncidentsPanel").then((m) => m.WebIncidentsPanel),
@@ -961,6 +965,27 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
     case "price-catalog":
       return <WebPriceCatalogPanel key={orgId} orgId={orgId} />;
+    case "migration-estimates":
+      return (
+        <WebMigrationEstimatesPanel
+          key={orgId}
+          orgId={orgId}
+          estimateId={t.estimateId}
+          // The URL owns which estimate is open, the resource reports rule.
+          onSelectEstimate={(estimateId) =>
+            void navigate(
+              getWorkspaceNavigateArgs(migrationEstimatesTabTarget(estimateId ?? undefined)),
+            )
+          }
+          onOpenResource={(ref) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+              ),
+            )
+          }
+        />
+      );
     case "incidents":
       return (
         <WebIncidentsPanel

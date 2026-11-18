@@ -6,16 +6,17 @@ export const MemorystoreRedisResourceType = rt({
   id: "memorystore-redis",
   iconKey: "cache",
   description: "A Google Cloud Memorystore for Redis instance",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("tier", "Tier", {
       showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["BASIC", "STANDARD_HA"],
     }),
-    f("memorySizeGb", "Memory (GB)", { kind: "number", required: false }),
+    f("memorySizeGb", "Memory (GB)", { kind: "number", required: false, sizing: "memory-gb" }),
     f("redisVersion", "Redis Version", { required: false }),
     f("state", "State", { showcase: true, required: false }),
     f("authorizedNetwork", "Authorized Network", {

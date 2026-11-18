@@ -5,9 +5,10 @@ export const CloudRunServiceResourceType = rt({
   id: "cloud-run-service",
   iconKey: "container",
   description: "A Google Cloud Run managed service",
+  equivalence: "container-app",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("latestRevision", "Latest Revision", { required: false }),
     f("state", "State", { showcase: true, required: false }),
     f("image", "Container Image", {

@@ -14,10 +14,13 @@ export const AKSClusterResourceType = rt({
   },
   description:
     "An Azure Kubernetes Service cluster. Pulling images from an Azure Container Registry requires an AcrPull role assignment for the cluster's kubelet identity (az aks update --attach-acr <registry>), or use a dockerConfigJson pull secret from the registry resource.",
+  // AKS has no node pool type here: the cluster carries its first pool's VM
+  // size and the node count across every pool.
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("kubernetesVersion", "Kubernetes Version"),
     f("provisioningState", "Provisioning State", {
       showcase: true,
@@ -25,12 +28,24 @@ export const AKSClusterResourceType = rt({
       enumValues: ["Succeeded", "Creating", "Updating", "Deleting", "Failed", "Upgrading"],
     }),
     f("powerState", "Power State", { required: false }),
-    f("nodeCount", "Node Count", { showcase: true, kind: "number", required: false }),
+    f("nodeCount", "Node Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "node-count",
+    }),
     f("nodePoolCount", "Node Pool Count", { showcase: true, kind: "number", required: false }),
-    f("vmSize", "VM Size", { required: false, description: "VM size used by the first node pool" }),
+    // The stored spelling; the create form calls it `nodeSize`, and the
+    // estimator accepts both.
+    f("vmSize", "VM Size", {
+      required: false,
+      sizing: "instance-type",
+      description: "VM size used by the first node pool",
+    }),
     f("osDiskSizeGb", "OS Disk Size (GB)", {
       kind: "number",
       required: false,
+      sizing: "disk-gb",
       description: "OS disk size of the first node pool",
     }),
     f("networkPlugin", "Network Plugin", { required: false }),

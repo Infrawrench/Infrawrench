@@ -5,6 +5,7 @@ export const RegistryNamespaceResourceType = rt({
   id: "registry-namespace",
   name: "Registry Namespace",
   description: "A Scaleway Container Registry namespace",
+  equivalence: "container-registry",
   fields: [
     f("name", "Name", { editable: false }),
     f("region", "Region", {
@@ -12,12 +13,19 @@ export const RegistryNamespaceResourceType = rt({
       kind: "enum",
       enumValues: SCW_REGIONS,
       editable: false,
+      sizing: "region",
     }),
     f("description", "Description", { required: false }),
     f("isPublic", "Public", { kind: "boolean", required: false }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("imageCount", "Images", { showcase: true, kind: "number", required: false, editable: false }),
-    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", required: false, editable: false }),
+    f("sizeGb", "Size (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
   ],
   outputs: [o("endpoint", "Registry Endpoint")],
   supportsCreate: true,

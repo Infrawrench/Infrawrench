@@ -44,6 +44,7 @@ import { Route as OrgOrgIdJitAccessRouteImport } from './routes/org.$orgId.jit-a
 import { Route as OrgOrgIdK8sEfficiencyRouteImport } from './routes/org.$orgId.k8s-efficiency'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
+import { Route as OrgOrgIdMigrationEstimatesRouteImport } from './routes/org.$orgId.migration-estimates'
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
 import { Route as OrgOrgIdPriceCatalogRouteImport } from './routes/org.$orgId.price-catalog'
@@ -73,6 +74,7 @@ import { Route as OrgOrgIdHomeProductIdRouteImport } from './routes/org.$orgId.h
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
 import { Route as OrgOrgIdK8sEfficiencyReportIdRouteImport } from './routes/org.$orgId.k8s-efficiency.$reportId'
+import { Route as OrgOrgIdMigrationEstimatesEstimateIdRouteImport } from './routes/org.$orgId.migration-estimates.$estimateId'
 import { Route as OrgOrgIdResourceReportsReportIdRouteImport } from './routes/org.$orgId.resource-reports.$reportId'
 import { Route as OrgOrgIdServicesServiceIdRouteImport } from './routes/org.$orgId.services.$serviceId'
 import { Route as OrgOrgIdServicesScorecardsRouteImport } from './routes/org.$orgId.services.scorecards'
@@ -289,6 +291,12 @@ const OrgOrgIdMetricAlertsRoute = OrgOrgIdMetricAlertsRouteImport.update({
   path: '/metric-alerts',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdMigrationEstimatesRoute =
+  OrgOrgIdMigrationEstimatesRouteImport.update({
+    id: '/migration-estimates',
+    path: '/migration-estimates',
+    getParentRoute: () => OrgOrgIdRoute,
+  } as any)
 const OrgOrgIdMomentRoute = OrgOrgIdMomentRouteImport.update({
   id: '/moment',
   path: '/moment',
@@ -442,6 +450,12 @@ const OrgOrgIdK8sEfficiencyReportIdRoute =
     id: '/$reportId',
     path: '/$reportId',
     getParentRoute: () => OrgOrgIdK8sEfficiencyRoute,
+  } as any)
+const OrgOrgIdMigrationEstimatesEstimateIdRoute =
+  OrgOrgIdMigrationEstimatesEstimateIdRouteImport.update({
+    id: '/$estimateId',
+    path: '/$estimateId',
+    getParentRoute: () => OrgOrgIdMigrationEstimatesRoute,
   } as any)
 const OrgOrgIdResourceReportsReportIdRoute =
   OrgOrgIdResourceReportsReportIdRouteImport.update({
@@ -703,6 +717,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/k8s-efficiency': typeof OrgOrgIdK8sEfficiencyRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
+  '/org/$orgId/migration-estimates': typeof OrgOrgIdMigrationEstimatesRouteWithChildren
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
@@ -732,6 +747,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/migration-estimates/$estimateId': typeof OrgOrgIdMigrationEstimatesEstimateIdRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -807,6 +823,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/k8s-efficiency': typeof OrgOrgIdK8sEfficiencyRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
+  '/org/$orgId/migration-estimates': typeof OrgOrgIdMigrationEstimatesRouteWithChildren
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
@@ -835,6 +852,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/migration-estimates/$estimateId': typeof OrgOrgIdMigrationEstimatesEstimateIdRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -913,6 +931,7 @@ export interface FileRoutesById {
   '/org/$orgId/k8s-efficiency': typeof OrgOrgIdK8sEfficiencyRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
+  '/org/$orgId/migration-estimates': typeof OrgOrgIdMigrationEstimatesRouteWithChildren
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
@@ -942,6 +961,7 @@ export interface FileRoutesById {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/migration-estimates/$estimateId': typeof OrgOrgIdMigrationEstimatesEstimateIdRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -1021,6 +1041,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/k8s-efficiency'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
+    | '/org/$orgId/migration-estimates'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/price-catalog'
@@ -1050,6 +1071,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/migration-estimates/$estimateId'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1125,6 +1147,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/k8s-efficiency'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
+    | '/org/$orgId/migration-estimates'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/price-catalog'
@@ -1153,6 +1176,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/migration-estimates/$estimateId'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1230,6 +1254,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/k8s-efficiency'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
+    | '/org/$orgId/migration-estimates'
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/price-catalog'
@@ -1259,6 +1284,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/migration-estimates/$estimateId'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1560,6 +1586,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdMetricAlertsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/migration-estimates': {
+      id: '/org/$orgId/migration-estimates'
+      path: '/migration-estimates'
+      fullPath: '/org/$orgId/migration-estimates'
+      preLoaderRoute: typeof OrgOrgIdMigrationEstimatesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/moment': {
       id: '/org/$orgId/moment'
       path: '/moment'
@@ -1762,6 +1795,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/k8s-efficiency/$reportId'
       preLoaderRoute: typeof OrgOrgIdK8sEfficiencyReportIdRouteImport
       parentRoute: typeof OrgOrgIdK8sEfficiencyRoute
+    }
+    '/org/$orgId/migration-estimates/$estimateId': {
+      id: '/org/$orgId/migration-estimates/$estimateId'
+      path: '/$estimateId'
+      fullPath: '/org/$orgId/migration-estimates/$estimateId'
+      preLoaderRoute: typeof OrgOrgIdMigrationEstimatesEstimateIdRouteImport
+      parentRoute: typeof OrgOrgIdMigrationEstimatesRoute
     }
     '/org/$orgId/resource-reports/$reportId': {
       id: '/org/$orgId/resource-reports/$reportId'
@@ -2152,6 +2192,21 @@ const OrgOrgIdK8sEfficiencyRouteWithChildren =
     OrgOrgIdK8sEfficiencyRouteChildren,
   )
 
+interface OrgOrgIdMigrationEstimatesRouteChildren {
+  OrgOrgIdMigrationEstimatesEstimateIdRoute: typeof OrgOrgIdMigrationEstimatesEstimateIdRoute
+}
+
+const OrgOrgIdMigrationEstimatesRouteChildren: OrgOrgIdMigrationEstimatesRouteChildren =
+  {
+    OrgOrgIdMigrationEstimatesEstimateIdRoute:
+      OrgOrgIdMigrationEstimatesEstimateIdRoute,
+  }
+
+const OrgOrgIdMigrationEstimatesRouteWithChildren =
+  OrgOrgIdMigrationEstimatesRoute._addFileChildren(
+    OrgOrgIdMigrationEstimatesRouteChildren,
+  )
+
 interface OrgOrgIdResourceReportsRouteChildren {
   OrgOrgIdResourceReportsReportIdRoute: typeof OrgOrgIdResourceReportsReportIdRoute
 }
@@ -2309,6 +2364,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdK8sEfficiencyRoute: typeof OrgOrgIdK8sEfficiencyRouteWithChildren
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
+  OrgOrgIdMigrationEstimatesRoute: typeof OrgOrgIdMigrationEstimatesRouteWithChildren
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
   OrgOrgIdPriceCatalogRoute: typeof OrgOrgIdPriceCatalogRoute
@@ -2359,6 +2415,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdK8sEfficiencyRoute: OrgOrgIdK8sEfficiencyRouteWithChildren,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
+  OrgOrgIdMigrationEstimatesRoute: OrgOrgIdMigrationEstimatesRouteWithChildren,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
   OrgOrgIdPriceCatalogRoute: OrgOrgIdPriceCatalogRoute,

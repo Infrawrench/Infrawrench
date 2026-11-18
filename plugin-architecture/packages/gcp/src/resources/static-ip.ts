@@ -5,9 +5,10 @@ export const StaticIpResourceType = rt({
   id: "static-ip",
   iconKey: "ip",
   description: "A Google Cloud reserved static external IP address",
+  equivalence: "static-ip",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false, sizing: "region" }),
     f("address", "Address", { showcase: true, required: false }),
     f("addressType", "Type", { required: false }),
     f("status", "Status", { showcase: true, required: false }),

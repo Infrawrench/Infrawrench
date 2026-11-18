@@ -4,15 +4,18 @@ export const VolumeResourceType = rt({
   name: "Volume",
   id: "volume",
   description: "A Hetzner Cloud block storage volume",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Volume size. Hetzner can only grow a volume, never shrink it",
     }),
     f("location", "Location", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,

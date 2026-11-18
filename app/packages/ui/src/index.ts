@@ -499,6 +499,7 @@ export {
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -1566,3 +1567,6 @@ export {
   watchLive,
   type LiveRefreshOptions,
 } from "./live/index.js";
+
+/** Migration estimates: what a service or a set of resources would cost on another provider. */
+export * from "./migration-estimates/index.js";

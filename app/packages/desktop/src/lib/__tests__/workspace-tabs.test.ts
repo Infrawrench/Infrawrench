@@ -4,6 +4,7 @@ import {
   accountTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
+  migrationEstimatesTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -119,6 +120,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(resourceReportsTabTarget("r1"));
     expect(detail.to).toBe("/resource-reports");
     expect(detail.search).toEqual({ report: "r1" });
+  });
+
+  it("returns migration-estimates route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(migrationEstimatesTabTarget());
+    expect(list.to).toBe("/migration-estimates");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(migrationEstimatesTabTarget("e1"));
+    expect(detail.to).toBe("/migration-estimates");
+    expect(detail.search).toEqual({ estimate: "e1" });
   });
 
   it("returns slos route args, clearing the param for the list view", () => {
@@ -545,6 +556,16 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/resource-reports", undefined, "?report=r1")).toEqual({
       kind: "resource-reports",
       reportId: "r1",
+    });
+  });
+
+  it("parses the migration-estimates path, with and without an estimate", () => {
+    expect(syncWorkspaceRouteFromPath("/migration-estimates")).toEqual({
+      kind: "migration-estimates",
+    });
+    expect(syncWorkspaceRouteFromPath("/migration-estimates", undefined, "?estimate=e1")).toEqual({
+      kind: "migration-estimates",
+      estimateId: "e1",
     });
   });
 

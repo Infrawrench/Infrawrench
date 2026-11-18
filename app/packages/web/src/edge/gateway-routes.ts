@@ -105,6 +105,10 @@ const NODE_ROUTES: readonly RegExp[] = [
   // functions the edge registry only stubs: every attempt there would replay.
   // Its history (`/scorecards/org/history`) is Postgres only and stays.
   new RegExp(`${ORG}/scorecards/org$`),
+  // A migration estimate prices every row through plugin code (price
+  // catalogs, size pickers, estimates, Terraform export), which the edge
+  // registry only stubs. Saving, listing and the targets list stay on the edge.
+  new RegExp(`${ORG}/migration-estimates/(preview|[^/]+/(result|terraform|scenario))$`),
   new RegExp(
     `${ORG}/(` +
       [

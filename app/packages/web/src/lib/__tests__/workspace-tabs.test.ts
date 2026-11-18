@@ -27,6 +27,7 @@ import {
   resourceAppsTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
+  migrationEstimatesTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -977,6 +978,30 @@ describe("resource reports tab", () => {
         .replace("$orgId", args.params!["orgId"]!)
         .replace("$reportId", args.params!["reportId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("migration estimates tab", () => {
+  it("navigates to the list path without an estimate and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(migrationEstimatesTabTarget())).toEqual({
+      to: "/org/$orgId/migration-estimates",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(migrationEstimatesTabTarget("e1"))).toEqual({
+      to: "/org/$orgId/migration-estimates/$estimateId",
+      params: { orgId: "test-org", estimateId: "e1" },
+    });
+  });
+
+  it("round-trips through the route sync and stays one tab", () => {
+    for (const target of [migrationEstimatesTabTarget(), migrationEstimatesTabTarget("e1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$estimateId", args.params!["estimateId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+      expect(getWorkspaceTabId(target)).toBe("migration-estimates");
     }
   });
 });

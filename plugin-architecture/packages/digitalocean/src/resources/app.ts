@@ -11,9 +11,10 @@ export const AppResourceType = rt({
   name: "App",
   id: "app",
   description: "A DigitalOcean App Platform application.",
+  equivalence: "container-app",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false, sizing: "region" }),
     f("phase", "Deployment Phase", {
       showcase: true,
       required: false,

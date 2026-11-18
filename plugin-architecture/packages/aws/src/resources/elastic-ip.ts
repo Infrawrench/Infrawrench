@@ -5,9 +5,11 @@ export const ElasticIPResourceType = rt({
   pinnable: false,
   id: "elastic-ip",
   description: "An AWS Elastic IP address",
+  equivalence: "static-ip",
   fields: [
     f("allocationId", "Allocation ID"),
     f("publicIp", "Public IP"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("associationId", "Association ID", { required: false }),
     f("instanceId", "Instance ID", { required: false }),
     f("networkInterfaceId", "Network Interface", { required: false }),

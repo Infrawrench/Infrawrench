@@ -4,6 +4,7 @@ export const DnsZoneResourceType = rt({
   id: "dns-zone",
   name: "DNS Zone",
   description: "A Scaleway Domains and DNS zone",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Zone"),
     f("domain", "Domain", { showcase: true, required: false }),
