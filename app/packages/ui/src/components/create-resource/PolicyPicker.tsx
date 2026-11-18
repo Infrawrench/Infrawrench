@@ -103,10 +103,12 @@ export function PolicyPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50 flex items-center gap-2">
         <input
           type="text"
-          aria-label={gt("Search policies")}
+          aria-label={gt("Search options")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={gt("Search {count} policies…", { count: policies.length })}
+          placeholder={gt("{count, plural, one {Search # option…} other {Search # options…}}", {
+            count: policies.length,
+          })}
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
         {selectedIds.length > 0 && (

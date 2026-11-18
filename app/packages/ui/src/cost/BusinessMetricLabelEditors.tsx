@@ -18,8 +18,16 @@ import {
 } from "./config.js";
 import type { CostApi } from "./types.js";
 
-const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/**
+ * A text field with no width of its own, for inline rows that size it
+ * (`w-20`, `w-32`). Width utilities do not override each other by their order
+ * in the class string, only by their order in the stylesheet, where `w-full`
+ * comes after them: adding one to `inputClass` does nothing.
+ */
+const fieldClass =
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/** A full-width text field. */
+const inputClass = `w-full ${fieldClass}`;
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 const linkButton = "text-xs text-on-surface-secondary hover:text-on-surface underline";
 
@@ -231,7 +239,7 @@ export function ThresholdsEditor({
         {thresholds.map((t, index) => (
           <div key={index} className="flex flex-wrap items-center gap-2 text-xs text-on-surface">
             <select
-              className={`${inputClass} w-auto`}
+              className={`${fieldClass} w-auto`}
               aria-label={gt("Calculation")}
               value={t.mode}
               onChange={(e) =>
@@ -249,7 +257,7 @@ export function ThresholdsEditor({
               </option>
             </select>
             <select
-              className={`${inputClass} w-auto`}
+              className={`${fieldClass} w-auto`}
               aria-label={gt("Direction")}
               value={t.direction}
               onChange={(e) =>
@@ -260,7 +268,7 @@ export function ThresholdsEditor({
               <option value="below">{gt("below")}</option>
             </select>
             <input
-              className={`${inputClass} w-24`}
+              className={`${fieldClass} w-24`}
               aria-label={gt("Limit")}
               inputMode="decimal"
               value={Number.isFinite(t.value) ? String(t.value) : ""}
@@ -271,7 +279,7 @@ export function ThresholdsEditor({
             </span>
             {t.mode === "unit_cost" && (
               <select
-                className={`${inputClass} w-auto`}
+                className={`${fieldClass} w-auto`}
                 aria-label={gt("Scale")}
                 value={String(t.scale ?? 1)}
                 onChange={(e) => {
@@ -288,7 +296,7 @@ export function ThresholdsEditor({
             )}
             <span className="text-on-surface-faint">{gt("over")}</span>
             <input
-              className={`${inputClass} w-16`}
+              className={`${fieldClass} w-16`}
               aria-label={gt("Window in days")}
               inputMode="numeric"
               value={String(t.windowDays ?? DEFAULT_UNIT_COST_THRESHOLD_WINDOW_DAYS)}
@@ -297,7 +305,7 @@ export function ThresholdsEditor({
             <span className="text-on-surface-faint">{gt("days")}</span>
             {mappedLabels.length > 0 && (
               <select
-                className={`${inputClass} w-auto`}
+                className={`${fieldClass} w-auto`}
                 aria-label={gt("Per label")}
                 value={t.groupByLabel ?? ""}
                 onChange={(e) => update(index, { groupByLabel: e.target.value || undefined })}

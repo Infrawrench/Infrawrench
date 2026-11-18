@@ -128,19 +128,28 @@ export function PromptNoSqlCommandModal({
         </div>
         {blocked ? null : splitPane ? (
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            <div className="w-[440px] flex-shrink-0 overflow-y-auto px-5 py-4 border-r border-border space-y-4">
-              {regularFields.map((f) => (
-                <FieldRenderer
-                  key={f.key}
-                  field={f}
-                  value={values[f.key] ?? ""}
-                  onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
-                  {...(resourcePickerProps ? { resourcePickerProps } : {})}
-                />
-              ))}
-              {error && <div className="text-xs text-danger">{error}</div>}
-            </div>
+            {/* A prompt whose only fields are code (an HCL policy) gives the
+                editor the whole width rather than an empty form column. */}
+            {regularFields.length > 0 && (
+              <div className="w-[440px] flex-shrink-0 overflow-y-auto px-5 py-4 border-r border-border space-y-4">
+                {regularFields.map((f) => (
+                  <FieldRenderer
+                    key={f.key}
+                    field={f}
+                    value={values[f.key] ?? ""}
+                    onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+                    {...(resourcePickerProps ? { resourcePickerProps } : {})}
+                  />
+                ))}
+                {error && <div className="text-xs text-danger">{error}</div>}
+              </div>
+            )}
             <div className="flex-1 min-w-0 flex flex-col">
+              {regularFields.length === 0 && error && (
+                <div className="px-5 py-2 text-xs text-danger border-b border-border flex-shrink-0">
+                  {error}
+                </div>
+              )}
               {codeFields.map((f) => (
                 <div key={f.key} className="flex-1 min-h-0">
                   <FieldRenderer

@@ -17,6 +17,8 @@ const types: ResourceTypeDefinition[] = [
     fields: [
       { key: "region", label: "Region", kind: "string", required: true },
       { key: "size", label: "Size", kind: "string", required: true },
+      { key: "backups", label: "Backups", kind: "boolean", required: false },
+      { key: "monitoring", label: "Monitoring", kind: "boolean", required: false },
     ],
     outputs: [
       { key: "ipv4", label: "Public IPv4", sensitive: false },
@@ -78,11 +80,26 @@ describe("labeledFieldItems", () => {
     expect(items).toEqual([{ key: "Size", value: "x" }]);
   });
 
-  it("stringifies numbers and booleans", () => {
-    const items = labeledFieldItems({ count: 3, enabled: true }, types, "droplet");
+  it("stringifies numbers and reads booleans as Yes or No", () => {
+    const items = labeledFieldItems({ count: 3, enabled: true, locked: false }, types, "droplet");
     expect(items).toEqual([
       { key: "Count", value: "3" },
-      { key: "Enabled", value: "true" },
+      { key: "Enabled", value: "Yes" },
+      { key: "Locked", value: "No" },
+    ]);
+  });
+
+  it("reads a declared boolean field stored as a string as Yes or No", () => {
+    const items = labeledFieldItems(
+      { backups: "true", monitoring: "false", region: "true" },
+      types,
+      "droplet",
+    );
+    expect(items).toEqual([
+      { key: "Backups", value: "Yes" },
+      { key: "Monitoring", value: "No" },
+      // A string field that happens to read "true" is left as it is.
+      { key: "Region", value: "true" },
     ]);
   });
 

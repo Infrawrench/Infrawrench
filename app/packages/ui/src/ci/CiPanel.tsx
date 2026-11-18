@@ -112,13 +112,17 @@ function ExternalLink({
 }) {
   if (onOpenUrl) {
     return (
-      <button type="button" className="text-accent hover:underline" onClick={() => onOpenUrl(href)}>
+      <button
+        type="button"
+        className="text-xs text-accent hover:underline"
+        onClick={() => onOpenUrl(href)}
+      >
         {children}
       </button>
     );
   }
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+    <a href={href} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">
       {children}
     </a>
   );

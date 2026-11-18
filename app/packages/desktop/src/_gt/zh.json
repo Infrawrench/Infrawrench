@@ -23340,5 +23340,9 @@
   "c2e23c6d7c842309": "系列",
   "3bfddd583ca00d76": "隐藏 {name}",
   "aecba76fd1f9fc10": "显示 {name}",
-  "7eda6691ee94c927": "{language} 编辑器"
+  "7eda6691ee94c927": "{language} 编辑器",
+  "331ca38354a030fb": "{file}：{rows, plural, other {# 行}}",
+  "61c177c14396c61c": "将写入 {days, plural, other {# 天}}内的 {values, plural, other {# 个值}}。",
+  "47b8d651335b6589": "{count, plural, other {有 # 行无法读取，将被跳过。}}",
+  "2ecdd41521c97973": "{count, plural, other {搜索 # 个选项…}}"
 }
