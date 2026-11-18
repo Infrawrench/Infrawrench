@@ -66,6 +66,7 @@ import type {
   ResolvedPeerPane,
   ResourceCarbonEstimate,
 } from "@infrawrench/client-core";
+import { metricsRequestRange } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -321,6 +322,9 @@ export function ResourceDetailClient({
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleToken, setConsoleToken] = useState<string | null>(null);
 
+  // The window the chart's caption names. Without it the route answers with
+  // the last hour whatever the caption says.
+  const metricsWindowMs = detailSchema.metricsCapability?.defaultTimeRangeMs;
   useEffect(() => {
     if (!supportsMetrics) return;
     let cancelled = false;
@@ -330,6 +334,7 @@ export function ResourceDetailClient({
         accountId,
         resourceId,
         ...(parentResourceId ? { parentResourceId } : {}),
+        ...metricsRequestRange(metricsWindowMs),
       },
     )
       .then((r) => {
@@ -350,6 +355,7 @@ export function ResourceDetailClient({
     accountId,
     resourceId,
     parentResourceId,
+    metricsWindowMs,
     gt,
   ]);
 
