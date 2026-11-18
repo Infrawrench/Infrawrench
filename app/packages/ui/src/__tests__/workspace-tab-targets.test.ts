@@ -25,6 +25,7 @@ import {
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
+  priceCatalogTabTarget,
   deliveryTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
@@ -142,6 +143,17 @@ describe("tab target factories", () => {
       kind: "services",
       serviceId: "svc-1",
     });
+  });
+
+  it("priceCatalogTabTarget is one tab that remembers the changes view", () => {
+    expect(priceCatalogTabTarget()).toEqual({ kind: "price-catalog" });
+    expect(priceCatalogTabTarget("changes")).toEqual({ kind: "price-catalog", view: "changes" });
+    expect(getWorkspaceTabId(priceCatalogTabTarget("changes"))).toBe(
+      getWorkspaceTabId(priceCatalogTabTarget()),
+    );
+    expect(workspaceTabTargetsEqual(priceCatalogTabTarget(), priceCatalogTabTarget("changes"))).toBe(
+      false,
+    );
   });
 
   it("deliveryTabTarget carries no state", () => {
