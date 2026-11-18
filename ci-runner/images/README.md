@@ -1,11 +1,13 @@
 # Machine images
 
-`platform: linux` and `platform: windows` jobs run in a QEMU/KVM virtual machine the runner starts for each job, with `iwci-guest` (`crates/iwci-guest`) inside as the agent the runner talks to over a virtio-serial port (`crates/iwci-vm-proto`). This directory builds the two machine images those jobs boot:
+`platform: linux` jobs (and, once turned on, `platform: windows`) run in a QEMU/KVM virtual machine the runner starts for each job, with `iwci-guest` (`crates/iwci-guest`) inside as the agent the runner talks to over a virtio-serial port (`crates/iwci-vm-proto`). This directory builds the two machine images those jobs boot:
 
 | Image            | Platform  | Hosts                            | What it is                                                                                           |
 | ---------------- | --------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `ubuntu-24.04`   | `linux`   | x86_64 and aarch64               | A kernel and a read-only erofs root file system, booted directly (no firmware, no initramfs)         |
 | `windows-11-arm` | `windows` | aarch64 only (Graviton `.metal`) | A golden qcow2 disk, UEFI firmware and variables, and saved machine states restored with `-incoming` |
+
+**Windows is turned off for now.** The parser refuses `platform: windows` and the runner never opens `<vm-dir>/windows`, so building that image does nothing yet; its scripts are kept here for when it has been booted on a real host.
 
 Both aim at what GitHub's hosted runners have for everyday CI ([Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [Windows 11 Arm64](https://github.com/actions/runner-images/blob/main/images/windows/Windows11-VS2026-Arm64-Readme.md)) without the very large items.
 

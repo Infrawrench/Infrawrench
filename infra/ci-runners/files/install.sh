@@ -107,15 +107,14 @@ for profile in iwci iwci-sandbox-spawn; do
 done
 rm -f /opt/iwci/lib/iwci-sandbox-spawn /tmp/iwci-sandbox-spawn.upload /tmp/iwci-sandbox-spawn.sha256 /tmp/iwci-sandbox-spawn.socket "/tmp/iwci-sandbox-spawn@.service" /tmp/iwci.upload
 
-# Virtual machines for `platform: linux` and `platform: windows` jobs
-# (crates/iwci-vm): off unless the host's `machines` is set. The runner
-# starts QEMU itself, as `iwci`, so it needs the emulator for this
-# architecture, qemu-img (Windows disk overlays), mkfs.erofs (each commit's
-# workspace image) and /dev/kvm, which is the `kvm` group's (the unit adds
-# the group too). The images are built on the host into
-# /var/lib/iwci/machines (ci-runner/images/README.md); without one, or
+# Virtual machines for `platform: linux` jobs (crates/iwci-vm): off unless
+# the host's `machines` is set. The runner starts QEMU itself, as `iwci`,
+# so it needs the emulator for this architecture, mkfs.erofs (each
+# commit's workspace image) and /dev/kvm, which is the `kvm` group's (the
+# unit adds the group too). The image is built on the host into
+# /var/lib/iwci/machines (ci-runner/images/README.md); without it, or
 # without KVM, the runner leaves that platform out and says why in its log.
-# Turning it off leaves the packages and the images, unused.
+# Turning it off leaves the packages and the image, unused.
 machines="$(cat /tmp/iwci-machines 2>/dev/null || true)"
 rm -f /tmp/iwci-machines
 if [[ "$machines" == "true" ]]; then
@@ -128,13 +127,13 @@ if [[ "$machines" == "true" ]]; then
     ;;
   esac
   if ! command -v apt-get >/dev/null; then
-    echo "error: machines needs apt to install QEMU, qemu-img and erofs-utils" >&2
+    echo "error: machines needs apt to install QEMU and erofs-utils" >&2
     exit 1
   fi
-  if ! dpkg -s "${qemu_packages[@]}" qemu-utils erofs-utils >/dev/null 2>&1; then
+  if ! dpkg -s "${qemu_packages[@]}" erofs-utils >/dev/null 2>&1; then
     apt-get update -q
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-      "${qemu_packages[@]}" qemu-utils erofs-utils
+      "${qemu_packages[@]}" erofs-utils
   fi
   getent group kvm >/dev/null || groupadd --system kvm
   usermod -aG kvm iwci

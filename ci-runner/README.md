@@ -167,8 +167,8 @@ everything through.
 | Key            | Meaning                                                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                |
-| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` or `windows` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                            |
-| `shell`        | A `platform: linux` or `platform: windows` job's script interpreter: `bash` (default), `sh` or `pwsh` on Linux; `pwsh` (default), `powershell`, `cmd` or `bash` on Windows.                                        |
+| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                         |
+| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                    |
 | `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
 | `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
 | `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
@@ -184,7 +184,7 @@ everything through.
 | `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
 | `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
 | `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory: at least `256MiB` on Linux, and `4GiB` (also the default) on Windows.                                      |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                         |
 | `cpus`         | Whole vCPUs the job holds, from `1` to `64`, instead of its share of one. See [Limits](#limits).                                                                                                                   |
 | `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
 | `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
@@ -584,10 +584,11 @@ web-1` works as written. A job that is not root and cannot write the
 ### Platforms
 
 A job runs in a Wasmer isolate on the runner unless its `platform:` says
-otherwise. `platform: linux` and `platform: windows` run its `run:` script
-in a virtual machine the runner starts for that job alone, close to
-GitHub's hosted runners without their largest SDKs
-([`images/README.md`](images/README.md) lists what is in each):
+otherwise. `platform: linux` runs its `run:` script in a virtual machine
+the runner starts for that job alone, close to GitHub's hosted Ubuntu
+runner without its largest SDKs ([`images/README.md`](images/README.md)
+lists what is in it). `platform: windows` is refused for now: the Windows
+machine is written but turned off until it has run on a real host.
 
 ```yaml
 jobs:
@@ -597,37 +598,26 @@ jobs:
       npm ci
       npm test
     artifacts: [dist]
-  windows:
-    platform: windows # Windows 11 on Arm
-    shell: pwsh
-    needs: [test]
-    run: .\scripts\smoke.ps1
 ```
 
 - **Where.** Only a runner started with `--machines <dir>` (or
-  `IWCI_MACHINES`) runs them: it needs KVM and the images
-  `images/*/build.sh` builds into that directory, and Windows needs an
-  aarch64 host (a Graviton `.metal` instance). Each machine gets
+  `IWCI_MACHINES`) runs them: it needs KVM and the image
+  `images/linux/build.sh` builds into that directory. Each machine gets
   `--machine-cpus` vCPUs (default 2). `/v1/capacity` lists what a runner
   runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
   log, whatever the host lacks, and the proxy places a run whose pipelines
   need a machine on a runner that has it. A runner without one fails just
   those jobs, saying so.
 - **The machine.** QEMU with KVM: on x86_64 the `microvm` machine type
-  with the kernel booted directly, on aarch64 `virt`; Windows starts from
-  a state saved just after boot when one matches the job's memory and
-  vCPUs, and boots otherwise. The job's `memory:` is the machine's whole
-  memory, and the runner reserves the emulator's own beside it (160 MiB on
-  Linux, 512 MiB on Windows). Jobs run as root (`runner`, an
-  administrator, on Windows). The agent inside (`crates/iwci-guest`)
-  talks to the runner over a virtio-serial port (`crates/iwci-vm-proto`).
+  with the kernel booted directly, on aarch64 `virt`. The job's `memory:`
+  is the machine's whole memory, and the runner reserves the emulator's
+  own beside it (160 MiB). Jobs run as root. The agent inside
+  (`crates/iwci-guest`) talks to the runner over a virtio-serial port
+  (`crates/iwci-vm-proto`).
 - **Files.** The machine starts from the same files an isolate would: the
   clone, the artifacts of the jobs it needs, lent files and restored
-  caches. On Linux the clone is a read-only erofs image made once per
-  commit and shared by every machine, with a copy-on-write layer over it;
-  on Windows the files are copied in, at the same paths on `C:\`
-  (`/app/src` is `C:\app\src`), so a pipeline names the same paths on
-  both. Afterwards the machine sends back what the scheduler reads:
+  caches. The clone is a read-only erofs image made once per commit and
+  shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, the run's
   `/tmp/workflow` (shared with isolate jobs), and, for `changes:`, the
   clone without what its `.gitignore` ignores. A job's `npm ci` stays in
@@ -639,8 +629,7 @@ jobs:
 - **What it cannot have.** Keys that only mean something in an isolate are
   errors: `using`, `args`, `deps`, `tools`, `services`, `env-cache` and
   `task-cache` (the script installs and starts what it needs, and `cache:`
-  keeps it between runs). On Windows so are `connections`, `ssh-keys` and
-  `github-token`, which write files at Linux paths. A machine job stays on
+  keeps it between runs). A machine job stays on
   the runner that has its run; helpers never take one
   ([Split runs](#split-runs)).
 
@@ -4284,7 +4273,7 @@ it is masked, and an untrusted run is given none of it:
   answering only the pipelines the event triggers:
   `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "platforms": [...], "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
   with `"concurrency": null` for a pipeline without one. `platforms` lists
-  the virtual machines its jobs run in (`linux`, `windows`; sorted, empty
+  the virtual machines its jobs run in (`linux`; sorted, empty
   when every job is `wasm`), which the app sends the proxy so it can place
   the run ([Platforms](#platforms)); a run request itself never carries
   it. `jobs` lists each
@@ -4491,12 +4480,12 @@ the routes; the short version:
 
 ## Known limitations
 
-- **Virtual machines are new.** `platform: linux` and `platform: windows`
-  are tested against the real agent over pipes and with a fake machine in
-  the scheduler, but the images (`images/`) have not yet been built and
-  booted on a KVM host, so expect the first real runs to find problems.
-  Windows jobs cannot be lent `connections`, `ssh-keys` or a
-  `github-token`, and no machine job can use the task cache.
+- **Virtual machines are new.** `platform: linux` is tested against the
+  real agent over pipes and with a fake machine in the scheduler, but the
+  image (`images/linux`) has not yet been built and booted on a KVM host,
+  so expect the first real runs to find problems. No machine job can use
+  the task cache. `platform: windows` is turned off: the parser refuses it
+  and no runner offers it (`VmOs::enabled`).
 - **File locks need a C library that asks for them.** The runner keeps
   `flock` locks (an open file's, released with its last descriptor) and
   `fcntl` record locks (a process's, released when it closes the file or
@@ -4727,9 +4716,9 @@ job output, and none of it counts against an owner's storage quota.
 | `iwci-store`    | R2 and local object stores, manifests, tool resolution.                                       |
 | `iwci-runtime`  | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.           |
 | `iwci`          | The scheduler and the `iwci` command.                                                         |
-| `iwci-vm`       | `platform: linux` and `platform: windows` jobs: QEMU, workspace images, the agent's link.     |
+| `iwci-vm`       | `platform: linux` jobs: QEMU, workspace images, the agent's link.                             |
 | `iwci-vm-proto` | The wire between the runner and the agent in a machine, and the `.gitignore` rules both use.  |
-| `iwci-guest`    | The agent inside each machine (Linux init and Windows scheduled task).                        |
+| `iwci-guest`    | The agent inside each machine (Linux init; a dormant Windows scheduled task).                 |
 
 ## Development
 

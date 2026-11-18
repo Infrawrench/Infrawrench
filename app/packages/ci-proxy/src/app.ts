@@ -114,7 +114,7 @@ const MAX_PLATFORM_CHARS = 32;
 
 /**
  * Takes `platforms` out of a run or prepare request: the platforms other
- * than `wasm` its jobs run on (`linux`, `windows`), which the app reads from
+ * than `wasm` its jobs run on (`linux` today), which the app reads from
  * `/v1/concurrency`. The proxy places by it and never sends it on, since a
  * runner refuses a request with a field it does not know. Names are not
  * checked against a list, so a platform added to the runners needs no
@@ -456,7 +456,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         // Whether it can share a run or help one, and how many it helps.
         split: r.split,
         runs_helping: r.runsHelping,
-        // What it runs jobs on (`wasm`, and `linux` or `windows` with VMs).
+        // What it runs jobs on (`wasm`, and `linux` with VMs).
         platforms: r.platforms,
         // What placement ranks by: the cores a new run could expect here,
         // and how long a typical pull request's run would then take.

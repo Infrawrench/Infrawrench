@@ -147,10 +147,10 @@ fire that finds the pool full is skipped, not queued.
 
 ### Platforms
 
-A job runs on `wasm` (an isolate, the default), `linux` (a micro VM) or
-`windows` (Windows 11 on Arm in a VM), its `platform:`. Only a runner with
-KVM and the machine images runs the last two, and it lists what it runs in
-`/v1/capacity` as `"platforms": ["wasm", "linux", "windows"]`; a runner
+A job runs on `wasm` (an isolate, the default) or `linux` (a micro VM),
+its `platform:`. Only a runner with KVM and the machine image runs
+`linux`, and it lists what it runs in `/v1/capacity` as
+`"platforms": ["wasm", "linux"]`; a runner
 from before the field runs `wasm` only. `GET /v1/capacity` passes each
 runner's list on.
 

@@ -341,13 +341,12 @@ pub struct Job {
     #[serde(default)]
     pub cloud: Option<CloudField>,
     /// What the job runs on: `wasm` (the default, a Wasmer isolate on the
-    /// runner), `linux` or `windows` (a virtual machine the runner starts
-    /// for it), or `{ os, image }`. See [`PlatformField`].
+    /// runner), `linux` (a virtual machine the runner starts for it), or
+    /// `{ os, image }`. See [`PlatformField`].
     #[serde(default)]
     pub platform: Option<PlatformField>,
-    /// The interpreter of a `platform: linux` or `platform: windows` job's
-    /// `run:` script: `bash`, `sh` or `pwsh` on Linux (default `bash`),
-    /// `pwsh`, `powershell`, `cmd` or `bash` on Windows (default `pwsh`).
+    /// The interpreter of a `platform: linux` job's `run:` script: `bash`
+    /// (the default), `sh` or `pwsh`.
     #[serde(default)]
     pub shell: Option<String>,
     /// Infrawrench connections whose credentials are lent to the job (a
@@ -510,7 +509,7 @@ pub enum PlatformField {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Platform {
-    /// `wasm`, `linux` or `windows`.
+    /// `wasm` or `linux`.
     #[serde(default)]
     pub os: Option<String>,
     /// The machine image; each `os` has a default.
@@ -527,7 +526,7 @@ impl<'de> Deserialize<'de> for PlatformField {
                 .map(PlatformField::Full)
                 .map_err(serde::de::Error::custom),
             _ => Err(serde::de::Error::custom(
-                "`platform` is `wasm`, `linux`, `windows` or `{ os, image }`",
+                "`platform` is `wasm`, `linux` or `{ os, image }`",
             )),
         }
     }

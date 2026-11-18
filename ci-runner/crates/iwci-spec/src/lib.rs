@@ -467,7 +467,7 @@ struct JobStatic {
     tool: Option<ToolRef>,
     /// `cloud:`, checked, its matrix expressions left for each entry.
     cloud: Option<CloudSpec>,
-    /// `platform: linux` or `platform: windows`, checked.
+    /// `platform: linux`, checked.
     vm: Option<VmSpec>,
     access: JobAccess,
     tools: Vec<ToolRef>,
@@ -1331,7 +1331,7 @@ impl Validator<'_> {
             (None, None) => {
                 self.error(
                     path,
-                    "needs `using:` (a tool or environment), `platform: linux` or `platform: windows` to run a script in a virtual machine, or `cloud:` to run on a connected cloud account",
+                    "needs `using:` (a tool or environment), `platform: linux` to run a script in a virtual machine, or `cloud:` to run on a connected cloud account",
                 );
                 None
             }
@@ -1355,7 +1355,7 @@ impl Validator<'_> {
         } else if job.shell.is_some() {
             self.error(
                 format!("{path}.shell"),
-                "is for a `platform: linux` or `platform: windows` job's script; a job on the runner runs its script with its environment's shell",
+                "is for a `platform: linux` job's script; a job on the runner runs its script with its environment's shell",
             );
         }
         let access = self.access(path, job);
@@ -1768,20 +1768,30 @@ impl Validator<'_> {
                 }
                 return None;
             }
-            other => match VmOs::parse(other) {
-                Some(os) => os,
-                None => {
-                    self.error(
-                        if matches!(job.platform, Some(raw::PlatformField::Full(_))) {
-                            format!("{at}.os")
-                        } else {
-                            at.clone()
-                        },
-                        format!("is `wasm`, `linux` or `windows`, written out, not `{other}`"),
-                    );
-                    return None;
+            other => {
+                let at_os = if matches!(job.platform, Some(raw::PlatformField::Full(_))) {
+                    format!("{at}.os")
+                } else {
+                    at.clone()
+                };
+                match VmOs::parse(other) {
+                    Some(os) if os.enabled() => os,
+                    Some(os) => {
+                        self.error(
+                            at_os,
+                            format!("`{os}` machines are not available yet; use `linux`"),
+                        );
+                        return None;
+                    }
+                    None => {
+                        self.error(
+                            at_os,
+                            format!("is `wasm` or `linux`, written out, not `{other}`"),
+                        );
+                        return None;
+                    }
                 }
-            },
+            }
         };
         let image = match image {
             None => os.images()[0].to_string(),

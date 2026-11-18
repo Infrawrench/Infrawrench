@@ -488,7 +488,7 @@ pub struct Execution {
     /// what the sandbox itself took and what it reserved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxUsage>,
-    /// The job ran in a virtual machine (`platform: linux` or `windows`):
+    /// The job ran in a virtual machine (`platform: linux`):
     /// which, how long it took to start, and what it reserved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine: Option<MachineUsage>,
@@ -497,7 +497,7 @@ pub struct Execution {
 /// What a job's virtual machine was and took.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct MachineUsage {
-    /// `linux` or `windows`.
+    /// `linux`.
     pub os: String,
     /// The image, as the machine's agent names it (`ubuntu-24.04`).
     pub image: String,
@@ -768,8 +768,8 @@ pub struct Options {
     /// that missed waits for theirs rather than compute it too; `None`
     /// never waits.
     pub inflight: Option<Arc<dyn InFlight>>,
-    /// The runner's virtual machines, for `platform: linux` and
-    /// `platform: windows` jobs; `None` fails such jobs, saying so.
+    /// The runner's virtual machines, for `platform: linux` jobs; `None`
+    /// fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
 }
 

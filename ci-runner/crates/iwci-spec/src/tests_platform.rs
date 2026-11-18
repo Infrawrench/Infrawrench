@@ -102,31 +102,16 @@ jobs:
 }
 
 #[test]
-fn a_windows_job_takes_the_map_form_and_its_own_shell() {
-    let plan = parse(
-        "name: t\njobs:\n  win:\n    platform: { os: windows, image: windows-11-arm }\n    shell: cmd\n    memory: 8GiB\n    run: dir\n",
-        &ctx(),
-    )
-    .unwrap();
-    let job = first(&plan);
-    assert_eq!(
-        job.vm,
-        Some(VmSpec {
-            os: VmOs::Windows,
-            image: "windows-11-arm".into(),
-            shell: "cmd".into(),
-        })
+fn windows_machines_are_turned_off() {
+    let job = |body: &str| format!("name: t\njobs:\n  a:\n{body}");
+    assert_error(
+        &job("    platform: windows\n    run: dir\n"),
+        "jobs.a.platform: `windows` machines are not available yet; use `linux`",
     );
-    assert_eq!(job.memory_bytes, 8 << 30);
-
-    let plan = parse(
-        "name: t\njobs:\n  win:\n    platform: windows\n    run: dir\n",
-        &ctx(),
-    )
-    .unwrap();
-    let job = first(&plan);
-    assert_eq!(job.vm.as_ref().unwrap().shell, "pwsh");
-    assert_eq!(job.memory_bytes, 4 << 30);
+    assert_error(
+        &job("    platform: { os: windows, image: windows-11-arm }\n    run: dir\n"),
+        "jobs.a.platform.os: `windows` machines are not available yet",
+    );
 }
 
 #[test]
@@ -134,11 +119,11 @@ fn platform_errors() {
     let job = |body: &str| format!("name: t\njobs:\n  a:\n{body}");
     assert_error(
         &job("    platform: macos\n    run: x\n"),
-        "jobs.a.platform: is `wasm`, `linux` or `windows`",
+        "jobs.a.platform: is `wasm` or `linux`, written out, not `macos`",
     );
     assert_error(
         &job("    platform: { os: bsd }\n    run: x\n"),
-        "jobs.a.platform.os: is `wasm`, `linux` or `windows`",
+        "jobs.a.platform.os: is `wasm` or `linux`, written out, not `bsd`",
     );
     assert_error(
         &job("    platform: { os: linux, image: debian-13 }\n    run: x\n"),
@@ -155,7 +140,7 @@ fn platform_errors() {
     );
     assert_error(
         &job("    using: env:bash@5\n    shell: bash\n    run: x\n"),
-        "jobs.a.shell: is for a `platform: linux` or `platform: windows` job",
+        "jobs.a.shell: is for a `platform: linux` job",
     );
     assert_error(
         &job("    platform: linux\n    using: env:bash@5\n    run: x\n"),
@@ -176,10 +161,6 @@ fn platform_errors() {
     assert_error(
         &job("    platform: { os: wasm, image: x }\n    using: env:bash@5\n    run: x\n"),
         "jobs.a.platform.image: a `wasm` job runs in an isolate",
-    );
-    assert_error(
-        &job("    platform: windows\n    memory: 2GiB\n    run: x\n"),
-        "jobs.a.memory: must be between 4096MiB and 16GiB: Windows does not start in less than 4GiB",
     );
     assert_error(
         &job("    platform: linux\n    memory: 64MiB\n    run: x\n"),
@@ -205,18 +186,6 @@ fn what_a_virtual_machine_cannot_have() {
     assert_error(&job("    env-cache: false\n"), "jobs.a.env-cache:");
     assert_error(&job("    task-cache: true\n"), "jobs.a.task-cache:");
 
-    let win =
-        |body: &str| format!("name: t\njobs:\n  a:\n    platform: windows\n    run: x\n{body}");
-    for (key, body) in [
-        ("connections", "    connections: [prod]\n"),
-        ("ssh-keys", "    ssh-keys: [deploy]\n"),
-        ("github-token", "    github-token: { contents: write }\n"),
-    ] {
-        assert_error(
-            &win(body),
-            &format!("jobs.a.{key}: writes files at Linux paths"),
-        );
-    }
     // A Linux machine is lent what any job is.
     let plan = parse(
         &job(
@@ -226,9 +195,6 @@ fn what_a_virtual_machine_cannot_have() {
     )
     .unwrap();
     assert_eq!(first(&plan).access.ssh_keys, ["deploy"]);
-    // What is lent as variables alone works on Windows too.
-    let plan = parse(&win("    env-from: [r2]\n"), &ctx()).unwrap();
-    assert_eq!(first(&plan).access.env_from, ["r2"]);
 }
 
 #[test]

@@ -15,7 +15,7 @@ export interface ScheduledPipeline {
    */
   concurrency?: { group: string; "cancel-in-progress": boolean } | null;
   /**
-   * The virtual machines its jobs run in (`linux`, `windows`), as the
+   * The virtual machines its jobs run in (`linux` today), as the
    * runner read them; absent from runners and rows from before. Untrusted
    * shape: read it through `schedulePlatforms`.
    */

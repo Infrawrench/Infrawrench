@@ -58,8 +58,8 @@ pub struct Runner {
     /// refuses them.
     #[cfg(target_os = "linux")]
     pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
-    /// The virtual machines `platform: linux` and `platform: windows` jobs
-    /// run in (`--machines`); `None` fails such jobs, saying so.
+    /// The virtual machines `platform: linux` jobs run in (`--machines`);
+    /// `None` fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
 }
 
@@ -590,7 +590,7 @@ pub struct PipelineConcurrency {
     pub concurrency: Option<iwci_spec::Concurrency>,
     /// Each job key that runs on a cloud account or is lent anything.
     pub jobs: Vec<JobNeeds>,
-    /// The virtual machines its jobs run in (`linux`, `windows`), sorted:
+    /// The virtual machines its jobs run in (`linux`), sorted:
     /// the app asks the proxy for a runner that has them. Empty when every
     /// job runs on `wasm`.
     pub platforms: Vec<&'static str>,

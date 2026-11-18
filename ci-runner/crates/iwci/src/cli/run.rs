@@ -252,7 +252,7 @@ pub(super) fn open_runner(
 }
 
 /// `--machines <dir>` (or `IWCI_MACHINES`): the virtual machine images
-/// `platform: linux` and `platform: windows` jobs run in, as
+/// `platform: linux` jobs run in, as
 /// `ci-runner/images/` builds them. `--machine-cpus <n>` (default 2) is
 /// what each machine gets. Off by default: such jobs then fail, saying so.
 fn machines(

@@ -159,27 +159,24 @@ lists the three controllers once the runner has made `runner/`.
 
 ## Virtual machines, off by default
 
-A host with `machines = true` can run `platform: linux` and `platform:
-windows` jobs, each in a QEMU/KVM virtual machine the runner starts for it
+A host with `machines = true` can run `platform: linux` jobs, each in a
+QEMU/KVM virtual machine the runner starts for it
 (`ci-runner/crates/iwci-vm`; the runner's README, "Platforms"). The
 install script then:
 
 - installs QEMU for the host's architecture (`qemu-system-x86` or
-  `qemu-system-arm`), `qemu-utils` and `erofs-utils` from apt;
+  `qemu-system-arm`) and `erofs-utils` from apt;
 - adds `iwci` to the group `kvm`, which owns `/dev/kvm`, and the unit gets
   `SupplementaryGroups=kvm`;
 - makes `/var/lib/iwci/machines` (root, group `iwci`, 0750) and sets
   `IWCI_MACHINES` in the unit to it.
 
-The images are not uploaded from here: the Linux root is a few GB and the
-Windows disk tens. Build them on the host with
-`ci-runner/images/<os>/build.sh --out /var/lib/iwci/machines/<os>`
-(`ci-runner/images/README.md` has what each needs, and the Windows licence
-is the operator's to bring). The runner lists what it can run in
+The image is not uploaded from here: its root is a few GB. Build it on the
+host with `ci-runner/images/linux/build.sh --out /var/lib/iwci/machines/linux`
+(`ci-runner/images/README.md` has what it needs). The runner lists what it can run in
 `/v1/capacity` (`"platforms": ["wasm", "linux"]`) and leaves out, with a
 line in its log, whatever the host lacks: KVM (on x86_64 VT-x or AMD-V, on
-Graviton a `.metal` instance), an image, or a tool. Windows jobs need an
-aarch64 host. To check a host after applying: `journalctl -u iwci | grep
+Graviton a `.metal` instance), the image, or a tool. To check a host after applying: `journalctl -u iwci | grep
 machines:` names anything missing, and `curl` of `/v1/capacity` on the
 listen address lists the platforms.
 

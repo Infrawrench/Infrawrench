@@ -1,6 +1,8 @@
-//! Jobs in virtual machines: `platform: linux` (a micro VM) and
-//! `platform: windows` (Windows 11 on Arm), started per job with QEMU and
-//! KVM on a Linux runner.
+//! Jobs in virtual machines: `platform: linux` (a micro VM), started per
+//! job with QEMU and KVM on a Linux runner. The Windows 11 on Arm half
+//! (`WindowsImage`, `qemu::windows_args`, `windows_env`) is written but
+//! turned off: `Host::new` never opens its image, and the parser refuses
+//! `platform: windows` (`iwci_spec::VmOs::enabled`).
 //!
 //! - [`qemu`]: the command lines, and why they look as they do.
 //! - [`images`]: the machine images a runner is given, and the workspace

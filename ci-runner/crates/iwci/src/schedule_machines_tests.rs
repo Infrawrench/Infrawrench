@@ -1,4 +1,4 @@
-//! `platform: linux` and `platform: windows` jobs in the scheduler, with a
+//! `platform: linux` jobs in the scheduler, with a
 //! fake machine that does what its script names: the job's files and the
 //! run's scratch go in, what the job left comes back through
 //! `machines::apply`, and everything after reads them as for any job.
@@ -350,9 +350,6 @@ jobs:
   linux:
     platform: linux
     run: share
-  windows:
-    platform: windows
-    run: share
   wasm:
     using: builtin:ok@1
 ",
@@ -363,19 +360,6 @@ jobs:
         Status::Error { message } if message.contains("no Linux virtual machines (`platform: linux`)")
     ));
     assert_eq!(job(&report, "wasm").status, Status::Passed);
-
-    // A runner with Linux machines has no Windows ones.
-    let (report, _) = run_machines(
-        &p,
-        Some(Arc::new(FakeMachines {
-            seen: Mutex::default(),
-        })),
-    );
-    assert_eq!(job(&report, "linux").status, Status::Passed);
-    assert!(matches!(
-        &job(&report, "windows").status,
-        Status::Error { message } if message.contains("no Windows virtual machines")
-    ));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! Jobs in a virtual machine: `platform: linux` and `platform: windows`.
+//! Jobs in a virtual machine: `platform: linux`.
 //!
 //! The scheduler treats such a job like any other up to the moment it
 //! runs: its file system is the workspace's snapshot forked for it, with

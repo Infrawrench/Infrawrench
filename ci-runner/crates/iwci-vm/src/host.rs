@@ -230,16 +230,10 @@ impl Host {
             },
             Err(e) => problems.push(format!("Linux: {e}")),
         }
-        match WindowsImage::open(&host.config.dir.join("windows"), arch.name()) {
-            Ok(image) => match find(host.config.qemu_img.as_deref(), "qemu-img") {
-                Some(img) => {
-                    host.qemu_img = Some(img);
-                    host.windows = Some(image);
-                }
-                None => problems.push("Windows: qemu-img is not installed".into()),
-            },
-            Err(e) => problems.push(format!("Windows: {e}")),
-        }
+        // Windows machines are turned off until one has run on a real host
+        // (`iwci_spec::VmOs::enabled`): the runner never opens their image,
+        // so it never offers `windows`. Turning them on opens it here with
+        // `WindowsImage::open` and `qemu-img`, as Linux's above.
         host.problems = problems;
         host
     }

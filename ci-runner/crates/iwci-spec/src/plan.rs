@@ -192,8 +192,8 @@ pub struct CloudSpec {
     pub gpu: Option<String>,
 }
 
-/// Where a `platform: linux` or `platform: windows` job runs: a virtual
-/// machine the runner starts for it from one of its images.
+/// Where a `platform: linux` job runs: a virtual machine the runner
+/// starts for it from one of its images.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VmSpec {
     pub os: VmOs,
@@ -218,6 +218,15 @@ impl VmOs {
             "windows" => Some(VmOs::Windows),
             _ => None,
         }
+    }
+
+    /// Whether a pipeline may ask for it. Windows machines are written
+    /// (`iwci-guest`, `images/windows`) but turned off until one has run on
+    /// a real host; the parser refuses `platform: windows` and the runner
+    /// never offers it. Turning them on is this line, the runner opening
+    /// its Windows image again (`iwci_vm::Host::new`) and the docs.
+    pub fn enabled(self) -> bool {
+        matches!(self, VmOs::Linux)
     }
 
     pub fn name(self) -> &'static str {

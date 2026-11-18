@@ -7,8 +7,8 @@
 // ids carry the runner's name (`<name>.<id>`), so status and log requests
 // go straight back to it.
 //
-// A run can need a platform other than `wasm` (`linux` or `windows`, jobs
-// that run in a VM), which not every runner has: the caller names them in
+// A run can need a platform other than `wasm` (`linux`, jobs that run in
+// a VM), which not every runner has: the caller names them in
 // `platforms`, and `place` then tries only the runners whose capacity lists
 // every one, in the same order. When no runner that is up has them all, it
 // places the run as usual: its other jobs still run, and the runner fails
@@ -62,8 +62,8 @@ export interface Capacity {
   /** The runs of other runners it is helping now. */
   runsHelping: number;
   /**
-   * The platforms it runs jobs on: always `wasm`, and `linux` or `windows`
-   * when it has the machines for them. `["wasm"]` from a runner older than
+   * The platforms it runs jobs on: always `wasm`, and `linux` when it has
+   * the machines for it. `["wasm"]` from a runner older than
    * the field; empty for a runner that did not answer.
    */
   platforms: string[];
