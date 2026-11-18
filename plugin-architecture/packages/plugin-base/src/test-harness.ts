@@ -203,6 +203,15 @@ export function runPluginContractTests(contract: Plugin, credentials?: Record<st
           expect(new Set(kinds).size).toBe(kinds.length);
         });
       }
+      const drillTargets = plugin.manifest.restoreDrill?.targets ?? [];
+      if (drillTargets.length > 0) {
+        it("restoreDrill targets name this plugin's resource types once each", () => {
+          const typeIds = new Set(plugin.resourceTypes.map((t) => t.id));
+          const targetIds = drillTargets.map((t) => t.resourceTypeId);
+          expect(new Set(targetIds).size).toBe(targetIds.length);
+          for (const id of targetIds) expect(typeIds.has(id)).toBe(true);
+        });
+      }
       const tokenFormats = plugin.manifest.tokenFormats ?? [];
       if (tokenFormats.length > 0) {
         it("tokenFormats are unique and name declared credential fields", () => {

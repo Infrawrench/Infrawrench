@@ -66,6 +66,24 @@ export const manifest = {
   statusFeed,
   preflight: SUPABASE_PREFLIGHT,
   oauth: SUPABASE_OAUTH,
+  // A drill branches the project with its data, checks the branch, and
+  // deletes it (client.ts, startRestoreDrill). Needs branching and the
+  // point-in-time recovery add-on on the project.
+  restoreDrill: {
+    copyNoun: "branch",
+    targets: [
+      {
+        resourceTypeId: "supabase-project",
+        restorePoints: ["latest-backup"],
+        typicalReadyMinutes: 10,
+      },
+    ],
+    cost: {
+      summary:
+        "A drill branch is billed for its compute, disk, egress and storage at the project's rates while it exists.",
+      url: "https://supabase.com/docs/guides/platform/manage-your-usage/branching",
+    },
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

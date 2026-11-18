@@ -7,6 +7,10 @@ import {
   type BackupPolicyInput,
   type DrillCoverage,
   type RestoreDrillInput,
+  type RestoreDrillRun,
+  type RestoreDrillSchedule,
+  type RestoreDrillScheduleInput,
+  type RestoreDrillTargetRow,
 } from "@infrawrench/ui";
 import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
@@ -27,12 +31,17 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
   const [data, setData] = useState<BackupCoverageResponse | null>(null);
   const [policies, setPolicies] = useState<BackupPolicy[] | null>(null);
   const [drills, setDrills] = useState<DrillCoverage | null>(null);
+  const [drillTargets, setDrillTargets] = useState<RestoreDrillTargetRow[]>([]);
+  const [drillSchedules, setDrillSchedules] = useState<RestoreDrillSchedule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Until the shell's permission read lands `has()` is false, so the policy
   // editors stay hidden rather than offering an action that would 403.
   const { has } = usePermissions();
   const canEdit = has("org:settings:write");
+  // A drill schedule runs a query against a copy of a database unattended, so
+  // it takes the SQL editor's permission, as query monitors do.
+  const canScheduleDrills = has("resources:execute");
   // The load effect owns the refresh; policy mutations need to trigger one
   // without re-running the effect's teardown, so they go through a ref.
   const reload = useRef<() => void>(() => {});
@@ -63,6 +72,49 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
     [orgId],
   );
 
+  const createSchedule = useCallback(
+    async (input: RestoreDrillScheduleInput) => {
+      await apiPost(`/api/org/${orgId}/backups/drills/schedules`, input);
+      reload.current();
+    },
+    [orgId],
+  );
+
+  const updateSchedule = useCallback(
+    async (scheduleId: string, patch: Partial<RestoreDrillScheduleInput>) => {
+      const { resourceId: _resourceId, ...body } = patch;
+      await apiPatch(`/api/org/${orgId}/backups/drills/schedules/${scheduleId}`, body);
+      reload.current();
+    },
+    [orgId],
+  );
+
+  const deleteSchedule = useCallback(
+    async (scheduleId: string) => {
+      await apiDelete(`/api/org/${orgId}/backups/drills/schedules/${scheduleId}`);
+      reload.current();
+    },
+    [orgId],
+  );
+
+  const runSchedule = useCallback(
+    async (scheduleId: string) => {
+      await apiPost(`/api/org/${orgId}/backups/drills/schedules/${scheduleId}/run`, {});
+      reload.current();
+    },
+    [orgId],
+  );
+
+  const loadRuns = useCallback(
+    async (scheduleId: string) =>
+      (
+        await apiGet<{ runs: RestoreDrillRun[] }>(
+          `/api/org/${orgId}/backups/drills/runs?scheduleId=${encodeURIComponent(scheduleId)}`,
+        )
+      ).runs,
+    [orgId],
+  );
+
   const deletePolicy = useCallback(
     async (policyId: string) => {
       await apiDelete(`/api/org/${orgId}/backups/policies/${policyId}`);
@@ -81,6 +133,8 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
     setData(null);
     setPolicies(null);
     setDrills(null);
+    setDrillTargets([]);
+    setDrillSchedules([]);
     setError(null);
     function load() {
       const request = ++latestRequest;
@@ -92,12 +146,16 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
         // would make the existing endpoint pay for them on every page that
         // only wants gaps.
         apiGet<DrillCoverage>(`/api/org/${orgId}/backups/drills`),
+        apiGet<{ targets: RestoreDrillTargetRow[] }>(`/api/org/${orgId}/backups/drills/targets`),
+        apiGet<{ schedules: RestoreDrillSchedule[] }>(`/api/org/${orgId}/backups/drills/schedules`),
       ])
-        .then(([coverage, policyList, drillCoverage]) => {
+        .then(([coverage, policyList, drillCoverage, targetList, scheduleList]) => {
           if (!cancelled && request === latestRequest) {
             setData(coverage);
             setPolicies(policyList.policies);
             setDrills(drillCoverage);
+            setDrillTargets(targetList.targets);
+            setDrillSchedules(scheduleList.schedules);
             setError(null);
           }
         })
@@ -134,6 +192,16 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
       // need. The host does not read that permission separately, so the server
       // is the gate and its 403 surfaces in the section's banner.
       onRecordDrill={recordDrill}
+      drillAutomation={{
+        targets: drillTargets,
+        schedules: drillSchedules,
+        // Without `resources:execute` the schedules render read-only.
+        onCreateSchedule: canScheduleDrills ? createSchedule : undefined,
+        onUpdateSchedule: canScheduleDrills ? updateSchedule : undefined,
+        onDeleteSchedule: canScheduleDrills ? deleteSchedule : undefined,
+        onRunSchedule: canScheduleDrills ? runSchedule : undefined,
+        loadRuns,
+      }}
     />
   );
 }

@@ -57,6 +57,8 @@ for (const plugin of BUNDLED_PLUGINS) {
   }
   add(manifest.ciExecutor?.helpLink?.label);
   add(manifest.ciCredential?.description);
+  add(manifest.restoreDrill?.copyNoun);
+  add(manifest.restoreDrill?.cost?.summary);
   add(manifest.warehouseSink?.label);
   add(manifest.warehouseSink?.description);
   for (const field of manifest.warehouseSink?.targetFields ?? []) {

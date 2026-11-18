@@ -11,7 +11,7 @@ Open it from the sidebar. It has four views:
 - **Gaps**: stateful resources with no backup, resources whose newest backup is older than your policy allows, retention windows shorter than you asked for, and backups whose source resource is gone.
 - **Coverage**: every stateful resource Infrawrench can judge, what protects it, how old that protection is, and which policy applies.
 - **Policies**: the recovery objectives everything else is measured against.
-- **Drills**: whether anyone has actually restored these backups, and how long it took.
+- **Drills**: whether anyone has actually restored these backups, and how long it took, plus [automatic drills](#automatic-drills) for databases whose provider can make a throwaway copy.
 
 ![The Backups workspace tab on the Gaps view, showing the three summary cards (Worst RPO, Unprotected, Orphaned backups) above a table of findings with mixed severities](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/gaps-view.png)
 
@@ -32,6 +32,7 @@ Coverage is only as good as what each provider's listing tells Infrawrench. If a
 | Neon          | Snapshots                            | Branches                                                 |
 | PlanetScale   | Backups                              | Branches                                                 |
 | Azure         | None                                 | PostgreSQL and MySQL Flexible Servers (retention window) |
+| Turso         | None (point-in-time recovery)        | Databases (always on, on every plan)                     |
 
 AWS is **not** covered yet. Infrawrench doesn't currently list EBS or RDS snapshots or read RDS backup retention, so it has nothing to check against. Rather than report every EBS volume as unprotected, AWS is left out.
 
@@ -90,11 +91,11 @@ Plenty can go wrong between a backup and a working restore: a snapshot that rest
 
 <insert [The Backups Drills tab showing the four summary cards (Verified, Stale, Never verified, Worst measured RTO) above a list of protected resources with their standings, one expanded to show the record-a-drill form] here>
 
-### Infrawrench records drills, it doesn't run them
+### Recorded drills and automatic drills
 
-A drill is **a record that someone tried a restore**. Infrawrench doesn't restore your database on a schedule. An unattended restore costs real money, can collide with production, and there's no general way to check that what came back is correct.
+A drill is **a record that someone tried a restore**. For most resources Infrawrench doesn't restore anything itself. An unattended restore costs real money, can collide with production, and there's no general way to check that what came back is correct. There, Infrawrench keeps the exercise on a schedule, records it, and shows you when it lapses.
 
-What Infrawrench does is keep the exercise on a schedule, record it, and show you when it lapses.
+Some providers make that reasoning go away: they can copy a database from a backup or a point in time into an isolated branch or fork that is cheap to create and throw away. For those, Infrawrench can run the drill itself. See [Automatic drills](#automatic-drills). Both kinds land in the same drill log, so the standings below, compliance evidence and the weekly digest treat them alike.
 
 ### Drill outcomes
 
@@ -125,6 +126,63 @@ Drills recorded against a resource you've since deleted are kept and shown separ
 ### Permissions
 
 Recording a drill needs **Resources: write**, not the settings permission that policies need. The person who spent Saturday restoring a database is rarely the one who set the objective. Deleting a drill is recorded in the audit log.
+
+## Automatic drills
+
+On the Drills tab, a resource whose provider supports it has a **Schedule drill** button. A scheduled drill:
+
+1. Asks the provider for an isolated copy of the resource (a branch, a fork or a new database) from the restore point you chose.
+2. Times how long the copy takes to accept connections. That's the restore time (RTO).
+3. Measures how old the restore point was when the drill started. That's the restore point age (RPO).
+4. Runs your check query against the copy, if you set one, and compares the result with what you expect.
+5. Records the outcome in the drill log, then deletes the copy.
+
+<insert [The Backups Drills tab with one resource expanded, showing its automatic drill schedule (monthly, from a point in time, with a check query), the Run now / History / Edit buttons, and the run history listing two runs with restore time and restore point age] here>
+
+### Supported providers
+
+| Provider    | Resource  | Copy                             | Restore points                                          |
+| ----------- | --------- | -------------------------------- | ------------------------------------------------------- |
+| Neon        | Branches  | A branch                         | Latest snapshot, or a point in the history window       |
+| PlanetScale | Branches  | A branch of the same size        | Latest successful backup, or a point in time (Postgres) |
+| Xata        | Branches  | A branch without replicas        | Latest backup, or a point in the backup window          |
+| Turso       | Databases | A new database in the same group | A point in time                                         |
+| Tiger Cloud | Services  | A fork                           | Last snapshot, or a point in time                       |
+| Supabase    | Projects  | A branch with data               | The project's latest data                               |
+
+Supabase needs branching and the point-in-time recovery add-on on the project. PlanetScale needs a service token that can create, restore and delete branches.
+
+CockroachDB Cloud isn't supported: a restore there goes into an existing cluster, so a drill would need a whole new cluster or would land on a live one.
+
+### Set up a schedule
+
+- **Every**: daily, weekly, every two weeks, monthly or quarterly. The first run is one interval after you save, so use **Run now** to try it straight away.
+- **Restore from**: the latest backup, or a point in time, given as a number of hours before each run. Only the restore points the provider supports are offered.
+- **Time limit**: if the copy isn't accepting connections by then, the drill fails and the copy is deleted.
+- **Check query**: optional, read-only (`SELECT`, `WITH`, `SHOW` or `EXPLAIN`, one statement), the same rule [query monitors](./query-monitors.md) follow. Choose whether to compare the row count or the first value, and the condition it must meet, for example "row count > 0" or "value ≥ 1000".
+
+The schedule form shows what the provider charges for a copy while it exists.
+
+### Outcomes
+
+| What happened                                          | Recorded as               |
+| ------------------------------------------------------ | ------------------------- |
+| The copy came up and the check held                    | **Restored and checked**  |
+| The copy came up and there is no check                 | **Restored, not checked** |
+| The check didn't hold, or couldn't run                 | **Restore failed**        |
+| The provider refused, or the copy wasn't ready in time | **Restore failed**        |
+
+As with recorded drills, only **Restored and checked** counts as evidence, so set a check if you want an automatic drill to keep a resource verified. Each automatic drill in the log shows its restore time, its restore point age, what was restored and what the check found. A failed automatic drill raises a **Restore drills** alert, which you can route like any other in [alert routing](./alert-routing.md).
+
+### The copy is always deleted
+
+Infrawrench deletes the copy on every path: after a check passes, after it fails, at the time limit, and when the provider reports an error. It only ever deletes copies it made, which all have names starting with `iw-drill-`.
+
+If deleting the copy fails, Infrawrench keeps retrying with growing gaps, the schedule shows the copy's name and the error in red, and after three failed attempts a critical **Restore drills** alert goes out, because a copy that's still running is still costing money. If the poller is interrupted while it's asking the provider for a copy, the drill fails with the copy's name so you can check the provider and delete it.
+
+### Permissions for schedules
+
+Creating, changing, running and deleting a schedule needs **Resources: execute**, the same permission as the SQL editor and query monitors, because a schedule runs a query against a copy of your database without anyone watching. Anyone who can read resources can see schedules and their history. Schedule changes and manual runs are recorded in the audit log.
 
 ## Related
 

@@ -67,6 +67,10 @@ export const MANIFEST_REQUIREMENTS = [
     client: ["ciPreflight", "ciStart", "ciStatus", "ciTeardown", "ciListTagged"],
   },
   { when: ["ciCredential"], client: ["lendCiCredential"] },
+  {
+    when: ["restoreDrill"],
+    client: ["startRestoreDrill", "checkRestoreDrill", "endRestoreDrill"],
+  },
 ] as const satisfies readonly {
   when: readonly string[];
   client?: readonly (keyof PluginClient)[];

@@ -11,6 +11,16 @@ import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { listBackupCoverage } from "@infrawrench/server-core/backups/feed";
 import {
+  DrillScheduleInputError,
+  createDrillSchedule,
+  deleteDrillSchedule,
+  listDrillRuns,
+  listDrillSchedules,
+  listDrillTargets,
+  startDrillRunNow,
+  updateDrillSchedule,
+} from "@infrawrench/server-core/backups/drill-schedules";
+import {
   RestoreDrillInputError,
   createRestoreDrill,
   deleteRestoreDrill,
@@ -39,6 +49,11 @@ import {
   notFound,
   RestoreDrill,
   RestoreDrillLog,
+  RestoreDrillRun,
+  RestoreDrillRunList,
+  RestoreDrillSchedule,
+  RestoreDrillScheduleList,
+  RestoreDrillTargetList,
 } from "@infrawrench/api-contract";
 import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
@@ -119,6 +134,26 @@ const readPolicyFields = (body: Body) =>
 
 const policyRefusal = (error: unknown) =>
   error instanceof BackupPolicyInputError ? inputRefusal(error) : undefined;
+
+const scheduleRefusal = (error: unknown) =>
+  error instanceof DrillScheduleInputError ? inputRefusal(error) : undefined;
+
+/** What the audit log keeps about a schedule: its settings, never the query text. */
+const scheduleAuditMetadata = (schedule: {
+  resourceId: string;
+  intervalDays: number;
+  restorePoint: string;
+  timeLimitMinutes: number;
+  enabled: boolean;
+  verifySql: string | null;
+}) => ({
+  resourceId: schedule.resourceId,
+  intervalDays: schedule.intervalDays,
+  restorePoint: schedule.restorePoint,
+  timeLimitMinutes: schedule.timeLimitMinutes,
+  enabled: schedule.enabled,
+  verifies: schedule.verifySql !== null,
+});
 
 const BackupsHandlers = HttpApiBuilder.group(BackupsApi, "backups", (handlers) =>
   handlers
@@ -240,6 +275,109 @@ const BackupsHandlers = HttpApiBuilder.group(BackupsApi, "backups", (handlers) =
           listDrillCoverage(organizationId, validDays === undefined ? {} : { validDays }),
         );
         return yield* respond(DrillCoverageResponse)(coverage);
+      }),
+    )
+    /** Resources whose provider can make an isolated copy, for the schedule picker. */
+    .handle("drillTargets", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const targets = yield* legacy(() => listDrillTargets(organizationId));
+        return yield* respond(RestoreDrillTargetList)({ targets });
+      }),
+    )
+    .handle("listDrillSchedules", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const schedules = yield* legacy(() => listDrillSchedules(organizationId));
+        return yield* respond(RestoreDrillScheduleList)({ schedules });
+      }),
+    )
+    .handle("createDrillSchedule", ({ payload }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* OrgPrincipal;
+        const schedule = yield* legacyTry(
+          () => createDrillSchedule(organizationId, payload, session.userId ?? null),
+          scheduleRefusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "restore_drill_schedule.create",
+            entityType: "restore_drill_schedule",
+            entityId: schedule.id,
+            metadata: scheduleAuditMetadata(schedule),
+          }),
+        );
+        return yield* respond(RestoreDrillSchedule)(schedule);
+      }),
+    )
+    .handle("updateDrillSchedule", ({ params, payload }) =>
+      Effect.gen(function* () {
+        if (Object.keys(payload).length === 0) return yield* badRequest("No changes supplied");
+        const { organizationId, session } = yield* OrgPrincipal;
+        const schedule = yield* legacyTry(
+          () => updateDrillSchedule(organizationId, params.scheduleId, payload),
+          scheduleRefusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "restore_drill_schedule.update",
+            entityType: "restore_drill_schedule",
+            entityId: schedule.id,
+            metadata: scheduleAuditMetadata(schedule),
+          }),
+        );
+        return yield* respond(RestoreDrillSchedule)(schedule);
+      }),
+    )
+    .handle("deleteDrillSchedule", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* OrgPrincipal;
+        const scheduleId = params.scheduleId;
+        const removed = yield* legacy(() => deleteDrillSchedule(organizationId, scheduleId));
+        if (!removed) return yield* notFound("No such drill schedule");
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "restore_drill_schedule.delete",
+            entityType: "restore_drill_schedule",
+            entityId: scheduleId,
+          }),
+        );
+      }),
+    )
+    .handle("runDrillSchedule", ({ params }) =>
+      Effect.gen(function* () {
+        const { organizationId, session } = yield* OrgPrincipal;
+        const run = yield* legacyTry(
+          () => startDrillRunNow(organizationId, params.scheduleId, session.userId ?? null),
+          scheduleRefusal,
+        );
+        yield* fireAndForget(() =>
+          logAudit({
+            organizationId,
+            userId: session.userId,
+            action: "restore_drill_schedule.run",
+            entityType: "restore_drill_schedule",
+            entityId: params.scheduleId,
+            metadata: { runId: run.id, copyName: run.copyName },
+          }),
+        );
+        return yield* respond(RestoreDrillRun)(run);
+      }),
+    )
+    .handle("listDrillRuns", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const scheduleId = query.scheduleId;
+        const runs = yield* legacy(() =>
+          listDrillRuns(organizationId, scheduleId ? { scheduleId } : {}),
+        );
+        return yield* respond(RestoreDrillRunList)({ runs });
       }),
     )
     .handle("drillLog", ({ query }) =>

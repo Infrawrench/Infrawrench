@@ -60,6 +60,7 @@ import {
   runOrgScorecardSnapshotPass,
 } from "@infrawrench/server-core/scorecards/org-snapshots";
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
+import { runRestoreDrillPass } from "@infrawrench/server-core/backups/drill-pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import {
@@ -891,6 +892,16 @@ export const PASSES: readonly Pass[] = [
     name: "query-monitors",
     runtime: "gateway",
     run: guarded("[query-monitors] tick failed:", () => runQueryMonitorPass({ limit: 5 })),
+  },
+
+  // Automatic restore drills: queue due schedules, then move each run one step
+  // (start a copy, look at it, check it, delete it). Gateway: it calls plugin
+  // code for arbitrary accounts and opens SQL connections to the copies.
+  {
+    kind: "periodic",
+    name: "restore-drills",
+    runtime: "gateway",
+    run: guarded("[restore-drills] tick failed:", () => runRestoreDrillPass()),
   },
 
   // Business-metric importers: a small batch of due pulls (CloudWatch,

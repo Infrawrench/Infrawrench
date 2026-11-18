@@ -81,6 +81,25 @@ export const manifest = {
   },
   statusFeed,
   oauth: PLANETSCALE_OAUTH,
+  // A drill restores a backup, or a Postgres point in time, into a new branch
+  // of the same database (POST .../branches with backup_id / restore_point),
+  // checks it, and deletes it. The service token needs create_branch (or
+  // restore_backup) and delete_branch.
+  restoreDrill: {
+    copyNoun: "branch",
+    targets: [
+      {
+        resourceTypeId: "ps-branch",
+        restorePoints: ["latest-backup", "point-in-time"],
+        typicalReadyMinutes: 15,
+      },
+    ],
+    cost: {
+      summary:
+        "A drill branch is a cluster the size of the source branch, billed by the hour while it exists.",
+      url: "https://planetscale.com/pricing",
+    },
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

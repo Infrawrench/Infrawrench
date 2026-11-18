@@ -7,6 +7,7 @@ import {
 } from "../focus.js";
 import { CI_EXECUTOR_KINDS } from "../ci.js";
 import { PRODUCT_IDS } from "../preflight.js";
+import { RESTORE_DRILL_POINT_KINDS } from "../restore-drill.js";
 import { findUnsafeSvgConstructs } from "../svg-safety.js";
 import {
   NonEmpty,
@@ -520,6 +521,22 @@ export const pluginManifestSchema = Schema.Struct({
       shortLived: Schema.Boolean,
       namespaces: Schema.optional(Schema.Boolean),
       tools: Schema.optional(Schema.Array(CiTool)),
+    }),
+  ),
+  restoreDrill: Schema.optional(
+    Schema.Struct({
+      copyNoun: NonEmpty,
+      targets: Schema.Array(
+        Schema.Struct({
+          resourceTypeId: NonEmpty,
+          restorePoints: Schema.Array(Schema.Literals(RESTORE_DRILL_POINT_KINDS)).check(
+            Schema.isMinLength(1),
+          ),
+          maxLookbackHours: Schema.optional(PositiveInt),
+          typicalReadyMinutes: Schema.optional(PositiveInt),
+        }),
+      ).check(Schema.isMinLength(1)),
+      cost: Schema.optional(Schema.Struct({ summary: NonEmpty, url: Schema.optional(Url) })),
     }),
   ),
   tokenFormats: Schema.optional(

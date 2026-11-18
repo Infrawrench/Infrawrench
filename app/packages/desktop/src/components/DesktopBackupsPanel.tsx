@@ -9,10 +9,20 @@ import {
   type BackupPolicyInput,
   type DrillCoverage,
   type RestoreDrillInput,
+  type RestoreDrillSchedule,
+  type RestoreDrillScheduleInput,
+  type RestoreDrillTargetRow,
 } from "@infrawrench/ui";
 import {
   createCloudBackupPolicy,
+  createCloudDrillSchedule,
   deleteCloudBackupPolicy,
+  deleteCloudDrillSchedule,
+  fetchCloudDrillRuns,
+  fetchCloudDrillSchedules,
+  fetchCloudDrillTargets,
+  runCloudDrillSchedule,
+  updateCloudDrillSchedule,
   fetchCloudBackupPolicies,
   fetchCloudBackups,
   fetchCloudRestoreDrills,
@@ -39,6 +49,8 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
   const [data, setData] = useState<BackupCoverageResponse | null>(null);
   const [policies, setPolicies] = useState<BackupPolicy[] | null>(null);
   const [drills, setDrills] = useState<DrillCoverage | null>(null);
+  const [drillTargets, setDrillTargets] = useState<RestoreDrillTargetRow[]>([]);
+  const [drillSchedules, setDrillSchedules] = useState<RestoreDrillSchedule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // The load effect owns refreshing; policy mutations trigger one through a
@@ -74,6 +86,48 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
     [activeCloudOrgId],
   );
 
+  const createSchedule = useCallback(
+    async (input: RestoreDrillScheduleInput) => {
+      if (!activeCloudOrgId) return;
+      await createCloudDrillSchedule(activeCloudOrgId, input);
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
+  const updateSchedule = useCallback(
+    async (scheduleId: string, patch: Partial<RestoreDrillScheduleInput>) => {
+      if (!activeCloudOrgId) return;
+      await updateCloudDrillSchedule(activeCloudOrgId, scheduleId, patch);
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
+  const deleteSchedule = useCallback(
+    async (scheduleId: string) => {
+      if (!activeCloudOrgId) return;
+      await deleteCloudDrillSchedule(activeCloudOrgId, scheduleId);
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
+  const runSchedule = useCallback(
+    async (scheduleId: string) => {
+      if (!activeCloudOrgId) return;
+      await runCloudDrillSchedule(activeCloudOrgId, scheduleId);
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
+  const loadRuns = useCallback(
+    async (scheduleId: string) =>
+      activeCloudOrgId ? fetchCloudDrillRuns(activeCloudOrgId, scheduleId) : [],
+    [activeCloudOrgId],
+  );
+
   const deletePolicy = useCallback(
     async (policyId: string) => {
       if (!activeCloudOrgId) return;
@@ -92,6 +146,8 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
     setData(null);
     setPolicies(null);
     setDrills(null);
+    setDrillTargets([]);
+    setDrillSchedules([]);
     setError(null);
     function load() {
       const orgId = activeCloudOrgId;
@@ -101,12 +157,16 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
         fetchCloudBackups(orgId),
         fetchCloudBackupPolicies(orgId),
         fetchCloudRestoreDrills(orgId),
+        fetchCloudDrillTargets(orgId),
+        fetchCloudDrillSchedules(orgId),
       ])
-        .then(([coverage, policyList, drillCoverage]) => {
+        .then(([coverage, policyList, drillCoverage, targets, schedules]) => {
           if (!cancelled && request === latestRequest) {
             setData(coverage);
             setPolicies(policyList);
             setDrills(drillCoverage);
+            setDrillTargets(targets);
+            setDrillSchedules(schedules);
             setError(null);
           }
         })
@@ -155,6 +215,17 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
       onDeletePolicy={deletePolicy}
       drills={drills}
       onRecordDrill={recordDrill}
+      // Like the policy editors, always offered: the server's 403 for a member
+      // without `resources:execute` lands in the section's banner.
+      drillAutomation={{
+        targets: drillTargets,
+        schedules: drillSchedules,
+        onCreateSchedule: createSchedule,
+        onUpdateSchedule: updateSchedule,
+        onDeleteSchedule: deleteSchedule,
+        onRunSchedule: runSchedule,
+        loadRuns,
+      }}
     />
   );
 }

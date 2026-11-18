@@ -13,6 +13,9 @@ import type {
   CostFetchRange,
   CostRow,
   QuotaUsage,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
   SectionNode,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle, jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
@@ -34,6 +37,12 @@ interface TursoInvite {
  * directly rather than through the SDK, whose mapper drops
  * `delete_protection` and `parent`. Field casing is Turso's own (mixed).
  */
+/** A drill copy is always one this plugin named; anything else is refused, never deleted. */
+function drillDatabaseName(ref: string): string {
+  if (!/^iw-drill-[a-z0-9]+$/.test(ref)) throw new Error("Turso plugin: malformed drill handle.");
+  return ref;
+}
+
 interface TursoDatabaseRecord {
   Name: string;
   DbId?: string;
@@ -833,6 +842,9 @@ export class TursoClient implements PluginClient {
         regions: (db.regions ?? []).join(", "),
         version: db.version ?? "",
         isSchema: db.is_schema === true,
+        // Every Turso plan keeps point-in-time recovery (1 to 90 days by plan),
+        // which is what backup coverage reads as provider-managed backups.
+        pointInTimeRecovery: true,
         schema: db.schema || "",
         parent: db.parent?.name ?? "",
         branchedAt: db.parent?.branched_at ?? "",
@@ -850,6 +862,73 @@ export class TursoClient implements PluginClient {
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  // ---- automatic restore drills (`manifest.restoreDrill`) ----------------------
+  //
+  // Turso's point-in-time recovery is a new database seeded from the source at a
+  // timestamp (POST .../databases with `seed`), in the source's group. The
+  // source is never touched; the copy gets a read-only token for the check and
+  // is deleted afterwards.
+
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(async () => {
+      if (request.resourceTypeId !== "turso-database") {
+        throw new Error(`Turso plugin: ${request.resourceTypeId} cannot be drilled.`);
+      }
+      if (request.restorePoint.kind !== "point-in-time") {
+        throw new Error("Turso restores to a point in time; it has no backups to pick from.");
+      }
+      const source = request.resourceId.split(":").slice(2).join(":");
+      const { database } = await this.fetch<{ database: TursoDatabaseRecord }>(
+        `${this.orgPath}/databases/${encodeURIComponent(source)}`,
+      );
+      if (!database.group) throw new Error("Turso did not report the database's group.");
+      const at = request.restorePoint.at;
+      await this.fetch(`${this.orgPath}/databases`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: request.copyName,
+          group: database.group,
+          seed: { type: "database", name: source, timestamp: at },
+        }),
+      });
+      return { ref: request.copyName, restoredFrom: `${source} at ${at}`, restorePointAt: at };
+    });
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(async (): Promise<RestoreDrillStatus> => {
+      const name = drillDatabaseName(ref);
+      const path = `${this.orgPath}/databases/${encodeURIComponent(name)}`;
+      const { database } = await this.fetch<{ database: TursoDatabaseRecord }>(path);
+      if (!database.Hostname) return { state: "pending", detail: "The database is being created." };
+      const token = await this.fetch<{ jwt: string }>(
+        `${path}/auth/tokens?authorization=read-only&expiration=2h`,
+        { method: "POST" },
+      );
+      return {
+        state: "ready",
+        connection: {
+          driver: "libsql",
+          connectionString: `libsql://${database.Hostname}?authToken=${encodeURIComponent(token.jwt)}`,
+        },
+      };
+    });
+  }
+
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const name = drillDatabaseName(ref);
+      try {
+        await this.fetch(`${this.orgPath}/databases/${encodeURIComponent(name)}`, {
+          method: "DELETE",
+        });
+      } catch (err) {
+        if (err instanceof Error && /API error 404\b/.test(err.message)) return;
+        throw err;
+      }
+    });
   }
 
   private async resolveDatabaseConnectionString(

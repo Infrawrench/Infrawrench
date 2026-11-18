@@ -8,13 +8,17 @@
  * no capacity, a dump taken from a replica that was already broken, an
  * encrypted volume whose key was rotated.
  *
- * A drill is a **record that somebody tried**, not an automated restore. That
- * distinction is the whole design. Restoring a customer's database on a
- * schedule, unattended, is not a feature this product will ever have: it costs
- * real money, it can collide with production, and there is no generic way to
- * verify a restored system is correct. What the product *can* do is make the
- * exercise scheduled, recorded, and visible when it lapses, which is the part
- * organisations actually fail at.
+ * A drill is a **record that somebody tried**. In general Infrawrench does not
+ * restore a customer's database unattended: it costs real money, it can collide
+ * with production, and there is no generic way to verify a restored system is
+ * correct. What the product can do is make the exercise scheduled, recorded,
+ * and visible when it lapses, which is the part organisations actually fail at.
+ *
+ * The exception is a provider with cheap, isolated copies (database branches
+ * and forks), where none of those objections hold. There an automatic drill
+ * (`restore-drill-schedules.ts`) makes the copy, checks it with the schedule's
+ * query and deletes it, and writes its result into this same log, so nothing
+ * downstream has to know which kind of drill produced the evidence.
  *
  * This module is the pure half: the shapes, the validation, the staleness rule,
  * and the RTO arithmetic.
@@ -67,6 +71,14 @@ export interface RestoreDrill {
    * RTO, and inventing one would be the most dangerous number on the page.
    */
   rtoMinutes: number | null;
+  /**
+   * Minutes between the restore point and the drill: how much data a restore
+   * from that point would have lost. Recorded by automatic drills, which know
+   * when their restore point was; null when nobody measured it.
+   */
+  rpoMinutes: number | null;
+  /** The automatic drill run that recorded this, or null for one a person recorded. */
+  runId: string | null;
   /**
    * Which backup was restored, in whatever form the operator has it: a snapshot
    * id, an S3 key, a date. Free text on purpose: the identifiers differ per

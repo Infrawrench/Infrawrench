@@ -545,4 +545,10 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: automatic restore drills. `GET /backups/drills/targets`,
+// `GET`/`POST /backups/drills/schedules`, `PATCH`/`DELETE
+// /backups/drills/schedules/:id`, `POST /backups/drills/schedules/:id/run` and
+// `GET /backups/drills/runs`, with their `RestoreDrill*` schemas;
+// `RestoreDrill` gains `rpoMinutes` and `runId`, and `restoreDrillAlerts`
+// joins the alert triggers. Additive.
+export const API_VERSION = "1.118.0";

@@ -29,6 +29,10 @@ import type {
   DependencyGraphData,
   DrillCoverage,
   RestoreDrillInput,
+  RestoreDrillRun,
+  RestoreDrillSchedule,
+  RestoreDrillScheduleInput,
+  RestoreDrillTargetRow,
   DnsInventoryResponse,
   EnvironmentDiffResponse,
   ExpiryListResponse,
@@ -663,6 +667,66 @@ export async function recordCloudRestoreDrill(
   input: RestoreDrillInput,
 ): Promise<void> {
   await runRpc(cloudClient("backups").backups.recordDrill({ params: { orgId }, payload: input }));
+}
+
+/**
+ * Automatic restore drills: the resources whose provider can make an isolated
+ * copy, their schedules, and the run history. Cloud only, like the rest of
+ * the Backups screen: the cloud poller runs the drills.
+ */
+export async function fetchCloudDrillTargets(orgId: string): Promise<RestoreDrillTargetRow[]> {
+  const res = await runRpc(cloudClient("backups").backups.drillTargets({ params: { orgId } }));
+  return [...res.targets];
+}
+
+export async function fetchCloudDrillSchedules(orgId: string): Promise<RestoreDrillSchedule[]> {
+  const res = await runRpc(
+    cloudClient("backups").backups.listDrillSchedules({ params: { orgId } }),
+  );
+  return [...res.schedules];
+}
+
+export async function createCloudDrillSchedule(
+  orgId: string,
+  input: RestoreDrillScheduleInput,
+): Promise<void> {
+  await runRpc(
+    cloudClient("backups").backups.createDrillSchedule({ params: { orgId }, payload: input }),
+  );
+}
+
+export async function updateCloudDrillSchedule(
+  orgId: string,
+  scheduleId: string,
+  patch: Partial<RestoreDrillScheduleInput>,
+): Promise<void> {
+  const { resourceId: _resourceId, ...payload } = patch;
+  await runRpc(
+    cloudClient("backups").backups.updateDrillSchedule({
+      params: { orgId, scheduleId },
+      payload,
+    }),
+  );
+}
+
+export async function deleteCloudDrillSchedule(orgId: string, scheduleId: string): Promise<void> {
+  await runRpc(
+    cloudClient("backups").backups.deleteDrillSchedule({ params: { orgId, scheduleId } }),
+  );
+}
+
+export async function runCloudDrillSchedule(orgId: string, scheduleId: string): Promise<void> {
+  await runRpc(cloudClient("backups").backups.runDrillSchedule({ params: { orgId, scheduleId } }));
+}
+
+export async function fetchCloudDrillRuns(
+  orgId: string,
+  scheduleId: string,
+): Promise<RestoreDrillRun[]> {
+  const res = await runRpc(
+    cloudClient("backups").backups.listDrillRuns({ params: { orgId }, query: { scheduleId } }),
+  );
+  return [...res.runs];
 }
 
 /**

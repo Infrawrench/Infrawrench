@@ -344,6 +344,19 @@ export {
 } from "./ci.js";
 
 export type {
+  RestoreDrillConnection,
+  RestoreDrillCost,
+  RestoreDrillDeclaration,
+  RestoreDrillHandle,
+  RestoreDrillPoint,
+  RestoreDrillPointKind,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
+  RestoreDrillTarget,
+} from "./restore-drill.js";
+export { RESTORE_DRILL_POINT_KINDS, restoreDrillCopyName } from "./restore-drill.js";
+
+export type {
   ResourceTypeDefinition,
   FieldDefinition,
   FieldKind,

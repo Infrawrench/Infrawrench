@@ -51,6 +51,25 @@ export const manifest = {
   // Plan allowances (rows read/written, storage, sync, databases, groups,
   // locations) against the current billing cycle's organization usage.
   quotas: { label: "Plan Limits", increaseUrl: "https://app.turso.tech" },
+  // A drill seeds a new database from the source at a moment in its history
+  // (point-in-time recovery), checks it with a read-only token, and deletes it.
+  restoreDrill: {
+    copyNoun: "database",
+    targets: [
+      {
+        resourceTypeId: "turso-database",
+        restorePoints: ["point-in-time"],
+        // The longest window, on the Pro plan; Free keeps a day.
+        maxLookbackHours: 90 * 24,
+        typicalReadyMinutes: 1,
+      },
+    ],
+    cost: {
+      summary:
+        "A drill database counts toward the plan's database and storage allowances while it exists.",
+      url: "https://turso.tech/pricing",
+    },
+  },
 } satisfies PluginManifest;
 
 export type Credentials = CredentialsOf<typeof manifest>;

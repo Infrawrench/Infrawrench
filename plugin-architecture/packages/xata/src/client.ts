@@ -16,6 +16,9 @@ import type {
   QuotaUsage,
   ResourceCreateReturn,
   ResourceInstance,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
   SettingDescriptor,
   SidebarItemSchema,
   SqlTableMeta,
@@ -164,6 +167,12 @@ export function withSsl(connectionString: string): string {
 
 function parts(externalId: string): string[] {
   return externalId.split("/");
+}
+
+function drillRefParts(ref: string): [string, string, string] {
+  const [org = "", project = "", branch = ""] = parts(ref);
+  if (!org || !project || !branch) throw new Error("Xata plugin: malformed drill handle.");
+  return [org, project, branch];
 }
 
 export class XataClient implements PluginClient {
@@ -426,6 +435,89 @@ export class XataClient implements PluginClient {
       if (!found)
         throw new XataApiError(404, `Xata plugin: ${typeId}/${externalIdOf(resourceId)} not found`);
       return found;
+    });
+  }
+
+  // ---- automatic restore drills (`manifest.restoreDrill`) ----------------------
+  //
+  // A drill restores the branch's continuous backup into a new branch
+  // (POST .../branches/{id}/restore), to the newest restorable moment or to a
+  // point inside the window, with no replicas. The source is never touched.
+
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(async () => {
+      if (request.resourceTypeId !== "xata-branch") {
+        throw new Error(`Xata plugin: ${request.resourceTypeId} cannot be drilled.`);
+      }
+      const [org, project, branch] = parts(externalIdOf(request.resourceId));
+      if (!org || !project || !branch) throw new Error("Xata plugin: cannot parse the branch id.");
+      const src = await this.api.get(this.branchPath(org, project, branch));
+      let restorePointAt: string | undefined;
+      if (request.restorePoint.kind === "point-in-time") {
+        restorePointAt = request.restorePoint.at;
+      } else {
+        const path = `${this.projectPath(org, project)}/backups` as const;
+        const window = listOf(await this.api.get(path), path, "backups").find(
+          (b) => b.branchID === branch,
+        );
+        if (!window) throw new Error("This branch has no backup to restore.");
+        restorePointAt = window.latestRestore;
+      }
+      const created = await this.api.post(`${this.branchPath(org, project, branch)}/restore`, {
+        body: {
+          name: request.copyName,
+          configuration: { ...src.configuration, replicas: 0 },
+          ...(request.restorePoint.kind === "point-in-time"
+            ? { targetTime: request.restorePoint.at }
+            : {}),
+        },
+      });
+      return {
+        ref: `${org}/${project}/${created.id}`,
+        restoredFrom:
+          request.restorePoint.kind === "point-in-time"
+            ? `${src.name} at ${request.restorePoint.at}`
+            : `${src.name}, latest backup`,
+        ...(restorePointAt ? { restorePointAt } : {}),
+      };
+    });
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(async (): Promise<RestoreDrillStatus> => {
+      const [org, project, branch] = drillRefParts(ref);
+      const meta = await this.api.get(this.branchPath(org, project, branch));
+      const type = meta.status.statusType;
+      if (type === "STATUS_TYPE_FAULT") {
+        return { state: "failed", message: meta.status.status || "Xata reports a fault." };
+      }
+      if (type !== "STATUS_TYPE_HEALTHY") {
+        return meta.status.status
+          ? { state: "pending", detail: meta.status.status }
+          : { state: "pending" };
+      }
+      const creds = await this.credentials(org, project, branch);
+      return {
+        state: "ready",
+        connection: { driver: "postgres", connectionString: withSsl(creds.connectionString) },
+      };
+    });
+  }
+
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const [org, project, branch] = drillRefParts(ref);
+      try {
+        // Only ever a branch a drill made: the name is the proof.
+        const meta = await this.api.get(this.branchPath(org, project, branch));
+        if (!meta.name.startsWith("iw-drill-")) {
+          throw new Error(`Xata plugin: refusing to delete ${meta.name}, which no drill made.`);
+        }
+        await this.api.delete(this.branchPath(org, project, branch));
+      } catch (err) {
+        if (err instanceof XataApiError && err.status === 404) return;
+        throw err;
+      }
     });
   }
 

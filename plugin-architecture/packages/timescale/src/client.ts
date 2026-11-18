@@ -13,6 +13,9 @@ import type {
   MetricSeries,
   PluginClient,
   ResourceInstance,
+  RestoreDrillHandle,
+  RestoreDrillRequest,
+  RestoreDrillStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
@@ -132,6 +135,12 @@ type ServicePath = `/projects/${NoSlashString}/services/${NoSlashString}`;
 
 function svcPath(projectId: string, serviceId: string): ServicePath {
   return `/projects/${pathEncode(projectId)}/services/${pathEncode(serviceId)}`;
+}
+
+function drillRefParts(ref: string): [string, string] {
+  const [projectId = "", serviceId = ""] = ref.split("/");
+  if (!projectId || !serviceId) throw new Error("Tiger Cloud plugin: malformed drill handle.");
+  return [projectId, serviceId];
 }
 
 export class TimescaleClient implements PluginClient {
@@ -493,6 +502,84 @@ export class TimescaleClient implements PluginClient {
         ? "Password set. The PostgreSQL tab and connection string outputs use it now."
         : "Password set, but this host cannot store it; note it down now.",
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Automatic restore drills (`manifest.restoreDrill`)
+  //
+  // A drill forks the service (POST .../forkService) from its last snapshot or
+  // a point in time; Tiger forks are zero-copy and independent of the source.
+  // The fork gets a fresh password nobody else knows for the check, never kept
+  // anywhere, and is deleted afterwards.
+  // -------------------------------------------------------------------------
+
+  startRestoreDrill(request: RestoreDrillRequest): PluginEffect<RestoreDrillHandle> {
+    return attempt(async () => {
+      if (request.resourceTypeId !== T.service) {
+        throw new Error(`Tiger Cloud plugin: ${request.resourceTypeId} cannot be drilled.`);
+      }
+      const [projectId, serviceId] = splitExternalId(externalIdOf(request.resourceId), 2);
+      const pitr = request.restorePoint.kind === "point-in-time" ? request.restorePoint.at : null;
+      const body: ApiBody<operations["forkService"]> = pitr
+        ? { fork_strategy: "PITR", target_time: pitr, name: request.copyName }
+        : { fork_strategy: "LAST_SNAPSHOT", name: request.copyName };
+      const fork = await this.api.post(`${svcPath(projectId, serviceId)}/forkService`, { body });
+      if (!fork?.service_id) throw new Error("Tiger Cloud did not return the fork's id.");
+      return {
+        ref: `${fork.project_id || projectId}/${fork.service_id}`,
+        restoredFrom: pitr ? `${serviceId} at ${pitr}` : `${serviceId}, last snapshot`,
+        ...(pitr ? { restorePointAt: pitr } : {}),
+      };
+    });
+  }
+
+  checkRestoreDrill(ref: string, _accountId: string): PluginEffect<RestoreDrillStatus> {
+    return attempt(async (): Promise<RestoreDrillStatus> => {
+      const [projectId, serviceId] = drillRefParts(ref);
+      const svc = await this.findService(projectId, serviceId);
+      if (svc.status === "DELETED" || svc.status === "DELETING") {
+        return { state: "failed", message: `The fork is ${svc.status.toLowerCase()}.` };
+      }
+      if (svc.status !== "READY" || !svc.endpoint?.host) {
+        return { state: "pending", detail: `The fork is ${svc.status.toLowerCase()}.` };
+      }
+      const password = generatePassword();
+      await this.api.post(`${svcPath(projectId, serviceId)}/updatePassword`, {
+        body: { password },
+      });
+      return {
+        state: "ready",
+        connection: {
+          driver: "postgres",
+          connectionString: postgresUri(
+            svc.endpoint.host,
+            svc.endpoint.port ?? "",
+            DEFAULT_ROLE,
+            password,
+            DEFAULT_DATABASE,
+          ),
+        },
+      };
+    });
+  }
+
+  endRestoreDrill(ref: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const [projectId, serviceId] = drillRefParts(ref);
+      try {
+        // Only ever a fork a drill made: the name is the proof.
+        const svc = await this.findService(projectId, serviceId);
+        if (!svc.name.startsWith("iw-drill-")) {
+          throw new Error(
+            `Tiger Cloud plugin: refusing to delete ${svc.name}, which no drill made.`,
+          );
+        }
+        await this.api.delete(svcPath(projectId, serviceId));
+      } catch (err) {
+        if (statusOf(err) === 404) return;
+        throw err;
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
