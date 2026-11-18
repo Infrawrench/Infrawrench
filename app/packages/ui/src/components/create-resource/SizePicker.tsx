@@ -7,6 +7,13 @@ import { ChevronIcon } from "../icons/ChromeIcons.js";
 /** Past this many sizes (a provider's whole catalog), browsing alone is not enough. */
 const FILTER_THRESHOLD = 24;
 
+/**
+ * A label longer than this does not fit two lines of a card in three columns.
+ * Plugins put deciding details in the label (price, location, availability),
+ * so a category holding one lays out in two wider columns instead.
+ */
+const LONG_LABEL = 20;
+
 export function SizePicker({
   sizes,
   value,
@@ -125,7 +132,10 @@ export function SizePicker({
                   <span className="text-xs font-medium text-on-surface-tertiary">{cat}</span>
                 </div>
                 {hasSelection && !isOpen && selectedInCat && (
-                  <span className="text-xs text-accent font-mono truncate ml-2">
+                  <span
+                    className="text-xs text-accent font-mono truncate ml-2"
+                    title={selectedInCat.label}
+                  >
                     {selectedInCat.label}
                   </span>
                 )}
@@ -134,7 +144,13 @@ export function SizePicker({
                 )}
               </button>
               {isOpen && (
-                <div className="px-3 pb-3 pt-1 grid grid-cols-3 gap-2 bg-surface-raised/40">
+                <div
+                  className={`px-3 pb-3 pt-1 grid gap-2 bg-surface-raised/40 ${
+                    catSizes.some((s) => s.label.length > LONG_LABEL)
+                      ? "grid-cols-2"
+                      : "grid-cols-3"
+                  }`}
+                >
                   {catSizes.map((s) => (
                     <SizeCard
                       key={s.id}
