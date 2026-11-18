@@ -598,8 +598,8 @@ export async function loadResourceDetail(input: DetailRequest) {
     // Heartbeat eligibility: the plugin flags the field holding the
     // schedule the resource runs on.
     hasSchedule:
-      resourceTypeDef?.fields.some((f) => f.schedule === "cron") === true ||
-      resourceTypeDef?.outputs.some((o) => o.schedule === "cron") === true,
+      resourceTypeDef?.fields?.some((f) => f.schedule === "cron") === true ||
+      resourceTypeDef?.outputs?.some((o) => o.schedule === "cron") === true,
   };
 }
 

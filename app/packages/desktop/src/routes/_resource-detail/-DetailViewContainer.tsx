@@ -244,8 +244,8 @@ export function DetailViewContainer({
         const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
         setSchedulable(!!typeDef?.lifecycle);
         setHasSchedule(
-          typeDef?.fields.some((f) => f.schedule === "cron") === true ||
-            typeDef?.outputs.some((o) => o.schedule === "cron") === true,
+          typeDef?.fields?.some((f) => f.schedule === "cron") === true ||
+            typeDef?.outputs?.some((o) => o.schedule === "cron") === true,
         );
       })
       .catch(() => {
