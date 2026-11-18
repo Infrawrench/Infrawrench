@@ -545,4 +545,11 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: provider price-change watch under `/api/org/:orgId/price-changes`:
+// `GET /` (the organization's list-price changes), `GET /catalog` (every
+// change on one warehouse platform), `GET`/`PUT /settings` and
+// `POST /:changeId/scenario`, with their `PriceChange*` and
+// `CatalogPriceChange*` schemas; `priceChangeAlerts` joins the alert routing
+// trigger enum and `price-catalog` tab targets may carry `view: "changes"`.
+// Additive.
+export const API_VERSION = "1.118.0";

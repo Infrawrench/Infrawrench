@@ -9,12 +9,23 @@ import {
   type PriceCatalogAccount,
   type PriceCatalogClient,
   type PriceCatalogEstimateTarget,
+  type PriceChangesClient,
 } from "@infrawrench/ui";
 import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { compareCloudPriceCatalog, searchCloudPriceCatalog } from "@/lib/cloud-price-catalog";
+import {
+  createCloudPriceChangeScenario,
+  listCloudCatalogPriceChanges,
+  listCloudPriceChanges,
+} from "@/lib/cloud-price-changes";
 import { listCloudAccounts } from "@/lib/cloud-accounts";
 import { getPlugin } from "@/plugins/loader";
-import { navigateToWorkspaceTarget, resourceTabTarget } from "@/lib/workspace-tabs";
+import {
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+  priceCatalogTabTarget,
+  resourceTabTarget,
+} from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { openExternalUrl } from "../lib/app-shell";
 
@@ -28,7 +39,7 @@ import { openExternalUrl } from "../lib/app-shell";
  * from and no shared cache, so without an org the tab explains rather than
  * fetching.
  */
-export function DesktopPriceCatalogPanel() {
+export function DesktopPriceCatalogPanel({ view }: { view?: "changes" | undefined }) {
   const gt = useGT();
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -52,6 +63,16 @@ export function DesktopPriceCatalogPanel() {
     return {
       search: (query) => searchCloudPriceCatalog(orgId, query),
       compare: (query) => compareCloudPriceCatalog(orgId, query),
+    };
+  }, [activeCloudOrgId]);
+
+  const changesClient = useMemo<PriceChangesClient | undefined>(() => {
+    if (!activeCloudOrgId) return undefined;
+    const orgId = activeCloudOrgId;
+    return {
+      list: (days) => listCloudPriceChanges(orgId, days),
+      catalog: (query) => listCloudCatalogPriceChanges(orgId, query),
+      createScenario: (changeId) => createCloudPriceChangeScenario(orgId, changeId),
     };
   }, [activeCloudOrgId]);
 
@@ -81,6 +102,13 @@ export function DesktopPriceCatalogPanel() {
         accounts={accounts}
         onUseInEstimate={(estimate) => void openEstimate(estimate)}
         onOpenExternal={(url) => void openExternalUrl(url)}
+        changesClient={changesClient}
+        view={view}
+        // The URL owns the view, the services rule: navigating records it.
+        onViewChange={(next) => void navigate(getWorkspaceNavigateArgs(priceCatalogTabTarget(next)))}
+        onOpenResource={(ref) =>
+          void navigateToWorkspaceTarget(navigate, resourceTabTarget(ref.accountId, ref.resourceId))
+        }
       />
       {target && (
         <CreateResourceModal

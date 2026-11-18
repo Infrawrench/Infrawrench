@@ -1556,4 +1556,8 @@ export type {
   PriceCatalogEstimateTarget,
   PriceCatalogPanelProps,
 } from "./price-catalog/PriceCatalogPanel.js";
+export type {
+  PriceChangeResourceRef,
+  PriceChangesClient,
+} from "./price-catalog/PriceChangesView.js";
 export { PriceCatalogIcon } from "./components/icons/PriceCatalogIcon.js";

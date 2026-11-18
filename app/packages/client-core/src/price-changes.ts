@@ -282,6 +282,23 @@ export function priceChangeSubject(
   return `${change.instanceType}${where} (${priceChangePlatformLabel(change.platform)})`;
 }
 
+/** Selection keys worth naming in a change's variant, in the order they read. */
+const VARIANT_LABEL_KEYS = [
+  "operating_system",
+  "database_engine",
+  "database_edition",
+  "deployment_option",
+  "cache_engine",
+  "variant.cloudType",
+] as const;
+
+/** A change's variant in words (`Linux`, `PostgreSQL, Multi-AZ`); empty when nothing narrows it. */
+export function priceChangeVariantLabel(selection: Readonly<Record<string, string>>): string {
+  return VARIANT_LABEL_KEYS.map((k) => selection[k])
+    .filter((v): v is string => !!v)
+    .join(", ");
+}
+
 /** The day a change takes effect, YYYY-MM-DD (UTC). */
 export function priceChangeDay(effectiveAt: string): string {
   return effectiveAt.slice(0, 10);

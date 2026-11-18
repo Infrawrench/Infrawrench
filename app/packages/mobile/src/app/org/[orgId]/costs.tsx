@@ -25,6 +25,7 @@ import { CommitmentReportsSection } from "@/features/costs/CommitmentReportsSect
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
 import { EfficiencyAlertsSection } from "@/features/costs/EfficiencyAlertsSection";
+import { PriceChangesSection } from "@/features/costs/PriceChangesSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { UnitCostsSection } from "@/features/costs/UnitCostsSection";
 import { BudgetTree } from "@/features/costs/BudgetTree";
@@ -104,6 +105,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-alerts"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-alert-events"] });
         void queryClient.invalidateQueries({ queryKey: ["efficiency-alerts"] });
+        void queryClient.invalidateQueries({ queryKey: ["price-changes"] });
         void queryClient.invalidateQueries({ queryKey: ["commitments"] });
         void queryClient.invalidateQueries({ queryKey: ["commitment-reports"] });
         void queryClient.invalidateQueries({ queryKey: ["commitment-report-run"] });
@@ -180,6 +182,7 @@ export default function CostsScreen() {
           <CostAnomaliesSection />
           <CostChangeAlertsSection />
           <EfficiencyAlertsSection />
+          <PriceChangesSection />
         </>
       )}
 

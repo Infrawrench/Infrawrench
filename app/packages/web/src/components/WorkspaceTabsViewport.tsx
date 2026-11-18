@@ -955,7 +955,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "quotas":
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
     case "price-catalog":
-      return <WebPriceCatalogPanel key={orgId} orgId={orgId} />;
+      return <WebPriceCatalogPanel key={orgId} orgId={orgId} view={t.view} />;
     case "incidents":
       return (
         <WebIncidentsPanel

@@ -23,6 +23,11 @@ import {
   type PriceRateType,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
+import {
+  PriceChangesView,
+  type PriceChangeResourceRef,
+  type PriceChangesClient,
+} from "./PriceChangesView.js";
 
 /** What the panel needs from its host: three reads, no writes. */
 export interface PriceCatalogClient {
@@ -57,6 +62,13 @@ export interface PriceCatalogPanelProps {
   /** Open the host's create form prefilled; the estimate badge does the rest. */
   onUseInEstimate?: ((target: PriceCatalogEstimateTarget) => void) | undefined;
   onOpenExternal?: ((url: string) => void) | undefined;
+  /** The list-price changes reads; without it the Changes view is not offered. */
+  changesClient?: PriceChangesClient | undefined;
+  /** Which view the tab is on: the URL owns it, so the tab remembers it. */
+  view?: "changes" | undefined;
+  /** Record a view switch in the URL; the host navigates. */
+  onViewChange?: ((view: "changes" | undefined) => void) | undefined;
+  onOpenResource?: ((ref: PriceChangeResourceRef) => void) | undefined;
 }
 
 const inputClass =
@@ -64,7 +76,7 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 const PAGE = 100;
 
-type Mode = "search" | "compare";
+type Mode = "search" | "compare" | "changes";
 
 function numOrUndefined(value: string): number | undefined {
   if (value.trim() === "") return undefined;
@@ -283,10 +295,30 @@ export function PriceCatalogPanel({
   accounts = [],
   onUseInEstimate,
   onOpenExternal,
+  changesClient,
+  view,
+  onViewChange,
+  onOpenResource,
 }: PriceCatalogPanelProps) {
   const gt = useGT();
   const gtData = useDataString();
-  const [mode, setMode] = useState<Mode>("search");
+  const [localMode, setLocalMode] = useState<Exclude<Mode, "changes">>("search");
+  // Without a host recording it, the Changes view is local state like the others.
+  const [localChanges, setLocalChanges] = useState(false);
+  const showChanges = changesClient !== undefined && (onViewChange ? view === "changes" : localChanges);
+  const mode: Mode = showChanges ? "changes" : localMode;
+  const setMode = useCallback(
+    (next: Mode) => {
+      if (next !== "changes") setLocalMode(next);
+      const changes = next === "changes";
+      if (onViewChange) {
+        if (changes !== (view === "changes")) onViewChange(changes ? "changes" : undefined);
+      } else {
+        setLocalChanges(changes);
+      }
+    },
+    [onViewChange, view],
+  );
 
   // Search state
   const [q, setQ] = useState("");
@@ -463,6 +495,7 @@ export function PriceCatalogPanel({
           [
             ["search", gt("Search")],
             ["compare", gt("Compare providers")],
+            ...(changesClient ? [["changes", gt("Price changes")]] : []),
           ] as Array<[Mode, string]>
         ).map(([key, label]) => (
           <button
@@ -480,16 +513,26 @@ export function PriceCatalogPanel({
             {label}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setReloadKey((k) => k + 1)}
-          className="ml-auto text-xs text-on-surface-muted hover:text-on-surface underline"
-        >
-          {gt("Refresh")}
-        </button>
+        {mode !== "changes" && (
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="ml-auto text-xs text-on-surface-muted hover:text-on-surface underline"
+          >
+            {gt("Refresh")}
+          </button>
+        )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      {mode === "changes" && changesClient && (
+        <PriceChangesView
+          client={changesClient}
+          onOpenExternal={onOpenExternal}
+          onOpenResource={onOpenResource}
+        />
+      )}
+
+      <div className={`mb-4 flex flex-wrap items-end gap-3 ${mode === "changes" ? "hidden" : ""}`}>
         <div>
           <label className={labelClass} htmlFor="pc-area">
             {gt("Area")}

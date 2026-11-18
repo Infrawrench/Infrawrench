@@ -8,6 +8,7 @@ import { EventSubscriptionsSection } from "./event-subscriptions/EventSubscripti
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 import { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
+import { PriceChangeAlertsSection } from "./PriceChangeAlertsSection.js";
 import { DriftAlertsSection } from "./notifications/DriftAlertsSection.js";
 import { MsTeamsSection, TeamsMark } from "./notifications/MsTeamsSection.js";
 import { EmailSection } from "./notifications/EmailSection.js";
@@ -206,6 +207,7 @@ export function NotificationsSection() {
                 <DriftAlertsSection orgId={orgId} />
                 <ExpiryAlertsSection />
                 <ExtendedSupportAlertsSection />
+                <PriceChangeAlertsSection />
                 <div className="lg:col-span-2">
                   <WeeklyDigestSection />
                 </div>

@@ -394,11 +394,19 @@ export function getWorkspaceNavigateArgs(
         ...(replace ? { replace: true } : {}),
       };
     case "price-catalog":
-      return {
-        to: "/org/$orgId/price-catalog",
-        params: { orgId },
-        ...(replace ? { replace: true } : {}),
-      };
+      // A static `changes` child for the list-price changes view, the
+      // services/scorecards shape.
+      return target.view === "changes"
+        ? {
+            to: "/org/$orgId/price-catalog/changes",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/price-catalog",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "incidents":
       // The incident id is a path segment rather than a search param, so an
       // incident link reads as a place: /org/{org}/incidents/{id}.
@@ -738,7 +746,7 @@ export function syncWorkspaceRouteFromPath(
     return quotasTabTarget();
   }
   if (s[0] === "price-catalog") {
-    return priceCatalogTabTarget();
+    return priceCatalogTabTarget(s[1] === "changes" ? "changes" : undefined);
   }
   if (s[0] === "incidents") {
     return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);

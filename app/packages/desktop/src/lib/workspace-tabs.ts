@@ -262,7 +262,12 @@ export function getWorkspaceNavigateArgs(
     case "quotas":
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
     case "price-catalog":
-      return { to: "/price-catalog", ...(replace ? { replace: true } : {}) };
+      // Search passed explicitly so going back to Search CLEARS ?view=.
+      return {
+        to: "/price-catalog",
+        search: target.view ? { view: target.view } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "incidents":
       // Search passed explicitly, the settings/chat rule: navigating from an
       // incident back to the list must CLEAR ?incident= or the route resolves
@@ -515,7 +520,8 @@ export function syncWorkspaceRouteFromPath(
     return quotasTabTarget();
   }
   if (segments[0] === "price-catalog") {
-    return priceCatalogTabTarget();
+    const params = new URLSearchParams(search ?? "");
+    return priceCatalogTabTarget(params.get("view") === "changes" ? "changes" : undefined);
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");
