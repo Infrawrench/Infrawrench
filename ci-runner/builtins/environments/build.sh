@@ -270,10 +270,12 @@ GO_CACHES='{ "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1
 # directory gems install into (Gem.user_dir for /root, named after the
 # minor's ruby_version). The environment's version starts as Ruby's own and
 # its patch number is the environment's revision after that, as with Go.
+# Ruby's release plus one: `exec` passes the environment as ENV has it, so
+# `bundle exec ruby` runs with the bundle (#1303).
 ruby_pkgs() {
   case "$1" in
-    3.4) echo "3.4.12 3.4.12-iwci.3 7ce9e52a69378f1f19c4af0a00ae41ec21ddbb4f1210d153da7c4414cb123086 3.4.0" ;;
-    4.0) echo "4.0.9 4.0.9-iwci.3 bb6446fe10cfc4b51b074339c5982169de3d5ce4e357c857828604b79663b22d 4.0.0" ;;
+    3.4) echo "3.4.13 3.4.12-iwci.4 dea9e54310da58c5bd1b45c60fdee8d1d24847a4cb5e364e5af9658b7cb34141 3.4.0" ;;
+    4.0) echo "4.0.10 4.0.9-iwci.4 f20fb3b5a96fe6464363e0a8665cb452fc39fffe3ad3d8eec9f4df3a6437828a 4.0.0" ;;
     *) return 1 ;;
   esac
 }

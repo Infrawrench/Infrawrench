@@ -31,6 +31,13 @@ non-blocking; the descriptors that become the child's 0, 1 and 2 are
 made blocking before posix_spawn() the same way, or `cat` reading
 Open3's pipe failed with EAGAIN.
 
+`exec` passes the environment as ENV has it too. wasix-libc's execv()
+and execl() give the new program the environment the process started
+with, so an `exec` after a change to ENV lost it: `bundle exec ruby x.rb`
+ran x.rb without the RUBYOPT Bundler had set. On WASIX they are execve()
+and execle() with environ when Ruby built no envp of its own, as the
+spawn path passes it.
+
 wasix-libc has no flock(), so Ruby compiles missing/flock.c, which on WASI
 fails every call with EINVAL: File#flock, and with it the locks RubyGems
 and Bundler take, raised. On WASIX it calls the CI runner's
@@ -347,7 +354,43 @@ one as a signal would have.
  
 --- a/process.c
 +++ b/process.c
-@@ -4542,9 +4542,228 @@
+@@ -1660,11 +1660,22 @@
+     rb_w32_uaspawn(P_OVERLAY, prog, argv);
+     return errno;
+ #else
++#ifdef __wasix__
++    /* wasix-libc's execv() gives the new program the environment the
++     * process started with, not environ as ENV has changed it since, so
++     * the environment is always passed, as the spawn path passes it. */
++    {
++        extern char **environ;
++        envp = envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : environ;
++        execve(prog, argv, envp);
++    }
++#else
+     envp = envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : NULL;
+     if (envp_str)
+         execve(prog, argv, envp); /* async-signal-safe */
+     else
+         execv(prog, argv); /* async-signal-safe (since SUSv4) */
++#endif
+     err = errno;
+     try_with_sh(err, prog, argv, envp); /* try_with_sh() is async-signal-safe. */
+     return err;
+@@ -1699,6 +1710,12 @@
+         if (status != -1)
+             exit(status);
+     }
++#elif defined(__wasix__)
++    {
++        /* As in proc_exec_cmd: execl() would pass the start-up environment. */
++        extern char **environ;
++        execle("/bin/sh", "sh", "-c", str, (char *)NULL, envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : environ);
++    }
+ #else
+     if (envp_str)
+         execle("/bin/sh", "sh", "-c", str, (char *)NULL, RB_IMEMO_TMPBUF_PTR(envp_str)); /* async-signal-safe */
+@@ -4542,9 +4559,228 @@
  }
  #endif
  
@@ -576,7 +619,7 @@ one as a signal would have.
      rb_pid_t pid;
  #if !defined HAVE_WORKING_FORK || USE_SPAWNV
      VALUE prog;
-@@ -4594,6 +4813,7 @@
+@@ -4594,6 +4830,7 @@
  
      return pid;
  }
@@ -584,7 +627,7 @@ one as a signal would have.
  
  struct spawn_args {
      VALUE execarg;
-@@ -4955,7 +5175,7 @@
+@@ -4955,7 +5192,7 @@
          RB_GC_GUARD(execarg_obj);
          rb_syserr_fail_str(err, fail_str);
      }
