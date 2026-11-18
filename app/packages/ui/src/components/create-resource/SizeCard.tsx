@@ -31,14 +31,15 @@ export function SizeCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`text-left p-3 rounded-lg border transition-all ${
+      className={`flex flex-col text-left p-3 rounded-lg border transition-all ${
         selected
           ? "border-accent bg-accent-muted"
           : "border-border-strong bg-surface-overlay/50 hover:border-border-strong"
       }`}
     >
       <p
-        className={`text-xs font-mono font-medium mb-2 truncate ${selected ? "text-accent-on-muted" : "text-on-surface-secondary"}`}
+        title={size.label}
+        className={`text-xs font-mono font-medium mb-2 line-clamp-2 break-words ${selected ? "text-accent-on-muted" : "text-on-surface-secondary"}`}
       >
         {size.label}
       </p>

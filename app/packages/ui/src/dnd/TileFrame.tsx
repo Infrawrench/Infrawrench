@@ -148,22 +148,24 @@ export function ShowcaseLines({ showcase }: { showcase: ResourceShowcase }) {
       {status && (
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-on-surface-muted">
           <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
-          <span className="truncate">{gtData(status.value)}</span>
+          <span className="truncate" title={gtData(status.value)}>
+            {gtData(status.value)}
+          </span>
         </span>
       )}
       {stats.length > 0 && (
         <span className="mt-auto flex flex-col gap-px pt-1.5">
           {stats.map((stat) => {
             const value = stat.flag === undefined ? stat.value : stat.flag ? gt("Yes") : gt("No");
+            const label = showcaseLabel(gtData(stat.label));
             return (
               <span
                 key={stat.key}
-                title={value}
+                // Both halves of the row truncate, so the tooltip carries the whole of each.
+                title={gt("{label}: {value}", { label, value })}
                 className="flex items-baseline justify-between gap-2 text-[11px] leading-4"
               >
-                <span className="min-w-0 truncate text-on-surface-muted">
-                  {showcaseLabel(gtData(stat.label))}
-                </span>
+                <span className="min-w-0 truncate text-on-surface-muted">{label}</span>
                 <span className="max-w-[70%] shrink-0 truncate font-medium tabular-nums text-on-surface-secondary">
                   {value}
                 </span>
