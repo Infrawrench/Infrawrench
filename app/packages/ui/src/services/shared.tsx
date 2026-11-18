@@ -8,8 +8,16 @@ import {
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 
-export const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/**
+ * A text field with no width of its own, for inline rows that size it
+ * (`w-40`, `flex-1`). Width utilities do not override each other by their order
+ * in the class string, only by their order in the stylesheet, where `w-full`
+ * comes after `w-40` and `w-auto`: adding one to `inputClass` does nothing.
+ */
+export const fieldClass =
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/** A full-width text field. */
+export const inputClass = `w-full ${fieldClass}`;
 export const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 export const smallButtonClass =
   "px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50";

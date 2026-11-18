@@ -26,6 +26,32 @@ describe("Modal", () => {
     expect(screen.getByText("Modal body")).toBeInTheDocument();
   });
 
+  // Inherited CSS follows the DOM tree even in the top layer, so a dialog
+  // mounted in a `whitespace-nowrap text-right` table cell rendered its text
+  // right-aligned and unwrapped (#1340).
+  it("renders into body rather than the element that mounts it", () => {
+    const onRowClick = vi.fn();
+    render(
+      <table>
+        <tbody>
+          <tr onClick={onRowClick}>
+            <td className="whitespace-nowrap text-right" data-testid="cell">
+              <Modal onClose={() => {}}>
+                <button type="button">inside</button>
+              </Modal>
+            </td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const dialog = document.querySelector("dialog")!;
+    expect(dialog.parentElement).toBe(document.body);
+    expect(screen.getByTestId("cell")).not.toContainElement(dialog);
+    // React events still bubble through the React tree, as they did before.
+    fireEvent.click(screen.getByText("inside"));
+    expect(onRowClick).toHaveBeenCalledOnce();
+  });
+
   it("calls onClose when the backdrop (dialog itself) is clicked", () => {
     const onClose = vi.fn();
     render(

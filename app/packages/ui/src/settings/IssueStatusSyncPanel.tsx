@@ -204,8 +204,8 @@ export function IssueStatusSyncPanel({
       ) : null}
 
       {jiraSecret && webhook?.url && (
-        <div className="space-y-2 rounded-lg border border-warning/40 bg-warning-surface p-3 text-xs">
-          {fallbackReason && <p className="text-warning-on-surface">{fallbackReason}</p>}
+        <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs">
+          {fallbackReason && <p className="text-warning">{fallbackReason}</p>}
           <p className="text-on-surface-secondary">
             {gt(
               "In Jira, go to Settings > System > Webhooks, create a webhook for issue updated and issue deleted events, and paste these. The secret is shown only now.",
