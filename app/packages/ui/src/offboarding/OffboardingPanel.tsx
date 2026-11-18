@@ -445,7 +445,7 @@ function ItemRow({
             <span
               className={`mr-1 inline-flex items-center rounded border px-1.5 text-[11px] ${
                 item.confidence === "possible" && item.matchState !== "confirmed"
-                  ? "border-amber-500/50 text-amber-600"
+                  ? "border-amber-500/50 text-warning"
                   : "border-border text-on-surface-tertiary"
               }`}
             >
@@ -874,7 +874,7 @@ function OffboardingDetail({
       </div>
 
       {data.scanTruncated && (
-        <p role="status" className="mb-3 text-xs text-amber-600">
+        <p role="status" className="mb-3 text-xs text-warning">
           {gt(
             "The last scan matched more resources than it reads at once, so some may be missing. Add a more specific alias, or remove a broad one.",
           )}
