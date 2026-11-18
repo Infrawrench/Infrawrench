@@ -1006,6 +1006,7 @@ export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
+export * from "./reroll-candidates";
 export * from "./log-tail-options";
 export * from "./alert-routing";
 export * from "./event-catalog";

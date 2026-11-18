@@ -23530,5 +23530,7 @@
   "331ca38354a030fb": "{file}：{rows, plural, other {# 行}}",
   "61c177c14396c61c": "将写入 {days, plural, other {# 天}}内的 {values, plural, other {# 个值}}。",
   "47b8d651335b6589": "{count, plural, other {有 # 行无法读取，将被跳过。}}",
-  "2ecdd41521c97973": "{count, plural, other {搜索 # 个选项…}}"
+  "2ecdd41521c97973": "{count, plural, other {搜索 # 个选项…}}",
+  "968367dd15e8500c": "{field} 已更新。",
+  "47b2063c813d9f01": "重新生成失败：{error}"
 }

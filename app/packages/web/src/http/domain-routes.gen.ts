@@ -177,6 +177,7 @@ export const DOMAIN_ROUTES: readonly DomainRoute[] = [
   ["ownership","GET","/api/org/:orgId/ownership/resource"],
   ["ownership","PUT","/api/org/:orgId/ownership"],
   ["ownership","DELETE","/api/org/:orgId/ownership"],
+  ["associations","GET","/api/org/:orgId/associations/candidates"],
   ["associations","POST","/api/org/:orgId/associations"],
   ["associations","POST","/api/org/:orgId/associations/literal"],
   ["blast-radius","GET","/api/org/:orgId/blast-radius"],

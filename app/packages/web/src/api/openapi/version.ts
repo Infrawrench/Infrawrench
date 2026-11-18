@@ -549,4 +549,9 @@
 // top-level types and their resources in `childTypes` and `childResources`,
 // marked by the new optional `ChildTypeRef.topLevel`, so the account page
 // keeps every type and its Create button. Additive.
-export const API_VERSION = "1.118.0";
+// 1.119.0: `GET /api/org/:orgId/associations/candidates` lists the resources
+// whose outputs can fill a secret field (the Reroll dialog's "From resource"
+// list), with the `AssociationCandidate` schema. `POST /associations/literal`
+// now applies the value upstream first when the resource's plugin can, and
+// answers 502 when the provider refuses it. Additive.
+export const API_VERSION = "1.119.0";

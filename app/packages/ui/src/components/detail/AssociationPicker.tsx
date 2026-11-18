@@ -11,6 +11,10 @@ const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
 interface AssociationPickerProps {
   fieldKey: string;
   providerResources: ProviderResource[];
+  /** The host is still loading `providerResources`. */
+  providerResourcesLoading?: boolean;
+  /** Why the host could not load `providerResources`, if it could not. */
+  providerResourcesError?: string | null;
   onConfirm: (selection: RerollSelection | { kind: "literal"; value: string }) => void;
   onCancel: () => void;
 }
@@ -25,6 +29,8 @@ interface AssociationPickerProps {
 export function AssociationPicker({
   fieldKey,
   providerResources,
+  providerResourcesLoading = false,
+  providerResourcesError = null,
   onConfirm,
   onCancel,
 }: AssociationPickerProps) {
@@ -162,9 +168,20 @@ export function AssociationPicker({
               id={panelId("provider")}
               aria-labelledby={tabId("provider")}
               tabIndex={0}
-              className="space-y-2"
+              className="space-y-2 max-h-72 overflow-y-auto"
             >
-              {providerResources.length === 0 ? (
+              {providerResourcesLoading ? (
+                <p className="text-sm text-on-surface-faint text-center py-4">
+                  {gt("Loading resources…")}
+                </p>
+              ) : providerResourcesError ? (
+                <p
+                  className="text-sm text-danger text-center py-4 break-words"
+                  title={providerResourcesError}
+                >
+                  {gt("Couldn't load options: {error}", { error: providerResourcesError })}
+                </p>
+              ) : providerResources.length === 0 ? (
                 <p className="text-sm text-on-surface-faint text-center py-4">
                   {gt("No compatible resources found.")}
                 </p>

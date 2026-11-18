@@ -22,6 +22,7 @@ import { OrgAuth, SessionAuth } from "@infrawrench/api-contract";
 import {
   AccountsApi,
   AgentsApi,
+  AssociationsApi,
   ChatApi,
   ComplianceApi,
   ConnectionsApi,
@@ -285,6 +286,7 @@ export const DESKTOP_CLOUD_APIS = {
   incidents: desktopCloudApi(IncidentsApi),
   pagingProviders: desktopCloudApi(PagingProvidersApi),
   accounts: desktopCloudApi(AccountsApi),
+  associations: desktopCloudApi(AssociationsApi),
   agents: desktopCloudApi(AgentsApi),
   chat: desktopCloudApi(ChatApi),
   compliance: desktopCloudApi(ComplianceApi),

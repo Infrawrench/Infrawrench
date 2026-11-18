@@ -23545,5 +23545,7 @@
   "331ca38354a030fb": "{file} : {rows, plural, one {# ligne} other {# lignes}}",
   "61c177c14396c61c": "{values, plural, one {# valeur sera écrite} other {# valeurs seront écrites}} sur {days, plural, one {# jour} other {# jours}}.",
   "47b8d651335b6589": "{count, plural, one {# ligne est illisible et sera ignorée.} other {# lignes sont illisibles et seront ignorées.}}",
-  "2ecdd41521c97973": "{count, plural, one {Rechercher parmi # option…} other {Rechercher parmi # options…}}"
+  "2ecdd41521c97973": "{count, plural, one {Rechercher parmi # option…} other {Rechercher parmi # options…}}",
+  "968367dd15e8500c": "{field} mis à jour.",
+  "47b2063c813d9f01": "Échec du reroll : {error}"
 }

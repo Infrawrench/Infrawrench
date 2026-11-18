@@ -23546,5 +23546,7 @@
   "331ca38354a030fb": "{file}: {rows, plural, one {# fila} other {# filas}}",
   "61c177c14396c61c": "Se escribirán {values, plural, one {# valor} other {# valores}} en {days, plural, one {# día} other {# días}}.",
   "47b8d651335b6589": "{count, plural, one {# fila no se puede leer y se omitirá.} other {# filas no se pueden leer y se omitirán.}}",
-  "2ecdd41521c97973": "{count, plural, one {Buscar en # opción…} other {Buscar en # opciones…}}"
+  "2ecdd41521c97973": "{count, plural, one {Buscar en # opción…} other {Buscar en # opciones…}}",
+  "968367dd15e8500c": "{field} actualizado.",
+  "47b2063c813d9f01": "El reroll falló: {error}"
 }
