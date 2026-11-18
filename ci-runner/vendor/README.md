@@ -1307,6 +1307,20 @@ the whole write in one read now, as on Linux, rather than a segment per read.
 check. Upstream main sends segment by segment too (checked November 2026, at
 65f18f0054).
 
+**A child gets the environment it is passed, and only that (#1310).**
+`_prepare_wasi` (`src/syscalls/mod.rs`), which `proc_exec4` and
+`proc_spawn3` call, laid the environment a process passed over the one it
+had inherited, so a variable the caller had left out still reached the
+child with its old value. `unset X`, `env -u`, `env -i`, Ruby's
+`ENV.delete` and `unsetenv_others: true` all lost their removals, and a
+job's `env:` secrets reached children that had scrubbed them. An
+environment passed is now the whole of the new one, as with `execve` and
+`posix_spawn`, and none passed still inherits. `iwci-runtime`'s
+`a_variable_removed_from_the_environment_is_not_set_in_a_child` (which
+fails without it: every removal printed the job's value) and
+`builtins/test.sh`'s `bash/unset-passes` are the checks. Upstream main
+merges too (checked November 2026, at ea3421a207).
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1331,7 +1345,7 @@ process, a process's exit signals only its own threads, a command runs
 through a symbolic link, a new thread's stack pointer starts on its
 stack before its side modules' TLS is set up, the closure calls and
 `call_dynamic` answer bad input with an errno, one write to a pipe is one
-send, WASIX has file locks a C library calls (and
+send, a passed environment replaces the inherited one, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a
@@ -1380,6 +1394,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `racing_unlinks_renames_and_creations_of_one_name_all_succeed`,
 `closure_calls_refuse_bad_input_with_an_errno`,
 `a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe`,
+`a_variable_removed_from_the_environment_is_not_set_in_a_child`,
 `a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 

@@ -1977,6 +1977,38 @@ echo unreachable
     );
 }
 
+/// A child gets the environment its parent passes, not that laid over the
+/// one the parent inherited (#1310): a variable removed with `unset`,
+/// `env -u` or `env -i` used to reach the child with the job's value.
+#[test]
+fn a_variable_removed_from_the_environment_is_not_set_in_a_child() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    rt.prepare_environment(&packages).unwrap();
+    let job = snapshot(&[]).fork();
+    // `invocation` gives the job GREETING=hi.
+    let script = r#"
+echo "inherited $(bash -c 'echo "${GREETING-unset}"')"
+echo "changed $(GREETING=changed bash -c 'echo "${GREETING-unset}"')"
+echo "env-u $(env -u GREETING bash -c 'echo "${GREETING-unset}"')"
+echo "env-i $(env -i /bin/bash -c 'echo "${GREETING-unset}"')"
+unset GREETING
+echo "unset $(bash -c 'echo "${GREETING-unset}"')"
+"#;
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&outcome.stdout);
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stdout:?} {stderr:?} {outcome:?}");
+    assert_eq!(
+        stdout, "inherited hi\nchanged changed\nenv-u unset\nenv-i unset\nunset unset\n",
+        "{stderr:?}"
+    );
+}
+
 /// Each command a script runs has an engine of its own (cache.rs): bash
 /// and the coreutils it spawns run together in one job, and with nothing
 /// kept between jobs both are freed once the job ends and load from disk

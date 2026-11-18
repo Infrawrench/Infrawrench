@@ -792,6 +792,21 @@ jobs:
     run: |
       test "$TOKEN" = fixture-secret-value-0451
       echo "the token is $TOKEN"
+  # A child gets the environment its parent passes and nothing else (#1310):
+  # a variable removed with `unset`, `env -u` or `env -i` used to reach the
+  # child with the job's value, secrets included.
+  unset-passes:
+    using: env:bash@5
+    env:
+      X: from-job
+      TOKEN: ${{ secrets.FIXTURE_TOKEN }}
+    run: |
+      test "$(bash -c 'echo "${X-unset}"')" = from-job
+      Y=changed bash -c 'test "$Y" = changed'
+      test "$(env -u X bash -c 'echo "${X-unset}"')" = unset
+      test "$(env -i /bin/bash -c 'echo "${X-unset} ${TOKEN-unset}"')" = "unset unset"
+      unset X TOKEN
+      test "$(bash -c 'echo "${X-unset} ${TOKEN-unset}"')" = "unset unset"
   # The rest of the script runs beside a background child (#961): bash
   # used to wait for it after the next command, so the loop only ended
   # once `done` existed.
