@@ -1505,6 +1505,38 @@ mappings, and `src/memory_image.rs` has unit tests of its own (the
 bounds, and a mapping that fails). wasmerio/wasmer
 `main` still copies (`Instance::memory_init`, November 2026).
 
+**And: code is never mapped where code was (#1314).** An engine registers
+its code's unwind information with the system unwinder (`__register_frame`),
+and that is how a wasm exception finds its handler. libgcc 13 and 14 keep
+the registrations in a B-tree whose inner separators are not moved when a
+range is inserted across one (GCC PR libgcc/119151, fixed in GCC 15): once
+a range was deregistered and a new one registered over its old addresses,
+lookups in the upper part of the new range found nothing, the unwinder
+stopped there, and the exception was reported uncaught. Freeing a module
+and loading another is exactly that, because the kernel hands freed
+addresses out again, and the runner frees code all the time (a job's
+engine, the module LRU). env:ruby's `gem-install-passes` died this way now
+and then with status 134: Ruby's longjmp is a wasm exception, and the
+trace stopped at the C extension's frame (`zlib.so`, `psych.so`), a side
+module loaded at run time. Ubuntu 24.04's `libgcc-s1`
+(14.2.0-4ubuntu2~24.04.1, November 2026) still fails GCC's own test for
+the bug (`gcc.dg/pr119151.c`); 22.04's GCC 12 has no B-tree. A stress of register, deregister and lookup against
+it failed within a few hundred steps when addresses were reused and never
+in 200,000 when they were not. `Mmap::with_at_least`, which only an
+engine's code memory calls, now maps code in increasing order from a 64
+GiB reservation that is never given back (`code_space` in `src/mmap.rs`;
+just the mapping's size when a limit on address space refuses that), and
+a dropped code mapping is mapped over with inaccessible pages, freeing
+its memory and keeping its addresses. A new range then never overlaps an
+old one, which is what the B-tree needs. The cost is address space: the
+total size of all code ever loaded, out of 128 TiB. The unit test
+`freed_code_addresses_are_never_handed_out_again` checks the addresses
+(it fails without this: the next mapping lands where the last one was),
+and `iwci-runtime`'s `an_exception_is_caught_in_code_loaded_where_code_was_freed`
+throws through modules loaded and freed in turn, in engines of their own.
+The same sequence, run as a program of its own against the unpatched
+crate on Ubuntu 24.04, lost an exception at step 1144.
+
 **Remove it** when a wasmer-vm release has the interrupt handler leave host
 code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
 of November 2026), reads the interrupted flag without a write lock
@@ -1513,7 +1545,10 @@ lock and maps large data segments copy-on-write: delete `vendor/wasmer-vm*`
 and its `[patch.crates-io]` entry. A
 release with only the first is still worth taking for the rest of this
 patch's sake; check a `statSync` loop (#994) against the patched build
-before dropping the other two.
+before dropping the other two. The code addresses (#1314) are not
+Wasmer's to fix: keep them until no host the runner is installed on has a
+libgcc 13 or 14 without the PR 119151 fix (`gcc.dg/pr119151.c` passes
+against its `libgcc_s.so.1`).
 
 To regenerate after editing: `diff -u` the changed file against the crate
 from crates.io with `a/` and `b/` labels, as for wasmer-napi.

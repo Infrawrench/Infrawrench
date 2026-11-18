@@ -1121,6 +1121,75 @@ fn a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe() {
     assert!(outcome.success(), "{outcome:?}");
 }
 
+/// A module of `padding` small functions followed by `run`, which calls a
+/// function that throws and catches what it throws. Those two come last,
+/// so the throw crosses the top of the module's code.
+fn throw_through_module(padding: u32, seed: u32) -> Vec<u8> {
+    let mut text = String::from("(module (tag $t (param i32))");
+    for f in 0..padding {
+        text.push_str(&format!(
+            "(func $p{f} (result i32) i32.const {seed} {})",
+            "i32.const 1 i32.add ".repeat(8 + (f % 16) as usize)
+        ));
+    }
+    text.push_str(
+        r#"(func $throw (param i32) (throw $t (local.get 0)))
+           (func (export "run") (result i32)
+             (block $caught (result i32)
+               (try_table (catch $t $caught) (call $throw (i32.const 7)))
+               (i32.const -1))))"#,
+    );
+    wat::parse_str(&text).unwrap()
+}
+
+/// Code loaded where code was freed still catches its exceptions (#1314).
+/// The system unwinder finds a wasm exception's handler through the unwind
+/// information engines register, and libgcc 13 and 14 lose a lookup in a
+/// range registered over one that was deregistered (GCC PR 119151), so on
+/// a host with one (Ubuntu 24.04) an exception thrown through such code was
+/// reported uncaught, which is how env:ruby's longjmp through a C extension
+/// died now and then. Modules here come and go in engines of their own, as
+/// a job's and the module LRU's do, and every live one throws after each
+/// step; wasmer-vm now never maps code where code was (vendor/README.md).
+#[test]
+fn an_exception_is_caught_in_code_loaded_where_code_was_freed() {
+    use wasmer::{Engine, Instance, Module, Store, imports};
+
+    // Without the fix, the same sequence of modules lost an exception at
+    // step 1144 on Ubuntu 24.04.
+    const STEPS: u32 = 1500;
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut live: Vec<(Engine, Module)> = Vec::new();
+    for step in 0..STEPS {
+        if !live.is_empty() && next() % 2 == 0 {
+            let i = (next() % live.len() as u64) as usize;
+            live.remove(i);
+        }
+        if live.len() < 40 {
+            let engine = crate::cache::build_engine();
+            let padding = 1 + (next() % 300) as u32;
+            let module = Module::new(&engine, throw_through_module(padding, step)).unwrap();
+            live.push((engine, module));
+        }
+        for (engine, module) in &live {
+            let mut store = Store::new(engine.clone());
+            let instance = Instance::new(&mut store, module, &imports! {}).unwrap();
+            let run = instance
+                .exports
+                .get_typed_function::<(), i32>(&store, "run")
+                .unwrap();
+            let caught = run.call(&mut store);
+            assert!(matches!(caught, Ok(7)), "step {step}: {caught:?}");
+        }
+    }
+}
+
 #[test]
 fn an_infinite_loop_is_stopped_by_the_timeout() {
     let rt = runtime();
