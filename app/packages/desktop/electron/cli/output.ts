@@ -185,5 +185,10 @@ export function formatNumber(value: number, unit?: string | undefined): string {
       : Math.abs(value) >= 1
         ? value.toFixed(1)
         : value.toFixed(2);
-  return unit ? `${rounded} ${unit}` : rounded;
+  const word = unit?.trim();
+  if (!word) return rounded;
+  // A symbol sits against the number ("42%", "3/s"), a word takes a space
+  // ("150 ms"); mirrors client-core's `createMetricValueFormatter`, which
+  // metric series use whenever it has loaded.
+  return /^[%‰°/]/.test(word) ? `${rounded}${word}` : `${rounded} ${word}`;
 }

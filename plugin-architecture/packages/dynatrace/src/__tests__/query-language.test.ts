@@ -23,4 +23,11 @@ describe("query editor", () => {
     const schema = renderDynatraceDetail(instance("environment", { grail: true }));
     expect(schema.sqlEditor?.queryLanguage).toBe("DQL");
   });
+
+  it("browses a table clicked in the sidebar in its own language, not SQL", () => {
+    const schema = renderDynatraceDetail(instance("environment", { grail: true }));
+    expect(schema.sqlEditor?.tableQuery?.replaceAll("{table}", "dt.entity.host")).toBe(
+      "fetch dt.entity.host\n| limit 100",
+    );
+  });
 });

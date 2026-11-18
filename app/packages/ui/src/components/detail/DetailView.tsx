@@ -890,6 +890,7 @@ export function DetailView({
             tables={schema.sqlEditor!.tables ?? []}
             defaultQuery={initialEditorQuery(schema.sqlEditor!)}
             queryLanguage={schema.sqlEditor!.queryLanguage}
+            tableQuery={schema.sqlEditor!.tableQuery}
             onRunQuery={onRunQuery!}
             onExecute={onExecute}
             onEstimateQueryCost={

@@ -23,4 +23,9 @@ describe("query editor", () => {
     const schema = renderChronoDetail(instance("tenant", {}));
     expect(schema.sqlEditor?.queryLanguage).toBe("PromQL");
   });
+
+  it("browses a table clicked in the sidebar in its own language, not SQL", () => {
+    const schema = renderChronoDetail(instance("tenant", {}));
+    expect(schema.sqlEditor?.tableQuery).toBe("{table}");
+  });
 });

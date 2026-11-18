@@ -109,25 +109,27 @@ export function lineChart(values: number[], opts: LineChartOptions = {}): string
 export type MetricValueFormatterFactory = (
   unit: string,
   maxAbsValue: number,
+  locale?: string,
 ) => (value: number) => string;
 
 /**
  * How one metric series' values print: the summary line, the chart's axis
- * and its padding all take this. Byte series (`bytes`, `bytes/s`) go through
- * client-core's formatter, which picks one binary scale from the series'
- * largest magnitude, so the CLI prints the "2.15 GiB" the app's Metrics tab
- * does rather than "2303368539 bytes". Other units keep `formatNumber`.
+ * and its padding all take this. Every series goes through client-core's
+ * formatter, the one the app's Metrics tab uses, so the CLI prints what the
+ * charts do: one binary scale for a byte series ("2.15 GiB", not
+ * "2303368539 bytes"), symbols against the number ("64.2%", "12/s"), a space
+ * before a word ("150 ms"), and compact numbers once the series reaches the
+ * thousands ("8K count"), each chosen once from the series' largest magnitude.
  */
 export function metricSeriesFormat(
   createFormatter: MetricValueFormatterFactory,
   unit: string | undefined,
   values: readonly number[],
 ): (value: number) => string {
-  if (unit === "bytes" || unit === "bytes/s") {
-    const maxAbs = values.reduce((max, v) => Math.max(max, Math.abs(v)), 0);
-    return createFormatter(unit, maxAbs);
-  }
-  return (value) => formatNumber(value, unit);
+  const maxAbs = values.reduce((max, v) => Math.max(max, Math.abs(v)), 0);
+  // The CLI prints numbers in en-US whatever the machine's locale, as
+  // `formatMoney` does, so its output reads the same everywhere.
+  return createFormatter(unit ?? "", maxAbs, "en-US");
 }
 
 export interface BarChartItem {

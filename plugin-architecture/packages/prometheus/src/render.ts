@@ -183,6 +183,8 @@ export function renderPromDetail(
             connectionStringOutputKey: "url",
             defaultQuery: "sum by (job) (up)",
             queryLanguage: "PromQL",
+            // The sidebar lists metric names, and a bare metric name is a PromQL query.
+            tableQuery: "{table}",
           },
           manifestEditor: { language: "yaml", readOnly: true, resourceKind: "Configuration" },
           describe: { language: "text" },
