@@ -1018,7 +1018,7 @@ const listAnomalies = Effect.fnUntraced(function* (range: {
     },
     {
       header: "notified",
-      value: (a) => (a.notifiedAt ? c.dim(safe(a.notifiedAt.slice(0, 10))) : c.dim("—")),
+      value: (a) => (a.notifiedAt ? c.dim(safe(a.notifiedAt.slice(0, 10))) : c.dim("-")),
     },
     {
       // What somebody established this was, once they did. Truncated because a
@@ -1026,7 +1026,7 @@ const listAnomalies = Effect.fnUntraced(function* (range: {
       header: "explained",
       value: (a) => {
         const explanation = a.acknowledgement?.explanation;
-        if (!explanation) return c.dim("—");
+        if (!explanation) return c.dim("-");
         return c.green(
           safe(explanation.length > 44 ? `${explanation.slice(0, 43)}…` : explanation),
         );
