@@ -33,6 +33,10 @@ Matches are based on published specs only. An `m7i.large` and a `CX22` are compa
 
 <insert [Compare providers mode for 8 vCPU / 32 GB in North America, showing one row per provider with the cheapest match, its monthly price and runners-up] here>
 
+## Price changes
+
+**Price changes** lists list-price changes on the instance types your organization runs, with what each does to your month, and every change in the catalog for one provider. You get one alert per change. See [price change watch](./price-change-watch.md).
+
 ## Use in estimate
 
 **Use in estimate** opens that provider's create form with the instance type and region filled in, so the [estimate badge](./cost-estimates.md) prices the whole setup (disks, node counts and all) before you create anything. You need an account on that provider. If you have several, pick which one to use.

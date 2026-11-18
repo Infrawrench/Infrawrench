@@ -325,6 +325,8 @@ The **scope** defaults to the anomaly's own provider or service. You can pick an
 - If the anomaly only happened because of that spend, it's still recorded and marked **Suppressed**, but you aren't alerted anywhere (push, Slack, Teams or SMS).
 - If the rest of the day still crosses the line on its own, it alerts as usual. Marking a migration in one account as expected won't hide a spike elsewhere in the same service.
 
+When a provider raises a list price you pay, the [price change watch](./price-change-watch.md) adds a one-off suppression like this for each affected account, with the reason **Pricing change**, so the step doesn't alert as an anomaly.
+
 **Suppressions** in the Anomalies section lists every suppression: what it covers, how it repeats, its dates, the reason and note, who added it, the next days it covers and how many anomalies it has silenced. Edit or delete any of them, or click **Add suppression** to add one by hand for a launch you know is coming. Expired suppressions stay listed, greyed out. Deleting a suppression never deletes the anomalies it silenced. Any from the last three days can still alert on the next pass. Your organization can have at most 100 active suppressions.
 
 <insert [The Suppressions panel listing an active weekly service suppression with its next covered days and "suppressed 3", an account-scoped one-off suppression, and an expired one greyed out] here>

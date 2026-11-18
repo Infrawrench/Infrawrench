@@ -62,6 +62,7 @@ Cost pushes open the matching tab of the Costs screen in the [mobile app](./mobi
 | ------------------------------------------------------------------------------------------------------------------- | ------------ |
 | Budget alert                                                                                                        | **Overview** |
 | [Cost change alert](./cost-change-alerts.md), [commitment or unit-cost alert](./commitment-and-unit-cost-alerts.md) | **Alerts**   |
+| [Price change](./price-change-watch.md)                                                                              | **Alerts**   |
 | Savings finding, [extended support](./extended-support.md) finding                                                  | **Savings**  |
 
 ### Budget alerts
@@ -92,7 +93,7 @@ The org settings page that used to be called **Paging** is now **Notifications**
 
 - **Channels:** Slack, Microsoft Teams, email, mobile push, and SMS & voice.
 - **Routing:** the alert routing rules.
-- **Alerts & digest:** the drift, expiry and extended support alert settings, and the weekly digest.
+- **Alerts & digest:** the drift, expiry, extended support and price change alert settings, and the weekly digest.
 
 On those tabs you'll find:
 
