@@ -17,7 +17,13 @@ export const TursoOrganizationMemberResourceType = rt({
   ],
   outputs: [o("username", "Username"), o("email", "Email")],
   // Turso's member list carries no timestamps; the role is the one signal.
-  principalRole: { role: "user", adminIndicatorKey: "role", adminValues: ["owner", "admin"] },
+  principalRole: {
+    role: "user",
+    adminIndicatorKey: "role",
+    adminValues: ["owner", "admin"],
+    // DELETE /v1/organizations/{organizationSlug}/members/{username}.
+    offboardByDelete: true,
+  },
   supportsUpdate: true,
   iconKey: "member",
 });
