@@ -347,6 +347,7 @@ const TAB_KINDS = [
   "price-catalog",
   "incidents",
   "slos",
+  "game-days",
   "services",
   "delivery",
   "ci",
@@ -385,6 +386,11 @@ const TabTarget = Schema.Struct({
    * to invalidate the tab: a deleted SLO just lands on the list.
    */
   sloId: Schema.optionalKey(Uuid),
+  /**
+   * Which game day the Game days tab was last on. Omitted for the list view.
+   * Never used to invalidate the tab: a deleted game day lands on the list.
+   */
+  gameDayId: Schema.optionalKey(Uuid),
   /**
    * Which run the CI tab was last on. Omitted for the list view. Never used
    * to invalidate the tab: an unknown run just shows its error.

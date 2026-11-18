@@ -66,6 +66,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // a declaration can request are still gated separately.
       "incidents:read",
       "incidents:write",
+      // Members watch game days, and can abort one: stopping an experiment only
+      // ever puts things back. Planning and arming one (`game-days:run`) stays
+      // with admins and owners, because arming stops real resources.
+      "game-days:read",
       // Members read the IaC reconciliation for the same reason they read the
       // change timeline: "is this thing managed?" is a question you have to be
       // able to answer before you touch anything. Uploading a state document is

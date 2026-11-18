@@ -1011,6 +1011,8 @@ export * from "./metric-alerts";
 // A SQL query on a schedule: what the data says, which no metric reports.
 export * from "./query-monitors";
 export * from "./slos";
+// A planned, controlled failure and how fast the org noticed and recovered.
+export * from "./game-days";
 // A logical service across providers, and how ready each one is.
 export * from "./services";
 export * from "./scorecards";

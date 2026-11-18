@@ -105,6 +105,10 @@ const NODE_ROUTES: readonly RegExp[] = [
   // functions the edge registry only stubs: every attempt there would replay.
   // Its history (`/scorecards/org/history`) is Postgres only and stays.
   new RegExp(`${ORG}/scorecards/org$`),
+  // A game day's dry run reads each target's live state through its plugin
+  // (`prepareFailure`). Everything else under `/game-days` is Postgres only;
+  // the injecting and undoing is the poller's gateway pass.
+  new RegExp(`${ORG}/game-days/plan$`),
   new RegExp(
     `${ORG}/(` +
       [

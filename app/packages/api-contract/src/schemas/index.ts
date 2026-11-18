@@ -28,6 +28,7 @@ export * from "./cost-reports";
 export * from "./cost-scenarios";
 export * from "./currency";
 export * from "./form";
+export * from "./game-days";
 export * from "./invoices";
 export * from "./k8s-efficiency";
 export * from "./metric-alerts";

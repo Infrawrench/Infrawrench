@@ -34,6 +34,7 @@ import {
   PriceCatalogIcon,
   IncidentsIcon,
   SlosIcon,
+  GameDaysIcon,
   ServicesIcon,
   DeliveryIcon,
   CiIcon,
@@ -282,6 +283,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Incidents"),
       icon: <IncidentsIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/incidents", params: { orgId: orgId! } }),
+    },
+    {
+      key: "game-days",
+      label: gt("Game days"),
+      icon: <GameDaysIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/game-days", params: { orgId: orgId! } }),
     },
     {
       key: "ssh-fanout",

@@ -43,6 +43,7 @@ import {
   k8sEfficiencyTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   ciTabTarget,
   servicesTabTarget,
   invoicesTabTarget,
@@ -155,6 +156,9 @@ const WebIncidentsPanel = lazyPanel(() =>
   import("./WebIncidentsPanel").then((m) => m.WebIncidentsPanel),
 );
 const WebSlosPanel = lazyPanel(() => import("./WebSlosPanel").then((m) => m.WebSlosPanel));
+const WebGameDaysPanel = lazyPanel(() =>
+  import("./WebGameDaysPanel").then((m) => m.WebGameDaysPanel),
+);
 const WebResourceReportsPanel = lazyPanel(() =>
   import("./WebResourceReportsPanel").then((m) => m.WebResourceReportsPanel),
 );
@@ -828,9 +832,11 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                       ? workflowsTabTarget()
                       : tab === "costs"
                         ? costsTabTarget()
-                        : // The only remaining destination is Settings, and the
-                          // freeze editor lives in its Change Freezes section.
-                          settingsTabTarget("freezes"),
+                        : tab === "game-days"
+                          ? gameDaysTabTarget()
+                          : // The only remaining destination is Settings, and the
+                            // freeze editor lives in its Change Freezes section.
+                            settingsTabTarget("freezes"),
               ),
             )
           }
@@ -978,6 +984,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // The URL owns which SLO is open, the incidents rule.
           onSelectSlo={(sloId) =>
             void navigate(getWorkspaceNavigateArgs(slosTabTarget(sloId ?? undefined)))
+          }
+        />
+      );
+    case "game-days":
+      return (
+        <WebGameDaysPanel
+          key={orgId}
+          orgId={orgId}
+          gameDayId={t.gameDayId}
+          // The URL owns which game day is open, the SLOs rule.
+          onSelectGameDay={(gameDayId) =>
+            void navigate(getWorkspaceNavigateArgs(gameDaysTabTarget(gameDayId ?? undefined)))
           }
         />
       );

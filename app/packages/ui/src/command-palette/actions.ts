@@ -7,6 +7,7 @@ import {
   costCanvasesTabTarget,
   costReportsTabTarget,
   costsTabTarget,
+  gameDaysTabTarget,
   incidentsTabTarget,
   logsTabTarget,
   probesTabTarget,
@@ -53,6 +54,7 @@ const TOOL_PERMISSIONS: Readonly<Record<string, string>> = {
   slos: "resources:read",
   services: "resources:read",
   incidents: "incidents:read",
+  "game-days": "game-days:read",
   runbooks: "resources:read",
   "status-pages": "resources:read",
   probes: "resources:read",
@@ -225,6 +227,7 @@ export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
       go("slos", gt("SLOs"), slosTabTarget(), "resources:read");
       go("services", gt("Services"), servicesTabTarget(), "resources:read");
       go("incidents", gt("Incidents"), incidentsTabTarget(), "incidents:read");
+      go("game-days", gt("Game days"), gameDaysTabTarget(), "game-days:read");
       go("runbooks", gt("Runbooks"), runbooksTabTarget(), "resources:read");
       go("status-pages", gt("Status pages"), statusPagesTabTarget(), "resources:read");
       go("probes", gt("Probes"), probesTabTarget(), "resources:read");

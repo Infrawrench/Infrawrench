@@ -191,6 +191,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns game days list and detail route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "game-days" })).toEqual({
+      to: "/org/$orgId/game-days",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "game-days", gameDayId: "gd-1" })).toEqual({
+      to: "/org/$orgId/game-days/$gameDayId",
+      params: { orgId: "test-org", gameDayId: "gd-1" },
+    });
+  });
+
   it("returns services list route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "services" })).toEqual({
       to: "/org/$orgId/services",
@@ -710,6 +721,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/slos/slo-1")).toEqual({
       kind: "slos",
       sloId: "slo-1",
+    });
+  });
+
+  it("parses the game days paths back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/game-days")).toEqual({ kind: "game-days" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/game-days/gd-1")).toEqual({
+      kind: "game-days",
+      gameDayId: "gd-1",
     });
   });
 

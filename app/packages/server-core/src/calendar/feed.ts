@@ -34,6 +34,7 @@ import {
   accountCommitments,
   accounts,
   changeFreezes,
+  gameDays,
   incidents,
   resourceSchedules,
   resources,
@@ -381,6 +382,42 @@ async function incidentEvents(
   return events;
 }
 
+/**
+ * Game days, as the window they hold: the planned start to the time limit
+ * plus the recovery wait, or the instants they actually ran once they have.
+ * A planned game day nobody armed is on the calendar too, dimmed by severity:
+ * somebody is about to pick a slot for it. Cancelled ones are left off.
+ */
+async function gameDayEvents(organizationId: string, window: TimeWindow): Promise<CalendarEvent[]> {
+  const rows = await db
+    .select()
+    .from(gameDays)
+    .where(
+      and(eq(gameDays.organizationId, organizationId), lte(gameDays.startsAt, new Date(window.to))),
+    );
+
+  const events: CalendarEvent[] = [];
+  for (const row of rows) {
+    if (row.status === "cancelled") continue;
+    const start = (row.injectedAt ?? row.startsAt).getTime();
+    const planned = start + (row.durationMinutes + row.recoveryTimeoutMinutes) * 60_000;
+    const end = (row.completedAt ?? row.endsAt)?.getTime() ?? planned;
+    if (!overlapsWindow(start, end, window)) continue;
+    const live = row.status !== "planned" && row.status !== "armed" && row.status !== "completed";
+    events.push({
+      id: `game-day:${row.id}`,
+      kind: "game-day",
+      title: row.name,
+      detail: row.description,
+      ...clampSpan(start, end, window),
+      allDay: false,
+      severity: live ? "critical" : row.status === "armed" ? "warning" : "info",
+      link: { target: "tab", tab: "game-days" },
+    });
+  }
+  return events;
+}
+
 const SOURCES: Record<
   CalendarEventKind,
   (organizationId: string, window: TimeWindow, now: number) => Promise<CalendarEvent[]>
@@ -391,6 +428,7 @@ const SOURCES: Record<
   "commitment-expiry": (org, window) => commitmentEvents(org, window),
   "workflow-schedule": (org, window) => workflowScheduleEvents(org, window),
   incident: (org, window) => incidentEvents(org, window),
+  "game-day": (org, window) => gameDayEvents(org, window),
 };
 
 /**

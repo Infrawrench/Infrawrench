@@ -39,7 +39,7 @@ const CalendarEventLink = Schema.NullOr(
     }),
     Schema.Struct({
       target: Schema.Literal("tab"),
-      tab: Schema.Literals(["expiring", "incidents", "workflows", "costs", "settings"]),
+      tab: Schema.Literals(["expiring", "incidents", "workflows", "costs", "settings", "game-days"]),
     }),
   ]),
 ).annotate({
@@ -127,7 +127,7 @@ export const CalendarSubscriptionList = Schema.Struct({
 
 const CalendarSubscriptionCreate = Schema.Struct({
   name: Schema.String.check(minLength(1), maxLength(80)),
-  kinds: Schema.optionalKey(Schema.Array(CalendarEventKind).check(maxLength(6))),
+  kinds: Schema.optionalKey(Schema.Array(CalendarEventKind).check(maxLength(7))),
 }).annotate({ identifier: "CalendarSubscriptionCreate" });
 
 export class CalendarGroup extends HttpApiGroup.make("calendar")

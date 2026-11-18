@@ -1182,6 +1182,38 @@ export interface PluginClient {
    */
   lendCiCredential?(request: CiCredentialRequest): PluginEffect<CiLentMaterial>;
   /**
+   * Game days: read what undoing failure action `actionId` on this resource
+   * will need, before anything changes. Must not modify the resource. The
+   * host stores the answer before calling `injectFailure`. Required when a
+   * resource type declares `failureActions`; see `failure-actions.ts`.
+   */
+  prepareFailure?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+  ): PluginEffect<PreparedFailure>;
+  /** Game days: inject failure action `actionId` into the resource. */
+  injectFailure?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+  ): PluginEffect<void>;
+  /**
+   * Game days: undo failure action `actionId`, from the state
+   * `prepareFailure` returned. Must be safe to call more than once and on a
+   * resource the inject never reached: the host calls it again after a
+   * restart without knowing whether the earlier call landed.
+   */
+  undoFailure?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+    undo: FailureUndoState,
+  ): PluginEffect<void>;
+  /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.
@@ -1735,6 +1767,7 @@ import type {
   CiTaggedCompute,
 } from "./ci.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+import type { FailureUndoState, PreparedFailure } from "./failure-actions.js";
 import type {
   IdleFindingRecord,
   IdleFindingsCapabilityDeclaration,

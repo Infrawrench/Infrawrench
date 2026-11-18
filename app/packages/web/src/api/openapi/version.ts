@@ -545,4 +545,9 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: game days under `/api/org/:orgId/game-days` (list, candidates,
+// plan, CRUD, arm, disarm, end, abort, retry-undo) with their `GameDay*`
+// schemas; `game-days:read` and `game-days:run` join the `Permission` enum,
+// `game-days` (+ `gameDayId`) the `TabTarget` kinds, and `game-day` the
+// `CalendarEventKind` enum. Additive.
+export const API_VERSION = "1.118.0";

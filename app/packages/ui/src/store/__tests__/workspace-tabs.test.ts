@@ -236,6 +236,22 @@ describe("incidents tab kind", () => {
   });
 });
 
+describe("game-days tab kind", () => {
+  it("is one tab that remembers the open game day", () => {
+    expect(getWorkspaceTabId({ kind: "game-days", gameDayId: "gd-1" })).toBe("game-days");
+    expect(getWorkspaceTabFallbackTitle({ kind: "game-days" })).toBe("Game days");
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "game-days", gameDayId: "a" },
+        { kind: "game-days", gameDayId: "a" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual({ kind: "game-days" }, { kind: "game-days", gameDayId: "a" }),
+    ).toBe(false);
+  });
+});
+
 describe("slos tab kind", () => {
   it("is a singleton tab id regardless of which SLO is open", () => {
     expect(getWorkspaceTabId({ kind: "slos" })).toBe("slos");

@@ -70,6 +70,11 @@ export type WorkspaceTabTarget =
    */
   | { kind: "slos"; sloId?: string }
   /**
+   * Game days. Single-instance like SLOs, remembering the game day whose
+   * report is open so reactivation and reload return to it.
+   */
+  | { kind: "game-days"; gameDayId?: string }
+  /**
    * Services and scorecards. Single-instance, remembering the open service
    * and which of the two views ("scorecards" for the matrix) is showing, so
    * reactivation and reload return to the same place.
@@ -249,6 +254,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "incidents";
     case "slos":
       return "slos";
+    case "game-days":
+      return "game-days";
     case "services":
       return "services";
     case "delivery":
@@ -358,6 +365,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Incidents";
     case "slos":
       return "SLOs";
+    case "game-days":
+      return "Game days";
     case "services":
       return "Services";
     case "delivery":
@@ -430,6 +439,9 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // Same trick: one tab by id, the SLO compared so the route sync records
       // which detail is open.
       return a.sloId === (b as { sloId?: string }).sloId;
+    case "game-days":
+      // And for the open game day.
+      return a.gameDayId === (b as { gameDayId?: string }).gameDayId;
     case "ci":
       // And again for the open run.
       return a.runId === (b as { runId?: string }).runId;

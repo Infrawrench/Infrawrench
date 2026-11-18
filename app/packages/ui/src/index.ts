@@ -485,6 +485,7 @@ export {
   runbooksTabTarget,
   queryMonitorsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   ciTabTarget,
@@ -1259,6 +1260,7 @@ export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { SlosIcon } from "./components/icons/SlosIcon.js";
+export { GameDaysIcon } from "./components/icons/GameDaysIcon.js";
 export { ServicesIcon } from "./components/icons/ServicesIcon.js";
 export { DeliveryIcon } from "./components/icons/DeliveryIcon.js";
 export { CiIcon } from "./components/icons/CiIcon.js";
@@ -1341,6 +1343,7 @@ export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./incidents/index.js";
 export * from "./slos/index.js";
+export * from "./game-days/index.js";
 export * from "./services/index.js";
 export * from "./dora/index.js";
 export * from "./ci/index.js";

@@ -6,13 +6,14 @@ import {
   type CalendarEventKind,
   type CalendarSubscription,
 } from "@infrawrench/ui";
+import type { CalendarTabTarget } from "@infrawrench/client-core";
 import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface WebCalendarPanelProps {
   orgId: string;
   openResource: (target: { accountId: string; resourceId: string }) => void;
-  openTab: (tab: "expiring" | "incidents" | "workflows" | "costs" | "settings") => void;
+  openTab: (tab: CalendarTabTarget) => void;
 }
 
 /**

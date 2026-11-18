@@ -9,6 +9,7 @@ import {
   type CalendarEventKind,
   type CalendarResponse,
   type CalendarSubscription,
+  type CalendarTabTarget,
 } from "@infrawrench/client-core";
 import { ChevronIcon } from "../components/icons/ChromeIcons.js";
 import { IssueIndicator } from "../components/IssueIndicator.js";
@@ -44,8 +45,7 @@ export interface CalendarSectionProps {
   /** Jump to an event's resource. Omitted, resource events are plain text. */
   onOpenResource?: ((target: { accountId: string; resourceId: string }) => void) | undefined;
   /** Open a workspace tab an event points at. Omitted, those events are plain text. */
-  onOpenTab?:
-    ((tab: "expiring" | "incidents" | "workflows" | "costs" | "settings") => void) | undefined;
+  onOpenTab?: ((tab: CalendarTabTarget) => void) | undefined;
   /**
    * iCalendar subscriptions, or null while loading. Undefined means the host
    * does not offer them at all, which hides the whole tab.
@@ -78,6 +78,7 @@ const KIND_BADGE_CLASSES: Record<CalendarEventKind, string> = {
   "commitment-expiry": "bg-violet-500/10 text-on-surface-secondary",
   "workflow-schedule": "bg-emerald-500/10 text-success",
   incident: "bg-red-500/10 text-danger",
+  "game-day": "bg-orange-500/10 text-warning",
 };
 
 function kindLabel(gt: Gt, kind: CalendarEventKind): string {
@@ -94,6 +95,8 @@ function kindLabel(gt: Gt, kind: CalendarEventKind): string {
       return gt("Scheduled runs");
     case "incident":
       return gt("Incidents");
+    case "game-day":
+      return gt("Game days");
   }
 }
 

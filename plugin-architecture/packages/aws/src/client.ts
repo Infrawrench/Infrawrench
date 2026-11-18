@@ -1,6 +1,18 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type {
+  FailureUndoState,
+  PluginEffect,
+  PreparedFailure,
+} from "@infrawrench/plugin-base";
+import {
+  ecsServiceRef,
+  injectEcsFailure,
+  prepareEcsFailure,
+  undoEcsFailure,
+  type EcsCall,
+  type EcsServiceRef,
+} from "./failure-actions.js";
 import type {
   ExtendedSupportCharge,
   PluginClient,
@@ -1498,6 +1510,56 @@ export class AWSClient implements PluginClient {
         resourceId,
         accountId,
       );
+    });
+  }
+
+  /** The ECS service a game-day failure targets, with a call bound to its region. */
+  private async ecsTarget(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<{ call: EcsCall; ref: EcsServiceRef }> {
+    const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    const ref = ecsServiceRef(String(resource.externalId ?? ""));
+    const creds = this.credsFor(String(resource.fields["region"] ?? this.creds.region));
+    const call: EcsCall = (target, body) => jsonCall(creds, "ecs", target, body);
+    return { call, ref };
+  }
+
+  prepareFailure(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+  ): PluginEffect<PreparedFailure> {
+    return attempt(async () => {
+      const { call, ref } = await this.ecsTarget(typeId, resourceId, accountId);
+      return prepareEcsFailure(call, ref, typeId, actionId);
+    });
+  }
+
+  injectFailure(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const { call, ref } = await this.ecsTarget(typeId, resourceId, accountId);
+      await injectEcsFailure(call, ref, typeId, actionId);
+    });
+  }
+
+  undoFailure(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    actionId: string,
+    undo: FailureUndoState,
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const { call, ref } = await this.ecsTarget(typeId, resourceId, accountId);
+      await undoEcsFailure(call, ref, typeId, actionId, undo);
     });
   }
 

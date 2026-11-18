@@ -65,7 +65,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "incidents",
     name: PRODUCT_NAMES.incidents,
-    tools: ["incidents", "status-pages", "runbooks", "calendar"],
+    tools: ["incidents", "status-pages", "runbooks", "calendar", "game-days"],
   },
   {
     id: "security",

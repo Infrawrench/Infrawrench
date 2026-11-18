@@ -4,6 +4,7 @@ import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
 import type { RunningImageDeclaration } from "./vulnerabilities.js";
 import type { ExtendedSupportDeclaration } from "./extended-support.js";
+import type { FailureActionDeclaration } from "./failure-actions.js";
 
 export type { AssociationSource };
 
@@ -1163,6 +1164,13 @@ export interface ResourceTypeDefinition {
    * scheduled.
    */
   lifecycle?: LifecycleActionsDeclaration;
+  /**
+   * Reversible failures a game day may inject into instances of this type,
+   * each with a reliable undo; see {@link FailureActionDeclaration}. A type
+   * with `lifecycle` already gets `stop` without declaring it. Declaring any
+   * obliges the client's `prepareFailure`, `injectFailure` and `undoFailure`.
+   */
+  failureActions?: FailureActionDeclaration[];
   /**
    * Size catalog + utilisation metric hints for the "Oversized" savings
    * finder; see {@link RightsizingDeclaration}. Absent = the type is never

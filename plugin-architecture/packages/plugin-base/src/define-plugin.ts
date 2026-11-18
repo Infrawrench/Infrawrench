@@ -85,6 +85,7 @@ export const RESOURCE_TYPE_REQUIREMENTS = {
   supportsMetrics: ["fetchMetricSeries"],
   supportsTerminal: ["getSshConfig"],
   supportsStorageBrowser: ["listStorageObjects"],
+  failureActions: ["prepareFailure", "injectFailure", "undoFailure"],
 } as const satisfies Partial<Record<keyof ResourceTypeDefinition, readonly (keyof PluginClient)[]>>;
 
 /**
