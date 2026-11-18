@@ -172,6 +172,9 @@ const DesktopIncidentsPanel = lazyPanel(() =>
 const DesktopSlosPanel = lazyPanel(() =>
   import("@/components/DesktopSlosPanel").then((m) => m.DesktopSlosPanel),
 );
+const DesktopGameDaysPanel = lazyPanel(() =>
+  import("@/components/DesktopGameDaysPanel").then((m) => m.DesktopGameDaysPanel),
+);
 const DesktopResourceReportsPanel = lazyPanel(() =>
   import("@/components/DesktopResourceReportsPanel").then((m) => m.DesktopResourceReportsPanel),
 );
@@ -902,6 +905,8 @@ function renderPanel(
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":
       return <DesktopSlosPanel sloId={t.sloId} />;
+    case "game-days":
+      return <DesktopGameDaysPanel gameDayId={t.gameDayId} />;
     case "resource-reports":
       return <DesktopResourceReportsPanel reportId={t.reportId} />;
     case "services":

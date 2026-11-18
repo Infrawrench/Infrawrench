@@ -1,4 +1,5 @@
 import { f, rt } from "@infrawrench/plugin-base";
+import { SCALE_TO_ZERO } from "../failure-actions.js";
 
 export const StatefulSetResourceType = rt({
   name: "StatefulSet",
@@ -35,4 +36,5 @@ export const StatefulSetResourceType = rt({
   supportsCreate: true,
   supportsMetrics: true,
   runningImages: { imageKeys: ["images", "image"] },
+  failureActions: [SCALE_TO_ZERO],
 });

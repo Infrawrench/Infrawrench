@@ -285,6 +285,19 @@ export type {
 } from "./paging.js";
 export { bytesToHex, constantTimeEqual, hmacSha256, rejectedPagingWebhook } from "./paging.js";
 
+// Game days: reversible failure actions a resource type supports, each with
+// its undo. A `lifecycle` pair implies `stop`.
+export type {
+  FailureActionDeclaration,
+  FailureUndoState,
+  PreparedFailure,
+} from "./failure-actions.js";
+export {
+  LIFECYCLE_STOP_FAILURE_ACTION,
+  failureActionsForType,
+  isLifecycleFailureAction,
+} from "./failure-actions.js";
+
 export type {
   JitAccessDeclaration,
   JitAccessPresence,

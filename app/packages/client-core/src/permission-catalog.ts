@@ -67,6 +67,14 @@ export const ALL_PERMISSIONS = [
   // naming the permission instead of quietly escalating.
   "incidents:read",
   "incidents:write",
+  // Game days: planned, controlled failures injected into production. `run`
+  // covers planning, arming, ending and undoing one, and stays with admins and
+  // owners: arming a game day stops or scales down real resources. `read`
+  // is for everyone, and so is the abort button: stopping an experiment only
+  // ever puts things back, and the person who sees customers hurting first is
+  // rarely the person who armed it.
+  "game-days:read",
+  "game-days:run",
   // Create anyway when the org's tag policy would reject the resource. Its own
   // family (not `resources:*`) so "can create but cannot skip governance"
   // stays expressible, mirroring `freezes:override`.

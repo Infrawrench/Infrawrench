@@ -348,6 +348,11 @@ COMMANDS
                       live status, 24h uptime & last latency (give an id/name for its chart)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
                       share and as time) & burn rate (give an id/name for its burn rates & charts)
+  game-days [id|name] planned, controlled failures: status, start and time to detect (give an
+                      id/name for the report: detect, page, acknowledge & recover times, which
+                      detectors fired, targets and the alerts sent while it ran)
+  game-days abort <id|name>
+                      undo a game day's failure now, or cancel an armed one
   services [list]     services (resources grouped across providers): tier, owners, member count
                       & level per scorecard   [--tier 1-4]
   services show <id|slug|name>

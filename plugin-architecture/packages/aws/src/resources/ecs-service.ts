@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { ECS_SCALE_TO_ZERO } from "../failure-actions.js";
 
 export const ECSServiceResourceType = rt({
   name: "ECS Service",
@@ -21,4 +22,5 @@ export const ECSServiceResourceType = rt({
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "container",
+  failureActions: [ECS_SCALE_TO_ZERO],
 });

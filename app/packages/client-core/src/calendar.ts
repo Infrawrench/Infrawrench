@@ -30,7 +30,8 @@ export type CalendarEventKind =
   | "expiry"
   | "commitment-expiry"
   | "workflow-schedule"
-  | "incident";
+  | "incident"
+  | "game-day";
 
 export const CALENDAR_EVENT_KINDS: readonly CalendarEventKind[] = [
   "change-freeze",
@@ -39,6 +40,7 @@ export const CALENDAR_EVENT_KINDS: readonly CalendarEventKind[] = [
   "commitment-expiry",
   "workflow-schedule",
   "incident",
+  "game-day",
 ] as const;
 
 /** How loudly the event should read. Three levels, matching the expiry feed. */
@@ -58,7 +60,8 @@ export type CalendarEventLink =
   | { target: "tab"; tab: CalendarTabTarget };
 
 /** The workspace tab kinds a calendar event can point at. */
-export type CalendarTabTarget = "expiring" | "incidents" | "workflows" | "costs" | "settings";
+export type CalendarTabTarget =
+  "expiring" | "incidents" | "workflows" | "costs" | "settings" | "game-days";
 
 export interface CalendarEvent {
   /**

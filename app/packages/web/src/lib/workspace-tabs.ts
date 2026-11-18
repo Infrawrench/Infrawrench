@@ -37,6 +37,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   ciTabTarget,
@@ -61,6 +62,7 @@ export {
   complianceTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   ciTabTarget,
@@ -427,6 +429,19 @@ export function getWorkspaceNavigateArgs(
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
+    case "game-days":
+      // The SLOs shape: the game day id is a path segment.
+      return target.gameDayId
+        ? {
+            to: "/org/$orgId/game-days/$gameDayId",
+            params: { orgId, gameDayId: target.gameDayId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/game-days",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "services":
       // The SLOs shape, plus a static `scorecards` child for the matrix view.
       // Service ids are uuids, so the static segment never shadows a service.
@@ -745,6 +760,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "slos") {
     return slosTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
+  }
+  if (s[0] === "game-days") {
+    return gameDaysTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "services") {
     if (s[1] === "scorecards") return servicesTabTarget(undefined, "scorecards");

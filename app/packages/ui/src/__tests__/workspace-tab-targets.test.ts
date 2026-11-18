@@ -24,6 +24,7 @@ import {
   statusPagesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   workflowsTabTarget,
@@ -128,6 +129,11 @@ describe("tab target factories", () => {
   it("slosTabTarget omits sloId for the list view", () => {
     expect(slosTabTarget()).toEqual({ kind: "slos" });
     expect(slosTabTarget("slo-1")).toEqual({ kind: "slos", sloId: "slo-1" });
+  });
+
+  it("gameDaysTabTarget omits gameDayId for the list view", () => {
+    expect(gameDaysTabTarget()).toEqual({ kind: "game-days" });
+    expect(gameDaysTabTarget("gd-1")).toEqual({ kind: "game-days", gameDayId: "gd-1" });
   });
 
   it("servicesTabTarget carries a service or the scorecards view", () => {

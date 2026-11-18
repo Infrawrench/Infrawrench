@@ -111,7 +111,7 @@ describe("listCalendarEvents", () => {
     expect(feed.failedKinds).toEqual([]);
     // Every requested kind reports itself empty, so the filter chips can say
     // "nothing scheduled" rather than looking broken.
-    expect(feed.emptyKinds).toHaveLength(6);
+    expect(feed.emptyKinds).toHaveLength(7);
     expect(feed.from).toBe("2026-08-01T00:00:00.000Z");
     expect(feed.to).toBe("2026-09-01T00:00:00.000Z");
   });
@@ -218,6 +218,47 @@ describe("listCalendarEvents", () => {
       endsAt: null,
       openEnded: true,
       severity: "critical",
+    });
+  });
+
+  it("spans a game day over its time limit and recovery wait, and leaves cancelled ones off", async () => {
+    rows.set("game_days", [
+      {
+        id: "gd-1",
+        organizationId: "org",
+        name: "Checkout without its cache",
+        description: null,
+        status: "armed",
+        startsAt: new Date("2026-08-20T10:00:00.000Z"),
+        durationMinutes: 15,
+        recoveryTimeoutMinutes: 30,
+        injectedAt: null,
+        endsAt: null,
+        completedAt: null,
+      },
+      {
+        id: "gd-2",
+        organizationId: "org",
+        name: "Called off",
+        description: null,
+        status: "cancelled",
+        startsAt: new Date("2026-08-21T10:00:00.000Z"),
+        durationMinutes: 15,
+        recoveryTimeoutMinutes: 30,
+        injectedAt: null,
+        endsAt: null,
+        completedAt: new Date("2026-08-21T09:00:00.000Z"),
+      },
+    ]);
+    const feed = await run(["game-day"]);
+    expect(feed.events).toHaveLength(1);
+    expect(feed.events[0]).toMatchObject({
+      id: "game-day:gd-1",
+      kind: "game-day",
+      startsAt: "2026-08-20T10:00:00.000Z",
+      endsAt: "2026-08-20T10:45:00.000Z",
+      severity: "warning",
+      link: { target: "tab", tab: "game-days" },
     });
   });
 

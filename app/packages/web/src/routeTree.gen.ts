@@ -34,6 +34,7 @@ import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdEnvironmentsRouteImport } from './routes/org.$orgId.environments'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
+import { Route as OrgOrgIdGameDaysRouteImport } from './routes/org.$orgId.game-days'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
 import { Route as OrgOrgIdHomeRouteImport } from './routes/org.$orgId.home'
 import { Route as OrgOrgIdIacRouteImport } from './routes/org.$orgId.iac'
@@ -68,6 +69,7 @@ import { Route as OrgOrgIdComplianceFrameworkRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdCostCanvasesCanvasIdRouteImport } from './routes/org.$orgId.cost-canvases.$canvasId'
 import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdGameDaysGameDayIdRouteImport } from './routes/org.$orgId.game-days.$gameDayId'
 import { Route as OrgOrgIdHomeProductIdRouteImport } from './routes/org.$orgId.home.$productId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
@@ -236,6 +238,11 @@ const OrgOrgIdEnvironmentsRoute = OrgOrgIdEnvironmentsRouteImport.update({
 const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
   id: '/expiring',
   path: '/expiring',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdGameDaysRoute = OrgOrgIdGameDaysRouteImport.update({
+  id: '/game-days',
+  path: '/game-days',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
@@ -413,6 +420,12 @@ const OrgOrgIdDashboardDashboardIdRoute =
     id: '/dashboard/$dashboardId',
     path: '/dashboard/$dashboardId',
     getParentRoute: () => OrgOrgIdRoute,
+  } as any)
+const OrgOrgIdGameDaysGameDayIdRoute =
+  OrgOrgIdGameDaysGameDayIdRouteImport.update({
+    id: '/$gameDayId',
+    path: '/$gameDayId',
+    getParentRoute: () => OrgOrgIdGameDaysRoute,
   } as any)
 const OrgOrgIdHomeProductIdRoute = OrgOrgIdHomeProductIdRouteImport.update({
   id: '/$productId',
@@ -687,6 +700,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
+  '/org/$orgId/game-days': typeof OrgOrgIdGameDaysRouteWithChildren
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
@@ -721,6 +735,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/game-days/$gameDayId': typeof OrgOrgIdGameDaysGameDayIdRoute
   '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
@@ -790,6 +805,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
+  '/org/$orgId/game-days': typeof OrgOrgIdGameDaysRouteWithChildren
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
@@ -823,6 +839,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/game-days/$gameDayId': typeof OrgOrgIdGameDaysGameDayIdRoute
   '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
@@ -895,6 +912,7 @@ export interface FileRoutesById {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
+  '/org/$orgId/game-days': typeof OrgOrgIdGameDaysRouteWithChildren
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
   '/org/$orgId/home': typeof OrgOrgIdHomeRouteWithChildren
   '/org/$orgId/iac': typeof OrgOrgIdIacRoute
@@ -929,6 +947,7 @@ export interface FileRoutesById {
   '/org/$orgId/cost-canvases/$canvasId': typeof OrgOrgIdCostCanvasesCanvasIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/game-days/$gameDayId': typeof OrgOrgIdGameDaysGameDayIdRoute
   '/org/$orgId/home/$productId': typeof OrgOrgIdHomeProductIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
@@ -1002,6 +1021,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
+    | '/org/$orgId/game-days'
     | '/org/$orgId/graph'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
@@ -1036,6 +1056,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/game-days/$gameDayId'
     | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
@@ -1105,6 +1126,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
+    | '/org/$orgId/game-days'
     | '/org/$orgId/graph'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
@@ -1138,6 +1160,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/game-days/$gameDayId'
     | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
@@ -1209,6 +1232,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
+    | '/org/$orgId/game-days'
     | '/org/$orgId/graph'
     | '/org/$orgId/home'
     | '/org/$orgId/iac'
@@ -1243,6 +1267,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/cost-canvases/$canvasId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/game-days/$gameDayId'
     | '/org/$orgId/home/$productId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
@@ -1476,6 +1501,13 @@ declare module '@tanstack/react-router' {
       path: '/expiring'
       fullPath: '/org/$orgId/expiring'
       preLoaderRoute: typeof OrgOrgIdExpiringRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/game-days': {
+      id: '/org/$orgId/game-days'
+      path: '/game-days'
+      fullPath: '/org/$orgId/game-days'
+      preLoaderRoute: typeof OrgOrgIdGameDaysRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/graph': {
@@ -1715,6 +1747,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/dashboard/$dashboardId'
       preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
       parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/game-days/$gameDayId': {
+      id: '/org/$orgId/game-days/$gameDayId'
+      path: '/$gameDayId'
+      fullPath: '/org/$orgId/game-days/$gameDayId'
+      preLoaderRoute: typeof OrgOrgIdGameDaysGameDayIdRouteImport
+      parentRoute: typeof OrgOrgIdGameDaysRoute
     }
     '/org/$orgId/home/$productId': {
       id: '/org/$orgId/home/$productId'
@@ -2086,6 +2125,17 @@ const OrgOrgIdCostReportsRouteChildren: OrgOrgIdCostReportsRouteChildren = {
 const OrgOrgIdCostReportsRouteWithChildren =
   OrgOrgIdCostReportsRoute._addFileChildren(OrgOrgIdCostReportsRouteChildren)
 
+interface OrgOrgIdGameDaysRouteChildren {
+  OrgOrgIdGameDaysGameDayIdRoute: typeof OrgOrgIdGameDaysGameDayIdRoute
+}
+
+const OrgOrgIdGameDaysRouteChildren: OrgOrgIdGameDaysRouteChildren = {
+  OrgOrgIdGameDaysGameDayIdRoute: OrgOrgIdGameDaysGameDayIdRoute,
+}
+
+const OrgOrgIdGameDaysRouteWithChildren =
+  OrgOrgIdGameDaysRoute._addFileChildren(OrgOrgIdGameDaysRouteChildren)
+
 interface OrgOrgIdHomeRouteChildren {
   OrgOrgIdHomeProductIdRoute: typeof OrgOrgIdHomeProductIdRoute
 }
@@ -2280,6 +2330,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdEnvironmentsRoute: typeof OrgOrgIdEnvironmentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
+  OrgOrgIdGameDaysRoute: typeof OrgOrgIdGameDaysRouteWithChildren
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
   OrgOrgIdHomeRoute: typeof OrgOrgIdHomeRouteWithChildren
   OrgOrgIdIacRoute: typeof OrgOrgIdIacRoute
@@ -2329,6 +2380,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdEnvironmentsRoute: OrgOrgIdEnvironmentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
+  OrgOrgIdGameDaysRoute: OrgOrgIdGameDaysRouteWithChildren,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
   OrgOrgIdHomeRoute: OrgOrgIdHomeRouteWithChildren,
   OrgOrgIdIacRoute: OrgOrgIdIacRoute,

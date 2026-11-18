@@ -102,19 +102,20 @@ your own scorecards, or delete it. A deleted default doesn't come back.
 
 ### Built-in checks
 
-| Check                        | Passes when                                                                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Has an owner                 | The service names an owning team or at least one owning member.                                                                              |
-| Has an on-call schedule      | The service links an enabled on-call schedule.                                                                                               |
-| SLO within budget            | At least one SLO is linked, and every linked SLO has more than the minimum share of its error budget left (0% by default).                   |
-| Has a runbook                | At least one enabled runbook is linked.                                                                                                      |
-| Backed up and restore-tested | Every stateful resource is within your backup policy and has a verified restore drill in the last 90 days (configurable).                    |
-| No serious posture findings  | No resource has an open posture finding at the chosen severities (critical and high by default).                                             |
-| No orphaned resources        | No resource is flagged by the orphan finder.                                                                                                 |
-| Required tags present        | Every taggable resource carries the required tags: the ones you list on the check, or your organisation's tag policy when the list is empty. |
-| Cost within budget           | The last 30 days of spend is within the service's monthly budget.                                                                            |
-| No critical vulnerabilities  | No running resource has an open, undismissed [vulnerability](./vulnerabilities.md) at the chosen severities (critical by default).           |
-| Change failure rate          | The service's [change failure rate](./dora-metrics.md) over the window is at or under the threshold (15% over 30 days by default).           |
+| Check                          | Passes when                                                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Has an owner                   | The service names an owning team or at least one owning member.                                                                                         |
+| Has an on-call schedule        | The service links an enabled on-call schedule.                                                                                                          |
+| SLO within budget              | At least one SLO is linked, and every linked SLO has more than the minimum share of its error budget left (0% by default).                              |
+| Has a runbook                  | At least one enabled runbook is linked.                                                                                                                 |
+| Backed up and restore-tested   | Every stateful resource is within your backup policy and has a verified restore drill in the last 90 days (configurable).                               |
+| No serious posture findings    | No resource has an open posture finding at the chosen severities (critical and high by default).                                                        |
+| No orphaned resources          | No resource is flagged by the orphan finder.                                                                                                            |
+| Required tags present          | Every taggable resource carries the required tags: the ones you list on the check, or your organisation's tag policy when the list is empty.            |
+| Cost within budget             | The last 30 days of spend is within the service's monthly budget.                                                                                       |
+| No critical vulnerabilities    | No running resource has an open, undismissed [vulnerability](./vulnerabilities.md) at the chosen severities (critical by default).                      |
+| Change failure rate            | The service's [change failure rate](./dora-metrics.md) over the window is at or under the threshold (15% over 30 days by default).                      |
+| Failure detected in a game day | The service's most recent [game day](./game-days.md) in the last 90 days was detected. Not applicable until your organization has completed a game day. |
 
 A check with nothing to judge is **not applicable** and doesn't count either way. A stateless
 service isn't marked down for lacking restore drills, a service without a budget isn't judged on

@@ -209,6 +209,14 @@ export function slosTabTarget(sloId?: string): WorkspaceTabTarget {
 }
 
 /**
+ * Game days. One tab, optionally remembering which game day's report is open
+ * (the SLOs shape).
+ */
+export function gameDaysTabTarget(gameDayId?: string): WorkspaceTabTarget {
+  return { kind: "game-days", ...(gameDayId ? { gameDayId } : {}) };
+}
+
+/**
  * Services and scorecards. One tab, optionally remembering the open service
  * or that the scorecards matrix is showing. A service id wins over the view:
  * the detail is reached from either.

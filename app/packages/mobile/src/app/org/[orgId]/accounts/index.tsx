@@ -81,6 +81,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/slos`)}
         />
         <Row
+          title="Game days"
+          subtitle="Planned failures, how fast they were noticed, and an abort button"
+          onPress={() => router.push(`/org/${orgId}/game-days`)}
+        />
+        <Row
           title="Services"
           subtitle="Resources grouped by service, with owners and scorecards"
           onPress={() => router.push(`/org/${orgId}/services`)}

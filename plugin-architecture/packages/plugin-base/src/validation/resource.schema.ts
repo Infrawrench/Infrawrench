@@ -1,6 +1,15 @@
 import { Schema } from "effect";
 import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
-import { Int, NonEmpty, Positive, PositiveInt, Url, httpsUrl, rule } from "./primitives.js";
+import {
+  Int,
+  NonEmpty,
+  Positive,
+  PositiveInt,
+  Url,
+  httpsUrl,
+  rule,
+  uniqueBy,
+} from "./primitives.js";
 
 export const fieldDefinitionSchema = Schema.Struct({
   key: NonEmpty,
@@ -370,6 +379,20 @@ const lifecycleActionsSchema = Schema.Struct({
   ),
 );
 
+const failureActionSchema = Schema.Struct({
+  id: NonEmpty,
+  label: NonEmpty,
+  undoLabel: NonEmpty,
+  description: Schema.optional(NonEmpty),
+});
+
+const failureActionsSchema = Schema.Array(failureActionSchema).check(
+  Schema.isMinLength(1),
+  // Ids are what a stored game day names, so two with one id would make the
+  // undo ambiguous.
+  uniqueBy((a) => a.id, "failureActions ids must be unique"),
+);
+
 const carbonSchema = Schema.Struct({
   role: Schema.optional(Schema.Literals(["instance", "aggregate"])),
   mayDuplicateInstance: Schema.optional(Schema.Boolean),
@@ -646,6 +669,7 @@ export const resourceTypeDefinitionSchema = Schema.Struct({
   backupRole: Schema.optional(backupRoleSchema),
   backupPolicy: Schema.optional(backupPolicySchema),
   lifecycle: Schema.optional(lifecycleActionsSchema),
+  failureActions: Schema.optional(failureActionsSchema),
   rightsizing: Schema.optional(rightsizingSchema),
   extendedSupport: Schema.optional(extendedSupportSchema),
   carbon: Schema.optional(carbonSchema),

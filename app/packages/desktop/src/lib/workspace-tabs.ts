@@ -37,6 +37,7 @@ import {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   ciTabTarget,
@@ -90,6 +91,7 @@ export {
   priceCatalogTabTarget,
   incidentsTabTarget,
   slosTabTarget,
+  gameDaysTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
   ciTabTarget,
@@ -278,6 +280,14 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/slos",
         search: target.sloId ? { slo: target.sloId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    case "game-days":
+      // The SLOs rule: search passed explicitly so going back to the list
+      // CLEARS ?gameDay= instead of resolving straight back into the report.
+      return {
+        to: "/game-days",
+        search: target.gameDayId ? { gameDay: target.gameDayId } : {},
         ...(replace ? { replace: true } : {}),
       };
     case "services":
@@ -524,6 +534,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "slos") {
     const params = new URLSearchParams(search ?? "");
     return slosTabTarget(params.get("slo") ?? undefined);
+  }
+  if (segments[0] === "game-days") {
+    const params = new URLSearchParams(search ?? "");
+    return gameDaysTabTarget(params.get("gameDay") ?? undefined);
   }
   if (segments[0] === "ci") {
     const params = new URLSearchParams(search ?? "");

@@ -26,6 +26,7 @@ import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
+import { Route as GameDaysRouteImport } from './routes/game-days'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IacRouteImport } from './routes/iac'
@@ -139,6 +140,11 @@ const EnvironmentsRoute = EnvironmentsRouteImport.update({
 const ExpiringRoute = ExpiringRouteImport.update({
   id: '/expiring',
   path: '/expiring',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GameDaysRoute = GameDaysRouteImport.update({
+  id: '/game-days',
+  path: '/game-days',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphRoute = GraphRouteImport.update({
@@ -306,6 +312,7 @@ export interface FileRoutesByFullPath {
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
+  '/game-days': typeof GameDaysRoute
   '/graph': typeof GraphRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
@@ -354,6 +361,7 @@ export interface FileRoutesByTo {
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
+  '/game-days': typeof GameDaysRoute
   '/graph': typeof GraphRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
@@ -403,6 +411,7 @@ export interface FileRoutesById {
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
+  '/game-days': typeof GameDaysRoute
   '/graph': typeof GraphRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
@@ -453,6 +462,7 @@ export interface FileRouteTypes {
     | '/environment-diff'
     | '/environments'
     | '/expiring'
+    | '/game-days'
     | '/graph'
     | '/home'
     | '/iac'
@@ -501,6 +511,7 @@ export interface FileRouteTypes {
     | '/environment-diff'
     | '/environments'
     | '/expiring'
+    | '/game-days'
     | '/graph'
     | '/home'
     | '/iac'
@@ -549,6 +560,7 @@ export interface FileRouteTypes {
     | '/environment-diff'
     | '/environments'
     | '/expiring'
+    | '/game-days'
     | '/graph'
     | '/home'
     | '/iac'
@@ -598,6 +610,7 @@ export interface RootRouteChildren {
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
   EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
+  GameDaysRoute: typeof GameDaysRoute
   GraphRoute: typeof GraphRoute
   HomeRoute: typeof HomeRoute
   IacRoute: typeof IacRoute
@@ -748,6 +761,13 @@ declare module '@tanstack/react-router' {
       path: '/expiring'
       fullPath: '/expiring'
       preLoaderRoute: typeof ExpiringRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/game-days': {
+      id: '/game-days'
+      path: '/game-days'
+      fullPath: '/game-days'
+      preLoaderRoute: typeof GameDaysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graph': {
@@ -974,6 +994,7 @@ const rootRouteChildren: RootRouteChildren = {
   EnvironmentDiffRoute: EnvironmentDiffRoute,
   EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,
+  GameDaysRoute: GameDaysRoute,
   GraphRoute: GraphRoute,
   HomeRoute: HomeRoute,
   IacRoute: IacRoute,

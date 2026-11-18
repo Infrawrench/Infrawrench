@@ -114,6 +114,7 @@ export * from "./domains/environments";
 export * from "./domains/event-subscriptions";
 export * from "./domains/expiring";
 export * from "./domains/extended-support";
+export * from "./domains/game-days";
 export * from "./domains/github";
 export * from "./domains/github-issues";
 export * from "./domains/iac";
@@ -272,6 +273,7 @@ import { EnvironmentsApi } from "./domains/environments";
 import { EventSubscriptionsApi } from "./domains/event-subscriptions";
 import { ExpiringApi } from "./domains/expiring";
 import { ExtendedSupportApi } from "./domains/extended-support";
+import { GameDaysApi } from "./domains/game-days";
 import { GithubApi } from "./domains/github";
 import { GithubIssuesApi } from "./domains/github-issues";
 import { IacApi } from "./domains/iac";
@@ -435,6 +437,7 @@ export const API_DEFINITIONS = {
   "event-subscriptions": EventSubscriptionsApi,
   expiring: ExpiringApi,
   "extended-support": ExtendedSupportApi,
+  "game-days": GameDaysApi,
   github: GithubApi,
   "github-issues": GithubIssuesApi,
   iac: IacApi,

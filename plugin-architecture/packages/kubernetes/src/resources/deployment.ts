@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { SCALE_TO_ZERO } from "../failure-actions.js";
 
 export const DeploymentResourceType = rt({
   name: "Deployment",
@@ -33,4 +34,5 @@ export const DeploymentResourceType = rt({
   iconKey: "deployment",
   supportsMetrics: true,
   runningImages: { imageKeys: ["images", "image"] },
+  failureActions: [SCALE_TO_ZERO],
 });

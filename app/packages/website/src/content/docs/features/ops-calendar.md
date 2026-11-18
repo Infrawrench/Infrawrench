@@ -22,6 +22,7 @@ Open it from the sidebar.
 | **Commitments**    | [Commitments](./commitments.md): the day a reservation or savings plan's term ends                          |
 | **Scheduled runs** | [Workflows](./workflows.md) with a cron trigger                                                             |
 | **Incidents**      | [Incident mode](./incident-mode.md): declared incidents, from start to resolution                           |
+| **Game days**      | [Game days](./game-days.md): the planned window, or when the failure actually ran                           |
 
 The calendar is always up to date with those sources. End a freeze early and it stops on the calendar at the moment you ended it.
 
@@ -34,7 +35,7 @@ The chips along the top turn each source on and off. A source with nothing in th
 - **Month:** the grid. Click a day to see everything on it.
 - **Agenda:** the same events as a list, soonest first.
 
-Click an event to open what it came from. A sleep window opens its resource, a deadline opens the resource or the expiry radar, and an incident opens Incidents.
+Click an event to open what it came from. A sleep window opens its resource, a deadline opens the resource or the expiry radar, an incident opens Incidents, and a game day opens Game days.
 
 If one source can't be loaded, the calendar tells you which one and still shows everything else.
 

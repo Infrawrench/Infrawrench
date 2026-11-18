@@ -55,7 +55,7 @@ var (
 	scorecardCheckTypes = []string{
 		"has_owner", "has_on_call", "slo_within_budget", "has_runbook", "backups_verified",
 		"no_critical_posture", "no_orphans", "required_tags", "cost_within_budget",
-		"no_critical_vulnerabilities", "change_failure_rate",
+		"no_critical_vulnerabilities", "change_failure_rate", "game_day_detected",
 	}
 	scorecardSeverities = []string{"critical", "high", "medium", "low"}
 
@@ -227,7 +227,9 @@ func (r *scorecardResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"vulnerability at the chosen severities; not applicable until a vulnerability " +
 								"scanner has reported. `change_failure_rate`: the service's DORA change failure " +
 								"rate over the window is at or under the threshold; not applicable when it " +
-								"shipped no production change in that window.",
+								"shipped no production change in that window. `game_day_detected`: the " +
+								"service's most recent game day in the last 90 days ended with the failure " +
+								"detected; not applicable until the organization has completed a game day.",
 							Validators: []validatorString{oneOfValidator(scorecardCheckTypes...)},
 						},
 						"name": schema.StringAttribute{

@@ -682,9 +682,62 @@ async function withServiceContext(event: AlertEvent): Promise<AlertEvent> {
   }
 }
 
+/** What the rules decided for an alert, for the game-day record. */
+interface RoutedDecision {
+  severity: string;
+  destinationKinds: string[];
+  unrouted: boolean;
+}
+
 export async function routeAlert(
   event: AlertEvent,
   options: RouteAlertOptions = {},
+): Promise<AlertRouteResult> {
+  let decided: RoutedDecision | null = null;
+  const result = await routeAlertOnce(event, options, (d) => {
+    decided = d;
+  });
+  // A replayed held copy was recorded when it was first raised.
+  // Assigned in the callback, which the compiler cannot follow.
+  const decision = decided as RoutedDecision | null;
+  if (!options.pinnedLegs && decision) await noteForGameDays(event, decision, result, options.now);
+  return result;
+}
+
+/**
+ * Write the alert against any game day in flight in the org: the report's
+ * "what alerted", page and acknowledgement times come from these rows. Loaded
+ * on use and never throws, the service-annotation stance.
+ */
+async function noteForGameDays(
+  event: AlertEvent,
+  decided: RoutedDecision,
+  result: AlertRouteResult,
+  now: Date | undefined,
+): Promise<void> {
+  try {
+    const { recordGameDayAlert } = await import("../game-days/signals");
+    await recordGameDayAlert({
+      organizationId: event.organizationId,
+      trigger: event.trigger,
+      severity: decided.severity,
+      title: event.title,
+      resourceId: event.facts?.resourceId,
+      lifecycleKey: event.lifecycle?.key,
+      destinationKinds: decided.destinationKinds,
+      unrouted: decided.unrouted && result.attempted === 0,
+      deliveryIds: result.deliveryIds,
+      at: now ?? new Date(),
+    });
+  } catch (err) {
+    console.error("[alerts] game-day record failed:", err);
+  }
+}
+
+async function routeAlertOnce(
+  event: AlertEvent,
+  options: RouteAlertOptions,
+  observe: (decision: RoutedDecision) => void,
 ): Promise<AlertRouteResult> {
   const now = options.now ?? new Date();
   try {
@@ -715,6 +768,11 @@ export async function routeAlert(
           },
           now,
         );
+    observe({
+      severity,
+      destinationKinds: decision.legs.flatMap((leg) => leg.destinations.map((d) => d.kind)),
+      unrouted: decision.legs.length === 0,
+    });
 
     // The object's own email recipients go first and regardless of the rules
     // (see `RouteAlertOptions.emailRecipients`). Sending them first also makes

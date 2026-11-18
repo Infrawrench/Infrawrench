@@ -45,6 +45,7 @@ import {
   runIssueStatusPass,
 } from "@infrawrench/server-core/issue-status/pass";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
+import { runGameDayPass } from "@infrawrench/server-core/game-days/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runTrialExpiryPass } from "@infrawrench/server-core/trials/pass";
 import {
@@ -188,6 +189,8 @@ export type Pass = AccountPass | PeriodicPass;
 export const CI_STATUS_LOOP_MS = 1_000;
 /** The same for the gateway's cloud-job pass, which nobody watches by the second. */
 export const CI_CLOUD_LOOP_MS = 10_000;
+/** The game-day pass: an abort reaches the undo within about this long. */
+export const GAME_DAY_LOOP_MS = 5_000;
 
 type Capability =
   "costs" | "credits" | "commitments" | "quotas" | "vulnerabilities" | "seats" | "idleFindings";
@@ -754,6 +757,20 @@ export const PASSES: readonly Pass[] = [
     name: "schedules",
     runtime: "gateway",
     run: guarded("[poller] schedule tick failed:", () => runSchedulePass({ limit: 4 })),
+  },
+
+  // Game days: inject an armed game day's failure at its start, watch the
+  // detectors, undo it at the time limit or on end/abort, confirm recovery.
+  // Plugin code for arbitrary accounts, so the gateway; on a loop of its own
+  // because somebody is watching (and may be pressing abort), and the undo
+  // must not wait for every other pass. `claimed_until` leases each row, so
+  // a restart resumes from the stored state.
+  {
+    kind: "periodic",
+    name: "game-days",
+    runtime: "gateway",
+    ownLoopMs: GAME_DAY_LOOP_MS,
+    run: guarded("[game-days] tick failed:", () => runGameDayPass({ limit: 4 })),
   },
 
   // Resource leases with auto-delete. Claims due leases with the accounts

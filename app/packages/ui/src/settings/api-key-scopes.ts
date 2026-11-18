@@ -76,6 +76,8 @@ export const API_KEY_SCOPE_GROUPS: readonly ApiKeyScopeGroup[] = [
       { value: "metric-alerts:write", label: "Metric alerts (write)" },
       { value: "incidents:read", label: "Incidents (read)" },
       { value: "incidents:write", label: "Incidents (declare and update)" },
+      { value: "game-days:read", label: "Game days (read and abort)" },
+      { value: "game-days:run", label: "Game days (plan, end and undo; arming needs a person)" },
       { value: "pages:write", label: "On-call pages (raise)" },
       { value: "audit:read", label: "Audit log (read)" },
     ],

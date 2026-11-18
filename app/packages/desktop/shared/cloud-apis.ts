@@ -26,6 +26,7 @@ import {
   ComplianceApi,
   ConnectionsApi,
   EnvironmentsApi,
+  GameDaysApi,
   IncidentsApi,
   KubernetesEfficiencyReportsApi,
   PagingProvidersApi,
@@ -258,6 +259,7 @@ function desktopCloudApi<Id extends string, Groups extends HttpApiGroup.Constrai
 export const DESKTOP_CLOUD_APIS = {
   probes: desktopCloudApi(ProbesApi),
   slos: desktopCloudApi(SlosApi),
+  gameDays: desktopCloudApi(GameDaysApi),
   accessReview: desktopCloudApi(AccessReviewApi),
   calendar: desktopCloudApi(CalendarApi),
   dns: desktopCloudApi(DnsApi),

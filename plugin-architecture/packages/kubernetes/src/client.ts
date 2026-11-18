@@ -38,6 +38,8 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   CredentialFieldOption,
+  FailureUndoState,
+  PreparedFailure,
 } from "@infrawrench/plugin-base";
 
 import type {
@@ -68,6 +70,7 @@ import {
   ciTeardown,
   type K8sCall,
 } from "./ci-executor.js";
+import { injectK8sFailure, prepareK8sFailure, undoK8sFailure } from "./failure-actions.js";
 
 import {
   renderClusterDetail,
@@ -560,6 +563,34 @@ export class KubernetesClient implements PluginClient {
     return attempt(async () => {
       return checkK8sJitAccess(this.jitCtx, spec);
     });
+  }
+
+  prepareFailure(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    actionId: string,
+  ): PluginEffect<PreparedFailure> {
+    return attempt(() => prepareK8sFailure(this.k8sFetch, typeId, resourceId, actionId));
+  }
+
+  injectFailure(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    actionId: string,
+  ): PluginEffect<void> {
+    return attempt(() => injectK8sFailure(this.k8sFetch, typeId, resourceId, actionId));
+  }
+
+  undoFailure(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    actionId: string,
+    undo: FailureUndoState,
+  ): PluginEffect<void> {
+    return attempt(() => undoK8sFailure(this.k8sFetch, typeId, resourceId, actionId, undo));
   }
 
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
