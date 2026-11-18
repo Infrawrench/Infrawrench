@@ -347,12 +347,16 @@ export function DetailView({
   // Kubernetes cost series) into "Last 1440 min".
   // The cut-off is two hours, not one: a one-hour window reads better as
   // "Last 60 min" than as "Last 1 h", and that is the commonest window there is.
+  // Days take over at two days for the same reason ("Last 24 h", not "Last 1
+  // days"), so a 30-day window reads "Last 30 days" rather than "Last 720 h".
   const defaultTimeRangeMs = schema.metricsCapability?.defaultTimeRangeMs;
   const metricsTimeRangeLabel = !defaultTimeRangeMs
     ? undefined
-    : defaultTimeRangeMs >= 2 * 3_600_000
-      ? gt("Last {hours} h", { hours: Math.round(defaultTimeRangeMs / 3_600_000) })
-      : gt("Last {minutes} min", { minutes: Math.round(defaultTimeRangeMs / 60_000) });
+    : defaultTimeRangeMs >= 2 * 86_400_000
+      ? gt("Last {days} days", { days: Math.round(defaultTimeRangeMs / 86_400_000) })
+      : defaultTimeRangeMs >= 2 * 3_600_000
+        ? gt("Last {hours} h", { hours: Math.round(defaultTimeRangeMs / 3_600_000) })
+        : gt("Last {minutes} min", { minutes: Math.round(defaultTimeRangeMs / 60_000) });
   const hasChangesTab = !!renderChangesTab;
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
