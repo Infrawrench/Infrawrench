@@ -31,6 +31,26 @@ function truncateDigest(digest: string | undefined): string {
   return short.length > 12 ? short.slice(0, 12) : short;
 }
 
+/**
+ * A React key per row. Registries may list one row per tag (Docker Hub,
+ * GitLab), so tags of one image share a digest; the key carries the version
+ * and tags too, and a row identical in all of them gets a counter.
+ */
+export function artifactRowKeys(items: readonly ArtifactEntry[]): string[] {
+  const seen = new Map<string, number>();
+  return items.map((item) => {
+    const base = [
+      item.name,
+      item.version ?? "",
+      item.tags?.join(",") ?? "",
+      item.digest ?? "",
+    ].join("\u0000");
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}\u0000${n}`;
+  });
+}
+
 export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
   const gt = useGT();
   const [prefix, setPrefix] = useState(capability.defaultPrefix ?? "");
@@ -75,6 +95,8 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
 
   const showTagsColumn = capability.supportsTags ?? false;
   const versionHeader = showTagsColumn ? gt("Tags") : gt("Version");
+
+  const rowKeys = artifactRowKeys(items);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -154,10 +176,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
             </thead>
             <tbody>
               {items.map((item, i) => (
-                <tr
-                  key={`${item.name}:${item.digest ?? item.version ?? i}`}
-                  className="border-b border-border hover:bg-surface-raised/40"
-                >
+                <tr key={rowKeys[i]} className="border-b border-border hover:bg-surface-raised/40">
                   <td className="px-4 py-2 text-on-surface">{item.name}</td>
                   <td className="px-4 py-2 text-on-surface-secondary">
                     {showTagsColumn

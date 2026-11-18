@@ -177,6 +177,23 @@ export function BusinessMetricImporterModal({
         .then((choices) => {
           if (cancelled) return;
           setOptions((prev) => ({ ...prev, [field.key]: choices }));
+          // A default the plugin cannot offer under the fields it depends on
+          // (a currency while the measure is usage) is not a choice anyone
+          // made: drop it rather than show it as a raw id. A value someone
+          // picked or saved stays, even when the provider no longer lists it.
+          const fallback = field.defaultValue;
+          if (
+            fallback !== undefined &&
+            !field.allowCustom &&
+            !choices.some((c) => c.id === fallback)
+          ) {
+            setParams((prev) => {
+              if (prev[field.key] !== fallback) return prev;
+              const next = { ...prev };
+              delete next[field.key];
+              return next;
+            });
+          }
           setOptionErrors((prev) => {
             const next = { ...prev };
             delete next[field.key];
@@ -208,11 +225,15 @@ export function BusinessMetricImporterModal({
   function setParam(field: SourceField, value: string) {
     setParams((prev) => {
       const next = { ...prev, [field.key]: value };
-      // Clear anything that depended on this field: a metric name picked for
-      // one namespace means nothing under another.
+      // Reset anything that depended on this field to what a new importer
+      // holds: a metric name picked for one namespace means nothing under
+      // another. A default the new choices do not include is dropped once
+      // they load.
       if (source) {
         for (const other of source.source.fields) {
-          if (other.dependsOn?.includes(field.key)) delete next[other.key];
+          if (!other.dependsOn?.includes(field.key)) continue;
+          if (other.defaultValue !== undefined) next[other.key] = other.defaultValue;
+          else delete next[other.key];
         }
       }
       return next;
@@ -395,9 +416,13 @@ export function BusinessMetricImporterModal({
               disabled={blocked}
               onChange={(e) => setParam(field, e.target.value)}
             >
-              <option value="">
-                {blocked ? gt("Choose the fields above first") : gt("Choose…")}
-              </option>
+              {/* A choice of its own can mean "none" ("All customers"); the
+                  placeholder would share its value and be shown in its place. */}
+              {!choices.some((c) => c.id === "") && (
+                <option value="">
+                  {blocked ? gt("Choose the fields above first") : gt("Choose…")}
+                </option>
+              )}
               {value && !known && <option value={value}>{value}</option>}
               {choices.map((c) => (
                 <option key={c.id} value={c.id}>
