@@ -378,6 +378,8 @@ interface ChildTypeInput {
   showcase?: ShowcaseField[] | undefined;
   supportsCreate?: boolean | undefined;
   fields?: unknown[] | undefined;
+  /** A top-level type on the account root's detail view; see `ChildResourceGroup.topLevel`. */
+  topLevel?: boolean | undefined;
 }
 
 /**
@@ -396,6 +398,7 @@ export function buildChildResourceGroups(
   supportsCreate: boolean;
   resources: ChildResourceInput[];
   fields?: unknown[] | undefined;
+  topLevel?: boolean | undefined;
 }> {
   return childTypes.flatMap((ct) => {
     const group = {
@@ -407,6 +410,7 @@ export function buildChildResourceGroups(
       supportsCreate: !!ct.supportsCreate,
       resources: childResources.filter((r) => r.resourceTypeId === ct.id),
       ...(ct.fields ? { fields: ct.fields } : {}),
+      ...(ct.topLevel ? { topLevel: true } : {}),
     };
     return group.resources.length > 0 || group.supportsCreate ? [group] : [];
   });

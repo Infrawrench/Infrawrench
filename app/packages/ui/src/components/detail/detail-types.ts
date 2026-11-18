@@ -41,6 +41,11 @@ export interface ChildResourceGroup {
   resources: ChildResource[];
   /** Field schema for the child type: populates the inline edit form. */
   fields?: FieldDefinition[] | undefined;
+  /**
+   * A top-level type grouped on the account root's detail view: its resources
+   * have no parent, so hosts send no `parentResourceId` for them.
+   */
+  topLevel?: boolean | undefined;
 }
 
 export interface RerollSelection {

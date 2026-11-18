@@ -48,6 +48,8 @@ interface DetailResponse {
     displayName: string;
     accountId: string;
   }>;
+  /** `topLevel` marks a type the account root's page lists whose rows have no parent. */
+  childTypes: Array<{ id: string; topLevel?: boolean }>;
   accountId: string;
   resourceDisplayName: string;
   resourceTypeLabel: string;
@@ -131,6 +133,13 @@ export default function ResourceDetailScreen() {
     if (hidden.size === 0) return data?.childResources ?? [];
     return (data?.childResources ?? []).filter((child) => !hidden.has(child.resourceTypeId));
   }, [data]);
+
+  // The account root's page also lists the plugin's top-level types; their
+  // rows have no parent, so opening one sends none.
+  const topLevelChildTypeIds = useMemo(
+    () => new Set((data?.childTypes ?? []).flatMap((ct) => (ct.topLevel ? [ct.id] : []))),
+    [data],
+  );
 
   const handlers = useMemo<ActionHandlers>(
     () => ({
@@ -367,7 +376,7 @@ export default function ResourceDetailScreen() {
                   subtitle={child.resourceTypeId}
                   onPress={() =>
                     router.push(
-                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}?accountId=${encodeURIComponent(child.accountId || data.accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
+                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}?accountId=${encodeURIComponent(child.accountId || data.accountId)}${topLevelChildTypeIds.has(child.resourceTypeId) ? "" : `&parentResourceId=${encodeURIComponent(resourceId)}`}`,
                     )
                   }
                 />

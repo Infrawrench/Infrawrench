@@ -1093,7 +1093,10 @@ export function ResourcePanel({
         resourceTypeId: child.resourceTypeId,
         resourceId: child.id,
         fields: changedFields,
-        parentResourceId: decodedResourceId,
+        // A top-level type on the account root's page has no parent.
+        ...(childResourceGroups.find((g) => g.typeId === child.resourceTypeId)?.topLevel
+          ? {}
+          : { parentResourceId: decodedResourceId }),
       });
     } else {
       const client = await createPluginClient(child.accountId || accountId, child.pluginId);
