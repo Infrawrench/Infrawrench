@@ -130,6 +130,8 @@ interface ChildTypeData {
   showcase?: ShowcaseField[];
   supportsCreate: boolean;
   fields?: FieldDefinition[];
+  /** A top-level type on the account root's page: its rows have no parent. */
+  topLevel?: boolean;
 }
 
 type PeerPaneServerData = ResolvedPeerPane;
@@ -684,6 +686,13 @@ export function ResourceDetailClient({
     setCreateTarget(group);
   }, []);
 
+  // Top-level types grouped on the account root's page have no parent, so
+  // nothing done to their rows names this resource as one.
+  const topLevelChildTypeIds = useMemo(
+    () => new Set(childTypes.flatMap((ct) => (ct.topLevel ? [ct.id] : []))),
+    [childTypes],
+  );
+
   const handleChildEdit = useCallback(
     async (child: ChildResource, changedFields: Record<string, string>): Promise<void> => {
       await apiPost(`/api/org/${orgId}/resources/update`, {
@@ -692,27 +701,30 @@ export function ResourceDetailClient({
         resourceTypeId: child.resourceTypeId,
         resourceId: child.id,
         fields: changedFields,
-        parentResourceId: resourceId,
+        ...(topLevelChildTypeIds.has(child.resourceTypeId) ? {} : { parentResourceId: resourceId }),
       });
       toast.success(gt("Saved."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId, gt],
+    [orgId, accountId, resourceId, topLevelChildTypeIds, gt],
   );
 
   const handleChildDelete = useCallback(
     async (child: ChildResource): Promise<void> => {
+      const parentQuery = topLevelChildTypeIds.has(child.resourceTypeId)
+        ? ""
+        : `&parentResourceId=${encodeURIComponent(resourceId)}`;
       await apiDelete(
         `/api/org/${orgId}/resources/${child.pluginId}/${child.resourceTypeId}?resourceId=${encodeURIComponent(
           child.id,
-        )}&accountId=${encodeURIComponent(child.accountId || accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
+        )}&accountId=${encodeURIComponent(child.accountId || accountId)}${parentQuery}`,
       );
       toast.success(gt("Deleted."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId, gt],
+    [orgId, accountId, resourceId, topLevelChildTypeIds, gt],
   );
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
@@ -1776,7 +1788,7 @@ export function ResourceDetailClient({
           pluginId={pluginId}
           resourceTypeId={createTarget.typeId}
           resourceTypeDisplayName={createTarget.displayName}
-          parentResourceId={resourceId}
+          {...(createTarget.topLevel ? {} : { parentResourceId: resourceId })}
           onClose={() => setCreateTarget(null)}
           onCreated={(resource) => {
             const childTypeId = createTarget.typeId;

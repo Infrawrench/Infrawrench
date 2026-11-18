@@ -112,6 +112,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
       pluralDisplayName: string;
       supportsCreate: boolean;
       fields?: ResourceTypeDefinition["fields"];
+      topLevel?: boolean;
     }>;
     childResources: ChildResource[];
     peerPanes: Array<{
@@ -196,7 +197,8 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
         pluralDisplayName: ct.pluralDisplayName,
         supportsCreate: ct.supportsCreate,
         ...(ct.fields ? { fields: ct.fields } : {}),
-      })) as ResourceTypeDefinition[],
+        ...(ct.topLevel ? { topLevel: true } : {}),
+      })),
       detail.childResources,
     ) as ChildResourceGroup[],
   );

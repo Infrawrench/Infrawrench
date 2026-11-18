@@ -545,4 +545,8 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: the account root's resource detail also lists the plugin's other
+// top-level types and their resources in `childTypes` and `childResources`,
+// marked by the new optional `ChildTypeRef.topLevel`, so the account page
+// keeps every type and its Create button. Additive.
+export const API_VERSION = "1.118.0";

@@ -38,6 +38,7 @@ interface ResourceDetailResponse {
     displayName: string;
     pluralDisplayName: string;
     supportsCreate: boolean;
+    topLevel?: boolean;
   }[];
   pluginId: string;
   pluginLogoSvg: string;

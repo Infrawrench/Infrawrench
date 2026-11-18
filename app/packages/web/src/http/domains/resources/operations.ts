@@ -43,7 +43,12 @@ import {
 } from "@infrawrench/server-core/savings/capture";
 import { updateAccountCredentials } from "@infrawrench/server-core/provider-oauth";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
-import { resourceCarbonEstimate, type ResourceCarbonEstimate } from "@infrawrench/client-core";
+import {
+  getDetailChildTypes,
+  isDetailChildRow,
+  resourceCarbonEstimate,
+  type ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 import { BadRequest, InternalServerError, NotFound } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import { accounts, associations, resources } from "../../../db/schema";
@@ -385,22 +390,21 @@ export async function loadResourceDetail(input: DetailRequest) {
     }
   }
 
-  const childTypes = plugin.resourceTypes.flatMap((rt) =>
-    rt.parentTypeId === resourceTypeId
-      ? [
-          {
-            id: rt.id,
-            displayName: rt.displayName,
-            pluralDisplayName: rt.pluralDisplayName,
-            ...(rt.iconKey ? { iconKey: rt.iconKey } : {}),
-            showcase: showcaseFields(rt),
-            supportsCreate: rt.supportsCreate ?? false,
-            // Ship the field schema for child types that support update, so the
-            // detail view can render an inline edit form for child-table rows.
-            ...(rt.supportsUpdate ? { fields: rt.fields } : {}),
-          },
-        ]
-      : [],
+  // The account root's detail view is the account page, so it also groups the
+  // plugin's other top-level types (`getDetailChildTypes`).
+  const childTypes = getDetailChildTypes(plugin.resourceTypes, resourceTypeId).map(
+    ({ typeDef: rt, topLevel }) => ({
+      id: rt.id,
+      displayName: rt.displayName,
+      pluralDisplayName: rt.pluralDisplayName,
+      ...(rt.iconKey ? { iconKey: rt.iconKey } : {}),
+      showcase: showcaseFields(rt),
+      supportsCreate: rt.supportsCreate ?? false,
+      // Ship the field schema for child types that support update, so the
+      // detail view can render an inline edit form for child-table rows.
+      ...(rt.supportsUpdate ? { fields: rt.fields } : {}),
+      ...(topLevel ? { topLevel } : {}),
+    }),
   );
 
   const childResults = await Promise.allSettled(
@@ -419,10 +423,11 @@ export async function loadResourceDetail(input: DetailRequest) {
   // Only ship whole per-child field bags when the detail view actually renders
   // a child table for that type, otherwise it's wasted payload.
   const childTableTypeIds = new Set((finalSchema.childTables ?? []).map((t) => t.typeId));
-  for (const result of childResults) {
+  for (const [index, result] of childResults.entries()) {
     if (result.status !== "fulfilled") continue;
+    const childType = { topLevel: childTypes[index]?.topLevel ?? false };
     for (const r of result.value) {
-      if (r.parentResourceId !== resourceId) continue;
+      if (!isDetailChildRow(r, childType, resourceId)) continue;
       const sidebar = client.renderSidebarItem(r);
       childResources.push({
         id: r.id,

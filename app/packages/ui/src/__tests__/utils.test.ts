@@ -318,6 +318,24 @@ describe("buildChildResourceGroups", () => {
     );
     expect(groups[0]!.fields).toEqual([{}]);
   });
+
+  it("marks the account root's top-level types so hosts send no parent for them", () => {
+    const groups = buildChildResourceGroups(
+      [
+        { id: "child", displayName: "C", pluralDisplayName: "Cs", supportsCreate: true },
+        {
+          id: "sibling",
+          displayName: "S",
+          pluralDisplayName: "Ss",
+          supportsCreate: true,
+          topLevel: true,
+        },
+      ],
+      [],
+    );
+    expect(groups.find((g) => g.typeId === "child")!.topLevel).toBeUndefined();
+    expect(groups.find((g) => g.typeId === "sibling")!.topLevel).toBe(true);
+  });
 });
 
 describe("resourceTabTitle", () => {

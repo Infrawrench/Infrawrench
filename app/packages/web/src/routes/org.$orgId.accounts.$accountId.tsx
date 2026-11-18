@@ -225,7 +225,9 @@ export function AccountPanel({
   // Account-root plugins (UploadThing) hold exactly one instance of their root
   // type, and that instance *is* the account, so the account opens straight
   // to its detail view rather than to an inventory whose only content is a
-  // section holding one pill.
+  // section holding one pill. That detail view also groups the plugin's other
+  // top-level types with their Create buttons (`getDetailChildTypes`), so
+  // nothing the inventory would have listed goes missing.
   //
   // The tab, the URL, and the sidebar selection all stay the account's: only
   // the body is swapped. That matters because the root is discovered from
