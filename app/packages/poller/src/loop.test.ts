@@ -54,6 +54,8 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   orgPostureSettings: { organizationId: "organizationId" },
   orgVulnerabilitySettings: { organizationId: "organizationId" },
   orgExtendedSupportSettings: { organizationId: "organizationId" },
+  orgPriceChangeSettings: { organizationId: "organizationId" },
+  priceChangeEvents: {},
   accounts: { id: "id", organizationId: "organizationId" },
 }));
 
