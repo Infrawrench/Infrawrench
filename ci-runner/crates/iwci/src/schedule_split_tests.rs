@@ -496,12 +496,23 @@ fn the_runners_of_a_split_run_never_wait_for_each_others_task_cache_markers() {
     assert_eq!((one_in.waits(), two_in.waits()), (0, 0));
     assert!(one.report.jobs.iter().all(|j| j.waited_for.is_none()));
     drop((first, second, one_in, two_in));
-    let left: Vec<String> = markers
-        .list("inflight/")
-        .unwrap()
-        .into_iter()
-        .filter(|k| k.contains("/keys/"))
-        .collect();
+    // Every marker goes, each deleted in the background once its job
+    // ends (`adapters::inflight`): the last job's delete can still be on
+    // its way when the run returns, so the store is read until it is done.
+    let keys = || -> Vec<String> {
+        markers
+            .list("inflight/")
+            .unwrap()
+            .into_iter()
+            .filter(|k| k.contains("/keys/"))
+            .collect()
+    };
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut left = keys();
+    while !left.is_empty() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(5));
+        left = keys();
+    }
     assert!(left.is_empty(), "{left:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
