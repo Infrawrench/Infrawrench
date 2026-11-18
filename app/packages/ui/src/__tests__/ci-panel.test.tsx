@@ -12,8 +12,9 @@ import {
   type SearchResult,
 } from "@infrawrench/client-core";
 
-// gt-react's `gt` is not referentially stable: a fresh function on every
-// render. The panel once listed it in its fetch effects' deps, which
+// gt-react's `gt` was not referentially stable until our patch (#1336): a
+// fresh function on every render. The panel once listed it in its fetch
+// effects' deps, which
 // refetched on every render, cancelled each fetch before it landed, and left
 // the runs list empty and the secrets card loading forever. Give it a new
 // `gt` every render here so a dependency on it shows up as a loop.
