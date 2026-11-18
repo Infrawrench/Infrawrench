@@ -23,4 +23,12 @@ describe("query editor", () => {
     const schema = renderAxiomDetail(instance("dataset", { name: "checkout-logs" }));
     expect(schema.sqlEditor?.queryLanguage).toBe("APL");
   });
+
+  it("browses a table clicked in the sidebar in its own language, not SQL", () => {
+    const schema = renderAxiomDetail(instance("dataset", { name: "checkout-logs" }));
+    const table = schema.sqlEditor?.tables?.[0]?.name ?? "";
+    expect(schema.sqlEditor?.tableQuery?.replaceAll("{table}", table)).toBe(
+      schema.sqlEditor?.defaultQuery,
+    );
+  });
 });

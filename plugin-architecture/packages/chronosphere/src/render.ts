@@ -213,6 +213,8 @@ export function renderChronoDetail(r: ResourceInstance): DetailViewSchema {
         connectionStringOutputKey: "promUrl",
         defaultQuery: "sum by (job) (up)",
         queryLanguage: "PromQL",
+        // A bare metric name is a PromQL query, should the sidebar list any.
+        tableQuery: "{table}",
       },
     };
   } else {

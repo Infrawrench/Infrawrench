@@ -16,7 +16,7 @@ Run quick queries against your databases without leaving Infrawrench. No need to
 
 ## What you can do
 
-- **Browse the schema** in the left sidebar. Filter it with the **Search tables…** box and expand a table to see its columns and types. Click a table name to run `SELECT * FROM <table> LIMIT 100;`. Primary-key columns are marked with a ⚿.
+- **Browse the schema** in the left sidebar. Filter it with the **Search tables…** box and expand a table to see its columns and types. Click a table name to run `SELECT * FROM <table> LIMIT 100;`. In the other query languages the click runs that language's equivalent instead: `fetch <data object> | limit 100` for DQL, the dataset's latest 100 events for APL, the metric itself for PromQL and `SELECT * FROM "<measurement>" LIMIT 100` for InfluxQL. Primary-key columns are marked with a ⚿.
 - **Read results** in the grid. Primary-key columns are badged **PK** and nulls show as `NULL`.
 - **Edit rows inline.** When your query selects from a single table and returns all of its primary-key columns, click the pencil on a row to edit the non-key cells. Saving writes an `UPDATE` back.
 - **Export CSV** to download the current result set.

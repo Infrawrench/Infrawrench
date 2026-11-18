@@ -11,7 +11,7 @@ import type {
   TableRow,
 } from "@infrawrench/plugin-base";
 import { formatBytes, joinSubtitle, withMetricsCapability } from "@infrawrench/plugin-base";
-import { DEFAULT_DQL, DQL_TABLES } from "./dql.js";
+import { DEFAULT_DQL, DQL_TABLES, DQL_TABLE_QUERY } from "./dql.js";
 import { METRICS_WINDOW_MS } from "./metrics.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -217,6 +217,7 @@ function renderEnvironment(r: ResourceInstance): DetailViewSchema {
             defaultQuery: DEFAULT_DQL,
             tables: DQL_TABLES,
             queryLanguage: "DQL",
+            tableQuery: DQL_TABLE_QUERY,
           },
         }
       : {}),

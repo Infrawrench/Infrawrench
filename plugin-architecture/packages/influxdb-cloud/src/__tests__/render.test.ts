@@ -27,6 +27,7 @@ describe("renderInfluxDetail", () => {
       defaultQuery: "SHOW MEASUREMENTS",
       tables: [],
       queryLanguage: "InfluxQL",
+      tableQuery: 'SELECT * FROM "{table}" LIMIT 100',
     });
   });
 

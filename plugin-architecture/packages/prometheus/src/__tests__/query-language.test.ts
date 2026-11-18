@@ -27,4 +27,13 @@ describe("query editor", () => {
     );
     expect(schema.sqlEditor?.queryLanguage).toBe("PromQL");
   });
+
+  it("browses a table clicked in the sidebar in its own language, not SQL", () => {
+    const schema = renderPromDetail(
+      instance("prometheus-server", {}),
+      "http://prometheus.example.com:9090",
+      undefined,
+    );
+    expect(schema.sqlEditor?.tableQuery).toBe("{table}");
+  });
 });

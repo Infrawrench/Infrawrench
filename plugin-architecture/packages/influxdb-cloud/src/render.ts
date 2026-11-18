@@ -217,6 +217,8 @@ export function renderInfluxDetail(resource: ResourceInstance): DetailViewSchema
           defaultQuery: "SHOW MEASUREMENTS",
           tables: introspectedTables(resource),
           queryLanguage: "InfluxQL",
+          // Quoted, since measurement names may hold dots and dashes.
+          tableQuery: 'SELECT * FROM "{table}" LIMIT 100',
         },
       };
     }
