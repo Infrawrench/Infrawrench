@@ -1,4 +1,8 @@
-import type { InstancePricingCapability, ResourceInstance } from "@infrawrench/plugin-base";
+import type {
+  InstancePricingCapability,
+  InstancePricingUsage,
+  ResourceInstance,
+} from "@infrawrench/plugin-base";
 
 /** RDS engine ids as the price lists write them. */
 export const RDS_ENGINES: Readonly<
@@ -96,5 +100,76 @@ export function awsInstancePricing(
       return panel("redshift", list(fields["nodeType"]));
     default:
       return undefined;
+  }
+}
+
+function count(value: unknown): number | null {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * What a synced AWS resource pays for by the hour, for the price-change watch.
+ * A stopped instance pays no instance-hours, so it has none. A cluster with
+ * one node type is priced at its node count; with several, the split between
+ * them is not synced, so each counts once and the figure is a lower bound.
+ */
+export function awsInstancePricingUsage(resource: ResourceInstance): InstancePricingUsage[] {
+  const fields = resource.fields;
+  const region = String(fields["region"] ?? "");
+  if (!region) return [];
+  const usage = (
+    platform: string,
+    types: string[],
+    units: number | null,
+    selection?: Record<string, string>,
+  ): InstancePricingUsage[] => {
+    const exact = types.length === 1 && units !== null;
+    return types.map((instanceType) => ({
+      platform,
+      instanceType,
+      region,
+      ...(selection ? { selection } : {}),
+      units: exact && units !== null ? units : 1,
+      ...(exact ? {} : { approximate: true }),
+    }));
+  };
+  switch (resource.resourceTypeId) {
+    case "ec2-instance": {
+      const state = String(fields["state"] ?? "").toLowerCase();
+      if (state && state !== "running" && state !== "pending") return [];
+      return usage("ec2", list(fields["instanceType"]), 1, { ...EC2_LINUX });
+    }
+    case "eks-cluster":
+      return usage("ec2", list(fields["instanceTypes"]), count(fields["nodeCount"]), {
+        ...EC2_LINUX,
+      });
+    case "rds-instance": {
+      if (String(fields["status"] ?? "").toLowerCase() === "stopped") return [];
+      return usage(
+        "rds",
+        list(fields["instanceClass"]),
+        1,
+        rdsSelection(
+          String(fields["engine"] ?? ""),
+          fields["multiAZ"] === true || fields["multiAZ"] === "true",
+        ),
+      );
+    }
+    case "elasticache-cluster": {
+      const engine = CACHE_ENGINES[String(fields["engine"] ?? "")];
+      return usage(
+        "elasticache",
+        list(fields["nodeType"]),
+        count(fields["numCacheNodes"] ?? fields["numNodes"]),
+        engine ? { cache_engine: engine } : {},
+      );
+    }
+    case "opensearch-domain":
+      return usage("opensearch", list(fields["instanceType"]), count(fields["instanceCount"]));
+    case "redshift-cluster":
+      return usage("redshift", list(fields["nodeType"]), count(fields["numberOfNodes"]));
+    default:
+      return [];
   }
 }

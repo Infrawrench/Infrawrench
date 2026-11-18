@@ -299,6 +299,9 @@ export function pushDataToPath(data: MobilePushData): string {
     // Extended-support findings are a section of the Costs screen.
     case "extended_support_alert":
       return `/org/${data.orgId}/costs?tab=savings`;
+    // Price changes are listed on the Costs screen's Alerts tab.
+    case "price_change":
+      return `/org/${data.orgId}/costs?tab=alerts`;
     // A log-match alert names the saved query that fired; open its viewer so
     // the matching lines are one refresh away.
     case "log_match":
@@ -601,6 +604,11 @@ export function parsePushData(raw: unknown): MobilePushData | null {
     }
     case "extended_support_alert":
       return { type: "extended_support_alert", orgId };
+    case "price_change": {
+      const changeId = data["changeId"];
+      if (typeof changeId !== "string") return null;
+      return { type: "price_change", orgId, changeId };
+    }
     case "probe_alert": {
       const probeId = data["probeId"];
       const status = data["status"];

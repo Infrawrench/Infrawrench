@@ -5,6 +5,7 @@ import { RUNPOD_CI_EXECUTOR } from "./ci-executor.js";
 import { RunpodClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { runpodRemediationCommands } from "./remediation.js";
+import { runpodInstancePricingUsage } from "./instance-pricing.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { runpodTerraformExport } from "./terraform.js";
@@ -66,5 +67,6 @@ export const plugin = definePlugin({
   testCredentials: { apiKey: "rpa_test" },
   terraformExport: runpodTerraformExport,
   remediationCommands: runpodRemediationCommands,
+  instancePricingUsage: runpodInstancePricingUsage,
   parseStatusFeed,
 });

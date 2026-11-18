@@ -134,6 +134,22 @@ export interface DigestSeats {
 }
 
 /**
+ * List-price changes on instance types the org runs that took effect during
+ * the week, or that were found during it and take effect later (see
+ * `price-changes/`). Only changes over the org's thresholds. Omitted when
+ * there were none.
+ */
+export interface DigestPriceChanges {
+  count: number;
+  increases: number;
+  decreases: number;
+  /** Net monthly impact at list price, USD. */
+  netMonthlyUsd: number;
+  /** The largest change by monthly impact, as one sentence. */
+  largest: string | null;
+}
+
+/**
  * Resources a metric-based idle rule flagged (see `idle/feed.ts`): a NAT
  * gateway with no traffic, a load balancer with no requests. Point-in-time,
  * like the seat count. The figure is list price, and the line says so.
@@ -216,6 +232,8 @@ export interface DigestInput {
   delivery?: DigestDelivery | null;
   /** Seat findings, when there are any. */
   seats?: DigestSeats | null;
+  /** List-price changes on what the org runs, when there were any. */
+  priceChanges?: DigestPriceChanges | null;
   /** Idle-rule findings, when there are any. */
   idleFindings?: DigestIdleFindings | null;
 }
@@ -289,6 +307,8 @@ export interface WeeklyDigest {
   delivery: DigestDelivery | null;
   /** Seat findings, when there are any. */
   seats: DigestSeats | null;
+  /** List-price changes on what the org runs, when there were any. */
+  priceChanges: DigestPriceChanges | null;
   /** Idle-rule findings, when there are any. */
   idleFindings: DigestIdleFindings | null;
 }
@@ -554,6 +574,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     realizedSavings: input.realizedSavings ?? null,
     delivery: input.delivery ?? null,
     seats: input.seats && input.seats.findings > 0 ? input.seats : null,
+    priceChanges: input.priceChanges && input.priceChanges.count > 0 ? input.priceChanges : null,
     idleFindings: input.idleFindings && input.idleFindings.findings > 0 ? input.idleFindings : null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
@@ -779,6 +800,8 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
   if (costMoverLine) lines.push(costMoverLine);
   const seatsLine = seatsSegments(digest.seats);
   if (seatsLine) lines.push(seatsLine);
+  const priceChangesLine = priceChangesSegments(digest.priceChanges);
+  if (priceChangesLine) lines.push(priceChangesLine);
   const idleLine = idleFindingsSegments(digest.idleFindings);
   if (idleLine) lines.push(idleLine);
   const savingsLine = realizedSavingsSegments(digest.realizedSavings);
@@ -800,6 +823,26 @@ function seatsSegments(seats: DigestSeats | null): DigestLine | null {
   return [
     { text: "Seats", bold: true },
     { text: `: ${parts.join(", ")}${saving}`, bold: false },
+  ];
+}
+
+/** The price changes line: how many list prices moved on what the org runs, and the net month. */
+export function priceChangesSegments(changes: DigestPriceChanges | null): DigestLine | null {
+  if (!changes || changes.count === 0) return null;
+  const split: string[] = [];
+  if (changes.increases > 0) split.push(`${changes.increases} up`);
+  if (changes.decreases > 0) split.push(`${changes.decreases} down`);
+  const net = changes.netMonthlyUsd;
+  const netText = `${net < 0 ? "-" : "+"}${formatAmount(Math.abs(net), "USD")}/mo net at list price`;
+  const largest = changes.largest ? `. Largest: ${changes.largest}` : "";
+  return [
+    { text: "Price changes", bold: true },
+    {
+      text: `: ${pluralize(changes.count, "list price")} changed on what you run${
+        split.length > 0 ? ` (${split.join(", ")})` : ""
+      }, ${netText}${largest}`,
+      bold: false,
+    },
   ];
 }
 

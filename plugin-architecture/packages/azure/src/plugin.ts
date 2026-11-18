@@ -13,6 +13,7 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { fetchPriceCatalog, priceCatalog } from "./price-catalog.js";
 import { azureTerraformExport } from "./terraform.js";
 import { azureRemediationCommands } from "./remediation.js";
+import { azureInstancePricingUsage } from "./instance-pricing.js";
 import { AZURE_IDLE_FINDINGS } from "./idle-findings.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
@@ -238,4 +239,5 @@ export const plugin = definePlugin({
   fetchPriceCatalog: attemptFn(fetchPriceCatalog),
   terraformExport: azureTerraformExport,
   remediationCommands: azureRemediationCommands,
+  instancePricingUsage: azureInstancePricingUsage,
 });

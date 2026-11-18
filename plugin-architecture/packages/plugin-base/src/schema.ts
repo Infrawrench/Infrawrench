@@ -777,6 +777,28 @@ export interface InstancePricingCapability {
 }
 
 /**
+ * One instance type a running resource is billed for by the hour, in the
+ * instance pricing warehouse's terms: what the host's price-change watch
+ * matches against list-price changes. Unlike {@link InstancePricingCapability}
+ * (the panel, which lets the user pick among several types) this names what
+ * the resource actually pays for, so a resource that is not billed per running
+ * hour (a serverless endpoint that scales to zero) returns none.
+ */
+export interface InstancePricingUsage {
+  /** The warehouse's `platform`: `ec2`, `rds`, `azure`, `gcp`, `alibaba`, `runpod`... */
+  platform: string;
+  instanceType: string;
+  /** The warehouse's `region`; `global` where a provider prices every region alike. */
+  region: string;
+  /** The variant the resource runs, keyed as {@link InstancePricingCapability.selection}. */
+  selection?: Record<string, string>;
+  /** How many of the type the resource runs: nodes, GPUs. At least 1. */
+  units: number;
+  /** True when `units` is a lower bound because the count is not synced (a cluster's nodes). */
+  approximate?: boolean;
+}
+
+/**
  * A chat playground tab for resources that expose a conversational endpoint
  * (DigitalOcean Gradient AI agents, future AWS Bedrock agents, etc.). The
  * plugin owns the wire protocol: the host calls `streamChatMessage` with

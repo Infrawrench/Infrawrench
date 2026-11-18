@@ -1640,6 +1640,14 @@ export interface Plugin extends OAuthPluginHooks {
    */
   peerPaneResource?(resource: ResourceInstance): PeerPaneResource;
   /**
+   * What a synced resource is billed for by the hour, in the instance pricing
+   * warehouse's terms, so the host can tell the org when a list price it pays
+   * changes. Pure work over stored fields (no credentials, no API calls), so it
+   * lives on the Plugin and runs from the poller over persisted inventory.
+   * Return `[]` for types that are not billed per running instance-hour.
+   */
+  instancePricingUsage?(resource: ResourceInstance): InstancePricingUsage[];
+  /**
    * Reject credentials that are fine on a user's own machine but unsafe on
    * a shared, multi-tenant server host: anything that would make the host
    * run a local command, read a local file, or otherwise act outside the
@@ -1771,6 +1779,7 @@ import type {
   ChatStreamEvent,
   DashboardStat,
   DetailViewSchema,
+  InstancePricingUsage,
   KvListResult,
   MetricSeries,
   PeerPaneResource,
