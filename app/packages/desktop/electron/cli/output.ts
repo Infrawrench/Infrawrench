@@ -97,7 +97,8 @@ export function visibleWidth(s: string): number {
   return s.replace(ANSI_RE, "").length;
 }
 
-function padEndVisible(s: string, width: number): string {
+/** `padEnd` by visible width: a coloured label must not count its escapes. */
+export function padEndVisible(s: string, width: number): string {
   const pad = width - visibleWidth(s);
   return pad > 0 ? s + " ".repeat(pad) : s;
 }

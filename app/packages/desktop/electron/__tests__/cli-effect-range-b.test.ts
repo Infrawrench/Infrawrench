@@ -343,6 +343,24 @@ describe("metrics", () => {
     `);
   });
 
+  it("scales a byte series the way the app does (#1354)", async () => {
+    const memory = {
+      label: "Memory",
+      unit: "bytes",
+      points: [
+        { timestamp: 1, value: 1_073_741_824 },
+        { timestamp: 2, value: 2_303_368_539 },
+      ],
+    };
+    serveRoutes(out, { "GET /accounts": ACCOUNTS, [path]: { series: [memory] } });
+    expect(await run("metrics", ID, "--last", "6h")).toBe(0);
+    const lines = out.stdout.split("\n");
+    expect(lines[0]).toBe("Memory min 1.00 GiB  max 2.15 GiB  now 2.15 GiB");
+    expect(lines[1]).toMatch(/^2\.15 GiB ┤/);
+    expect(lines[7]).toMatch(/^0\.00 GiB ┤/);
+    expect(out.stdout).not.toMatch(/\d{7,}/);
+  });
+
   it("filters by --series and prints JSON", async () => {
     serveRoutes(out, { "GET /accounts": ACCOUNTS, [path]: { series: SERIES } });
     expect(await run("metrics", ID, "--series", "cpu", "--last", "6h", "--json")).toBe(0);

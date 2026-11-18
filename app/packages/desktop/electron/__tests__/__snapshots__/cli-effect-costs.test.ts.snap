@@ -540,8 +540,8 @@ exports[`costs > lists anomalies > 0 $ infrawrench costs --anomalies 1`] = `
 
 ID        DAY         WHAT SPIKED                ACTUAL   BASELINE/DAY  CHANGE  DRIVEN BY        NOTIFIED    EXPLAINED                                     FEEDBACK       
 a1b2c3d4  2026-11-05  Amazon EC2 service         $500.00       $200.00   +150%  api-server 100%  2026-11-06  The quarterly load test, which ran for most…  expected by Ada
-a1ff0011  2026-11-06  gcp provider [new source]  $120.00          none     new  -                —           —                                             suppressed     
-b9c8d7    2026-11-07  Amazon EC2 service         $500.00       $200.00   +150%  -                2026-11-06  —                                             unexpected     
+a1ff0011  2026-11-06  gcp provider [new source]  $120.00          none     new  -                -           -                                             suppressed     
+b9c8d7    2026-11-07  Amazon EC2 service         $500.00       $200.00   +150%  -                2026-11-06  -                                             unexpected     
 
 Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. The driven-by column is the resource that carried most of the day's rise, with its share; --json has the full breakdown by resource, account, region, usage unit, charge type and tag. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.
 Tell detection whether a row was a real problem: infrawrench costs --anomalies feedback <id> --expected|--unexpected. A suppressed row matched a suppression somebody created, so it was recorded but did not alert.
