@@ -838,6 +838,40 @@ impl JobFs {
         Ok(())
     }
 
+    /// What the job's own layer holds over the snapshot: every directory,
+    /// file and link written since the fork, parents before children. What
+    /// it deleted is not listed. A virtual machine that has the snapshot
+    /// already is sent only this.
+    pub fn own_entries(&self) -> Vec<Entry> {
+        let mut out = Vec::new();
+        for (path, meta) in walk_no_follow(&self.upper, Path::new("/")) {
+            if whiteout_target(&path).is_some() {
+                continue;
+            }
+            let ft = meta.file_type();
+            if ft.is_symlink() {
+                if let Ok(target) = self.upper.readlink(&path) {
+                    out.push(Entry::Symlink { path, target });
+                }
+            } else if ft.is_dir() {
+                out.push(Entry::Dir { path });
+            } else if ft.is_file()
+                && let Ok(bytes) = read_file(&self.upper, &path)
+            {
+                out.push(Entry::File {
+                    path,
+                    data: bytes.into(),
+                });
+            }
+        }
+        out.sort_by_key(|e| match e {
+            Entry::Dir { path } | Entry::File { path, .. } | Entry::Symlink { path, .. } => {
+                path.components().count()
+            }
+        });
+        out
+    }
+
     /// Every file the job added, changed or deleted under `root`, sorted by
     /// path. A file rewritten with the bytes it already had is not a change,
     /// so a formatter that rewrites everything still reports only what moved.
@@ -1462,6 +1496,42 @@ mod tests {
         assert_eq!(
             snap.read("/app/src/a.ts").unwrap(),
             b"export const a = 1;\n"
+        );
+    }
+
+    #[test]
+    fn own_entries_are_the_jobs_writes_and_nothing_of_the_snapshot() {
+        let job = snapshot().fork();
+        job.write("/app/src/new.ts", b"new\n").unwrap();
+        job.write("/root/.ssh/key", b"k").unwrap();
+        job.remove_file("/app/old/c.ts").unwrap();
+        let mut seen: Vec<String> = job
+            .own_entries()
+            .into_iter()
+            .map(|e| match e {
+                Entry::Dir { path } => format!("dir {}", path.display()),
+                Entry::File { path, data } => {
+                    format!("file {} {}", path.display(), data.len())
+                }
+                Entry::Symlink { path, .. } => format!("link {}", path.display()),
+            })
+            .collect();
+        seen.sort();
+        assert!(
+            seen.contains(&"file /app/src/new.ts 4".to_string()),
+            "{seen:?}"
+        );
+        assert!(
+            seen.contains(&"file /root/.ssh/key 1".to_string()),
+            "{seen:?}"
+        );
+        assert!(seen.contains(&"dir /root/.ssh".to_string()), "{seen:?}");
+        // Neither the snapshot's untouched files nor the deletion marker.
+        assert!(
+            !seen
+                .iter()
+                .any(|s| s.contains("a.ts") || s.contains(".wh.")),
+            "{seen:?}"
         );
     }
 

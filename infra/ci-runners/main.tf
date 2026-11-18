@@ -44,6 +44,7 @@ locals {
     storage_quota  = var.storage_quota
     update_flags   = local.update_flags
     native_sandbox = coalesce(h.native_sandbox, false)
+    machines       = coalesce(h.machines, false)
   }) }
 }
 
@@ -116,6 +117,10 @@ resource "terraform_data" "host" {
   provisioner "file" {
     content     = coalesce(each.value.native_sandbox, false) ? "true" : "false"
     destination = "/tmp/iwci-native"
+  }
+  provisioner "file" {
+    content     = coalesce(each.value.machines, false) ? "true" : "false"
+    destination = "/tmp/iwci-machines"
   }
   # The sandbox service and its pin, where native jobs are on (empty
   # elsewhere), and its units.

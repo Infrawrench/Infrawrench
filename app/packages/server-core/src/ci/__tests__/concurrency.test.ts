@@ -5,7 +5,7 @@ import type { CiConcurrencyEntry } from "../../db/ci-schema";
 // `concurrency.ts` imports the database client at load; the decision is pure.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { activeGroups, decideAdmission, entriesFrom, groupScope, nothingToRun } =
+const { activeGroups, decideAdmission, entriesFrom, groupScope, nothingToRun, runPlatforms } =
   await import("../concurrency");
 type AdmissionRun = Parameters<typeof decideAdmission>[0];
 
@@ -194,5 +194,44 @@ describe("nothingToRun", () => {
     expect(nothingToRun({ pipelines: [] })).toBe(false);
     expect(nothingToRun({})).toBe(false);
     expect(nothingToRun({ pipelines: [], invalid: null })).toBe(false);
+  });
+});
+
+describe("platforms", () => {
+  it("reads each pipeline's platforms leniently: strings only, sorted, once, without wasm", () => {
+    expect(
+      entriesFrom({
+        pipelines: [
+          { file: "vm.yml", name: "VM", platforms: ["windows", 3, "linux", "wasm", "linux", ""] },
+          { file: "new.yml", name: "New", platforms: ["riscv"] },
+          { file: "wasm.yml", name: "Wasm", platforms: [] },
+          { file: "old.yml", name: "Old" },
+          { file: "odd.yml", name: "Odd", platforms: "linux" },
+        ],
+      }).map((e) => [e.file, e.platforms]),
+    ).toEqual([
+      ["vm.yml", ["linux", "windows"]],
+      // A platform the app has not heard of passes through.
+      ["new.yml", ["riscv"]],
+      // Nothing stored when every job runs on wasm, as from a runner before.
+      ["wasm.yml", undefined],
+      ["old.yml", undefined],
+      ["odd.yml", undefined],
+    ]);
+  });
+
+  it("is the union of the pipelines the run will run", () => {
+    const base = { group: null, cancelInProgress: false };
+    expect(
+      runPlatforms([
+        { ...base, file: "a.yml", pipeline: "A", platforms: ["windows"] },
+        { ...base, file: "b.yml", pipeline: "B", platforms: ["linux", "windows"] },
+        { ...base, file: "c.yml", pipeline: "C" },
+        // Cancelled by a newer run of its group: it will not run.
+        { ...base, file: "d.yml", pipeline: "D", platforms: ["macos"], cancelled: true },
+      ]),
+    ).toEqual(["linux", "windows"]);
+    expect(runPlatforms([{ ...base, file: "c.yml", pipeline: "C" }])).toEqual([]);
+    expect(runPlatforms([])).toEqual([]);
   });
 });

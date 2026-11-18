@@ -574,6 +574,9 @@ impl Server {
         let sandbox: Option<u64> = None;
         capacity["native_sandbox"] = json!(sandbox.is_some());
         capacity["sandbox_overhead"] = json!(sandbox);
+        // What jobs can run on here (`platform:`): the proxy places a run
+        // that needs a virtual machine on a runner that has one.
+        capacity["platforms"] = json!(self.runner.platforms());
         capacity
     }
 
@@ -1400,6 +1403,7 @@ mod tests {
             helping: Some(Arc::new(crate::schedule::Helping::default())),
             #[cfg(target_os = "linux")]
             sandbox: None,
+            machines: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()

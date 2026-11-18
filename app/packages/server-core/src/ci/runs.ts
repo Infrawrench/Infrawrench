@@ -56,7 +56,13 @@ import {
 import { planAccess } from "../entitlements.js";
 import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
-import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
+import {
+  admitRun,
+  resendCancels,
+  resolveConcurrency,
+  runPlatforms,
+  sendCancel,
+} from "./concurrency.js";
 import {
   abandonJobChecks,
   groupsFromJobs,
@@ -68,7 +74,7 @@ import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
 import { pluginCodeAvailable } from "../plugin-loader.js";
-import type { CiJobAccess } from "../db/schema.js";
+import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
 
@@ -351,6 +357,22 @@ export function dispatchBody(
   return body;
 }
 
+/**
+ * Adds to a run's `POST /v1/runs` body the platforms other than `wasm` its
+ * pipelines run jobs on, which the proxy places it by and takes out before
+ * a runner sees it. Left out when there are none, so a proxy from before
+ * platforms is sent nothing new. Never on the `/v1/concurrency` body, which
+ * is read before the pipelines are known and goes on to a runner.
+ */
+export function withPlatforms(
+  body: Record<string, unknown>,
+  concurrency: readonly CiConcurrencyEntry[],
+): Record<string, unknown> {
+  const platforms = runPlatforms(concurrency);
+  if (platforms.length > 0) body["platforms"] = platforms;
+  return body;
+}
+
 export async function dispatchRun(id: string): Promise<void> {
   const now = new Date();
   const [row] = await db
@@ -394,7 +416,8 @@ export async function dispatchRun(id: string): Promise<void> {
   // Its pipelines' concurrency groups, and what its jobs name to be lent,
   // read once, before it first goes.
   let access = row.access;
-  if (row.concurrency === null) {
+  let concurrency = row.concurrency;
+  if (concurrency === null) {
     const resolved = await resolveConcurrency(body);
     if ("retry" in resolved) {
       await retryLater(row, resolved.retry);
@@ -408,6 +431,7 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     access = resolved.access;
+    concurrency = entries;
     await db.update(ciRuns).set({ access }).where(eq(ciRuns.id, row.id));
     if (entries.some((e) => e.group !== null)) {
       if (!(await admitRun(row, entries))) return;
@@ -415,6 +439,9 @@ export async function dispatchRun(id: string): Promise<void> {
       await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
     }
   }
+  // The platforms its pipelines need, for the proxy to place it by; counted
+  // before anything is lent, so the body's size includes them.
+  withPlatforms(body, concurrency);
 
   // Connections, SSH keys and resources its jobs name, checked and read now
   // (never for a fork's run). Reading them calls plugins, which the edge

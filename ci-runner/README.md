@@ -43,6 +43,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    more jobs are ready than may run, the one with the longest chain of
    work still ahead of it starts first (see [Job order](#job-order)).
 6. **Changes.** What a job wrote is read back from its overlay layer.
+   Only what git would see counts: a new file the repository's
+   `.gitignore` ignores is not a change.
    `changes: fail` fails the job if it changed anything; `changes: commit`
    turns the changes into a commit on top of the run's commit (written to
    the git cache; pushing it is left to the integration).
@@ -164,7 +166,9 @@ everything through.
 
 | Key            | Meaning                                                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`        | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
+| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                |
+| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                         |
+| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                    |
 | `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
 | `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
 | `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
@@ -174,13 +178,13 @@ everything through.
 | `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
 | `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
 | `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                      |
 | `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
 | `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
 | `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
 | `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
 | `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                         |
 | `cpus`         | Whole vCPUs the job holds, from `1` to `64`, instead of its share of one. See [Limits](#limits).                                                                                                                   |
 | `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
 | `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
@@ -576,6 +580,59 @@ web-1` works as written. A job that is not root and cannot write the
 - **The machine gets no cloud credentials** of the account it runs on, only
   the job's own `env:` and what it is lent.
 - `iwci run` has no executor: a cloud job there is an error.
+
+### Platforms
+
+A job runs in a Wasmer isolate on the runner unless its `platform:` says
+otherwise. `platform: linux` runs its `run:` script in a virtual machine
+the runner starts for that job alone, close to GitHub's hosted Ubuntu
+runner without its largest SDKs ([`images/README.md`](images/README.md)
+lists what is in it). `platform: windows` is refused for now: the Windows
+machine is written but turned off until it has run on a real host.
+
+```yaml
+jobs:
+  test:
+    platform: linux # Ubuntu 24.04 in a micro VM; or { os: linux, image: ubuntu-24.04 }
+    run: |
+      npm ci
+      npm test
+    artifacts: [dist]
+```
+
+- **Where.** Only a runner started with `--machines <dir>` (or
+  `IWCI_MACHINES`) runs them: it needs KVM and the image
+  `images/linux/build.sh` builds into that directory. Each machine gets
+  the vCPUs its job holds with `cpus:`, or `--machine-cpus` (default 2)
+  without one. `/v1/capacity` lists what a runner
+  runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
+  log, whatever the host lacks, and the proxy places a run whose pipelines
+  need a machine on a runner that has it. A runner without one fails just
+  those jobs, saying so.
+- **The machine.** QEMU with KVM: on x86_64 the `microvm` machine type
+  with the kernel booted directly, on aarch64 `virt`. The job's `memory:`
+  is the machine's whole memory, and the runner reserves the emulator's
+  own beside it (160 MiB). Jobs run as root. The agent inside
+  (`crates/iwci-guest`) talks to the runner over a virtio-serial port
+  (`crates/iwci-vm-proto`).
+- **Files.** The machine starts from the same files an isolate would: the
+  clone, the artifacts of the jobs it needs, lent files and restored
+  caches. The clone is a read-only erofs image made once per commit and
+  shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
+  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, the run's
+  `/tmp/workflow` (shared with isolate jobs), and, for `changes:`, the
+  clone without what its `.gitignore` ignores. A job's `npm ci` stays in
+  the machine, and artifacts in ignored directories (`dist`) still come
+  back. All of it is at most twice the job's `memory:`.
+- **Network.** The machine's traffic goes through the runner's own gateway
+  under the same policy as an isolate's ([Networking](#networking)):
+  public addresses only, never the host. `network: false` cuts it off.
+- **What it cannot have.** Keys that only mean something in an isolate are
+  errors: `using`, `args`, `deps`, `tools`, `services`, `env-cache` and
+  `task-cache` (the script installs and starts what it needs, and `cache:`
+  keeps it between runs). A machine job stays on
+  the runner that has its run; helpers never take one
+  ([Split runs](#split-runs)).
 
 ### The run's scratch directory
 
@@ -3537,7 +3594,8 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
-IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
+         [--machines <dir>] [--machine-cpus 2]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -3947,7 +4005,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), and V8's out-of-memory losses (below).                              |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), V8's out-of-memory losses (below), and the `platforms` it runs.     |
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
@@ -3963,7 +4021,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
 | `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches, never its downloads (below), and answers what went.                                                                                    |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
-| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch (file, name, crons and the file's text), and its `manual` ones (file, name and inputs).                                  |
+| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch (file, name, crons, the file's text and its `platforms`), and its `manual` ones (file, name and inputs).                 |
 | `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
 
 A request body (for `runs` and `prepare`):
@@ -4214,8 +4272,12 @@ it is masked, and an untrusted run is given none of it:
   the same body as a run and resolves it as a run would (the commit, the
   pipeline files or `pipeline`, `base` for `paths:`), without a job slot,
   answering only the pipelines the event triggers:
-  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
-  with `"concurrency": null` for a pipeline without one. `jobs` lists each
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "platforms": [...], "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
+  with `"concurrency": null` for a pipeline without one. `platforms` lists
+  the virtual machines its jobs run in (`linux`; sorted, empty
+  when every job is `wasm`), which the app sends the proxy so it can place
+  the run ([Platforms](#platforms)); a run request itself never carries
+  it. `jobs` lists each
   job key that runs on a cloud account or is lent anything, which is what
   the app resolves before it dispatches the run:
   `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...] }`
@@ -4229,8 +4291,8 @@ it is masked, and an untrusted run is given none of it:
   means a run would run nothing, which the app takes as reason not to send
   one (an older runner leaves `invalid` out, which says nothing). `400` for a bad
   request, `422` when the commit cannot be fetched. `POST
-/v1/schedules/read` carries each scheduled pipeline's `concurrency` the
-  same way.
+/v1/schedules/read` carries each scheduled pipeline's `concurrency` and
+  `platforms` the same way.
 - **Manual runs.** `"event": "manual"` with `pipeline-file` (or `pipeline`)
   runs that one file, as the commit has it, with `inputs`; anything but a
   manual run sending `inputs` or `pipeline-file` is a `400`, and so is an
@@ -4419,6 +4481,12 @@ the routes; the short version:
 
 ## Known limitations
 
+- **Virtual machines are new.** `platform: linux` is tested against the
+  real agent over pipes and with a fake machine in the scheduler, but the
+  image (`images/linux`) has not yet been built and booted on a KVM host,
+  so expect the first real runs to find problems. No machine job can use
+  the task cache. `platform: windows` is turned off: the parser refuses it
+  and no runner offers it (`VmOs::enabled`).
 - **File locks need a C library that asks for them.** The runner keeps
   `flock` locks (an open file's, released with its last descriptor) and
   `fcntl` record locks (a process's, released when it closes the file or
@@ -4640,15 +4708,18 @@ job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 
-| Crate          | Does                                                                                          |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                                      |
-| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                                    |
-| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.                     |
-| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip, Composer and Bundler installers over a verifying, caching fetcher. |
-| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                                       |
-| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.           |
-| `iwci`         | The scheduler and the `iwci` command.                                                         |
+| Crate           | Does                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `iwci-spec`     | The pipeline file: parse, validate, expand, interpolate.                                      |
+| `iwci-vfs`      | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                                    |
+| `iwci-git`      | Shallow fetch with a persistent cache, checkout into a snapshot, commits.                     |
+| `iwci-deps`     | pnpm, Bun, Go, Cargo, pip, Composer and Bundler installers over a verifying, caching fetcher. |
+| `iwci-store`    | R2 and local object stores, manifests, tool resolution.                                       |
+| `iwci-runtime`  | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.           |
+| `iwci`          | The scheduler and the `iwci` command.                                                         |
+| `iwci-vm`       | `platform: linux` jobs: QEMU, workspace images, the agent's link.                             |
+| `iwci-vm-proto` | The wire between the runner and the agent in a machine, and the `.gitignore` rules both use.  |
+| `iwci-guest`    | The agent inside each machine (Linux init; a dormant Windows scheduled task).                 |
 
 ## Development
 

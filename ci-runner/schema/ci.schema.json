@@ -144,6 +144,20 @@
         }
       }
     },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os"],
+      "properties": {
+        "os": {
+          "enum": ["wasm", "linux"]
+        },
+        "image": {
+          "enum": ["ubuntu-24.04"],
+          "description": "The machine image: `ubuntu-24.04` for Linux (the default)."
+        }
+      }
+    },
     "cloud": {
       "type": "object",
       "additionalProperties": false,
@@ -319,6 +333,9 @@
         },
         {
           "required": ["cloud"]
+        },
+        {
+          "required": ["platform"]
         }
       ],
       "properties": {
@@ -376,7 +393,22 @@
         "using": {
           "type": "string",
           "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
-          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x. Required unless the job has `cloud:`."
+          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x. Required unless the job has `cloud:` or runs in a virtual machine (`platform: linux`)."
+        },
+        "platform": {
+          "description": "What the job runs on: `wasm` (the default: an isolate on the runner, with `using:`), `linux` (an Ubuntu micro VM), or `{ os, image }`. A job on a virtual machine runs its `run:` script with `shell:` in the runner's image, starts from the clone, and keeps `artifacts`, `downloads`, `cache`, `changes`, `outputs` and `/tmp/workflow` working as on the runner. Not with `using`, `args`, `deps`, `tools`, `services`, `env-cache` or `task-cache`. Only a runner with that kind of machine runs it. Literal: not an expression.",
+          "oneOf": [
+            {
+              "enum": ["wasm", "linux"]
+            },
+            {
+              "$ref": "#/$defs/platform"
+            }
+          ]
+        },
+        "shell": {
+          "enum": ["bash", "sh", "pwsh"],
+          "description": "The `run:` script's interpreter on a virtual machine: `bash` (default), `sh` or `pwsh`. bash runs with `-euo pipefail`, sh with `-eu`, PowerShell with `$ErrorActionPreference = 'Stop'`."
         },
         "cloud": {
           "description": "Runs the job on one of the organisation's connected cloud accounts that an admin opted in, instead of on the runner: `<provider>/<kind>` (`gcp/build`) or a map. The job keeps its place in the graph (needs, if, outputs, artifacts, matrix); its `run:` script runs with bash on the machine, which is torn down after it. Not with `using:`, `deps`, `tools`, `cache`, `memory`, `network: false`, `services`, `packages`, `task-cache`, `env-cache`, `downloads`, `changes: commit` or a `clone` other than `{ depth }`. Never for a pull request from a fork.",

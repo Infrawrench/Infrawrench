@@ -248,9 +248,10 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         .and_then(|w| w.services.clone())
         .unwrap_or_default();
     for job in raw.jobs.values_mut() {
-        if job.cloud.is_some() {
-            // A cloud job starts nothing on the runner, so the workspace's
-            // services are not its; services of its own are an error.
+        if job.cloud.is_some() || vm_os(job).is_some() {
+            // A cloud job starts nothing on the runner, and a virtual
+            // machine has no isolate to start them in, so the workspace's
+            // services are not theirs; services of their own are an error.
             job.services = match job.services.take() {
                 Some(raw::Services::Map(own)) => Some(raw::Services::Map(own)),
                 _ => Some(raw::Services::Map(indexmap::IndexMap::new())),
@@ -466,6 +467,8 @@ struct JobStatic {
     tool: Option<ToolRef>,
     /// `cloud:`, checked, its matrix expressions left for each entry.
     cloud: Option<CloudSpec>,
+    /// `platform: linux`, checked.
+    vm: Option<VmSpec>,
     access: JobAccess,
     tools: Vec<ToolRef>,
     timeout: u64,
@@ -494,6 +497,26 @@ enum Shape {
     Axes,
     /// From another job's output, not known yet.
     Pending,
+}
+
+/// The operating system of the virtual machine a job asks for with
+/// `platform:`, or `None` for a job on the runner (no `platform:`, `wasm`,
+/// or something [`Validator::platform`] reports).
+fn vm_os(job: &raw::Job) -> Option<VmOs> {
+    match job.platform.as_ref()? {
+        raw::PlatformField::Short(os) => VmOs::parse(os.trim()),
+        raw::PlatformField::Full(p) => VmOs::parse(p.os.as_deref()?.trim()),
+    }
+}
+
+/// `` `a`, `b` or `c` ``.
+fn quoted_list(items: &[&str]) -> String {
+    let quoted: Vec<String> = items.iter().map(|i| format!("`{i}`")).collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+    }
 }
 
 fn is_output_name(s: &str) -> bool {
@@ -630,6 +653,10 @@ impl Validator<'_> {
                 // A cloud job installs nothing on the runner: its machine
                 // starts from the commit alone.
                 _ if job.cloud.is_some() => Vec::new(),
+                // Nor does a virtual machine's: the runner installs for
+                // `wasm32`, and the machine's script installs for itself
+                // as it would on any other CI.
+                _ if vm_os(&job).is_some() => Vec::new(),
                 None | Some(raw::Override::Disabled(true)) => base_deps.clone(),
                 Some(raw::Override::Disabled(false)) => Vec::new(),
                 Some(raw::Override::Value(d)) => d.clone(),
@@ -678,6 +705,7 @@ impl Validator<'_> {
                 self.instances(&key, &job, &st, ws_index, &workspaces, None);
             let path_tools = st.tools.clone();
             let cloud = st.cloud.clone();
+            let vm = st.vm.clone();
             let access = st.access.clone();
             let Some(tool) = st.tool else { continue };
             jobs.push(JobTemplate {
@@ -693,6 +721,7 @@ impl Validator<'_> {
                 instances: (!deferred).then_some(instances),
                 package,
                 cloud,
+                vm,
                 access,
                 raw: deferred.then(|| job.clone()),
             });
@@ -1271,7 +1300,27 @@ impl Validator<'_> {
 
     fn job_static(&mut self, path: &str, job: &raw::Job, workspace: &WorkspaceSpec) -> JobStatic {
         let cloud = job.cloud.as_ref().and_then(|c| self.cloud(path, c));
+        let vm = self.platform(path, job);
+        let wants_vm = vm_os(job).is_some();
         let tool = match (&job.using, &job.cloud) {
+            _ if wants_vm && job.cloud.is_some() => {
+                self.error(
+                    format!("{path}.platform"),
+                    "`platform:` and `cloud:` both say where the job runs; give it one",
+                );
+                None
+            }
+            (Some(_), _) if wants_vm => {
+                self.error(
+                    format!("{path}.using"),
+                    "a job on a virtual machine runs in the machine's image; give it a `run:` script, not `using:`",
+                );
+                None
+            }
+            (None, None) if wants_vm => vm.as_ref().map(|v| ToolRef::Vm {
+                os: v.os,
+                image: v.image.clone(),
+            }),
             (Some(_), Some(_)) => {
                 self.error(
                     format!("{path}.using"),
@@ -1282,7 +1331,7 @@ impl Validator<'_> {
             (None, None) => {
                 self.error(
                     path,
-                    "needs `using:` (a tool or environment), or `cloud:` to run on a connected cloud account",
+                    "needs `using:` (a tool or environment), `platform: linux` to run a script in a virtual machine, or `cloud:` to run on a connected cloud account",
                 );
                 None
             }
@@ -1300,6 +1349,14 @@ impl Validator<'_> {
         };
         if job.cloud.is_some() {
             self.cloud_limits(path, job);
+        }
+        if let Some(os) = vm_os(job) {
+            self.vm_limits(path, job, os);
+        } else if job.shell.is_some() {
+            self.error(
+                format!("{path}.shell"),
+                "is for a `platform: linux` job's script; a job on the runner runs its script with its environment's shell",
+            );
         }
         let access = self.access(path, job);
         let timeout = match &job.timeout {
@@ -1319,13 +1376,29 @@ impl Validator<'_> {
                 }
             },
         };
+        // A machine's `memory:` is its whole memory, operating system
+        // included, so each kind has a floor of its own.
+        let (default_memory, min_memory) = match vm_os(job) {
+            Some(os) => (os.default_memory(), os.min_memory()),
+            None => (DEFAULT_MEMORY, MIN_MEMORY),
+        };
         let memory = match &job.memory {
-            None => DEFAULT_MEMORY,
+            None => default_memory,
             Some(m) => match units::parse_bytes(m) {
-                Some(b) if (MIN_MEMORY..=MAX_MEMORY).contains(&b) => b,
+                Some(b) if (min_memory..=MAX_MEMORY).contains(&b) => b,
                 Some(_) => {
-                    self.error(format!("{path}.memory"), "must be between 16MiB and 16GiB");
-                    DEFAULT_MEMORY
+                    self.error(
+                        format!("{path}.memory"),
+                        format!(
+                            "must be between {}MiB and 16GiB{}",
+                            min_memory >> 20,
+                            match vm_os(job) {
+                                Some(VmOs::Windows) => ": Windows does not start in less than 4GiB",
+                                _ => "",
+                            }
+                        ),
+                    );
+                    default_memory
                 }
                 None => {
                     self.error(
@@ -1395,6 +1468,18 @@ impl Validator<'_> {
         }
         let using = job.using.as_deref().unwrap_or_default();
         match (&tool, &job.args, &job.run) {
+            (_, Some(_), _) if wants_vm => {
+                self.error(
+                    format!("{path}.args"),
+                    "a job on a virtual machine takes a `run:` script, not `args:`",
+                );
+            }
+            (_, _, None) if wants_vm => {
+                self.error(
+                    path,
+                    "a job on a virtual machine needs a `run:` script, which runs with its `shell:`",
+                );
+            }
             (_, Some(_), _) if job.cloud.is_some() => {
                 self.error(
                     format!("{path}.args"),
@@ -1419,7 +1504,7 @@ impl Validator<'_> {
                     "an environment job takes a `run:` script, not `args:`",
                 );
             }
-            (Some(t), _, Some(_)) if !t.is_env() && !t.is_cloud() => {
+            (Some(t), _, Some(_)) if !t.is_env() && !t.is_cloud() && !t.is_vm() => {
                 self.error(format!("{path}.run"), format!("`{using}` is a tool; give it `args:`, or use an `env:` environment for a script"));
             }
             _ => {}
@@ -1559,6 +1644,7 @@ impl Validator<'_> {
         JobStatic {
             tool,
             cloud,
+            vm,
             access,
             tools,
             timeout,
@@ -1658,6 +1744,136 @@ impl Validator<'_> {
             region: raw.region,
             gpu: raw.gpu,
         })
+    }
+
+    /// Checks `platform:` and `shell:`, and returns where a job on a
+    /// virtual machine runs. `None` for a job on the runner (`wasm`, or no
+    /// `platform:`), and for one whose platform has an error.
+    fn platform(&mut self, path: &str, job: &raw::Job) -> Option<VmSpec> {
+        let at = format!("{path}.platform");
+        let (os, image) = match job.platform.as_ref()? {
+            raw::PlatformField::Short(os) => (os.trim().to_string(), None),
+            raw::PlatformField::Full(p) => (
+                p.os.as_deref().unwrap_or_default().trim().to_string(),
+                p.image.clone(),
+            ),
+        };
+        let os = match os.as_str() {
+            "wasm" => {
+                if image.is_some() {
+                    self.error(
+                        format!("{at}.image"),
+                        "a `wasm` job runs in an isolate; its `using:` is its environment",
+                    );
+                }
+                return None;
+            }
+            other => {
+                let at_os = if matches!(job.platform, Some(raw::PlatformField::Full(_))) {
+                    format!("{at}.os")
+                } else {
+                    at.clone()
+                };
+                match VmOs::parse(other) {
+                    Some(os) if os.enabled() => os,
+                    Some(os) => {
+                        self.error(
+                            at_os,
+                            format!("`{os}` machines are not available yet; use `linux`"),
+                        );
+                        return None;
+                    }
+                    None => {
+                        self.error(
+                            at_os,
+                            format!("is `wasm` or `linux`, written out, not `{other}`"),
+                        );
+                        return None;
+                    }
+                }
+            }
+        };
+        let image = match image {
+            None => os.images()[0].to_string(),
+            Some(image) if os.images().contains(&image.as_str()) => image,
+            Some(image) => {
+                self.error(
+                    format!("{at}.image"),
+                    format!(
+                        "`{image}` is not a {os} image; use {}",
+                        quoted_list(os.images())
+                    ),
+                );
+                return None;
+            }
+        };
+        let shell = match &job.shell {
+            None => os.shells()[0].to_string(),
+            Some(shell) if os.shells().contains(&shell.as_str()) => shell.clone(),
+            Some(shell) => {
+                self.error(
+                    format!("{path}.shell"),
+                    format!(
+                        "`{shell}` is not a {os} shell; use {}",
+                        quoted_list(os.shells())
+                    ),
+                );
+                return None;
+            }
+        };
+        Some(VmSpec { os, image, shell })
+    }
+
+    /// What a job on a virtual machine cannot have: what only means
+    /// something inside an isolate on the runner, and on Windows what is
+    /// written for Linux paths.
+    fn vm_limits(&mut self, path: &str, job: &raw::Job, os: VmOs) {
+        let mut refuse = |key: &str, why: &str| self.error(format!("{path}.{key}"), why);
+        if job.deps.is_some() {
+            refuse(
+                "deps",
+                "installs dependencies for the runner's isolates; a virtual machine's script installs its own (`pnpm install`, `go mod download`)",
+            );
+        }
+        if !job.tools.is_empty() {
+            refuse(
+                "tools",
+                "puts the runner's tools on an isolate's PATH; a virtual machine has its image's tools, and installs any other in its script",
+            );
+        }
+        if matches!(&job.services, Some(raw::Services::Map(m)) if !m.is_empty()) {
+            refuse(
+                "services",
+                "starts services in the job's isolate; on a virtual machine, start them in the script (`docker run -d`, `pg_ctl start`)",
+            );
+        }
+        if job.env_cache.is_some() {
+            refuse(
+                "env-cache",
+                "keeps an isolate environment's caches; use `cache:` for a virtual machine's",
+            );
+        }
+        if matches!(
+            job.task_cache,
+            Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))
+        ) {
+            refuse(
+                "task-cache",
+                "replays a job from the task cache, which a job on a virtual machine does not support yet",
+            );
+        }
+        if os == VmOs::Windows {
+            let linux_paths = "writes files at Linux paths (`~/.ssh`, a kubeconfig, Git's configuration), which a Windows machine does not support yet";
+            if !job.connections.is_empty() {
+                refuse("connections", linux_paths);
+            }
+            if !job.ssh_keys.is_empty() {
+                refuse("ssh-keys", linux_paths);
+            }
+            if job.github_token.is_some() {
+                refuse("github-token", linux_paths);
+            }
+        }
     }
 
     /// What a cloud job cannot have yet: everything that only means
@@ -2440,6 +2656,7 @@ impl Validator<'_> {
                     task_cache,
                     services,
                     cloud,
+                    vm: st.vm.clone(),
                     access: st.access.clone(),
                 });
             }
@@ -2553,3 +2770,5 @@ fn find_cycle(jobs: &indexmap::IndexMap<String, raw::Job>) -> Option<Vec<String>
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_platform;

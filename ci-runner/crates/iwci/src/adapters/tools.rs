@@ -216,6 +216,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             service_failure: None,
                             cancelled: o.cancelled,
                             sandbox: None,
+                            machine: None,
                         }
                     }
                     Abi::NativeGvisor => unreachable!("refused above"),
@@ -236,6 +237,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                             service_failure: o.service_failure,
                             cancelled: o.cancelled,
                             sandbox: None,
+                            machine: None,
                         }
                     }
                 }
@@ -268,6 +270,7 @@ impl Executor<Resolved> for RuntimeExecutor {
                     service_failure: o.service_failure,
                     cancelled: o.cancelled,
                     sandbox,
+                    machine: None,
                 }
             }
             // Validation pairs `env:` with `run:` and tools with `args:`, and

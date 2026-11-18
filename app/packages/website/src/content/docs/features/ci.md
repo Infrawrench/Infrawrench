@@ -250,6 +250,28 @@ jobs:
       npm test
 ```
 
+## Linux machines
+
+A job that needs a whole operating system, such as Docker or a native compiler, can run its script in a Linux virtual machine of its own instead of the WebAssembly sandbox, with `platform: linux`:
+
+```yaml
+jobs:
+  test:
+    platform: linux # Ubuntu 24.04
+    run: |
+      npm ci
+      npm test
+    artifacts: [dist]
+```
+
+`platform:` is `wasm` (the sandbox, the default) or `linux`. The machine is new for each job and is gone when it ends. Its tools are close to GitHub's hosted Ubuntu 24.04 runner, without its largest SDKs (Android, .NET); a job installs anything else in its script, and `cache:` keeps it between runs. The script runs in `bash`; `shell:` picks `sh` or `pwsh` instead.
+
+A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. Its network reaches the same places as any job's, and `network: false` turns it off.
+
+A machine has no `using:`, `deps:`, `tools:`, `services:` or `task-cache:`: its script installs and starts what it needs (`npm ci`, `docker run -d postgres`).
+
+`changes: fail` and `changes: { commit: ... }` count only what git would see: a new file that the repository's `.gitignore` ignores, such as `node_modules` or a build folder, is not a change, in a machine or in the sandbox.
+
 ## Monorepos: a job per package
 
 In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:
@@ -715,7 +737,7 @@ split: true
 
 Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they are small (4 MiB in total by default, `split: { artifacts: 16MiB }` to change it). Larger ones stay where the job ran, and so do the jobs that need them.
 
-Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads) or run on a cloud account always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
+Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
 
 A job another runner ran is billed like any other job of the run.
 
@@ -734,6 +756,7 @@ jobs:
 - **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
 - **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count the runtime reports to its programs. Without `cpus:`, `$IWCI_CPUS` is not set.
 - **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
+- A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
 - A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
 
 ## Usage and billing
@@ -764,5 +787,6 @@ The in-app chat and any client connected to the [MCP server](./mcp.md) can work 
 - CI runs for GitHub repositories, through the Infrawrench GitHub App.
 - The mobile app does not show CI.
 - Cloud jobs run on the providers in the [table above](#cloud-jobs); more follow.
+- [Linux machines](#linux-machines) run only on runners set up for them. A run is placed on one when one is available; otherwise its machine jobs fail, saying the runner has none, and the rest of the run goes on.
 - A job runs for at most 6 hours (`timeout:`, 10 minutes unless it says). No plan sets a lower limit: a job is billed for the time it runs. Credentials lent to a job are minted for 4 hours from when its run is sent to a runner, or less where the provider caps them, so a job that runs longer should not need them near its end.
 - The pipeline format, the builtin tools and the limits on each job are described in the runner's reference (`ci-runner/README.md` in the Infrawrench repository).

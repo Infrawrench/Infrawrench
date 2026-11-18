@@ -107,6 +107,43 @@ for profile in iwci iwci-sandbox-spawn; do
 done
 rm -f /opt/iwci/lib/iwci-sandbox-spawn /tmp/iwci-sandbox-spawn.upload /tmp/iwci-sandbox-spawn.sha256 /tmp/iwci-sandbox-spawn.socket "/tmp/iwci-sandbox-spawn@.service" /tmp/iwci.upload
 
+# Virtual machines for `platform: linux` jobs (crates/iwci-vm): off unless
+# the host's `machines` is set. The runner starts QEMU itself, as `iwci`,
+# so it needs the emulator for this architecture, mkfs.erofs (each
+# commit's workspace image) and /dev/kvm, which is the `kvm` group's (the
+# unit adds the group too). The image is built on the host into
+# /var/lib/iwci/machines (ci-runner/images/README.md); without it, or
+# without KVM, the runner leaves that platform out and says why in its log.
+# Turning it off leaves the packages and the image, unused.
+machines="$(cat /tmp/iwci-machines 2>/dev/null || true)"
+rm -f /tmp/iwci-machines
+if [[ "$machines" == "true" ]]; then
+  case "$(uname -m)" in
+  x86_64) qemu_packages=(qemu-system-x86) ;;
+  aarch64) qemu_packages=(qemu-system-arm) ;;
+  *)
+    echo "error: no virtual machines for $(uname -m)" >&2
+    exit 1
+    ;;
+  esac
+  if ! command -v apt-get >/dev/null; then
+    echo "error: machines needs apt to install QEMU and erofs-utils" >&2
+    exit 1
+  fi
+  if ! dpkg -s "${qemu_packages[@]}" erofs-utils >/dev/null 2>&1; then
+    apt-get update -q
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+      "${qemu_packages[@]}" erofs-utils
+  fi
+  getent group kvm >/dev/null || groupadd --system kvm
+  usermod -aG kvm iwci
+  install -d -o root -g iwci -m 0750 /var/lib/iwci/machines
+  if [[ ! -e /dev/kvm ]]; then
+    echo "warning: no /dev/kvm: the runner will run no virtual machines here (x86_64 needs VT-x or AMD-V, Graviton a .metal instance)" >&2
+  fi
+  echo "virtual machines enabled: images in /var/lib/iwci/machines"
+fi
+
 # Core dumps, so a crash of the runner leaves a backtrace (#947): the unit
 # raises its core limit, systemd-coredump keeps each core compressed in
 # /var/lib/systemd/coredump within its own size limits, and gdb reads them

@@ -1,0 +1,122 @@
+# The toolset of the ubuntu-24.04 machine image, read by build.sh. One tool
+# a line: `<source> <name> <version> [<sha256 x86_64> <sha256 aarch64>]`.
+#
+#   apt      From Ubuntu 24.04 (noble, main and universe) as the archive
+#            snapshot build.sh pins had it; version is `-`, the snapshot
+#            decides it, and apt checks every package against the
+#            archive's signed index.
+#   docker   From Docker's apt repository for noble, at exactly this
+#            version; apt checks it against Docker's signed index, whose
+#            key build.sh pins by fingerprint.
+#   release  A release archive or binary from its publisher, checked
+#            against the sha256 here (taken from the publisher's own
+#            checksum list or release digest). build.sh knows each name's
+#            URL and where it goes.
+#   rust     A Rust toolchain rustup installs (rustup checks each component
+#            against the channel manifest's sha256).
+#
+# A changed line is a new image version; nothing here is fetched as
+# "latest".
+
+# Base system
+apt ca-certificates -
+apt tzdata -
+apt locales -
+apt lsb-release -
+apt sudo -
+apt procps -
+apt psmisc -
+apt less -
+apt file -
+apt patch -
+apt time -
+apt gettext-base -
+apt iproute2 -
+apt iputils-ping -
+apt bind9-dnsutils -
+apt netcat-openbsd -
+apt gnupg -
+apt libicu74 -
+
+# Network and transfer
+apt curl -
+apt wget -
+apt rsync -
+apt openssh-client -
+
+# Version control
+apt git -
+apt git-lfs -
+
+# Archives and compression
+apt tar -
+apt zip -
+apt unzip -
+apt 7zip -
+apt xz-utils -
+apt zstd -
+apt bzip2 -
+
+# Data
+apt jq -
+apt sqlite3 -
+apt libsqlite3-dev -
+
+# C and C++
+apt build-essential -
+apt clang -
+apt lld -
+apt llvm -
+apt cmake -
+apt ninja-build -
+apt pkg-config -
+apt autoconf -
+apt automake -
+apt libtool -
+apt libssl-dev -
+apt zlib1g-dev -
+apt libffi-dev -
+
+# Python (the system 3.12, with pip and venv)
+apt python3 -
+apt python3-dev -
+apt python3-pip -
+apt python3-venv -
+
+# Ruby (the system 3.2)
+apt ruby-full -
+
+# Java
+apt openjdk-21-jdk-headless -
+
+# Containers
+apt iptables -
+docker docker-ce 5:29.10.0-1~ubuntu.24.04~noble
+docker docker-ce-cli 5:29.10.0-1~ubuntu.24.04~noble
+docker containerd.io 2.4.2-4~ubuntu.24.04~noble
+docker docker-buildx-plugin 0.39.0-1~ubuntu.24.04~noble
+docker docker-compose-plugin 5.7.1-1~ubuntu.24.04~noble
+
+# Node.js LTS (24, "Krypton"; corepack is bundled and enabled for pnpm and
+# yarn). Sums from https://nodejs.org/dist/v24.22.3/SHASUMS256.txt.
+release node 24.22.3 4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb 6e51a2ada00f0011cc266f65d98922b403d7ad88f809ca2aa615a5fe1ce6e86c
+
+# Go. Sums from https://go.dev/dl/?mode=json.
+release go 1.27.4 7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840 3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
+
+# Rust: rustup, then the stable toolchain with the minimal profile plus
+# rustfmt and clippy. Sums from static.rust-lang.org's rustup-init.sha256.
+release rustup 1.29.3 b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55 9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282
+rust toolchain 1.100.0
+
+# PowerShell 7 (7.6, the LTS line). Sums are the GitHub release digests.
+release pwsh 7.6.10 e261cabc91c78a9afe8d1e5f24731ab0d38204735ab2ec94b0af55102652e10d 439432cdecf4418413b9a8f547e3ab4d9b40e8e4258913ec3d15fc92c67a9235
+
+# GitHub CLI. Sums are the GitHub release digests.
+release gh 2.104.0 98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e cb34cefc6f4e77b90731374a2b737516bb8f3033c6ca46aa949e5344f68069e3
+
+# kubectl. Sums from https://dl.k8s.io/release/v1.37.2/bin/linux/<arch>/kubectl.sha256.
+release kubectl 1.37.2 c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4 fcc16f63186659d9722014b7e02d5fdd2d4e669cb8c0ab66365d7d3b8ba03509
+
+# yq (mikefarah). Sums are the GitHub release digests.
+release yq 4.54.3 129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973 89f69310b61b68d1245065a1241d1fc843f7a36cd6103ffd77ad987613bd1b67

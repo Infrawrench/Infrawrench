@@ -1,0 +1,26 @@
+[package]
+name = "iwci-guest"
+description = "The agent inside a job's virtual machine: writes the job's files, runs its script and sends back what it changed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# It runs inside the machine (Linux on x86_64 and aarch64, musl; Windows on
+# Arm), built without a C toolchain: keep the list to pure Rust and the
+# system's own interfaces.
+[dependencies]
+iwci-vm-proto.workspace = true
+tar = { version = "0.4.46", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# The change time and file identity std does not expose on Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[[bin]]
+name = "iwci-guest"
+path = "src/main.rs"

@@ -25,6 +25,8 @@ const proxy = {
   /** Per proxy run id: what `GET /v1/runs/{id}` answers. */
   runs: new Map<string, Record<string, unknown>>(),
   next: 0,
+  /** How many `POST /v1/runs` to answer 429, as a full pool does. */
+  busy: 0,
 };
 
 vi.mock("../../entitlements.js", () => ({ planAccess: async () => ({ paid: true }) }));
@@ -50,6 +52,10 @@ vi.mock("../../ci/proxy.js", async (importOriginal) => {
       return json(200, { pipelines: proxy.pipelines.get(String(body?.["sha"])) ?? [] });
     }
     if (path === "/v1/runs") {
+      if (proxy.busy > 0) {
+        proxy.busy--;
+        return json(429, { error: "every runner is at capacity" });
+      }
       const id = `ci-1.${(++proxy.next).toString(16).padStart(32, "0")}`;
       proxy.runs.set(id, { id, state: "running" });
       return json(202, { id, state: "running" });
@@ -106,11 +112,16 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
     return { db, schema, runs, concurrency, pass };
   }
 
-  /** A push of a new commit to `branch`, its pipelines in `group`. */
-  async function push(branch: string, group: string, cancel: boolean): Promise<string> {
+  /** A push of a new commit to `branch`, its pipelines in `group` (or `answer`). */
+  async function push(
+    branch: string,
+    group: string,
+    cancel: boolean,
+    answer: unknown[] = pipelines(group, cancel),
+  ): Promise<string> {
     const { runs } = await modules();
     const commit = (++sha).toString(16).padStart(40, "0");
-    proxy.pipelines.set(commit, pipelines(group, cancel));
+    proxy.pipelines.set(commit, answer);
     const accepted = await runs.acceptCiEvent({
       kind: "push",
       baseSha: null,
@@ -186,6 +197,44 @@ describe.skipIf(!configured)("CI concurrency groups against a real Postgres", ()
       installationId,
       accountLogin: "acme",
     });
+  });
+
+  it("keeps its pipelines' platforms and sends them with the run, also when it is sent again", async () => {
+    const { runs } = await modules();
+    const id = await push("vm", "", false, [
+      { file: ".infrawrench/ci/linux.yml", name: "Linux", platforms: ["linux"] },
+      { file: ".infrawrench/ci/windows.yml", name: "Windows", platforms: ["windows", "wasm"] },
+      { file: ".infrawrench/ci/lint.yml", name: "Lint", platforms: [] },
+    ]);
+    proxy.busy = 1;
+    await runs.dispatchRun(id);
+    expect((await row(id)).status).toBe("queued");
+    expect((await row(id)).concurrency?.map((e) => e.platforms)).toEqual([
+      ["linux"],
+      ["windows"],
+      undefined,
+    ]);
+    // Read from the stored row on the next attempt, not asked for again.
+    await due(id);
+    await runs.dispatchRun(id);
+    expect((await row(id)).status).toBe("running");
+    expect(proxy.calls.filter((c) => c.path === "/v1/concurrency")).toHaveLength(1);
+    const sent = proxy.calls.filter((c) => c.path === "/v1/runs").map((c) => c.body);
+    expect(sent).toHaveLength(2);
+    for (const body of sent) {
+      expect((body as Record<string, unknown>)["platforms"]).toEqual(["linux", "windows"]);
+    }
+    // The runners read the pipelines without it.
+    const read = proxy.calls.find((c) => c.path === "/v1/concurrency")?.body;
+    expect(read).not.toHaveProperty("platforms");
+  });
+
+  it("sends no platforms for a run whose jobs all run on wasm", async () => {
+    const { runs } = await modules();
+    const id = await push("plain", "", false, [{ file: ".infrawrench/ci/lint.yml", name: "Lint" }]);
+    await runs.dispatchRun(id);
+    expect((await row(id)).status).toBe("running");
+    expect(proxy.calls.find((c) => c.path === "/v1/runs")?.body).not.toHaveProperty("platforms");
   });
 
   it("cancels the older run's pipelines in a cancel-in-progress group, and only those", async () => {

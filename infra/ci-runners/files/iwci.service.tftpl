@@ -44,6 +44,14 @@ Environment=IWCI_NATIVE_SANDBOX=/opt/iwci/lib/gvisor-20261109.0
 # crates/iwci-sandbox-spawn).
 Environment=IWCI_SANDBOX_SERVICE=/run/iwci-sandbox-spawn.sock
 %{ endif ~}
+%{ if machines ~}
+# `platform: linux` jobs run in a QEMU/KVM machine the runner starts per
+# job (crates/iwci-vm), from the image built into
+# this directory (ci-runner/images/README.md). /dev/kvm is the `kvm`
+# group's; install.sh adds `iwci` to it too.
+SupplementaryGroups=kvm
+Environment=IWCI_MACHINES=/var/lib/iwci/machines
+%{ endif ~}
 
 [Install]
 WantedBy=multi-user.target

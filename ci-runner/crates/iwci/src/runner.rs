@@ -58,6 +58,23 @@ pub struct Runner {
     /// refuses them.
     #[cfg(target_os = "linux")]
     pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
+    /// The virtual machines `platform: linux` jobs run in (`--machines`);
+    /// `None` fails such jobs, saying so.
+    pub machines: Option<Arc<dyn crate::machines::Machines>>,
+}
+
+impl Runner {
+    /// What jobs can run on: `wasm` always, and each kind of virtual
+    /// machine this runner has.
+    pub fn platforms(&self) -> Vec<&'static str> {
+        let mut out = vec!["wasm"];
+        if let Some(machines) = &self.machines {
+            let mut vms: Vec<iwci_spec::VmOs> = machines.platforms();
+            vms.sort();
+            out.extend(vms.into_iter().map(iwci_spec::VmOs::name));
+        }
+        out
+    }
 }
 
 /// One run: a repository at a commit or a branch.
@@ -573,6 +590,10 @@ pub struct PipelineConcurrency {
     pub concurrency: Option<iwci_spec::Concurrency>,
     /// Each job key that runs on a cloud account or is lent anything.
     pub jobs: Vec<JobNeeds>,
+    /// The virtual machines its jobs run in (`linux`), sorted:
+    /// the app asks the proxy for a runner that has them. Empty when every
+    /// job runs on `wasm`.
+    pub platforms: Vec<&'static str>,
 }
 
 /// A job key's cloud block and what it is lent, by name: what the app
@@ -667,6 +688,11 @@ impl Runner {
             pipelines.push(PipelineConcurrency {
                 file: file.clone(),
                 jobs: JobNeeds::of(&plan),
+                platforms: plan
+                    .vm_platforms()
+                    .into_iter()
+                    .map(iwci_spec::VmOs::name)
+                    .collect(),
                 name: plan.name,
                 concurrency: plan.concurrency,
             });
@@ -976,6 +1002,7 @@ impl Runner {
                 trusted: req.trusted(),
                 external: None,
             },
+            machines: self.machines.clone(),
         };
         let run_info = crate::external::RunInfo {
             run_id: run.as_str().to_string(),

@@ -48,6 +48,19 @@ impl Plan {
         &self.ctx
     }
 
+    /// The kinds of virtual machine the pipeline's jobs run in, sorted,
+    /// each once: what a runner must have to run all of it.
+    pub fn vm_platforms(&self) -> Vec<VmOs> {
+        let mut out: Vec<VmOs> = self
+            .jobs
+            .iter()
+            .filter_map(|t| t.vm.as_ref().map(|v| v.os))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     pub fn template(&self, key: &str) -> Option<&JobTemplate> {
         self.jobs.iter().find(|t| t.key == key)
     }
@@ -148,6 +161,10 @@ pub struct JobTemplate {
     /// fields may still hold `${{ matrix }}`, which each entry substitutes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudSpec>,
+    /// `platform:`, for a job that runs in a virtual machine. Literal, so
+    /// whoever dispatches the run can place it on a runner that has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vm: Option<VmSpec>,
     /// The connections, SSH keys and resources the job is lent, by name,
     /// for whoever dispatches the run to resolve before it starts.
     #[serde(skip_serializing_if = "JobAccess::is_empty")]
@@ -173,6 +190,90 @@ pub struct CloudSpec {
     pub region: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu: Option<String>,
+}
+
+/// Where a `platform: linux` job runs: a virtual machine the runner
+/// starts for it from one of its images.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VmSpec {
+    pub os: VmOs,
+    /// One of [`VmOs::images`].
+    pub image: String,
+    /// The `run:` script's interpreter, one of [`VmOs::shells`].
+    pub shell: String,
+}
+
+/// The operating system of a job's virtual machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VmOs {
+    Linux,
+    Windows,
+}
+
+impl VmOs {
+    pub fn parse(text: &str) -> Option<VmOs> {
+        match text {
+            "linux" => Some(VmOs::Linux),
+            "windows" => Some(VmOs::Windows),
+            _ => None,
+        }
+    }
+
+    /// Whether a pipeline may ask for it. Windows machines are written
+    /// (`iwci-guest`, `images/windows`) but turned off until one has run on
+    /// a real host; the parser refuses `platform: windows` and the runner
+    /// never offers it. Turning them on is this line, the runner opening
+    /// its Windows image again (`iwci_vm::Host::new`) and the docs.
+    pub fn enabled(self) -> bool {
+        matches!(self, VmOs::Linux)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            VmOs::Linux => "linux",
+            VmOs::Windows => "windows",
+        }
+    }
+
+    /// The images a runner may offer, the default first.
+    pub fn images(self) -> &'static [&'static str] {
+        match self {
+            VmOs::Linux => &["ubuntu-24.04"],
+            VmOs::Windows => &["windows-11-arm"],
+        }
+    }
+
+    /// The shells a `run:` script may name, the default first.
+    pub fn shells(self) -> &'static [&'static str] {
+        match self {
+            VmOs::Linux => &["bash", "sh", "pwsh"],
+            VmOs::Windows => &["pwsh", "powershell", "cmd", "bash"],
+        }
+    }
+
+    /// The least `memory:` a machine of this kind is given: Windows 11
+    /// does not start in less than 4 GiB.
+    pub fn min_memory(self) -> u64 {
+        match self {
+            VmOs::Linux => 256 << 20,
+            VmOs::Windows => 4 << 30,
+        }
+    }
+
+    /// `memory:` when the job gives none.
+    pub fn default_memory(self) -> u64 {
+        match self {
+            VmOs::Linux => 2 << 30,
+            VmOs::Windows => 4 << 30,
+        }
+    }
+}
+
+impl std::fmt::Display for VmOs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
 }
 
 /// The kinds of machine a cloud job may ask for.
@@ -586,6 +687,10 @@ pub struct PlannedJob {
     /// hands it to the app instead of running it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudSpec>,
+    /// Set for a `platform: linux` or `platform: windows` job: the runner
+    /// runs it in a virtual machine instead of an isolate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vm: Option<VmSpec>,
     /// `connections:`, `ssh-keys:`, `env-from:` and the resources its
     /// `env:` values (and its services') read.
     #[serde(skip_serializing_if = "JobAccess::is_empty")]
@@ -786,6 +891,12 @@ pub enum ToolRef {
         #[serde(rename = "cloud-kind")]
         kind: String,
     },
+    /// A `platform: linux` or `platform: windows` job: the runner's machine
+    /// image is its environment. Never resolved.
+    Vm {
+        os: VmOs,
+        image: String,
+    },
 }
 
 impl ToolRef {
@@ -797,12 +908,17 @@ impl ToolRef {
         matches!(self, ToolRef::Cloud { .. })
     }
 
+    pub fn is_vm(&self) -> bool {
+        matches!(self, ToolRef::Vm { .. })
+    }
+
     pub fn name(&self) -> &str {
         match self {
             ToolRef::Builtin { name, .. }
             | ToolRef::Repo { name, .. }
             | ToolRef::Env { name, .. } => name,
             ToolRef::Cloud { provider, .. } => provider,
+            ToolRef::Vm { image, .. } => image,
         }
     }
 }
@@ -814,6 +930,7 @@ impl std::fmt::Display for ToolRef {
             ToolRef::Repo { name, version } => write!(f, "repo:{name}@{version}"),
             ToolRef::Env { name, version } => write!(f, "env:{name}@{version}"),
             ToolRef::Cloud { provider, kind } => write!(f, "cloud:{provider}/{kind}"),
+            ToolRef::Vm { os, image } => write!(f, "vm:{os}/{image}"),
         }
     }
 }

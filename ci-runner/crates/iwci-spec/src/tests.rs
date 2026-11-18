@@ -2107,7 +2107,7 @@ fn a_cloud_job_refuses_what_only_means_something_on_the_runner() {
     );
     assert_error(
         "name: x\njobs:\n  a:\n    run: x\n",
-        "needs `using:` (a tool or environment), or `cloud:`",
+        "needs `using:` (a tool or environment), `platform: linux` to run a script in a virtual machine, or `cloud:`",
     );
     assert_error(
         "name: x\njobs:\n  a: { cloud: aws, run: x }\n",

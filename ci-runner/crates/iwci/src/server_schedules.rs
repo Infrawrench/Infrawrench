@@ -66,6 +66,10 @@ impl Server {
                             // that fires it (it keeps its own fires to their
                             // groups).
                             "concurrency": plan.concurrency,
+                            // The virtual machines its jobs run in, for
+                            // the proxy to place the run on a runner that
+                            // has them.
+                            "platforms": plan.vm_platforms().into_iter().map(iwci_spec::VmOs::name).collect::<Vec<_>>(),
                         }));
                     }
                 }
