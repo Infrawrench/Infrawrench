@@ -638,6 +638,15 @@ infrawrench ownership sam            # filter by resource, owner or purpose
 infrawrench ownership --json
 ```
 
+`offboard` is [offboarding](./offboarding.md): everything tied to someone who is leaving. With no email it lists every offboarding and its progress. With an email it prints their checklist, or, if nobody has started one, what a sweep would find (nothing is saved). `--start` saves it as a checklist, and `--alias` adds a name providers know them by. Acting on rows happens in the app. Cloud only; needs `team:remove`:
+
+```
+infrawrench offboard
+infrawrench offboard jane@example.com --alias jdoe-gh
+infrawrench offboard jane@example.com --start
+infrawrench offboard jane@example.com --json
+```
+
 ## Status pages and incidents
 
 `status-pages` lists the org's [public status pages](./status-pages.md): what each one shows, whether it's live, and its URL. Drafts show their URL too, so you can check a page before publishing. Give it a page's name or id for its components and their states. Cloud only and read-only: you create and publish pages from the Probes tab on web or desktop.
