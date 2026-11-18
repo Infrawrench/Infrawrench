@@ -71,6 +71,7 @@ import { exportCommand } from "../commands/export";
 import { exportsCommand } from "../commands/exports";
 import { paging } from "../commands/paging";
 import { seats } from "../commands/seats";
+import { offboard } from "../commands/offboard";
 import { diff } from "../commands/diff";
 import { posture } from "../commands/posture";
 import { prices } from "../commands/prices";
@@ -157,6 +158,7 @@ const subcommands = [
   exportsCommand,
   paging,
   seats,
+  offboard,
   diff,
   posture,
   prices,

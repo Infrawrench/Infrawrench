@@ -45,7 +45,7 @@ export const SOC2_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "CC6.3",
       title: "Access follows least privilege and is changed or removed when no longer needed",
       group: CC6,
-      sources: ["access-review", "jit-access"],
+      sources: ["access-review", "jit-access", "offboarding"],
     },
     {
       id: "CC6.6",

@@ -36,6 +36,7 @@ import {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -89,6 +90,7 @@ export {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -263,6 +265,14 @@ export function getWorkspaceNavigateArgs(
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
     case "price-catalog":
       return { to: "/price-catalog", ...(replace ? { replace: true } : {}) };
+    case "offboarding":
+      // The incidents rule: search passed explicitly so going back to the
+      // list CLEARS ?offboarding= instead of resolving straight back into it.
+      return {
+        to: "/offboarding",
+        search: target.offboardingId ? { offboarding: target.offboardingId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "incidents":
       // Search passed explicitly, the settings/chat rule: navigating from an
       // incident back to the list must CLEAR ?incident= or the route resolves
@@ -516,6 +526,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "price-catalog") {
     return priceCatalogTabTarget();
+  }
+  if (segments[0] === "offboarding") {
+    const params = new URLSearchParams(search ?? "");
+    return offboardingTabTarget(params.get("offboarding") ?? undefined);
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");

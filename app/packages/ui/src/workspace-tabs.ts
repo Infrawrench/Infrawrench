@@ -191,6 +191,15 @@ export function priceCatalogTabTarget(): WorkspaceTabTarget {
 }
 
 /**
+ * Offboarding sweeps. One tab, optionally remembering which person's
+ * checklist is open (the incidents shape): an offboarding is worked through
+ * over days, and a tab per person would be clutter nobody closes.
+ */
+export function offboardingTabTarget(offboardingId?: string): WorkspaceTabTarget {
+  return { kind: "offboarding", ...(offboardingId ? { offboardingId } : {}) };
+}
+
+/**
  * Incident mode. One tab, optionally remembering which incident it was on:
  * during an incident people flip between the timeline and everything else, and
  * a tab per incident would bury the tab strip exactly when it is least

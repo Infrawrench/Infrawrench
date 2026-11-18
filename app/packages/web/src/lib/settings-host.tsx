@@ -57,8 +57,11 @@ export function WebSettingsHost({ orgId, children }: { orgId: string; children: 
         window.location.href = "/";
       },
       approvals: createWebApprovalsClient(orgId),
-      openWorkspace: (surface) => {
-        void navigate({ to: `/org/${orgId}/${surface}` });
+      openWorkspace: (surface, options) => {
+        const id = surface === "offboarding" ? options?.offboardingId : undefined;
+        void navigate({
+          to: `/org/${orgId}/${surface}${id ? `/${encodeURIComponent(id)}` : ""}`,
+        });
       },
       openSection: (section) => {
         void navigate({ to: `/org/${orgId}/settings${section ? `/${section}` : ""}` });

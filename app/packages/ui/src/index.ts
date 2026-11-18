@@ -499,6 +499,7 @@ export {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   settingsTabTarget,
@@ -1009,6 +1010,9 @@ export { VulnerabilitiesIcon } from "./components/icons/VulnerabilitiesIcon.js";
 export { ComplianceIcon } from "./components/icons/ComplianceIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
+export { OffboardingIcon } from "./components/icons/OffboardingIcon.js";
+export { OffboardingPanel } from "./offboarding/OffboardingPanel.js";
+export type { OffboardingClient, OffboardingPanelProps } from "./offboarding/OffboardingPanel.js";
 
 /**
  * Just-in-time access: time-boxed provider roles under admin-written

@@ -545,4 +545,8 @@
 // `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
 // `CommitmentReport*` schemas; `commitment_report` joins the
 // `ShareableObjectType` enum. Additive.
-export const API_VERSION = "1.117.0";
+// 1.118.0: offboarding sweeps under `/api/org/:orgId/offboardings`: list,
+// start, preview, members, get, edit, rescan, export, confirm or mark a row,
+// and act on a row, with their `Offboarding*` schemas; `offboarding` joins the
+// TabTarget kind enum. Additive.
+export const API_VERSION = "1.118.0";

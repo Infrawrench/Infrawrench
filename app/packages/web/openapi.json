@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.117.0",
+    "version": "1.118.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -386,6 +386,9 @@
     },
     {
       "name": "Budgets"
+    },
+    {
+      "name": "Offboarding"
     },
     {
       "name": "Services"
@@ -11453,6 +11456,1005 @@
           "blended"
         ],
         "description": "The basis `actualCents` and `forecastCents` were measured on."
+      },
+      "OffboardingActionResult": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/OffboardingItem",
+            "description": "The row after the action. A provider that refused leaves it `failed` with `lastError`; the call itself still answers 200, because the checklist recorded the outcome."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the provider said happens next, when it said anything."
+          }
+        },
+        "required": [
+          "item",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingActionId": {
+        "type": "string",
+        "enum": [
+          "revoke",
+          "remove",
+          "remove-seat",
+          "remove-member",
+          "revoke-api-key",
+          "delete-ssh-key",
+          "transfer-ownership",
+          "reassign-on-call",
+          "remove-from-rotation",
+          "cancel-cover",
+          "cancel-lease",
+          "revoke-jit"
+        ],
+        "description": "`revoke` runs the plugin's declared revoke action (`principalRole.revokeActionId`); `remove` deletes a principal whose plugin declares `offboardByDelete` (a membership, a personal token); `remove-seat` removes a paid seat through the provider; `transfer-ownership` and `reassign-on-call` need a `targetUserId`."
+      },
+      "OffboardingActionInput": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OffboardingActionId"
+          },
+          "targetUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member taking over, for `transfer-ownership` and `reassign-on-call`."
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "api-key",
+              "ssh-key",
+              "principal",
+              "seat",
+              "resource",
+              "on-call",
+              "on-call-cover",
+              "lease",
+              "jit-grant"
+            ],
+            "description": "What the row is: their Infrawrench membership, API key or SSH key; a cloud principal (an IAM user, a membership, a personal key); a paid seat; another synced resource that names them or that they own; an on-call rotation or a cover they have not served; a lease they set; a just-in-time grant they hold."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider display name; null for Infrawrench's own records."
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "alias",
+              "possible"
+            ],
+            "description": "`exact`: their email. `alias`: a handle or address listed on the offboarding. `possible`: something weaker (the part of the email before the `@`, the same name at another domain, their full name) that a person has to confirm before any action is offered."
+          },
+          "matchReason": {
+            "type": "string",
+            "description": "Why the sweep thinks this is theirs."
+          },
+          "matchState": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "unconfirmed",
+              "confirmed",
+              "rejected"
+            ],
+            "description": "`unconfirmed` possible matches offer no action; `rejected` rows (not them) leave the checklist's progress but stay in the export."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingActionId"
+            },
+            "description": "What can be done from Infrawrench. Empty: do it in the provider, then mark the row done."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "done",
+              "skipped",
+              "failed",
+              "gone"
+            ],
+            "description": "`gone` means a later scan no longer found the row: removed outside Infrawrench, or no longer reported by the provider."
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The action that resolved the row, `\"manual\"`, or `\"gone\"`."
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "detail",
+          "pluginId",
+          "providerName",
+          "accountId",
+          "accountName",
+          "resourceId",
+          "resourceTypeId",
+          "confidence",
+          "matchReason",
+          "matchState",
+          "actions",
+          "status",
+          "resolution",
+          "lastError",
+          "note",
+          "resolvedByName",
+          "resolvedAt",
+          "firstSeenAt",
+          "lastSeenAt"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingItemPatchInput": {
+        "type": "object",
+        "properties": {
+          "matchState": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "rejected",
+              "unconfirmed"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "skipped",
+              "open"
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Offboarding": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "Lower-cased.",
+            "examples": [
+              "jane@example.com"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their Infrawrench user id, when they had an account."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Handles and other addresses providers know them by, normalized."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "directory"
+            ],
+            "description": "`manual` when somebody started it; `directory` when an identity directory reported the person deprovisioned."
+          },
+          "sourceDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastScannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanTruncated": {
+            "type": "boolean",
+            "description": "The last scan matched more synced resources than one scan reads, so some may be missing."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/OffboardingProgress"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingItem"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "userId",
+          "aliases",
+          "status",
+          "source",
+          "sourceDetail",
+          "startedByName",
+          "note",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "lastScannedAt",
+          "scanTruncated",
+          "progress",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingProgress": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Rows on the checklist, rejected matches excluded."
+          },
+          "resolved": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Done, skipped or gone."
+          },
+          "open": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unconfirmed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Possible matches still waiting for a person to confirm or reject them."
+          }
+        },
+        "required": [
+          "total",
+          "resolved",
+          "open",
+          "failed",
+          "unconfirmed"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPatchInput": {
+        "type": "object",
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "OffboardingMembers": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingMember"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingMember": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPreview": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingCandidate"
+            }
+          },
+          "scanTruncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "aliases",
+          "candidates",
+          "scanTruncated"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingCandidate": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "api-key",
+              "ssh-key",
+              "principal",
+              "seat",
+              "resource",
+              "on-call",
+              "on-call-cover",
+              "lease",
+              "jit-grant"
+            ],
+            "description": "What the row is: their Infrawrench membership, API key or SSH key; a cloud principal (an IAM user, a membership, a personal key); a paid seat; another synced resource that names them or that they own; an on-call rotation or a cover they have not served; a lease they set; a just-in-time grant they hold."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "alias",
+              "possible"
+            ],
+            "description": "`exact`: their email. `alias`: a handle or address listed on the offboarding. `possible`: something weaker (the part of the email before the `@`, the same name at another domain, their full name) that a person has to confirm before any action is offered."
+          },
+          "matchReason": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingActionId"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "detail",
+          "pluginId",
+          "providerName",
+          "accountId",
+          "accountName",
+          "resourceId",
+          "resourceTypeId",
+          "confidence",
+          "matchReason",
+          "actions"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPreviewInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingStartResponse": {
+        "type": "object",
+        "properties": {
+          "offboarding": {
+            "$ref": "#/components/schemas/Offboarding"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "False when an open offboarding for this person already existed."
+          }
+        },
+        "required": [
+          "offboarding",
+          "created"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingStartInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "description": "The email address the person signed in with."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20,
+            "description": "Handles and other addresses providers know them by (a GitHub login, an old domain)."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingList": {
+        "type": "object",
+        "properties": {
+          "offboardings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingSummary"
+            }
+          }
+        },
+        "required": [
+          "offboardings"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "Lower-cased.",
+            "examples": [
+              "jane@example.com"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their Infrawrench user id, when they had an account."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Handles and other addresses providers know them by, normalized."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "directory"
+            ],
+            "description": "`manual` when somebody started it; `directory` when an identity directory reported the person deprovisioned."
+          },
+          "sourceDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastScannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanTruncated": {
+            "type": "boolean",
+            "description": "The last scan matched more synced resources than one scan reads, so some may be missing."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/OffboardingProgress"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "userId",
+          "aliases",
+          "status",
+          "source",
+          "sourceDetail",
+          "startedByName",
+          "note",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "lastScannedAt",
+          "scanTruncated",
+          "progress"
+        ],
+        "additionalProperties": false
       },
       "OnCallOverride": {
         "type": "object",
@@ -56094,6 +57096,7 @@
               "compliance",
               "access-review",
               "jit-access",
+              "offboarding",
               "backups",
               "home",
               "wallboard",
@@ -56167,6 +57170,13 @@
             ]
           },
           "sloId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "offboardingId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -86478,6 +87488,716 @@
         },
         "x-required-permission": "costs:write",
         "operationId": "postOrgOrgIdBudgetsIdEventsEventIdNote"
+      }
+    },
+    "/api/org/{orgId}/offboardings": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboardings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every offboarding checklist, newest first, with progress.\n\n_Requires permission: `team:remove`._",
+        "summary": "List offboardings",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardings"
+      },
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingStartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Start the checklist for someone leaving, by email plus any aliases, and sweep for everything tied to them: their Infrawrench membership, API keys and SSH keys; cloud principals and other synced resources that carry their email or an alias in any field or that the ownership records name them owner of; paid seats; on-call rotations and covers; leases they set; just-in-time grants they hold. The sweep reads synced state only and makes no provider calls.\n\nStarting again for somebody who already has an open offboarding returns that one, with any new aliases merged in.\n\n_Requires permission: `team:remove`._",
+        "summary": "Start an offboarding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingStartInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardings"
+      }
+    },
+    "/api/org/{orgId}/offboardings/preview": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the sweep found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "What starting an offboarding would find for a person, without saving anything.\n\n_Requires permission: `team:remove`._",
+        "summary": "Preview an offboarding sweep",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingPreviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsPreview"
+      }
+    },
+    "/api/org/{orgId}/offboardings/members": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingMembers"
+                }
+              }
+            }
+          }
+        },
+        "description": "The organization's members, for picking who takes over a resource or an on-call slot.\n\n_Requires permission: `team:remove`._",
+        "summary": "Members who can take something over",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsMembers"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding with its checklist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get an offboarding",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsId",
+        "description": "_Requires permission: `team:remove`._"
+      },
+      "patch": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Change the aliases (which rescans), the note, or the status: `completed` or `canceled` closes the checklist, `open` reopens it.\n\n_Requires permission: `team:remove`._",
+        "summary": "Edit an offboarding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingPatchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "patchOrgOrgIdOffboardingsId"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/rescan": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Sweep again. Rows already dealt with keep their outcome; a row no longer found is marked `gone`. A closed offboarding is returned unchanged.\n\n_Requires permission: `team:remove`._",
+        "summary": "Rescan an offboarding",
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsIdRescan"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/export": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "description": "Defaults to \"csv\"."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding as an attachment",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The checklist as a download, one row per item, rejected matches included and labelled. CSV cells are all quoted and spreadsheet formulas neutralised. Exports are recorded in the audit log.\n\n_Requires permission: `team:remove`._",
+        "summary": "Export an offboarding as evidence",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsIdExport"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/items/{itemId}": {
+      "patch": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Confirm or reject a possible match, mark a row done (handled in the provider) or skipped (not needed), reopen it, or leave a note.\n\n_Requires permission: `team:remove`._",
+        "summary": "Confirm a match or mark a row by hand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingItemPatchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "patchOrgOrgIdOffboardingsIdItemsItemId"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/items/{itemId}/action": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "description": "Run one of the row's `actions`. Each needs the permission its own surface asks for on top of `team:remove` (403 otherwise), and the ones that reach a provider (`revoke`, `remove`, `remove-seat`, `revoke-jit`) are blocked by an active change freeze (423). Refused (409) for an unconfirmed or rejected match, a closed offboarding, or an action the row does not offer. Every attempt is recorded in the audit log.\n\n_Requires permission: `team:remove`._",
+        "summary": "Act on a checklist row",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingActionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsIdItemsItemIdAction"
       }
     },
     "/api/org/{orgId}/on-call/now": {

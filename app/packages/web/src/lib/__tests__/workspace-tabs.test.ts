@@ -177,6 +177,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns offboarding list and checklist route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "offboarding" })).toEqual({
+      to: "/org/$orgId/offboarding",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "offboarding", offboardingId: "off-1" })).toEqual({
+      to: "/org/$orgId/offboarding/$offboardingId",
+      params: { orgId: "test-org", offboardingId: "off-1" },
+    });
+  });
+
   it("returns slos list route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "slos" })).toEqual({
       to: "/org/$orgId/slos",
@@ -687,6 +698,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/incidents/inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the offboarding paths back onto one tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/offboarding")).toEqual({ kind: "offboarding" });
+    expect(syncWorkspaceRouteFromPath("/org/myorg/offboarding/off-1")).toEqual({
+      kind: "offboarding",
+      offboardingId: "off-1",
     });
   });
 
