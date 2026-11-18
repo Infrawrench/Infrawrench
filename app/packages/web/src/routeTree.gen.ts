@@ -72,6 +72,7 @@ import { Route as OrgOrgIdHomeProductIdRouteImport } from './routes/org.$orgId.h
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
 import { Route as OrgOrgIdK8sEfficiencyReportIdRouteImport } from './routes/org.$orgId.k8s-efficiency.$reportId'
+import { Route as OrgOrgIdPriceCatalogChangesRouteImport } from './routes/org.$orgId.price-catalog.changes'
 import { Route as OrgOrgIdResourceReportsReportIdRouteImport } from './routes/org.$orgId.resource-reports.$reportId'
 import { Route as OrgOrgIdServicesServiceIdRouteImport } from './routes/org.$orgId.services.$serviceId'
 import { Route as OrgOrgIdServicesScorecardsRouteImport } from './routes/org.$orgId.services.scorecards'
@@ -437,6 +438,12 @@ const OrgOrgIdK8sEfficiencyReportIdRoute =
     path: '/$reportId',
     getParentRoute: () => OrgOrgIdK8sEfficiencyRoute,
   } as any)
+const OrgOrgIdPriceCatalogChangesRoute =
+  OrgOrgIdPriceCatalogChangesRouteImport.update({
+    id: '/changes',
+    path: '/changes',
+    getParentRoute: () => OrgOrgIdPriceCatalogRoute,
+  } as any)
 const OrgOrgIdResourceReportsReportIdRoute =
   OrgOrgIdResourceReportsReportIdRouteImport.update({
     id: '/$reportId',
@@ -698,7 +705,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
-  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRouteWithChildren
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -725,6 +732,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/price-catalog/changes': typeof OrgOrgIdPriceCatalogChangesRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -801,7 +809,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
-  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRouteWithChildren
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -827,6 +835,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/price-catalog/changes': typeof OrgOrgIdPriceCatalogChangesRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -906,7 +915,7 @@ export interface FileRoutesById {
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
-  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRoute
+  '/org/$orgId/price-catalog': typeof OrgOrgIdPriceCatalogRouteWithChildren
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
@@ -933,6 +942,7 @@ export interface FileRoutesById {
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/k8s-efficiency/$reportId': typeof OrgOrgIdK8sEfficiencyReportIdRoute
+  '/org/$orgId/price-catalog/changes': typeof OrgOrgIdPriceCatalogChangesRoute
   '/org/$orgId/resource-reports/$reportId': typeof OrgOrgIdResourceReportsReportIdRoute
   '/org/$orgId/services/$serviceId': typeof OrgOrgIdServicesServiceIdRoute
   '/org/$orgId/services/scorecards': typeof OrgOrgIdServicesScorecardsRoute
@@ -1040,6 +1050,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/price-catalog/changes'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1142,6 +1153,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/price-catalog/changes'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1247,6 +1259,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/k8s-efficiency/$reportId'
+    | '/org/$orgId/price-catalog/changes'
     | '/org/$orgId/resource-reports/$reportId'
     | '/org/$orgId/services/$serviceId'
     | '/org/$orgId/services/scorecards'
@@ -1744,6 +1757,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdK8sEfficiencyReportIdRouteImport
       parentRoute: typeof OrgOrgIdK8sEfficiencyRoute
     }
+    '/org/$orgId/price-catalog/changes': {
+      id: '/org/$orgId/price-catalog/changes'
+      path: '/changes'
+      fullPath: '/org/$orgId/price-catalog/changes'
+      preLoaderRoute: typeof OrgOrgIdPriceCatalogChangesRouteImport
+      parentRoute: typeof OrgOrgIdPriceCatalogRoute
+    }
     '/org/$orgId/resource-reports/$reportId': {
       id: '/org/$orgId/resource-reports/$reportId'
       path: '/$reportId'
@@ -2133,6 +2153,17 @@ const OrgOrgIdK8sEfficiencyRouteWithChildren =
     OrgOrgIdK8sEfficiencyRouteChildren,
   )
 
+interface OrgOrgIdPriceCatalogRouteChildren {
+  OrgOrgIdPriceCatalogChangesRoute: typeof OrgOrgIdPriceCatalogChangesRoute
+}
+
+const OrgOrgIdPriceCatalogRouteChildren: OrgOrgIdPriceCatalogRouteChildren = {
+  OrgOrgIdPriceCatalogChangesRoute: OrgOrgIdPriceCatalogChangesRoute,
+}
+
+const OrgOrgIdPriceCatalogRouteWithChildren =
+  OrgOrgIdPriceCatalogRoute._addFileChildren(OrgOrgIdPriceCatalogRouteChildren)
+
 interface OrgOrgIdResourceReportsRouteChildren {
   OrgOrgIdResourceReportsReportIdRoute: typeof OrgOrgIdResourceReportsReportIdRoute
 }
@@ -2291,7 +2322,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
-  OrgOrgIdPriceCatalogRoute: typeof OrgOrgIdPriceCatalogRoute
+  OrgOrgIdPriceCatalogRoute: typeof OrgOrgIdPriceCatalogRouteWithChildren
   OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
   OrgOrgIdQueryMonitorsRoute: typeof OrgOrgIdQueryMonitorsRoute
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
@@ -2340,7 +2371,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
-  OrgOrgIdPriceCatalogRoute: OrgOrgIdPriceCatalogRoute,
+  OrgOrgIdPriceCatalogRoute: OrgOrgIdPriceCatalogRouteWithChildren,
   OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
   OrgOrgIdQueryMonitorsRoute: OrgOrgIdQueryMonitorsRoute,
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,

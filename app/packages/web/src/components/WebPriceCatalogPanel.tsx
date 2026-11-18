@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   PriceCatalogPanel,
   dispatchResourcesChanged,
+  priceCatalogTabTarget,
   type PriceCatalogAccount,
   type PriceCatalogClient,
   type PriceCatalogEstimateTarget,
@@ -20,11 +21,7 @@ import {
 } from "@infrawrench/client-core";
 import type { AccountListItem } from "@/lib/api-types";
 import { apiGet, apiPost } from "@/lib/api";
-import {
-  getWorkspaceNavigateArgs,
-  priceCatalogTabTarget,
-  resourceTabTarget,
-} from "@/lib/workspace-tabs";
+import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 
 /**
