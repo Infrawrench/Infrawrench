@@ -123,6 +123,7 @@ describe("effect/cli: routing", () => {
       "metrics",
       "moment",
       "network-reports",
+      "offboard",
       "orgs",
       "orphans",
       "oversized",

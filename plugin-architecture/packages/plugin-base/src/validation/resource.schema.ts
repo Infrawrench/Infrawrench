@@ -529,6 +529,7 @@ const principalRoleSchema = Schema.Struct({
   parentKey: Schema.optional(NonEmpty),
   mfaKey: Schema.optional(NonEmpty),
   revokeActionId: Schema.optional(NonEmpty),
+  offboardByDelete: Schema.optional(Schema.Boolean),
 }).check(
   // A value list with no field to read is dead config; the `privateValues` /
   // `runningValues` / `maxAgeDays` stance: fail the manifest rather than silently

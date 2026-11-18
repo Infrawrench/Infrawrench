@@ -38,6 +38,11 @@ export type WorkspaceTabTarget =
   | { kind: "access-review" }
   /** Just-in-time access: time-boxed provider roles, requested and approved. */
   | { kind: "jit-access" }
+  /**
+   * Offboarding sweeps: one checklist per person leaving. Single-instance,
+   * remembering which offboarding is open (the incidents shape).
+   */
+  | { kind: "offboarding"; offboardingId?: string }
   | { kind: "backups" }
   /** The wallboard: one screen, read from across the room. */
   | { kind: "wallboard" }
@@ -211,6 +216,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "access-review";
     case "jit-access":
       return "jit-access";
+    case "offboarding":
+      return "offboarding";
     case "backups":
       return "backups";
     case "wallboard":
@@ -323,6 +330,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Access review";
     case "jit-access":
       return "Just-in-time access";
+    case "offboarding":
+      return "Offboarding";
     case "backups":
       return "Backups";
     case "wallboard":
@@ -421,6 +430,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
         a.sessionId === (b as { sessionId: string }).sessionId &&
         a.windowId === (b as { windowId: number }).windowId
       );
+    case "offboarding":
+      // The incidents trick: one tab, the open offboarding compared so the
+      // route sync records which checklist the tab is on.
+      return a.offboardingId === (b as { offboardingId?: string }).offboardingId;
     case "incidents":
       // The settings trick: one tab by id, but comparing the
       // incident is what makes the route sync record which one the tab is on,

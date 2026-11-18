@@ -18,6 +18,7 @@ import {
   ComplianceIcon,
   AccessReviewIcon,
   JitAccessIcon,
+  OffboardingIcon,
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
@@ -40,7 +41,11 @@ import {
   EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { useDisabledProducts } from "@/lib/disabled-products";
-import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
+import {
+  complianceTabTarget,
+  getWorkspaceNavigateArgs,
+  offboardingTabTarget,
+} from "@/lib/workspace-tabs";
 
 /**
  * The org-level tools, one entry per sidebar tile. One list feeds both the
@@ -182,6 +187,20 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Just-in-time access"),
       icon: <JitAccessIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/jit-access", params: { orgId: orgId! } }),
+    },
+    // A workspace-tab kind that remembers the open checklist: the tile returns
+    // to it rather than resetting to the list.
+    {
+      key: "offboarding",
+      label: gt("Offboarding"),
+      icon: <OffboardingIcon />,
+      onClick: () =>
+        void navigate(
+          getWorkspaceNavigateArgs(
+            useUIStore.getState().workspaceTabs.find((tab) => tab.target.kind === "offboarding")
+              ?.target ?? offboardingTabTarget(),
+          ),
+        ),
     },
     {
       key: "backups",

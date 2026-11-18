@@ -20,8 +20,6 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
-import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
-import { stopLendingKeysOf } from "@infrawrench/server-core/ci/access";
 import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import {
   BadRequest,
@@ -44,7 +42,6 @@ import {
 } from "@infrawrench/api-contract";
 import { db } from "../../../db/client";
 import {
-  apiKeys,
   costVisibilityScopes,
   users,
   invitations,
@@ -54,7 +51,7 @@ import {
 import { logAudit } from "../../../services/audit";
 import { addSeat, checkSeatAvailability, releaseSeat } from "../../../services/seats";
 import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../../services/entitlements";
-import { isOwnerRole } from "../../../services/org-roles";
+import { countOwners, isMemberOwner, removeMembership } from "../../../services/membership";
 import { makeDomain } from "../../domain";
 import { fieldsOf, readJson } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
@@ -137,48 +134,6 @@ function inviteExpiry(access: PlanAccess): Date {
   return trialEnd < standard ? trialEnd : standard;
 }
 
-// Counts both new (role.systemKey === "owner") and legacy (text role) owners,
-// for the "last owner" guard on member delete and role change.
-//
-// Agent memberships never count, whatever role their row carries: the guard
-// exists so a *person* always remains who can administer the org, and an agent
-// cannot. A claimed org whose agent still counted as an owner would let the
-// only human owner remove themselves.
-async function countOwners(organizationId: string): Promise<number> {
-  const rows = await db
-    .select({
-      userId: organizationMembers.userId,
-      legacyRole: organizationMembers.role,
-      systemKey: roles.systemKey,
-    })
-    .from(organizationMembers)
-    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
-    .where(eq(organizationMembers.organizationId, organizationId));
-  let count = 0;
-  for (const r of rows) {
-    if (isAgentUserId(r.userId)) continue;
-    if (isOwnerRole(r.systemKey, r.legacyRole)) count++;
-  }
-  return count;
-}
-
-/** True if the membership row for (userId, orgId) is an owner. */
-async function isMemberOwner(organizationId: string, userId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ legacyRole: organizationMembers.role, systemKey: roles.systemKey })
-    .from(organizationMembers)
-    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-      ),
-    )
-    .limit(1);
-  if (!row) return false;
-  return isOwnerRole(row.systemKey, row.legacyRole);
-}
-
 async function countRows(query: Promise<Array<{ n: number }>>): Promise<number> {
   const [row] = await query;
   return row?.n ?? 0;
@@ -199,48 +154,6 @@ async function deleteRoleRows(organizationId: string, roleId: string) {
         eq(costVisibilityScopes.principalId, roleId),
       ),
     );
-}
-
-/**
- * Remove a membership, its member-level cost visibility scope (a later
- * re-invite starts from whatever the new role says) and revoke the keys they
- * minted here. The auth chain re-checks membership, so the revocation is
- * belt-and-braces, but it leaves an accurate record, and the removed user can
- * no longer reach the UI to revoke them. Returns the revoked key ids.
- */
-async function removeMembership(organizationId: string, userId: string) {
-  await db
-    .delete(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-      ),
-    );
-  await db
-    .delete(costVisibilityScopes)
-    .where(
-      and(
-        eq(costVisibilityScopes.organizationId, organizationId),
-        eq(costVisibilityScopes.principalKind, "member"),
-        eq(costVisibilityScopes.principalId, userId),
-      ),
-    );
-  const revoked = await db
-    .update(apiKeys)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(
-        eq(apiKeys.userId, userId),
-        eq(apiKeys.organizationId, organizationId),
-        isNull(apiKeys.revokedAt),
-      ),
-    )
-    .returning({ id: apiKeys.id });
-  // Their SSH keys stop being lent to CI jobs: a key lent by someone who has
-  // left must not keep reaching every trusted run.
-  await stopLendingKeysOf(organizationId, userId);
-  return revoked.map((k) => k.id);
 }
 
 /** A role a member or invitation would carry, resolved from `roleId` or a system role name. */

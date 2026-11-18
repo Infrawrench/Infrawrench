@@ -976,6 +976,7 @@ export * from "./posture";
 // The customer's cloud principals, not Infrawrench's own roles (permissions
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).
 export * from "./access-review";
+export * from "./offboarding";
 export * from "./backups";
 // The half of a backup nobody tests: does it restore, and how long does it take?
 export * from "./restore-drills";

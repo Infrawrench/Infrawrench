@@ -87,6 +87,7 @@ describe("resolvePrincipalKeys", () => {
       parentKey: null,
       mfaKey: null,
       revokeActionId: null,
+      offboardByDelete: false,
     });
   });
 
@@ -100,7 +101,9 @@ describe("resolvePrincipalKeys", () => {
       parentKey: "userId",
       mfaKey: "mfaEnabled",
       revokeActionId: "deactivate",
+      offboardByDelete: true,
     });
+    expect(resolved.offboardByDelete).toBe(true);
     expect(resolved.lastUsedKey).toBe("passwordLastUsed");
     expect(resolved.createdKey).toBe("createDate");
     expect(resolved.adminValues).toEqual(["owner"]);

@@ -41,6 +41,8 @@ export const WorkspaceMemberResourceType = rt({
     parentKey: "userId",
     adminIndicatorKey: "workspaceRole",
     adminValues: ["workspace_admin"],
+    // DELETE /v1/organizations/workspaces/{workspace_id}/members/{user_id}.
+    offboardByDelete: true,
   },
   parentTypeId: "workspace",
   showInSidebar: true,

@@ -49,6 +49,8 @@ Escalation still goes to the next person in the **rotation**, not whoever happen
 
 Removing someone from the organization removes them from every rotation and cancels their covers automatically. Nobody has to remember to check.
 
+Their [offboarding](./offboarding.md) checklist also lists each rotation they're in, so you can hand their slot to someone specific rather than letting the rotation close up.
+
 ## Paging providers
 
 If your organization already pages people with [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md), connect the account and Infrawrench works with it:

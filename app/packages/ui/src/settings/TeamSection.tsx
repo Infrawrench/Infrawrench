@@ -15,7 +15,7 @@ interface RoleOption {
 export function TeamSection() {
   const gt = useGT();
   const gtData = useDataString();
-  const { orgId, api, has, openSection } = useSettingsHost();
+  const { orgId, api, has, openSection, openWorkspace } = useSettingsHost();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<InvitationSummary[]>([]);
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -108,6 +108,23 @@ export function TeamSection() {
       setError(e instanceof Error ? e.message : gt("Failed to send invitation"));
     } finally {
       setInviting(false);
+    }
+  }
+
+  /**
+   * Start the person's offboarding checklist and open it. Starting again for
+   * someone already being offboarded lands on their open checklist.
+   */
+  async function handleStartOffboarding(email: string) {
+    setError(null);
+    try {
+      const started = await api.post<{ offboarding: { id: string } }>(
+        `/api/org/${orgId}/offboardings`,
+        { email },
+      );
+      openWorkspace("offboarding", { offboardingId: started.offboarding.id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Could not start the offboarding"));
     }
   }
 
@@ -249,7 +266,16 @@ export function TeamSection() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      {canRemove && (
+                        <button
+                          type="button"
+                          onClick={() => void handleStartOffboarding(member.email)}
+                          className="mr-3 text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
+                        >
+                          {gt("Start offboarding")}
+                        </button>
+                      )}
                       {canRemove && !isOwner && (
                         <button
                           type="button"

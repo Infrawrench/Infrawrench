@@ -50,6 +50,7 @@ const ALWAYS_VALID_TAB_KINDS: ReadonlySet<string> = new Set([
   "compliance",
   "access-review",
   "jit-access",
+  "offboarding",
   "backups",
   "home",
   "wallboard",

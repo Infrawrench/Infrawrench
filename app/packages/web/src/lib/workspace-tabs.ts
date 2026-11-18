@@ -36,6 +36,7 @@ import {
   quotasTabTarget,
   priceCatalogTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -60,6 +61,7 @@ export {
   chatTabTarget,
   complianceTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -399,6 +401,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "offboarding":
+      // The incidents shape: the offboarding id is a path segment, so a
+      // checklist link reads as a place, /org/{org}/offboarding/{id}.
+      return target.offboardingId
+        ? {
+            to: "/org/$orgId/offboarding/$offboardingId",
+            params: { orgId, offboardingId: target.offboardingId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/offboarding",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "incidents":
       // The incident id is a path segment rather than a search param, so an
       // incident link reads as a place: /org/{org}/incidents/{id}.
@@ -739,6 +755,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "price-catalog") {
     return priceCatalogTabTarget();
+  }
+  if (s[0] === "offboarding") {
+    return offboardingTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "incidents") {
     return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);

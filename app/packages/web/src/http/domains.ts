@@ -14,6 +14,7 @@ import { costReportAnomalyAlertsDomain } from "./domains/cost-report-anomaly-ale
 import { costExportsDomain } from "./domains/cost-exports/index";
 import { costExportJobsDomain } from "./domains/cost-export-jobs/index";
 import { budgetsDomain } from "./domains/budgets/index";
+import { offboardingDomain } from "./domains/offboarding/index";
 import { onCallDomain } from "./domains/on-call/index";
 import { queryMonitorsDomain } from "./domains/query-monitors/index";
 import { runbooksDomain } from "./domains/runbooks/index";
@@ -182,6 +183,7 @@ export const DOMAINS: readonly Domain[] = [
   costExportsDomain,
   costExportJobsDomain,
   budgetsDomain,
+  offboardingDomain,
   onCallDomain,
   queryMonitorsDomain,
   runbooksDomain,
