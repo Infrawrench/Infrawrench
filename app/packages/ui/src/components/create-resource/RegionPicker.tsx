@@ -28,6 +28,7 @@ export function RegionPicker({
   value,
   onChange,
   filterValue,
+  fieldLabel,
 }: {
   regions: readonly {
     id: string;
@@ -43,6 +44,12 @@ export function RegionPicker({
    * are hidden. Regions without an `availableFor` list are always shown.
    */
   filterValue?: string;
+  /**
+   * The field's label, already translated. Plugins reuse the picker for lists
+   * that are not regions (a plan, a tier), so the search box and the list are
+   * named after the field when it is given.
+   */
+  fieldLabel?: string | undefined;
 }) {
   const gt = useGT();
   const [search, setSearch] = useState("");
@@ -90,9 +97,15 @@ export function RegionPicker({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={gt("Search by location or zone…")}
+          placeholder={
+            fieldLabel
+              ? gt("Search {field}…", { field: fieldLabel })
+              : gt("Search by location or zone…")
+          }
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
-          aria-label={gt("Search regions")}
+          aria-label={
+            fieldLabel ? gt("Search {field}", { field: fieldLabel }) : gt("Search regions")
+          }
         />
         {selectedLines && !search && (
           <span
@@ -107,7 +120,11 @@ export function RegionPicker({
           </span>
         )}
       </div>
-      <div className="max-h-44 overflow-y-auto" role="listbox" aria-label={gt("Regions")}>
+      <div
+        className="max-h-44 overflow-y-auto"
+        role="listbox"
+        aria-label={fieldLabel ?? gt("Regions")}
+      >
         {filtered.map((r) => {
           const lines = regionOptionLines(r);
           return (

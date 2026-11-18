@@ -140,7 +140,11 @@ export function SizePicker({
                   </span>
                 )}
                 {!hasSelection && (
-                  <span className="text-xs text-on-surface-faint">{catSizes.length} options</span>
+                  <span className="text-xs text-on-surface-faint">
+                    {gt("{count, plural, one {# option} other {# options}}", {
+                      count: catSizes.length,
+                    })}
+                  </span>
                 )}
               </button>
               {isOpen && (

@@ -240,6 +240,17 @@ describe("RegionPicker", () => {
     // The selected value names the plan too, not its allowance.
     expect(screen.getAllByText("Startup ($200/month)")).toHaveLength(2);
   });
+
+  it("names the search and the list after the field it serves", () => {
+    const plans = [{ id: "developer", label: "Developer ($20/month)", location: "500 build min" }];
+    render(
+      <RegionPicker regions={plans} value="developer" onChange={vi.fn()} fieldLabel="Depot Plan" />,
+    );
+    const search = screen.getByLabelText("Search Depot Plan");
+    expect(search).toHaveAttribute("placeholder", "Search Depot Plan…");
+    expect(screen.getByRole("listbox", { name: "Depot Plan" })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search by location or zone…")).toBeNull();
+  });
 });
 
 describe("DiskPicker", () => {
@@ -346,6 +357,13 @@ describe("SizePicker", () => {
     expect(card.parentElement).toHaveClass("grid-cols-2");
     fireEvent.click(screen.getByText("Basic").closest("button")!);
     expect(screen.getByText("small").closest("button")!.parentElement).toHaveClass("grid-cols-3");
+  });
+
+  it("counts each collapsed category's options", () => {
+    const more = [...sizes, { ...sizes[1]!, id: "s3", label: "larger" }] as SizeOption[];
+    render(<SizePicker sizes={more} value="" onChange={vi.fn()} />);
+    expect(screen.getByText("1 option")).toBeInTheDocument();
+    expect(screen.getByText("2 options")).toBeInTheDocument();
   });
 
   it("opens a collapsed category when its header is clicked", () => {
