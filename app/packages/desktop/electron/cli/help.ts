@@ -221,6 +221,10 @@ COMMANDS
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
+  price-changes       list-price changes on instance types you run, one per change, with the
+                      monthly impact   [--days 180] [--all] (cloud only)
+  price-changes catalog  every list-price change on one pricing platform
+                      [--provider ec2] [--days 90] (cloud only)
   seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a
                       dearer tier, with remediation commands (cloud only)
   seats all           every seat, its last activity and how that was determined
