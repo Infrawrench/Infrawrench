@@ -255,6 +255,13 @@ export const ResourceDetail = Schema.Struct({
         "The type flags a field as the schedule it runs on, so a heartbeat can watch it.",
     }),
   ),
+  hasCapacityRunway: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The type declares a usage with a limit, so the resource has a capacity runway " +
+        "(`GET /api/org/{orgId}/quotas/runway/resource`).",
+    }),
+  ),
 }).annotate({ identifier: "ResourceDetail" });
 
 export const Manifest = Schema.Struct({ manifest: Schema.String }).annotate({

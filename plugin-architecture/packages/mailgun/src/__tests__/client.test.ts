@@ -77,6 +77,33 @@ const DETAIL = {
   ],
 };
 
+describe("account sending limit", () => {
+  it("stores this month's sends next to the custom monthly limit", async () => {
+    const { c } = client(
+      (url) =>
+        url.pathname === "/v5/accounts/limit/custom/monthly"
+          ? { body: { limit: 10_000, current: 2_500, period: "1m" } }
+          : { body: { total_count: 0, items: [] } },
+      "us",
+    );
+    const [account] = await c.listResources("mailgun-account", "a");
+    expect(account!.fields).toMatchObject({ monthlyLimit: 10_000, monthlySent: 2_500 });
+  });
+
+  it("leaves both out when no custom limit is set", async () => {
+    const { c } = client(
+      (url) =>
+        url.pathname === "/v5/accounts/limit/custom/monthly"
+          ? { status: 404, body: { message: "not found" } }
+          : { body: { total_count: 0, items: [] } },
+      "us",
+    );
+    const [account] = await c.listResources("mailgun-account", "a");
+    expect(account!.fields).not.toHaveProperty("monthlyLimit");
+    expect(account!.fields).not.toHaveProperty("monthlySent");
+  });
+});
+
 describe("Mailgun client", () => {
   it("lists domains in both regions with Basic auth and builds DNS records", async () => {
     const { c, calls } = client((url) => {

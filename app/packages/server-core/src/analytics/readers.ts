@@ -591,3 +591,50 @@ export async function getMetricRange(
   }
   return [...bySeries.values()];
 }
+
+/** One hour's peak of one series on one resource. */
+export interface MetricHourlyPeak {
+  resourceId: string;
+  seriesLabel: string;
+  tsMs: number;
+  value: number;
+}
+
+/**
+ * Hourly peaks of named series across resources, from the 1h rollup: the
+ * capacity runway's read for metric usages (a storage percentage, a
+ * connection count). The peak rather than the mean, because what fills a disk
+ * or exhausts a connection pool is the high-water mark, not the average hour.
+ */
+export async function getMetricHourlyPeaksBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabels: string[],
+  fromMs: number,
+  toMs: number,
+): Promise<MetricHourlyPeak[]> {
+  if (resourceIds.length === 0 || seriesLabels.length === 0) return [];
+  const rows = await getAnalyticsDb()
+    .select({
+      resource_id: metricPoints1h.resource_id,
+      series_label: metricPoints1h.series_label,
+      ts_ms: epochMillis(metricPoints1h.ts_hour).as("ts_ms"),
+      value: metricPoints1h.value_max,
+    })
+    .from(metricPoints1h)
+    .where(
+      and(
+        eq(metricPoints1h.organization_id, organizationId),
+        inArray(metricPoints1h.resource_id, resourceIds),
+        inArray(metricPoints1h.series_label, seriesLabels),
+        withinSeconds(metricPoints1h.ts_hour, fromMs, toMs),
+      ),
+    )
+    .orderBy(asc(metricPoints1h.ts_hour));
+  return rows.map((r) => ({
+    resourceId: r.resource_id,
+    seriesLabel: r.series_label,
+    tsMs: Number(r.ts_ms),
+    value: Number(r.value),
+  }));
+}

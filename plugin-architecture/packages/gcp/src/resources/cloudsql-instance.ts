@@ -82,6 +82,12 @@ export const CloudSqlInstanceResourceType = rt({
   extendedSupport: CLOUDSQL_EXTENDED_SUPPORT,
   supportsCreate: true,
   supportsMetrics: true,
+  // `database/disk/utilization` ("The fraction of the disk quota that is
+  // currently in use"), charted as 0..100 under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_c
+  capacityMetrics: [
+    { seriesLabel: "Disk Utilization", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   peerIntegrations: (() => {
     // The peer plugin connects directly to the Cloud SQL instance's public IP
     // using the URL the GCP plugin builds in `resolveOutput("connectionUrl")`

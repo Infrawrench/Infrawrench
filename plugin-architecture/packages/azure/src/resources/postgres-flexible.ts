@@ -82,6 +82,12 @@ export const PostgresFlexibleServerResourceType = rt({
   },
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display
+  // name: the "Metric" column for `storage_percent` (unit Percent) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-dbforpostgresql-flexibleservers-metrics
+  capacityMetrics: [
+    { seriesLabel: "Storage percent", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   peerIntegrations: [
     {
       pluginId: "postgres",

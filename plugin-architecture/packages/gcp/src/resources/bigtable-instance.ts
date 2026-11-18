@@ -19,4 +19,10 @@ export const BigtableInstanceResourceType = rt({
   outputs: [],
   supportsCreate: true,
   supportsMetrics: true,
+  // `cluster/storage_utilization` ("Storage used as a fraction of total
+  // storage capacity", busiest cluster), charted as 0..100 under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_a_b
+  capacityMetrics: [
+    { seriesLabel: "Storage Utilization", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
 });

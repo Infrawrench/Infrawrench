@@ -68,6 +68,12 @@ export const MySQLFlexibleServerResourceType = rt({
   },
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display
+  // name: the "Metric" column for `storage_percent` (unit Percent) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-dbformysql-flexibleservers-metrics
+  capacityMetrics: [
+    { seriesLabel: "Storage Percent", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   peerIntegrations: [
     {
       pluginId: "mysql",

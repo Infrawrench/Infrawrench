@@ -33,6 +33,8 @@ Connect a Mailgun account to manage how you send and receive mail, in both of Ma
 
 If your account has a custom monthly sending limit, it shows on the [Quotas](../features/quota-radar.md) page with a trend. You get a warning before Mailgun stops sending for the rest of the month.
 
+Capacity runway tracks this month's sends against the custom limit and projects where the month will end.
+
 ## Costs
 
 Mailgun has no billing API, so Mailgun spend doesn't show on the Costs page.

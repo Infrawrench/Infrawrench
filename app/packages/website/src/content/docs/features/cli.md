@@ -445,6 +445,14 @@ infrawrench credits
 infrawrench credits --json
 ```
 
+`runway` is the [capacity runway](./quota-radar.md#capacity-runway): every resource usage a provider plugin tracks against the limit that will stop it (a volume filling, a database at its storage cap, a monthly allowance of sends or transfer), soonest to run out first. Monthly allowances show what they'll reach by the end of the billing cycle. `--at-risk` keeps only rows at the limit or running out, and `--json` prints the server's response with each row's `status` (`full`, `critical`, `watch` or `ok`). Cloud only. Needs `resources:read`:
+
+```
+infrawrench runway
+infrawrench runway --at-risk
+infrawrench runway --json
+```
+
 `commitments` prints the [commitments](./commitments.md) inventory, the coverage range and the savings planner. `commitments reports` lists your saved [commitment reports](./commitment-reports.md) and, given a name or id, runs one: coverage, utilization, effective savings rate, net savings, the on-demand remainder and used and unused commitment cost over time, with a sparkline of the report's chart metric (`--metric` picks another). `--format csv` writes the same CSV the app exports (to stdout, or to a file with `--out`). `commitments report` runs an unsaved report from flags: `--last`/`--from`/`--to` (the last 90 days by default), `--bin day|week|month|quarter` (no hourly, since spend is stored per day), `--group-by provider|commitment_type|commitment|service|account|region`, and the filters `--provider`, `-a`, `--service`, `--region`, `--commitment-type` and `--commitment`, each matched against the values your organization has (repeat a filter for several values). A window too long for its granularity is refused before anything is sent. Cloud only. Needs `costs:read`:
 
 ```

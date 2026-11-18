@@ -50,6 +50,8 @@ The account, each domain and each broadcast have a Metrics tab with sent, delive
 
 Your plan's limits on emails per day (free plan) and per billing period, contacts, segments, domains, automation runs and AI credits appear on the Quotas page, so you hear about a limit before Resend starts refusing mail. Limits your plan doesn't have are left out rather than shown as zero.
 
+Capacity runway tracks the emails sent this calendar month against the monthly limit, and contacts, segments and domains against theirs.
+
 ## Costs
 
 Resend has no billing API, so Resend spend doesn't appear on the Costs page.

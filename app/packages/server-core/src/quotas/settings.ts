@@ -7,6 +7,10 @@
  * the shipped defaults, so an org that never opens the form still has a
  * well-defined threshold.
  *
+ * The capacity runway's two thresholds live on the same row: its alerts ride
+ * the quota radar's daily digest, claim and on/off switch, so a second
+ * settings table would only be a second place to look for one decision.
+ *
  * The bound is enforced server-side rather than only in the form because the
  * threshold drives both the feed's severity buckets and what the poller alerts
  * on: a threshold near zero makes every quota "critical", which is the same as
@@ -14,18 +18,28 @@
  * is already refusing requests.
  */
 import { eq } from "drizzle-orm";
-import { DEFAULT_QUOTA_THRESHOLD, QUOTA_ALERT_LIMITS } from "@infrawrench/client-core";
+import {
+  DEFAULT_ALLOWANCE_THRESHOLD,
+  DEFAULT_QUOTA_THRESHOLD,
+  DEFAULT_RUNWAY_DAYS,
+  QUOTA_ALERT_LIMITS,
+  RUNWAY_ALERT_LIMITS,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { orgQuotaSettings } from "../db/schema";
 
-export { QUOTA_ALERT_LIMITS };
+export { QUOTA_ALERT_LIMITS, RUNWAY_ALERT_LIMITS };
 
 export interface QuotaSettingsRecord {
   organizationId: string;
-  /** Whether the poller sends quota alerts for this org at all. */
+  /** Whether the poller sends quota and capacity runway alerts for this org at all. */
   enabled: boolean;
   /** Utilisation fraction (0–1) at or above which a quota alerts. */
   threshold: number;
+  /** Capacity runway: alert when a resource will reach its limit within this many days. */
+  runwayDays: number;
+  /** Capacity runway: alert at this fraction (0–1) of a monthly allowance. */
+  allowanceThreshold: number;
   /**
    * When this org's quota alert scan last completed; null if never. A claim,
    * not bookkeeping: see `alerts.ts`. It records the last *scan*, not
@@ -40,6 +54,8 @@ export function defaultQuotaSettings(organizationId: string): QuotaSettingsRecor
     organizationId,
     enabled: true,
     threshold: DEFAULT_QUOTA_THRESHOLD,
+    runwayDays: DEFAULT_RUNWAY_DAYS,
+    allowanceThreshold: DEFAULT_ALLOWANCE_THRESHOLD,
     lastNotifiedAt: null,
   };
 }
@@ -49,6 +65,8 @@ function toRecord(row: typeof orgQuotaSettings.$inferSelect): QuotaSettingsRecor
     organizationId: row.organizationId,
     enabled: row.enabled,
     threshold: row.threshold,
+    runwayDays: row.runwayDays,
+    allowanceThreshold: row.allowanceThreshold,
     lastNotifiedAt: row.lastNotifiedAt,
   };
 }
@@ -66,6 +84,8 @@ export async function getQuotaSettings(organizationId: string): Promise<QuotaSet
 export interface QuotaSettingsPatchInput {
   enabled?: boolean;
   threshold?: number;
+  runwayDays?: number;
+  allowanceThreshold?: number;
 }
 
 /**
@@ -87,6 +107,26 @@ function checkThreshold(value: number): number {
   return value;
 }
 
+/** Whole days within the runway bounds; rejected, not clamped, like the threshold. */
+function checkRunwayDays(value: number): number {
+  const { min, max } = RUNWAY_ALERT_LIMITS.runwayDays;
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`runwayDays must be a whole number of days between ${min} and ${max}`);
+  }
+  return value;
+}
+
+function checkAllowanceThreshold(value: number): number {
+  if (!Number.isFinite(value)) throw new Error("allowanceThreshold must be a number");
+  const { min, max } = RUNWAY_ALERT_LIMITS.allowanceThreshold;
+  if (value < min || value > max) {
+    throw new Error(
+      `allowanceThreshold must be between ${min} and ${max} (a fraction of the allowance, so 0.8 is 80%)`,
+    );
+  }
+  return value;
+}
+
 /**
  * Write the org's settings, creating the row on first save. `lastNotifiedAt`
  * is deliberately untouched: it is the cooldown claim `alerts.ts` owns, and
@@ -102,6 +142,10 @@ export async function updateQuotaSettings(
   const next = {
     enabled: patch.enabled ?? current.enabled,
     threshold: checkThreshold(patch.threshold ?? current.threshold),
+    runwayDays: checkRunwayDays(patch.runwayDays ?? current.runwayDays),
+    allowanceThreshold: checkAllowanceThreshold(
+      patch.allowanceThreshold ?? current.allowanceThreshold,
+    ),
   };
 
   const now = new Date();

@@ -32,6 +32,7 @@ export const COMMAND_LOADERS = {
   expiring: () => import("../commands/expiring").then((m) => m.expiring),
   schedules: () => import("../commands/schedules").then((m) => m.schedules),
   credits: () => import("../commands/credits").then((m) => m.credits),
+  runway: () => import("../commands/runway").then((m) => m.runway),
   "cost-visibility": () => import("../commands/cost-visibility").then((m) => m.costVisibility),
   "status-pages": () => import("../commands/status-pages").then((m) => m.statusPages),
   "declared-incidents": () =>

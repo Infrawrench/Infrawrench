@@ -260,6 +260,23 @@ describe("listResources", () => {
     expect(res).toHaveLength(1);
     expect(res[0]!.id).toBe("acct-1:volume:app-one/v1");
     expect(res[0]!.fields["sizeGb"]).toBe(10);
+    // No block counts reported: no filesystem reading, rather than a zero.
+    expect(res[0]!.fields["fsUsedBytes"]).toBeUndefined();
+    expect(res[0]!.fields["fsSizeBytes"]).toBeUndefined();
+  });
+
+  it("stores filesystem usage from the volume's reported block counts", async () => {
+    router([
+      [(u) => u.includes("/v1/apps?"), APP_LIST],
+      [
+        (u) => u.includes("/v1/apps/app-one/volumes"),
+        [{ ...VOLUME, blocks: 1000, blocks_free: 700, blocks_avail: 650, block_size: 4096 }],
+      ],
+      [(u) => u.includes("/v1/apps/app-two/volumes"), []],
+    ]);
+    const [vol] = await client().listResources("volume", ACCOUNT);
+    expect(vol!.fields["fsUsedBytes"]).toBe(350 * 4096);
+    expect(vol!.fields["fsSizeBytes"]).toBe(1000 * 4096);
   });
 
   it("lists certificates from Fly's response envelope", async () => {

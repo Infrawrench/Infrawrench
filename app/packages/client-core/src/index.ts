@@ -1020,6 +1020,7 @@ export * from "./heartbeats";
 export * from "./wallboard";
 export * from "./help-links";
 export * from "./quotas";
+export * from "./capacity-runway";
 export * from "./vulnerabilities";
 export * from "./compliance";
 export * from "./incidents";

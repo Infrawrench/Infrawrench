@@ -107,6 +107,8 @@ Every resource type has a **Metrics** tab from Azure Monitor, except resource gr
 
 Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance, it shows the selected container's recent output with timestamps. Azure keeps those logs only while the group is running.
 
+Capacity runway tracks each DNS zone's record sets and each private DNS zone's virtual network links against the zone's limits. For resources pinned to a dashboard it also tracks storage on SQL databases and PostgreSQL and MySQL flexible servers, and an AKS cluster's etcd database.
+
 ## Idle resource findings
 
 Once a day, Infrawrench checks your load balancers, NAT gateways and application gateways and adds idle ones to [Potential savings](../features/idle-resources.md). This needs `Microsoft.Insights/metrics/read`, which the Reader and Monitoring Reader roles include.

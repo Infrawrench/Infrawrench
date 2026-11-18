@@ -1006,6 +1006,7 @@ async function listContainerRegistry(
   const name = String(r.name ?? "");
   const subscription = await ctx.api.get("/registry/subscription").catch(() => null);
   const now = new Date().toISOString();
+  const includedStorage = subscription?.subscription?.tier?.included_storage_bytes;
   return [
     {
       id: `${accountId}:container-registry:${name}`,
@@ -1017,7 +1018,9 @@ async function listContainerRegistry(
         name,
         subscriptionTier: String(subscription?.subscription?.tier?.slug ?? ""),
         region: String(r.region ?? ""),
-        storageUsageBytes: Number(r.storage_usage_bytes ?? 0),
+        // Absent stays absent: no reading is not an empty registry.
+        ...(r.storage_usage_bytes != null ? { storageUsageBytes: r.storage_usage_bytes } : {}),
+        ...(includedStorage != null ? { includedStorageBytes: includedStorage } : {}),
         createdAt: String(r.created_at ?? ""),
       },
       resolvedOutputs: {

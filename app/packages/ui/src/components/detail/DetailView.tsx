@@ -167,6 +167,14 @@ interface DetailViewProps {
   /** Time-series metric data: rendered as charts in a Metrics tab when present */
   metricSeries?: MetricSeries[] | undefined;
   /**
+   * When set, the Metrics tab opens with the resource's capacity runway charts
+   * (declared usages against their limits, with the projection), and the tab
+   * shows even for a type without a metrics capability. Host-driven: hosts
+   * wire it only for types that declare a usage, and only in cloud mode,
+   * where the readings are recorded.
+   */
+  renderRunway?: (() => React.ReactNode) | undefined;
+  /**
    * When set, a "Changes" tab renders the resource's change timeline via this
    * render prop. Host-driven rather than schema-driven: the feed is recorded
    * by the cloud poller on the generic stored record, so it exists for every
@@ -331,6 +339,7 @@ export function DetailView({
   onChildEdit,
   renderChildResource,
   metricSeries,
+  renderRunway,
   renderChangesTab,
   renderScheduleTab,
   renderLeaseTab,
@@ -386,7 +395,8 @@ export function DetailView({
   // resource that hasn't accumulated any metric data yet would otherwise have
   // the tab disappear, which reads as "metrics broken" rather than "no data
   // yet". `metricSeriesEmpty` drives the empty-state placeholder below.
-  const hasMetrics = !!schema.metricsCapability;
+  const hasMetricsCapability = !!schema.metricsCapability;
+  const hasMetrics = hasMetricsCapability || !!renderRunway;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   // Plugins declare their default window in milliseconds because that is what
   // they pass to their provider. Rendering it as minutes regardless turned a
@@ -1005,7 +1015,8 @@ export function DetailView({
           tabIndex={0}
           className="flex-1 overflow-auto p-6 space-y-6"
         >
-          {metricSeriesEmpty ? (
+          {renderRunway?.()}
+          {!hasMetricsCapability ? null : metricSeriesEmpty ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-on-surface-muted">
               <p>{gt("No metric data yet.")}</p>
               <p className="text-xs text-on-surface-faint max-w-md text-center">

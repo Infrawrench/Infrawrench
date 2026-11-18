@@ -2,7 +2,8 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { createConfluentContext } from "../api.js";
 import { ConfluentCloudClient } from "../client.js";
-import { fetchClusterUsage, fetchConnectorUsage } from "../metrics.js";
+import { CLUSTER_SERIES, KSQL_SERIES, fetchClusterUsage, fetchConnectorUsage } from "../metrics.js";
+import { KafkaClusterResourceType, KsqlClusterResourceType } from "../resource-types.js";
 import { makeHttp } from "./helpers.js";
 import type { Reply } from "./helpers.js";
 
@@ -290,5 +291,18 @@ describe("usage that is not known (#668)", () => {
   it("does not fail the inventory over it, which an incomplete-list error would", async () => {
     const c = client(() => ({ body: {} }));
     await expect(c.listResources("kafka-cluster", "acc")).resolves.toHaveLength(1);
+  });
+});
+
+describe("capacity metric declarations", () => {
+  // A capacity series is matched by its exact label, so a renamed chart
+  // would silently stop feeding the runway.
+  it.each([
+    ["kafka-cluster", KafkaClusterResourceType, CLUSTER_SERIES],
+    ["ksqldb-cluster", KsqlClusterResourceType, KSQL_SERIES],
+  ] as const)("%s names only series it charts", (_id, type, specs) => {
+    const labels = specs.map((s) => s.label);
+    expect(type.capacityMetrics?.length).toBeGreaterThan(0);
+    for (const m of type.capacityMetrics ?? []) expect(labels).toContain(m.seriesLabel);
   });
 });

@@ -119,6 +119,18 @@ export const AKSClusterResourceType = rt({
   },
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display
+  // name: the "Metric" column for `etcd_database_usage_percentage` (unit
+  // Percent) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-containerservice-managedclusters-metrics
+  capacityMetrics: [
+    {
+      seriesLabel: "ETCD Database Usage Percentage",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "etcd database",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "kubernetes",

@@ -49,7 +49,20 @@ export const AccountResourceType = rt({
       description:
         "A hard cap on messages per calendar month. Mailgun emails you at 50% and 75% and disables sending at 100% until next month. 0 removes the limit.",
     }),
-    f("monthlySent", "Sent This Month", { kind: "number", required: false, editable: false }),
+    // `current` against `limit` from `GET /v5/accounts/limit/custom/monthly`
+    // (documentation.mailgun.com, Custom Message Limit). The counter resets at the start of
+    // each month (help.mailgun.com/hc/en-us/articles/4402611589915, checked 2026-11-18).
+    f("monthlySent", "Sent This Month", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "monthlyLimit" },
+        unit: "emails",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Custom monthly limit",
+      },
+    }),
     f("limitPeriod", "Limit Period", { required: false, editable: false }),
   ],
   outputs: [

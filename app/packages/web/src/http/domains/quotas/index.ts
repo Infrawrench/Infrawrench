@@ -12,6 +12,7 @@
 import { Effect, Predicate } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { getQuotaFeed } from "@infrawrench/server-core/quotas/feed";
+import { getResourceRunway, getRunwayFeed } from "@infrawrench/server-core/capacity/feed";
 import {
   getQuotaSettings,
   updateQuotaSettings,
@@ -24,6 +25,8 @@ import {
   QuotaAlertSettings,
   QuotaListResponse,
   QuotasApi,
+  ResourceRunwayResponse,
+  RunwayListResponse,
 } from "@infrawrench/api-contract";
 import { makeDomain } from "../../domain";
 import { legacy, legacyTry } from "../../legacy";
@@ -35,6 +38,8 @@ function toWire(s: QuotaSettingsRecord) {
   return {
     enabled: s.enabled,
     threshold: s.threshold,
+    runwayDays: s.runwayDays,
+    allowanceThreshold: s.allowanceThreshold,
     lastNotifiedAt: s.lastNotifiedAt ? s.lastNotifiedAt.toISOString() : null,
   };
 }
@@ -46,6 +51,20 @@ const QuotasHandlers = HttpApiBuilder.group(QuotasApi, "quotas", (handlers) =>
         const { organizationId } = yield* OrgPrincipal;
         const feed = yield* legacy(() => getQuotaFeed(organizationId));
         return yield* respond(QuotaListResponse)(feed);
+      }),
+    )
+    .handle("runway", () =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const feed = yield* legacy(() => getRunwayFeed(organizationId));
+        return yield* respond(RunwayListResponse)(feed);
+      }),
+    )
+    .handle("resourceRunway", ({ query }) =>
+      Effect.gen(function* () {
+        const { organizationId } = yield* OrgPrincipal;
+        const runway = yield* legacy(() => getResourceRunway(organizationId, query.resourceId));
+        return yield* respond(ResourceRunwayResponse)(runway);
       }),
     )
     .handle("getSettings", () =>
@@ -78,6 +97,20 @@ const QuotasHandlers = HttpApiBuilder.group(QuotasApi, "quotas", (handlers) =>
             return yield* badRequest("threshold must be a number");
           }
           patch.threshold = threshold;
+        }
+        const runwayDays = body["runwayDays"];
+        if (runwayDays !== undefined) {
+          if (!Predicate.isNumber(runwayDays)) {
+            return yield* badRequest("runwayDays must be a number");
+          }
+          patch.runwayDays = runwayDays;
+        }
+        const allowanceThreshold = body["allowanceThreshold"];
+        if (allowanceThreshold !== undefined) {
+          if (!Predicate.isNumber(allowanceThreshold)) {
+            return yield* badRequest("allowanceThreshold must be a number");
+          }
+          patch.allowanceThreshold = allowanceThreshold;
         }
         if (Object.keys(patch).length === 0) return yield* badRequest("No settings supplied");
 

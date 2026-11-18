@@ -33,16 +33,40 @@ export const AccountResourceType = rt({
   fields: [
     f("emailsToday", "Emails Today", { ...ro, kind: "number" }),
     f("dailyLimit", "Daily Limit", { ...ro, kind: "number" }),
-    f("emailsThisPeriod", "Emails This Period", { ...ro, kind: "number" }),
+    // Usages and limits from `GET /usage` (resend.com/docs/api-reference/usage, checked
+    // 2026-11-18). The monthly email quota is a calendar month whose `resets_at` is the
+    // next month's first instant in UTC; a `null` limit means no cap and leaves no row.
+    f("emailsThisPeriod", "Emails This Period", {
+      ...ro,
+      kind: "number",
+      usage: {
+        limit: { field: "monthlyLimit" },
+        unit: "emails",
+        cycle: { period: "monthly", endField: "periodResetsAt", anchorDay: 1 },
+        label: "Monthly emails",
+      },
+    }),
     f("monthlyLimit", "Monthly Limit", { ...ro, kind: "number" }),
     f("sentThisPeriod", "Sent This Period", { ...ro, kind: "number" }),
     f("receivedThisPeriod", "Received This Period", { ...ro, kind: "number" }),
     f("periodResetsAt", "Period Resets", ro),
-    f("contacts", "Contacts", { ...ro, kind: "number" }),
+    f("contacts", "Contacts", {
+      ...ro,
+      kind: "number",
+      usage: { limit: { field: "contactsLimit" }, unit: "contacts" },
+    }),
     f("contactsLimit", "Contacts Limit", { ...ro, kind: "number" }),
-    f("domains", "Domains", { ...ro, kind: "number" }),
+    f("domains", "Domains", {
+      ...ro,
+      kind: "number",
+      usage: { limit: { field: "domainsLimit" }, unit: "domains" },
+    }),
     f("domainsLimit", "Domains Limit", { ...ro, kind: "number" }),
-    f("segments", "Segments", { ...ro, kind: "number" }),
+    f("segments", "Segments", {
+      ...ro,
+      kind: "number",
+      usage: { limit: { field: "segmentsLimit" }, unit: "segments" },
+    }),
     f("segmentsLimit", "Segments Limit", { ...ro, kind: "number" }),
     f("broadcastsSent", "Broadcasts Sent", { ...ro, kind: "number" }),
     f("automationRuns", "Automation Runs", { ...ro, kind: "number" }),

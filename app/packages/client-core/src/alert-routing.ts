@@ -312,7 +312,8 @@ export const ALERT_TRIGGERS = [
     // leads with it.
     id: "quotaAlerts",
     label: "Quotas",
-    description: "A provider quota is over its utilisation threshold or trending to exhaustion.",
+    description:
+      "A provider quota is over its utilisation threshold or trending to exhaustion, or a resource is running out of capacity.",
     pushDefaultMuted: false,
     channelOnly: false,
     defaultSeverity: "warning",

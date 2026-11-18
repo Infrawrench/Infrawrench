@@ -21,7 +21,21 @@ export const ContainerRegistryResourceType = rt({
       required: false,
     }),
     f("region", "Region", { showcase: true, required: false, sizing: "region" }),
-    f("storageUsageBytes", "Storage Used", { kind: "number", required: false, editable: false }),
+    // `storage_usage_bytes` on the registry against the subscription tier's
+    // `included_storage_bytes` (GET /v2/registry and /v2/registry/subscription,
+    // DigitalOcean public API spec, read 2026-11-18). Starter stops pushes at the
+    // limit; Basic and Professional bill storage above it.
+    f("storageUsageBytes", "Storage Used", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "includedStorageBytes" }, unit: "bytes", label: "Storage" },
+    }),
+    f("includedStorageBytes", "Included Storage", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
