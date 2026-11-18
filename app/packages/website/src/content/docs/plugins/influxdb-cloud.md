@@ -18,7 +18,7 @@ Connect InfluxDB Cloud or Cloud Serverless to manage buckets, tokens, tasks and 
 - **Cloud Dedicated databases**: create with retention, table and column limits, edit those, delete.
 - **Cloud Dedicated database tokens**: create with read and write access to the databases you pick (or all of them) and an optional expiry, edit the description, delete.
 
-<insert [InfluxDB Cloud bucket detail page with the InfluxQL Editor tab open, showing an InfluxQL query and its results] here>
+![InfluxDB Cloud bucket detail page with the InfluxQL Editor tab open, showing an InfluxQL query and its results, with the bucket's measurements listed beside the editor](https://agent-assets.infrawrench.com/docs-screenshots/plugins/influxdb-cloud/bucket-query.png)
 
 ## Connect your account
 
