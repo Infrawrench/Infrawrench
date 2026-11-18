@@ -29,7 +29,7 @@ import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
-import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
+import { SqlEditorView, initialEditorQuery, type QueryResult } from "./SqlEditorView.js";
 import { ManifestEditorView } from "./ManifestEditorView.js";
 import { SettingsEditorView } from "./SettingsEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
@@ -850,7 +850,8 @@ export function DetailView({
         >
           <SqlEditorView
             tables={schema.sqlEditor!.tables ?? []}
-            defaultQuery={schema.sqlEditor!.defaultQuery ?? "SELECT 1;"}
+            defaultQuery={initialEditorQuery(schema.sqlEditor!)}
+            queryLanguage={schema.sqlEditor!.queryLanguage}
             onRunQuery={onRunQuery!}
             onExecute={onExecute}
             onEstimateQueryCost={

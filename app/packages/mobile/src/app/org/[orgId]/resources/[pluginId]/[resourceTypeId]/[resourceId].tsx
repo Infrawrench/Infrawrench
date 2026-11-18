@@ -213,6 +213,12 @@ export default function ResourceDetailScreen() {
       extra["sshHost"] = data.sshHost;
       if (data.defaultSshUsername) extra["sshUsername"] = data.defaultSshUsername;
     }
+    // The query console's placeholder follows the editor's language.
+    const sqlEditor = data.detailSchema.sqlEditor;
+    if (kind === "sql" && sqlEditor) {
+      if (sqlEditor.queryLanguage) extra["queryLanguage"] = sqlEditor.queryLanguage;
+      if (sqlEditor.defaultQuery) extra["defaultQuery"] = sqlEditor.defaultQuery;
+    }
     return `/org/${orgId}/terminal/${kind}?${toolParams(extra)}`;
   };
 

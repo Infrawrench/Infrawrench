@@ -42,6 +42,8 @@ export default function TerminalScreen() {
     podName,
     namespace,
     containerName,
+    queryLanguage,
+    defaultQuery,
   } = useLocalSearchParams<{
     kind: string;
     accountId: string;
@@ -53,6 +55,8 @@ export default function TerminalScreen() {
     podName?: string;
     namespace?: string;
     containerName?: string;
+    queryLanguage?: string;
+    defaultQuery?: string;
   }>();
 
   if (!kind || !accountId) return <ErrorView message="Invalid terminal session link." />;
@@ -70,7 +74,13 @@ export default function TerminalScreen() {
   }
   if (kind === "sql") {
     return (
-      <SqlConsole accountId={accountId} resourceId={resourceId} resourceTypeId={resourceTypeId} />
+      <SqlConsole
+        accountId={accountId}
+        resourceId={resourceId}
+        resourceTypeId={resourceTypeId}
+        queryLanguage={queryLanguage}
+        defaultQuery={defaultQuery}
+      />
     );
   }
   if (kind === "k8s-exec") {

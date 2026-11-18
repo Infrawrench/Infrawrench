@@ -93,7 +93,7 @@ export async function queryRange(
   }));
 }
 
-/** Instant query, flattened into table rows for the Query tab. */
+/** Instant query, flattened into table rows for the PromQL Editor tab. */
 export async function instantQuery(
   ctx: PromContext,
   query: string,

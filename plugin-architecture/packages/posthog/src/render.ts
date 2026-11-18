@@ -200,7 +200,7 @@ export function renderPostHogDetail(r: ResourceInstance): DetailViewSchema {
             ["Project API key", r.resolvedOutputs["projectApiKey"], true],
           ]),
           muted(
-            "Run HogQL against this project from the Query tab, for example SELECT event, count() FROM events GROUP BY event.",
+            "Run HogQL against this project from the SQL Editor tab, for example SELECT event, count() FROM events GROUP BY event.",
           ),
         ]),
       ];

@@ -84,7 +84,7 @@ const PROBES: Probe[] = [
       id: "query",
       product: "observability",
       label: "PromQL",
-      description: "Chart monitor queries and run PromQL from the Query tab.",
+      description: "Chart monitor queries and run PromQL from the PromQL Editor tab.",
       requiredPermissions: [{ id: "metrics:read", label: "Query metrics" }],
     },
     call: (_api, ctx) => chronoFetch(ctx, `${PROM_PATH}/query`, { query: { query: "vector(1)" } }),

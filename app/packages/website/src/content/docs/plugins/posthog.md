@@ -9,7 +9,7 @@ Connect a PostHog organization to manage its flags, experiments and data pipelin
 ## What you can manage
 
 - **Organization**: plan, members, projects, and this billing period's spend and projection. Its Metrics tab charts daily spend by product.
-- **Projects**: time zone and whether events are arriving. The project API key and host are outputs (export them as `POSTHOG_API_KEY` and `POSTHOG_HOST`). The Metrics tab charts events per hour, and the **Query** tab runs HogQL.
+- **Projects**: time zone and whether events are arriving. The project API key and host are outputs (export them as `POSTHOG_API_KEY` and `POSTHOG_HOST`). The Metrics tab charts events per hour, and the **SQL Editor** tab runs HogQL.
 - **Feature flags**: create flags with a rollout percentage, edit the description, rollout and tags, **Turn on / Turn off**, **Roll out to everyone**, or delete. The Metrics tab charts how often each flag is evaluated.
 - **Experiments**: **Launch**, **Pause**, **Resume**, **End** and **Archive**, edit the name and description, or delete.
 - **Cohorts**, **insights** and **actions**: rename, change the description, or delete. Insights link to the dashboards they're on.

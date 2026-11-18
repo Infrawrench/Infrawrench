@@ -51,10 +51,16 @@ export function SqlConsole({
   accountId,
   resourceId,
   resourceTypeId,
+  queryLanguage,
+  defaultQuery,
 }: {
   accountId: string;
   resourceId?: string | undefined;
   resourceTypeId?: string | undefined;
+  /** The editor's language when it is not SQL ("PromQL", "DQL" …). */
+  queryLanguage?: string | undefined;
+  /** The plugin's starter query, shown as the placeholder. */
+  defaultQuery?: string | undefined;
 }) {
   const { api, orgId } = useOrgApi();
   const [sql, setSql] = useState("");
@@ -108,7 +114,9 @@ export function SqlConsole({
           <TextInput
             value={sql}
             onChangeText={setSql}
-            placeholder="SELECT * FROM …"
+            placeholder={
+              defaultQuery ?? (queryLanguage ? `${queryLanguage} query` : "SELECT * FROM …")
+            }
             placeholderTextColor={colors.textFaint}
             multiline
             autoCapitalize="none"
