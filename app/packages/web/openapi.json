@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.119.0",
+    "version": "1.120.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -19676,13 +19676,16 @@
             "type": "string"
           },
           "providerPluginId": {
-            "type": "string"
+            "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource."
           },
           "providerResourceTypeId": {
-            "type": "string"
+            "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource."
           },
           "providerAccountId": {
             "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource.",
             "format": "uuid",
             "examples": [
               "00000000-0000-0000-0000-000000000000"
@@ -19693,10 +19696,7 @@
           "consumerResourceId",
           "consumerFieldKey",
           "providerResourceId",
-          "providerOutputKey",
-          "providerPluginId",
-          "providerResourceTypeId",
-          "providerAccountId"
+          "providerOutputKey"
         ],
         "additionalProperties": false
       },

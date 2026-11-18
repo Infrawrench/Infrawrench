@@ -164,6 +164,65 @@ describe("Association routes", () => {
       // associations + secretFieldStates upserts
       expect(mockInsert).toHaveBeenCalledTimes(2);
     });
+
+    it("points the field at the provider's stored plugin, type and account, not the body's", async () => {
+      // The reconciler resolves the output with these, and leaked-secret
+      // matches name the account: a body that disagreed with the row would
+      // point both at the wrong place.
+      resourceExists(
+        [{ id: "r1" }],
+        [{ id: "p1", pluginId: "neon", resourceTypeId: "neon-branch", accountId: "acc-real" }],
+      );
+      const values = setupUpsert();
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "p1",
+          providerOutputKey: "uri",
+          providerPluginId: "pg",
+          providerResourceTypeId: "db",
+          providerAccountId: "acc-wrong",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          resourceId: "r1",
+          fieldKey: "DB_URL",
+          resolutionKind: "output-ref",
+          sourcePluginId: "neon",
+          sourceResourceTypeId: "neon-branch",
+          sourceResourceId: "p1",
+          sourceAccountId: "acc-real",
+          sourceOutputKey: "uri",
+        }),
+      );
+    });
+
+    it("accepts a request without the deprecated provider fields", async () => {
+      resourceExists(
+        [{ id: "r1" }],
+        [{ id: "p1", pluginId: "neon", resourceTypeId: "neon-branch", accountId: "acc-real" }],
+      );
+      const values = setupUpsert();
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "p1",
+          providerOutputKey: "uri",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sourcePluginId: "neon", sourceAccountId: "acc-real" }),
+      );
+    });
   });
 
   describe("GET /candidates", () => {

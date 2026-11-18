@@ -120,9 +120,8 @@ const AssociationsHandlers = HttpApiBuilder.group(AssociationsApi, "associations
         // organization: the owning org then can't hard-delete that resource
         // (see the agent-session teardown in `http/domains/agents/sessions.ts`), and the
         // failure lands after the cloud resource is already gone.
-        if (!(yield* resourceInOrg(organizationId, input.providerResourceId))) {
-          return yield* notFound("Provider resource not found");
-        }
+        const provider = yield* orgResource(organizationId, input.providerResourceId);
+        if (!provider) return yield* notFound("Provider resource not found");
 
         yield* legacy(async () => {
           await db
@@ -146,12 +145,16 @@ const AssociationsHandlers = HttpApiBuilder.group(AssociationsApi, "associations
             });
 
           // No cached value: this route sets the reference blind, and the
-          // reconciler fills the cache on its next pass.
+          // reconciler fills the cache on its next pass. The provider's plugin,
+          // type and account come from its stored row, never from the body:
+          // the reconciler resolves the output with them, so a body that
+          // disagreed with the row would point the field (and any leaked-secret
+          // match on it) at the wrong account.
           await setOutputRefSecretState(input.consumerResourceId, input.consumerFieldKey, {
-            pluginId: input.providerPluginId,
-            resourceTypeId: input.providerResourceTypeId,
-            resourceId: input.providerResourceId,
-            accountId: input.providerAccountId,
+            pluginId: provider.pluginId,
+            resourceTypeId: provider.resourceTypeId,
+            resourceId: provider.id,
+            accountId: provider.accountId,
             outputKey: input.providerOutputKey,
           });
         });
