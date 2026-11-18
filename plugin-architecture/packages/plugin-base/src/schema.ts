@@ -295,6 +295,12 @@ export interface SqlEditorCapability {
    * pay-per-byte-scanned backends like BigQuery.
    */
   supportsQueryCost?: boolean;
+  /**
+   * Name of the query language the editor takes when it is not SQL, such as
+   * "PromQL", "DQL" or "APL". The host labels the tab "<queryLanguage> Editor";
+   * left out, the tab is the "SQL Editor".
+   */
+  queryLanguage?: string;
 }
 
 /**

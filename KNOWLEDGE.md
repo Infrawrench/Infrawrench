@@ -4175,6 +4175,10 @@ BigQuery has two-level hierarchy exposed as parent/child resources:
 
 Listing hydrates each dataset/table with its full metadata (the BigQuery list API only returns references) — `listBigQueryDatasets` and `listBigQueryTables` in `resource-listers.ts` do a GET per item to pull `numRows`, `numBytes`, partitioning, clustering, primary keys, etc.
 
+### SQL editor tab label (`queryLanguage`)
+
+The same capability serves query languages that are not SQL. A plugin whose editor takes one sets `sqlEditor.queryLanguage` to the language's name ("PromQL" for Prometheus and Chronosphere, "DQL" for Dynatrace, "APL" for Axiom), and the shared `DetailView` labels the tab `gt("{language} Editor")`; left out, the tab stays `gt("SQL Editor")`. The name is a proper noun, so it is a variable inside one translated string rather than a data string. Mobile labels its query button with the same field. A new non-SQL query editor (InfluxQL/Flux, LogQL, KQL, NRQL...) sets it in its renderer; no host change is needed.
+
 ### SQL editor query cost estimation
 
 The SQL editor capability (`SqlEditorCapability` on `DetailViewSchema`) has an optional `supportsQueryCost: boolean`. When true, the host renders an "Estimate" button next to "Run" that calls `PluginClient.estimateQueryCost(resourceId, accountId, sql)`.

@@ -316,6 +316,17 @@ function SectionNodeRenderer({
   );
 }
 
+/**
+ * A run of 32+ characters with no break opportunity: a URL, a DKIM key, an
+ * ARN. Such a token sets its column's minimum width, so table layout widens
+ * the whole table to fit it and pushes the other columns out of view. Cells
+ * holding one may break anywhere; other cells keep normal word wrapping, so
+ * short values such as a status are never split mid-word to make room.
+ */
+function hasLongToken(value: string): boolean {
+  return /\S{32,}/.test(value);
+}
+
 const TABLE_WIDTH_CLASS: Record<string, string> = {
   narrow: "w-24",
   wide: "w-auto",
@@ -370,6 +381,7 @@ function TableNodeRenderer({
                   const textCls = [
                     col.mono ? "font-mono" : "",
                     emphasised ? "text-on-surface font-medium" : "text-on-surface-secondary",
+                    typeof cellValue === "string" && hasLongToken(cellValue) ? "wrap-anywhere" : "",
                   ]
                     .filter(Boolean)
                     .join(" ");

@@ -12,6 +12,7 @@ Run quick queries against your databases without leaving Infrawrench. No need to
 
 - **From a database account:** click **SQL** on a Postgres, MySQL, Turso, ClickHouse or Databricks account.
 - **From a resource:** many managed databases (RDS instances, PlanetScale branches, Neon branches, Cloud SQL, Turso databases) have their own SQL editor on the detail page, so you don't need to add a separate account.
+- **Other query languages:** observability backends get the same editor under their own language's name: a **PromQL Editor** tab for Prometheus and Chronosphere, a **DQL Editor** tab for Dynatrace and an **APL Editor** tab for Axiom datasets.
 
 ## What you can do
 

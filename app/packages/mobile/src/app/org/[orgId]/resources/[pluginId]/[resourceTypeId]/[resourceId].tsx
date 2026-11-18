@@ -268,7 +268,7 @@ export default function ResourceDetailScreen() {
           {canExec && <Button label="Shell" onPress={() => router.push(execHref())} />}
           {data.hasSqlEditor && (
             <Button
-              label="SQL"
+              label={data.detailSchema.sqlEditor?.queryLanguage ?? "SQL"}
               variant="secondary"
               onPress={() => router.push(terminalHref("sql"))}
             />
