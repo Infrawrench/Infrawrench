@@ -40,9 +40,13 @@ export interface SettingsHostValue {
   refreshPermissions(): Promise<void>;
   /**
    * Jump to another workspace surface: approvals link to the workflow run,
-   * the drift/expiry cards link to the Changes and Expiring screens.
+   * the drift/expiry cards link to the Changes and Expiring screens, and the
+   * team page's Start offboarding opens the new checklist.
    */
-  openWorkspace(surface: "workflows" | "changes" | "expiring"): void;
+  openWorkspace(
+    surface: "workflows" | "changes" | "expiring" | "offboarding",
+    options?: { offboardingId?: string },
+  ): void;
   /** Jump to another settings section (e.g. the team page's upgrade link). */
   openSection(section: string): void;
   /**

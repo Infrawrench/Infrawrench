@@ -147,6 +147,10 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // grant, both plugin code; a request resolves the requester's principal
   // through the plugin too. Policy writes do not, but share the prefix.
   new RegExp(`${ORG}/jit-access(/|$)`),
+  // Offboarding: acting on a row revokes, removes or deletes through plugin
+  // code. Starting, editing and rescanning share the prefix and only sweep
+  // Postgres, but a checklist's writes land in one place this way.
+  new RegExp(`${ORG}/offboardings(/|$)`),
   // Event subscriptions: saving vets the webhook host through the Node egress
   // guard, and Send test event delivers inline, through plugin code for a
   // publish destination. Reads (the list, the delivery log) stay on the edge.

@@ -15,7 +15,7 @@ import { createDesktopSettingsApi, requestText } from "../lib/settings-client";
 import { mountPlaybackTerminal } from "../lib/playback-terminal";
 import { createCloudApprovalsClient } from "../lib/cloud-workflows";
 import { navigateToWorkspaceTarget, settingsTabTarget } from "../lib/workspace-tabs";
-import { workflowsTabTarget } from "@infrawrench/ui";
+import { offboardingTabTarget, workflowsTabTarget } from "@infrawrench/ui";
 import { openExternalUrl } from "../lib/app-shell";
 
 /**
@@ -87,9 +87,13 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
         window.location.reload();
       },
       approvals: createCloudApprovalsClient(orgId),
-      openWorkspace: (surface) => {
+      openWorkspace: (surface, options) => {
         if (surface === "workflows") {
           void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: "Workflows" });
+        } else if (surface === "offboarding") {
+          void navigateToWorkspaceTarget(navigate, offboardingTabTarget(options?.offboardingId), {
+            label: "Offboarding",
+          });
         } else {
           // Changes and Expiring are plain routes on desktop.
           void navigate({ to: `/${surface}` });

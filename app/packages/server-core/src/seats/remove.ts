@@ -62,6 +62,45 @@ export async function removeSeat(
   userId: string | null,
 ): Promise<SeatRemovalOutcome> {
   const { seat, finding } = await findRemovableSeat(organizationId, seatId);
+  const result = await executeSeatRemoval(organizationId, seat, finding, userId);
+  return { ...result, seat, finding };
+}
+
+/**
+ * Remove a departing person's seat from their offboarding checklist.
+ *
+ * Unlike the savings action this does not require the seat to be a finding:
+ * the person is leaving, so a seat they used this morning still goes. It
+ * still refuses a seat the provider does not let Infrawrench remove. A saving
+ * is recorded only when the seat was also a finding, since that is the only
+ * case the realized-savings report can describe honestly.
+ */
+export async function removeSeatForOffboarding(
+  organizationId: string,
+  seatId: string,
+  userId: string | null,
+): Promise<SeatRemovalResponse & { seat: SeatView }> {
+  const list = await listSeats(organizationId, { withoutRemediation: true, unscoped: true });
+  const seat = list.seats.find((s) => s.id === seatId);
+  if (!seat) throw new SeatRemovalError("Seat not found", 404);
+  if (!seat.removable) {
+    throw new SeatRemovalError(
+      seat.removalNote ?? `${seat.pluginName} does not let this seat be removed over its API.`,
+      400,
+    );
+  }
+  const finding = list.findings.find((f) => f.seatId === seatId && f.kind !== "downgrade") ?? null;
+  const result = await executeSeatRemoval(organizationId, seat, finding, userId);
+  return { ...result, seat };
+}
+
+async function executeSeatRemoval(
+  organizationId: string,
+  seat: SeatView,
+  finding: SeatFinding | null,
+  userId: string | null,
+): Promise<SeatRemovalResponse> {
+  const seatId = seat.id;
   const ctx = await getOrgAccountClient(seat.accountId, organizationId);
   if (!ctx) throw new SeatRemovalError("Account not found", 404);
   if (!ctx.client.removeSeat) {
@@ -95,14 +134,16 @@ export async function removeSeat(
       .where(and(eq(accountSeats.organizationId, organizationId), eq(accountSeats.id, seatId)));
   }
 
-  await captureSeatSaving({
-    organizationId,
-    seat,
-    action: "remove",
-    findingKind: finding.kind,
-    source: "in_app",
-    userId,
-  });
+  if (finding) {
+    await captureSeatSaving({
+      organizationId,
+      seat,
+      action: "remove",
+      findingKind: finding.kind,
+      source: "in_app",
+      userId,
+    });
+  }
 
-  return { effective: result.effective, message: result.message ?? null, seat, finding };
+  return { effective: result.effective, message: result.message ?? null };
 }

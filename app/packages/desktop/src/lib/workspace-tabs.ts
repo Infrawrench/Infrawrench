@@ -39,6 +39,7 @@ import {
   priceCatalogTabTarget,
   migrationEstimatesTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -95,6 +96,7 @@ export {
   priceCatalogTabTarget,
   migrationEstimatesTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -279,6 +281,14 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/migration-estimates",
         search: target.estimateId ? { estimate: target.estimateId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    case "offboarding":
+      // The incidents rule: search passed explicitly so going back to the
+      // list CLEARS ?offboarding= instead of resolving straight back into it.
+      return {
+        to: "/offboarding",
+        search: target.offboardingId ? { offboarding: target.offboardingId } : {},
         ...(replace ? { replace: true } : {}),
       };
     case "incidents":
@@ -544,6 +554,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "migration-estimates") {
     const params = new URLSearchParams(search ?? "");
     return migrationEstimatesTabTarget(params.get("estimate") ?? undefined);
+  }
+  if (segments[0] === "offboarding") {
+    const params = new URLSearchParams(search ?? "");
+    return offboardingTabTarget(params.get("offboarding") ?? undefined);
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");

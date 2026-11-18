@@ -24,6 +24,7 @@ import {
   heartbeatsTabTarget,
   statusPagesTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   servicesTabTarget,
   deliveryTabTarget,
@@ -130,6 +131,11 @@ describe("tab target factories", () => {
   it("incidentsTabTarget omits incidentId for the list view", () => {
     expect(incidentsTabTarget()).toEqual({ kind: "incidents" });
     expect(incidentsTabTarget("inc-1")).toEqual({ kind: "incidents", incidentId: "inc-1" });
+  });
+
+  it("offboardingTabTarget omits offboardingId for the list view", () => {
+    expect(offboardingTabTarget()).toEqual({ kind: "offboarding" });
+    expect(offboardingTabTarget("off-1")).toEqual({ kind: "offboarding", offboardingId: "off-1" });
   });
 
   it("slosTabTarget omits sloId for the list view", () => {

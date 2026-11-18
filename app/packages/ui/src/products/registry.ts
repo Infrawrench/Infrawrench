@@ -77,6 +77,7 @@ export const PRODUCTS: readonly ProductDef[] = [
       "compliance",
       "access-review",
       "jit-access",
+      "offboarding",
       "expiring",
       "backups",
     ],

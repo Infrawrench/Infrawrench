@@ -253,6 +253,38 @@ describe("incidents tab kind", () => {
   });
 });
 
+describe("offboarding tab kind", () => {
+  it("is a singleton tab id regardless of which checklist is open", () => {
+    expect(getWorkspaceTabId({ kind: "offboarding" })).toBe("offboarding");
+    expect(getWorkspaceTabId({ kind: "offboarding", offboardingId: "off-1" })).toBe("offboarding");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "offboarding" })).toBe("Offboarding");
+  });
+
+  it("compares by checklist, so reactivation restores the one that was open", () => {
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "offboarding", offboardingId: "off-1" },
+        { kind: "offboarding", offboardingId: "off-1" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "offboarding", offboardingId: "off-1" },
+        { kind: "offboarding", offboardingId: "off-2" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "offboarding" },
+        { kind: "offboarding", offboardingId: "off-1" },
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("slos tab kind", () => {
   it("is a singleton tab id regardless of which SLO is open", () => {
     expect(getWorkspaceTabId({ kind: "slos" })).toBe("slos");
