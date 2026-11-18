@@ -521,6 +521,7 @@ export function AddAccountModal({
                     ) : f.regions && f.regions.length > 0 ? (
                       <RegionPicker
                         regions={f.regions}
+                        fieldLabel={f.label}
                         value={fieldValues[f.key] ?? ""}
                         onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
                       />
