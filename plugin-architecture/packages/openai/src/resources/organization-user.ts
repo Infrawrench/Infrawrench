@@ -36,6 +36,9 @@ export const OrganizationUserResourceType = rt({
     createdKey: "addedAt",
     adminIndicatorKey: "role",
     adminValues: ["owner"],
+    // DELETE /v1/organization/users/{user_id} removes the person from the
+    // organization (and so from every project); nothing they made goes with it.
+    offboardByDelete: true,
   },
   iconKey: "user",
   supportsMetrics: true,

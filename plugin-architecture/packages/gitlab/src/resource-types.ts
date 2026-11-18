@@ -679,6 +679,9 @@ const memberPrincipal = {
   role: "binding" as const,
   adminIndicatorKey: "accessLevel",
   adminValues: ["Owner", "Maintainer"],
+  // DELETE /groups/:id/members/:user_id and /projects/:id/members/:user_id
+  // remove the direct membership; the user account and its work stay.
+  offboardByDelete: true,
 };
 
 /** `GET /projects/:id/members` (direct members). */
