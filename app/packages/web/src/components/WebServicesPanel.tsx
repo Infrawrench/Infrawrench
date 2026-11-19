@@ -58,7 +58,7 @@ export function WebServicesPanel({
     [navigate],
   );
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="w-full p-6 max-w-5xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <ServicesPanel
         key={orgId}

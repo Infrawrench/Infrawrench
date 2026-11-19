@@ -33,7 +33,7 @@ export function DesktopResourceReportsPanel({ reportId }: { reportId?: string | 
   }
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
+    <div className="w-full p-6 max-w-[1400px] mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <ResourceReportsPanel
         key={activeCloudOrgId}
