@@ -32,6 +32,7 @@ import {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -55,6 +56,7 @@ import {
 // Re-export shared target factories
 export {
   homeTabTarget,
+  heartbeatsTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
@@ -257,6 +259,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
     case "probes":
       return { to: "/probes", ...(replace ? { replace: true } : {}) };
+    case "heartbeats":
+      return { to: "/heartbeats", ...(replace ? { replace: true } : {}) };
     case "status-pages":
       return { to: "/status-pages", ...(replace ? { replace: true } : {}) };
     case "quotas":
@@ -507,6 +511,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "probes") {
     return probesTabTarget();
+  }
+  if (segments[0] === "heartbeats") {
+    return heartbeatsTabTarget();
   }
   if (segments[0] === "status-pages") {
     return statusPagesTabTarget();

@@ -21,6 +21,7 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
@@ -114,6 +115,7 @@ describe("tab target factories", () => {
 
   it("probesTabTarget", () => {
     expect(probesTabTarget()).toEqual({ kind: "probes" });
+    expect(heartbeatsTabTarget()).toEqual({ kind: "heartbeats" });
   });
 
   it("statusPagesTabTarget", () => {

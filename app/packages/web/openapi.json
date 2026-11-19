@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.120.0",
+    "version": "1.121.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -386,6 +386,9 @@
     },
     {
       "name": "Budgets"
+    },
+    {
+      "name": "Heartbeats"
     },
     {
       "name": "Services"
@@ -15302,6 +15305,615 @@
         },
         "required": [
           "probes"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatPings": {
+        "type": "object",
+        "properties": {
+          "pings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeartbeatPing"
+            }
+          }
+        },
+        "required": [
+          "pings"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatPing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "success",
+              "start",
+              "fail"
+            ]
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "userAgent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first 1000 characters of the request body, when the job sent one."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "receivedAt",
+          "durationMs",
+          "method",
+          "userAgent",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "Heartbeat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "intervalMinutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "False while paused."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "up",
+              "down"
+            ],
+            "description": "`new` until the first ping (a heartbeat never alerts before its job has reported once), `up` after a success, `down` after a missed deadline or a `/fail` ping."
+          },
+          "downReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "missed",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pingUrl": {
+            "type": "string",
+            "description": "The secret URL the job pings; append `/start` before a run and `/fail` on failure. Absolute when the server knows its public address, otherwise a path."
+          },
+          "lastPingAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastStartAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastFailAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastDurationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last run's duration, from its `/start` ping to the ping that closed it."
+          },
+          "nextExpectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`nextExpectedAt` plus the grace period; null while new, paused or down."
+          },
+          "lastStateChangeAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scheduled resource this heartbeat watches; advisory, not a foreign key."
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PluginId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resource field the schedule was read from."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scheduleKind",
+          "cronExpression",
+          "timezone",
+          "intervalMinutes",
+          "graceMinutes",
+          "enabled",
+          "status",
+          "downReason",
+          "pingUrl",
+          "lastPingAt",
+          "lastStartAt",
+          "lastFailAt",
+          "lastDurationMs",
+          "nextExpectedAt",
+          "deadlineAt",
+          "lastStateChangeAt",
+          "accountId",
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "fieldKey",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Up to 120 characters.",
+            "examples": [
+              "Nightly backup"
+            ]
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "type": "string",
+            "description": "Five-field cron (minute hour day-of-month month day-of-week).",
+            "examples": [
+              "0 2 * * *"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the cron expression is read in. Defaults to UTC.",
+            "examples": [
+              "Europe/London"
+            ]
+          },
+          "intervalMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Minutes between expected pings. Clamped server-side to 1-44640 (31 days).",
+            "examples": [
+              60
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How late a ping may be before the heartbeat goes down. Clamped server-side to 1-10080.",
+            "examples": [
+              10
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "False pauses. Resuming returns the heartbeat to `new` until its next ping."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HeartbeatCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Up to 120 characters.",
+            "examples": [
+              "Nightly backup"
+            ]
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "type": "string",
+            "description": "Five-field cron (minute hour day-of-month month day-of-week).",
+            "examples": [
+              "0 2 * * *"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the cron expression is read in. Defaults to UTC.",
+            "examples": [
+              "Europe/London"
+            ]
+          },
+          "intervalMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Minutes between expected pings. Clamped server-side to 1-44640 (31 days).",
+            "examples": [
+              60
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How late a ping may be before the heartbeat goes down. Clamped server-side to 1-10080.",
+            "examples": [
+              10
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "Link to the scheduled resource being watched."
+          },
+          "fieldKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scheduleKind"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSuggestions": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeartbeatSuggestion"
+            }
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSuggestion": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "fieldKey": {
+            "type": "string",
+            "description": "The field the plugin flags as the resource's schedule."
+          },
+          "rawSchedule": {
+            "type": "string",
+            "description": "The value as the provider reported it."
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeartbeatSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The value read as a heartbeat schedule; null when its dialect is not readable."
+          },
+          "watchedBy": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Heartbeats already watching this resource."
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "fieldKey",
+          "rawSchedule",
+          "schedule",
+          "watchedBy"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSchedule": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cron"
+                ]
+              },
+              "cronExpression": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "cronExpression",
+              "timezone"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "interval"
+                ]
+              },
+              "intervalMinutes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "kind",
+              "intervalMinutes"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "HeartbeatList": {
+        "type": "object",
+        "properties": {
+          "heartbeats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Heartbeat"
+            }
+          }
+        },
+        "required": [
+          "heartbeats"
         ],
         "additionalProperties": false
       },
@@ -37417,6 +38029,7 @@
           "leakedSecretAlerts",
           "vulnerabilityAlerts",
           "probeAlerts",
+          "heartbeatAlerts",
           "sloAlerts",
           "scorecardAlerts",
           "quotaAlerts",
@@ -56149,6 +56762,7 @@
               "ssh-fanout",
               "metric-alerts",
               "probes",
+              "heartbeats",
               "status-pages",
               "quotas",
               "price-catalog",
@@ -76717,6 +77331,10 @@
           "schedulable": {
             "type": "boolean",
             "description": "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule."
+          },
+          "hasSchedule": {
+            "type": "boolean",
+            "description": "The type flags a field as the schedule it runs on, so a heartbeat can watch it."
           }
         },
         "required": [
@@ -90747,6 +91365,748 @@
         "summary": "Read a probe's recorded series",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdProbesProbeIdMetrics"
+      }
+    },
+    "/api/org/{orgId}/heartbeats": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's heartbeats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every heartbeat in the organization with its status, schedule, ping URL, last ping and next deadline.\n\n_Requires permission: `resources:read`._",
+        "summary": "List heartbeat monitors",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeats"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The created heartbeat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a heartbeat with a schedule and grace period. It stays `new` until its first ping, then goes down whenever a ping is later than the schedule plus grace. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Create a heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:write",
+        "operationId": "postOrgOrgIdHeartbeats"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/suggestions": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Only this resource's schedule."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatSuggestions"
+                }
+              }
+            }
+          }
+        },
+        "description": "Scheduled jobs, pipelines and functions from the organization's synced resources (the fields their plugins flag as a schedule), with each schedule read into cron or an interval. A read over stored state; no provider API calls.\n\n_Requires permission: `resources:read`._",
+        "summary": "Suggest scheduled resources to watch",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeatsSuggestions"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}": {
+      "put": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated heartbeat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Edit the name, schedule or grace period, or toggle `enabled`. A schedule change recomputes the deadline from the last ping. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Update, pause or resume a heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:write",
+        "operationId": "putOrgOrgIdHeartbeatsHeartbeatId"
+      },
+      "delete": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove the heartbeat and its ping history. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Delete a heartbeat",
+        "x-required-permission": "resources:write",
+        "operationId": "deleteOrgOrgIdHeartbeatsHeartbeatId"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}/rotate-token": {
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The heartbeat with its new ping URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Issue a new secret ping URL. The old one stops working at once. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Replace a heartbeat's ping URL",
+        "x-required-permission": "resources:write",
+        "operationId": "postOrgOrgIdHeartbeatsHeartbeatIdRotateToken"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}/pings": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent pings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatPings"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Recent pings, newest first, with each run's duration where a `/start` opened it. Kept for 30 days.\n\n_Requires permission: `resources:read`._",
+        "summary": "Read a heartbeat's ping history",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeatsHeartbeatIdPings"
+      }
+    },
+    "/api/ping/{token}": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The job ran: the heartbeat is up and its next deadline is set from the schedule. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Ping a heartbeat (GET)",
+        "operationId": "getPingToken"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The job ran: the heartbeat is up and its next deadline is set from the schedule. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Ping a heartbeat",
+        "operationId": "postPingToken"
+      }
+    },
+    "/api/ping/{token}/start": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. Records the start so the closing ping can report the run's duration. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run started (GET)",
+        "operationId": "getPingTokenStart"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. Records the start so the closing ping can report the run's duration. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run started",
+        "operationId": "postPingTokenStart"
+      }
+    },
+    "/api/ping/{token}/fail": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run failed (GET)",
+        "operationId": "getPingTokenFail"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run failed",
+        "operationId": "postPingTokenFail"
       }
     },
     "/api/org/{orgId}/slos": {

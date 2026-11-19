@@ -278,6 +278,7 @@ export const TriggerResourceType = rt({
     f("eventPreset", "Event", { required: false, editable: false }),
     f("cronExpression", "Cron Schedule (UTC)", {
       required: false,
+      schedule: "cron",
       description: "Only for scheduled triggers: five-field cron, e.g. 0 3 * * 1-5.",
     }),
     f("checkoutRef", "Checkout Ref", { required: false }),

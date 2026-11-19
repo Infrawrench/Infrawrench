@@ -139,9 +139,14 @@ const TaskType = rt({
     }),
     f("every", "Every", {
       required: false,
+      schedule: "cron",
       description: "Duration such as 1h or 15m. Leave empty when using cron.",
     }),
-    f("cron", "Cron", { required: false, description: "Cron expression, used instead of Every." }),
+    f("cron", "Cron", {
+      required: false,
+      schedule: "cron",
+      description: "Cron expression, used instead of Every.",
+    }),
     f("offset", "Offset", { required: false }),
     f("description", "Description", { required: false }),
     f("lastRunStatus", "Last Run", { required: false, editable: false }),

@@ -331,7 +331,7 @@ const ScheduleType = rt({
   parentTypeId: T.qstash,
   showInSidebar: true,
   fields: [
-    f("cron", "Cron", { editable: false }),
+    f("cron", "Cron", { editable: false, schedule: "cron" }),
     f("destination", "Destination", { editable: false }),
     f("method", "Method", { required: false, editable: false }),
     f("retries", "Retries", { kind: "number", required: false, editable: false }),

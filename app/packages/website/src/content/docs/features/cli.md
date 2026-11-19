@@ -286,7 +286,7 @@ infrawrench export jobs 3f2a91c0 cancel
 
 All of them take `--json`. A job that fails exits with status 1, with `--json` too, so a script waiting on one notices. Finished files are kept for 24 hours.
 
-## Check schedules, probes, SLOs and services
+## Check schedules, probes, heartbeats, SLOs and services
 
 `schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md): each window, its timezone, the next change, how the last run went (including freeze skips and failures), and the projected monthly saving:
 
@@ -301,6 +301,14 @@ infrawrench schedules --json
 infrawrench probes
 infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
+```
+
+`heartbeats` lists the org's [heartbeat monitors](./heartbeat-monitors.md): each scheduled job's status (up, missed, failed, paused or new), its schedule and grace period, its last ping and how long its last run took. Give it a heartbeat's id or name for its ping URL, a run-duration sparkline and its recent pings. Cloud only and read-only: you create heartbeats from the Heartbeats tab on web or desktop, from a scheduled resource, or with Terraform.
+
+```
+infrawrench heartbeats
+infrawrench heartbeats "nightly backup"   # one heartbeat: ping URL, runs, recent pings
+infrawrench heartbeats --json
 ```
 
 `slos` lists the org's [SLOs](./slos.md), worst first: status, SLI against target, window, error budget left (as a share and as time), 1-hour burn rate and what each one measures. Give it an SLO's id or name for burn rates per window, the page and ticket thresholds, and sparklines of the daily SLI and budget burndown. Cloud only and read-only: you write SLOs from the SLOs tab on web or desktop.

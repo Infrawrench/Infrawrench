@@ -14,7 +14,7 @@ Infrawrench Cloud can send its alerts by email, alongside [Slack](./slack-alerts
 
 ![The budget editor with the Email recipients field filled in under the alert thresholds: two members picked from the member list (Priya Natarajan, Amara Okafor) and one extra address (finance@example.com) as chips](https://agent-assets.infrawrench.com/docs-screenshots/features/email-alerts/budget-email-recipients.png)
 
-**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, metric alerts, incidents and everything else. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule that only sends to email always escalates, the same as Teams and push.
+**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, heartbeats, metric alerts, incidents and everything else. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule that only sends to email always escalates, the same as Teams and push.
 
 If both name the same person, they get one copy.
 

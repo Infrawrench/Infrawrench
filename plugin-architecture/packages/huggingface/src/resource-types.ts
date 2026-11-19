@@ -241,6 +241,7 @@ export const ScheduledJobType = rt({
     f("scheduledJobId", "Scheduled Job ID", { editable: false }),
     f("schedule", "Schedule", {
       showcase: true,
+      schedule: "cron",
       description: "Cron expression (UTC), or @hourly, @daily, @weekly, @monthly, @yearly.",
     }),
     f("suspended", "Suspended", { kind: "boolean", required: false, editable: false }),

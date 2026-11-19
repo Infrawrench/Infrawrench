@@ -249,6 +249,12 @@ export const ResourceDetail = Schema.Struct({
     description:
       "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule.",
   }),
+  hasSchedule: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The type flags a field as the schedule it runs on, so a heartbeat can watch it.",
+    }),
+  ),
 }).annotate({ identifier: "ResourceDetail" });
 
 export const Manifest = Schema.Struct({ manifest: Schema.String }).annotate({

@@ -63,6 +63,7 @@ const ALWAYS_VALID_TAB_KINDS: ReadonlySet<string> = new Set([
   "ssh-fanout",
   "metric-alerts",
   "probes",
+  "heartbeats",
   "status-pages",
   "quotas",
   "price-catalog",

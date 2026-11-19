@@ -465,7 +465,7 @@ export const ScheduleResourceType = rt({
   description:
     "A scheduled pipeline: cron (UTC), branch and pipeline, whether it is enabled, and its recent runs. Create one, enable or disable it, or delete it.",
   fields: [
-    f("cron", "Cron (UTC)", { editable: false }),
+    f("cron", "Cron (UTC)", { editable: false, schedule: "cron" }),
     f("refName", "Branch", { required: false, editable: false }),
     f("selector", "Pipeline", { required: false, editable: false }),
     f("enabled", "Enabled", { kind: "boolean", required: false }),

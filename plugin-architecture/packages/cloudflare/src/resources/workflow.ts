@@ -15,7 +15,7 @@ export const WorkflowResourceType = rt({
     f("errored", "Errored", { kind: "number", required: false }),
     f("complete", "Complete", { kind: "number", required: false }),
     f("terminated", "Terminated", { kind: "number", required: false }),
-    f("schedules", "Cron Schedules", { required: false }),
+    f("schedules", "Cron Schedules", { required: false, schedule: "cron" }),
     f("nextScheduledRun", "Next Scheduled Run", { required: false }),
     f("lastTriggered", "Last Triggered", { required: false }),
     f("workflowId", "Workflow ID", { required: false }),

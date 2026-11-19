@@ -60,7 +60,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "observability",
     name: PRODUCT_NAMES.observability,
-    tools: ["logs", "metric-alerts", "probes", "slos", "query-monitors", "wallboard"],
+    tools: ["logs", "metric-alerts", "probes", "heartbeats", "slos", "query-monitors", "wallboard"],
   },
   {
     id: "incidents",

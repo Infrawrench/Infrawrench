@@ -495,6 +495,7 @@ export {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -1256,6 +1257,7 @@ export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
+export { HeartbeatsIcon } from "./components/icons/HeartbeatsIcon.js";
 export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { SlosIcon } from "./components/icons/SlosIcon.js";
@@ -1339,6 +1341,7 @@ export { RecordingPlayer } from "./session-recordings/RecordingPlayer.js";
 export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordings/terminal.js";
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
+export * from "./heartbeats/index.js";
 export * from "./incidents/index.js";
 export * from "./slos/index.js";
 export * from "./services/index.js";

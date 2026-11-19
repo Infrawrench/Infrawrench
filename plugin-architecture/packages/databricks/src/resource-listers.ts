@@ -315,6 +315,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
     const schedule = settings["schedule"] as Record<string, unknown> | undefined;
     const scheduleStr = schedule ? String(schedule["quartz_cron_expression"] ?? "") : "";
     const scheduleStatus = schedule ? String(schedule["pause_status"] ?? "UNPAUSED") : "";
+    const timezoneId = schedule ? String(schedule["timezone_id"] ?? "") : "";
 
     const tasks = settings["tasks"] as unknown[] | undefined;
     const taskCount = tasks?.length ?? 0;
@@ -345,6 +346,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
         lastRunState,
         lastRunResult,
         schedule: scheduleStr,
+        timezoneId,
         scheduleStatus,
         taskCount,
         maxConcurrentRuns: Number(settings["max_concurrent_runs"] ?? 1),

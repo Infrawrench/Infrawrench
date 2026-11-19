@@ -144,6 +144,9 @@ const WebMetricAlertsPanel = lazyPanel(() =>
   import("./WebMetricAlertsPanel").then((m) => m.WebMetricAlertsPanel),
 );
 const WebProbesPanel = lazyPanel(() => import("./WebProbesPanel").then((m) => m.WebProbesPanel));
+const WebHeartbeatsPanel = lazyPanel(() =>
+  import("./WebHeartbeatsPanel").then((m) => m.WebHeartbeatsPanel),
+);
 const WebStatusPagesPanel = lazyPanel(() =>
   import("./WebStatusPagesPanel").then((m) => m.WebStatusPagesPanel),
 );
@@ -950,6 +953,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
     case "probes":
       return <WebProbesPanel key={orgId} orgId={orgId} />;
+    case "heartbeats":
+      return <WebHeartbeatsPanel key={orgId} orgId={orgId} />;
     case "status-pages":
       return <WebStatusPagesPanel key={orgId} orgId={orgId} />;
     case "quotas":

@@ -54,6 +54,7 @@ export type WorkspaceTabTarget =
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
+  | { kind: "heartbeats" }
   | { kind: "status-pages" }
   | { kind: "quotas" }
   /** Provider list prices: search, filter, compare. Single-instance. */
@@ -239,6 +240,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "metric-alerts";
     case "probes":
       return "probes";
+    case "heartbeats":
+      return "heartbeats";
     case "status-pages":
       return "status-pages";
     case "quotas":
@@ -348,6 +351,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Alerts";
     case "probes":
       return "Probes";
+    case "heartbeats":
+      return "Heartbeats";
     case "status-pages":
       return "Status pages";
     case "quotas":
@@ -412,6 +417,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":
+    case "heartbeats":
     case "status-pages":
     case "quotas":
     case "price-catalog":

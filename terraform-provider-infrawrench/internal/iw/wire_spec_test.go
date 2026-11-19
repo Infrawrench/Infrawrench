@@ -189,6 +189,10 @@ func specChecks() []specCheck {
 		{schema: "SyntheticProbeCreate", value: SyntheticProbeCreate{}},
 		{schema: "SyntheticProbeUpdate", value: SyntheticProbeUpdate{}},
 
+		{schema: "Heartbeat", value: Heartbeat{}},
+		{schema: "HeartbeatCreate", value: HeartbeatCreate{}},
+		{schema: "HeartbeatUpdate", value: HeartbeatUpdate{}},
+
 		{schema: "Slo", value: Slo{}},
 		{schema: "SloCreate", value: SloInput{}},
 		{schema: "SloUpdate", value: SloInput{}},

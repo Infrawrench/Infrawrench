@@ -8,6 +8,7 @@ import {
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -76,6 +77,11 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns probes route args", () => {
     const args = getWorkspaceNavigateArgs(probesTabTarget());
     expect(args.to).toBe("/probes");
+  });
+
+  it("returns heartbeats route args", () => {
+    const args = getWorkspaceNavigateArgs(heartbeatsTabTarget());
+    expect(args.to).toBe("/heartbeats");
   });
 
   it("returns status-pages route args", () => {
@@ -508,6 +514,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the heartbeats path", () => {
+    expect(syncWorkspaceRouteFromPath("/heartbeats")).toEqual({ kind: "heartbeats" });
   });
 
   it("parses the status-pages path", () => {

@@ -137,6 +137,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns heartbeats route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "heartbeats" });
+    expect(args).toEqual({
+      to: "/org/$orgId/heartbeats",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns status-pages route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "status-pages" });
     expect(args).toEqual({
@@ -661,6 +669,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the heartbeats path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/heartbeats")).toEqual({ kind: "heartbeats" });
   });
 
   it("parses the status-pages path", () => {

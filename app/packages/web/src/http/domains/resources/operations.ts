@@ -595,6 +595,11 @@ export async function loadResourceDetail(input: DetailRequest) {
     // Sleep/wake eligibility: discovered from the plugin's lifecycle
     // declaration, never from provider names.
     schedulable: !!resourceTypeDef?.lifecycle && !!client.invokeAction,
+    // Heartbeat eligibility: the plugin flags the field holding the
+    // schedule the resource runs on.
+    hasSchedule:
+      resourceTypeDef?.fields?.some((f) => f.schedule === "cron") === true ||
+      resourceTypeDef?.outputs?.some((o) => o.schedule === "cron") === true,
   };
 }
 

@@ -77,6 +77,66 @@ type SyntheticProbe struct {
 	UpdatedAt           string   `json:"updatedAt"`
 }
 
+/* ------------------------------- heartbeats ------------------------------- */
+
+// HeartbeatCreate is the POST body. ResourceID and FieldKey record which
+// scheduled resource the heartbeat watches; the update route does not carry
+// them, so they are create-only.
+type HeartbeatCreate struct {
+	Name            string  `json:"name"`
+	ScheduleKind    string  `json:"scheduleKind"`
+	CronExpression  *string `json:"cronExpression,omitempty"`
+	Timezone        *string `json:"timezone,omitempty"`
+	IntervalMinutes *int64  `json:"intervalMinutes,omitempty"`
+	GraceMinutes    *int64  `json:"graceMinutes,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	ResourceID      *string `json:"resourceId,omitempty"`
+	FieldKey        *string `json:"fieldKey,omitempty"`
+}
+
+// HeartbeatUpdate is the PUT body. Omission leaves a value alone, so the
+// provider always sends the full set.
+type HeartbeatUpdate struct {
+	Name            *string `json:"name,omitempty"`
+	ScheduleKind    *string `json:"scheduleKind,omitempty"`
+	CronExpression  *string `json:"cronExpression,omitempty"`
+	Timezone        *string `json:"timezone,omitempty"`
+	IntervalMinutes *int64  `json:"intervalMinutes,omitempty"`
+	GraceMinutes    *int64  `json:"graceMinutes,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+}
+
+// Heartbeat is a monitor for a scheduled job. Everything from Status down is
+// live state rather than configuration.
+type Heartbeat struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	ScheduleKind    string  `json:"scheduleKind"`
+	CronExpression  *string `json:"cronExpression"`
+	Timezone        string  `json:"timezone"`
+	IntervalMinutes *int64  `json:"intervalMinutes"`
+	GraceMinutes    int64   `json:"graceMinutes"`
+	Enabled         bool    `json:"enabled"`
+	PingURL         string  `json:"pingUrl"`
+	AccountID       *string `json:"accountId"`
+	ResourceID      *string `json:"resourceId"`
+	PluginID        *string `json:"pluginId"`
+	ResourceTypeID  *string `json:"resourceTypeId"`
+	FieldKey        *string `json:"fieldKey"`
+
+	Status            string  `json:"status"`
+	DownReason        *string `json:"downReason"`
+	LastPingAt        *string `json:"lastPingAt"`
+	LastStartAt       *string `json:"lastStartAt"`
+	LastFailAt        *string `json:"lastFailAt"`
+	LastDurationMs    *int64  `json:"lastDurationMs"`
+	NextExpectedAt    *string `json:"nextExpectedAt"`
+	DeadlineAt        *string `json:"deadlineAt"`
+	LastStateChangeAt *string `json:"lastStateChangeAt"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+}
+
 /* ---------------------------------- SLOs ---------------------------------- */
 
 // SloInput is the POST and PUT body. One struct serves both because the two

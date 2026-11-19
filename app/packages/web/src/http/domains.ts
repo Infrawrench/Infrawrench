@@ -20,6 +20,7 @@ import { runbooksDomain } from "./domains/runbooks/index";
 import { pagingProvidersDomain } from "./domains/paging-providers/index";
 import { incidentsDomain } from "./domains/incidents/index";
 import { probesDomain } from "./domains/probes/index";
+import { heartbeatsDomain } from "./domains/heartbeats/index";
 import { slosDomain } from "./domains/slos/index";
 import { servicesDomain } from "./domains/services/index";
 import { scorecardsDomain } from "./domains/scorecards/index";
@@ -188,6 +189,7 @@ export const DOMAINS: readonly Domain[] = [
   pagingProvidersDomain,
   incidentsDomain,
   probesDomain,
+  heartbeatsDomain,
   slosDomain,
   servicesDomain,
   scorecardsDomain,

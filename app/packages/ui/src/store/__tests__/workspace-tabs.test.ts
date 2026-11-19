@@ -187,10 +187,12 @@ describe("environments tab kind", () => {
 describe("probes tab kind", () => {
   it("is a singleton tab id", () => {
     expect(getWorkspaceTabId({ kind: "probes" })).toBe("probes");
+    expect(getWorkspaceTabId({ kind: "heartbeats" })).toBe("heartbeats");
   });
 
   it("falls back to the sidebar tile's title", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "probes" })).toBe("Probes");
+    expect(getWorkspaceTabFallbackTitle({ kind: "heartbeats" })).toBe("Heartbeats");
   });
 
   it("compares equal to itself", () => {

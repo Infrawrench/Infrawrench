@@ -92,6 +92,7 @@ interface ResourceDetailResponse {
   storageBucketName?: string;
   supportsMetrics?: boolean;
   schedulable?: boolean;
+  hasSchedule?: boolean;
 }
 
 export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
@@ -373,6 +374,7 @@ export function ResourcePanel({
         initialCwd={initialCwd}
         supportsMetrics={data.supportsMetrics}
         schedulable={data.schedulable}
+        hasSchedule={data.hasSchedule}
         resourceFields={data.resourceFields}
         parentResourceId={parent}
       />

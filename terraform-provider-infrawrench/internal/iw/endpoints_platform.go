@@ -58,6 +58,53 @@ func (c *Client) DeleteProbe(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/probes/"+seg(id))
 }
 
+/* ------------------------------- heartbeats ------------------------------- */
+
+// ListHeartbeats unwraps the {"heartbeats": […]} envelope.
+func (c *Client) ListHeartbeats(ctx context.Context) ([]Heartbeat, error) {
+	var envelope struct {
+		Heartbeats []Heartbeat `json:"heartbeats"`
+	}
+	if err := c.Get(ctx, "/heartbeats", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Heartbeats, nil
+}
+
+// GetHeartbeat lists and filters: there is no single-GET route.
+func (c *Client) GetHeartbeat(ctx context.Context, id string) (*Heartbeat, error) {
+	all, err := c.ListHeartbeats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/heartbeats", id)
+}
+
+func (c *Client) CreateHeartbeat(ctx context.Context, in HeartbeatCreate) (*Heartbeat, error) {
+	var out Heartbeat
+	if err := c.Post(ctx, "/heartbeats", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateHeartbeat(ctx context.Context, id string, in HeartbeatUpdate) (*Heartbeat, error) {
+	var out Heartbeat
+	if err := c.Put(ctx, "/heartbeats/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteHeartbeat(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/heartbeats/"+seg(id))
+}
+
 /* ---------------------------------- SLOs ---------------------------------- */
 
 // GetSlo reads the single-GET route and unwraps the SLO from its detail

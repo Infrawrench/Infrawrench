@@ -133,7 +133,12 @@ export const FunctionResourceType = rt({
     f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("kind", "Kind", { showcase: true, required: false, editable: false }),
     f("gpu", "GPU", { required: false, editable: false }),
-    f("schedule", "Schedule", { showcase: true, required: false, editable: false }),
+    f("schedule", "Schedule", {
+      showcase: true,
+      required: false,
+      editable: false,
+      schedule: "cron",
+    }),
     f("webEndpoint", "Web Endpoint", { kind: "boolean", required: false, editable: false }),
     f("appId", "App ID", { required: false, editable: false }),
     f("functionId", "Function ID", { required: false, editable: false }),
@@ -159,7 +164,12 @@ export const ScheduledFunctionResourceType = rt({
   showInSidebar: true,
   fields: [
     f("name", "Name", { editable: false }),
-    f("schedule", "Schedule", { showcase: true, required: false, editable: false }),
+    f("schedule", "Schedule", {
+      showcase: true,
+      required: false,
+      editable: false,
+      schedule: "cron",
+    }),
     f("app", "App", { required: false, editable: false }),
     f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("gpu", "GPU", { required: false, editable: false }),

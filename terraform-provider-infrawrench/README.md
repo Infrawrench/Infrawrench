@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 85 resources and 8 data
+accounts and access control, and alert delivery. 86 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -712,6 +712,7 @@ secret store that consumes it rather than into an output.
 | Resource                    | Import    | Notes                                                 |
 | --------------------------- | --------- | ----------------------------------------------------- |
 | `infrawrench_probe`         | by id     | Numeric fields are clamped server-side                |
+| `infrawrench_heartbeat`     | by id     | `ping_url` is a secret; rotate it in the app          |
 | `infrawrench_slo`           | by id     | Out-of-range target or threshold is rejected          |
 | `infrawrench_dora_settings` | by org id | Org singleton; destroy is a no-op                     |
 | `infrawrench_status_page`   | by id     | `slug` is minted with entropy; rotation is not a plan |

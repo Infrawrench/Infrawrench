@@ -22,6 +22,7 @@ export const fieldDefinitionSchema = Schema.Struct({
   allowLiteral: Schema.optional(Schema.Boolean),
   editable: Schema.optional(Schema.Boolean),
   showcase: Schema.optional(Schema.Boolean),
+  schedule: Schema.optional(Schema.Literals(["cron", "timezone"])),
 }).check(
   rule(
     (f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"),
@@ -37,6 +38,7 @@ const resourceOutputSchema = Schema.Struct({
   description: Schema.optional(Schema.String),
   hidden: Schema.optional(Schema.Boolean),
   dnsValue: Schema.optional(Schema.Literals(["ipv4", "ipv6", "hostname"])),
+  schedule: Schema.optional(Schema.Literals(["cron", "timezone"])),
 });
 
 const peerPluginIntegrationSchema = Schema.Struct({

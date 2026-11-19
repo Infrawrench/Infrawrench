@@ -40,6 +40,8 @@ import {
   CloseIcon,
 } from "@infrawrench/ui";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
+import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
+import { createWebHeartbeatsClient } from "@/lib/heartbeats-client";
 import type {
   ArtifactEntry,
   ChatMessage,
@@ -85,6 +87,7 @@ import {
   resourceAppsTabTarget,
   resourceTabTarget,
   servicesTabTarget,
+  heartbeatsTabTarget,
 } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
@@ -184,6 +187,8 @@ interface Props {
   initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
   schedulable?: boolean | undefined;
+  /** The type flags the field holding the schedule it runs on: offer the Heartbeat tab. */
+  hasSchedule?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -233,6 +238,7 @@ export function ResourceDetailClient({
   initialCwd,
   supportsMetrics,
   schedulable,
+  hasSchedule,
   resourceFields,
   parentResourceId,
 }: Props) {
@@ -242,6 +248,7 @@ export function ResourceDetailClient({
   const orgId = useOrgId();
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
+  const heartbeatsClient = useMemo(() => createWebHeartbeatsClient(orgId), [orgId]);
   const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const blastRadiusClient = useMemo(() => createWebBlastRadiusClient(orgId), [orgId]);
   /**
@@ -1634,6 +1641,23 @@ export function ResourceDetailClient({
                   target={{ resourceId, accountId, resourceName: resourceDisplayName }}
                 />
               )}
+              {...(hasSchedule
+                ? {
+                    renderHeartbeatTab: () => (
+                      <ResourceHeartbeatPanel
+                        client={heartbeatsClient}
+                        resourceId={resourceId}
+                        resourceName={resourceDisplayName}
+                        onOpenHeartbeats={() =>
+                          void navigateToWorkspaceTarget(navigate, heartbeatsTabTarget(), {
+                            label: gt("Heartbeats"),
+                            mode: "pin",
+                          })
+                        }
+                      />
+                    ),
+                  }
+                : {})}
               renderOwnershipTab={() => (
                 <>
                   <ServiceAnnotation

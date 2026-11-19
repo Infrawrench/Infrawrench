@@ -269,6 +269,17 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "critical",
   },
   {
+    // A scheduled job missed its ping past the grace period, reported a
+    // failure, or came back. `critical` like probes: a backup that stopped
+    // running is exactly the outage nobody notices until it matters.
+    id: "heartbeatAlerts",
+    label: "Heartbeats",
+    description: "A scheduled job missed its heartbeat, reported a failure, or recovered.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     // Error budgets: a multiwindow burn-rate pair fired (page or ticket
     // severity), the budget ran out, or the burn stopped. `critical` by
     // default because the page-severity pairs are the ones that exist to wake

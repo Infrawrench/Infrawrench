@@ -993,6 +993,7 @@ export * from "./environment-diff";
 export * from "./environments";
 export * from "./schedules";
 export * from "./probes";
+export * from "./heartbeats";
 // One screen, read from across the room.
 export * from "./wallboard";
 export * from "./help-links";
