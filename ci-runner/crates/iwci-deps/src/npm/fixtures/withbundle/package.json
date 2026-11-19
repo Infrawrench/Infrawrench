@@ -1,0 +1,15 @@
+{
+  "name": "withbundle",
+  "version": "1.0.0",
+  "main": "index.js",
+  "bin": {
+    "withbundle": "cli.js",
+    "esbuild": "cli.js"
+  },
+  "dependencies": {
+    "inner": "1.0.0"
+  },
+  "bundleDependencies": [
+    "inner"
+  ]
+}

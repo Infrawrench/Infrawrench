@@ -385,11 +385,13 @@ fn is_version_req(s: &str) -> bool {
         None => (s, None),
     };
     let parts: Vec<&str> = core.split('.').collect();
-    let core_ok = (1..=3).contains(&parts.len())
+    // A fourth number is a rebuild of an upstream release (`1.4.4.1`).
+    let core_ok = (1..=4).contains(&parts.len())
         && parts
             .iter()
             .all(|p| !p.is_empty() && p.len() <= 9 && p.bytes().all(|b| b.is_ascii_digit()));
     // A prerelease only makes sense on a full version: `7.1.0-beta.1`.
+    let rebuild_ok = parts.len() < 4 || (pre.is_none() && !parts[3].starts_with('0'));
     let pre_ok = pre.is_none_or(|pre| {
         parts.len() == 3
             && !pre.is_empty()
@@ -397,7 +399,7 @@ fn is_version_req(s: &str) -> bool {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
     });
-    core_ok && pre_ok
+    core_ok && rebuild_ok && pre_ok
 }
 
 fn is_env_key(s: &str) -> bool {
@@ -428,7 +430,7 @@ fn parse_tool(using: &str) -> Result<ToolRef, String> {
     }
     if !is_version_req(version) {
         return Err(format!(
-            "`{version}` is not a version; use `7`, `7.1` or `7.1.3`"
+            "`{version}` is not a version; use `7`, `7.1`, `7.1.3` or a rebuild, `7.1.3.1`"
         ));
     }
     let (name, version) = (name.to_string(), version.to_string());
@@ -976,7 +978,7 @@ impl Validator<'_> {
                 self.error(
                     &dep_path,
                     format!(
-                        "unknown ecosystem `{name}`; expected `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer` or `bundler`"
+                        "unknown ecosystem `{name}`; expected `pnpm`, `npm`, `bun`, `go`, `cargo`, `pip`, `composer` or `bundler`"
                     ),
                 );
                 continue;
@@ -1001,6 +1003,13 @@ impl Validator<'_> {
             };
             if options.only.is_some() && ecosystem != Ecosystem::Pnpm {
                 self.error(format!("{dep_path}.only"), "only applies to pnpm");
+            }
+            let native = options.native.unwrap_or(false);
+            if native && !matches!(ecosystem, Ecosystem::Pnpm | Ecosystem::Npm | Ecosystem::Bun) {
+                self.error(
+                    format!("{dep_path}.native"),
+                    "native applies only to pnpm, npm and bun",
+                );
             }
             let file = match options.file {
                 Some(_) if ecosystem != Ecosystem::Pip => {
@@ -1061,6 +1070,7 @@ impl Validator<'_> {
                 file,
                 ruby,
                 without_extensions,
+                native,
             };
             if specs.contains(&spec) {
                 self.error(&dep_path, "listed twice");

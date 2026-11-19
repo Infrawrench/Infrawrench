@@ -30,6 +30,12 @@ function privateKey(): string {
   return v.includes("\\n") ? v.replace(/\\n/g, "\n") : v;
 }
 
+/** The app's numeric id, or `null` when it is not configured. */
+export function githubAppId(): number | null {
+  const id = Number(process.env["GITHUB_APP_ID"]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 export function githubAppSlug(): string | null {
   return process.env["GITHUB_APP_SLUG"] ?? null;
 }

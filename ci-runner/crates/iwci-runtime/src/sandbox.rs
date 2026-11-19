@@ -104,9 +104,10 @@ pub struct SandboxHost {
     system: Vec<Placed>,
     platform: String,
     overhead: u64,
-    /// The CPUs a sandbox may use and is told it has: the runner's own
-    /// (`--cpus`), as a WASIX job's threads share them, unless its job
-    /// holds vCPUs of its own (`cpus:`).
+    /// The CPUs a sandbox has (gVisor's `--cpu-num`, which also sizes its
+    /// kernel's threads): the runner's own (`--cpus`), as a WASIX job's
+    /// threads share them, unless its job holds vCPUs of its own (`cpus:`).
+    /// What the job is told is `Limits::told_cpus` (`JobSpec::told_cpus`).
     cpus: u32,
     /// How many jobs share a vCPU (`--jobs-per-cpu`): a job holding
     /// `cpus:` weighs as many jobs as the slots it holds.
@@ -189,7 +190,7 @@ impl SandboxHost {
 
     /// Holds every sandbox together to `cpus` CPUs' time (`cpu.max` on the
     /// runner's `jobs/` cgroup, shared by equal weight), which is also how
-    /// many each is told it has: the runner's `--cpus`.
+    /// many CPUs each has to run on: the runner's `--cpus`.
     pub fn with_cpus(mut self, cpus: u32) -> io::Result<Self> {
         self.cpus = cpus.max(1);
         if let Some(jobs) = &self.jobs {
@@ -534,6 +535,7 @@ impl Runtime {
             output_cap: 64 << 10,
             internet: inv.internet,
             cpus: inv.limits.cpus.unwrap_or(host.cpus) as usize,
+            told_cpus: inv.limits.told_cpus(),
             cache_dir: PathBuf::from(IWCI_DIR).join("cache"),
             packages: packages.iter().map(spec_package).collect(),
             tools,

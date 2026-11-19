@@ -18,7 +18,7 @@ use crate::{
 use futures::future::BoxFuture;
 use rand::RngExt;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ops::Deref,
     path::{Path, PathBuf},
     str,
@@ -42,7 +42,31 @@ use wasmer_wasix_types::{
 use webc::metadata::annotations::Wasi;
 
 pub use super::handles::*;
-use super::{Linker, WasiState, context_switching::ContextSwitchingEnvironment, conv_env_vars};
+use super::{Linker, WasiState, context_switching::ContextSwitchingEnvironment};
+
+/// A command's `wasi.env` entries are defaults: one whose name the
+/// environment already has is left out, so a spawned command never sees a
+/// name twice (0.705 appended them). Backported from Wasmer's main branch.
+fn add_command_env_defaults(environment: &mut Vec<Vec<u8>>, defaults: Vec<String>) {
+    let mut names = environment
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .iter()
+                .position(|byte| *byte == b'=')
+                .map(|separator| entry[..separator].to_vec())
+        })
+        .collect::<HashSet<_>>();
+
+    for default in defaults {
+        let Some((key, value)) = default.split_once('=') else {
+            continue;
+        };
+        if names.insert(key.as_bytes().to_vec()) {
+            environment.push([key.as_bytes(), b"=", value.as_bytes()].concat());
+        }
+    }
+}
 
 async fn write_readonly_buffer_to_fs(
     fs: &WasiFsRoot,
@@ -1345,22 +1369,7 @@ impl WasiEnv {
         })) = cmd.metadata().wasi()
         {
             if let Some(env_vars) = env_vars {
-                let env_vars = env_vars
-                    .into_iter()
-                    .map(|env_var| {
-                        let (k, v) = env_var.split_once('=').unwrap();
-
-                        (k.to_string(), v.as_bytes().to_vec())
-                    })
-                    .collect::<Vec<_>>();
-
-                let env_vars = conv_env_vars(env_vars);
-
-                self.state
-                    .envs
-                    .lock()
-                    .unwrap()
-                    .extend_from_slice(env_vars.as_slice());
+                add_command_env_defaults(&mut self.state.envs.lock().unwrap(), env_vars);
             }
 
             if let Some(main_args) = main_args {
@@ -1374,5 +1383,33 @@ impl WasiEnv {
                 self.state.args.lock().unwrap()[0] = exec_name;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod command_env_tests {
+    use super::*;
+
+    #[test]
+    fn spawned_command_environment_is_default_only() {
+        let mut environment = vec![b"HOME=/workspace".to_vec(), b"PATH=/bin".to_vec()];
+
+        add_command_env_defaults(
+            &mut environment,
+            vec![
+                "HOME=/package".to_owned(),
+                "PREFIX=/".to_owned(),
+                "PREFIX=/duplicate".to_owned(),
+            ],
+        );
+
+        assert_eq!(
+            environment,
+            vec![
+                b"HOME=/workspace".to_vec(),
+                b"PATH=/bin".to_vec(),
+                b"PREFIX=/".to_vec(),
+            ]
+        );
     }
 }

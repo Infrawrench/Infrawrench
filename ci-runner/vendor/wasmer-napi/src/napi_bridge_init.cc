@@ -2707,7 +2707,12 @@ extern "C" int snapi_bridge_define_class(SnapiEnvState* env_state,
 // Callback system (napi_create_function + napi_get_cb_info)
 // ============================================================
 
+// iwci patch: the context the import on this thread's stack installed, for
+// `napi_host_write_guest_stderr`, which has only a `napi_env` to go by.
+thread_local void* t_active_callback_ctx = nullptr;
+
 extern "C" void* snapi_bridge_swap_active_callback_ctx(SnapiEnvState* env_state, void* callback_ctx) {
+  t_active_callback_ctx = callback_ctx;
   auto* bridge_state = LookupEnvState(env_state);
   if (bridge_state == nullptr) return nullptr;
   // iwci patch (#994): a load and a store, not an exchange. Every import
@@ -2784,6 +2789,8 @@ extern "C" uint32_t snapi_host_invoke_wasm_callback(void* callback_ctx,
                                                     uint32_t guest_env,
                                                     uint32_t wasm_fn_ptr,
                                                     uint32_t callback_arg);
+// iwci patch: whether this thread has a store lent (`guest/callback.rs`).
+extern "C" bool snapi_host_store_lent();
 
 // iwci patch (#1150): what Node prints straight to standard error is
 // written to the program's own descriptor 2, through the store the import
@@ -2798,17 +2805,27 @@ extern "C" void napi_host_write_guest_stderr(napi_env env,
                                              const char* text,
                                              size_t len) {
   if (env == nullptr || text == nullptr || len == 0) return;
-  void* callback_ctx = nullptr;
+  // The context this thread's import installed, and only if it is `env`'s.
+  // The first state in `g_envs` with this `env` was not always the live one:
+  // an env being released still names the `napi_env` it is freeing, and a new
+  // env on another thread can be given the same address, so the text went
+  // with another program's context into this thread's store, and the runtime
+  // ended this program for using an object of another store (an unsettled
+  // top-level await's warning: 5 jobs in 1,800, 40 at a time).
+  void* callback_ctx = t_active_callback_ctx;
+  if (callback_ctx == nullptr) return;
+  bool found = false;
   {
     std::lock_guard<std::recursive_mutex> lock(g_mu);
     for (SnapiEnvState* state : g_envs) {
-      if (state->env == env) {
-        callback_ctx = state->active_callback_ctx.load(std::memory_order_acquire);
+      if (state->env == env &&
+          state->active_callback_ctx.load(std::memory_order_acquire) == callback_ctx) {
+        found = true;
         break;
       }
     }
   }
-  if (callback_ctx != nullptr) snapi_host_write_guest_stderr(callback_ctx, text, len);
+  if (found) snapi_host_write_guest_stderr(callback_ctx, text, len);
 }
 
 struct WasmInterruptRequest {
@@ -2826,7 +2843,14 @@ void WasmInterruptCallback(napi_env env, void* raw) {
       bridge_state != nullptr
           ? bridge_state->active_callback_ctx.load(std::memory_order_acquire)
           : nullptr;
-  if (callback_ctx != nullptr) {
+  // iwci patch: V8 runs an interrupt wherever the isolate next checks for
+  // one, which can be inside an import that lent no store, the guest's own
+  // code then being on the stack with the store. Now that a parent's
+  // interrupts reach its workers (`guest/napi.rs`), that happened hundreds of
+  // times a run, each reported as a dropped callback. The guest queues the
+  // same work on its loop (Edge.js's `Environment::RequestInterrupt`), so the
+  // interrupt does nothing then and the loop runs it.
+  if (callback_ctx != nullptr && snapi_host_store_lent()) {
     // Own the ids the guest mints while servicing the interrupt (no return
     // value to escape, so a plain frame suffices).
     napi_handle_scope interrupt_scope = nullptr;

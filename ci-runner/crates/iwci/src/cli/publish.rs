@@ -45,12 +45,17 @@ struct Build {
     targets: BTreeMap<String, BuildTarget>,
     #[serde(default)]
     aliases: Vec<String>,
+    /// A native builtin's programs by command name, each the guest path of
+    /// one of every target's files.
+    #[serde(default)]
+    commands: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BuildTarget {
-    program: String,
+    #[serde(default)]
+    program: Option<String>,
     #[serde(default)]
     files: Vec<BuildFile>,
 }
@@ -138,13 +143,14 @@ pub fn publish(mut args: Args) -> Result<ExitCode, String> {
                             Ok((
                                 target.clone(),
                                 TargetSource {
-                                    program: at(&t.program)?,
+                                    program: t.program.as_deref().map(at).transpose()?,
                                     files: sources(&t.files)?,
                                 },
                             ))
                         })
                         .collect::<Result<_, String>>()?,
                     aliases: build.aliases,
+                    commands: build.commands,
                 };
                 iwci_store::publish_tool(store.as_ref(), &Namespace::Builtin, &draft)
                     .map(|(_, report)| report)

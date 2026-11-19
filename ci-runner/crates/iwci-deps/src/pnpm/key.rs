@@ -20,7 +20,8 @@
 //!   package's undeclared imports land: a name the closure has is keyed on
 //!   what it hoists to;
 //! - what holds for the whole lockfile: its version, its
-//!   `patchedDependencies` and `injectWorkspacePackages`.
+//!   `patchedDependencies`, `injectWorkspacePackages` and
+//!   `integrityTarget`.
 //!
 //! Left out: a hoisted name that nothing in the closure is called or
 //! depends on. A package that imports such a name without declaring it
@@ -149,6 +150,9 @@ impl KeyIndex {
             },
         );
         field("patched", &format!("{:?}", lockfile.patched_dependencies));
+        if lockfile.integrity_pins_tar {
+            field("integrity target", "tar");
+        }
 
         let mut names: BTreeSet<&str> = BTreeSet::new();
         let mut queue: VecDeque<String> = VecDeque::new();
@@ -355,6 +359,22 @@ mod tests {
         assert_ne!(before.digest("app"), after.digest("app"));
         // `lib` never reaches `loose-envify`.
         assert_eq!(before.digest("lib"), after.digest("lib"));
+    }
+
+    #[test]
+    fn a_boot_document_leaves_every_key_alone() {
+        // What pnpm version a project pins installs nothing a job resolves.
+        let lock = lockfile(&[("chalk", "5.0.0")], "1.3.0");
+        let plain = workspace(&lock);
+        let booted = workspace(&format!("{}{lock}", crate::pnpm::lockfile::BOOT_DOCUMENT));
+        let bumped = workspace(&format!(
+            "{}{lock}",
+            crate::pnpm::lockfile::BOOT_DOCUMENT.replace("12.4.1", "12.5.0")
+        ));
+        for project in ["app", "lib", "other", "."] {
+            assert_eq!(plain.digest(project), booted.digest(project), "{project}");
+            assert_eq!(plain.digest(project), bumped.digest(project), "{project}");
+        }
     }
 
     #[test]

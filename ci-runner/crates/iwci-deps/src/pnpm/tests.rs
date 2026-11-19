@@ -355,6 +355,621 @@ fn installs_the_isolated_layout() {
     assert_eq!(requests.len(), fetcher.requests().len());
 }
 
+/// A lockfile pnpm 11 or later wrote with a boot document first (a project
+/// that pins pnpm) installs what the same lockfile without one does.
+#[test]
+fn a_boot_document_changes_nothing_installed() {
+    let plain = fixture(|_| {});
+    let plain_report = install(
+        &plain.builder,
+        "/app",
+        &plain.fetcher,
+        &PnpmOptions::default(),
+    )
+    .unwrap();
+
+    let Fixture { builder, fetcher } = fixture(|_| {});
+    let lockfile = read(&builder, "/app/pnpm-lock.yaml");
+    builder
+        .write(
+            "/app/pnpm-lock.yaml",
+            format!("{}{lockfile}", super::lockfile::BOOT_DOCUMENT).as_bytes(),
+        )
+        .unwrap();
+    let report = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert_eq!(report.importers, plain_report.importers);
+    assert_eq!(report.packages, plain_report.packages);
+    assert_eq!(report.skipped_optional, plain_report.skipped_optional);
+    assert_eq!(report.hoisted, plain_report.hoisted);
+    assert_eq!(report.links, plain_report.links);
+    assert_eq!(fetcher.requests().len(), plain.fetcher.requests().len());
+    assert!(!fetcher.requests().iter().any(|url| url.contains("pnpm")));
+    assert!(!builder.is_dir("/app/node_modules/pnpm"));
+    assert!(read(&builder, "/app/node_modules/react-dom/index.js").contains("react-dom@18.0.0"));
+}
+
+/// A workspace whose project depends on `rollup@4.52.0` (with its native
+/// build for Linux as an optional dependency, as Rollup publishes it) and
+/// `rollup@3.29.5` under an alias; the registry also has
+/// `@rollup/wasm-node@4.52.0` when `with_wasm`.
+fn rollup_workspace(with_wasm: bool) -> Fixture {
+    let fetcher = MemoryFetcher::new();
+    let native = publish(
+        &fetcher,
+        "rollup",
+        "4.52.0",
+        &[(
+            "dist/native.js",
+            b"require('@rollup/rollup-linux-x64-gnu');\n",
+        )],
+    );
+    let linux = publish(&fetcher, "@rollup/rollup-linux-x64-gnu", "4.52.0", &[]);
+    let old = publish(&fetcher, "rollup", "3.29.5", &[]);
+    if with_wasm {
+        let wasm = tgz(&[
+            (
+                "package.json",
+                br#"{"name":"@rollup/wasm-node","version":"4.52.0"}"#,
+            ),
+            (
+                "dist/native.js",
+                b"require('./wasm-node/bindings_wasm.js');\n",
+            ),
+            ("dist/wasm-node/bindings_wasm_bg.wasm", b"\0asm"),
+        ]);
+        fetcher.insert(
+            "https://registry.npmjs.org/@rollup%2fwasm-node/4.52.0",
+            format!(
+                r#"{{"name":"@rollup/wasm-node","version":"4.52.0","dist":{{"integrity":"{}","tarball":"https://registry.npmjs.org/@rollup/wasm-node/-/wasm-node-4.52.0.tgz"}}}}"#,
+                sri(&wasm)
+            ),
+        );
+        fetcher.insert(registry("@rollup/wasm-node", "4.52.0"), wasm);
+    }
+    let lockfile = format!(
+        r#"lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      rollup:
+        specifier: ^4.52.0
+        version: 4.52.0
+      rollup3:
+        specifier: npm:rollup@3.29.5
+        version: rollup@3.29.5
+
+packages:
+
+  '@rollup/rollup-linux-x64-gnu@4.52.0':
+    resolution: {{integrity: {linux}}}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  rollup@3.29.5:
+    resolution: {{integrity: {old}}}
+
+  rollup@4.52.0:
+    resolution: {{integrity: {native}}}
+    hasBin: true
+
+snapshots:
+
+  '@rollup/rollup-linux-x64-gnu@4.52.0':
+    optional: true
+
+  rollup@3.29.5: {{}}
+
+  rollup@4.52.0:
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu': 4.52.0
+"#
+    );
+    let builder = SnapshotBuilder::new();
+    builder
+        .write("/app/pnpm-lock.yaml", lockfile.as_bytes())
+        .unwrap();
+    Fixture { builder, fetcher }
+}
+
+#[test]
+fn rollup_is_installed_as_its_webassembly_build() {
+    let Fixture { builder, fetcher } = rollup_workspace(true);
+    let report = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert_eq!(
+        report.wasm_builds,
+        ["rollup@4.52.0 as @rollup/wasm-node@4.52.0"]
+    );
+    // In Rollup's own directory, so `rollup` resolves to it.
+    let dir = "/app/node_modules/.pnpm/rollup@4.52.0/node_modules/rollup";
+    assert!(read(&builder, &format!("{dir}/dist/native.js")).contains("bindings_wasm"));
+    assert!(builder.is_file(format!("{dir}/dist/wasm-node/bindings_wasm_bg.wasm")));
+    assert!(read(&builder, "/app/node_modules/rollup/package.json").contains("wasm-node"));
+    // Rollup 3 has no native binary to replace.
+    assert!(read(&builder, "/app/node_modules/rollup3/index.js").contains("rollup@3.29.5"));
+    assert_eq!(
+        report.skipped_optional,
+        ["@rollup/rollup-linux-x64-gnu@4.52.0"]
+    );
+    // The native tarball is never fetched.
+    assert!(!fetcher.requests().contains(&registry("rollup", "4.52.0")));
+}
+
+#[test]
+fn rollup_stays_native_where_it_can_run_or_has_no_build() {
+    // A host platform runs the native build.
+    let Fixture { builder, fetcher } = rollup_workspace(true);
+    let host = PnpmOptions {
+        platform: Some(Platform {
+            os: "linux".into(),
+            cpu: "x64".into(),
+            libc: Some("glibc".into()),
+        }),
+        ..PnpmOptions::default()
+    };
+    let report = install(&builder, "/app", &fetcher, &host).unwrap();
+    assert!(report.wasm_builds.is_empty());
+    assert!(read(&builder, "/app/node_modules/rollup/dist/native.js").contains("linux-x64-gnu"));
+    assert!(
+        !fetcher
+            .requests()
+            .iter()
+            .any(|url| url.contains("wasm-node"))
+    );
+
+    // An empty table replaces nothing.
+    let Fixture { builder, fetcher } = rollup_workspace(true);
+    let none = PnpmOptions {
+        wasm_builds: &[],
+        ..PnpmOptions::default()
+    };
+    let report = install(&builder, "/app", &fetcher, &none).unwrap();
+    assert!(report.wasm_builds.is_empty());
+    assert!(read(&builder, "/app/node_modules/rollup/dist/native.js").contains("linux-x64-gnu"));
+
+    // A registry without the build leaves the native package.
+    let Fixture { builder, fetcher } = rollup_workspace(false);
+    let report = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert!(report.wasm_builds.is_empty());
+    assert!(read(&builder, "/app/node_modules/rollup/dist/native.js").contains("linux-x64-gnu"));
+}
+
+/// Serves a package with `manifest` as its `package.json`, plus `files`.
+fn publish_manifest(
+    fetcher: &MemoryFetcher,
+    name: &str,
+    version: &str,
+    manifest: &str,
+    files: &[(&str, &[u8])],
+) -> String {
+    let mut entries: Vec<(&str, &[u8])> = vec![("package.json", manifest.as_bytes())];
+    entries.extend_from_slice(files);
+    let bytes = tgz(&entries);
+    let integrity = sri(&bytes);
+    fetcher.insert(registry(name, version), bytes);
+    integrity
+}
+
+/// The SRI of the tar inside a `.tgz`.
+fn tar_sri(tgz: &[u8]) -> String {
+    let mut tar = Vec::new();
+    std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(tgz), &mut tar).unwrap();
+    sri(&tar)
+}
+
+#[test]
+fn a_registry_revision_is_fetched_from_its_route_and_pins_its_tar() {
+    let fetcher = MemoryFetcher::new();
+    let original = tgz(&[
+        ("package.json", br#"{"name":"ejs","version":"2.7.4"}"#),
+        ("index.js", b"original"),
+    ]);
+    let replaced = tgz(&[
+        ("package.json", br#"{"name":"ejs","version":"2.7.4"}"#),
+        ("index.js", b"patched"),
+    ]);
+    fetcher.insert(registry("ejs", "2.7.4"), original);
+    fetcher.insert("https://registry.npmjs.org/ejs@2.7.4+r2", replaced.clone());
+    let scoped = tgz(&[("package.json", br#"{"name":"@a/b","version":"1.0.0"}"#)]);
+    fetcher.insert("https://registry.npmjs.org/@a/b@1.0.0+r0", scoped.clone());
+    let lockfile = format!(
+        r#"lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      '@a/b':
+        specifier: 1.0.0
+        version: 1.0.0
+      ejs:
+        specifier: 2.7.4
+        version: 2.7.4
+
+packages:
+
+  '@a/b@1.0.0':
+    resolution:
+      integrity: {scoped}
+      revision: 0
+
+  ejs@2.7.4:
+    resolution:
+      integrity: {replaced}
+      revision: 2
+
+snapshots:
+
+  '@a/b@1.0.0': {{}}
+
+  ejs@2.7.4: {{}}
+"#,
+        scoped = tar_sri(&scoped),
+        replaced = tar_sri(&replaced),
+    );
+    let builder = SnapshotBuilder::new();
+    builder
+        .write("/app/pnpm-lock.yaml", lockfile.as_bytes())
+        .unwrap();
+    install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert_eq!(read(&builder, "/app/node_modules/ejs/index.js"), "patched");
+    assert!(read(&builder, "/app/node_modules/@a/b/package.json").contains("1.0.0"));
+    assert!(!fetcher.requests().contains(&registry("ejs", "2.7.4")));
+
+    // The tar's hash, not the download's: a lockfile that names the
+    // `.tgz`'s hash for a revision is refused.
+    let wrong = lockfile.replace(&tar_sri(&replaced), &sri(&replaced));
+    builder
+        .write("/app/pnpm-lock.yaml", wrong.as_bytes())
+        .unwrap();
+    let error = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap_err();
+    assert!(error.to_string().contains("ejs"), "{error}");
+}
+
+#[test]
+fn integrity_target_tar_pins_every_tarball_by_its_tar() {
+    let fetcher = MemoryFetcher::new();
+    let ms = tgz(&[("package.json", br#"{"name":"ms","version":"2.1.3"}"#)]);
+    fetcher.insert(registry("ms", "2.1.3"), ms.clone());
+    // A tar registry serves the tar itself, which is hashed as it is.
+    let mut plain = Vec::new();
+    std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&ms[..]), &mut plain).unwrap();
+    let local = tgz(&[("package.json", br#"{"name":"local","version":"1.0.0"}"#)]);
+    let lockfile = |ms_integrity: &str| {
+        format!(
+            r#"lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+  integrityTarget: tar
+
+importers:
+
+  .:
+    dependencies:
+      local:
+        specifier: file:vendor/local-1.0.0.tgz
+        version: file:vendor/local-1.0.0.tgz
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
+
+packages:
+
+  local@file:vendor/local-1.0.0.tgz:
+    resolution: {{integrity: {local}, tarball: file:vendor/local-1.0.0.tgz}}
+    version: 1.0.0
+
+  ms@2.1.3:
+    resolution: {{integrity: {ms_integrity}}}
+
+snapshots:
+
+  local@file:vendor/local-1.0.0.tgz: {{}}
+
+  ms@2.1.3: {{}}
+"#,
+            local = tar_sri(&local),
+        )
+    };
+    let builder = SnapshotBuilder::new();
+    builder
+        .write("/app/vendor/local-1.0.0.tgz", &local)
+        .unwrap();
+    builder
+        .write("/app/pnpm-lock.yaml", lockfile(&tar_sri(&ms)).as_bytes())
+        .unwrap();
+    install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert!(read(&builder, "/app/node_modules/ms/package.json").contains("2.1.3"));
+    assert!(read(&builder, "/app/node_modules/local/package.json").contains("local"));
+
+    // The same lockfile against a registry that serves the tar.
+    let tar_registry = MemoryFetcher::new();
+    tar_registry.insert(registry("ms", "2.1.3"), plain);
+    let builder = SnapshotBuilder::new();
+    builder
+        .write("/app/vendor/local-1.0.0.tgz", &local)
+        .unwrap();
+    builder
+        .write("/app/pnpm-lock.yaml", lockfile(&tar_sri(&ms)).as_bytes())
+        .unwrap();
+    install(&builder, "/app", &tar_registry, &PnpmOptions::default()).unwrap();
+    assert!(read(&builder, "/app/node_modules/ms/package.json").contains("2.1.3"));
+
+    // The `.tgz`'s own hash is not the tar's.
+    let builder = SnapshotBuilder::new();
+    builder
+        .write("/app/vendor/local-1.0.0.tgz", &local)
+        .unwrap();
+    builder
+        .write("/app/pnpm-lock.yaml", lockfile(&sri(&ms)).as_bytes())
+        .unwrap();
+    assert!(install(&builder, "/app", &fetcher, &PnpmOptions::default()).is_err());
+}
+
+#[test]
+fn a_directory_dependency_is_copied_as_pnpm_packs_it() {
+    let fetcher = MemoryFetcher::new();
+    let ms = publish(&fetcher, "ms", "2.1.3", &[]);
+    // An injected workspace package (`dependenciesMeta.injected`), with a
+    // peer, as pnpm locks one.
+    let lockfile = format!(
+        r#"lockfileVersion: '9.0'
+
+importers:
+
+  examples/app:
+    dependencies:
+      '@shared/ui':
+        specifier: workspace:*
+        version: file:tooling/ui(ms@2.1.3)
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
+    dependenciesMeta:
+      '@shared/ui':
+        injected: true
+
+  tooling/plain: {{}}
+
+  tooling/ui:
+    devDependencies:
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
+
+packages:
+
+  '@shared/plain@file:tooling/plain':
+    resolution: {{directory: tooling/plain, type: directory}}
+
+  '@shared/ui@file:tooling/ui':
+    resolution: {{directory: tooling/ui, type: directory}}
+    peerDependencies:
+      ms: ^2.0.0
+
+  ms@2.1.3:
+    resolution: {{integrity: {ms}}}
+
+snapshots:
+
+  '@shared/ui@file:tooling/ui(ms@2.1.3)':
+    dependencies:
+      '@shared/plain': file:tooling/plain
+      ms: 2.1.3
+
+  '@shared/plain@file:tooling/plain': {{}}
+
+  ms@2.1.3: {{}}
+"#
+    );
+    let checkout = SnapshotBuilder::new();
+    for (path, text) in [
+        ("/app/pnpm-lock.yaml", lockfile.as_str()),
+        ("/app/examples/app/package.json", r#"{"name":"app"}"#),
+        (
+            "/app/tooling/ui/package.json",
+            r#"{"name":"@shared/ui","files":["src","!src/**/*.test.ts","dist/*.js"],"main":"entry.js"}"#,
+        ),
+        ("/app/tooling/ui/entry.js", "main"),
+        ("/app/tooling/ui/README.md", "readme"),
+        ("/app/tooling/ui/src/button.tsx", "button"),
+        ("/app/tooling/ui/src/button.test.ts", "test"),
+        ("/app/tooling/ui/dist/a.js", "a"),
+        ("/app/tooling/ui/dist/a.js.map", "map"),
+        ("/app/tooling/ui/notes.txt", "left out"),
+        (
+            "/app/tooling/ui/node_modules/ms/index.js",
+            "the project's own",
+        ),
+        (
+            "/app/tooling/plain/package.json",
+            r#"{"name":"@shared/plain"}"#,
+        ),
+        ("/app/tooling/plain/any/file.txt", "kept"),
+    ] {
+        checkout.write(path, text.as_bytes()).unwrap();
+    }
+    // Through a layer, as a cached install runs.
+    let layer = checkout.layer();
+    install(&layer, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    let ui = "/app/node_modules/.pnpm/@shared+ui@file+tooling+ui_ms@2.1.3/node_modules/@shared/ui";
+    for (file, kept) in [
+        ("package.json", true),
+        ("entry.js", true),
+        ("README.md", true),
+        ("src/button.tsx", true),
+        ("src/button.test.ts", false),
+        ("dist/a.js", true),
+        ("dist/a.js.map", false),
+        ("notes.txt", false),
+        ("node_modules/ms/index.js", false),
+    ] {
+        assert_eq!(layer.is_file(format!("{ui}/{file}")), kept, "{file}");
+    }
+    // Without `files`, everything but `node_modules`.
+    assert_eq!(
+        read(
+            &layer,
+            "/app/node_modules/.pnpm/@shared+plain@file+tooling+plain/node_modules/@shared/plain/any/file.txt"
+        ),
+        "kept"
+    );
+    // Its dependencies and its peer resolve beside the copy.
+    assert!(
+        read(
+            &layer,
+            "/app/node_modules/.pnpm/@shared+ui@file+tooling+ui_ms@2.1.3/node_modules/ms/index.js"
+        )
+        .contains("ms@2.1.3")
+    );
+    assert!(
+        read(
+            &layer,
+            "/app/examples/app/node_modules/@shared/ui/src/button.tsx"
+        )
+        .contains("button")
+    );
+    // A file added to the directory is a change to the install's inputs.
+    let reads = layer.reads();
+    assert!(reads.iter().all(|input| input.holds(checkout.fs())));
+    checkout
+        .write("/app/tooling/ui/src/new.tsx", b"new")
+        .unwrap();
+    assert!(!reads.iter().all(|input| input.holds(checkout.fs())));
+}
+
+#[test]
+fn commands_are_linked_into_node_modules_bin() {
+    let fetcher = MemoryFetcher::new();
+    let eslint = publish_manifest(
+        &fetcher,
+        "eslint",
+        "9.0.0",
+        r#"{"name":"eslint","version":"9.0.0","bin":{"eslint":"./bin/eslint.js"}}"#,
+        &[("bin/eslint.js", b"#!/usr/bin/env node\n")],
+    );
+    let which = publish_manifest(
+        &fetcher,
+        "which",
+        "2.0.2",
+        r#"{"name":"which","version":"2.0.2","bin":{"node-which":"bin/node-which"}}"#,
+        &[("bin/node-which", b"#!/usr/bin/env node\n")],
+    );
+    let tool = publish_manifest(
+        &fetcher,
+        "@scope/tool",
+        "1.0.0",
+        r#"{"name":"@scope/tool","version":"1.0.0","bin":"cli.js"}"#,
+        &[("cli.js", b"#!/usr/bin/env node\n")],
+    );
+    let lockfile = format!(
+        r#"lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      '@scope/tool':
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/app:
+    devDependencies:
+      eslint:
+        specifier: ^9.0.0
+        version: 9.0.0
+      lib:
+        specifier: workspace:*
+        version: link:../lib
+
+  packages/lib: {{}}
+
+packages:
+
+  '@scope/tool@1.0.0':
+    resolution: {{integrity: {tool}}}
+    hasBin: true
+
+  eslint@9.0.0:
+    resolution: {{integrity: {eslint}}}
+    hasBin: true
+
+  which@2.0.2:
+    resolution: {{integrity: {which}}}
+    hasBin: true
+
+snapshots:
+
+  '@scope/tool@1.0.0': {{}}
+
+  eslint@9.0.0:
+    dependencies:
+      which: 2.0.2
+
+  which@2.0.2: {{}}
+"#
+    );
+    let builder = SnapshotBuilder::new();
+    for (path, text) in [
+        ("/app/pnpm-lock.yaml", lockfile.as_str()),
+        ("/app/package.json", r#"{"name":"root"}"#),
+        ("/app/packages/app/package.json", r#"{"name":"app"}"#),
+        (
+            "/app/packages/lib/package.json",
+            r#"{"name":"lib","bin":{"lib-cli":"src/cli.js"}}"#,
+        ),
+    ] {
+        builder.write(path, text.as_bytes()).unwrap();
+    }
+    let report = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    let link = |path: &str| {
+        builder
+            .fs()
+            .readlink(Path::new(path))
+            .unwrap_or_else(|e| panic!("{path}: {e}"))
+    };
+    // A project's own dependencies, a scoped package's string `bin` by
+    // its unscoped name, and a workspace project's command.
+    assert_eq!(
+        link("/app/node_modules/.bin/tool"),
+        PathBuf::from("../.pnpm/@scope+tool@1.0.0/node_modules/@scope/tool/cli.js")
+    );
+    assert_eq!(
+        link("/app/packages/app/node_modules/.bin/eslint"),
+        PathBuf::from(
+            "../../../../node_modules/.pnpm/eslint@9.0.0/node_modules/eslint/bin/eslint.js"
+        )
+    );
+    assert_eq!(
+        link("/app/packages/app/node_modules/.bin/lib-cli"),
+        PathBuf::from("../../../lib/src/cli.js")
+    );
+    // Following the link reads the file.
+    assert_eq!(
+        read(&builder, "/app/packages/app/node_modules/.bin/eslint"),
+        "#!/usr/bin/env node\n"
+    );
+    // A package's own `.bin` has its dependencies' commands.
+    assert_eq!(
+        link(
+            "/app/node_modules/.pnpm/eslint@9.0.0/node_modules/eslint/node_modules/.bin/node-which"
+        ),
+        PathBuf::from("../../../../../which@2.0.2/node_modules/which/bin/node-which")
+    );
+    // A transitive dependency is not on a project's `PATH`.
+    assert!(
+        builder
+            .fs()
+            .readlink(Path::new("/app/packages/app/node_modules/.bin/node-which"))
+            .is_err()
+    );
+    assert_eq!(report.bins, 4);
+}
+
 /// Installed files are read-only nodes over shared buffers; a job's fork
 /// must still read them, overwrite them in its own layer, and report the
 /// change, while the snapshot keeps the original.
@@ -407,6 +1022,38 @@ fn a_host_platform_installs_its_optional_packages() {
     let report = install(&builder, "/app", &fetcher, &options).unwrap();
     assert!(report.skipped_optional.is_empty());
     assert!(read(&builder, "/app/node_modules/fsevents/index.js").contains("fsevents"));
+}
+
+/// A native platform adds its packages to what the isolate takes, and
+/// leaves those alone: without it the native one is skipped.
+#[test]
+fn a_native_platform_installs_its_optional_packages_beside_the_isolates() {
+    let Fixture { builder, fetcher } = fixture(|_| {});
+    let isolate = install(&builder, "/app", &fetcher, &PnpmOptions::default()).unwrap();
+    assert!(!isolate.skipped_optional.is_empty());
+    let Fixture { builder, fetcher } = fixture(|_| {});
+    let options = PnpmOptions {
+        native: Some(Platform {
+            os: "darwin".into(),
+            cpu: "arm64".into(),
+            libc: None,
+        }),
+        ..PnpmOptions::default()
+    };
+    let report = install(&builder, "/app", &fetcher, &options).unwrap();
+    assert!(report.skipped_optional.is_empty());
+    assert_eq!(
+        report.packages,
+        isolate.packages + isolate.skipped_optional.len()
+    );
+    assert!(read(&builder, "/app/node_modules/fsevents/index.js").contains("fsevents"));
+    // The runner's own is Linux with glibc, where the sandbox runs.
+    if let Some(native) = super::native_platform() {
+        assert_eq!(
+            (native.os.as_str(), native.libc.as_deref()),
+            ("linux", Some("glibc"))
+        );
+    }
 }
 
 #[test]

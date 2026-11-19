@@ -147,6 +147,13 @@ where
         (**self).create_symlink(source, target)
     }
 
+    // iwci patch: forwarded like every other method. Without it a file
+    // system behind an `Arc` or a `Box` (WASIX's root, every mount) made
+    // no hard link, whatever the file system could do.
+    fn hard_link(&self, source: &Path, target: &Path) -> Result<()> {
+        (**self).hard_link(source, target)
+    }
+
     fn remove_dir(&self, path: &Path) -> Result<()> {
         (**self).remove_dir(path)
     }
@@ -683,6 +690,14 @@ pub struct Metadata {
     pub created: u64,
     pub modified: u64,
     pub len: u64,
+    /// iwci patch: the file's inode number when the file system numbers
+    /// it itself, as `mem_fs` numbers a file with hard links so that every
+    /// name reports one number; 0 when it leaves that to the caller (which
+    /// numbers by path).
+    pub ino: u64,
+    /// iwci patch: how many names the file has, when the file system
+    /// counts them (`mem_fs` counts a file's hard links); 0 when not.
+    pub nlink: u64,
 }
 
 impl Metadata {

@@ -523,9 +523,24 @@ fn modes_sizes_directories_and_links_change_as_asked() {
     );
     assert_eq!(client.errno(mid::SYMLINK_AT, &w), libc::EEXIST);
 
-    // No hard links, as under WASIX.
+    // A hard link: one file with two names, which report one number, one
+    // mode and a count of two.
     let mut w = Writer::default();
     w.u64(work.fd).u64(a.fd).string(b"hard");
+    let reply = client.ok(mid::LINK_AT, &w);
+    let hard = read_inode(&mut Reader::new(&reply));
+    assert_eq!(hard.stat.ino, a.stat.ino);
+    assert_eq!(hard.stat.nlink, 2);
+    assert_eq!(hard.stat.mode, 0o104_755);
+    assert_eq!(client.fstat(a.fd).nlink, 2);
+    assert_eq!(job.read("/work/hard").unwrap(), b"he");
+    assert_eq!(client.errno(mid::LINK_AT, &w), libc::EEXIST);
+    client.unlink(work.fd, "hard", 0).unwrap();
+    assert_eq!(client.fstat(a.fd).nlink, 1);
+    assert_eq!(job.read("/work/a.txt").unwrap(), b"he");
+    // Not a directory, as on Linux.
+    let mut w = Writer::default();
+    w.u64(work.fd).u64(dir.fd).string(b"hard-dir");
     assert_eq!(client.errno(mid::LINK_AT, &w), libc::EPERM);
 
     // Directory reads in several calls, and a rewind starts over.

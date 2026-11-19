@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ownerKey, parseCiEvent, repoKey } from "../events";
+import { ownerKey, parseCheckRerequest, parseCiEvent, repoKey, runIdOfExternalId } from "../events";
 
 const sha = (c: string) => c.repeat(40);
 const repo = { full_name: "acme/web", default_branch: "main" };
@@ -107,5 +107,91 @@ describe("parseCiEvent", () => {
   it("names owners and repositories as the runner does", () => {
     expect(ownerKey("Acme/Web")).toBe("github.com-acme");
     expect(repoKey("Acme/Web")).toBe("web");
+  });
+});
+
+describe("parseCheckRerequest", () => {
+  const RUN = "0f8c6c2e-5b1a-4c6e-9d2f-3a4b5c6d7e8f";
+  const checkRun = (action = "rerequested", extra: Record<string, unknown> = {}) => ({
+    action,
+    installation: { id: 7 },
+    repository: repo,
+    sender: { login: "octo" },
+    check_run: {
+      id: 901,
+      head_sha: sha("a"),
+      external_id: `${RUN}:Test:build`,
+      app: { id: 42 },
+      check_suite: { id: 55, head_branch: "feature/x" },
+      ...extra,
+    },
+  });
+  const checkSuite = (action = "rerequested", extra: Record<string, unknown> = {}) => ({
+    action,
+    installation: { id: 7 },
+    repository: repo,
+    sender: { login: "octo" },
+    check_suite: { id: 55, head_sha: sha("a"), head_branch: "main", app: { id: 42 }, ...extra },
+  });
+
+  it("reads a re-run of one check, with its app, commit and external id", () => {
+    expect(parseCheckRerequest("check_run", checkRun())).toEqual({
+      kind: "check_run",
+      installationId: 7,
+      repoFullName: "acme/web",
+      appId: 42,
+      headSha: sha("a"),
+      headBranch: "feature/x",
+      checkRunId: 901,
+      externalId: `${RUN}:Test:build`,
+      senderLogin: "octo",
+    });
+  });
+
+  it("reads a re-run of a commit's whole suite", () => {
+    expect(parseCheckRerequest("check_suite", checkSuite())).toEqual({
+      kind: "check_suite",
+      installationId: 7,
+      repoFullName: "acme/web",
+      appId: 42,
+      headSha: sha("a"),
+      headBranch: "main",
+      checkRunId: null,
+      externalId: null,
+      senderLogin: "octo",
+    });
+    // A fork's commit: GitHub knows no branch of this repository for it.
+    expect(
+      parseCheckRerequest("check_suite", checkSuite("rerequested", { head_branch: null })),
+    ).toMatchObject({ headBranch: null });
+  });
+
+  it("starts nothing for other actions, events or a malformed delivery", () => {
+    for (const action of ["created", "completed", "requested_action"]) {
+      expect(parseCheckRerequest("check_run", checkRun(action))).toBeNull();
+    }
+    for (const action of ["requested", "completed"]) {
+      expect(parseCheckRerequest("check_suite", checkSuite(action))).toBeNull();
+    }
+    expect(parseCheckRerequest("push", checkRun())).toBeNull();
+    expect(parseCheckRerequest("check_run", checkRun("rerequested", { app: null }))).toBeNull();
+    expect(parseCheckRerequest("check_run", checkRun("rerequested", { head_sha: "x" }))).toBeNull();
+    expect(parseCheckRerequest("check_suite", { ...checkSuite(), installation: {} })).toBeNull();
+    expect(parseCheckRerequest("check_suite", null)).toBeNull();
+  });
+
+  it("reads GitHub's ghost sender as nobody", () => {
+    expect(
+      parseCheckRerequest("check_run", { ...checkRun(), sender: { login: "ghost" } }),
+    ).toMatchObject({ senderLogin: null });
+  });
+
+  it("finds the run in a run's or a job's external id", () => {
+    expect(runIdOfExternalId(RUN)).toBe(RUN);
+    expect(runIdOfExternalId(`${RUN}:Test:build`)).toBe(RUN);
+    expect(runIdOfExternalId(`${RUN.toUpperCase()}:a:b`)).toBe(RUN);
+    expect(runIdOfExternalId("something-else")).toBeNull();
+    expect(runIdOfExternalId("")).toBeNull();
+    expect(runIdOfExternalId(null)).toBeNull();
   });
 });

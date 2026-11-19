@@ -15,8 +15,8 @@
 #   build-cache.sh key <name>...    print each key and what went into it
 #
 # Names, and what each builds (spec below): clickhouse, edgejs, git,
-# go@<minor>, ruby@<minor>, ruby-gems@<minor>, kubectl@<minor>, gh@<minor>,
-# openssh, typescript, oxfmt.
+# tar, openssl, go@<minor>, ruby@<minor>, ruby-gems@<minor>, kubectl@<minor>,
+# gh@<minor>, openssh, typescript, oxfmt.
 #
 # The key is the SHA-256 of a listing, stored beside each entry as
 # inputs.txt:
@@ -96,6 +96,15 @@ spec() {
       OUTPUTS=(dist/package/git)
       BUILD=(bash builtins/environments/git/build.sh)
       VERIFY=(verify_package GIT_PKG git)
+      ;;
+    tar | openssl)
+      # And the toolchain script they share, with the C library patches it
+      # builds in.
+      INPUTS+=("builtins/environments/$1" builtins/environments/wasix-toolchain.sh
+        builtins/environments/edgejs/wasix-libc-*.patch)
+      OUTPUTS=("dist/package/$1")
+      BUILD=(bash "builtins/environments/$1/build.sh")
+      VERIFY=(verify_package "${1^^}_PKG" "$1")
       ;;
     go@*)
       minor="${1#go@}"

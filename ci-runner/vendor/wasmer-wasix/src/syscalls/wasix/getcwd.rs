@@ -21,22 +21,29 @@ pub fn getcwd<M: MemorySize>(
     Span::current().record("path", cur_dir.as_str());
 
     let cur_dir_len = cur_dir.len();
-    wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
-    if cur_dir_len as u64 > max_path_len64 {
+    // iwci patch: the path needs room for its terminating NUL, as POSIX's
+    // `getcwd` does (ERANGE unless `size` exceeds the length), and a buffer
+    // too small is told the size that holds both. wasix-libc's
+    // `getcwd(NULL, 0)` asks for the size and allocates exactly what it is
+    // told; told the length, it got a buffer the path filled to its last
+    // byte, written without a NUL, so the string ran on into the
+    // allocator's padding. A path whose length is 12 mod 16 met the next
+    // chunk's header there: bash, whose `$PWD` comes from it, said
+    // `/app/packages/provider-utils3`, and a command it ran by a relative
+    // path was not found (`pnpm -r exec` in vercel/ai).
+    if cur_dir_len as u64 >= max_path_len64 {
+        wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len + 1))));
         return Errno::Range;
     }
+    wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
 
-    if path.is_null() || max_path_len64 == 0 {
+    if path.is_null() {
         return Errno::Inval;
     }
 
     let path_slice = wasi_try_mem!(path.slice(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
     wasi_try_mem!(path_slice.write_slice(cur_dir.as_bytes()));
-    // null-terminate the path if it's shorter than max_path_len64
-    if (cur_dir_len as u64) < max_path_len64 {
-        let path_nul = wasi_try_mem!(path.add_offset(wasi_try!(to_offset::<M>(cur_dir_len))));
-        // null-terminate the path
-        wasi_try_mem!(path_nul.write(&memory, 0));
-    }
+    let path_nul = wasi_try_mem!(path.add_offset(wasi_try!(to_offset::<M>(cur_dir_len))));
+    wasi_try_mem!(path_nul.write(&memory, 0));
     Errno::Success
 }

@@ -51,13 +51,16 @@ pub struct ToolDraft {
     pub targets: BTreeMap<String, TargetSource>,
     /// Other names a native tool runs under.
     pub aliases: Vec<String>,
+    /// A native tool's programs by command name, each the guest path of
+    /// one of every target's files.
+    pub commands: BTreeMap<String, String>,
 }
 
 /// A native tool's program and files for one target.
 #[derive(Debug, Clone)]
 pub struct TargetSource {
-    /// The local program.
-    pub program: PathBuf,
+    /// The local program; none for a tool that runs only its commands.
+    pub program: Option<PathBuf>,
     /// What it needs beside it.
     pub files: Vec<FileSource>,
 }
@@ -150,12 +153,17 @@ pub fn publish_tool(
         });
     }
     let mut blobs = Vec::new();
+    // A file at several paths (a toolchain's copies of one library) is
+    // held once.
+    let mut held = HashSet::new();
     let mut blob_ref = |bytes: Vec<u8>| {
         let r = BlobRef {
             sha256: sha256_hex(&bytes),
             size: bytes.len() as u64,
         };
-        blobs.push(bytes);
+        if held.insert(r.sha256.clone()) {
+            blobs.push(bytes);
+        }
         r
     };
     let module = match &draft.module {
@@ -178,7 +186,10 @@ pub fn publish_tool(
     let files = file_refs(&draft.files, &mut blob_ref)?;
     let mut targets = BTreeMap::new();
     for (target, source) in &draft.targets {
-        let program = blob_ref(read_local(&source.program)?);
+        let program = match &source.program {
+            Some(path) => Some(blob_ref(read_local(path)?)),
+            None => None,
+        };
         let files = file_refs(&source.files, &mut blob_ref)?;
         targets.insert(
             target.clone(),
@@ -197,6 +208,7 @@ pub fn publish_tool(
         description: draft.description.clone(),
         targets,
         aliases: draft.aliases.clone(),
+        commands: draft.commands.clone(),
     };
     let key = ns.manifest_key(&manifest.name, &manifest.version)?;
     manifest.validate().map_err(|e| Error::manifest(&key, e))?;

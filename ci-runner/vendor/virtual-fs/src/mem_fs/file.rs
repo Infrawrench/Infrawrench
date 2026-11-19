@@ -328,6 +328,8 @@ impl VirtualFile for FileHandle {
                         created: src.created_time(),
                         modified: src.last_modified(),
                         len: src.size(),
+                        ino: 0,
+                        nlink: 0,
                     };
 
                     *inode = Node::CustomFile(CustomFileNode {
@@ -361,6 +363,8 @@ impl VirtualFile for FileHandle {
                         created: 1,
                         modified: 1,
                         len: src.len() as u64,
+                        ino: 0,
+                        nlink: 0,
                     };
 
                     *inode = Node::ReadOnlyFile(ReadOnlyFileNode {

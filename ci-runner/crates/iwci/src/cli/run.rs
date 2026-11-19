@@ -346,7 +346,31 @@ fn native_sandbox(
             }
         }
     };
+    raise_open_files();
     Ok(Some(Arc::new(host)))
+}
+
+/// Each mount of a sandbox is a lisafs connection whose channels hold a
+/// few descriptors each in the runner, about 170 for a job with
+/// `builtin:rust`'s fourteen mounts, so a runner started from a shell with
+/// the usual soft limit of 1024 ran out with half a dozen such jobs at once
+/// and gVisor failed the next mount with ENOMEM. The soft limit goes up to
+/// the hard one, as Go programs do for themselves; the service's unit sets
+/// both (`LimitNOFILE`).
+#[cfg(target_os = "linux")]
+fn raise_open_files() {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: plain syscalls on a struct we own.
+    unsafe {
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 && limit.rlim_cur < limit.rlim_max
+        {
+            limit.rlim_cur = limit.rlim_max;
+            libc::setrlimit(libc::RLIMIT_NOFILE, &limit);
+        }
+    }
 }
 
 /// What `downloads:` may keep on this runner.

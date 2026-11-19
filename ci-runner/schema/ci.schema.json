@@ -265,7 +265,7 @@
       }
     },
     "ecosystem": {
-      "enum": ["pnpm", "bun", "go", "cargo", "pip", "composer", "bundler"]
+      "enum": ["pnpm", "npm", "bun", "go", "cargo", "pip", "composer", "bundler"]
     },
     "deps": {
       "type": "array",
@@ -314,6 +314,10 @@
                     "pattern": "^[A-Za-z0-9._-]+$"
                   },
                   "description": "bundler only: gems whose native extension the jobs never load, installed without it when the runner has no build of it instead of failing the install."
+                },
+                "native": {
+                  "type": "boolean",
+                  "description": "pnpm, npm and bun only: also install the optional dependencies built for the runner's own Linux (turbo's and sherif's binaries), which only a job in the native sandbox can start."
                 }
               }
             }
@@ -392,8 +396,8 @@
         },
         "using": {
           "type": "string",
-          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
-          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x. Required unless the job has `cloud:` or runs in a virtual machine (`platform: linux`)."
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+|\\.[0-9]+)?$",
+          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x, and 7.1.3 the newest rebuild of 7.1.3 (7.1.3.2, a builtin rebuilt from the same upstream release); four numbers pin one rebuild. Required unless the job has `cloud:` or runs in a virtual machine (`platform: linux`)."
         },
         "platform": {
           "description": "What the job runs on: `wasm` (the default: an isolate on the runner, with `using:`), `linux` (an Ubuntu micro VM), or `{ os, image }`. A job on a virtual machine runs its `run:` script with `shell:` in the runner's image, starts from the clone, and keeps `artifacts`, `downloads`, `cache`, `changes`, `outputs` and `/tmp/workflow` working as on the runner. Not with `using`, `args`, `deps`, `tools`, `services`, `env-cache` or `task-cache`. Only a runner with that kind of machine runs it. Literal: not an expression.",
@@ -597,7 +601,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 64,
-          "description": "Whole vCPUs the job holds, and is billed for, instead of its default share of one. A runner with fewer gives the job all of its own."
+          "description": "Whole vCPUs the job holds, is told it has and is billed for, instead of its default share of one, which is told it has 1 CPU. A runner with fewer gives the job all of its own."
         },
         "cache": {
           "description": "Files kept between runs: restored before the job, saved after it passes unless key was an exact hit. Pushes read and write their branch's caches and fall back on the default branch's; pull requests never write where the default branch reads. Saves count against the owner's storage quota.",
@@ -849,7 +853,7 @@
       "properties": {
         "using": {
           "type": "string",
-          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+|\\.[0-9]+)?$",
           "description": "env:<name>@<version> with a `run:` script that starts the service (env:postgres@18 is PostgreSQL), or a builtin: or repo: tool with `args:`."
         },
         "run": {

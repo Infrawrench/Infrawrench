@@ -81,6 +81,50 @@ export async function githubError(res: Response): Promise<Error> {
   return new Error(`GitHub answered ${res.status}${body ? `: ${body.slice(0, 500)}` : ""}`);
 }
 
+/**
+ * Adds `note` to a check of this app's as its `text`, keeping its title,
+ * summary and conclusion: the answer to a re-run asked for from GitHub that
+ * starts nothing. GitHub reset the check's suite to queued when it was
+ * asked, and only a write to one of its checks settles it again, so a
+ * finished check is sent back as finished. Best-effort, like every check.
+ */
+export async function noteOnCheck(
+  installationId: number,
+  repoFullName: string,
+  checkRunId: number,
+  note: string,
+): Promise<void> {
+  const repo = repoFullName.split("/").map(encodeURIComponent).join("/");
+  const path = `/repos/${repo}/check-runs/${checkRunId}`;
+  try {
+    const res = await githubInstallationFetch(installationId, path);
+    if (!res.ok) throw await githubError(res);
+    const check = (await res.json()) as {
+      status?: string;
+      conclusion?: string | null;
+      output?: { title?: string | null; summary?: string | null };
+    };
+    const body: Record<string, unknown> = {
+      output: {
+        title: (check.output?.title || "Infrawrench CI").slice(0, 255),
+        // GitHub refuses an output without a summary.
+        summary: fitCheckText(check.output?.summary || note),
+        text: fitCheckText(note),
+      },
+      ...(check.status === "completed" && check.conclusion
+        ? { status: "completed", conclusion: check.conclusion }
+        : {}),
+    };
+    const patched = await githubInstallationFetch(installationId, path, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    if (!patched.ok) throw await githubError(patched);
+  } catch (err) {
+    console.warn(`[ci] could not answer the re-run of check ${checkRunId}:`, err);
+  }
+}
+
 /** Creates the run's check, or updates the one it has. */
 export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promise<void> {
   const detailsUrl = orgAppUrl(run.organizationId, `ci/${run.id}`);

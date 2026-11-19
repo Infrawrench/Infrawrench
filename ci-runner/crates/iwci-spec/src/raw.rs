@@ -269,8 +269,8 @@ pub enum Depth {
 }
 
 /// `pnpm`, or `pnpm: { dir: app }` to point at a lockfile below the root.
-/// The ecosystems are `pnpm`, `bun`, `go`, `cargo`, `pip`, `composer` and
-/// `bundler`.
+/// The ecosystems are `pnpm`, `npm`, `bun`, `go`, `cargo`, `pip`,
+/// `composer` and `bundler`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Dep {
@@ -301,6 +301,11 @@ pub struct DepOptions {
     /// than failing the install.
     #[serde(default)]
     pub without_extensions: Option<Vec<String>>,
+    /// pnpm, npm and bun only: also install the optional dependencies built
+    /// for the runner's own Linux (turbo's and sherif's binaries), which
+    /// only a job in the native sandbox can start.
+    #[serde(default)]
+    pub native: Option<bool>,
 }
 
 /// A `major.minor` written as a string or as a YAML number.
@@ -401,8 +406,8 @@ pub struct Job {
     pub timeout: Option<String>,
     #[serde(default)]
     pub memory: Option<String>,
-    /// Whole vCPUs the job holds, instead of its share of one (the
-    /// runner's `--jobs-per-cpu`).
+    /// Whole vCPUs the job holds and is told it has, instead of its share
+    /// of one (the runner's `--jobs-per-cpu`), with which it is told 1.
     #[serde(default)]
     pub cpus: Option<u32>,
     /// Files kept between runs: restored before the job, saved after it

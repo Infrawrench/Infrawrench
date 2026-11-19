@@ -6,7 +6,12 @@
 //! the kernel sets it on every write, rename onto, truncate or chmod, and
 //! nothing a job can do (`touch -d`, `cp -p`, `tar x`) sets it back. On Unix
 //! it is `st_ctime`; on Windows it is the `ChangeTime` of `FILE_BASIC_INFO`.
-//! Both are at nanosecond (Unix) or 100 ns (Windows) precision.
+//! Both are at nanosecond (Unix) or 100 ns (Windows) precision, but the
+//! clock that sets them ticks more coarsely (a few milliseconds on Linux
+//! file systems without fine-grained times, about 15.6 ms on Windows), so a
+//! rewrite of the same size within the tick of the put, with its
+//! modification time put back, would look unchanged. No job starts that
+//! soon after its tree arrives.
 //!
 //! A directory counts as changed when its mode differs, and as made again
 //! when its identity does (device and inode on Unix, volume and file index

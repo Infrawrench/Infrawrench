@@ -18,12 +18,23 @@ pub fn sock_addr_peer<M: MemorySize>(
     sock: WasiFd,
     ro_addr: WasmPtr<__wasi_addr_port_t, M>,
 ) -> Errno {
+    // iwci patch: an AF_UNIX socket answers with the path it connected to,
+    // or unnamed (net/unix.rs); unconnected, it fails as any socket does.
+    let unix = wasi_try!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
+        socket.unix()
+    )));
     let addr = wasi_try!(__sock_actor(
         &mut ctx,
         sock,
         Rights::empty(),
         |socket, _| socket.addr_peer()
     ));
+    if let Some(name) = unix {
+        let memory = unsafe { ctx.data().memory_view(&ctx) };
+        let path = name.peer.unwrap_or_default();
+        wasi_try!(crate::net::unix::write_unix_addr(&memory, ro_addr, &path));
+        return Errno::Success;
+    }
     Span::current().record("addr", format!("{addr:?}"));
 
     let env = ctx.data();

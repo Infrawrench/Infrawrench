@@ -80,7 +80,10 @@ pub(crate) fn path_filestat_get_internal(
     )?;
 
     // The number the inode reports, which a rename moves to the new path's
-    // (`path_rename`'s `renumber`); `fstat` reports the same one.
+    // (`path_rename`'s `renumber`); `fstat` reports the same one. iwci
+    // patch: unless the file system numbers the file itself (one with hard
+    // links), whose number every name reports, and which the inode then
+    // keeps for `fstat` too, with the count of names.
     let st_ino = file_inode.stat.read().unwrap().st_ino;
     let mut stat = if file_inode.is_preopened {
         *file_inode.stat.read().unwrap().deref()
@@ -88,7 +91,13 @@ pub(crate) fn path_filestat_get_internal(
         let guard = file_inode.read();
         state.fs.get_stat_for_kind(guard.deref())?
     };
-    stat.st_ino = st_ino;
+    if stat.st_ino == 0 || file_inode.is_preopened {
+        stat.st_ino = st_ino;
+    } else {
+        let mut cached = file_inode.stat.write().unwrap();
+        cached.st_ino = stat.st_ino;
+        cached.st_nlink = stat.st_nlink;
+    }
     Ok(stat)
 }
 

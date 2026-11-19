@@ -200,13 +200,16 @@ pub(crate) fn path_link_internal(
                     }
                 }
             }
-            // A file system that cannot make the link has no hard links:
-            // `link()` fails with EPERM, as Linux's does on one, and the
-            // program falls back to copying or renaming. Pointing a second
-            // cached entry at the same inode instead gave a name that
-            // existed only in this cache, and removing the first name then
-            // removed nothing (only the last link removes the file).
-            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Perm),
+            // A file system that cannot make the link (two mounts, or one
+            // with no hard links) fails it with EXDEV, the answer for two
+            // names a link cannot join, and the program falls back to
+            // copying or renaming. Pointing a second cached entry at the
+            // same inode instead gave a name that existed only in this
+            // cache, and removing the first name then removed nothing
+            // (#1052). Not EPERM: pnpm's package importer falls back to
+            // copying on EXDEV once, and on EPERM tries a link before every
+            // copy (Git and cargo fall back on either).
+            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Xdev),
             Err(err) => return Err(fs_error_into_wasi_err(err)),
         }
     };
@@ -232,12 +235,30 @@ pub(crate) fn path_link_internal(
             | Kind::Epoll { .. } => return Err(Errno::Notdir),
         }
     }
-    let new_link_count = {
-        let mut stat = source_inode.stat.write().unwrap();
-        stat.st_nlink += 1;
-        stat.st_nlink
-    };
-    target_inode.stat.write().unwrap().st_nlink = new_link_count;
+    // iwci patch: the file system numbers a file with two names and counts
+    // them (`Metadata::ino`, `Metadata::nlink`), so both names report the
+    // number the first one had and the count `stat` shows; a cached count
+    // of its own would go stale as soon as another process links or
+    // unlinks it.
+    match state.fs.root_fs.metadata(&target_path) {
+        Ok(md) if md.nlink > 0 => {
+            for inode in [&source_inode, &target_inode] {
+                let mut stat = inode.stat.write().unwrap();
+                if md.ino != 0 {
+                    stat.st_ino = md.ino;
+                }
+                stat.st_nlink = md.nlink;
+            }
+        }
+        _ => {
+            let new_link_count = {
+                let mut stat = source_inode.stat.write().unwrap();
+                stat.st_nlink += 1;
+                stat.st_nlink
+            };
+            target_inode.stat.write().unwrap().st_nlink = new_link_count;
+        }
+    }
 
     Ok(())
 }

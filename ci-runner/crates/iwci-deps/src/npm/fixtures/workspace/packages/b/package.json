@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/b",
+  "version": "1.0.0",
+  "dependencies": {
+    "@fixture/a": "1.0.0",
+    "ms": "2.1.2"
+  }
+}

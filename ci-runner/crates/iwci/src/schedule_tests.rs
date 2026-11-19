@@ -1228,10 +1228,12 @@ fn a_job_cannot_write_past_its_memory_and_its_bytes_are_given_back() {
     );
 }
 
-/// Caches in memory: key to entries, plus what was saved, in order.
+/// Caches in memory: key to entries and their modes, plus what was saved,
+/// in order.
 #[derive(Default)]
 struct MemoryCaches {
     entries: Mutex<HashMap<String, Vec<iwci_vfs::Entry>>>,
+    modes: Mutex<HashMap<String, iwci_vfs::archive::ModeList>>,
     saved: Mutex<Vec<String>>,
 }
 
@@ -1243,11 +1245,20 @@ impl Caches for MemoryCaches {
         _max: u64,
     ) -> Result<Option<Restored>, String> {
         let entries = self.entries.lock().unwrap();
+        let modes = |k: &str| {
+            self.modes
+                .lock()
+                .unwrap()
+                .get(k)
+                .cloned()
+                .unwrap_or_default()
+        };
         if let Some(e) = entries.get(key) {
             return Ok(Some(Restored {
                 key: key.into(),
                 exact: true,
                 entries: e.clone(),
+                modes: modes(key),
             }));
         }
         for prefix in restore_keys {
@@ -1256,21 +1267,27 @@ impl Caches for MemoryCaches {
                     key: k.clone(),
                     exact: false,
                     entries: e.clone(),
+                    modes: modes(k),
                 }));
             }
         }
         Ok(None)
     }
-    fn save(
+    fn save_with_modes(
         &self,
         key: &str,
         _restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String> {
         self.entries
             .lock()
             .unwrap()
             .insert(key.into(), entries.to_vec());
+        self.modes
+            .lock()
+            .unwrap()
+            .insert(key.into(), modes.to_vec());
         self.saved.lock().unwrap().push(key.into());
         Ok(())
     }
@@ -2232,13 +2249,15 @@ impl Caches for SlowCaches {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.inner.restore(key, restore_keys, max)
     }
-    fn save(
+    fn save_with_modes(
         &self,
         key: &str,
         restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String> {
-        self.inner.save(key, restore_keys, entries)
+        self.inner
+            .save_with_modes(key, restore_keys, entries, modes)
     }
 }
 
@@ -4493,4 +4512,40 @@ fn a_package_job_is_keyed_on_its_part_of_a_pnpm_lockfile() {
         key("not: [a", "t", Some("app")),
         key("not: [b", "t", Some("app"))
     );
+}
+
+/// A list of artifacts carries its files' modes in a record beside them,
+/// which a job they are handed to gets back, and which is not a file of
+/// the list.
+#[test]
+fn artifacts_carry_their_modes() {
+    let fs = SnapshotBuilder::new()
+        .freeze()
+        .fork_limited(Arc::new(JobBudget {
+            cap: 1 << 20,
+            used: AtomicU64::new(0),
+            peak: AtomicU64::new(0),
+            refused: AtomicBool::new(false),
+            gauge: None,
+        }));
+    fs.write("/out/app", b"\x7fELF").unwrap();
+    fs.write("/out/notes.txt", b"hi").unwrap();
+    fs.modes().set(std::path::Path::new("/out/app"), 0o755);
+    let entries = with_modes(&fs, fs.entries_under(&["/out"]));
+    assert!(
+        entries
+            .iter()
+            .any(|e| entry_path(e) == std::path::Path::new(ARTIFACT_MODES))
+    );
+    let (files, modes) = artifact_modes(&entries);
+    assert!(
+        files
+            .iter()
+            .all(|e| entry_path(e) != std::path::Path::new(ARTIFACT_MODES))
+    );
+    assert_eq!(modes, vec![(PathBuf::from("/out/app"), 0o755)]);
+    // A list from before the record, or of files with no mode, has none.
+    let (plain, none) = artifact_modes(&files);
+    assert_eq!(plain.len(), files.len());
+    assert!(none.is_empty());
 }

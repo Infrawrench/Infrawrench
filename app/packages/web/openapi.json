@@ -143857,7 +143857,7 @@
             }
           }
         },
-        "description": "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues and `ping` is acknowledged. Every other event is ignored.",
+        "description": "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues; `push` and `pull_request` events start CI runs; `check_suite` and `check_run` `rerequested` events retry the CI runs behind Infrawrench's own checks; and `ping` is acknowledged. Every other event is ignored.",
         "summary": "Inbound GitHub App webhook for issue status",
         "operationId": "postIssueWebhooksGithub"
       }

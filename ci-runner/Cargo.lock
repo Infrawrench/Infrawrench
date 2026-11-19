@@ -2987,7 +2987,6 @@ dependencies = [
  "wasmer-wasix",
  "wat",
  "webc",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -3050,6 +3049,7 @@ dependencies = [
  "shared-buffer",
  "thiserror",
  "virtual-fs",
+ "xxhash-rust",
 ]
 
 [[package]]

@@ -19,6 +19,7 @@
 #   builtins/test.sh aws az gcloud   the cloud CLIs against a fake cloud
 #   builtins/test.sh npm-cli         the deployment CLIs against fake APIs
 #   builtins/test.sh bash gh         gh and git push against a fake GitHub
+#   builtins/test.sh rust            cargo test, fmt and clippy, natively
 #   builtins/test.sh bash bun        native Bun in a gVisor sandbox (root)
 #
 # `tools` runs gofmt from a bash script (`tools:`), so it needs gofmt and
@@ -47,6 +48,21 @@
 # token lent the way the app lends one (`github-token:`, `IWCI_LENT_FILE`),
 # so it needs bash in the same list and the internet to build (Go's
 # archive, gh's source and modules).
+#
+# `rust` runs builtin:rust, the native Rust toolchain, from env:bash
+# scripts in a gVisor sandbox (README "Native tools in a sandbox"), on a
+# small Cargo workspace whose one crates.io dependency comes from
+# `deps: [cargo]`'s vendor directory with no network, and whose build
+# script compiles and archives C with the builtin's `cc` and `ar`; what it
+# builds runs straight from the script, and in a later job that has only
+# builtin:glibc (the C library, files alone). So it
+# needs the runner's native sandbox: IWCI_NATIVE_SANDBOX set to gVisor's
+# release (crates/iwci-sandbox/tests/fixtures.sh), and, since the runner
+# holds each sandbox to its memory in a cgroup of its own, a delegated
+# cgroup subtree, as root (`sudo systemd-run --scope -p Delegate=yes env
+# IWCI_NATIVE_SANDBOX=... bash builtins/test.sh rust`). Building the
+# builtin downloads about 250 MB (the Rust components and Ubuntu's
+# packages for both targets); bash is built too unless it already is.
 #
 # `bun` runs the official Bun (`builtin:bun`, `abi: native-gvisor`) from
 # bash scripts, so it needs bash in the same list, and a runner that runs
@@ -210,6 +226,21 @@ for name in "$@"; do
         dirs+=("$dist"/builtin/"$tool"/*)
       done
       ;;
+    rust)
+      # Native, so only a runner with the sandbox runs it (header).
+      if [[ -z "${IWCI_NATIVE_SANDBOX:-}" ]]; then
+        echo "error: \`rust\` runs in the native sandbox: set IWCI_NATIVE_SANDBOX to gVisor's release (see this script's header)" >&2
+        exit 2
+      fi
+      if [[ "${SKIP_BUILD:-}" != 1 ]]; then
+        bash "$here/rust/build.sh"
+        bash "$here/glibc/build.sh"
+      fi
+      if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/bash/*" >/dev/null; then
+        bash "$here/environments/build.sh" bash
+      fi
+      dirs=("$dist"/builtin/rust/* "$dist"/builtin/glibc/* "$dist"/environment/bash/*)
+      ;;
     bash-node-pool)
       # Runs on bash-node's environment, built here unless it already is.
       if [[ "${SKIP_BUILD:-}" != 1 ]] && ! compgen -G "$dist/environment/bash-node/*" >/dev/null; then
@@ -218,7 +249,7 @@ for name in "$@"; do
       dirs=("$dist"/environment/bash-node/*)
       ;;
     *)
-      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh, bun" >&2
+      echo "error: no test for \`$name\`; know gofmt, oxfmt, typescript, bash, bash-node, bash-node-pool, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, tools, kubectl, openssh, aws, az, gcloud, npm-cli, gh, bun, rust" >&2
       exit 2
       ;;
   esac
@@ -246,6 +277,12 @@ printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n' 
 printf 'from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 6\n' >"$repo/py/bad/test_calc.py"
 # A repository's own addopts, which the environment's must not replace.
 printf '[pytest]\naddopts = -ra\n' >"$repo/py/ok/pytest.ini"
+# Tests that import a compiled module, for pytest-xdist's workers.
+mkdir -p "$repo/py/xdist"
+for n in 1 2 3 4; do
+  printf 'import numpy\n\n\ndef test_sum_%s():\n    assert int(numpy.arange(%s).sum()) == %s\n' \
+    "$n" "$((n + 1))" "$((n * (n + 1) / 2))" >"$repo/py/xdist/test_$n.py"
+done
 # A Composer project with a dependency it uses, tested by PHPUnit; the bad
 # one expects the wrong greeting. No lock file: each PHP version resolves
 # the PHPUnit it supports.
@@ -658,6 +695,12 @@ for version in 1.0.0 2.0.0; do
   printf '#!/usr/bin/env node\nconsole.log("hello %s " + process.argv.slice(2).join(" "));\n' "$version" \
     >"$repo/npm/packages/hello-cli/$version/bin/hello.js"
 done
+# A project that bundles with rolldown's and esbuild's WebAssembly builds,
+# pinned by its lockfile (node-fixtures/wasm-bundlers), for `deps:` to
+# install from the public registry. Not under a directory named like a
+# command: bash stops its PATH search at one (path-dir-passes).
+mkdir -p "$repo/js"
+cp -R "$here/node-fixtures/wasm-bundlers" "$repo/js/wasm-bundlers"
 # The cloud CLIs' fake cloud, and a certificate for its HTTPS half (the
 # Azure CLI signs in over HTTPS only) that the az jobs trust.
 mkdir -p "$repo/cloud"
@@ -667,6 +710,178 @@ for name in "$@"; do
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=127.0.0.1 \
     -addext subjectAltName=IP:127.0.0.1 -keyout "$repo/cloud/key.pem" -out "$repo/cloud/cert.pem" 2>/dev/null
 done
+# A Cargo workspace for builtin:rust: `ok` has a build script that
+# compiles and archives C with the toolchain's `cc` and `ar`, a crates.io
+# dependency (itoa, vendored by `deps: [cargo]`), unit tests, a doc test
+# and an integration test that runs its binary; `bad` has a failing test,
+# `dirty` code rustfmt changes, and `lint` code clippy warns about.
+mkdir -p "$repo"/rust/{ok/src,ok/tests,bad/src,dirty/src,lint/src}
+printf '[workspace]\nmembers = ["ok", "bad", "dirty", "lint"]\nresolver = "2"\n' >"$repo/rust/Cargo.toml"
+for crate in ok bad dirty lint; do
+  printf '[package]\nname = "%s"\nversion = "0.1.0"\nedition = "2021"\n' "$crate" >"$repo/rust/$crate/Cargo.toml"
+done
+printf '\n[dependencies]\nitoa = "1"\n' >>"$repo/rust/ok/Cargo.toml"
+cat >"$repo/rust/Cargo.lock" <<'TOML'
+# This file is automatically @generated by Cargo.
+# It is not intended for manual editing.
+version = 4
+
+[[package]]
+name = "bad"
+version = "0.1.0"
+
+[[package]]
+name = "dirty"
+version = "0.1.0"
+
+[[package]]
+name = "itoa"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+
+[[package]]
+name = "lint"
+version = "0.1.0"
+
+[[package]]
+name = "ok"
+version = "0.1.0"
+dependencies = [
+ "itoa",
+]
+TOML
+cat >"$repo/rust/ok/build.rs" <<'RUST'
+use std::path::PathBuf;
+use std::process::Command;
+
+fn main() {
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let object = out.join("sum.o");
+    let compiled = Command::new("cc")
+        .args(["-c", "-O2", "-fPIC", "src/sum.c", "-o"])
+        .arg(&object)
+        .status()
+        .unwrap();
+    assert!(compiled.success(), "cc failed");
+    let archived = Command::new("ar")
+        .arg("rcs")
+        .arg(out.join("libsum.a"))
+        .arg(&object)
+        .status()
+        .unwrap();
+    assert!(archived.success(), "ar failed");
+    println!("cargo:rustc-link-search=native={}", out.display());
+    println!("cargo:rustc-link-lib=static=sum");
+    println!("cargo:rerun-if-changed=src/sum.c");
+}
+RUST
+cat >"$repo/rust/ok/src/sum.c" <<'C'
+#include <stdint.h>
+#include <string.h>
+
+int32_t c_add(int32_t a, int32_t b) { return a + b; }
+
+size_t c_len(const char *s) { return strlen(s); }
+C
+cat >"$repo/rust/ok/src/lib.rs" <<'RUST'
+use std::ffi::{c_char, CString};
+
+extern "C" {
+    fn c_add(a: i32, b: i32) -> i32;
+    fn c_len(s: *const c_char) -> usize;
+}
+
+/// Adds in C.
+///
+/// ```
+/// assert_eq!(ok::add(40, 2), 42);
+/// ```
+pub fn add(a: i32, b: i32) -> i32 {
+    unsafe { c_add(a, b) }
+}
+
+/// A string's length, by C's `strlen`.
+pub fn len(s: &str) -> usize {
+    let s = CString::new(s).unwrap();
+    unsafe { c_len(s.as_ptr()) }
+}
+
+/// A number as text, by the vendored crate.
+pub fn show(n: i32) -> String {
+    itoa::Buffer::new().format(n).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adds_in_c() {
+        assert_eq!(add(2, 3), 5);
+    }
+
+    #[test]
+    fn measures_in_c() {
+        assert_eq!(len("native"), 6);
+    }
+
+    #[test]
+    fn formats() {
+        assert_eq!(show(add(40, 2)), "42");
+    }
+
+    #[test]
+    fn on_threads() {
+        let handles: Vec<_> = (0..16)
+            .map(|i| std::thread::spawn(move || add(i, i)))
+            .collect();
+        let sum: i32 = handles.into_iter().map(|h| h.join().unwrap()).sum();
+        assert_eq!(sum, 240);
+    }
+}
+RUST
+cat >"$repo/rust/ok/src/main.rs" <<'RUST'
+fn main() {
+    let args: Vec<i32> = std::env::args()
+        .skip(1)
+        .map(|a| a.parse().unwrap())
+        .collect();
+    println!("{}", ok::show(ok::add(args[0], args[1])));
+}
+RUST
+cat >"$repo/rust/ok/tests/cli.rs" <<'RUST'
+use std::process::Command;
+
+#[test]
+fn runs_the_binary() {
+    let out = Command::new(env!("CARGO_BIN_EXE_ok"))
+        .args(["20", "22"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "42\n");
+}
+RUST
+cat >"$repo/rust/bad/src/lib.rs" <<'RUST'
+pub fn double(n: i32) -> i32 {
+    n * 3
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn doubles() {
+        assert_eq!(super::double(2), 4);
+    }
+}
+RUST
+printf 'pub fn messy( a:i32 )->i32{a+1}\n' >"$repo/rust/dirty/src/lib.rs"
+cat >"$repo/rust/lint/src/lib.rs" <<'RUST'
+pub fn count(values: &Vec<i32>) -> usize {
+    values.len()
+}
+RUST
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
 git -C "$repo" -c user.name=iwci -c user.email=ci@example.com commit -qm fixture
@@ -758,11 +973,99 @@ jobs:
       sed -n 1p data.txt | grep -q '^fixture'
       test "$(find . -name data.txt)" = ./data.txt
       mkdir -p out && echo hello > out/x && test "$(cat out/x)" = hello
+  # A job is told the vCPUs of its `cpus:`, or 1 without, however many
+  # cores the runner has: told those, `-n auto`, vitest, cargo and the rest
+  # started a worker per core of the machine from a quarter of a vCPU.
+  # `nproc` (what WASIX reports) and /proc/cpuinfo say the same.
+  cpus-default-passes:
+    using: env:bash@5
+    run: |
+      test "$(nproc)" = 1
+      test "$(grep -c ^processor /proc/cpuinfo)" = 1
+  cpus-passes:
+    using: env:bash@5
+    cpus: 2
+    run: |
+      test "$(nproc)" = 2
+      test "$(grep -c ^processor /proc/cpuinfo)" = 2
+  # tar and gzip, each on its own, piped into the other, and tar starting
+  # gzip itself (-z, --use-compress-program), which it does with
+  # posix_spawn: WASIX has no fork() for it. tRPC's tests read a packed
+  # package's manifest with `tar -xzOf`.
+  tar-passes:
+    using: env:bash@5
+    run: |
+      mkdir -p /tmp/t/in && echo hello > /tmp/t/in/a.txt && cd /tmp/t
+      tar -cf a.tar -C /tmp/t in
+      test "$(tar -tf a.tar | tr '\n' ' ')" = "in/ in/a.txt "
+      gzip -c < a.tar > a.tgz
+      test "$(gunzip -c < a.tgz | tar -xOf - in/a.txt)" = hello
+      # As root, without restoring owners WASIX cannot set (TAR_OPTIONS).
+      mkdir out && gzip -dc < a.tgz > b.tar && tar -xf b.tar -C out
+      test "$(cat out/in/a.txt)" = hello
+      test "$(echo zipped | gzip | zcat)" = zipped
+      test "$(tar -xzOf a.tgz in/a.txt)" = hello
+      tar -czf c.tgz -C /tmp/t in && gzip -t c.tgz
+      test "$(tar -tzf c.tgz | tr '\n' ' ')" = "in/ in/a.txt "
+      mkdir z && tar -xzf c.tgz -C z && test "$(cat z/in/a.txt)" = hello
+      tar --use-compress-program='gzip -9' -cf d.tgz -C /tmp/t in
+      test "$(tar --use-compress-program=gzip -xOf d.tgz in/a.txt)" = hello
+      # Through a pipe, both ways.
+      test "$(tar -czf - -C /tmp/t in | tar -xzOf - in/a.txt)" = hello
+      # Recognised by its contents, without -z.
+      test "$(tar -xOf c.tgz in/a.txt)" = hello
+  # The compressor tar starts failing fails tar.
+  tar-corrupt-gzip-fails:
+    using: env:bash@5
+    run: |
+      printf 'not gzip' > /tmp/x.tgz
+      tar -xzf /tmp/x.tgz -C /tmp
+  # OpenSSL's command line: a self-signed certificate as tRPC's HTTP/2
+  # tests make one (`req` reads openssl.cnf, through OPENSSL_CONF), and a
+  # TLS connection verified against the CA certificates it carries.
+  openssl-passes:
+    using: env:bash@5
+    timeout: 5m
+    run: |
+      cd /tmp
+      openssl version | grep -q '^OpenSSL 3\.5\.'
+      openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 -subj /CN=localhost \
+        -keyout key.pem -out cert.pem
+      test "$(openssl x509 -in cert.pem -noout -subject)" = "subject=CN=localhost"
+      openssl rsa -in key.pem -check -noout
+      test "$(printf abc | openssl dgst -sha256 -r | cut -d' ' -f1)" = \
+        ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+      openssl s_client -connect github.com:443 -servername github.com -verify_return_error \
+        </dev/null >s_client.out 2>&1
+      grep -q 'Verify return code: 0 (ok)' s_client.out
+  # A certificate nothing it trusts signed is refused, for that reason (a
+  # refusal for any other reason exits 0, and fails the check). X25519
+  # alone, as badssl.com's server at times resets the connection after
+  # OpenSSL 3.5's default first flight (1555 bytes, with an ML-KEM key
+  # share), natively as much as here; a smaller one it answers.
+  openssl-untrusted-fails:
+    using: env:bash@5
+    timeout: 5m
+    run: |
+      status=0
+      openssl s_client -groups X25519 -connect self-signed.badssl.com:443 \
+        -servername self-signed.badssl.com -verify_return_error </dev/null >out 2>&1 || status=$?
+      cat out >&2
+      grep -q 'verify error:num=18:self-signed certificate' out || exit 0
+      exit "$status"
   false-fails:
     using: env:bash@5
     run: |
       false
       echo unreachable
+  # A native Linux program (here the header of one) cannot start in a job
+  # with no native tool: it says so, rather than "Exec format error".
+  exec-native-fails:
+    using: env:bash@5
+    run: |
+      { printf '\177ELF\002\001\001'; head -c 9 /dev/zero; printf '\002\000\076\000'; head -c 44 /dev/zero; } > /tmp/prog
+      chmod +x /tmp/prog
+      /tmp/prog
   # A process killed by a signal it does not handle: wasix-libc says which
   # and aborts with 127, and the runner adds who sent it (#955) to the
   # job's stderr, which is masked like the rest of it: the token printed
@@ -900,26 +1203,36 @@ jobs:
       test "$(readlink moved-link)" = data.txt && test ! -L data-link
       ln -s nowhere dangling && mv dangling dangling2
       test "$(readlink dangling2)" = nowhere
-  # A file has one name (#1052): `link()` fails with EPERM, as on a file
-  # system without hard links, and leaves nothing behind. It succeeded with
-  # a second name only WASIX's cache knew, after which removing the first
-  # name removed nothing. A failed link onto a deleted checkout file leaves
-  # it deleted.
+  # Hard links (#1052): `ln` gives a file a second name, the same file
+  # (one inode number, a count of two names, a write through one read
+  # through the other, one mode), and removing either name leaves the
+  # other. A checked-out file links too; a directory does not, as on
+  # Linux; a failed link onto a deleted checkout file leaves it deleted.
+  # The job's changes are each name's content.
   links-passes:
     using: env:bash@5
     run: |
       echo hi > f
-      if ln f g 2> err; then exit 1; fi
-      # EPERM, which this coreutils' ln prints as "Permission denied".
-      grep -Eq 'Operation not permitted|Permission denied' err
-      test ! -e g
+      ln f g
+      test "$(cat g)" = hi
+      test "$(stat -c %i f)" = "$(stat -c %i g)"
+      test "$(stat -c %h g)" = 2
+      echo more >> g
+      test "$(cat f)" = "$(printf 'hi\nmore')"
       rm f
-      test ! -e f
-      test -z "$(ls -A | grep -x -e f -e g)"
-      if ln data.txt data2.txt 2> /dev/null; then exit 1; fi
+      test ! -e f && test "$(cat g)" = "$(printf 'hi\nmore')"
+      test "$(stat -c %h g)" = 1
+      ln data.txt data2.txt
+      echo changed > data2.txt
+      test "$(cat data.txt)" = changed
+      chmod 700 data2.txt
+      test "$(stat -c %a data.txt)" = 700
+      if ln go go2 2> /dev/null; then exit 1; fi
+      test ! -e go2
+      rm g data2.txt
       rm data.txt
-      if ln run.sh data.txt 2> /dev/null; then exit 1; fi
-      test ! -e data.txt && test ! -e data2.txt
+      if ln nothing data.txt 2> /dev/null; then exit 1; fi
+      test ! -e data.txt
   # `rmdir` of a directory nothing had looked at yet (#1057): a checked-out
   # one with entries was "No such file or directory", not "Directory not
   # empty", and so was a file. `rm -rf` of checked-out trees removes them.
@@ -1721,6 +2034,66 @@ jobs:
       test "$(bun run --silent hello)" = hello-from-script
       printf '%s\n' 'import { expect, test } from "bun:test";' 'test("adds", () => { expect(1 + 1).toBe(2); });' > add.test.ts
       bun test
+  # Bun is told the job's CPUs as the rest of the job is: its `cpus:`, or
+  # 1 without, though the sandbox has the runner's to run on. Bun reads
+  # its affinity, which the runner sets for each native program.
+  bun-cpus-default-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4]
+    timeout: 5m
+    run: |
+      test "$(nproc)" = 1
+      test "$(bun -e 'console.log(navigator.hardwareConcurrency, require("os").availableParallelism())')" = "1 1"
+  bun-cpus-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4]
+    cpus: 2
+    timeout: 5m
+    run: |
+      test "$(nproc)" = 2
+      test "$(bun -e 'console.log(navigator.hardwareConcurrency, require("os").availableParallelism())')" = "2 2"
+  # The rest of the C library is there for the native addons and programs
+  # `bun install` brings: rolldown's and oxlint's bindings failed to load
+  # with "librt.so.1: cannot open shared object file". Bun's own version
+  # (`@1.4.4`) picks the rebuild that carries them (1.4.4.1).
+  bun-c-library-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4.4]
+    timeout: 5m
+    run: |
+      # dlopen wants a symbol; getpid comes through each one's libc.
+      for lib in librt.so.1 libutil.so.1 libresolv.so.2 libanl.so.1 libmvec.so.1; do
+        test "$(bun -e "const l = require('bun:ffi').dlopen('$lib', { getpid: { args: [], returns: 'i32' } }); console.log(l.symbols.getpid() === process.pid)")" = true
+      done
+  # Two Bun processes started at once from the script: a server in the
+  # background and a client. They shared the trampoline's one open handle,
+  # so the second start stopped the first, or failed ("could not start the
+  # native program").
+  bun-two-at-once-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4.4.1]
+    timeout: 5m
+    run: |
+      bun -e 'setTimeout(() => console.log("first done"), 2000)' >/tmp/first.log 2>&1 &
+      test "$(bun -e 'console.log("second")')" = second
+      wait
+      test "$(cat /tmp/first.log)" = "first done"
+      bun -e 'Bun.serve({ port: 4100, fetch: () => new Response("served") }); console.log("up")' >/tmp/server.log 2>&1 &
+      for i in $(seq 50); do grep -q up /tmp/server.log && break; sleep 0.2; done
+      test "$(bun -e 'console.log(await (await fetch("http://localhost:4100/")).text())')" = served
+  # With no node in the environment, Bun stands in for it: a package
+  # script's `#!/usr/bin/env node` bin runs on Bun, so a tree Bun installed
+  # for Linux is used by a Linux runtime (README "Bun").
+  bun-as-node-passes:
+    using: env:bash@5
+    tools: [builtin:bun@1.4]
+    timeout: 5m
+    run: |
+      mkdir -p /tmp/bun/node_modules/.bin && cd /tmp/bun
+      printf '%s\n' '#!/usr/bin/env node' 'console.log(typeof Bun, process.platform)' > node_modules/.bin/probe
+      chmod +x node_modules/.bin/probe
+      printf '%s\n' '{ "name": "probe", "private": true, "scripts": { "p": "probe" } }' > package.json
+      test "$(bun run --silent p)" = "object linux"
   bun-test-fails:
     using: env:bash@5
     tools: [builtin:bun@1.4]
@@ -1750,7 +2123,10 @@ YAML
 name: bash-node
 jobs:
   # `node --version` and `-v` print `process.version`, as Node's do: they
-  # said v24.13.2-pre where it is v24.13.2 (#1151).
+  # said v24.13.2-pre where it is v24.13.2 (#1151). `process.versions.undici`
+  # is the bundled undici's, as in Node 24.13.1: Edge.js read it from its
+  # source tree at run time, and in a job said 0.0.0
+  # (edgejs-undici-version.patch).
   node-passes:
     using: env:bash-node@24
     run: |
@@ -1761,6 +2137,22 @@ jobs:
       test "$(node --version)" = "$version"
       test "$(node -v)" = "$version"
       test "v$(node -p process.versions.node)" = "$version"
+      test "$(node -p process.versions.undici)" = 7.18.2
+  # Node is told the job's CPUs: its `cpus:`, or 1 without, whatever the
+  # runner has (`availableParallelism`, which vitest, Jest and ESLint size
+  # their workers from, and `navigator.hardwareConcurrency`). Edge.js lists
+  # one CPU in `os.cpus()` whatever the count.
+  cpus-default-passes:
+    using: env:bash-node@24
+    run: |
+      test "$(node -e 'const os = require("os"); console.log(os.availableParallelism(), navigator.hardwareConcurrency, os.cpus().length)')" = "1 1 1"
+      test "$(nproc)" = 1
+  cpus-passes:
+    using: env:bash-node@24
+    cpus: 2
+    run: |
+      test "$(node -e 'console.log(require("os").availableParallelism(), navigator.hardwareConcurrency)')" = "2 2"
+      test "$(nproc)" = 2
   # A small Node HTTP server as a service: started before the job, ready
   # once it listens, reached by its name, and stopped after the job.
   node-service-passes:
@@ -1795,6 +2187,19 @@ jobs:
       npm --version
       pnpm --version
       npx --version
+  # `npm` is npm (Edge.js's own command is pnpm, which refuses a project
+  # that says it uses npm), and runs a package's scripts with npm's
+  # environment, in a workspace too.
+  npm-is-npm-passes:
+    using: env:bash-node@24
+    run: |
+      test "$(npm --version)" = "$(node -p 'require("/npm/package.json").version')"
+      mkdir -p /tmp/np/packages/w && cd /tmp/np
+      printf '{ "name": "np", "packageManager": "npm@11.8.0", "workspaces": ["packages/*"], "scripts": { "hi": "echo hi from $npm_package_name" } }\n' >package.json
+      printf '{ "name": "w", "version": "1.0.0", "scripts": { "test": "echo test in $npm_package_name" } }\n' >packages/w/package.json
+      test "$(npm run --silent hi)" = "hi from np"
+      test "$(npm test --silent -w w)" = "test in w"
+      test "$(npm exec --offline -- node -p 40+2)" = 42
   # HOME is a directory: it was only a variable, so `pnpm dlx` failed with
   # "lstat '/root'".
   home-passes:
@@ -1877,8 +2282,243 @@ jobs:
         process.stdout.write(require("node:child_process").execFileSync("xcmd", { env }));
       `, { eval: true });
       ')" = "x ran"
+  # A child may be given this process's own uid and gid (root's), which
+  # package managers pass to every lifecycle script: Edge.js refused any
+  # with ENOSYS, so `pnpm install` stopped at the first `postinstall`.
+  # Another id is still refused.
+  spawn-own-ids-passes:
+    using: env:bash-node@24
+    run: |
+      cat > /tmp/ids.js <<'JS'
+      const cp = require("node:child_process");
+      const assert = require("node:assert");
+      const own = { uid: process.getuid(), gid: process.getgid() };
+      assert.equal(cp.spawnSync("sh", ["-c", "exit 3"], own).status, 3);
+      assert.equal(cp.execFileSync("sh", ["-c", "echo f"], own).toString(), "f\n");
+      assert.equal(cp.execSync("echo e", own).toString(), "e\n");
+      assert.equal(cp.spawnSync("sh", ["-c", "exit 0"], { uid: 65534 }).error?.code, "ENOSYS");
+      cp.spawn("sh", ["-c", "exit 4"], own).on("exit", (code) => {
+        assert.equal(code, 4);
+        console.log("ids ok");
+      });
+      JS
+      test "$(node /tmp/ids.js)" = "ids ok"
+  # A child is given a key its command also declares once (wasmer-wasix's
+  # `prepare_spawn`): Edge.js's `pnpm` declares `npm_config_*` defaults, a
+  # `pnpm` that pnpm runs (to switch to a project's `packageManager`
+  # version) is passed them again, and it died on `Object.keys(process.env)`
+  # with "'ownKeys' on proxy: trap returned duplicate entries".
+  command-env-passes:
+    using: env:bash-node@24
+    run: |
+      node -e '
+      const env = { ...process.env, npm_config_store_dir: "/tmp/own-store" };
+      require("child_process").execFileSync("pnpm", ["--version"], { env, stdio: "inherit" });
+      '
+      test "$(node -e '
+      const env = { ...process.env, npm_config_network_concurrency: "7" };
+      process.stdout.write(require("child_process").execFileSync("pnpm", ["config", "get", "network-concurrency"], { env }));
+      ')" = 7
+  # A Worker's native handle has writable methods, as Node's has: the
+  # WebAssembly loader napi-rs generates (`@tailwindcss/oxide`'s) replaces
+  # `worker[kHandle].ref` with a no-op so its thread pool never holds the
+  # process open, and then calls `worker.ref()` for each thread it starts.
+  # The assignment did nothing, so `node` never exited.
+  worker-handle-ref-passes:
+    using: env:bash-node@24
+    timeout: 1m
+    run: |
+      node -e '
+      const { Worker } = require("node:worker_threads");
+      const w = new Worker("setInterval(() => {}, 1000)", { eval: true });
+      for (const name of ["kPublicPort", "kHandle"]) {
+        const s = Object.getOwnPropertySymbols(w).find((s) => s.toString().includes(name));
+        w[s].ref = () => {};
+        if (w[s].ref.toString() !== "() => {}") throw new Error(`${name}.ref kept`);
+      }
+      w.unref();
+      w.ref();
+      // fs.watchFile's and fs.watch's handles define their methods the
+      // same way, and are as writable.
+      const fs = require("node:fs");
+      const handles = { StatWatcher: fs.watchFile("/tmp", () => {})._handle, FSEvent: fs.watch("/tmp")._handle };
+      for (const [name, handle] of Object.entries(handles)) {
+        if (!handle) throw new Error(`no ${name} handle`);
+        handle.unref = () => "replaced";
+        if (handle.unref() !== "replaced") throw new Error(`${name}.unref kept`);
+      }
+      console.log("left running");
+      '
+  # A server on a Unix socket path and a client in another process, as
+  # tsx's IPC (`/tmp/tsx-0/<pid>.pipe`) and test runners' workers do. The
+  # path is a file while the server has it; a second server on it fails with
+  # EADDRINUSE and a path nobody bound with ENOENT, as on Linux.
+  unix-socket-passes:
+    using: env:bash-node@24
+    timeout: 2m
+    run: |
+      mkdir -p /tmp/ipc
+      node -e '
+      const net = require("node:net"), fs = require("node:fs");
+      const { spawn } = require("node:child_process");
+      const path = `/tmp/ipc/${process.pid}.pipe`;
+      const fail = (why) => { console.error(why); process.exit(1); };
+      const server = net.createServer((c) => c.on("data", (d) => c.end(`pong:${d}`)));
+      server.on("error", fail);
+      server.listen(path, () => {
+        if (!fs.existsSync(path)) fail("no file at the path");
+        if (server.address() !== path) fail(`address ${server.address()}`);
+        net.createServer().listen(path).on("error", (e) => {
+          if (e.code !== "EADDRINUSE") fail(e);
+          net.connect("/tmp/ipc/nobody.pipe").on("error", (e) => {
+            if (e.code !== "ENOENT") fail(e);
+            const client = `
+              const c = require("node:net").connect(${JSON.stringify(path)});
+              c.on("data", (d) => process.stdout.write(String(d)));
+              c.write("ping");`;
+            const child = spawn(process.execPath, ["-e", client], { stdio: ["ignore", "pipe", "inherit"] });
+            let out = "";
+            child.stdout.on("data", (d) => (out += d));
+            child.on("exit", (code) => {
+              if (code !== 0 || out !== "pong:ping") fail(`child ${code}: ${out}`);
+              server.close(() => console.log("ok"));
+            });
+          });
+        });
+      });
+      '
+  # A connect to the unspecified address (`::`, `0.0.0.0`) reaches the
+  # loopback, as on Linux, where a server that listens on port 0 with no
+  # host has the address `::` and tests connect to it. It failed with
+  # ENETUNREACH, from Node's `net` and `http`, `fetch` and Python alike.
+  unspecified-connect-passes:
+    using: env:bash-node@24
+    timeout: 1m
+    run: |
+      node -e '
+      const net = require("node:net");
+      const fail = (why) => { console.error(why); process.exit(1); };
+      const server = net.createServer((c) => c.end("hi")).listen(0, async () => {
+        const { port } = server.address();
+        for (const host of ["::", "0.0.0.0"]) {
+          await new Promise((done) => net.connect(port, host).on("error", fail).on("data", (d) => {
+            if (String(d) !== "hi") fail(`${host}: ${d}`);
+            done();
+          }));
+        }
+        if ((await fetch(`http://[::]:${port}/`).catch((e) => e)).cause?.code === "ENETUNREACH") fail("fetch");
+        server.close(() => console.log("ok"));
+      });
+      '
+  # tar and gzip, from a script and from Node, as package scripts and
+  # tests start them: tRPC's tests pack a package with `npm pack` and read
+  # its manifest with `tar -xzOf`.
+  tar-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/t/in && echo hello > /tmp/t/in/a.txt
+      tar -cf /tmp/t/a.tar -C /tmp/t in && gzip -c < /tmp/t/a.tar > /tmp/t/a.tgz
+      test "$(node -e '
+      const { execFileSync } = require("node:child_process");
+      const tar = execFileSync("gzip", ["-dc"], { input: require("node:fs").readFileSync("/tmp/t/a.tgz") });
+      process.stdout.write(execFileSync("tar", ["-xOf", "-", "in/a.txt"], { input: tar }));
+      ')" = hello
+      mkdir -p /tmp/p && cd /tmp/p
+      printf '{"name":"packed","version":"1.2.3"}\n' > package.json
+      npm pack --silent >/dev/null
+      test "$(node -e '
+      const { execSync } = require("node:child_process");
+      process.stdout.write(JSON.parse(execSync("tar -xzOf packed-1.2.3.tgz package/package.json")).version);
+      ')" = 1.2.3
+  # openssl from Node, as tRPC's HTTP/2 tests make their certificate, and
+  # that certificate served by Node's own TLS.
+  openssl-passes:
+    using: env:bash-node@24
+    timeout: 5m
+    run: |
+      cd /tmp
+      node -e '
+      const { execSync } = require("node:child_process");
+      execSync("openssl req -x509 -newkey rsa:2048 -nodes -sha256 -subj /CN=localhost -keyout key.pem -out cert.pem -days 1", { stdio: "ignore" });
+      const fs = require("node:fs"), tls = require("node:tls");
+      const server = tls.createServer({ key: fs.readFileSync("key.pem"), cert: fs.readFileSync("cert.pem") }, (s) => s.end("hello"));
+      server.listen(0, "127.0.0.1", () => {
+        const c = tls.connect({ port: server.address().port, host: "127.0.0.1", servername: "localhost", ca: fs.readFileSync("cert.pem") }, () => {
+          c.on("data", (d) => { if (String(d) !== "hello") process.exit(1); c.end(); server.close(); });
+        });
+      });
+      '
+  # Symbolic links keep working as Node walks them. Inode numbers fit in 53
+  # bits: every one of 2^63 or more reached Node as 2^63 - 1, so
+  # `fs.realpathSync`, which remembers links by device and inode, gave a
+  # link inside a linked directory the outer link's target. And a link in a
+  # renamed directory is resolved from where it now is: it kept its old
+  # location, so `lstat` of it said ENOENT. pnpm switching to a project's
+  # `packageManager` version met both.
+  symlink-dirs-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/s/stage/bin /tmp/s/stage/lib
+      printf '#!/usr/bin/env node\nconsole.log("ran", __filename)\n' > /tmp/s/stage/lib/x.js
+      ln -s ../lib/x.js /tmp/s/stage/bin/x
+      ln -s stage /tmp/s/final
+      test "$(node -p 'require("fs").realpathSync("/tmp/s/final/bin/x")')" = /tmp/s/stage/lib/x.js
+      test "$(/tmp/s/final/bin/x)" = "ran /tmp/s/stage/lib/x.js"
+      node -e '
+      const fs = require("fs");
+      for (const p of ["/tmp/s/final", "/tmp/s/stage/bin/x", "/tmp/s/stage/lib/x.js"]) {
+        const big = fs.lstatSync(p, { bigint: true }).ino;
+        if (big >= 2n ** 53n || BigInt(fs.lstatSync(p).ino) !== big) throw new Error(`${p}: ${big}`);
+      }
+      '
+      # Looked up (and cached) before the move, used after it.
+      test "$(node -p 'require("fs").realpathSync("/tmp/s/stage/bin/x")')" = /tmp/s/stage/lib/x.js
+      mv /tmp/s/stage /tmp/s/moved
+      test "$(node -p 'require("fs").realpathSync("/tmp/s/moved/bin/x")')" = /tmp/s/moved/lib/x.js
+      test "$(readlink /tmp/s/moved/bin/x)" = ../lib/x.js
+      test "$(/tmp/s/moved/bin/x)" = "ran /tmp/s/moved/lib/x.js"
+  # A stat costs the same however many files have a mode recorded. Edge.js
+  # asks the runner for a file's mode by inode number after every `stat`,
+  # and the runner walked its whole record of modes for each, so a package
+  # manager's install, which records every executable it unpacks while it
+  # stats hundreds of thousands of files, was quadratic (20 minutes and
+  # more for a pnpm install that takes well under one natively). The
+  # lstat of a link in between makes the runner number a new inode each
+  # time, which swept the whole inode table once its size was 1 modulo 100.
+  stat-scale-passes:
+    using: env:bash-node@24
+    timeout: 5m
+    run: |
+      cat > /tmp/scale.js <<'JS'
+      const fs = require("node:fs");
+      const assert = require("node:assert");
+      const files = 20000, executables = 5000, dirs = 200;
+      const name = (i) => `/tmp/scale/p${i % dirs}/f${i}`;
+      for (let d = 0; d < dirs; d++) fs.mkdirSync(`/tmp/scale/p${d}`, { recursive: true });
+      fs.writeFileSync("/tmp/scale/target", "x");
+      fs.symlinkSync("target", "/tmp/scale/link");
+      for (let i = 0; i < files; i++) fs.writeFileSync(name(i), "x");
+      let executable = () => false;
+      const statAll = () => {
+        const started = process.hrtime.bigint();
+        for (let i = 0; i < files; i++) {
+          assert.equal(fs.statSync(name(i)).mode & 0o777, executable(i) ? 0o755 : 0o644, name(i));
+          fs.lstatSync("/tmp/scale/link");
+        }
+        return Number(process.hrtime.bigint() - started) / 1e6;
+      };
+      const plain = statAll();
+      for (let i = 0; i < executables; i++) fs.chmodSync(name(i), 0o755);
+      executable = (i) => i < executables;
+      const recorded = statAll();
+      console.error(`${files} stats: ${plain | 0} ms, then ${recorded | 0} ms with ${executables} modes`);
+      // On ci-1: 755 ms, then 14,895 ms walking the record; 717 and 775 ms.
+      assert(recorded < plain * 3 + 2000, "a stat costs more with more modes recorded");
+      console.log("scale ok");
+      JS
+      test "$(node /tmp/scale.js)" = "scale ok"
   # Global installs (README.md, "Global installs"), from a registry on the
-  # job's loopback: `npm i -g` (pnpm, in Edge.js) and `pnpm add -g` put
+  # job's loopback: `npm i -g` (handed to Edge.js's pnpm) and `pnpm add -g` put
   # the package's commands on PATH, the first time in a job too, and
   # `pnpm remove -g` takes them away again.
   global-install-passes:
@@ -2072,6 +2712,95 @@ jobs:
     run: |
       printf 'const x = 1;\nthrow new Error("boom");\n' >/tmp/throw.cjs
       node /tmp/throw.cjs
+  # TypeScript runs as in Node 24, with Node's own type stripping
+  # (edgejs-typescript.patch): `node x.ts`, `require` and `import` of
+  # `.ts`, `.mts` and `.cts`, `process.features.typescript`, and the flags
+  # that turn it off or to transforms, on the command line and in
+  # NODE_OPTIONS. Edge.js said it had none, so `eslint.config.ts` could not
+  # load. Each output here is Node 24.13.1's.
+  typescript-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      trap 'echo "typescript-passes: line $LINENO exited $?: $BASH_COMMAND" >&2' ERR
+      same() { [[ "$1" == "$2" ]] || { printf 'got:  %s\nwant: %s\n' "$1" "$2" >&2; return 1; }; }
+      mkdir -p /tmp/ts/node_modules/dep && cd /tmp/ts
+      printf 'import type { Shape } from "./shape.ts";\nimport { area } from "./shape.ts";\ninterface Box { w: number; h: number }\nconst box: Box = { w: 2, h: 3 };\nconst s: Shape = { kind: "square", side: 4 };\nconsole.log(`main ${box.w * box.h} ${area(s)}`);\n' >main.ts
+      printf 'export type Shape = { kind: "square"; side: number };\nexport function area(s: Shape): number { return s.side ** 2; }\n' >shape.ts
+      printf 'const n: number = 7;\nmodule.exports = n * 6;\n' >lib.cts
+      printf 'export const m: string = "mts";\n' >lib.mts
+      printf 'import { m } from "./lib.mts";\nimport { area } from "./shape.ts";\nconsole.log(m, area({ kind: "square", side: 3 }));\n' >esm.mjs
+      printf 'console.log(require("./lib.cts"), require("./shape.ts").area({ kind: "square", side: 5 }));\n' >cjs.cjs
+      printf 'enum Colour { Red, Green }\nconsole.log(Colour.Green);\n' >enum.ts
+      same "$(node -p process.features.typescript)" strip
+      same "$(node -p process.versions.amaro)" 1.1.5
+      same "$(node -p process.config.variables.node_use_amaro)" true
+      same "$(node --experimental-strip-types -p process.features.typescript)" strip
+      same "$(node --no-experimental-strip-types -p process.features.typescript)" false
+      same "$(node --experimental-transform-types -p process.features.typescript)" transform
+      same "$(NODE_OPTIONS=--no-experimental-strip-types node -p process.features.typescript)" false
+      same "$(NODE_OPTIONS=--experimental-transform-types node -p process.features.typescript)" transform
+      same "$(node main.ts)" "main 6 16"
+      same "$(node esm.mjs)" "mts 9"
+      same "$(node cjs.cjs)" "42 25"
+      # How a config file is loaded (eslint.config.ts, a Vite or Prettier
+      # config run through node).
+      same "$(node -e 'import("./main.ts").then(() => console.log("imported"))')" "$(printf 'main 6 16\nimported')"
+      same "$(node --input-type=module-typescript -e 'const a: number = 3; console.log(a)')" 3
+      printf '#!/usr/bin/env node\nconst a: string = "shebang";\nconsole.log(a);\n' >run.ts
+      chmod +x run.ts
+      same "$(./run.ts)" shebang
+      same "$(node -p 'require("node:module").stripTypeScriptTypes("const a: number = 1;")' 2>/dev/null)" "const a         = 1;"
+      # Transforms only when asked for.
+      same "$(node --experimental-transform-types enum.ts 2>/dev/null)" 1
+      if node enum.ts 2>err; then exit 1; fi
+      grep -q '^SyntaxError \[ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX\]: TypeScript enum is not supported in strip-only mode$' err
+      # Off is off.
+      if node --no-experimental-strip-types main.ts 2>err; then exit 1; fi
+      grep -q 'ERR_UNKNOWN_FILE_EXTENSION.*Unknown file extension ".ts"' err
+      if NODE_OPTIONS=--no-experimental-strip-types node main.ts 2>err; then exit 1; fi
+      grep -q 'ERR_UNKNOWN_FILE_EXTENSION' err
+      # Never under node_modules, as Node refuses.
+      printf 'export const x: number = 1;\n' >node_modules/dep/index.ts
+      printf '{"name":"dep","main":"index.ts"}\n' >node_modules/dep/package.json
+      printf 'import { x } from "dep";\nconsole.log(x);\n' >uses-dep.ts
+      if node uses-dep.ts 2>err; then exit 1; fi
+      grep -q '^Error \[ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING\]: Stripping types is currently unsupported for files under node_modules, for "/tmp/ts/node_modules/dep/index.ts"$' err
+      # The compile cache keeps what it stripped: the second `node` reads
+      # it rather than stripping again.
+      NODE_COMPILE_CACHE=/tmp/ts/cache node main.ts >/dev/null
+      NODE_DEBUG_NATIVE=COMPILE_CACHE NODE_COMPILE_CACHE=/tmp/ts/cache node main.ts 2>log >/dev/null
+      grep -q 'for StrippedTypeScript /tmp/ts/shape\.ts\.\.\. success' log
+  # A type that cannot be stripped: Node's error, with where (want_stderr).
+  typescript-fails:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      printf 'enum Colour { Red, Green }\nconsole.log(Colour.Green);\n' >/tmp/enum.ts
+      node /tmp/enum.ts
+  # A command started by a process that already has the command's own
+  # environment gets each variable once. A pnpm that switches to the
+  # project's `packageManager` version starts another pnpm, which got the
+  # `npm_config_*` the pnpm command declares twice, from its parent and from
+  # the command, and died on `Object.keys(process.env)`: "'ownKeys' on
+  # proxy: trap returned duplicate entries". The runner applies a command's
+  # environment as defaults (vendor/wasmer-wasix, `add_command_env_defaults`)
+  # and Edge.js lists a name the environment repeats once, as Node does
+  # (edgejs-env-keys.patch); either is enough for this job, and a job cannot
+  # see past the second to the first (a report and `Object.keys` both read
+  # `process.env`).
+  env-names-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    run: |
+      trap 'echo "env-names-passes: line $LINENO exited $?: $BASH_COMMAND" >&2' ERR
+      mkdir -p /tmp/pp && cd /tmp/pp
+      printf '{"name":"pp","private":true}\n' >package.json
+      version="$(pnpm --version)"
+      test "$(pnpm exec pnpm --version)" = "$version"
+      test "$(pnpm exec pnpm exec node -p 'const k = Object.keys(process.env); k.length === new Set(k).size')" = true
+      # A command's own environment is only defaults: what its parent sets wins.
+      test "$(npm_config_store_dir=/tmp/my-store pnpm exec pnpm exec node -p process.env.npm_config_store_dir)" = /tmp/my-store
   # An ES module whose top-level await never settles exits 13 with Node's
   # warning on its stderr: where the await is, its line and a caret, then
   # three empty lines. The warning went to iwci's own stderr and the job's
@@ -2313,8 +3042,12 @@ jobs:
     run: |
       test "$(node -e 'const u = require("os").userInfo(); console.log(u.username, u.uid, u.gid, u.homedir, u.shell)')" = "root 0 0 /root /bin/bash"
       test "$(node -e 'console.log(process.env.SHELL)')" = /bin/bash
-  # `fs.linkSync` fails with EPERM and leaves one name (#1052): it used to
-  # succeed, and `unlinkSync` of either name then removed nothing.
+  # `fs.linkSync` gives a file a second name (#1052): one inode number and
+  # a count of names for both, as `stat` and an open descriptor's `fstat`
+  # see them, a write through one read through the other, one mode. A lock
+  # taken by linking a file of one's own to the lock's name and checking
+  # the count, as NFS-safe lock files do, works. A rename onto another name
+  # of the same file leaves both, as Linux's does.
   links-passes:
     using: env:bash-node@24
     run: |
@@ -2322,18 +3055,40 @@ jobs:
       const fs = require("node:fs");
       const assert = require("node:assert");
       fs.writeFileSync("/tmp/n1", "x");
-      assert.throws(() => fs.linkSync("/tmp/n1", "/tmp/n2"), { code: "EPERM" });
-      assert.equal(fs.existsSync("/tmp/n2"), false);
+      fs.linkSync("/tmp/n1", "/tmp/n2");
+      const a = fs.statSync("/tmp/n1");
+      const b = fs.statSync("/tmp/n2");
+      assert.equal(a.ino, b.ino);
+      assert.equal(b.nlink, 2);
+      fs.appendFileSync("/tmp/n2", "y");
+      assert.equal(fs.readFileSync("/tmp/n1", "utf8"), "xy");
+      fs.writeFileSync("/tmp/lock.tmp", String(process.pid));
+      fs.linkSync("/tmp/lock.tmp", "/tmp/lock");
+      assert.equal(fs.statSync("/tmp/lock.tmp").nlink, 2);
+      assert.throws(() => fs.linkSync("/tmp/lock.tmp", "/tmp/lock"), { code: "EEXIST" });
+      fs.unlinkSync("/tmp/lock.tmp");
+      assert.equal(fs.statSync("/tmp/lock").nlink, 1);
+      const fd = fs.openSync("/tmp/n1", "r");
+      fs.linkSync("/tmp/n1", "/tmp/n3");
+      assert.equal(fs.fstatSync(fd).nlink, 3);
+      fs.closeSync(fd);
       fs.unlinkSync("/tmp/n1");
-      assert.deepStrictEqual(fs.readdirSync("/tmp").filter((n) => /^n[12]$/.test(n)), []);
-      assert.throws(() => fs.linkSync("data.txt", "data2.txt"), { code: "EPERM" });
+      assert.equal(fs.readFileSync("/tmp/n2", "utf8"), "xy");
+      assert.equal(fs.statSync("/tmp/n3").ino, a.ino);
+      assert.equal(fs.statSync("/tmp/n3").nlink, 2);
+      fs.linkSync("data.txt", "data2.txt");
+      fs.chmodSync("data2.txt", 0o700);
+      assert.equal(fs.statSync("data.txt").mode & 0o777, 0o700);
       assert.throws(() => fs.linkSync("data.txt", "run.sh"), { code: "EEXIST" });
-      fs.unlinkSync("data.txt");
-      assert.equal(fs.existsSync("data.txt"), false);
+      assert.throws(() => fs.linkSync("go", "go2"), { code: "EPERM" });
+      fs.renameSync("data.txt", "data2.txt");
+      assert.ok(fs.existsSync("data.txt") && fs.existsSync("data2.txt"));
+      fs.unlinkSync("data2.txt");
+      assert.equal(fs.statSync("data.txt").nlink, 1);
       console.log("links ok");
       JS
       test "$(node /tmp/links.js)" = "links ok"
-      test ! -e /tmp/n1 && test ! -e data.txt && test ! -e data2.txt
+      test ! -e /tmp/n1 && test ! -e data2.txt && test "$(cat /tmp/n2)" = xy
   # `fs.rmdirSync` of a populated checkout directory says ENOTEMPTY (#1057).
   # It said ENOENT for any directory nothing had looked at, so a recursive
   # delete that calls `rmdir` first and recurses on ENOTEMPTY, as
@@ -2936,6 +3691,58 @@ jobs:
       wait
       cat a.out b.out
       test "$(cat a.out b.out | grep -c '^forked$')" = 2
+  # A child started in a directory whose path is 12 mod 16 bytes long knows
+  # where it is. WASIX's `getcwd` filled a buffer exactly as long as the
+  # path without a NUL, which is the buffer wasix-libc's `getcwd(NULL, 0)`
+  # allocates, so the shell's `$PWD` ran on into the allocator's padding:
+  # `/app/packages/provider-utils3`, and `pnpm -r exec` in vercel/ai then
+  # failed to start the third package's commands (vendor/README.md,
+  # wasmer-wasix). Started by Node with `cwd`, as package managers start
+  # scripts, and by the shell after `cd`.
+  cwd-length-passes:
+    using: env:bash-node@24
+    timeout: 2m
+    run: |
+      node -e '
+      const { spawnSync } = require("node:child_process");
+      const fs = require("node:fs");
+      for (let n = 10; n <= 62; n++) {
+        const dir = "/tmp/" + "d".repeat(n - 5);
+        fs.mkdirSync(dir, { recursive: true });
+        for (const PWD of ["/", undefined]) {
+          const env = { ...process.env, PWD };
+          if (PWD === undefined) delete env.PWD;
+          const r = spawnSync("sh", ["-c", "printf %s \"$PWD\""], { cwd: dir, encoding: "utf8", env });
+          if (r.stdout !== dir) throw new Error(`${n} bytes: ${JSON.stringify(r.stdout)}`);
+        }
+      }
+      '
+      for n in 12 28 44 60; do
+        dir=/tmp/$(printf 'e%.0s' $(seq $((n - 5))))
+        mkdir -p "$dir"
+        test "$(cd "$dir" && env PWD=/ sh -c 'printf %s "$PWD"')" = "$dir"
+      done
+  # A directory by a command's name earlier on PATH is passed over, as
+  # `execvp` does, by the runtime's PATH search, which `env` (and so a
+  # `#!/usr/bin/env node` script), Node's `child_process` and other execvp
+  # callers go through. It took the first name that existed, so with a
+  # directory `node` on PATH they found nothing (vendor/README.md,
+  # wasmer-wasix). bash searches PATH itself and still stops at the
+  # directory (README "Known limitations").
+  path-dir-passes:
+    using: env:bash-node@24
+    run: |
+      mkdir -p /tmp/q/node
+      test "$(PATH="/tmp/q:$PATH" /usr/bin/env node -e 'console.log("found")')" = found
+      printf '#!/usr/bin/env node\nconsole.log("script")\n' > /tmp/s.js
+      chmod +x /tmp/s.js
+      test "$(PATH="/tmp/q:$PATH" /tmp/s.js)" = script
+      test "$(node -e '
+      const env = { ...process.env, PATH: "/tmp/q:" + process.env.PATH };
+      process.stdout.write(require("child_process").execFileSync("node", ["-p", "1"], { env }));
+      ')" = 1
+      # Nothing else by that name: still not found.
+      if PATH=/tmp/q /usr/bin/env node -e 0 2>/dev/null; then exit 1; fi
   # Node runs a script by its `#!` line, as Linux does (#958): by path,
   # through `/usr/bin/env`, and found on PATH, with its arguments.
   shebang-passes:
@@ -3070,6 +3877,8 @@ jobs:
   # reached the promise (edgejs-worker-cpu-usage.patch). It counts from the
   # worker's start: a worker that spun for a second has used some of it (all
   # of it on a quiet host) and nothing like what a reused host thread had.
+  # The spinning worker answers the first two in the middle of its loop, by
+  # interrupt, as Node's does, so its CPU use is read once it says it is done.
   worker-introspection-passes:
     using: env:bash-node@24
     needs: [node-passes]
@@ -3079,16 +3888,19 @@ jobs:
       const { Worker } = require("node:worker_threads");
       const assert = require("node:assert");
       (async () => {
-        for (const body of ["setInterval(() => {}, 1000)", "const e = Date.now() + 1000; while (Date.now() < e) {} setInterval(() => {}, 1000)"]) {
+        const spin = "const e = Date.now() + 1000; while (Date.now() < e) {} require(\"node:worker_threads\").parentPort.postMessage(\"spun\"); setInterval(() => {}, 1000)";
+        for (const body of ["setInterval(() => {}, 1000)", spin]) {
           const w = new Worker(body, { eval: true });
+          const spun = new Promise((r) => w.once("message", r));
           await new Promise((r) => w.once("online", r));
           const heap = await w.getHeapStatistics();
           assert.ok(heap.total_heap_size > 0);
           assert.equal(process.report.getReport().workers.length, 1);
+          if (body === spin) await spun;
           const cpu = await w.cpuUsage();
           assert.ok(Number.isInteger(cpu.user) && Number.isInteger(cpu.system), JSON.stringify(cpu));
           assert.ok(cpu.user < 30e6, JSON.stringify(cpu));
-          if (body.startsWith("const e")) assert.ok(cpu.user > 50e3, JSON.stringify(cpu));
+          if (body === spin) assert.ok(cpu.user > 50e3, JSON.stringify(cpu));
           const since = await w.cpuUsage(cpu);
           assert.ok(since.user >= 0 && since.user < 30e6, JSON.stringify(since));
           await w.terminate();
@@ -3134,6 +3946,110 @@ jobs:
       for (let i = 0; i < 4; i++) one(i);
       JS
       test "$(node /tmp/readers.js)" = "readers ok"
+  # The same requests to workers blocked in `Atomics.wait`, one in
+  # JavaScript and one in WebAssembly (`memory.atomic.wait32` on shared
+  # memory, as wasm threads idle). Each is run on the worker's thread by an
+  # engine interrupt, which wakes the wait; the bridge refused an interrupt
+  # for an env of another thread's store, so a blocked worker never answered
+  # and the parent waited for good (vendor/README.md, wasmer-napi). That was
+  # vercel/ai's tsdown builds hanging after "Build start": yuku-codegen reads
+  # `process.report.getReport()` while rolldown's WebAssembly threads wait.
+  worker-blocked-report-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 1m
+    run: |
+      cat > /tmp/blocked.js <<'JS'
+      const { Worker } = require("node:worker_threads");
+      const assert = require("node:assert");
+      // (func (export "w") (param i32 i32) (result i32)
+      //   local.get 0 local.get 1 i64.const -1 memory.atomic.wait32)
+      // over an imported shared memory e.m.
+      const wasm = Buffer.from(
+        [
+          "0061736d01000000", // header
+          "01070160027f7f017f", // type: (i32 i32) -> i32
+          "0209010165016d02030101", // import e.m: memory 1 1 shared
+          "03020100", // function 0
+          "07050101770000", // export w
+          "0a0e010c0020002001427ffe0102000b", // code
+        ].join(""),
+        "hex",
+      );
+      const memory = new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true });
+      const flags = new Int32Array(memory.buffer);
+      const body = `
+        const { workerData: { wasm, memory, slot } } = require("node:worker_threads");
+        const flags = new Int32Array(memory.buffer);
+        Atomics.store(flags, slot + 1, 1);
+        if (slot === 0) Atomics.wait(flags, slot, 0);
+        else new WebAssembly.Instance(new WebAssembly.Module(wasm), { e: { m: memory } }).exports.w(slot * 4, 0);
+      `;
+      const workers = [0, 2].map((slot) => new Worker(body, { eval: true, workerData: { wasm, memory, slot } }));
+      (async () => {
+        while (Atomics.load(flags, 1) !== 1 || Atomics.load(flags, 3) !== 1) await new Promise((r) => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 300));
+        assert.equal(process.report.getReport().workers.length, 2);
+        for (const w of workers) assert.ok((await w.getHeapStatistics()).total_heap_size > 0);
+        const exited = workers.map((w) => new Promise((r) => w.once("exit", r)));
+        for (const slot of [0, 2]) {
+          Atomics.store(flags, slot, 1);
+          Atomics.notify(flags, slot);
+        }
+        await Promise.all(exited);
+        console.log("blocked ok");
+      })();
+      JS
+      test "$(node /tmp/blocked.js)" = "blocked ok"
+  # The same in a real build: rolldown on its wasm32-wasi binding (rolldown
+  # 1.2 leaves it out of its own optional dependencies, so the project lists
+  # it), with a report asked for from a plugin hook mid-build. Installed
+  # from the public registry at the versions its lockfile pins.
+  rolldown-wasi-report-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 3m
+    deps: [{ pnpm: { dir: js/wasm-bundlers } }]
+    cwd: /app/js/wasm-bundlers
+    run: |
+      test "$(node build.mjs)" = "built index.js"
+      test "$(node dist/index.js)" = "hello rolldown"
+  # A pnpm install tells pnpm 11 and later not to check it before `pnpm
+  # run` (iwci-deps' `pnpm::env`): they found no state of their own install
+  # there and installed everything again (tRPC's pnpm 12). A job's `env:`
+  # still wins.
+  pnpm-verify-off-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    deps: [{ pnpm: { dir: js/wasm-bundlers } }]
+    run: test "$pnpm_config_verify_deps_before_run" = false
+  pnpm-verify-own-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    deps: [{ pnpm: { dir: js/wasm-bundlers } }]
+    env: { pnpm_config_verify_deps_before_run: error }
+    run: test "$pnpm_config_verify_deps_before_run" = error
+  # esbuild-wasm started as `node_modules/.bin/esbuild` (a package script,
+  # `npx esbuild`), whose `process.argv[1]` is the link: the runner's
+  # preload looked for `esbuild.wasm` beside the link rather than beside
+  # what it links to, left `process.stdout` to esbuild's own `fs.writeSync`
+  # replacement, which writes back into itself, and the Go program exited
+  # with the output still queued. `esbuild --version` printed nothing and
+  # exited 0 (iwci-runtime/node/esbuild-stdio.cjs).
+  esbuild-bin-passes:
+    using: env:bash-node@24
+    needs: [node-passes]
+    timeout: 3m
+    deps: [{ pnpm: { dir: js/wasm-bundlers } }]
+    cwd: /app/js/wasm-bundlers
+    run: |
+      test "$(node_modules/.bin/esbuild --version)" = 0.25.12
+      test "$(node node_modules/esbuild/bin/esbuild --version)" = 0.25.12
+      node_modules/.bin/esbuild --version > /tmp/version
+      test "$(cat /tmp/version)" = 0.25.12
+      test "$(echo 'let n: number = 1' | node_modules/.bin/esbuild --loader=ts)" = "let n = 1;"
+      node_modules/.bin/esbuild src/index.js --bundle --format=esm --outfile=/tmp/out.js
+      test "$(node /tmp/out.js)" = "hello rolldown"
   # `vm.Script#createCachedData()` (#1007): the bridge built its Buffer with
   # the global `Buffer.from`, inside a call that could not reach back into
   # Edge.js, so renewing Buffer's pool there left it empty and the next
@@ -3871,6 +4787,17 @@ jobs:
       go version | grep -q '^go version go@MINOR@\.[0-9]* wasip1/wasm$'
       test "$(go env GOROOT)" = /go
       test "$(gofmt -l go)" = go/dirty/main.go
+  # Go's WebAssembly port runs a program on one thread, so it counts one
+  # CPU (`runtime.NumCPU`, `GOMAXPROCS`), which is what a job without
+  # `cpus:` is told (`nproc`).
+  cpus-default-passes:
+    using: env:go@@MINOR@
+    run: |
+      mkdir -p /tmp/cpus && cd /tmp/cpus
+      printf 'package main\n\nimport (\n\t"fmt"\n\t"runtime"\n)\n\nfunc main() { fmt.Println(runtime.NumCPU(), runtime.GOMAXPROCS(0)) }\n' > main.go
+      printf 'module cpus\n\ngo 1.21\n' > go.mod
+      test "$(go run .)" = "1 1"
+      test "$(nproc)" = 1
   # The module's dependency comes from the installer's module cache, and
   # the standard library from the environment's build cache: the first
   # build compiles two packages, uuid and main, not `runtime` and the rest.
@@ -4449,6 +5376,41 @@ jobs:
       test "$(python --version)" = "Python 3.13.15"
       test "$(python3 -c 'import sys; print(sys.version_info[:2])')" = "(3, 13)"
       python -c 'import json, sqlite3, ssl, zlib; print(ssl.OPENSSL_VERSION)'
+  # `os.link` gives a file a second name (#1052), the same file.
+  links-passes:
+    using: env:python@3.13
+    run: |
+      cat > /tmp/links.py <<'PY'
+      import os
+      with open("/tmp/p1", "w") as f:
+          f.write("x")
+      os.link("/tmp/p1", "/tmp/p2")
+      a, b = os.stat("/tmp/p1"), os.stat("/tmp/p2")
+      assert a.st_ino == b.st_ino and b.st_nlink == 2, (a, b)
+      with open("/tmp/p2", "a") as f:
+          f.write("y")
+      assert open("/tmp/p1").read() == "xy"
+      os.unlink("/tmp/p1")
+      assert os.stat("/tmp/p2").st_nlink == 1
+      try:
+          os.link("/tmp", "/tmp/d2")
+      except PermissionError:
+          pass
+      else:
+          raise SystemExit("linked a directory")
+      print("links ok")
+      PY
+      test "$(python /tmp/links.py)" = "links ok"
+  # Without `cpus:` a job is told 1 CPU, however many the runner has, by
+  # every count Python has, psutil's included (which pytest-xdist's `-n
+  # auto` asks). `xdist-passes` is the same with `cpus: 2`.
+  cpus-default-passes:
+    using: env:python@3.13
+    timeout: 10m
+    run: |
+      pip install psutil
+      test "$(python -c 'import multiprocessing, os, psutil; print(os.cpu_count(), os.process_cpu_count(), multiprocessing.cpu_count(), psutil.cpu_count(), psutil.cpu_count(logical=False))')" = "1 1 1 1 1"
+      test "$(nproc)" = 1
   # A pure Python package and its dependencies from PyPI.
   pip-passes:
     using: env:python@3.13
@@ -4481,6 +5443,23 @@ jobs:
     run: |
       pip install pytest
       pytest
+  # pytest-xdist's workers import the tests' compiled module (numpy) while
+  # a thread of theirs waits on the controller's pipe: that wait held up
+  # the import's `dlopen` for good (vendor/README.md), and no test ran.
+  # `-n auto` with psutil installed asks it for the physical cores, which
+  # it reads from /proc/cpuinfo: the job's `cpus:`, as every CPU count says.
+  xdist-passes:
+    using: env:python@3.13
+    cwd: /app/py/xdist
+    cpus: 2
+    timeout: 10m
+    run: |
+      pip install pytest pytest-xdist numpy psutil
+      test "$(python -c 'import multiprocessing, os, psutil; print(os.cpu_count(), multiprocessing.cpu_count(), psutil.cpu_count(), psutil.cpu_count(logical=False))')" = "2 2 2 2"
+      test "$(nproc)" = 2
+      pytest -n auto -p no:cacheprovider | tee /tmp/pytest.log
+      grep -q 'created: 2/2 workers' /tmp/pytest.log
+      grep -q '4 passed' /tmp/pytest.log
   raise-fails:
     using: env:python@3.13
     run: python -c 'raise SystemExit("expected")'
@@ -5488,13 +6467,188 @@ jobs:
       test "$(php -r 'echo trim(shell_exec("git --version"));')" = "$(git --version)"
 YAML
       ;;
+    rust)
+      # builtin:rust in a sandbox beside env:bash, on the workspace above,
+      # whose crate comes from the vendor directory with no network.
+      cat <<'YAML'
+name: rust
+workspace:
+  deps:
+    - cargo: { dir: rust }
+jobs:
+  toolchain-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    run: |
+      rustc --version | grep -q '^rustc 1\.100\.0 '
+      cargo --version | grep -q '^cargo 1\.100\.0 '
+      rustdoc --version && rustfmt --version && cargo clippy --version && cargo fmt --version
+      cc --version | head -n 1 | grep -q ' 13\.2\.0$'
+      # Each program sees where it really is: rustc's sysroot is the
+      # toolchain's, not /usr/local.
+      test "$(rustc --print sysroot)" = /opt/rust
+      printf '#include <stdio.h>\nint main(void) { puts("hi"); return 0; }\n' > /tmp/hi.c
+      cc -O2 /tmp/hi.c -o /tmp/hi
+      test -x /tmp/hi
+  # Unit, doc and integration tests, a build script that compiles C, the
+  # vendored crate, threads, and a test that runs the crate's binary.
+  test-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    run: |
+      cargo test --locked -p ok 2>&1 | tee /tmp/test.log
+      grep -q '^test result: ok. 4 passed' /tmp/test.log
+      grep -q '^test runs_the_binary ... ok' /tmp/test.log
+      grep -q 'src/lib.rs - add (line [0-9]*) ... ok' /tmp/test.log
+      # The build happened in the job's own files, and what it built runs
+      # from cargo.
+      test -x target/debug/ok
+      test "$(cargo run --locked -q -p ok -- 1 2)" = 3
+  test-fails:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    run: cargo test --locked -p bad
+  # What the build made runs straight from the script, as on Linux: by
+  # path and found on PATH, with its arguments, standard streams and exit
+  # status.
+  exec-native-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    run: |
+      cargo build --locked -q -p ok
+      test "$(./target/debug/ok 1 2)" = 3
+      printf '#include <ctype.h>\n#include <stdio.h>\nint main(int argc, char **argv) { int c; while ((c = getchar()) != EOF) putchar(toupper(c)); return argc; }\n' > /tmp/up.c
+      cc /tmp/up.c -o /tmp/up
+      set +e
+      out="$(printf 'native\n' | PATH="/tmp:$PATH" up a b)"
+      status=$?
+      set -e
+      test "$out" = NATIVE
+      test "$status" = 3
+      # Two starts of one program at once each get their own launch.
+      printf 'one\n' | /tmp/up > /tmp/one &
+      printf 'two\n' | /tmp/up > /tmp/two &
+      wait
+      test "$(cat /tmp/one)" = ONE
+      test "$(cat /tmp/two)" = TWO
+  # A program built here runs in a job that has only the C library
+  # (builtin:glibc, files alone), handed on as an artifact.
+  build-native-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    artifacts: [/tmp/native]
+    run: |
+      mkdir -p /tmp/native
+      printf '#include <stdio.h>\nint main(int argc, char **argv) { printf("glibc %%s\\n", argv[1]); return 0; }\n' > /tmp/native/hi.c
+      cc -O2 /tmp/native/hi.c -o /tmp/native/hi
+      # A program that makes and removes hard links (#1052).
+      cat > /tmp/native/links.c <<'C'
+      #include <errno.h>
+      #include <fcntl.h>
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/stat.h>
+      #include <unistd.h>
+
+      int main(void) {
+        struct stat a, b;
+        char buf[8] = {0};
+        int fd = open("/tmp/l1", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+        if (fd < 0 || write(fd, "x", 1) != 1 || close(fd)) return 1;
+        if (link("/tmp/l1", "/tmp/l2")) { perror("link"); return 2; }
+        if (stat("/tmp/l1", &a) || stat("/tmp/l2", &b)) return 3;
+        if (a.st_ino != b.st_ino || b.st_nlink != 2) {
+          printf("ino %lu %lu nlink %lu\n", (unsigned long)a.st_ino, (unsigned long)b.st_ino, (unsigned long)b.st_nlink);
+          return 4;
+        }
+        fd = open("/tmp/l2", O_WRONLY | O_APPEND);
+        if (fd < 0 || write(fd, "y", 1) != 1 || close(fd)) return 5;
+        fd = open("/tmp/l1", O_RDONLY);
+        if (fd < 0 || read(fd, buf, 7) != 2 || close(fd) || strcmp(buf, "xy")) return 6;
+        if (unlink("/tmp/l1") || stat("/tmp/l2", &b) || b.st_nlink != 1) return 7;
+        if (link("/tmp", "/tmp/d2") == 0 || errno != EPERM) return 8;
+        puts("links ok");
+        return 0;
+      }
+      C
+      cc -O2 /tmp/native/links.c -o /tmp/native/links
+  glibc-passes:
+    needs: [build-native-passes]
+    using: env:bash@5
+    tools: [builtin:glibc@2.39]
+    network: false
+    run: |
+      # Handed on with its mode: still executable.
+      test "$(stat -c %a /tmp/native/hi)" = 755
+      test "$(/tmp/native/hi ok)" = "glibc ok"
+      # Hard links made natively, and by `ln` beside it, one file each.
+      test "$(/tmp/native/links)" = "links ok"
+      test "$(cat /tmp/l2)" = xy
+      ln /tmp/native/hi /tmp/hi2
+      test "$(/tmp/hi2 two)" = "glibc two"
+      test "$(stat -c %i /tmp/native/hi)" = "$(stat -c %i /tmp/hi2)"
+      test "$(stat -c %h /tmp/hi2)" = 2
+      # No toolchain came with it.
+      if command -v cc; then exit 1; fi
+  # rustfmt's writes are the job's changes: none for formatted code, one
+  # file for the other.
+  fmt-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    changes: fail
+    run: cargo fmt -p ok
+  fmt-fails:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    changes: fail
+    run: cargo fmt -p dirty
+  clippy-passes:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    run: cargo clippy --locked -p ok -- -D warnings
+  clippy-fails:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    cwd: /app/rust
+    network: false
+    memory: 4GiB
+    timeout: 15m
+    run: cargo clippy --locked -p lint -- -D warnings
+YAML
+      ;;
   esac
 }
 
 # What a `-fails` job's failure reason must contain.
 want_reason() {
   case "$1" in
-    gofmt/dirty-fails | oxfmt/dirty-fails) echo "changed 1 file" ;;
+    gofmt/dirty-fails | oxfmt/dirty-fails | rust/fmt-fails) echo "changed 1 file" ;;
+    rust/test-fails | rust/clippy-fails) echo "exited with 101" ;;
+    bash/exec-native-fails) echo "exited with 126" ;;
     typescript/type-error-fails) echo "exited with 2" ;;
     bash/git-fatal-fails | python/git-auth-prompt-fails | python/git-prompt-ends-fails) echo "exited with 128" ;;
     kubectl/unauthorized-fails) echo "exited with 1" ;;
@@ -5507,7 +6661,7 @@ want_reason() {
     openssh/not-lent-fails | aws/not-lent-fails) echo "staging is not lent to CI for this fixture" ;;
     aws/wrong-session-fails) echo "exited with 255" ;;
     gcloud/wrong-token-fails | az/wrong-secret-fails) echo "exited with 1" ;;
-    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails |bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
+    bash/false-fails | bash/git-diff-fails | bash/stat-missing-fails | bash/wait-for-log-timeout-fails | bash/wait-for-port-timeout-fails | python/pytest-fails | python/raise-fails | python/pip-deps-fails | php/phpunit-fails | php/composer-deps-fails | bash-node/throw-fails | bash-node/module-syntax-error-fails | bash-node/error-report-fails | bash-node/typescript-fails | bash-node/shebang-missing-interpreter-fails | tools/gofmt-finds-dirty-fails) echo "exited with 1" ;;
     php/lint-fails) echo "exited with 255" ;;
     bash-node/unsettled-tla-fails) echo "exited with 13" ;;
     bash-node/global-install-missing-fails) echo "exited with 1" ;;
@@ -5536,6 +6690,9 @@ want_reason() {
 want_stderr() {
   case "$1" in
     bash/wait-for-log-timeout-fails) echo "wait-for-log: no line of svc.log matched 'ready' within 1s.*its last lines:.*starting" ;;
+    rust/test-fails) echo "error: test failed, to rerun pass .-p bad --lib." ;;
+    bash/exec-native-fails) echo "iwci: /tmp/prog is a native (Linux )?program.*(native sandbox|this runner is)" ;;
+    rust/clippy-fails) echo "writing .&Vec. instead of .&\[_\]..*clippy::ptr_arg" ;;
     bash/wait-for-port-timeout-fails) echo "wait-for-port: nothing listened on 127.0.0.1 port 5999 within 1s" ;;
     kubectl/unauthorized-fails) echo "You must be logged in to the server" ;;
     python/git-auth-prompt-fails) echo "fatal: could not read Username for 'http://127\.0\.0\.1:8001': terminal prompts disabled" ;;
@@ -5555,6 +6712,7 @@ want_stderr() {
     clickhouse/rejected-fails) echo "400 Code: 62\. DB::Exception: Syntax error.*\(SYNTAX_ERROR\)" ;;
     bash/signal-fails) echo "dying with \\*\\*\\*.*Program recieved fatal signal: Bad system call.*iwci: the job exited with 127 after a signal.*a guest called [a-z_]+\\(.*Sigsys" ;;
     bash-node/module-syntax-error-fails) echo "^file:///tmp/bad\.mjs:1 export const a = \{; {19}\^  SyntaxError: Unexpected token ';'" ;;
+    bash-node/typescript-fails) echo "^/tmp/enum\.ts:1 enum Colour \{ Red, Green \} \^{26} console\.log\(Colour\.Green\);  SyntaxError \[ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX\]: TypeScript enum is not supported in strip-only mode" ;;
     bash-node/error-report-fails) echo "^/tmp/throw\.cjs:2 throw new Error\(\"boom\"\); \^  Error: boom     at Object\.<anonymous> \(/tmp/throw\.cjs:2:7\)" ;;
     bash-node/unsettled-tla-fails) echo "^Warning: Detected unsettled top-level await at file:///tmp/stall\.mjs:2 await new Promise\(\(\) => \{\}\); \^" ;;
     npm-cli/wrangler-dev-fails) echo "workerd, Cloudflare's local Workers runtime, cannot run in a CI job here" ;;

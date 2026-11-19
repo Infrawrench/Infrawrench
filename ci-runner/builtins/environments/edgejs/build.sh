@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Edge.js for `env:bash-node`, built from source on a wasix-libc with two
 # races fixed that no release of it, and so no release of Edge.js, has fixed,
-# and file modes and CPU time read from the runner, with fourteen fixes to
-# Edge.js itself and its built-ins code cache turned on, and with Node's
-# module compile cache.
+# file modes and CPU time read from the runner and Unix socket paths read as
+# Linux reads them, with sixteen fixes to Edge.js itself and its built-ins
+# code cache turned on, and with Node's module compile cache and TypeScript
+# type stripping.
 #
 # The C library is linked into Edge.js's module, so a change to it is a
-# rebuild of that module. Each is one patch here and one or two objects of
+# rebuild of that module. Each is one patch here and one or more objects of
 # `libc.a`:
 #
 #   wasix-libc-145.patch (chdir.o, #937). wasix-libc made a relative path
@@ -43,7 +44,16 @@
 #     guest process itself (vendor/README.md, wasmer-wasix), as user time.
 #     Ours; drafted for wasix-libc.
 #
-# And sixteen patches to Edge.js's own source, applied to its checkout:
+#   wasix-libc-unix-path.patch (bind.o, connect.o, sendto.o and sendmsg.o).
+#     A `sockaddr_un`'s path ran to the end of the length it was passed, so
+#     the usual sizeof(struct sockaddr_un), which libuv passes, read as a
+#     108-byte path, one too long: every Unix socket bind and connect failed,
+#     with -1 as its errno (Node's "listen UNKNOWN"). It is now read to its
+#     first NUL, as Linux reads it, and a refused address sets a real errno.
+#     The runner gives such sockets a path in the job (vendor/README.md,
+#     wasmer-wasix). Ours; drafted for wasix-libc.
+#
+# And nineteen patches to Edge.js's own source, applied to its checkout:
 #
 #   edgejs-worker-stop.patch (#938). Edge.js stops a Worker by terminating
 #     its isolate from the parent's thread and setting a flag its loop
@@ -249,6 +259,52 @@
 #     too. The header now says it is a release, so all of them say what
 #     `process.version` does, as in Node. Ours; drafted for Edge.js.
 #
+#   edgejs-typescript.patch. `node file.ts`, and `require` and `import` of
+#     `.ts`, `.mts` and `.cts` files, failed: Edge.js carries Node 24's
+#     type stripping (its loaders, `internal/modules/typescript` and amaro
+#     1.1.5, SWC's stripper as WebAssembly, among its built-ins) but said it
+#     had none, so `process.features.typescript` was false and
+#     `--experimental-strip-types` did nothing. `process.config` now says
+#     `node_use_amaro` as Node's does, `process.versions.amaro` is there
+#     (Node's lib reads it to decide TypeScript is), and `--strip-types` is
+#     on unless turned off, as in Node 22.18+, 23.6+ and 24, so the rest is
+#     Node's own code: `--no-experimental-strip-types`,
+#     `--experimental-transform-types`, ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX,
+#     no stripping under node_modules, the compile cache's transpiled
+#     entries. Ours; drafted for Edge.js.
+#
+#   edgejs-env-keys.patch. `Object.keys(process.env)` threw "'ownKeys' on
+#     proxy: trap returned duplicate entries" when the environment named a
+#     variable twice: Edge.js's process.env is a Proxy whose ownKeys listed
+#     every entry of environ, and a Proxy may not repeat a key. Node lists
+#     each name once, where it first appears, which is the value getenv()
+#     and process.env give; so does this. (A pnpm that switches to the
+#     project's `packageManager` version starts another pnpm, which got the
+#     pnpm command's `npm_config_*` twice: once from its parent and once
+#     from the command, until the vendored wasmer-wasix applied a command's
+#     environment as defaults. This keeps any other duplicate harmless.)
+#     Ours; drafted for Edge.js.
+#
+#   edgejs-undici-version.patch. `process.versions.undici` was "0.0.0":
+#     Edge.js read it at run time from deps/undici/src/package.json beside
+#     its source or the working directory, which a job does not have. It is
+#     compiled in now, from a src/undici_version.h like Node's (7.18.2, the
+#     undici Node 24.13.1 bundles too). Ours; drafted for Edge.js.
+#
+#   edgejs-handle-methods.patch. A Worker's native handle defined its
+#     methods (`ref`, `unref`, `hasRef`, ...) read-only, where Node's are
+#     writable and configurable like any prototype method. The WebAssembly
+#     loader napi-rs generates (`@tailwindcss/oxide`'s, among others) replaces
+#     `worker[kHandle].ref` with a no-op so the thread pool it keeps
+#     never holds the process open, and emnapi then calls `worker.ref()`
+#     for every thread it starts; the assignment silently did nothing, so
+#     a `node` that had started one never exited (a Vite build with
+#     Tailwind CSS printed its output and ran into the job's timeout). They
+#     are `napi_default_method` now, as the stream and pipe bindings'
+#     methods are, and so are the same methods of `fs.watchFile`'s
+#     StatWatcher and `fs.watch`'s FSEvent handles, which Node defines the
+#     same way. Ours; drafted for Edge.js.
+#
 # This builds exactly what `wasmer/edgejs` 0.2.5 was built from, with those
 # objects of the C library replaced and those patches applied:
 #
@@ -302,10 +358,11 @@ self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # child exit poll, 9 postMessage, 10 the worker report state, 11 the
 # worker task free, 12 the compile cache, 13 the module syntax arrow, 14
 # the error report, 15 the release version, 16 compile cache entries
-# renamed into place.
-VERSION="0.2.5-iwci.16"
+# renamed into place, 17 TypeScript, environment names listed once,
+# undici's version, writable handle methods and Unix socket paths.
+VERSION="0.2.5-iwci.17"
 # Edge.js's own patches, applied to its checkout in this order.
-EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch edgejs-error-report.patch edgejs-release-version.patch)
+EDGEJS_PATCHES=(edgejs-worker-stop.patch edgejs-worker-env-race.patch edgejs-worker-env-readers.patch edgejs-request-interrupt.patch edgejs-builtins-cache.patch edgejs-worker-cpu-usage.patch edgejs-open-flags.patch edgejs-structured-clone.patch edgejs-child-exit-poll.patch edgejs-post-message.patch edgejs-worker-report-state.patch edgejs-worker-task-free.patch edgejs-compile-cache.patch edgejs-module-syntax-arrow.patch edgejs-error-report.patch edgejs-release-version.patch edgejs-typescript.patch edgejs-env-keys.patch edgejs-undici-version.patch edgejs-handle-methods.patch)
 
 # Edge.js: the commit 0.2.5's module was built from (the release repackaged
 # CI's module for it; the packaging commit after it changes no source). Its
@@ -331,6 +388,7 @@ LIBC_PATCHES=(
   "wasix-libc-thread-exit.patch libc-top-half/musl/src/thread/pthread_create.o exit_woken"
   "wasix-libc-modes.patch libc-bottom-half/sources/posix.o __wasilibc_iwci_fill_fd_mode libc-bottom-half/cloudlibc/src/libc/sys/stat/fstat.o __wasilibc_iwci_fill_fd_mode"
   "wasix-libc-getrusage.patch libc-top-half/musl/src/misc/getrusage.o __wasilibc_iwci_rusage"
+  "wasix-libc-unix-path.patch libc-bottom-half/cloudlibc/src/libc/sys/socket/bind.o __wasilibc_iwci_sun_path_len libc-bottom-half/cloudlibc/src/libc/sys/socket/connect.o __wasilibc_iwci_sun_path_len libc-bottom-half/cloudlibc/src/libc/sys/socket/sendto.o __wasilibc_iwci_sun_path_len libc-bottom-half/cloudlibc/src/libc/sys/socket/sendmsg.o __wasilibc_iwci_sun_path_len"
 )
 SYSROOT_URL="https://github.com/wasix-org/wasix-libc/releases/download/v2026-07-30.1/sysroot-exnref-eh.tar.gz"
 SYSROOT_SHA256="40c2ebbf3487ab72c0d0359b1643f3e6ae7c51adfe2237ab86492ecb6494a47d"

@@ -56,6 +56,11 @@ pub(crate) fn fd_filestat_get_internal(
     }
 
     let mut stat = *fd_entry.inode.stat.read().unwrap();
+    // iwci patch: the file's number and count of names as the file system
+    // has them now: another name made or removed since it was opened.
+    state
+        .fs
+        .refresh_links(fd_entry.inode.read().deref(), &mut stat);
     // WASI has no file type for a pipe, so the C library's `fstat` gives one
     // no type at all, and a program that asks what its standard streams are
     // (libuv's `uv_guess_handle`, and so Node) takes a pipe for something it

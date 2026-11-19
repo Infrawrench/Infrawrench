@@ -49,6 +49,8 @@ impl FileSystem {
                             created: time,
                             modified: time,
                             len: file_len,
+                            ino: 0,
+                            nlink: 0,
                         }
                     },
                     lifecycle: Arc::default(),
@@ -110,6 +112,8 @@ impl FileSystem {
                             created: time,
                             modified: time,
                             len: 0,
+                            ino: 0,
+                            nlink: 0,
                         }
                     }
                 };
@@ -196,6 +200,8 @@ impl FileSystem {
                                 created: time,
                                 modified: time,
                                 len: 0,
+                                ino: 0,
+                                nlink: 0,
                             }
                         },
                     }));
@@ -267,6 +273,8 @@ impl FileSystem {
                     created: time,
                     modified: time,
                     len: 0,
+                    ino: 0,
+                    nlink: 0,
                 }
             },
             lifecycle: Arc::default(),
@@ -321,10 +329,14 @@ impl FileSystemInner {
             }
         };
 
-        // Find the inode of the file if it exists.
+        // Find the inode of the file if it exists (iwci patch: the file a
+        // hard link names).
         let maybe_inode_of_file = self
             .as_parent_get_position_and_inode_of_file(inode_of_parent, &name_of_file)?
-            .map(|(_nth, inode)| inode);
+            .map(|(_nth, inode)| match inode {
+                InodeResolution::Found(inode) => InodeResolution::Found(self.body_of(inode)),
+                redirect => redirect,
+            });
 
         Ok((
             InodeResolution::Found(inode_of_parent),
@@ -515,6 +527,8 @@ impl crate::FileOpener for FileSystem {
                         created: time,
                         modified: time,
                         len: 0,
+                        ino: 0,
+                        nlink: 0,
                     }
                 };
                 let inode_of_file = fs.storage.vacant_entry().key();

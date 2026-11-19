@@ -649,6 +649,12 @@ impl Linker {
         })
     }
 
+    /// Whether another instance group's link operation waits for this one
+    /// to take part (`do_pending_link_operations`).
+    pub(crate) fn link_operation_pending(&self) -> bool {
+        self.shared.dl_operation_pending_load(Ordering::SeqCst)
+    }
+
     pub(crate) fn do_pending_link_operations(
         &self,
         ctx: &mut FunctionEnvMut<'_, WasiEnv>,

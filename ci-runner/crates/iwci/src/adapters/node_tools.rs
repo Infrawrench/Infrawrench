@@ -160,6 +160,7 @@ mod tests {
             files: Vec::new(),
             targets: Default::default(),
             aliases: Vec::new(),
+            commands: Default::default(),
             args: args.iter().map(|a| a.to_string()).collect(),
             env: Default::default(),
             description: None,

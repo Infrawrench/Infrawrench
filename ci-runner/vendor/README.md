@@ -119,8 +119,25 @@ its env's id, and `src/guest/napi.rs` resolves
 lock-free terminate above, under the registry lock that keeps the target
 alive). This is wasmerio/napi 9219367 ("Allocate env ids per application and
 let stores stop each other's envs") without its `request_interrupt` change,
-which needs the later callback rework; Edge.js 0.2.5 queues worker tasks
-through its own environment, not that import.
+which needs the later callback rework.
+
+`unofficial_napi_request_interrupt` resolves an env of another store
+through the same registry, with a change of our own rather than that one. Edge.js queues a
+task for a worker (its part of `process.report.getReport()`, heap
+statistics, CPU use, a profile) on the worker's loop and asks for an
+engine interrupt to run it sooner; the import looked the env up in the
+calling store alone, so for a worker it was refused. A worker blocked in
+`Atomics.wait`, in JavaScript or in WebAssembly, runs no loop, so the
+parent's report waited for good: yuku-codegen's `isMusl` reads a report
+while rolldown's WebAssembly threads wait mid-build, and vercel/ai's tsdown
+builds hung after "Build start". The import now hands the target's state to
+the existing `snapi_bridge_unofficial_request_interrupt` under the registry
+lock. V8's `RequestInterrupt` is thread-safe and wakes a futex wait, and
+`WasmInterruptCallback` runs the guest's callback on the target's thread
+through the callback context that thread has lent, as for any call into the
+guest from JavaScript; with no context lent the interrupt does nothing and
+the loop runs the task, as before. `builtins/test.sh`'s
+`worker-blocked-report-passes` and `rolldown-wasi-report-passes` cover it.
 
 With workers working, the heap reservations above made a pool of them
 impossible: every isolate reserved 472 MiB up front, so a 2 GiB job started
@@ -671,10 +688,20 @@ observe it, and it needs nothing from Edge.js: every published
 `env:bash-node` gets it from the runner. The V8 provider reaches it through
 `WriteProgramStderr` (`v8/src/unofficial_napi_error_utils.cc`) and the
 weak `napi_host_write_guest_stderr`, which `src/napi_bridge_init.cc`
-defines: it finds the env's bridge state and uses the store lent by the
-import on the stack, so `unofficial_napi_module_wrap_check_unsettled_top_level_await`
-now lends its store (`src/guest/napi.rs`); without a lent store, or under
-an embedder without WASI, the text is dropped rather than printed.
+defines: it writes through the context the import on this thread's stack
+installed (`t_active_callback_ctx`, set where every import swaps its
+context in and out), once it has checked that context is the env's, and
+the store that import lent, so
+`unofficial_napi_module_wrap_check_unsettled_top_level_await` now lends its
+store (`src/guest/napi.rs`); without a lent store, or under an embedder
+without WASI, the text is dropped rather than printed. It used to take the
+context of the first bridge state in `g_envs` naming the `napi_env`, which
+was not always this program's: an env being released still names the
+`napi_env` it frees, and a new env on another thread can be given that
+address. The text then went with another program's context into this
+thread's store, Wasmer's store check panicked ("object used with the
+wrong context") and the program ended with status 134 and no output
+(`unsettled-tla-passes`, 5 jobs in 1,800 when 40 ran at once).
 `napi_fatal_error` prints `FATAL ERROR: <location> <message>`, as Node
 words it, the same way, and ends the program with status 134, as an abort
 does. The debug line behind `EDGE_DEBUG_EXCEPTIONS` keeps the event and
@@ -715,7 +742,8 @@ instructions fewer per `node -e 0` (of about 270 million).
 later in a form the runner can link (no CREL, libstdc++ on ARM64), includes
 wasmerio/napi main's rework of `g_mu` (envs owned per thread, termination outside the
 lock, 832e57ec's provider locks) and its per-application env ids (9219367),
-and #146's fix, lends the store in the imports #1090 names, and either a
+an interrupt for another store's env that runs its callback on that env's
+thread, and #146's fix, lends the store in the imports #1090 names, and either a
 guest's event loop is kept alive and woken
 for its isolate's background work or the pinned Edge.js does that itself,
 the stall check has another way to count V8's worker threads or goes
@@ -762,6 +790,24 @@ than that PR's lookup through the inode tree, and leaves out the PR's
 unrelated changes (terminal scoping, `dup2` rights, `writev` ordering,
 renames of hard-linked files, command environment defaults, which the
 runtime crate already handles in `command_env_as_defaults`).
+
+**A native program is the runtime's to run.** A job that runs in the
+native sandbox builds and runs Linux programs (`builtin:rust`'s `cargo
+build`), and its WASIX processes (bash, `node`) execute them by path:
+`./target/debug/app`. `BinFactory::spawn` handed the ELF to the Wasm
+compiler, so bash reported "cannot execute binary file: Exec format
+error" and 126. `src/bin_factory/mod.rs` now asks the runtime what runs
+in place of a file that starts with the ELF magic,
+`Runtime::native_executable(path, first bytes)` in `src/runtime/mod.rs`,
+which `OverriddenRuntime` forwards and every other runtime answers
+`None`, leaving the old behaviour. `iwci-runtime`'s answer is a module
+that starts the program natively in the sandbox
+(`inside::natives::exec_trampoline`), or, outside it, one that says why
+it cannot run and exits 126. Nothing like it is upstream (WASIX has no
+native programs), so this hunk keeps the crate vendored even once a
+release has everything **Remove it** below lists, unless upstream takes
+such a hook; `builtins/test.sh rust`'s `exec-native-passes` and
+`bash`'s `exec-native-fails` are the check.
 
 **`waitpid(-1, ..., WNOHANG)` does not block (#961).** `proc_join` with no
 pid waited for any child to exit whatever the flags said, so it blocked
@@ -958,19 +1004,44 @@ new thread, and a thread with nothing to do for a minute ends. Nothing
 upstream does this; the runner drains the Wasm stacks such threads leave
 (`release_idle`).
 
-**No hard links unless the file system makes one (#1052).** `path_link`
-asks the backing file system for the link and, when that answers
-`Unsupported`, pointed a second cached directory entry at the same inode.
-That name existed only in WASIX's cache: the file system, the runner's
-views of it and `JobFs::changes` never saw it, and as unlinking removes
-the file only when its last link goes, `rm` of the first name removed
+**Hard links are the file system's (#1052).** `path_link` asks the
+backing file system for the link and, when that answered `Unsupported`,
+pointed a second cached directory entry at the same inode. That name
+existed only in WASIX's cache: the file system, the runner's views of it
+and `JobFs::changes` never saw it, and as unlinking removed the file only
+when its cached count of links reached 0, `rm` of the first name removed
 nothing, so both names stayed for good. A Git push over `file://` lost
-objects that way. None of a job's file systems can make a link, so
-`src/syscalls/wasi/path_link.rs` now answers `EPERM` for `Unsupported`, as
-Linux does on a file system without hard links, and for a directory or
-symlink, which only that cache could have linked (`EEXIST` still comes
-first for a name that is there). Programs fall back to copying or
-renaming. Upstream main keeps the cached link (checked November 2026).
+objects that way. The job's file system makes links now (virtual-fs's
+`mem_fs` below, and `iwci-vfs`'s `JobOverlay`), so the patch leaves the
+count of names and the inode number to it, through two fields virtual-fs's
+`Metadata` gains (`ino`, `nlink`):
+
+- `src/syscalls/wasi/path_link.rs` answers `EXDEV` for `Unsupported` (two
+  mounts, a file system without links), which programs fall back to
+  copying on, and `EPERM` for a directory or a symbolic link, as Linux
+  refuses a directory (`EEXIST` still comes first for a name that is
+  there). `EXDEV` rather than `EPERM`, because it is the one pnpm's package
+  importer copies on at once; on `EPERM` it tries a link before every copy.
+  After a link, both names' cached stats take the file system's number and
+  count.
+- `get_stat_for_kind` (`src/fs/mod.rs`) reports the file system's number
+  for a file it numbers (0 for any other, which `create_inode_with_stat`
+  then numbers by path, as before) and its count of names;
+  `path_filestat_get` keeps such a number over the inode's own (which a
+  rename moves, #1054), and `fd_filestat_get` brings an open file's number
+  and count up to date (`refresh_links`), since another process may have
+  linked or unlinked it since.
+- `path_unlink_file` removes a name of a file that has others by its path:
+  the cached count could not know of names another process made, and an
+  open handle's `unlink` cannot say which name it means. The last name goes
+  as before, whatever the cache counted.
+
+`iwci-runtime`'s `a_hard_link_is_a_second_name_of_one_file` (a link of a
+checked-out file, its number and count by `stat` and by an open
+descriptor, a write through one name, unlinks, a rename onto another name
+of itself, the refusals) and `builtins/test.sh`'s `links-passes` (bash,
+bash-node, python) are the checks. Upstream main keeps the cached link
+(checked November 2026).
 
 **A renamed file has its new path's inode number (#1054).** Inode numbers
 are hashes of paths (`Inode::from_path`), and `path_rename` moved the
@@ -1321,6 +1392,153 @@ fails without it: every removal printed the job's value) and
 `builtins/test.sh`'s `bash/unset-passes` are the checks. Upstream main
 merges too (checked November 2026, at ea3421a207).
 
+**A command's environment is defaults.** A package command's `wasi.env`
+(Edge.js's `pnpm` declares `PATH`, `HOME` and seven `npm_config_*`) was
+appended to the environment of every process spawned through that command,
+so a name its parent already had came twice. `iwci-runtime` drops the keys a
+job starts with from each command (`command_env_as_defaults`), which left
+the ones a process gets along the way: a pnpm that switches to the
+project's `packageManager` version starts another pnpm, which got the first
+one's `npm_config_*` again from the command and died on
+`Object.keys(process.env)` ("'ownKeys' on proxy: trap returned duplicate
+entries"). `WasiEnv::prepare_spawn` in `src/state/env.rs` now adds an entry
+only for a name the environment does not have, through
+`add_command_env_defaults`, which is Wasmer main's function as written
+(checked November 2026, at ea3421a207), test included (the crate is not a
+workspace member, so nothing here runs it). `bash-node/env-names-passes`
+fails only when neither this nor Edge.js's `edgejs-env-keys.patch` (which
+hides the duplicate from `Object.keys`) is there, so with an Edge.js before
+`0.2.5-iwci.17` it checks this alone.
+
+**Dead inodes are swept in proportion (pnpm, 2026-11).** `add_inode_val`
+(`src/fs/mod.rs`) cleared dead entries out of the inode table whenever its
+length was 1 modulo 100, a walk of the whole table. An add that replaced an
+entry (a symbolic link, which is never cached in its directory, gets a new
+inode at every lookup under the same number) or a sweep that found
+nothing dead left the length there, so every add swept: once a pnpm
+install had a few hundred thousand inodes, 63 to 83% of the runner's time
+went to `HashMap::retain`. A sweep now runs once as many inodes have been
+added as the last one left (and at least 100), so its cost per add is
+constant and the dead entries it leaves are at most as many as the live
+ones. Upstream main still sweeps at a length of 1 modulo 100 (checked
+November 2026, at ea3421a207).
+`builtins/test.sh`'s `bash-node/stat-scale-passes` lstats a link between
+the stats it times.
+
+**A link in a moved directory is resolved from where it is.** Renaming a
+directory gave the files and directories cached under it their new paths
+(`rename_inode_tree`, `src/syscalls/wasi/path_rename.rs`) but skipped
+symbolic links, which kept the location they are resolved from: after
+`mv stage final`, a link looked up before the move (`final/bin/pnpm`)
+resolved from `stage/bin` and `lstat` of it said ENOENT. pnpm stages the
+version a project's `packageManager` names in a directory and renames it
+into place before running its `bin/pnpm`. Upstream main skips them too
+(checked November 2026, at ea3421a207). `bash-node/symlink-dirs-passes` is
+the check.
+
+**Inode numbers have 53 bits.** `Inode::from_path` numbers a file by the
+xxHash of its path, all 64 bits. Node reads `st_ino` as a double, and
+Edge.js makes the BigInt that `fs.lstatSync(p, { bigint: true })` gives
+from one, so every number of 2^63 or more arrived as 2^63 - 1: half of all
+files shared one inode number. `fs.realpathSync` remembers the links it
+has read by device and inode number, so in a directory reached through a
+link, a second link took the first one's target (`stage/bin/stage` for
+`final/bin/x`), which is how pnpm's own switch to a project's
+`packageManager` version failed once the duplicated environment was fixed.
+The number is now the hash's low 53 bits, exact as a JavaScript number;
+two of a million paths share one with odds of about 1 in 18,000.
+`iwci-vfs`'s `ino_of` cuts its hash the same way, since the runner finds a
+file's mode by it. Upstream main numbers with all 64 bits (checked
+November 2026, at ea3421a207). `bash-node/symlink-dirs-passes` is the
+check.
+
+**A thread reading a pipe lets another `dlopen` (pytest-xdist).** A
+dynamically linked program's `dlopen` stops every thread of the process at
+a barrier (`synchronize_link_operation`, `src/state/linker/sync/`), which a
+thread joins at its next syscall or, if it is waiting in one, when the
+linker's `Sigwakeup` ends the wait. A blocking `fd_read` of a pipe or a
+socket pair (WASIX's `socketpair` is a pair of pipes, and `recv` on one
+goes through `fd_read`) waited in the host for data and nothing else, so a
+`dlopen` while a thread sat there waited for that thread for good, and so
+did every thread that had reached the barrier: the process used no CPU and
+no signal could end it, as all its threads were in the host. pytest-xdist
+met it every time: each worker reads the controller's commands from its
+stdin pipe in a thread (execnet's popen gateway) while its main thread
+imports the tests' compiled modules, so `pytest -n auto` on FastAPI ran no
+test and was stopped as stalled; serially it passed. `src/syscalls/wasi/fd_read.rs`
+now waits for a pipe's or socket pair's data in `__sock_wait`, as the
+socket branch does since #1046, which ends the wait with `EINTR` for a
+queued signal, the linker's included, or a thread or process made to
+finish, and `fd_read` and `fd_pread` start the call over through
+`__sock_wait_restarts`, which does the linker's work first. That wait
+(`SignalQueued`) now also ends when a link operation is pending: an
+operation raises its flag and then sends `Sigwakeup`, and the thread's own
+signal handling (a syscall's `do_pending_operations`, or
+`__sock_wait_restarts` between two operations of one `import`) could take
+the `Sigwakeup` off the queue after it last looked at the flag, which left
+the next wait deaf to it; the flag, read once the wait's waker is
+registered, cannot be missed. For the same reason `__sock_wait_restarts`
+drops a `Sigwakeup` that arrived while it did the last operation, rather
+than taking it for a signal nothing handles and answering the read `EINTR`.
+That race was there for sockets since #1046 too. Without this half, Python importing psutil beside a thread reading a
+pipe still hung in 5 runs of 25; with it, 90 in a row went through. As in
+the socket branch, only the first buffer of a `readv` waits; the rest take
+what has arrived (a `readv` whose first buffer filled exactly used to wait
+for more data for the next). An `eventfd`'s blocking read still waits as it
+did. `iwci-runtime`'s
+`a_thread_blocked_reading_a_pipe_lets_another_thread_dlopen` is the check
+(a thread reads an empty pipe, then a socket pair, while the main thread
+`dlopen`s a side module and looks up its function, two operations back to
+back), and `builtins/test.sh`'s `python/xdist-passes`.
+Upstream main still waits there with `__asyncify_light` and no signal
+(checked November 2026, at ea3421a207).
+
+**AF_UNIX stream sockets on a path (`src/net/unix.rs`, tsx's IPC).**
+WASIX has the address (the `unix` arm of `__wasi_addr_port_t`, which
+wasix-libc fills from a `sockaddr_un`) but no socket behind it: binding one
+failed with EINVAL, so a Node server listening on a path (tsx's IPC server
+on `/tmp/tsx-0/<pid>.pipe`, test runners' workers) could not start. An
+AF_UNIX stream socket is now a TCP socket on the job's loopback under the
+names it is given: `bind` creates a file at the path naming the loopback
+port (EADDRINUSE if the path exists), `connect` reads it (ENOENT without
+it, ECONNREFUSED for any other file or a listener that has gone), and
+`getsockname`, `getpeername` and `accept` answer with the path, or unnamed.
+The file system is the job's, shared by its processes, and the loopback is
+the job's own, so a path socket reaches nothing outside the job. Abstract
+names and datagram sockets are not supported. The socket keeps its names
+across the upgrades `__sock_upgrade` makes (bound, listening, connected).
+Edge.js also needed `wasix-libc-unix-path.patch`
+(`builtins/environments/edgejs/`), since wasix-libc read a path to the end
+of the address length rather than to its NUL. `builtins/test.sh`'s
+`bash-node/unix-socket-passes` is the check.
+
+**`getcwd` leaves room for the NUL.** `getcwd` wrote the path into a
+buffer exactly as long as it without a terminating NUL, and told a buffer
+too small the path's length. wasix-libc's `getcwd(NULL, 0)` asks for the
+size and allocates exactly what it is told, so its string ran on into the
+allocator's padding: a path whose length is 12 mod 16 (dlmalloc's chunk
+header) gained a byte. bash takes its `$PWD` from it, so a shell started
+in `/app/packages/provider-utils` (28 bytes) said
+`/app/packages/provider-utils3`, and ran a command by a relative path
+there from the wrong directory: `pnpm -r exec` and `pnpm --filter "x..."
+build` in vercel/ai failed on that package with ENOENT. `getcwd` now
+wants a buffer longer than the path, as POSIX's does (ERANGE otherwise),
+tells a short one the length with the NUL, and always writes the NUL.
+Wasmer's bash, coreutils and Python are linked with that C library and
+are not rebuilt here, so the fix is the runtime's. `builtins/test.sh`'s
+`bash-node/cwd-length-passes` is the check.
+
+**A PATH search passes over a directory.** `find_executable_in_path`,
+which `proc_exec*` and `proc_spawn*` use for a bare command name, took the
+first `<dir>/<name>` that existed, so a directory `node` on PATH ended the
+search with ENOENT: `env node` (every `#!/usr/bin/env node` script), Node's
+`child_process` and other `execvp` callers found no `node` when a
+checkout's `node/` was on PATH. A directory is now passed over and counts
+as EACCES, which the search answers if nothing else is found, as `execvp`
+does. bash searches PATH itself and is not helped (README, "Known
+limitations"). `builtins/test.sh`'s `bash-node/path-dir-passes` is the
+check.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1330,7 +1548,9 @@ preopens' numbers and keep its paths, a backing or dangling symlink
 can be renamed, a guest's CPU clocks are its own, and a blocking accept
 or receive waits with no timeout of its own and still ends for a signal,
 the task manager's idle threads end without queueing a task behind a
-busy one, a link the file system cannot make fails and `rmdir` finds a
+busy one, a link the file system cannot make fails, a stat reports the
+file system's inode number and count of names, an unlink of one of several
+names removes it by path, and `rmdir` finds a
 directory nothing looked up, a child's exit status reaches its parent
 unchanged, a process knows its parent, a directory's cookies hold while it changes, a moved
 directory's `..` is its new parent, `sendfile` writes to a file, a
@@ -1345,7 +1565,11 @@ process, a process's exit signals only its own threads, a command runs
 through a symbolic link, a new thread's stack pointer starts on its
 stack before its side modules' TLS is set up, the closure calls and
 `call_dynamic` answer bad input with an errno, one write to a pipe is one
-send, a passed environment replaces the inherited one, WASIX has file locks a C library calls (and
+send, a passed environment replaces the inherited one, a command's environment is defaults for every spawn, dead inodes are
+swept in proportion to the table, a link under a moved directory resolves
+from its new place, inode numbers are exact as JavaScript numbers, AF_UNIX stream sockets work on a path, `getcwd` leaves room for the NUL, a PATH search passes over a directory, a blocking read of a pipe or socket pair ends for a signal (the
+linker's `Sigwakeup` included) and starts over, and such a wait (and a
+socket's) also ends for a pending link operation, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
 it, since that module imports the two calls above), and once the runner
 finds a
@@ -1365,8 +1589,8 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `bash/rm-rf-passes`, `bash-node/moved-dir-passes`,
 `bash-node/cp-sync-passes`, `bash-node/rename-race-passes`,
 `bash-node/unlink-race-passes`, `bash-node/symlink-exec-passes`,
-`gh/gh-passes`,
-`python/file-locks-passes`,
+`bash-node/unix-socket-passes`, `gh/gh-passes`,
+`python/file-locks-passes`, `python/xdist-passes`,
 `python/idle-server-passes`, `python/idle-server-timeout-fails`,
 `python/tls-server-passes` and
 `postgres/idle-client-passes`, and `iwci-runtime`'s
@@ -1384,7 +1608,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `every_process_of_a_control_plane_is_found_whatever_its_id`,
 `a_service_process_started_after_thousands_of_others_is_stopped`,
 `removing_a_directory_nothing_looked_up_says_what_it_is`,
-`a_hard_link_is_refused_and_leaves_one_name`,
+`a_hard_link_is_a_second_name_of_one_file`,
 `a_renamed_file_has_the_inode_number_of_its_new_path`,
 `reading_a_directory_while_removing_its_entries_misses_none`,
 `a_bash_script_can_rm_rf_a_directory_of_many_files`,
@@ -1395,6 +1619,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `closure_calls_refuse_bad_input_with_an_errno`,
 `a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe`,
 `a_variable_removed_from_the_environment_is_not_set_in_a_child`,
+`a_thread_blocked_reading_a_pipe_lets_another_thread_dlopen`,
 `a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
@@ -1605,10 +1830,24 @@ closed, without storing it, and refuses the rest as before.
 `iwci-runtime/src/network.rs` is the check, and the patch adds
 `the_first_write_after_the_reader_closed_is_taken` to the module's tests.
 
+**Also in the patch: a reset from outside (`src/host.rs`).** A job's
+connections out are host sockets (`LocalTcpStream`). Its
+`poll_read_ready`, which a guest's `poll()` reaches, reads the socket to see
+whether it is readable, and took a reset (`ECONNRESET`, `ECONNABORTED`)
+there as plain readiness. The kernel reports a reset once, so the guest's
+read after the poll got the end of the stream instead: a reset connection
+looked closed cleanly, which a protocol that ends a body at the close cannot
+tell from a complete one, and OpenSSL said "unexpected eof while reading"
+where Linux gives `read:errno=104`. The stream now keeps the error for the
+next `try_recv`, which returns it once, then the end of the stream, as Linux
+does. `a_reset_from_outside_reads_as_a_reset_not_the_end_of_the_stream` in
+`iwci-runtime/src/network.rs` is the check (it fails without the patch).
+
 **Remove it** when a virtual-net release after 0.705.0 releases a closed
-listener's address and takes a write after the peer closed (wasmerio/wasmer
-`main` b72787f1be does neither, November 2026): delete `vendor/virtual-net*`
-and its `[patch.crates-io]` entry.
+listener's address, takes a write after the peer closed and keeps a reset a
+readiness check read (wasmerio/wasmer `main` b72787f1be does none of them,
+November 2026): delete `vendor/virtual-net*` and its `[patch.crates-io]`
+entry.
 
 To regenerate after editing: `diff -u` the changed files against the crate
 from crates.io with `a/` and `b/` labels.
@@ -1675,12 +1914,46 @@ cache directory's entries was an unlink or a creating open, which all hold
 WASIX's `rename_lock`, so none ran between the two locks (see
 wasmer-wasix's "A name is cached only while the file system has it").
 
+**Why (#1052).** A job's files can have hard links, and they are made
+here, in the in-memory file system of the job's own layer:
+
+- `mem_fs` gains `hard_link` (`FileSystem::hard_link_numbered`, which
+  `iwci-vfs`'s `JobOverlay` calls with the inode number the file's first
+  name had; the trait's `hard_link` numbers from a counter of its own).
+  A second name is a node of its own (`HardLinkNode`) that names the
+  file's node; lookups, opens, metadata and listings follow it to the
+  file, so a write through one name is the file's. A file's links are
+  listed by file (`FileSystemInner::links`), so its count of names is one
+  more than that list's length. Removing a link removes its node;
+  removing the file's own name puts the file's node in the place of one
+  of its links, so a file is listed under a name for as long as it has
+  one, which is what an open handle's `unlink` finds it by. A rename onto
+  another name of the same file does nothing, as `rename(2)` does nothing
+  then (`same_file` asks that of two names).
+- `Metadata` gains `ino` (a number the file system gives the file, 0 when
+  it leaves numbering to the caller) and `nlink` (its count of names, 0
+  when it does not count them), which `mem_fs` fills for a file with
+  links and the host file system for any file (a number only for one with
+  more than one name, as the gVisor sandbox's are), and every other
+  constructor leaves 0. That is how WASIX and the gVisor file server learn
+  what both names share.
+- The blanket `FileSystem` impl for `Deref` types (`Arc`, `Box`) forwarded
+  every method but `hard_link`, so a file system behind one (WASIX's root,
+  every mount) answered `Unsupported` whatever it could do. It forwards it
+  now. Upstream main still leaves it out (checked November 2026, at
+  ea3421a207).
+
+`iwci-vfs`'s `a_hard_link_is_a_second_name_of_one_file`,
+`renames_onto_and_of_linked_names` and
+`an_open_linked_file_outlives_its_names` are the checks.
+
 **Remove it** when a virtual-fs release after 0.705.0 has #7039, a
 `create_dir` that looks up under its write lock, a `set_len` that copies
-up first and an open file's `unlink` and `create_symlink` that look up
-under their write lock: delete `vendor/virtual-fs*` and its
-`[patch.crates-io]` entry. A release with only some of them is still worth
-taking with the other hunks kept.
+up first, an open file's `unlink` and `create_symlink` that look up
+under their write lock, and hard links in `mem_fs` whose names report one
+number and their count (and a `Deref` impl that forwards `hard_link`):
+delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry. A release
+with only some of them is still worth taking with the other hunks kept.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

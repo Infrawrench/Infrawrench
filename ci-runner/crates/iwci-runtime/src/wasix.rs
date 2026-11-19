@@ -236,6 +236,9 @@ pub(crate) struct JobRuntime {
     job_modules: JobModules,
     /// What the job listens on, for `wait-for-port` (services.rs).
     listeners: crate::network::Listeners,
+    /// The job runs in its sandbox, beside native programs, so a native
+    /// program it executes runs too (`native_executable`).
+    in_sandbox: bool,
 }
 
 impl JobRuntime {
@@ -261,8 +264,8 @@ impl JobRuntime {
         // not depend on where it is called from (#1157).
         let _enter = shared.tokio.enter();
         // The shared threads, with the job's tasks counted by its meter
-        // (stall.rs), telling the job the vCPUs of its `cpus:` when it has
-        // them.
+        // (stall.rs), telling a job the CPUs it is told it has
+        // (`Limits::told_cpus`).
         let mut inner =
             PluggableRuntime::new(Arc::new(JobTasks::new(shared.tasks.clone(), cpu, cpus)));
         inner.set_engine(engine);
@@ -289,14 +292,93 @@ impl JobRuntime {
         if let Some(node) = node {
             node.attach(&mut inner);
         }
+        #[cfg(target_os = "linux")]
+        let in_sandbox = shared.sandbox.is_some();
+        #[cfg(not(target_os = "linux"))]
+        let in_sandbox = false;
         Self {
             inner,
             control: Arc::default(),
             modules: shared.store.clone(),
             job_modules: job_modules.clone(),
             listeners,
+            in_sandbox,
         }
     }
+}
+
+/// What a job runs in place of a native program (ELF) one of its WASIX
+/// processes executes (wasmer-wasix's `Runtime::native_executable`): in
+/// the sandbox, a program for this machine runs natively through a
+/// trampoline (`inside::natives::exec_trampoline`), as a native tool's
+/// command does; anything else is a small module that says why it cannot
+/// run and exits 126, as a shell does for a file it cannot execute.
+fn native_executable(path: &str, head: &[u8], in_sandbox: bool) -> Option<Arc<[u8]>> {
+    let machine = |m: u16| match m {
+        62 => "x86_64",
+        183 => "aarch64",
+        3 => "x86",
+        40 => "arm",
+        243 => "riscv64",
+        _ => "another architecture",
+    };
+    let field = |at: usize| {
+        head.get(at..at + 2)
+            .map(|b| u16::from_le_bytes([b[0], b[1]]))
+    };
+    let little_64 = head.get(4) == Some(&2) && head.get(5) == Some(&1);
+    let (kind, arch) = match (field(16), field(18)) {
+        (Some(kind), Some(arch)) if head.get(5) == Some(&1) => (kind, machine(arch)),
+        _ => (0, "another architecture"),
+    };
+    let reason = if !matches!(kind, 2 | 3) {
+        format!("{path} is an ELF file that is not a program")
+    } else if !little_64 || arch != std::env::consts::ARCH {
+        format!(
+            "{path} is a native program for {arch}, and this runner is {}",
+            std::env::consts::ARCH
+        )
+    } else if in_sandbox {
+        #[cfg(target_os = "linux")]
+        if let Some(wasm) = crate::inside::natives::exec_trampoline(path) {
+            return Some(wasm);
+        }
+        format!("{path} cannot be started natively (its path is too long)")
+    } else {
+        format!(
+            "{path} is a native Linux program, which a job starts only in the native sandbox: \
+             list a native tool in its `tools:` (builtin:glibc@2.39 for the C library alone, \
+             or builtin:rust, builtin:bun) and run it on a runner with the native sandbox \
+             (`--native-sandbox`); this job runs only WebAssembly"
+        )
+    };
+    refusal(&format!("iwci: {reason}\n"))
+}
+
+/// A module that writes `message` to stderr and exits 126.
+fn refusal(message: &str) -> Option<Arc<[u8]>> {
+    let mut quoted = String::with_capacity(message.len());
+    for &b in message.as_bytes() {
+        if b.is_ascii_graphic() && b != b'"' && b != b'\\' || b == b' ' {
+            quoted.push(b as char);
+        } else {
+            quoted.push_str(&format!("\\{b:02x}"));
+        }
+    }
+    let text = format!(
+        r#"(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 64) "{quoted}")
+  (func (export "_start")
+    (i32.store (i32.const 0) (i32.const 64))
+    (i32.store (i32.const 4) (i32.const {len}))
+    (drop (call $write (i32.const 2) (i32.const 0) (i32.const 1) (i32.const 8)))
+    (call $exit (i32.const 126))))"#,
+        len = message.len()
+    );
+    Some(wat::parse_str(&text).ok()?.into())
 }
 
 #[cfg(test)]
@@ -339,6 +421,11 @@ impl WasixRuntime for JobRuntime {
 
     fn engine(&self) -> Engine {
         self.inner.engine()
+    }
+
+    fn native_executable(&self, path: &str, head: &[u8]) -> Option<shared_buffer::OwnedBuffer> {
+        native_executable(path, head, self.in_sandbox)
+            .map(|wasm| shared_buffer::OwnedBuffer::from_bytes(bytes::Bytes::from_owner(wasm)))
     }
 
     /// Every way wasmer-wasix loads a module for a job comes through here:
@@ -601,7 +688,15 @@ pub const NODE_SUPPORT_DIR: &str = "/usr/local/lib/iwci/node";
 /// them when there is one (builtins.rs).
 const NODE_SUPPORT: &[(&str, &[u8])] = &[
     ("preload.cjs", include_bytes!("../node/preload.cjs")),
+    (
+        "host-platform.cjs",
+        include_bytes!("../node/host-platform.cjs"),
+    ),
     ("blob-stream.cjs", include_bytes!("../node/blob-stream.cjs")),
+    (
+        "esbuild-stdio.cjs",
+        include_bytes!("../node/esbuild-stdio.cjs"),
+    ),
     ("pnpm-global.cjs", include_bytes!("../node/pnpm-global.cjs")),
     ("spawn-path.cjs", include_bytes!("../node/spawn-path.cjs")),
     ("wasi.cjs", include_bytes!("../node/wasi.cjs")),
@@ -613,8 +708,8 @@ const NODE_SUPPORT: &[(&str, &[u8])] = &[
 ];
 
 /// `npx`, for an environment job with `node`: npm's own, which Edge.js
-/// ships (its `npm` command is pnpm) without putting it on `PATH`. A tool of
-/// the same name wins over it.
+/// ships (its `npm` command is pnpm) without putting it on `PATH`; [`NPM`]
+/// is its `npm`. A tool of the same name wins over it.
 const NPX: &[u8] = b"#!/bin/bash\n\
 # npm's npx, from Edge.js's copy of npm (the runner's node support).\n\
 if [[ ! -f /npm/bin/npx-cli.js ]]; then\n\
@@ -622,6 +717,29 @@ if [[ ! -f /npm/bin/npx-cli.js ]]; then\n\
   exit 127\n\
 fi\n\
 exec node /npm/bin/npx-cli.js \"$@\"\n";
+
+/// `npm`, for an environment job with `node`: npm's own, from the same copy
+/// as `npx`, where Edge.js's `npm` command is pnpm (which refuses a project
+/// that says it uses npm, and has no `package-lock.json`). A global
+/// install still goes to Edge.js's command, so `npm i -g` keeps putting
+/// commands in `PNPM_HOME`, on `PATH`, as before. A tool of the same name
+/// wins over it.
+const NPM: &[u8] = b"#!/bin/bash\n\
+# npm's npm, from Edge.js's copy of npm (the runner's node support).\n\
+for arg in \"$@\"; do\n\
+  case \"$arg\" in\n\
+  --) break ;;\n\
+  -g | --global | --location=global)\n\
+    [[ -x /usr/bin/npm ]] && exec /usr/bin/npm \"$@\"\n\
+    ;;\n\
+  esac\n\
+done\n\
+if [[ ! -f /npm/bin/npm-cli.js ]]; then\n\
+  [[ -x /usr/bin/npm ]] && exec /usr/bin/npm \"$@\"\n\
+  echo 'npm: this environment has no npm to run it from; try pnpm' >&2\n\
+  exit 127\n\
+fi\n\
+exec node /npm/bin/npm-cli.js \"$@\"\n";
 
 /// `NODE_OPTIONS` for an environment job: the support preload first, then
 /// whatever the job set.
@@ -664,6 +782,7 @@ fn job_root(
     own_dirs: bool,
     package_dirs: &[BinaryPackageMount],
     natives: Option<&Natives>,
+    cpus: usize,
 ) -> Result<MountFileSystem> {
     type Dyn = Arc<dyn FileSystem + Send + Sync>;
     let tracked =
@@ -702,6 +821,8 @@ fn job_root(
     // guest's. A job's /tmp is the job's file system's.
     let system = tracked(Arc::new(RootFileSystemBuilder::default().build_tmp()), "/");
     mounts.push(("/dev", "/dev", system.clone()));
+    // /proc/cpuinfo, saying the job has the CPUs WASIX tells it it has.
+    mounts.push(("/proc", "/", tracked(proc_fs(cpus)?, "/proc")));
     if own_dirs {
         mounts.push(("/tmp", "/tmp", system));
     } else {
@@ -737,6 +858,7 @@ fn job_root(
         }
         if node_support {
             write_command(&bin, "npx", NPX)?;
+            write_command(&bin, "npm", NPM)?;
         }
         for tree in trees {
             for (name, script) in &tree.scripts {
@@ -820,6 +942,48 @@ fn job_root(
         }
     }
     Ok(root)
+}
+
+/// What every job finds at `/proc`: `cpuinfo`, read only, listing `cpus`
+/// processors on one package of `cpus` cores, the count WASIX reports
+/// (`thread_parallelism`, which is what `os.cpu_count()` and `nproc` read;
+/// `Limits::told_cpus`: the job's `cpus:`, or 1). WASIX has no `/proc`, and
+/// psutil's `cpu_count(logical=False)`, which pytest-xdist's `-n auto`
+/// asks when psutil is installed, reads the physical cores from this file
+/// and raised `FileNotFoundError` without it. Nothing else is here; Node's
+/// `os.cpus()` reads no file (Edge.js's libuv for WASI has no CPU list, and
+/// it answers with one CPU). The mode, port and native program controls
+/// mount under it at `/proc/iwci`.
+fn proc_fs(cpus: usize) -> Result<Arc<dyn FileSystem + Send + Sync>> {
+    let fs = TmpFileSystem::new();
+    fs.new_open_options_ext()
+        .insert_ro_file(
+            Path::new("/cpuinfo"),
+            shared_buffer::OwnedBuffer::from_bytes(bytes::Bytes::from(cpuinfo(cpus))),
+        )
+        .map_err(|e| Error::Setup(format!("writing /proc/cpuinfo: {e}")))?;
+    Ok(Arc::new(fs))
+}
+
+/// `/proc/cpuinfo` as Linux lays it out on x86, with the fields programs
+/// parse: a `processor` section per CPU, all of them cores of physical
+/// package 0 (`physical id`, `siblings`, `core id`, `cpu cores`).
+fn cpuinfo(cpus: usize) -> String {
+    let cpus = cpus.max(1);
+    let mut text = String::new();
+    for cpu in 0..cpus {
+        text.push_str(&format!(
+            "processor\t: {cpu}\n\
+             vendor_id\t: WebAssembly\n\
+             model name\t: WebAssembly\n\
+             physical id\t: 0\n\
+             siblings\t: {cpus}\n\
+             core id\t\t: {cpu}\n\
+             cpu cores\t: {cpus}\n\
+             \n"
+        ));
+    }
+    text
 }
 
 /// Makes the directory `HOME` names in a shell job's file system. The
@@ -1170,6 +1334,10 @@ impl Starter<'_> {
             process.own_dirs,
             &package_dirs,
             self.natives,
+            self.runtime
+                .task_manager()
+                .thread_parallelism()
+                .unwrap_or(1),
         )?);
         // WASIX programs ask the runtime for their working directory. Plain
         // WASI ones built on wasi-libc cannot be given one: their cwd is
@@ -1295,7 +1463,7 @@ pub(crate) fn run(
         node,
         inv.internet,
         cpu.clone(),
-        inv.limits.cpus,
+        Some(inv.limits.told_cpus()),
         &service_names,
     );
     let control = runtime.control.clone();
@@ -1347,9 +1515,10 @@ pub(crate) fn run(
     // Inside a sandbox, the job's native programs and their sessions.
     #[cfg(target_os = "linux")]
     let natives: Option<Natives> = shared.sandbox.as_ref().map(|sandbox| {
-        Arc::new(crate::inside::natives::Natives::new(
-            sandbox.natives.clone(),
-        ))
+        Arc::new(
+            crate::inside::natives::Natives::new(sandbox.natives.clone())
+                .telling_cpus(inv.limits.told_cpus()),
+        )
     });
     #[cfg(not(target_os = "linux"))]
     let natives: Option<Natives> = None;
@@ -1677,7 +1846,18 @@ fn shim_process(
     let uses = command_env_as_defaults(uses.to_vec(), &keys);
     let provided = |n: &str| uses.iter().any(|p| p.get_command(n).is_some());
     let (program, args) = if provided(&name) {
-        (name.clone(), request.args[1..].to_vec())
+        // The command's own leading arguments and default environment, as a
+        // spawn from a WASIX process gives them (`prepare_spawn`): Edge.js's
+        // `pnpm` is `node` with pnpm's script first, so turbo's `pnpm run
+        // lint` ran `node run lint`.
+        let (mut args, defaults) = command_defaults(&uses, &name);
+        args.extend(request.args[1..].iter().cloned());
+        for (key, value) in defaults {
+            if !env.iter().any(|(k, _)| *k == key) {
+                env.push((key, value));
+            }
+        }
+        (name.clone(), args)
     } else if name == "sh" && provided("bash") {
         // bash started as `sh` is a POSIX shell, as `/bin/sh` is.
         ("bash".to_string(), request.args[1..].to_vec())
@@ -1706,6 +1886,30 @@ fn shim_process(
         stdin: Some(stdio.stdin),
         own_dirs: false,
     })
+}
+
+/// The `wasi` annotation of the command `name` in `uses`: its leading
+/// arguments (`main-args`) and its default environment.
+#[cfg(target_os = "linux")]
+fn command_defaults(uses: &[BinaryPackage], name: &str) -> (Vec<String>, Vec<(String, String)>) {
+    let Some(Ok(Some(wasi))) = uses
+        .iter()
+        .find_map(|p| p.get_command(name))
+        .map(|command| command.metadata().wasi())
+    else {
+        return (Vec::new(), Vec::new());
+    };
+    let env = wasi
+        .env
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        })
+        .collect();
+    (wasi.main_args.unwrap_or_default(), env)
 }
 
 /// Why the runner stopped a job that had not exited.
@@ -1907,9 +2111,11 @@ fn stop_left_behind(control_plane: &wasmer_wasix::WasiControlPlane, interrupt: &
 /// Edge.js's `pnpm` (which declares `PATH` and `HOME`) saw `PATH` twice and
 /// failed on `Object.keys(process.env)`: "'ownKeys' on proxy: trap returned
 /// duplicate entries". Wasmer's main branch now applies them as defaults
-/// (`add_command_env_defaults`); this gives the released crate the same
-/// result for every key the job starts with. A key a script exports later
-/// can still be duplicated until the upstream fix ships.
+/// (`add_command_env_defaults`), and so does the vendored crate, which has
+/// it backported: that covers a key a parent exports or inherits from a
+/// command's own defaults (a `pnpm` that starts another `pnpm` passes the
+/// first one's `npm_config_*` on). This one stays for every key the job
+/// starts with, which it drops from the package itself.
 fn command_env_as_defaults(packages: Vec<BinaryPackage>, job_keys: &[&str]) -> Vec<BinaryPackage> {
     packages
         .into_iter()
@@ -2131,6 +2337,7 @@ mod job_root_tests {
             own_dirs,
             dirs,
             None,
+            1,
         )
         .unwrap()
     }

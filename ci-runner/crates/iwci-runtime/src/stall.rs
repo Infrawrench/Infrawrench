@@ -491,8 +491,9 @@ impl Clock {
 pub(crate) struct JobTasks {
     inner: Arc<dyn VirtualTaskManager>,
     meter: Arc<CpuMeter>,
-    /// The vCPUs the job holds (`cpus:`), which is what it is told it has;
-    /// `None` passes on the runner's.
+    /// The CPUs the job is told it has (`Limits::told_cpus`); `None`, for
+    /// what is not a job (loading packages, compiling them ahead), passes
+    /// on the runner's.
     cpus: Option<u32>,
 }
 

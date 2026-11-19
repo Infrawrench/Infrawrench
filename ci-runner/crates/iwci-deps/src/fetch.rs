@@ -17,8 +17,15 @@ use sha2::Digest;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Integrity {
     /// A Subresource Integrity string as npm and pnpm lockfiles carry it:
-    /// `sha512-<base64>` (also `sha384-`, `sha256-` and the legacy `sha1-`).
+    /// `sha512-<base64>` (also `sha384-`, `sha256-` and the legacy `sha1-`,
+    /// which is checked only when nothing stronger is listed).
     Sri(String),
+    /// An SRI string that pins the uncompressed tar rather than the bytes
+    /// served: what pnpm 12 records for a registry revision and under
+    /// `lockfile.integrityTarget: tar`. A gzipped download is decoded (every
+    /// gzip member, as pnpm decodes it) and the tar hashed; anything else is
+    /// a tar already and is hashed as it is.
+    Tar(String),
     /// A hex SHA-256, as `Cargo.lock`'s `checksum`, a pip lock's
     /// `--hash=sha256:` and a `Gemfile.lock`'s `CHECKSUMS` carry it.
     Sha256Hex(String),
@@ -108,18 +115,39 @@ pub fn verify(url: &str, bytes: &[u8], integrity: &Integrity) -> Result<(), Fetc
                 Err(mismatch(hex_digest))
             }
         }
+        Integrity::Tar(sri) => {
+            if !bytes.starts_with(&[0x1f, 0x8b]) {
+                return verify(url, bytes, &Integrity::Sri(sri.clone()));
+            }
+            let mut tar = Vec::new();
+            std::io::Read::read_to_end(&mut flate2::read::MultiGzDecoder::new(bytes), &mut tar)
+                .map_err(|e| FetchError::Http {
+                    url: url.to_string(),
+                    message: format!("does not decode to a tar: {e}"),
+                })?;
+            verify(url, &tar, &Integrity::Sri(sri.clone()))
+        }
         Integrity::Sri(sri) => {
             // An SRI string may list several hashes separated by spaces; any
             // one of a supported algorithm matching is enough, as in npm.
+            // `sha1-` counts only when nothing stronger is listed: packages
+            // published before the registry computed SHA-512 have nothing
+            // else, and npm and pnpm lockfiles carry that for them.
+            let sha2_listed = sri.split_whitespace().any(|part| {
+                part.split_once('-')
+                    .is_some_and(|(algo, _)| matches!(algo, "sha512" | "sha384" | "sha256"))
+            });
             let mut supported = false;
             for part in sri.split_whitespace() {
                 let Some((algo, b64)) = part.split_once('-') else {
                     continue;
                 };
+                let b64 = b64.split('?').next().unwrap_or(b64);
                 let actual = match algo {
                     "sha512" => sha2::Sha512::digest(bytes).to_vec(),
                     "sha384" => sha2::Sha384::digest(bytes).to_vec(),
                     "sha256" => sha2::Sha256::digest(bytes).to_vec(),
+                    "sha1" if !sha2_listed => sha1::Sha1::digest(bytes).to_vec(),
                     _ => continue,
                 };
                 supported = true;
@@ -568,7 +596,7 @@ fn classify(error: ureq::Error, url: &str) -> Attempt {
 /// Errors for an integrity no algorithm here can check.
 fn verify_supported(integrity: &Integrity) -> Result<(), FetchError> {
     match integrity {
-        Integrity::Sri(sri) if sri_digest(sri).is_none() => {
+        Integrity::Sri(sri) | Integrity::Tar(sri) if sri_digest(sri).is_none() => {
             Err(FetchError::UnsupportedIntegrity(sri.clone()))
         }
         _ => Ok(()),
@@ -580,6 +608,16 @@ fn verify_supported(integrity: &Integrity) -> Result<(), FetchError> {
 fn cache_key(integrity: &Integrity) -> Option<(&'static str, String)> {
     match integrity {
         Integrity::Sri(sri) => sri_digest(sri),
+        // The download kept is the resource whose tar has this hash, so it
+        // gets a directory of its own.
+        Integrity::Tar(sri) => sri_digest(sri).map(|(algorithm, hex_digest)| {
+            let directory = match algorithm {
+                "sha512" => "tar-sha512",
+                "sha384" => "tar-sha384",
+                _ => "tar-sha256",
+            };
+            (directory, hex_digest)
+        }),
         Integrity::Sha256Hex(hex_digest) => {
             let valid = hex_digest.len() == 64 && hex_digest.bytes().all(|b| b.is_ascii_hexdigit());
             valid.then(|| ("sha256", hex_digest.to_ascii_lowercase()))
@@ -625,6 +663,7 @@ fn sri_digest(sri: &str) -> Option<(&'static str, String)> {
             "sha512" => (3, "sha512", 64),
             "sha384" => (2, "sha384", 48),
             "sha256" => (1, "sha256", 32),
+            "sha1" => (0, "sha1", 20),
             _ => continue,
         };
         let Ok(digest) = engine.decode(b64) else {
@@ -709,9 +748,22 @@ mod http_tests {
             ))
         );
         assert_eq!(cache_key(&Integrity::VerifiedAfterExtraction), None);
+        // sha1("abc"): what old packages' lockfile entries carry, and the
+        // same cache entry as Composer's hex SHA-1 of the same bytes.
         assert_eq!(
             cache_key(&Integrity::Sri("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=".into())),
-            None
+            cache_key(&Integrity::Sha1Hex(
+                "a9993e364706816aba3e25717850c26c9cd0d89d".into()
+            ))
+        );
+        // Listed beside a stronger hash, SHA-1 keys nothing.
+        assert_eq!(
+            cache_key(&Integrity::Sri(format!(
+                "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0= {sha256}"
+            )))
+            .unwrap()
+            .0,
+            "sha256"
         );
         assert!(verify("u", b"abc", &Integrity::Sri(sha512.into())).is_ok());
     }
@@ -887,11 +939,18 @@ mod tests {
         let sri = "sha256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=";
         assert!(verify("u", b"abc", &Integrity::Sri(sri.into())).is_ok());
         assert!(verify("u", b"abd", &Integrity::Sri(sri.into())).is_err());
+        let sha1 = "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=";
+        assert!(verify("u", b"abc", &Integrity::Sri(sha1.into())).is_ok());
+        assert!(verify("u", b"abd", &Integrity::Sri(sha1.into())).is_err());
+        // Beside a SHA-2 hash it is not consulted: a SHA-1 match does not
+        // make up for a SHA-256 mismatch.
+        let wrong256 = "sha256-AAAAv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=";
+        assert!(verify("u", b"abc", &Integrity::Sri(format!("{sha1} {wrong256}"))).is_err());
         assert!(matches!(
             verify(
                 "u",
                 b"abc",
-                &Integrity::Sri("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=".into())
+                &Integrity::Sri("md5-kAFQmDzST7DWlj99KOF/cg==".into())
             ),
             Err(FetchError::UnsupportedIntegrity(_))
         ));

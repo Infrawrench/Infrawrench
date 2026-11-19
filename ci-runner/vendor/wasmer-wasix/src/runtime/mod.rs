@@ -17,6 +17,7 @@ use std::{
 
 use anyhow::Context as _;
 use futures::future::BoxFuture;
+use shared_buffer::OwnedBuffer;
 use virtual_mio::block_on;
 use virtual_net::{DynVirtualNetworking, VirtualNetworking};
 use wasmer::{Engine, Module, RuntimeError};
@@ -442,6 +443,15 @@ where
 
     /// Get access to the TTY used by the environment.
     fn tty(&self) -> Option<&(dyn TtyBridge + Send + Sync)> {
+        None
+    }
+
+    /// What runs in place of a native program: a file that starts with
+    /// the ELF magic, which a process asked to run as `path`, judged by
+    /// its first bytes (`head`). A WebAssembly module that runs it some
+    /// other way, or says why it cannot; `None` (the default) hands the
+    /// file to the compiler, which refuses it (`ENOEXEC`).
+    fn native_executable(&self, _path: &str, _head: &[u8]) -> Option<OwnedBuffer> {
         None
     }
 
@@ -1251,6 +1261,10 @@ impl Runtime for OverriddenRuntime {
         } else {
             self.inner.tty()
         }
+    }
+
+    fn native_executable(&self, path: &str, head: &[u8]) -> Option<OwnedBuffer> {
+        self.inner.native_executable(path, head)
     }
 
     #[cfg(feature = "journal")]

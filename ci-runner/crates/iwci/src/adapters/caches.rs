@@ -107,7 +107,14 @@ impl StoreCaches {
         )
     }
 
-    fn load(&self, object: &str, key: &str, max_bytes: u64) -> Result<Option<Vec<Entry>>, String> {
+    /// The entry at `object` if it is `key`'s, with its modes. One a runner
+    /// of another archive format wrote is a miss: the next save replaces it.
+    fn load(
+        &self,
+        object: &str,
+        key: &str,
+        max_bytes: u64,
+    ) -> Result<Option<(Vec<Entry>, archive::ModeList)>, String> {
         let Some(bytes) = self.store.get(object).map_err(|e| e.to_string())? else {
             return Ok(None);
         };
@@ -122,8 +129,11 @@ impl StoreCaches {
         if stored != key.as_bytes() {
             return Ok(None);
         }
-        let entries = archive::decode(&mut decoder, max_bytes).map_err(|e| e.to_string())?;
-        Ok(Some(entries))
+        match archive::decode_with_modes(&mut decoder, max_bytes) {
+            Ok(found) => Ok(Some(found)),
+            Err(e) if archive::is_other_format(&e) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
     }
 }
 
@@ -422,11 +432,12 @@ impl Caches for StoreCaches {
                 found
             })?,
         };
-        if let Some(entries) = found {
+        if let Some((entries, modes)) = found {
             return Ok(Some(Restored {
                 key: key.to_string(),
                 exact: true,
                 entries,
+                modes,
             }));
         }
         for prefix in restore_keys {
@@ -444,13 +455,14 @@ impl Caches for StoreCaches {
                 if !found.starts_with(prefix.as_str()) {
                     continue;
                 }
-                if let Some(entries) =
+                if let Some((entries, modes)) =
                     self.load(&self.entry_key(scope, &found), &found, max_bytes)?
                 {
                     return Ok(Some(Restored {
                         key: found,
                         exact: false,
                         entries,
+                        modes,
                     }));
                 }
             }
@@ -458,14 +470,20 @@ impl Caches for StoreCaches {
         Ok(None)
     }
 
-    fn save(&self, key: &str, restore_keys: &[String], entries: &[Entry]) -> Result<(), String> {
+    fn save_with_modes(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[Entry],
+        modes: &[(std::path::PathBuf, u32)],
+    ) -> Result<(), String> {
         let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
         encoder.include_checksum(true).map_err(|e| e.to_string())?;
         let header = u32::try_from(key.len()).map_err(|_| "key too long".to_string())?;
         std::io::Write::write_all(&mut encoder, &header.to_le_bytes())
             .map_err(|e| e.to_string())?;
         std::io::Write::write_all(&mut encoder, key.as_bytes()).map_err(|e| e.to_string())?;
-        archive::encode(&mut encoder, entries).map_err(|e| e.to_string())?;
+        archive::encode_with_modes(&mut encoder, entries, modes).map_err(|e| e.to_string())?;
         let bytes = encoder.finish().map_err(|e| e.to_string())?;
         let scope = &self.write_scope;
         let object = self.entry_key(scope, key);
@@ -626,6 +644,54 @@ mod tests {
         pr.save_history("Test", &own);
         assert_eq!(pr.load_history("Test"), own);
         assert_eq!(main.load_history("Test"), history);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A cache kept no modes, so a program saved `755` came back `644` and
+    /// a native one (from Bun's install cache) would not start. The modes
+    /// come back with the entries; an entry an older runner wrote (archive
+    /// format 1) is a miss, which the next save replaces.
+    #[test]
+    fn modes_come_back_and_an_older_runners_entry_is_a_miss() {
+        let (store, dir) = store();
+        let repo = RepoId::new("repo_1").unwrap();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let caches = StoreCaches::new(
+            store.clone(),
+            &org,
+            &repo,
+            "main",
+            "main",
+            Event::Push,
+            None,
+        );
+        let modes = vec![
+            (std::path::PathBuf::from("/app/.cache"), 0o750),
+            (std::path::PathBuf::from("/app/.cache/x"), 0o755),
+        ];
+        caches
+            .save_with_modes("bun-1", &[], &entries("main"), &modes)
+            .unwrap();
+        let hit = caches.restore("bun-1", &[], 1 << 20).unwrap().unwrap();
+        assert_eq!(hit.entries, entries("main"));
+        assert_eq!(hit.modes, modes);
+
+        // What a runner before modes wrote under the same key.
+        let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).unwrap();
+        std::io::Write::write_all(&mut encoder, &5u32.to_le_bytes()).unwrap();
+        std::io::Write::write_all(&mut encoder, b"bun-1").unwrap();
+        std::io::Write::write_all(&mut encoder, b"IWCIENTS").unwrap();
+        std::io::Write::write_all(&mut encoder, &1u32.to_le_bytes()).unwrap();
+        std::io::Write::write_all(&mut encoder, &0u64.to_le_bytes()).unwrap();
+        let old = encoder.finish().unwrap();
+        store
+            .put(
+                &caches.entry_key(&caches.write_scope, "bun-1"),
+                &old,
+                "application/zstd",
+            )
+            .unwrap();
+        assert!(caches.restore("bun-1", &[], 1 << 20).unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 

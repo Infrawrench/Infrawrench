@@ -588,12 +588,17 @@ pub struct DepSpec {
     /// is no build of it. Left out of the serialised form when unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub without_extensions: Option<Vec<String>>,
+    /// pnpm, npm and bun: the runner's own Linux packages are installed too.
+    /// Left out of the serialised form when off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub native: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Ecosystem {
     Pnpm,
+    Npm,
     Bun,
     Go,
     Cargo,
@@ -606,6 +611,7 @@ impl Ecosystem {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
             "pnpm" => Some(Ecosystem::Pnpm),
+            "npm" => Some(Ecosystem::Npm),
             "bun" => Some(Ecosystem::Bun),
             "go" => Some(Ecosystem::Go),
             "cargo" => Some(Ecosystem::Cargo),
@@ -619,6 +625,7 @@ impl Ecosystem {
     pub fn name(self) -> &'static str {
         match self {
             Ecosystem::Pnpm => "pnpm",
+            Ecosystem::Npm => "npm",
             Ecosystem::Bun => "bun",
             Ecosystem::Go => "go",
             Ecosystem::Cargo => "cargo",

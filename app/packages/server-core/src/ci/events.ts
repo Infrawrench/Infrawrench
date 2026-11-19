@@ -129,6 +129,99 @@ export function parseCiEvent(event: string | null | undefined, body: unknown): C
   return null;
 }
 
+/**
+ * Someone asked GitHub to run this app's checks again: "Re-run" on one
+ * check (`check_run` `rerequested`) or "Re-run all checks" on the commit
+ * (`check_suite` `rerequested`). GitHub sends these to the app whose checks
+ * they are; `appId` is kept so the receiver can make sure.
+ */
+export interface CiCheckRerequest {
+  kind: "check_run" | "check_suite";
+  installationId: number;
+  repoFullName: string;
+  /** The app that created the check or the suite. */
+  appId: number;
+  headSha: string;
+  /**
+   * The suite's branch, when GitHub knows it; `null` for a fork's commit,
+   * which GitHub saw no push of to a branch of this repository.
+   */
+  headBranch: string | null;
+  /** The check asked for (`check_run` only). */
+  checkRunId: number | null;
+  /**
+   * What the check was created with (`check_run` only): the run's id, or
+   * `<run>:<pipeline>:<job>` for a job's check.
+   */
+  externalId: string | null;
+  /** Who asked: a GitHub login, or `null` for GitHub's `ghost` stand-in. */
+  senderLogin: string | null;
+}
+
+/** A `check_run` or `check_suite` delivery asking for the checks again, or `null`. */
+export function parseCheckRerequest(
+  event: string | null | undefined,
+  body: unknown,
+): CiCheckRerequest | null {
+  if (event !== "check_run" && event !== "check_suite") return null;
+  const o = obj(body);
+  if (!o || o["action"] !== "rerequested") return null;
+  const installationId = int(obj(o["installation"])?.["id"]);
+  const repoFullName = str(obj(o["repository"])?.["full_name"]);
+  if (installationId === null || !repoFullName || !FULL_NAME.test(repoFullName)) return null;
+  const sender = str(obj(o["sender"])?.["login"]);
+  const senderLogin = sender === null || sender === "ghost" ? null : sender;
+
+  if (event === "check_run") {
+    const check = obj(o["check_run"]);
+    const checkRunId = int(check?.["id"]);
+    const appId = int(obj(check?.["app"])?.["id"]);
+    const headSha = str(check?.["head_sha"]);
+    if (checkRunId === null || appId === null || !headSha || !SHA.test(headSha)) return null;
+    return {
+      kind: "check_run",
+      installationId,
+      repoFullName,
+      appId,
+      headSha,
+      headBranch: str(obj(check?.["check_suite"])?.["head_branch"]),
+      checkRunId,
+      externalId: str(check?.["external_id"]),
+      senderLogin,
+    };
+  }
+
+  const suite = obj(o["check_suite"]);
+  const appId = int(obj(suite?.["app"])?.["id"]);
+  const headSha = str(suite?.["head_sha"]);
+  if (appId === null || !headSha || !SHA.test(headSha)) return null;
+  return {
+    kind: "check_suite",
+    installationId,
+    repoFullName,
+    appId,
+    headSha,
+    headBranch: str(suite?.["head_branch"]),
+    checkRunId: null,
+    externalId: null,
+    senderLogin,
+  };
+}
+
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The CI run a check's `external_id` names: the run's own check carries the
+ * run's id, a job's check `<run>:<pipeline>:<job>`. `null` for anything
+ * else, which the receiver then looks up by the check's id instead.
+ */
+export function runIdOfExternalId(externalId: string | null): string | null {
+  if (!externalId) return null;
+  const colon = externalId.indexOf(":");
+  const id = colon === -1 ? externalId : externalId.slice(0, colon);
+  return RUN_ID.test(id) ? id.toLowerCase() : null;
+}
+
 /** The runner's owner key for a repository: `github.com-<owner>`. */
 export function ownerKey(repoFullName: string): string {
   return accountOwnerKey(repoFullName.split("/")[0] ?? "");

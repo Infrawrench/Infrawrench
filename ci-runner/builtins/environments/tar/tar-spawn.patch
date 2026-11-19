@@ -1,0 +1,237 @@
+--- a/lib/nofork.h
++++ b/lib/nofork.h
+@@ -0,0 +1,13 @@
++/* fork() for a C library that has none (WASIX without asyncify), which
++   rtapelib.c and misc.c include with SPAWN_WITHOUT_FORK.  It fails with
++   ENOSYS, as fork() does where it is not supported, so what still forks
++   (a remote archive, --to-command, --info-script,
++   --checkpoint-action=exec and the interactive shell) reports "Cannot
++   fork" rather than not building.  */
++#ifndef NOFORK_H
++# define NOFORK_H
++# include <errno.h>
++# include <sys/types.h>
++static inline pid_t
++fork (void) { errno = ENOSYS; return -1; }
++#endif
+--- a/lib/rtapelib.c
++++ b/lib/rtapelib.c
+@@ -62,6 +62,10 @@
+ #include <rmt.h>
+ #include <rmt-command.h>
+ 
++#ifdef SPAWN_WITHOUT_FORK
++# include <nofork.h>
++#endif
++
+ /* Exit status if exec errors.  */
+ #define EXIT_ON_EXEC_ERROR 128
+ 
+--- a/src/misc.c
++++ b/src/misc.c
+@@ -24,6 +24,10 @@
+ #include <unlinkdir.h>
+ #include <utimens.h>
+ 
++#ifdef SPAWN_WITHOUT_FORK
++# include <nofork.h>
++#endif
++
+ #ifndef DOUBLE_SLASH_IS_DISTINCT_ROOT
+ # define DOUBLE_SLASH_IS_DISTINCT_ROOT 0
+ #endif
+--- a/src/system.c
++++ b/src/system.c
+@@ -342,11 +342,184 @@
+   exit (exit_code);
+ }
+ 
++#ifdef SPAWN_WITHOUT_FORK
++/* WASIX has no fork() for a program built without asyncify, so the
++   compressor and decompressor are started with posix_spawn() instead, with
++   the archive (or tar's own standard input or output, for "-") and a pipe
++   to tar as their standard streams.  No child tar reblocks between them:
++   the compressor writes the archive itself, as the child tar does for a
++   regular file.  Remote archives (rmt) need the child tar, so they are
++   refused.  */
++
++# include <quotearg.h>
++# include <spawn.h>
++
++extern char **environ;
++
++/* Start ARGV (searched for on PATH when SEARCH) with IN and OUT as its
++   standard input and output, closing CLOSE (the other end of tar's pipe)
++   in it.  Returns the child's pid, or -1 with errno set.  */
++static pid_t
++spawn_with_streams (char **argv, bool search, int in, int out, int close_fd)
++{
++  posix_spawn_file_actions_t actions;
++  pid_t pid;
++  int err;
++
++  if ((err = posix_spawn_file_actions_init (&actions)))
++    {
++      errno = err;
++      return -1;
++    }
++  if (!err && in != STDIN_FILENO)
++    err = posix_spawn_file_actions_adddup2 (&actions, in, STDIN_FILENO);
++  if (!err && out != STDOUT_FILENO)
++    err = posix_spawn_file_actions_adddup2 (&actions, out, STDOUT_FILENO);
++  if (!err && close_fd != STDIN_FILENO && close_fd != STDOUT_FILENO)
++    err = posix_spawn_file_actions_addclose (&actions, close_fd);
++  if (!err && in != STDIN_FILENO && in != close_fd)
++    err = posix_spawn_file_actions_addclose (&actions, in);
++  if (!err && out != STDOUT_FILENO && out != close_fd)
++    err = posix_spawn_file_actions_addclose (&actions, out);
++  if (!err)
++    err = (search ? posix_spawnp : posix_spawn) (&pid, argv[0], &actions,
++						 NULL, argv, environ);
++  posix_spawn_file_actions_destroy (&actions);
++  if (err)
++    {
++      errno = err;
++      return -1;
++    }
++  return pid;
++}
++
++/* The archive tar reads or writes for a compression program: a file,
++   or tar's own standard stream (DEFAULT_FD) for "-".  */
++static int
++open_compressed_archive (bool for_write, int default_fd)
++{
++  int fd;
++
++  if (strcmp (archive_name_array[0], "-") == 0)
++    return default_fd;
++  if (_remdev (archive_name_array[0]))
++    FATAL_ERROR ((0, 0, _("%s: a remote archive cannot be compressed here"),
++		  quotearg_colon (archive_name_array[0])));
++  if (for_write)
++    {
++      if (backup_option && is_regular_file (archive_name_array[0]))
++	maybe_backup_file (archive_name_array[0], 1);
++      fd = creat (archive_name_array[0], MODE_RW);
++      if (fd < 0)
++	{
++	  int saved_errno = errno;
++
++	  if (backup_option)
++	    undo_last_backup ();
++	  errno = saved_errno;
++	  open_fatal (archive_name_array[0]);
++	}
++    }
++  else
++    {
++      fd = open (archive_name_array[0], O_RDONLY | O_BINARY, MODE_RW);
++      if (fd < 0)
++	open_fatal (archive_name_array[0]);
++    }
++  return fd;
++}
++
+ /* Set ARCHIVE for writing, then compressing an archive.  */
+ pid_t
+ sys_child_open_for_compress (void)
+ {
+   int parent_pipe[2];
++  int out;
++  pid_t pid;
++  char *argv[4];
++
++  signal (SIGPIPE, SIG_IGN);
++  xpipe (parent_pipe);
++  out = open_compressed_archive (true, STDOUT_FILENO);
++
++  argv[0] = (char *) "/bin/sh";
++  argv[1] = (char *) "-c";
++  argv[2] = (char *) use_compress_program_option;
++  argv[3] = NULL;
++  pid = spawn_with_streams (argv, false, parent_pipe[PREAD], out,
++			    parent_pipe[PWRITE]);
++  if (pid < 0)
++    exec_fatal (use_compress_program_option);
++
++  xclose (parent_pipe[PREAD]);
++  if (out != STDOUT_FILENO)
++    xclose (out);
++  archive = parent_pipe[PWRITE];
++  return pid;
++}
++
++/* Set ARCHIVE for uncompressing, then reading an archive.  */
++pid_t
++sys_child_open_for_uncompress (void)
++{
++  int parent_pipe[2];
++  int in;
++  int i;
++  pid_t pid = -1;
++  const char *p, *prog = NULL;
++  struct wordsplit ws;
++  int wsflags = (WRDSF_DEFFLAGS | WRDSF_ENV | WRDSF_DOOFFS) & ~WRDSF_NOVAR;
++
++  xpipe (parent_pipe);
++  in = open_compressed_archive (false, STDIN_FILENO);
++
++  ws.ws_env = (const char **) environ;
++  ws.ws_offs = 1;
++
++  /* The candidates in turn, as run_decompress_program tries them by
++     exec, until one starts.  */
++  for (p = first_decompress_program (&i); p; p = next_decompress_program (&i))
++    {
++      if (prog)
++	{
++	  WARNOPT (WARN_DECOMPRESS_PROGRAM,
++		   (0, errno, _("cannot run %s"), prog));
++	  WARNOPT (WARN_DECOMPRESS_PROGRAM,
++		   (0, 0, _("trying %s"), p));
++	}
++      if (wordsplit (p, &ws, wsflags))
++	FATAL_ERROR ((0, 0, _("cannot split string '%s': %s"),
++		      p, wordsplit_strerror (&ws)));
++      wsflags |= WRDSF_REUSE;
++      memmove (ws.ws_wordv, ws.ws_wordv + ws.ws_offs,
++	       sizeof (ws.ws_wordv[0]) * ws.ws_wordc);
++      ws.ws_wordv[ws.ws_wordc] = (char *) "-d";
++      prog = p;
++      pid = spawn_with_streams (ws.ws_wordv, true, in, parent_pipe[PWRITE],
++				parent_pipe[PREAD]);
++      ws.ws_wordv[ws.ws_wordc] = NULL;
++      if (pid >= 0)
++	break;
++    }
++  if (!prog)
++    FATAL_ERROR ((0, 0, _("unable to run decompression program")));
++  if (pid < 0)
++    exec_fatal (prog);
++
++  xclose (parent_pipe[PWRITE]);
++  if (in != STDIN_FILENO)
++    xclose (in);
++  archive = parent_pipe[PREAD];
++  return pid;
++}
++
++#else /* !SPAWN_WITHOUT_FORK */
++
++/* Set ARCHIVE for writing, then compressing an archive.  */
++pid_t
++sys_child_open_for_compress (void)
++{
++  int parent_pipe[2];
+   int child_pipe[2];
+   pid_t grandchild_pid;
+   pid_t child_pid;
+@@ -640,6 +813,7 @@
+ 
+   wait_for_grandchild (grandchild_pid);
+ }
++#endif /* !SPAWN_WITHOUT_FORK */
+ 
+ 
+ 

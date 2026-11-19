@@ -946,6 +946,8 @@ mod tests {
                         .and_then(unix_timestamp_nanos)
                         .unwrap_or(0),
                     len: contents.len() as u64,
+                    ino: 0,
+                    nlink: 0,
                 })
             }]
         );

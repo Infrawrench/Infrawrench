@@ -254,12 +254,75 @@ pub enum Input {
     Absent {
         path: PathBuf,
     },
+    /// Every regular file under a directory, by path and content
+    /// ([`tree_digest`]): what copying a directory (a pnpm `file:`
+    /// directory dependency) read, so a file added to it later is a change.
+    Tree {
+        path: PathBuf,
+        sha256: [u8; 32],
+    },
+}
+
+/// The directories [`SnapshotBuilder::read_tree`] leaves out: what a
+/// package manager never copies out of a directory dependency.
+pub const TREE_SKIPPED: [&str; 2] = ["node_modules", ".git"];
+
+/// The regular files under `root` (symlinks not followed, [`TREE_SKIPPED`]
+/// directories left out), relative to it and sorted.
+fn tree_files(fs: &(impl FileSystem + ?Sized), root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(children) = fs.read_dir(&dir) else {
+            continue;
+        };
+        for child in children.flatten() {
+            let Ok(meta) = fs.symlink_metadata(&child.path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                let skipped = child
+                    .path
+                    .file_name()
+                    .is_some_and(|name| TREE_SKIPPED.iter().any(|skip| name == *skip));
+                if !skipped {
+                    stack.push(child.path);
+                }
+            } else if meta.is_file()
+                && let Ok(relative) = child.path.strip_prefix(root)
+            {
+                out.push(relative.to_path_buf());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// A digest of every file [`tree_files`] lists under `root`, by path and
+/// content; `None` when `root` is not a directory.
+pub fn tree_digest(fs: &(impl FileSystem + ?Sized), root: &Path) -> Option<[u8; 32]> {
+    use sha2::Digest;
+    if !is_dir(fs, root) {
+        return None;
+    }
+    let mut hash = sha2::Sha256::new();
+    for file in tree_files(fs, root) {
+        let bytes = read_file(fs, root.join(&file)).ok()?;
+        hash.update(file.to_string_lossy().as_bytes());
+        hash.update([0]);
+        hash.update(sha2::Sha256::digest(&bytes));
+    }
+    Some(hash.finalize().into())
 }
 
 impl Input {
     pub fn path(&self) -> &Path {
         match self {
-            Input::File { path, .. } | Input::Dir { path } | Input::Absent { path } => path,
+            Input::File { path, .. }
+            | Input::Dir { path }
+            | Input::Absent { path }
+            | Input::Tree { path, .. } => path,
         }
     }
 
@@ -279,7 +342,10 @@ impl Input {
 
     /// Whether `fs` still looks the way it did when this was recorded.
     pub fn holds(&self, fs: &(impl FileSystem + ?Sized)) -> bool {
-        Input::observe(fs, self.path()) == *self
+        match self {
+            Input::Tree { path, sha256 } => tree_digest(fs, path).as_ref() == Some(sha256),
+            _ => Input::observe(fs, self.path()) == *self,
+        }
     }
 }
 
@@ -370,6 +436,29 @@ impl SnapshotBuilder {
         Ok(())
     }
 
+    /// Every mode given with [`SnapshotBuilder::set_mode`], by absolute
+    /// path, in path order. A layer's modes are its own, like its
+    /// [`SnapshotBuilder::entries`]: what a cached install has to carry
+    /// besides its files.
+    pub fn modes(&self) -> Vec<(PathBuf, u32)> {
+        let mut out = Vec::new();
+        self.modes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .for_each_under(Path::new("/"), |path, mode| {
+                out.push((Path::new("/").join(path), *mode));
+            });
+        out
+    }
+
+    /// Gives each path its mode, as [`SnapshotBuilder::set_mode`] does.
+    pub fn apply_modes(&self, modes: &[(PathBuf, u32)]) -> Result<()> {
+        for (path, mode) in modes {
+            self.set_mode(path, *mode)?;
+        }
+        Ok(())
+    }
+
     pub fn write(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<()> {
         write_file(&self.fs, path, bytes)
     }
@@ -384,6 +473,38 @@ impl SnapshotBuilder {
             }
             (Err(e), None) => Err(e),
         }
+    }
+
+    /// Every regular file under the directory `dir` (symlinks not
+    /// followed, [`TREE_SKIPPED`] left out), relative to it, with its
+    /// contents. On a layer, a directory the layer does not have itself is
+    /// read from underneath and recorded as one [`Input::Tree`].
+    pub fn read_tree(&self, dir: impl AsRef<Path>) -> Result<Vec<(PathBuf, Vec<u8>)>> {
+        let dir = normalise(dir)?;
+        let fs: &mem_fs::FileSystem = match &self.base {
+            Some(base) if !is_dir(&self.fs, &dir) => {
+                let sha256 = tree_digest(&base.fs, &dir).ok_or_else(|| VfsError::Fs {
+                    path: dir.display().to_string(),
+                    source: FsError::EntryNotFound,
+                })?;
+                base.reads.lock().expect("read log lock").insert(
+                    dir.clone(),
+                    Input::Tree {
+                        path: dir.clone(),
+                        sha256,
+                    },
+                );
+                &base.fs
+            }
+            _ => &self.fs,
+        };
+        tree_files(fs, &dir)
+            .into_iter()
+            .map(|file| {
+                let bytes = read_file(fs, dir.join(&file))?;
+                Ok((file, bytes))
+            })
+            .collect()
     }
 
     pub fn mkdir_all(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -672,12 +793,14 @@ impl Snapshot {
 
     fn fork_with(&self, budget: Option<Arc<dyn WriteBudget>>) -> JobFs {
         let upper = TmpFileSystem::new();
+        let modes = Modes::over(self.modes.clone());
+        modes.numbered_by(Arc::new(upper.clone()));
         let overlay = JobOverlay {
             inner: OverlayFileSystem::new(upper.clone(), [self.fs.clone()]),
             upper: upper.clone(),
             base: self.fs.clone(),
             budget,
-            modes: Modes::over(self.modes.clone()),
+            modes,
             accounts: Default::default(),
             renames: futures::lock::Mutex::new(()),
         };
@@ -838,6 +961,30 @@ impl JobFs {
         Ok(())
     }
 
+    /// The modes recorded for the files and directories among `entries`,
+    /// to keep beside them ([`archive::encode_with_modes`]).
+    pub fn modes_of(&self, entries: &[Entry]) -> archive::ModeList {
+        let modes = self.modes();
+        entries
+            .iter()
+            .filter_map(|e| match e {
+                Entry::Dir { path } | Entry::File { path, .. } => {
+                    modes.get(path).map(|mode| (path.clone(), mode))
+                }
+                Entry::Symlink { .. } => None,
+            })
+            .collect()
+    }
+
+    /// Records `modes` (what [`JobFs::modes_of`] kept) for paths
+    /// [`JobFs::apply`] wrote, as `chmod` would.
+    pub fn apply_modes(&self, modes: &[(PathBuf, u32)]) {
+        let recorded = self.modes();
+        for (path, mode) in modes {
+            recorded.set(path, *mode);
+        }
+    }
+
     /// What the job's own layer holds over the snapshot: every directory,
     /// file and link written since the fork, parents before children. What
     /// it deleted is not listed. A virtual machine that has the snapshot
@@ -973,11 +1120,65 @@ impl JobOverlay {
     }
 
     /// What the job was charged for the upper file at `path`, which is
-    /// going: it is given back once the caller has removed the file.
+    /// going: it is given back once the caller has removed the file. A
+    /// name of a file that keeps others gives back only its entry; the
+    /// bytes go with the last name.
     fn release(&self, path: &Path) -> Option<u64> {
-        let size = self.upper_size(path)?;
+        let meta = self.upper.symlink_metadata(path).ok()?;
+        if !meta.is_file() {
+            return None;
+        }
         let account = self.accounts().remove(path);
-        Some(account.map_or(size, |a| a.released(size) + a.entry()))
+        if meta.nlink > 1 {
+            return Some(account.map_or(0, |a| a.entry()));
+        }
+        Some(account.map_or(meta.len, |a| a.released(meta.len) + a.entry()))
+    }
+
+    /// The name `path` of a file is gone (`meta` is what the file was
+    /// before): the mode record forgets it as a name of a file with hard
+    /// links, and the file itself with its last name.
+    fn lost_name(&self, path: &Path, meta: Option<virtual_fs::Metadata>) {
+        if let Some(meta) = meta
+            && meta.ino != 0
+        {
+            self.modes.unlinked(meta.ino, path, meta.nlink <= 1);
+        }
+    }
+
+    /// Copies the snapshot's file at `path` up into the job's layer, as a
+    /// write to it would, and free for the same reason. In memory, every
+    /// read and write here is done on its first poll; one that is not
+    /// fails rather than waiting, since this may run inside the guest's
+    /// executor, where nothing may block.
+    fn copy_up(&self, path: &Path) -> virtual_fs::Result<()> {
+        use std::future::Future;
+        fn now<F: Future>(future: F) -> virtual_fs::Result<F::Output> {
+            let mut future = std::pin::pin!(future);
+            let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+            match future.as_mut().poll(&mut cx) {
+                std::task::Poll::Ready(out) => Ok(out),
+                std::task::Poll::Pending => Err(FsError::IOError),
+            }
+        }
+        let mut bytes = Vec::new();
+        let mut src = self.base.new_open_options().read(true).open(path)?;
+        now(src.read_to_end(&mut bytes))??;
+        if let Some(parent) = path.parent() {
+            create_dir_all(&self.upper, parent).map_err(|_| FsError::IOError)?;
+        }
+        let mut dst = self
+            .upper
+            .new_open_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+        now(dst.write_all(&bytes))??;
+        now(dst.flush())??;
+        self.accounts()
+            .insert(path, limit::Account::new(bytes.len() as u64));
+        Ok(())
     }
 
     /// Accounts at and under `from` now belong at `to`.
@@ -1218,12 +1419,54 @@ impl FileSystem for JobOverlay {
     fn create_symlink(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
         self.inner.create_symlink(source, target)
     }
-    /// No hard links (#1052): neither layer can give a file a second name,
-    /// so WASIX's `link()` fails with EPERM. Not through the overlay, whose
-    /// `hard_link` removes the whiteout at `target` before its upper layer
-    /// refuses, which can bring a deleted snapshot file back.
-    fn hard_link(&self, _source: &Path, _target: &Path) -> virtual_fs::Result<()> {
-        Err(FsError::Unsupported)
+    /// Gives the file at `source` the second name `target`, as `link(2)`.
+    /// Both names are the job's layer's, one file there: a snapshot file
+    /// is copied up first, as a write to it would be, so a write through
+    /// either name is read through the other. The file reports the inode
+    /// number its first name had (`Metadata::ino`, the [`modes::ino_of`]
+    /// of that path unless it had a number already) and one mode for every
+    /// name ([`Modes::linked`]). The new name's entry is charged as a new
+    /// file's is; the file's bytes are not, once per name, and go back
+    /// with the last name (`release`).
+    ///
+    /// Not through Wasmer's overlay, whose `hard_link` removes the
+    /// whiteout at `target` before anything else, which can bring a
+    /// deleted snapshot file back when the link then fails.
+    fn hard_link(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
+        let meta = self.inner.symlink_metadata(source)?;
+        if meta.is_dir() || meta.file_type().is_symlink() {
+            return Err(FsError::PermissionDenied);
+        }
+        if self.inner.symlink_metadata(target).is_ok() {
+            return Err(FsError::AlreadyExists);
+        }
+        let parent = target.parent().ok_or(FsError::AlreadyExists)?;
+        if !self.inner.metadata(parent)?.is_dir() {
+            return Err(FsError::BaseNotDirectory);
+        }
+        if self.upper.symlink_metadata(source).is_err() {
+            self.copy_up(source)?;
+        }
+        create_dir_all(&self.upper, parent).map_err(|_| FsError::IOError)?;
+        let cost = entry_cost(target);
+        if let Some(budget) = &self.budget
+            && !budget.take(cost)
+        {
+            return Err(FsError::WriteZero);
+        }
+        let ino = match meta.ino {
+            0 => modes::ino_of(source),
+            ino => ino,
+        };
+        if let Err(e) = self.upper.hard_link_numbered(source, target, ino) {
+            self.give(Some(cost));
+            return Err(e);
+        }
+        self.clear_white_out(target);
+        let account = self.account(source).linked(cost);
+        self.accounts().insert(target, account);
+        self.modes.linked(source, target, ino);
+        Ok(())
     }
     fn remove_dir(&self, path: &Path) -> virtual_fs::Result<()> {
         if !self.inner.symlink_metadata(path)?.is_dir() {
@@ -1244,8 +1487,15 @@ impl FileSystem for JobOverlay {
     ) -> futures::future::BoxFuture<'a, virtual_fs::Result<()>> {
         Box::pin(async move {
             let _one_at_a_time = self.renames.lock().await;
+            // Two names of one file: nothing happens, as `rename(2)` does
+            // nothing then.
+            if from != to && self.upper.same_file(from, to) {
+                return Ok(());
+            }
+            let replaced = self.upper.symlink_metadata(to).ok();
             self.move_entry(from, to).await?;
             self.modes.renamed(from, to);
+            self.lost_name(to, replaced);
             Ok(())
         })
     }
@@ -1256,8 +1506,10 @@ impl FileSystem for JobOverlay {
         self.inner.symlink_metadata(path)
     }
     fn remove_file(&self, path: &Path) -> virtual_fs::Result<()> {
+        let meta = self.upper.symlink_metadata(path).ok();
         self.unlink(path)?;
         self.modes.removed(path);
+        self.lost_name(path, meta);
         Ok(())
     }
     fn new_open_options(&self) -> virtual_fs::OpenOptions<'_> {
@@ -1653,36 +1905,304 @@ mod tests {
         );
     }
 
-    /// No hard links (#1052), and refusing one changes nothing: the
-    /// overlay's own `hard_link` removes the whiteout at the target before
-    /// refusing.
+    fn link(job: &JobFs, from: &str, to: &str) -> virtual_fs::Result<()> {
+        job.as_dyn().hard_link(Path::new(from), Path::new(to))
+    }
+
+    fn meta(job: &JobFs, path: &str) -> virtual_fs::Metadata {
+        job.as_dyn().metadata(Path::new(path)).unwrap()
+    }
+
+    /// Two names of one file (#1052): one inode number, the number of the
+    /// first name, a count of two, and a write through either name read
+    /// through the other. Removing one name leaves the other with the file.
     #[test]
-    fn a_hard_link_is_refused_and_a_deleted_file_stays_deleted() {
+    fn a_hard_link_is_a_second_name_of_one_file() {
         let job = snapshot().fork();
-        let fs = job.as_dyn();
-        job.remove_file("/app/src/b.ts").unwrap();
-        let err = fs
-            .hard_link(Path::new("/app/src/a.ts"), Path::new("/app/src/b.ts"))
-            .unwrap_err();
-        assert_eq!(err, FsError::Unsupported);
-        assert!(job.read("/app/src/b.ts").is_err());
         job.write("/app/mine", b"x").unwrap();
+        link(&job, "/app/mine", "/app/other").unwrap();
+        let ino = modes::ino_of(Path::new("/app/mine"));
+        for name in ["/app/mine", "/app/other"] {
+            let m = meta(&job, name);
+            assert_eq!((m.ino, m.nlink, m.len), (ino, 2, 1), "{name}");
+        }
+        // Appended through one name, read through the other.
+        let mut f = job
+            .as_dyn()
+            .new_open_options()
+            .append(true)
+            .open(Path::new("/app/other"))
+            .unwrap();
+        block_on(f.write_all(b"y")).unwrap();
+        drop(f);
+        assert_eq!(job.read("/app/mine").unwrap(), b"xy");
+        // Truncated through the first.
+        job.write("/app/mine", b"z").unwrap();
+        assert_eq!(job.read("/app/other").unwrap(), b"z");
+
+        // The first name goes; the file stays, with its number.
+        job.remove_file("/app/mine").unwrap();
+        assert!(job.read("/app/mine").is_err());
+        let m = meta(&job, "/app/other");
+        assert_eq!((m.ino, m.nlink), (ino, 1));
+        assert_eq!(job.read("/app/other").unwrap(), b"z");
+        // A name made again is a file of its own.
+        job.write("/app/mine", b"new").unwrap();
+        assert_eq!(meta(&job, "/app/mine").ino, 0);
+        assert_eq!(job.read("/app/other").unwrap(), b"z");
+        job.remove_file("/app/other").unwrap();
+        assert_eq!(job.read("/app/mine").unwrap(), b"new");
+    }
+
+    /// A snapshot file is copied up once to be linked, so both names are
+    /// one file in the job's layer. Git has no hard links: each name is
+    /// reported as a file with the content, and so is what a cache or an
+    /// artifact keeps of them.
+    #[test]
+    fn a_linked_snapshot_file_is_one_file_and_each_name_a_change() {
+        let job = snapshot().fork();
+        link(&job, "/app/src/a.ts", "/app/src/a2.ts").unwrap();
+        let mut f = job
+            .as_dyn()
+            .new_open_options()
+            .read(true)
+            .write(true)
+            .open(Path::new("/app/src/a2.ts"))
+            .unwrap();
+        block_on(f.write_all(b"import")).unwrap();
+        drop(f);
+        let bytes = b"import const a = 1;\n".to_vec();
+        assert_eq!(job.read("/app/src/a.ts").unwrap(), bytes);
         assert_eq!(
-            fs.hard_link(Path::new("/app/mine"), Path::new("/app/other")),
-            Err(FsError::Unsupported)
+            meta(&job, "/app/src/a.ts").ino,
+            modes::ino_of(Path::new("/app/src/a.ts"))
         );
-        assert!(job.read("/app/other").is_err());
+        assert_eq!(meta(&job, "/app/src/a2.ts").nlink, 2);
+        // A deleted snapshot file can be a name again, linked.
+        job.remove_file("/app/src/b.ts").unwrap();
+        link(&job, "/app/src/a.ts", "/app/src/b.ts").unwrap();
+        assert_eq!(meta(&job, "/app/src/b.ts").nlink, 3);
         assert_eq!(
-            job.changes("/app"),
+            job.changes("/app/src"),
             vec![
-                Change::Added {
-                    path: "/app/mine".into(),
-                    bytes: b"x".to_vec()
+                Change::Modified {
+                    path: "/app/src/a.ts".into(),
+                    bytes: bytes.clone()
                 },
-                Change::Deleted {
-                    path: "/app/src/b.ts".into()
+                Change::Added {
+                    path: "/app/src/a2.ts".into(),
+                    bytes: bytes.clone()
+                },
+                Change::Modified {
+                    path: "/app/src/b.ts".into(),
+                    bytes: bytes.clone()
                 },
             ]
+        );
+        let entries = job.entries_under(&["/app/src"]);
+        let mut files: Vec<_> = entries
+            .iter()
+            .filter_map(|e| match e {
+                Entry::File { path, data } => Some((path.clone(), data.to_vec())),
+                _ => None,
+            })
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            vec![
+                (PathBuf::from("/app/src/a.ts"), bytes.clone()),
+                (PathBuf::from("/app/src/a2.ts"), bytes.clone()),
+                (PathBuf::from("/app/src/b.ts"), bytes.clone()),
+            ]
+        );
+        // Restored, they are three files.
+        let other = snapshot().fork();
+        other.apply(&entries).unwrap();
+        other.write("/app/src/a.ts", b"a").unwrap();
+        assert_eq!(other.read("/app/src/a2.ts").unwrap(), bytes);
+    }
+
+    /// What `link(2)` refuses, it refuses with nothing changed: a
+    /// directory (EPERM on Linux), a name that is there, a file that is
+    /// not; and a failed link onto a deleted snapshot file leaves it
+    /// deleted (Wasmer's overlay removed its whiteout first).
+    #[test]
+    fn a_refused_hard_link_changes_nothing() {
+        let job = snapshot().fork();
+        assert_eq!(
+            link(&job, "/app/src", "/app/src2"),
+            Err(FsError::PermissionDenied)
+        );
+        assert_eq!(
+            link(&job, "/app/node_modules/x", "/app/x2"),
+            Err(FsError::PermissionDenied),
+            "a symbolic link"
+        );
+        assert_eq!(
+            link(&job, "/app/src/a.ts", "/app/src/b.ts"),
+            Err(FsError::AlreadyExists)
+        );
+        job.remove_file("/app/src/b.ts").unwrap();
+        assert_eq!(
+            link(&job, "/app/src/none.ts", "/app/src/b.ts"),
+            Err(FsError::EntryNotFound)
+        );
+        assert!(job.read("/app/src/b.ts").is_err());
+        assert_eq!(
+            link(&job, "/app/src/a.ts", "/app/nowhere/a.ts"),
+            Err(FsError::EntryNotFound)
+        );
+        assert_eq!(
+            job.changes("/app"),
+            vec![Change::Deleted {
+                path: "/app/src/b.ts".into()
+            }]
+        );
+    }
+
+    /// A rename onto another name of the same file does nothing, as
+    /// `rename(2)` does nothing; one onto a name of another file replaces
+    /// only that name.
+    #[test]
+    fn renames_onto_and_of_linked_names() {
+        let job = snapshot().fork();
+        job.write("/w/a", b"a").unwrap();
+        link(&job, "/w/a", "/w/b").unwrap();
+        block_on(job.as_dyn().rename(Path::new("/w/a"), Path::new("/w/b"))).unwrap();
+        assert_eq!(job.read("/w/a").unwrap(), b"a");
+        assert_eq!(meta(&job, "/w/b").nlink, 2);
+
+        // Over a name of another file with two: that file keeps its other.
+        job.write("/w/c", b"c").unwrap();
+        link(&job, "/w/c", "/w/d").unwrap();
+        block_on(job.as_dyn().rename(Path::new("/w/a"), Path::new("/w/c"))).unwrap();
+        assert_eq!(job.read("/w/c").unwrap(), b"a");
+        assert_eq!(meta(&job, "/w/c").nlink, 2, "/w/c and /w/b");
+        assert_eq!(job.read("/w/d").unwrap(), b"c");
+        assert_eq!(meta(&job, "/w/d").nlink, 1);
+
+        // A name moved to another directory, and its directory moved,
+        // still names the file.
+        job.create_dir("/w/sub").unwrap();
+        block_on(
+            job.as_dyn()
+                .rename(Path::new("/w/b"), Path::new("/w/sub/b")),
+        )
+        .unwrap();
+        block_on(
+            job.as_dyn()
+                .rename(Path::new("/w/sub"), Path::new("/w/moved")),
+        )
+        .unwrap();
+        job.write("/w/c", b"through c").unwrap();
+        assert_eq!(job.read("/w/moved/b").unwrap(), b"through c");
+        job.remove_file("/w/c").unwrap();
+        assert_eq!(meta(&job, "/w/moved/b").nlink, 1);
+        assert_eq!(job.read("/w/moved/b").unwrap(), b"through c");
+    }
+
+    /// An open file keeps working whichever of its names goes, and its
+    /// handle's own `unlink` (WASIX's, for the last name) removes it.
+    #[test]
+    fn an_open_linked_file_outlives_its_names() {
+        let job = snapshot().fork();
+        job.write("/w/a", b"1").unwrap();
+        link(&job, "/w/a", "/w/b").unwrap();
+        let mut f = open_rw(&job, "/w/a");
+        job.remove_file("/w/a").unwrap();
+        block_on(f.write_all(b"2")).unwrap();
+        assert_eq!(job.read("/w/b").unwrap(), b"2");
+        let mut g = open_rw(&job, "/w/b");
+        g.unlink().unwrap();
+        assert!(job.read("/w/b").is_err());
+        assert!(
+            job.as_dyn()
+                .read_dir(Path::new("/w"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        block_on(f.write_all(b"3")).unwrap();
+    }
+
+    /// A file's bytes are charged once whatever its names, each name's
+    /// entry as a new file's, and the bytes come back with the last name.
+    #[test]
+    fn a_file_with_two_names_is_charged_once() {
+        let (job, cap) = budgeted(1, 1000, 1 << 20);
+        job.write("/own", &[1u8; 100]).unwrap();
+        link(&job, "/own", "/two").unwrap();
+        assert_eq!(used(&cap), 100 + e("own") + e("two"));
+        // Growth through either name is charged once.
+        let mut f = job
+            .as_dyn()
+            .new_open_options()
+            .append(true)
+            .open(Path::new("/two"))
+            .unwrap();
+        block_on(f.write_all(&[2u8; 50])).unwrap();
+        drop(f);
+        assert_eq!(used(&cap), 150 + e("own") + e("two"));
+        job.remove_file("/own").unwrap();
+        assert_eq!(used(&cap), 150 + e("two"), "the bytes stay with /two");
+        job.remove_file("/two").unwrap();
+        assert_eq!(used(&cap), 0);
+
+        // A linked snapshot file is copied up free; only the name costs.
+        link(&job, "/s/0", "/s/zero").unwrap();
+        assert_eq!(used(&cap), e("zero"));
+        job.remove_file("/s/0").unwrap();
+        job.remove_file("/s/zero").unwrap();
+        assert_eq!(used(&cap), 0);
+
+        // A link the budget has no room for is refused.
+        let (job, _cap) = budgeted(0, 0, 100 + e("own") + 10);
+        job.write("/own", &[1u8; 100]).unwrap();
+        assert_eq!(link(&job, "/own", "/two"), Err(FsError::WriteZero));
+        assert!(job.read("/two").is_err());
+    }
+
+    /// One mode for every name: set through one, read through another,
+    /// found by the file's number after its first name went, and given to
+    /// a new name by its source.
+    #[test]
+    fn a_linked_file_has_one_mode() {
+        let job = snapshot().fork();
+        let modes = job.modes();
+        job.write("/w/run", b"#!/bin/sh\n").unwrap();
+        modes.set(Path::new("/w/run"), 0o700);
+        link(&job, "/w/run", "/w/run2").unwrap();
+        assert_eq!(modes.get(Path::new("/w/run2")), Some(0o700));
+        modes.set(Path::new("/w/run2"), 0o755);
+        assert_eq!(modes.get(Path::new("/w/run")), Some(0o755));
+        let ino = modes::ino_of(Path::new("/w/run"));
+        assert_eq!(meta(&job, "/w/run2").ino, ino);
+        assert!(modes.by_ino(ino).is_some());
+        job.remove_file("/w/run").unwrap();
+        assert_eq!(modes.by_ino(ino), Some(PathBuf::from("/w/run2")));
+        block_on(
+            job.as_dyn()
+                .rename(Path::new("/w/run2"), Path::new("/w/run3")),
+        )
+        .unwrap();
+        assert_eq!(modes.by_ino(ino), Some(PathBuf::from("/w/run3")));
+        assert_eq!(modes.get(Path::new("/w/run3")), Some(0o755));
+        // The last name gone, a file made there has the default.
+        job.remove_file("/w/run3").unwrap();
+        assert_eq!(modes.by_ino(ino), None);
+        job.write("/w/run", b"").unwrap();
+        assert_eq!(modes.get(Path::new("/w/run")), None);
+        // A snapshot file's mode goes to its new name too.
+        let builder = SnapshotBuilder::new();
+        builder.write("/app/bin/tool", b"x").unwrap();
+        builder.set_mode("/app/bin/tool", 0o755).unwrap();
+        let job = builder.freeze().fork();
+        link(&job, "/app/bin/tool", "/app/bin/tool2").unwrap();
+        assert_eq!(job.modes().get(Path::new("/app/bin/tool2")), Some(0o755));
+        assert_eq!(
+            job.modes_of(&job.entries_under(&["/app/bin/tool2"])),
+            vec![(PathBuf::from("/app/bin/tool2"), 0o755)]
         );
     }
 
@@ -1765,6 +2285,44 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_tree_read_through_a_layer_is_one_input_that_any_change_breaks() {
+        let checkout = SnapshotBuilder::new();
+        checkout.write("/app/lib/package.json", b"{}").unwrap();
+        checkout.write("/app/lib/src/a.ts", b"a").unwrap();
+        checkout
+            .write("/app/lib/node_modules/dep/index.js", b"x")
+            .unwrap();
+        checkout.write("/app/lib/.git/HEAD", b"x").unwrap();
+        let layer = checkout.layer();
+        let files = layer.read_tree("/app/lib").unwrap();
+        assert_eq!(
+            files,
+            vec![
+                (PathBuf::from("package.json"), b"{}".to_vec()),
+                (PathBuf::from("src/a.ts"), b"a".to_vec()),
+            ]
+        );
+        let reads = layer.reads();
+        assert!(matches!(&reads[..], [Input::Tree { path, .. }] if path == Path::new("/app/lib")));
+        assert!(reads[0].holds(checkout.fs()));
+        // What it leaves out does not count.
+        checkout
+            .write("/app/lib/node_modules/dep/other.js", b"y")
+            .unwrap();
+        assert!(reads[0].holds(checkout.fs()));
+        // A new file or a changed one does.
+        checkout.write("/app/lib/src/b.ts", b"b").unwrap();
+        assert!(!reads[0].holds(checkout.fs()));
+        let fresh = checkout.layer();
+        fresh.read_tree("/app/lib").unwrap();
+        let reads = fresh.reads();
+        assert!(reads[0].holds(checkout.fs()));
+        checkout.write("/app/lib/src/a.ts", b"changed").unwrap();
+        assert!(!reads[0].holds(checkout.fs()));
+        assert!(checkout.layer().read_tree("/app/missing").is_err());
     }
 
     #[test]
@@ -2237,11 +2795,70 @@ mod tests {
         assert_eq!(next.read("/root/.cache/go-build/ab/cd").unwrap(), b"go");
     }
 
+    /// A restored cache kept no modes: a `755` program came back `644`, and
+    /// a native program installed from it (Bun's install cache) would not
+    /// start. Modes travel with the entries; a stream of the old format is
+    /// refused as another format, which a cache reads as a miss.
+    #[test]
+    fn modes_travel_with_the_entries_and_the_old_format_is_another() {
+        let snap = SnapshotBuilder::new().freeze();
+        let job = snap.fork();
+        job.write("/root/.bun/install/cache/turbo/bin/turbo", b"ELF")
+            .unwrap();
+        job.write("/root/.bun/install/cache/turbo/package.json", b"{}")
+            .unwrap();
+        let modes = job.modes();
+        modes.set(Path::new("/root/.bun/install/cache/turbo/bin/turbo"), 0o755);
+        modes.set(Path::new("/root/.bun/install/cache/turbo/bin"), 0o750);
+        let entries = job.entries_under(&["/root/.bun/install/cache"]);
+        let kept = job.modes_of(&entries);
+        assert_eq!(kept.len(), 2, "{kept:?}");
+
+        let mut buf = Vec::new();
+        archive::encode_with_modes(&mut buf, &entries, &kept).unwrap();
+        let (decoded, restored) = archive::decode_with_modes(&mut buf.as_slice(), 1 << 20).unwrap();
+        assert_eq!(decoded, entries);
+        assert_eq!(restored, kept);
+
+        let next = snap.fork();
+        next.apply(&decoded).unwrap();
+        next.apply_modes(&restored);
+        assert_eq!(
+            next.modes()
+                .get(Path::new("/root/.bun/install/cache/turbo/bin/turbo")),
+            Some(0o755)
+        );
+        assert_eq!(
+            next.modes()
+                .get(Path::new("/root/.bun/install/cache/turbo/bin")),
+            Some(0o750)
+        );
+        assert_eq!(
+            next.modes()
+                .get(Path::new("/root/.bun/install/cache/turbo/package.json")),
+            None
+        );
+
+        // A mode for a path the stream does not hold is damage.
+        let mut stray = Vec::new();
+        archive::encode_with_modes(&mut stray, &entries, &[("/etc/passwd".into(), 0o777)]).unwrap();
+        let err = archive::decode_with_modes(&mut stray.as_slice(), 1 << 20).unwrap_err();
+        assert!(!archive::is_other_format(&err), "{err}");
+
+        // Format 1, as every runner before this one wrote it.
+        let mut old = Vec::new();
+        old.extend_from_slice(b"IWCIENTS");
+        old.extend_from_slice(&1u32.to_le_bytes());
+        old.extend_from_slice(&0u64.to_le_bytes());
+        let err = archive::decode(&mut old.as_slice(), 1 << 20).unwrap_err();
+        assert!(archive::is_other_format(&err), "{err}");
+    }
+
     #[test]
     fn a_stored_entry_cannot_climb_out() {
         let mut buf = Vec::new();
         buf.extend_from_slice(b"IWCIENTS");
-        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&2u32.to_le_bytes());
         buf.extend_from_slice(&1u64.to_le_bytes());
         buf.push(0);
         let evil = "/app/../etc";

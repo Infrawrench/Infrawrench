@@ -623,10 +623,11 @@ impl Server {
                 loop {
                     let started = std::time::Instant::now();
                     let out = server.runner.layers.compact();
-                    if out.packed > 0 || !out.problems.is_empty() {
+                    if out.packed > 0 || out.removed > 0 || !out.problems.is_empty() {
                         eprintln!(
-                            "iwci serve: packed {} unused installs in {:.1}s, freeing {} MiB{}",
+                            "iwci serve: packed {} unused installs and removed {} an older installer made in {:.1}s, freeing {} MiB{}",
                             out.packed,
+                            out.removed,
                             started.elapsed().as_secs_f64(),
                             out.freed >> 20,
                             if out.problems.is_empty() {
@@ -1538,12 +1539,13 @@ mod tests {
             targets: [(
                 iwci_store::host_target(),
                 iwci_store::TargetSource {
-                    program,
+                    program: Some(program),
                     files: Vec::new(),
                 },
             )]
             .into(),
             aliases: vec!["bunx".into()],
+            commands: Default::default(),
         };
         iwci_store::publish_tool(
             server.runner.store.as_ref(),

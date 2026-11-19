@@ -1,0 +1,3 @@
+B node_modules/.bin/esbuild -> ../esbuild/bin/esbuild
+B node_modules/.bin/fixture-a -> ../@fixture/a/cli.js
+B node_modules/.bin/withbundle -> ../withbundle/cli.js

@@ -60,7 +60,14 @@ pub struct JobSpec {
     pub memory_bytes: u64,
     pub output_cap: usize,
     pub internet: bool,
+    /// The CPUs the sandbox has (gVisor's `--cpu-num`) and the runner
+    /// inside runs its threads on.
     pub cpus: usize,
+    /// The CPUs the job is told it has (`Limits::told_cpus`): what WASIX
+    /// reports and `/proc/cpuinfo` lists, and the affinity a native program
+    /// starts with. Fewer than `cpus` for a job without `cpus:`, which may
+    /// still use them all.
+    pub told_cpus: u32,
     /// Where the compiled modules are (read only).
     pub cache_dir: PathBuf,
     pub packages: Vec<SpecPackage>,
@@ -219,7 +226,13 @@ impl FileSystem for Observed {
         std::os::unix::fs::symlink(source, target).map_err(virtual_fs::FsError::from)
     }
     fn hard_link(&self, source: &Path, target: &Path) -> virtual_fs::Result<()> {
-        self.inner.hard_link(source, target)
+        // virtual-fs's host file system makes no hard links either; the
+        // sandbox's file system does (served by the job's, outside).
+        // Two mounts are `Unsupported`, which WASIX answers with EXDEV.
+        std::fs::hard_link(source, target).map_err(|e| match e.raw_os_error() {
+            Some(libc::EXDEV) => virtual_fs::FsError::Unsupported,
+            _ => virtual_fs::FsError::from(e),
+        })
     }
     fn remove_dir(&self, path: &Path) -> virtual_fs::Result<()> {
         self.inner.remove_dir(path)
@@ -233,13 +246,13 @@ impl FileSystem for Observed {
     }
     fn metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
         let meta = self.inner.metadata(path)?;
-        let _ = self.modes.get(path);
+        self.modes.seen(path, &meta);
         Ok(meta)
     }
     fn symlink_metadata(&self, path: &Path) -> virtual_fs::Result<virtual_fs::Metadata> {
         let meta = self.inner.symlink_metadata(path)?;
         if !meta.file_type().is_symlink() {
-            let _ = self.modes.get(path);
+            self.modes.seen(path, &meta);
         }
         Ok(meta)
     }
@@ -525,6 +538,8 @@ fn run(spec_path: &Path) -> Result<i32, String> {
     let modes = iwci_vfs::Modes::real(Arc::new(base), Arc::new(HostModes));
     let root = runtime.sandbox_dir("/")?;
     let tracked: iwci_vfs::DynFs = Arc::new(iwci_vfs::TrackModes::new(root, modes.clone(), "/"));
+    // A file with hard links is numbered by the sandbox's file system.
+    modes.numbered_by(tracked.clone());
     let fs: iwci_vfs::DynFs = Arc::new(Observed {
         inner: tracked,
         modes: modes.clone(),
@@ -537,9 +552,9 @@ fn run(spec_path: &Path) -> Result<i32, String> {
         limits: crate::Limits {
             timeout: Duration::from_millis(spec.timeout_ms),
             memory_bytes: spec.memory_bytes,
-            // The sandbox has as many CPUs as the job holds already
-            // (`JobSpec::cpus`).
-            cpus: None,
+            // What a WASIX program is told; the sandbox's own CPUs
+            // (`JobSpec::cpus`) are set already.
+            cpus: Some(spec.told_cpus),
         },
         log: Some(output_sink()),
         scratch: None,

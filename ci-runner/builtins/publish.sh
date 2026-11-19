@@ -7,7 +7,9 @@
 # a no-op. One published with different files (a rebuild that is not byte
 # for byte the same, which the nightly builds can produce) is left as it is
 # and reported as a warning: the published bytes keep serving, and a real
-# change needs a new version in its build script.
+# change needs a new version in its build script. A builtin whose version is
+# its upstream release's (bun 1.4.4) gets a rebuild number instead
+# (1.4.4.1), which every request for that release then picks.
 #
 #   builtins/publish.sh              every directory under dist/
 #   builtins/publish.sh <dir>...     just these
@@ -42,7 +44,7 @@ for dir in "${dirs[@]}"; do
     printf '%s\n' "$out"
   elif grep -q "is already published with different content" <<<"$out"; then
     # The annotation GitHub Actions shows on the run; plain text elsewhere.
-    echo "::warning title=Not republished::${dir#"$dist"/} is already published with different bytes; bump its version to publish the new build."
+    echo "::warning title=Not republished::${dir#"$dist"/} is already published with different bytes; bump its version (or its rebuild number, 1.4.4.1, for a builtin named after its upstream release) to publish the new build."
   else
     printf '%s\n' "$out" >&2
     exit 1

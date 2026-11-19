@@ -200,6 +200,28 @@ fn touch_later(path: &std::path::Path, content: &[u8]) {
     fs::write(path, content).unwrap();
 }
 
+/// Returns once the clock that stamps files has moved past the moment of
+/// the call, writing `probe` until its time changes. File times come from a
+/// coarse clock: Linux's ticks (4 ms at 250 Hz) wherever a file system has
+/// no fine-grained times, as ext4 and tmpfs before 6.13 do, and Windows'
+/// (about 15.6 ms). A write within the put's tick left a file the put's
+/// change time, so a rewrite of the same size with its modification time
+/// put back looked unchanged, and this test failed now and then on ci-1. A
+/// job starts well after its tree arrives, so only a test is that quick.
+fn next_tick(probe: &std::path::Path) {
+    fs::write(probe, b"0").unwrap();
+    let first = fs::metadata(probe).unwrap().modified().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while fs::metadata(probe).unwrap().modified().unwrap() == first {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "file times stood still"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        fs::write(probe, b"1").unwrap();
+    }
+}
+
 #[test]
 fn collect_sends_exactly_what_changed() {
     let dir = TempDir::new("collect");
@@ -219,6 +241,8 @@ fn collect_sends_exactly_what_changed() {
         .symlink("app/link-same", "keep.txt")
         .build();
     host.put_ok(&archive);
+    // Outside the paths collected below.
+    next_tick(&root.join("tick"));
 
     // What the job does.
     let app = root.join("app");

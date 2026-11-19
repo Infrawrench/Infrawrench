@@ -95,6 +95,7 @@ fn the_example_pipeline_expands() {
             file: None,
             ruby: None,
             without_extensions: None,
+            native: false,
         }]
     );
 
@@ -152,6 +153,11 @@ fn tool_references_must_be_pinned_and_well_formed() {
     assert_error(&job("builtin:typescript@7.x"), "not a version");
     assert_error(&job("builtin:typescript@7-beta"), "not a version");
     assert!(parse(&job("builtin:typescript@7.1.0-beta.2"), &ctx()).is_ok());
+    // A rebuild of an upstream release, from 1, never a prerelease.
+    assert!(parse(&job("builtin:bun@1.4.4.1"), &ctx()).is_ok());
+    assert_error(&job("builtin:bun@1.4.4.0"), "not a version");
+    assert_error(&job("builtin:bun@1.4.4.1.2"), "not a version");
+    assert_error(&job("builtin:bun@1.4.4.1-rc.1"), "not a version");
     assert!(parse(&job("repo:licence-check@2"), &ctx()).is_ok());
 }
 
@@ -323,8 +329,8 @@ fn paths_and_workspaces() {
         "inside the clone",
     );
     assert_error(
-        "name: x\nworkspace:\n  deps: [npm]\njobs:\n  t:\n    using: builtin:t@1\n",
-        "unknown ecosystem `npm`",
+        "name: x\nworkspace:\n  deps: [yarn]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "unknown ecosystem `yarn`",
     );
     assert_error(
         "name: x\nworkspace:\n  deps: [{ go: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
@@ -2379,6 +2385,7 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
         file: None,
         ruby: None,
         without_extensions: None,
+        native: false,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2388,6 +2395,37 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ bun: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "only applies to pnpm",
+    );
+}
+
+#[test]
+fn npm_is_an_ecosystem_that_takes_a_directory() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [npm, { npm: { dir: site } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = |dir: &str| DepSpec {
+        ecosystem: Ecosystem::Npm,
+        dir: dir.into(),
+        only: None,
+        file: None,
+        ruby: None,
+        without_extensions: None,
+        native: false,
+    };
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps,
+        vec![dep("/app"), dep("/app/site")]
+    );
+    assert_eq!(Ecosystem::parse("npm").map(Ecosystem::name), Some("npm"));
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ npm: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "only applies to pnpm",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [yarn]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "expected `pnpm`, `npm`, `bun`",
     );
 }
 
@@ -2405,6 +2443,7 @@ fn bundler_takes_a_directory_and_a_ruby() {
         file: None,
         ruby: ruby.map(str::to_string),
         without_extensions: None,
+        native: false,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2422,6 +2461,31 @@ fn bundler_takes_a_directory_and_a_ruby() {
     let no_ruby = serde_json::to_value(dep("/app", None)).unwrap();
     assert!(no_ruby.get("ruby").is_none());
     assert!(no_ruby.get("without_extensions").is_none());
+}
+
+/// `native: true` asks pnpm and bun for the runner's own Linux packages
+/// too; off, a workspace keeps the key it had.
+#[test]
+fn js_installers_take_native() {
+    for ecosystem in ["pnpm", "npm", "bun"] {
+        let plan = parse(
+            &format!("name: x\nworkspace:\n  deps: [{{ {ecosystem}: {{ native: true }} }}]\njobs:\n  t:\n    using: builtin:t@1\n"),
+            &ctx(),
+        )
+        .unwrap();
+        assert!(plan.workspaces[first(&plan).workspace].deps[0].native);
+    }
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ cargo: { native: true } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "native applies only to pnpm, npm and bun",
+    );
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = serde_json::to_value(&plan.workspaces[first(&plan).workspace].deps[0]).unwrap();
+    assert!(dep.get("native").is_none());
 }
 
 #[test]

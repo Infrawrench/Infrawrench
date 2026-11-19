@@ -19,7 +19,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -32,6 +32,10 @@ const ROOT_INODE: Inode = 0;
 struct FileLifecycle {
     open_handles: AtomicUsize,
     unlinked: AtomicBool,
+    /// iwci patch: the inode number the file reports once it has been
+    /// given a second name (`FileSystem::hard_link_numbered`), so every
+    /// name reports the same one; 0 before, when the caller numbers it.
+    ino: AtomicU64,
 }
 
 impl FileLifecycle {
@@ -59,6 +63,17 @@ impl FileLifecycle {
 
     fn is_unlinked(&self) -> bool {
         self.unlinked.load(Ordering::Acquire)
+    }
+
+    fn ino(&self) -> u64 {
+        self.ino.load(Ordering::Acquire)
+    }
+
+    /// Numbers the file `ino`, unless it has a number already.
+    fn number(&self, ino: u64) {
+        let _ = self
+            .ino
+            .compare_exchange(0, ino, Ordering::AcqRel, Ordering::Acquire);
     }
 }
 
@@ -135,6 +150,23 @@ struct SymlinkNode {
     metadata: Metadata,
 }
 
+/// iwci patch: a second (or later) name of a file, a hard link. The file
+/// itself stays listed under one name, its node's own; every other name is
+/// one of these, in the directory `parent`, naming the file's node
+/// `target`. `FileSystemInner::links` lists them by file, so the file's link
+/// count is one more than that list's length, and removing the file's own
+/// name moves the node into the place of one of these (see
+/// `FileSystemInner::unlink_file_inode`), so the file is listed under a
+/// name for as long as it has one.
+#[derive(Debug)]
+struct HardLinkNode {
+    inode: Inode,
+    name: OsString,
+    target: Inode,
+    parent: Inode,
+    metadata: Metadata,
+}
+
 #[derive(Debug)]
 enum Node {
     File(FileNode),
@@ -145,6 +177,7 @@ enum Node {
     Symlink(SymlinkNode),
     Directory(DirectoryNode),
     ArcDirectory(ArcDirectoryNode),
+    HardLink(HardLinkNode),
 }
 
 impl Node {
@@ -158,6 +191,7 @@ impl Node {
             Self::Symlink(SymlinkNode { inode, .. }) => inode,
             Self::Directory(DirectoryNode { inode, .. }) => inode,
             Self::ArcDirectory(ArcDirectoryNode { inode, .. }) => inode,
+            Self::HardLink(HardLinkNode { inode, .. }) => inode,
         }
     }
 
@@ -171,6 +205,7 @@ impl Node {
             Self::Symlink(SymlinkNode { name, .. }) => name.as_os_str(),
             Self::Directory(DirectoryNode { name, .. }) => name.as_os_str(),
             Self::ArcDirectory(ArcDirectoryNode { name, .. }) => name.as_os_str(),
+            Self::HardLink(HardLinkNode { name, .. }) => name.as_os_str(),
         }
     }
 
@@ -184,6 +219,7 @@ impl Node {
             Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
             Self::Directory(DirectoryNode { metadata, .. }) => metadata,
             Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
+            Self::HardLink(HardLinkNode { metadata, .. }) => metadata,
         }
     }
 
@@ -208,6 +244,7 @@ impl Node {
             Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
             Self::Directory(DirectoryNode { metadata, .. }) => metadata,
             Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
+            Self::HardLink(HardLinkNode { metadata, .. }) => metadata,
         }
     }
 
@@ -221,6 +258,7 @@ impl Node {
             Self::Symlink(SymlinkNode { name, .. }) => *name = new_name,
             Self::Directory(DirectoryNode { name, .. }) => *name = new_name,
             Self::ArcDirectory(ArcDirectoryNode { name, .. }) => *name = new_name,
+            Self::HardLink(HardLinkNode { name, .. }) => *name = new_name,
         }
     }
 }

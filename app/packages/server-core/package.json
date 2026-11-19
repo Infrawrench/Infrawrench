@@ -353,6 +353,7 @@
     "./ci/cloud-jobs": "./src/ci/cloud-jobs.ts",
     "./ci/events": "./src/ci/events.ts",
     "./ci/pass": "./src/ci/pass.ts",
+    "./ci/rerun": "./src/ci/rerun.ts",
     "./ci/runs": "./src/ci/runs.ts",
     "./ci/schedules": "./src/ci/schedules.ts",
     "./ci/values": "./src/ci/values.ts",

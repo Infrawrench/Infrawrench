@@ -65,6 +65,8 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:az@2.92`                  | the same as `env:python@3.13`, plus the Azure CLI 2.92 (`az`)                    |
 | `env:gcloud@593`               | the same as `env:python@3.13`, plus the Google Cloud CLI 593 (`gcloud`, `bq`)    |
 
+`env:bash@5` and `env:bash-node@24` also have `tar`, `gzip` and `openssl` (OpenSSL 3.5.9, with Mozilla's CA certificates). `tar -z` works, and so does `openssl req -x509` for a test's self-signed certificate. Unix domain sockets on a path work between a job's processes (tsx's IPC, test runners' workers), and connecting to `::` or `0.0.0.0` reaches the job's own loopback, as on Linux.
+
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv`, then `.venv/bin/python -m ensurepip --default-pip` for its pip. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
 In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
@@ -85,7 +87,11 @@ jobs:
 
 Tests run in one process: there is no `fork`, so Rails' parallel workers are turned off for you (`PARALLEL_WORKERS=1`), and a suite that wants them in threads can use `parallelize(with: :threads)` and set `PARALLEL_WORKERS` in the job's `env:`. Two lines of a `rails new` Gemfile need changing: `gem "tzinfo-data"` on every platform (drop its `platforms:`, then `bundle lock`), since a job has no system time zone files, and `gem "selenium-webdriver", require: false`, since Rails loads it with the other test gems and it refuses to load on a platform it does not know. System tests need a browser, which a job does not have; run them as a [cloud job](#cloud-jobs).
 
-A project that installs with Bun lists `bun` under `workspace.deps` instead of `pnpm`. Its `node_modules` is installed from `bun.lock` before the jobs start, laid out the way `bun install` lays it out and checked against the lockfile's hashes, and the jobs run its scripts with `node`. For Bun itself (`bun test`, `bun run`, the `Bun` APIs), list `builtin:bun@1.4` under `tools:`: the official Bun 1.4 release runs natively in a gVisor sandbox beside the job's environment, with `bun` and `bunx` on the script's `PATH` and the environment's commands (`bash`, `node`, `git`) on Bun's. Commit the text lockfile: a repository with only the older binary `bun.lockb` is told to run `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`.
+A project that installs with npm lists `npm` under `workspace.deps`. Its `node_modules` is installed from `package-lock.json` (or `npm-shrinkwrap.json`) before the jobs start, in the tree `npm ci` would make, workspaces linked and every package checked against the lockfile's hashes; the registry in your `.npmrc` is used, as npm uses it. Install scripts do not run, and the run's warnings name the packages that have one. A job runs `npm test` and `npm run` with npm itself. Commit a lockfile from npm 7 or later (`lockfileVersion` 2 or 3): an older one is refused with the command that updates it, as is a lockfile that is behind `package.json`. Do not run `npm ci` in a job: npm refuses packages that list the operating systems they run on, since a job's platform is none of them.
+
+A project that installs with Bun lists `bun` under `workspace.deps` instead of `pnpm`. Its `node_modules` is installed from `bun.lock` before the jobs start, laid out the way `bun install` lays it out and checked against the lockfile's hashes, and the jobs run its scripts with `node`. For Bun itself (`bun test`, `bun run`, the `Bun` APIs), list `builtin:bun@1.4` under `tools:`: the official Bun 1.4 release runs natively in a gVisor sandbox beside the job's environment, with `bun` and `bunx` on the script's `PATH` and the environment's commands (`bash`, `node`, `git`) on Bun's. Such a job runs `bun install --frozen-lockfile` itself, which brings the Linux builds of native packages (turbo, oxlint, esbuild) that `workspace.deps` leaves out, and is best on `env:bash@5`: with no `node` there, Bun runs package scripts and install scripts itself, where the `node` of `env:bash-node` is a WebAssembly build that cannot load those packages. Commit the text lockfile: a repository with only the older binary `bun.lockb` is told to run `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`.
+
+With `pnpm`, `npm` or `bun`, each `node_modules` gets a `.bin` with your dependencies' commands, so `pnpm run lint` finds `eslint` and `pnpm test` finds `vitest`, as on your machine. Packages that ship native code use their WebAssembly build where they publish one, since a job cannot start native programs: most come with it as an optional dependency, and Rollup 4, esbuild and Lightning CSS, which publish theirs separately, are installed as `@rollup/wasm-node`, `esbuild-wasm` and `lightningcss-wasm` at the version your lockfile pins (checked against the hash the npm registry publishes for it), so Vite, Vitest and their builds work without any change to your repository. Tailwind CSS 4 builds too, on `env:bash-node@24` from 24.0.22.
 
 ```yaml
 jobs:
@@ -123,6 +129,42 @@ jobs:
       go test ./...
 ```
 
+Rust compiles with `tools: [builtin:rust@1.100]`: the official Rust 1.100 toolchain (`cargo`, `rustc`, `rustdoc`, `rustfmt` and clippy) runs as a real Linux program in a sandbox beside the job's environment, with GCC 13 (`cc`) and binutils so it links, and so build scripts that compile C work (the `cc` crate, `ring`, `pcre2-sys`, bundled SQLite). List `cargo` under `workspace.deps` and your crates are installed from `Cargo.lock` before the job, each checked against the lock's checksum, so `cargo test` needs no network. The build goes to `target/` in the job's own files, which count against its `memory:`, so give build and test jobs 4 to 8 GiB.
+
+```yaml
+workspace:
+  deps: [cargo]
+jobs:
+  test:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 8GiB
+    run: cargo test --locked --workspace
+  lint:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 4GiB
+    run: |
+      cargo fmt --all --check
+      cargo clippy --locked --workspace --all-targets -- -D warnings
+```
+
+The toolchain is the builtin's: `rust-toolchain.toml` is not read and there is no `rustup`, so pick the builtin version your project needs. It has the runner's own target only, and no C++ compiler or system libraries beyond the C library, so a crate that links a system library (OpenSSL without its `vendored` feature, for example) needs a [cloud job](#cloud-jobs). A program your build produces runs as it would on Linux, from the script (`./target/release/app --version`) or from cargo. Rust jobs run only on runners with the native sandbox turned on; on a runner without it the job fails and says so.
+
+Some npm packages ship their program as a Linux binary in a per-platform package, with a small script that starts it: Turborepo (`turbo`), sherif and others. To run them, add `native: true` to the install and run the job in the sandbox with `builtin:glibc@2.39`, the C library on its own:
+
+```yaml
+workspace:
+  deps: [{ pnpm: { native: true } }]
+jobs:
+  lint:
+    using: env:bash-node@24
+    tools: [builtin:glibc@2.39]
+    run: pnpm lint
+```
+
+`native: true` also installs the runner's Linux builds of your packages and makes the job's `node` report Linux as its platform, so the package's script finds its binary. Without the sandbox, the binary does not start, and the job's log says what it needs.
+
 In `env:ruby`, `bundle install`, `gem install`, `rake` and `ruby` work as on a developer's machine, with the gems that ship with Ruby (minitest, test-unit, rake and the rest) already there. Gems install into the job's own `GEM_HOME`, with their commands on the `PATH`, and download while the job runs, so leave the job's network on. Threads, sockets, TLS and child processes (`system`, backticks, `Open3`) work, with real exit statuses; `fork` raises `NotImplementedError`, and a gem with a C extension that has to be compiled while it installs does not install: install those through `deps: [bundler]`, which brings a build of the common ones.
 
 ```yaml
@@ -148,6 +190,8 @@ jobs:
       some-cli deploy
 ```
 
+A job can also run the package manager itself (`deps: false` and `pnpm install`, `npm ci` or `pnpm add`). It installs as on any machine, including switching to the pnpm version your `packageManager` field names, but takes three to four and a half times as long as pnpm natively (under a minute to a minute and a half for a monorepo of 1,500 packages) and keeps both pnpm's store and a copy of every package in the job's memory (with `npm_config_package_import_method: hardlink` in the job's `env:`, pnpm links the packages out of its store instead, and each file's bytes are kept once). Install scripts that fetch a native binary, such as esbuild's, fail; `--ignore-scripts` skips them. `workspace.deps` installs once per run, natively, and is the faster way to install your repository's dependencies.
+
 In `env:bash-node`, Node's module compile cache works: with `NODE_COMPILE_CACHE` set to a directory, each `node` keeps the compiled code of the modules it loads there, and the next one reuses it instead of compiling them again. To keep it between runs, put it inside the repository's directory (jobs start in `/app`, where the repository is checked out) and cache it, which keeps a pull request's copy apart from your branches':
 
 ```yaml
@@ -161,6 +205,8 @@ jobs:
       paths: [.node-compile-cache]
     run: pnpm test
 ```
+
+In `env:bash-node`, `node` runs TypeScript the way Node 24 does, by stripping the types: `node script.ts`, and `require` or `import` of `.ts`, `.mts` and `.cts` files, so an `eslint.config.ts` (with `--flag unstable_native_nodejs_ts_config`) or a Vite or Prettier config written in TypeScript loads as it does on your machine. As in Node, nothing is type checked, syntax that needs more than stripping (`enum`, `namespace`) needs `--experimental-transform-types`, `--no-experimental-strip-types` turns it off, and files under `node_modules` are never stripped. With `NODE_COMPILE_CACHE` set, the stripped source is cached too.
 
 ### Deployment CLIs
 
@@ -331,6 +377,23 @@ Retrying takes the `ci:approve` permission, the same as approving a fork's pull 
 ![A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-failed-retry.png)
 
 A retry joins its pipelines' [concurrency groups](#concurrency-groups) like any other run, as the newest run of each.
+
+### Re-run from GitHub
+
+GitHub's own **Re-run** buttons retry a run too, for anyone GitHub lets use them (people with write access to the repository):
+
+- **Re-run** on one of the checks retries the run behind it. On a job's check (**Test / build (pull request)**) that is still the whole run: a runner runs a commit's pipelines, not one job of them. Jobs with `task-cache:` whose inputs have not changed come back from the task cache, as with **Retry**, so a re-run after a flaky failure reruns little else. The new run's check says it is a retry.
+- **Re-run all checks** on the commit retries the newest run of each push and pull request on that commit. **Re-run failed checks** retries the runs those checks belong to, once each.
+
+A re-run is a retry like one from Infrawrench, with a few differences, because nobody signed in to Infrawrench asked for it:
+
+- It is recorded in the audit log as a retry with the GitHub login of whoever clicked, and no Infrawrench user.
+- A pull request from a fork waits as **Awaiting approval** again, for someone with `ci:approve` to approve it in Infrawrench. A GitHub login does not approve a fork's code.
+- Scheduled and manual runs are only started again from Infrawrench; re-running their checks on GitHub says so on the check.
+- A run that has not finished yet is left as it is, and its check says to re-run it once it has. A run waiting for approval or rejected is left as it is too.
+- Each run is retried once, however many of its checks are re-run: re-running several checks of the same run, or GitHub sending a request twice, starts one run. Re-run again once the retry's own checks are on the commit.
+
+Re-running checks through GitHub's API (`POST .../check-runs/{id}/rerequest` or `.../check-suites/{id}/rerequest`) is only open to the app that made the checks, so a personal token gets an error there: use the buttons, or [retry from Infrawrench](#retry-a-run) or through its API.
 
 ### Cancel a run
 
@@ -754,7 +817,7 @@ jobs:
 ```
 
 - **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
-- **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count the runtime reports to its programs. Without `cpus:`, `$IWCI_CPUS` is not set.
+- **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count its programs read (`nproc`, Python's `os.cpu_count()`, Node's `os.availableParallelism()`, `/proc/cpuinfo`). Without `cpus:`, `$IWCI_CPUS` is not set and that count is 1, so a tool that starts a worker per CPU (`pytest -n auto`, Vitest, Jest, cargo) starts one; give the job `cpus:` to run more. Either way the count is all that changes: a job still uses CPU time no other job wants.
 - **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
 - A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
 - A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.

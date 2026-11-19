@@ -78,7 +78,7 @@ import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
 
-type CiRunRow = typeof ciRuns.$inferSelect;
+export type CiRunRow = typeof ciRuns.$inferSelect;
 
 /** How long a claim on a queued run lasts before another dispatcher may retry it. */
 const CLAIM_MS = 2 * 60_000;
@@ -149,7 +149,7 @@ export class CiInputError extends Error {
 }
 
 /** The organization that connected `installationId` and runs CI for it, if any. */
-async function ciOrganization(installationId: number): Promise<string | null> {
+export async function ciOrganization(installationId: number): Promise<string | null> {
   const [row] = await db
     .select({ organizationId: ciAccounts.organizationId })
     .from(ciAccounts)
@@ -514,8 +514,24 @@ export async function dispatchRun(id: string): Promise<void> {
   await upsertCheck(row, {
     status: "in_progress",
     title: "Running",
-    summary: row.fromFork ? "Running a fork's pull request, without secrets." : "Running.",
+    summary: runningSummary(row),
   });
+}
+
+/**
+ * What a running run's check says. A retry says that every job runs again:
+ * a check re-run from GitHub (one job's, or "Re-run failed checks") re-runs
+ * its whole run, since a runner runs a commit's pipelines, never a job alone.
+ */
+export function runningSummary(
+  row: Pick<CiRunRow, "fromFork" | "retryOfRunId" | "noTaskCache">,
+): string {
+  const running = row.fromFork ? "Running a fork's pull request, without secrets." : "Running.";
+  if (row.retryOfRunId === null) return running;
+  const cached = row.noTaskCache
+    ? ""
+    : " A `task-cache:` job whose inputs have not changed since it passed is replayed from the cache.";
+  return `${running}\n\nA retry of an earlier run: every job runs again, whichever check was re-run.${cached}`;
 }
 
 /**
@@ -1035,16 +1051,44 @@ export async function retryRun(
   const original = await loadOwned(organizationId, id);
   const refusal = retryRefusal(original);
   if (refusal) throw new CiInputError(refusal, 409);
-  const [{ count } = { count: 0 }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(ciRuns)
-    .where(eq(ciRuns.retryOfRunId, original.id));
+  const row = await insertRetry(original, {
+    approvedByUserId: userId,
+    noTaskCache: opts.noTaskCache,
+    firstOnly: false,
+  });
+  if (!row) throw new CiInputError("This run is already being retried.", 409);
+  return toWire(row);
+}
+
+/**
+ * Inserts a retry of `original` (see `retryRun`), or returns `null` when
+ * another got there first. `approvedByUserId` is the person who asked, who
+ * holds `ci:approve`: a fork's retry counts as approved by them. With
+ * `null` (a re-run asked for from GitHub, by someone Infrawrench cannot
+ * vouch for) a fork's retry waits for approval like a new commit of it.
+ * `firstOnly` makes it the run's first retry or nothing, so a request that
+ * raced any other retry of the same run never starts a second.
+ */
+export async function insertRetry(
+  original: CiRunRow,
+  opts: { approvedByUserId: string | null; noTaskCache: boolean; firstOnly: boolean },
+): Promise<CiRunRow | null> {
+  const userId = opts.approvedByUserId;
+  let count = 0;
+  if (!opts.firstOnly) {
+    const [counted] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(ciRuns)
+      .where(eq(ciRuns.retryOfRunId, original.id));
+    count = counted?.count ?? 0;
+  }
+  const waits = original.fromFork && userId === null;
   const now = new Date();
   const [row] = await db
     .insert(ciRuns)
     .values({
       id: crypto.randomUUID(),
-      organizationId,
+      organizationId: original.organizationId,
       installationId: original.installationId,
       repoFullName: original.repoFullName,
       ownerKey: original.ownerKey,
@@ -1065,15 +1109,14 @@ export async function retryRun(
       actorLogin: original.actorLogin,
       retryOfRunId: original.id,
       noTaskCache: opts.noTaskCache,
-      status: "queued",
+      status: waits ? "awaiting_approval" : "queued",
       // One retry per count: a second click racing the first conflicts.
       dedupeKey: `retry:${original.id}:${count + 1}`,
-      ...(original.fromFork ? { decidedByUserId: userId || null, decidedAt: now } : {}),
+      ...(original.fromFork && !waits ? { decidedByUserId: userId || null, decidedAt: now } : {}),
     })
     .onConflictDoNothing()
     .returning();
-  if (!row) throw new CiInputError("This run is already being retried.", 409);
-  return toWire(row);
+  return row ?? null;
 }
 
 /** A Git branch name a manual run may be started on, or why it is not one. */

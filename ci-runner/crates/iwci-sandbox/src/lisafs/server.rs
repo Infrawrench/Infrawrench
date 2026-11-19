@@ -16,7 +16,10 @@
 //! with it on rename, never derived from a path. The sandbox's kernel
 //! shares one inode between files that report the same number (that is
 //! how it supports hard links), so a number may never name two files at
-//! once, which a hash of the path would after `mv a b; touch a`.
+//! once, which a hash of the path would after `mv a b; touch a`. Every
+//! name of a file with hard links reports one number: the one its first
+//! name had here when the link was made, kept by the job's file system's
+//! own number for the file (`Metadata::ino`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsStr;
@@ -241,6 +244,11 @@ struct State {
     /// Entries this connection created and charged to the job's budget,
     /// by a hash of their path ([`ENTRY_COST`]).
     created: HashSet<u64>,
+    /// The number given each file with hard links, by the job's file
+    /// system's number for it, and those numbers, which no other file may
+    /// be given while the file may still have a name.
+    linked: HashMap<u64, u64>,
+    linked_numbers: HashSet<u64>,
 }
 
 /// One lisafs connection, which is one mount in the sandbox.
@@ -266,6 +274,8 @@ impl Conn {
                 next_ino: 1,
                 bytes: 0,
                 created: HashSet::new(),
+                linked: HashMap::new(),
+                linked_numbers: HashSet::new(),
             }),
             channels: Mutex::new(Vec::new()),
             closed: AtomicBool::new(false),
@@ -528,6 +538,8 @@ impl Conn {
                             created: file.created_time(),
                             modified: file.last_modified(),
                             len: file.size(),
+                            ino: 0,
+                            nlink: 0,
                         };
                         let perm = self.export.modes.get(&c.path).unwrap_or(DEFAULT_FILE_MODE);
                         stat_from(
@@ -684,7 +696,7 @@ impl Conn {
                         }
                         Err(e) => return Err(fs_errno(e)),
                     };
-                    let ino = state.ino(&child)?;
+                    let ino = state.number(&child, &meta)?;
                     let stat = self.statx(&child, &meta, ino);
                     kind = Kind::of(&meta);
                     let fd = state.insert(Fd::Control(Control {
@@ -758,7 +770,7 @@ impl Conn {
                         Err(FsError::EntryNotFound) => break,
                         Err(e) => return Err(fs_errno(e)),
                     };
-                    let ino = state.ino(&child)?;
+                    let ino = state.number(&child, &meta)?;
                     stats.push(self.statx(&child, &meta, ino));
                     if Kind::of(&meta) == Kind::Symlink {
                         break;
@@ -902,7 +914,7 @@ impl Conn {
     /// A new control FD for what is now at `path`, and its `Inode`.
     fn new_control(&self, state: &mut State, path: PathBuf) -> Result<(u64, Statx), Errno> {
         let meta = self.export.fs.symlink_metadata(&path).map_err(fs_errno)?;
-        let ino = state.ino(&path)?;
+        let ino = state.number(&path, &meta)?;
         let stat = self.statx(&path, &meta, ino);
         let fd = state.insert(Fd::Control(Control {
             path,
@@ -1106,6 +1118,11 @@ impl Conn {
                 continue;
             };
             let child = path.join(name);
+            let linked = entry
+                .metadata
+                .as_ref()
+                .ok()
+                .and_then(|m| state.linked.get(&m.ino).copied().filter(|_| m.ino != 0));
             let kind = entry
                 .metadata
                 .as_ref()
@@ -1121,7 +1138,7 @@ impl Conn {
                 .unwrap_or(Kind::Other);
             out.push(Dirent {
                 name: name.as_bytes().to_vec(),
-                ino: state.listed_ino(&child),
+                ino: linked.unwrap_or_else(|| state.listed_ino(&child)),
                 kind: kind.dirent_type(),
             });
         }
@@ -1224,15 +1241,22 @@ impl Conn {
                 return Err(libc::EINVAL);
             }
             let from = t.path.clone();
-            // The job's file system has no hard links (as under WASIX,
-            // where `link()` fails with EPERM too).
+            let number = t.ino;
+            // A link the job's file system cannot make (across two of its
+            // mounts) fails with EXDEV, as under WASIX, which pnpm's and
+            // Bun's importers fall back to copying on.
             self.export
                 .fs
                 .hard_link(&from, &path)
                 .map_err(|e| match e {
-                    FsError::Unsupported | FsError::PermissionDenied => libc::EPERM,
+                    FsError::Unsupported => libc::EXDEV,
                     e => fs_errno(e),
                 })?;
+            // The new name reports the number the file has here already,
+            // which the sandbox's kernel joins the two names by.
+            if let Ok(meta) = self.export.fs.symlink_metadata(&from) {
+                state.link_number(&meta, number);
+            }
             let (fd, stat) = self.new_control(&mut state, path)?;
             let mut w = Writer::default();
             w.inode(fd, &stat);
@@ -1291,6 +1315,16 @@ impl Conn {
                 return Err(libc::EINVAL);
             }
             let replaced = match fs.symlink_metadata(&to) {
+                // Two names of one file: nothing happens, as `rename(2)`
+                // does nothing then.
+                Ok(meta)
+                    if meta.ino != 0
+                        && meta.ino == from_meta.ino
+                        && !from_dir
+                        && flags & RENAME_NOREPLACE == 0 =>
+                {
+                    return Ok((Vec::new(), Vec::new()));
+                }
                 Ok(meta) => {
                     if flags & RENAME_NOREPLACE != 0 {
                         return Err(libc::EEXIST);
@@ -1427,7 +1461,7 @@ impl State {
     /// `mv a b; touch a`, when it gets one of its own.
     fn number_for(&mut self, path: &Path) -> u64 {
         let wanted = path_number(path);
-        if !self.live.contains(&wanted) {
+        if !self.live.contains(&wanted) && !self.linked_numbers.contains(&wanted) {
             return wanted;
         }
         self.next_ino += 1;
@@ -1463,6 +1497,29 @@ impl State {
         self.live.insert(ino);
         self.bytes += cost;
         Ok(ino)
+    }
+
+    /// The inode number of the file at `path`, whose metadata is `meta`:
+    /// the one every name of a file with hard links has, or its own.
+    fn number(&mut self, path: &Path, meta: &Metadata) -> Result<u64, Errno> {
+        if meta.ino == 0 || meta.is_dir() {
+            return self.ino(path);
+        }
+        if let Some(number) = self.linked.get(&meta.ino) {
+            return Ok(*number);
+        }
+        let number = self.ino(path)?;
+        self.link_number(meta, number);
+        Ok(number)
+    }
+
+    /// Every name of the file `meta` describes, which has hard links, is
+    /// numbered `number`.
+    fn link_number(&mut self, meta: &Metadata, number: u64) {
+        if meta.ino != 0 && !meta.is_dir() {
+            self.linked.entry(meta.ino).or_insert(number);
+            self.linked_numbers.insert(number);
+        }
     }
 
     /// The inode number a directory listing gives `path`: its own when it
@@ -1574,7 +1631,12 @@ fn stat_from(mode: u32, ino: u64, size: u64, meta: &Metadata, kind: Kind) -> Sta
     Statx {
         mask: STATX_BASIC_STATS,
         blksize: 4096,
-        nlink: if kind == Kind::Dir { 2 } else { 1 },
+        // A file's names, as the job's file system counts them.
+        nlink: if kind == Kind::Dir {
+            2
+        } else {
+            meta.nlink.max(1) as u32
+        },
         mode: mode as u16,
         ino,
         size,

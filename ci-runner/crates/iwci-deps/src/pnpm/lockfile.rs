@@ -33,8 +33,12 @@ pub struct Lockfile {
     /// `pnpm-workspace.yaml`).
     pub patched_dependencies: BTreeMap<String, PatchedDependency>,
     /// `settings.injectWorkspacePackages`, which turns workspace links
-    /// into copies (`file:` dependencies). Not supported by the installer.
+    /// into copies (`file:` directory dependencies).
     pub inject_workspace_packages: bool,
+    /// `settings.integrityTarget: tar` (pnpm 12.15 and later): the
+    /// integrity of every registry package, `tarball:` URL and `file:`
+    /// tarball pins its uncompressed tar, not the `.tgz`.
+    pub integrity_pins_tar: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,13 +91,18 @@ pub struct Package {
 /// How to obtain a package's files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolution {
-    /// From the registry, at the URL derived from name and version.
-    Registry { integrity: String },
+    /// From the registry, at the URL derived from name and version, or,
+    /// for a registry revision (pnpm 12), `<registry>/<name>@<version>+r<n>`.
+    Registry {
+        integrity: String,
+        revision: Option<u64>,
+    },
     /// From an explicit tarball URL (`https:` or a repository-relative
-    /// `file:`).
+    /// `file:`), which for a revision is the revision's route.
     Tarball {
         url: String,
         integrity: Option<String>,
+        revision: Option<u64>,
     },
     /// A local directory (`file:` dependencies, injected workspace
     /// packages).
@@ -148,6 +157,7 @@ struct RawLockfile {
 struct RawSettings {
     #[serde(default)]
     inject_workspace_packages: bool,
+    integrity_target: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -218,6 +228,7 @@ struct RawResolution {
     directory: Option<String>,
     repo: Option<String>,
     commit: Option<String>,
+    revision: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -260,8 +271,26 @@ fn err(message: impl Into<String>) -> PnpmError {
 }
 
 /// Parses a `pnpm-lock.yaml` of format 9 or 6.
+///
+/// The file can hold two YAML documents. pnpm 11 and later write a "boot"
+/// (or "env") document first when the project has config dependencies or
+/// pins the pnpm version (`devEngines.packageManager`, or `packageManager`
+/// naming pnpm 12 or later): an importer `.` with only
+/// `configDependencies` and `packageManagerDependencies`, and pnpm's own
+/// platform binaries under `packages`. The project's lockfile is always
+/// the last document, which is the one read here, as pnpm's
+/// `docs/lockfile.md` says a reader of the dependency graph should. Nothing
+/// in the boot document is installed into `node_modules`: config
+/// dependencies go to `node_modules/.pnpm-config` for pnpm itself to load.
 pub fn parse_lockfile(text: &str) -> Result<Lockfile, PnpmError> {
-    let mut raw: RawLockfile = serde_yaml_ng::from_str(text).map_err(|e| err(e.to_string()))?;
+    let mut last: Option<RawLockfile> = None;
+    // Each document is read in turn rather than only kept, so a syntax
+    // error ends the loop with that error (a failed stream keeps yielding
+    // its failure).
+    for document in serde_yaml_ng::Deserializer::from_str(text) {
+        last = Some(RawLockfile::deserialize(document).map_err(|e| err(e.to_string()))?);
+    }
+    let mut raw = last.ok_or_else(|| err("empty"))?;
     let version = match raw.lockfile_version.take() {
         Some(serde_yaml_ng::Value::String(version)) => version,
         Some(serde_yaml_ng::Value::Number(version)) => version.to_string(),
@@ -352,8 +381,15 @@ fn resolution_from_raw(raw: RawResolution) -> Resolution {
         },
         Some(other) => Resolution::Other(format!("resolution type {other}")),
         None => match (raw.tarball, raw.integrity) {
-            (Some(url), integrity) => Resolution::Tarball { url, integrity },
-            (None, Some(integrity)) => Resolution::Registry { integrity },
+            (Some(url), integrity) => Resolution::Tarball {
+                url,
+                integrity,
+                revision: raw.revision,
+            },
+            (None, Some(integrity)) => Resolution::Registry {
+                integrity,
+                revision: raw.revision,
+            },
             (None, None) => Resolution::Other("a resolution with no integrity or tarball".into()),
         },
     }
@@ -389,6 +425,7 @@ fn from_v9(raw: RawLockfile, version: String) -> Result<Lockfile, PnpmError> {
         snapshots,
         patched_dependencies: patched_from_raw(raw.patched_dependencies),
         inject_workspace_packages: raw.settings.inject_workspace_packages,
+        integrity_pins_tar: raw.settings.integrity_target.as_deref() == Some("tar"),
     })
 }
 
@@ -437,12 +474,117 @@ fn from_v6(raw: RawLockfile, version: String) -> Result<Lockfile, PnpmError> {
         snapshots,
         patched_dependencies: patched_from_raw(raw.patched_dependencies),
         inject_workspace_packages: raw.settings.inject_workspace_packages,
+        integrity_pins_tar: raw.settings.integrity_target.as_deref() == Some("tar"),
     })
 }
+
+/// The boot document pnpm 12 writes at the top of `pnpm-lock.yaml` for a
+/// project that pins pnpm (from tRPC's lockfile, with fewer of pnpm's
+/// platform binaries). A lockfile that has one starts with `---`, and the
+/// project's own document follows after another.
+#[cfg(test)]
+pub(crate) const BOOT_DOCUMENT: &str = r#"---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.4.1
+        version: 12.4.1
+
+packages:
+
+  '@pnpm/exe.darwin-arm64@12.4.1':
+    resolution: {integrity: sha512-6rkZkT3iGfaxknUdGHraqSWFvTa6N0ajAHluv9Ax0GRWs0sIcGNiFhDopv6xSZCsJZmG483aNS/b6UEDy3blfw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/exe.linux-x64@12.4.1':
+    resolution: {integrity: sha512-FJOZuuuQMhp0oLzBtcKkLXknBI92hfkmSnlKc47vfin4HrmfID5khY2lGekL9tCzk1cpR+HShEw/meFl+nHtzQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  pnpm@12.4.1:
+    resolution: {integrity: sha512-LoHjmdc/6DkNqyXgaqeIq3pZCCSNL1o3D4K0gRR6ano2e/gEj5pv22Rg8hpm8FQt7bi5TKLIcjWWdBkgsWVtTA==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.darwin-arm64@12.4.1':
+    optional: true
+
+  '@pnpm/exe.linux-x64@12.4.1':
+    optional: true
+
+  pnpm@12.4.1:
+    optionalDependencies:
+      '@pnpm/exe.darwin-arm64': 12.4.1
+      '@pnpm/exe.linux-x64': 12.4.1
+
+---
+"#;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_project_document_follows_the_boot_document() {
+        let project = "lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
+
+packages:
+
+  ms@2.1.3:
+    resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+snapshots:
+
+  ms@2.1.3: {}
+";
+        let single = parse_lockfile(project).unwrap();
+        let both = parse_lockfile(&format!("{BOOT_DOCUMENT}{project}")).unwrap();
+        assert_eq!(both.version, "9.0");
+        assert_eq!(both.importers, single.importers);
+        assert_eq!(both.importers["."].dev_dependencies["ms"], "2.1.3");
+        // Nothing of the boot document's: pnpm and its binaries are not the
+        // project's dependencies.
+        assert_eq!(both.packages.len(), 1);
+        assert!(both.package("pnpm@12.4.1").is_none());
+        assert!(!both.snapshots.contains_key("pnpm@12.4.1"));
+        assert_eq!(both.packages, single.packages);
+        assert_eq!(both.snapshots, single.snapshots);
+        assert_eq!(both.patched_dependencies, single.patched_dependencies);
+    }
+
+    #[test]
+    fn a_broken_document_is_an_error_wherever_it_is() {
+        let error = parse_lockfile(&format!("{BOOT_DOCUMENT}importers: [\n"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("pnpm-lock.yaml"), "{error}");
+        let error = parse_lockfile("---\nimporters: [\n---\nlockfileVersion: '9.0'\n")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("pnpm-lock.yaml"), "{error}");
+        assert!(parse_lockfile("").is_err());
+    }
 
     #[test]
     fn format_6_is_normalised_to_the_format_9_shape() {
@@ -497,7 +639,8 @@ packages:
         assert_eq!(
             lockfile.package("react@18.2.0").unwrap().resolution,
             Resolution::Registry {
-                integrity: "sha512-bbbb".into()
+                integrity: "sha512-bbbb".into(),
+                revision: None,
             }
         );
     }

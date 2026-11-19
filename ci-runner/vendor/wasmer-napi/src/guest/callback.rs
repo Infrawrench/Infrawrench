@@ -320,6 +320,16 @@ pub extern "C" fn snapi_host_write_guest_stderr(
     });
 }
 
+/// iwci patch: whether this thread has a store lent, so a guest callback can
+/// run here. An engine interrupt asks first (`WasmInterruptCallback` in
+/// napi_bridge_init.cc): V8 runs one wherever the isolate next checks, which
+/// can be inside an import that lent none, and the guest's request is queued
+/// on its loop as well, so the loop runs it instead.
+#[unsafe(no_mangle)]
+pub extern "C" fn snapi_host_store_lent() -> bool {
+    Store::with_current(|_| ()).is_some()
+}
+
 /// Rust trampoline called from C++ when a V8 callback fires.
 /// Re-enters the active guest callback scope and dispatches into the WASM guest.
 #[unsafe(no_mangle)]

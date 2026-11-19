@@ -313,7 +313,14 @@ impl RuntimeExecutor {
                 native_name(natives)
             ));
         };
+        let bin = std::path::Path::new("/usr/local/bin");
         let mut tools = Vec::with_capacity(natives.len());
+        // Two native tools may ship the same file at the same path (each
+        // brings the C library): it is placed once. The same path with
+        // other content, or a command both name, cannot be.
+        let mut shipped: std::collections::HashMap<&str, (&str, &str)> =
+            std::collections::HashMap::new();
+        let mut named: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
         for native in natives {
             let Resolved::Tool {
                 manifest,
@@ -327,23 +334,59 @@ impl RuntimeExecutor {
             let bytes = |blob: &iwci_store::Blob| {
                 shared_buffer::OwnedBuffer::from_bytes(bytes::Bytes::from_owner(blob.bytes.clone()))
             };
-            let program = std::path::PathBuf::from("/usr/local/bin").join(&manifest.name);
-            let mut placed = vec![Placed {
-                path: program.clone(),
-                content: Content::File {
-                    bytes: bytes(module),
-                    mode: 0o755,
-                },
-            }];
-            let mut commands = vec![(manifest.name.clone(), program.clone())];
-            for alias in &manifest.aliases {
+            let mut placed = Vec::new();
+            let mut commands = Vec::new();
+            let has_program = manifest
+                .targets
+                .get(&iwci_store::host_target())
+                .is_some_and(|t| t.program.is_some());
+            if has_program {
+                let program = bin.join(&manifest.name);
                 placed.push(Placed {
-                    path: std::path::PathBuf::from("/usr/local/bin").join(alias),
-                    content: Content::Symlink(manifest.name.clone().into()),
+                    path: program.clone(),
+                    content: Content::File {
+                        bytes: bytes(module),
+                        mode: 0o755,
+                    },
                 });
-                commands.push((alias.clone(), program.clone()));
+                commands.push((manifest.name.clone(), program.clone()));
+                for alias in &manifest.aliases {
+                    placed.push(Placed {
+                        path: bin.join(alias),
+                        content: Content::Symlink(manifest.name.clone().into()),
+                    });
+                    commands.push((alias.clone(), program.clone()));
+                }
+            }
+            // Each command runs its own file, through a link where a
+            // script finds it, so the program sees where it really is
+            // (rustc finds its libraries beside itself).
+            for (name, path) in &manifest.commands {
+                placed.push(Placed {
+                    path: bin.join(name),
+                    content: Content::Symlink(path.into()),
+                });
+                commands.push((name.clone(), path.into()));
+            }
+            for (name, _) in &commands {
+                if let Some(owner) = named.insert(name.clone(), &manifest.name) {
+                    return Err(format!(
+                        "`{}` and `{owner}` (tools:) both have a command `{name}`",
+                        manifest.name
+                    ));
+                }
             }
             for (path, blob) in files {
+                if let Some((sha, owner)) = shipped.get(path.as_str()) {
+                    if *sha == blob.sha256 {
+                        continue;
+                    }
+                    return Err(format!(
+                        "`{}` and `{owner}` (tools:) each have a different {path}",
+                        manifest.name
+                    ));
+                }
+                shipped.insert(path, (&blob.sha256, &manifest.name));
                 // The C library: its loader is mapped as a program is.
                 placed.push(Placed {
                     path: path.into(),

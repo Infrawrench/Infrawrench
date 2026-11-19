@@ -354,6 +354,29 @@ fn rename_inode_tree(inode: &InodeGuard, source_dir_path: &Path, target_dir_path
             renumber(inode, path);
             children = entries.values().cloned().collect::<Vec<_>>();
         }
+        // iwci patch: a symbolic link cached under a moved directory is
+        // resolved from where it now is. It kept its old location, so a
+        // lookup through it, or an `lstat` of it, at its new path read the
+        // old one (ENOENT once the directory had moved): pnpm installing the
+        // version a project's `packageManager` names renames a staging
+        // directory with `bin/pnpm` in it into place and then runs it.
+        Kind::Symlink {
+            path_to_symlink, ..
+        } => {
+            let old = Path::new("/").join(&*path_to_symlink);
+            let source = crate::fs::PosixPath::from_path(source_dir_path);
+            if crate::fs::PosixPath::from_path(&old)
+                .strip_prefix(&source)
+                .is_some()
+            {
+                let new = adjust_path(&old, source_dir_path, target_dir_path);
+                *path_to_symlink = crate::fs::PosixPath::from_path(&new)
+                    .strip_root_prefix()
+                    .into_path_buf();
+                renumber(inode, &new);
+            }
+            return;
+        }
         _ => return,
     }
     drop(guard);

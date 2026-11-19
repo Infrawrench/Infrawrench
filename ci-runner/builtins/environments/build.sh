@@ -89,6 +89,14 @@ COREUTILS_PKG="wasmer/coreutils 1.0.27 35028c4e6b9fa8cccdffdcab2007d1df3af31b3f2
 SED_PKG="wasmer/sed 4.9.0 c7f3db6a65e504328156b688195eff14456412974f0a75d05fb8e5155d545539 4.9.0-iwci.1"
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
+# GNU tar 1.35, built by tar/build.sh (it starts gzip and the other
+# compressors with posix_spawn, where Wasmer's `wasmer/tar` forks and so
+# could not), Wasmer's GNU gzip 1.14 (gzip, gunzip, zcat), and OpenSSL
+# 3.5.9's `openssl` with its openssl.cnf and Mozilla's CA certificates,
+# built by openssl/build.sh. The hashes of ours are their output's.
+TAR_PKG="iwci/tar 1.35.0-iwci.1 c3f530464d701decc20d3a3c17c13fc81e14a7af2c278349a3df67fac9bb8ecd"
+GZIP_PKG="wasmer/gzip 1.14.0 ebf0160b02f9ef7f586f6c06fc6d36824c9da6467d3e2fa29dbc84df7bbaf5d5"
+OPENSSL_PKG="iwci/openssl 3.5.9-iwci.1 d374fe5ed6c85e4c32a12467e14d99f14bef348da6013f94f49e1e99cdc784e4"
 # Git, built by git/build.sh from its release for WASIX; the hash is its
 # output's, as with Edge.js. Every environment has it (README.md, "Git").
 GIT_PKG="iwci/git 2.56.1-iwci.2 841a8d6b293c94ff2879186dae83989e7b1893c41768532d15cb09c8f415d876"
@@ -175,8 +183,15 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
 #     without it. It is pnpm's own default on Linux.
 #   PATH  the default plus that directory, after the system's, so a
 #     global install cannot shadow a command the environment ships.
+# GNU tar extracting as root (a job's user) restores each entry's owner,
+# which WASIX cannot set, so every extraction ended "Cannot change
+# ownership to uid 0, gid 0" and status 2; and OpenSSL's configuration, at
+# the OPENSSLDIR it is built with. A job's own values win.
+ARCHIVE_SSL_ENV='"TAR_OPTIONS": "--no-same-owner",
+    "OPENSSL_CONF": "/etc/ssl/openssl.cnf"'
 BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
-    "PNPM_HOME": "/root/.local/share/pnpm"'
+    "PNPM_HOME": "/root/.local/share/pnpm",
+    '"$ARCHIVE_SSL_ENV"
 # The cloud CLIs, built by cloud-clis/build.sh on env:python's CPython;
 # each hash is its output's, as with Edge.js. The Azure CLI and gcloud are
 # two packages each (the store's 256 MiB per file).
@@ -227,7 +242,7 @@ GCLOUD_ENV="$(cloud_env /opt/google-cloud-sdk/bin)"',
     "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
     "CLOUDSDK_PYTHON": "/usr/bin/python3"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.16 117f4e175cd715177f666d0991d9e82bdcfe6c20ba30d657bdc1fa5c03589707"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.17 7c589a3e74d46d5c88759f68a4fda15f2103bdde122be06bf3a299d40d58e52d"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -306,6 +321,8 @@ fetch() {
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
     iwci/git) ours=git ;;
+    iwci/tar) ours=tar ;;
+    iwci/openssl) ours=openssl ;;
     iwci/clickhouse) ours=clickhouse ;;
   esac
   local cli=""
@@ -400,7 +417,9 @@ for env in "$@"; do
       # 5.1.18: and so does a command sed's `e` runs (#1022).
       # 5.1.19: and Git.
       # 5.1.20: and Git's prompts read /dev/tty, so they end at once (#1264).
-      build_env bash 5.1.20 "GNU bash 5.1 with coreutils, sed, grep, findutils and Git" "" "${TOOLS[@]}"
+      # 5.1.21: and tar, gzip and openssl.
+      build_env bash 5.1.21 "GNU bash 5.1 with coreutils, sed, grep, findutils, tar, gzip, OpenSSL and Git" "$ARCHIVE_SSL_ENV" \
+        "${TOOLS[@]}" "$TAR_PKG" "$GZIP_PKG" "$OPENSSL_PKG"
       ;;
     bash-node)
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
@@ -442,8 +461,12 @@ for env in "$@"; do
       # 24.0.20: and Git's prompts read /dev/tty, so they end at once (#1264).
       # 24.0.21: and Workers writing one compile cache entry at once leave
       #          one of theirs, never none (#1249).
-      build_env bash-node 24.0.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
-        "${TOOLS[@]}" "$EDGEJS_PKG"
+      # 24.0.22: and TypeScript runs, by Node's own type stripping; a name the
+      #          environment repeats is listed once, so pnpm can switch to a
+      #          project's packageManager version; and process.versions.undici
+      #          is undici's; and tar, gzip and openssl.
+      build_env bash-node 24.0.22 "GNU bash 5.1, coreutils, sed, grep, findutils, tar, gzip, OpenSSL, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
+        "${TOOLS[@]}" "$TAR_PKG" "$GZIP_PKG" "$OPENSSL_PKG" "$EDGEJS_PKG"
       ;;
     go | go@*)
       minors=("${GO_MINORS[@]}")
@@ -529,7 +552,8 @@ for env in "$@"; do
       # 26.11.3: bash-node 24.0.18's Edge.js (#1151).
       # 26.11.4: and Git's prompts read /dev/tty (#1264).
       # 26.11.5: bash-node 24.0.21's Edge.js (#1249).
-      build_env clickhouse 26.11.5 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.6: bash-node 24.0.22's Edge.js (TypeScript).
+      build_env clickhouse 26.11.6 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
     ruby | ruby@*)

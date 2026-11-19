@@ -60,9 +60,12 @@ global install (`-g`, `--global`), under `npm_config_global_dir` or
 `$PNPM_HOME/global`. `builtins/test.sh`'s `bash-node/global-install-passes`
 covers it; remove the file once pnpm makes the directory itself.
 
-The runner also writes `npx` to `/usr/local/bin` for these jobs: npm's
-own, `/npm/bin/npx-cli.js` from Edge.js's copy of npm, which Edge.js ships
-without a command for it (`wasix.rs`, `NPX`).
+The runner also writes `npx` and `npm` to `/usr/local/bin` for these jobs:
+npm's own, `/npm/bin/npx-cli.js` and `/npm/bin/npm-cli.js` from Edge.js's
+copy of npm, which Edge.js ships without a command for either (its `npm`
+is pnpm). The runner's `npm` hands a global install (`-g`, `--global`) to
+Edge.js's `npm`, so it still lands in `PNPM_HOME` (`wasix.rs`, `NPX` and
+`NPM`).
 
 ## A child's PATH (#1201)
 
@@ -77,6 +80,41 @@ child's `PATH` is the parent's, when the command has a `/` in it, or for a
 shell, which reads the child's `PATH` already. `builtins/test.sh`'s
 `bash-node/spawn-child-path-passes` covers it; remove the file once
 Edge.js's libuv searches the child's `PATH`.
+
+## A child's uid and gid
+
+Edge.js's libuv refuses a spawn with a `uid` or `gid` option with ENOSYS,
+whatever the id: WASIX has no users to switch to. A package manager running
+as root passes root's ids for every lifecycle script (npm-lifecycle, which
+pnpm uses, unless `unsafe-perm` is set), so `pnpm install` stopped at the
+first `postinstall` (esbuild's) with `spawn ENOSYS`. A job runs as root
+(uid and gid 0), and switching to the ids a process already has changes
+nothing on Linux, so `spawn-path.cjs` also drops a `uid` or `gid` equal to
+`process.getuid()` or `process.getgid()`, in `spawn`, `spawnSync`,
+`execFile`, `execFileSync`, `exec`, `execSync` and `fork`. Any other id
+still fails. `builtins/test.sh`'s `bash-node/spawn-own-ids-passes` covers
+it; remove this part once Edge.js accepts a process's own ids.
+
+## esbuild-wasm's standard streams
+
+The pnpm and Bun installers install esbuild as `esbuild-wasm`
+(`iwci-deps/src/wasm_builds.rs`), whose API starts `node bin/esbuild`.
+That script replaces `fs.writeSync` on fds 1 and 2 with
+`process.stdout.write` and `process.stderr.write`; when the stream is a
+file, as a job's standard error is, that is a `SyncWriteStream`, which
+calls `fs.writeSync` again, so the first warning a build printed queued
+writes until "RangeError: Invalid array length" and the process died (Node
+does the same with `2>file`). `esbuild-stdio.cjs` gives that process (a
+main script `bin/esbuild` with `esbuild.wasm` beside its directory) writers
+that call the original `fs.writeSync` for the streams that are files, which
+in Edge.js are pipes too. The main script is found by where it really is:
+started as `node_modules/.bin/esbuild` (a package script, `npx esbuild`),
+`process.argv[1]` is the link, and with the link's directory checked
+`esbuild --version` printed nothing and exited 0, its one write still
+queued when the Go program exited (`builtins/test.sh`'s
+`esbuild-bin-passes`). It costs other processes one regular expression
+test. Remove it once esbuild-wasm's `bin/esbuild` leaves a
+`SyncWriteStream` alone.
 
 ## Empty blob parts (#940)
 
@@ -100,3 +138,15 @@ running and missing its result behind a long timer, was filled here by a
 preload that held a 5 ms interval while one was pending. The bridge's V8
 platform now waits for that work itself (`vendor/README.md`), so the preload
 is gone.
+
+## The runner's platform, for native packages
+
+Edge.js reports `process.platform` `wasi` and `process.arch` `wasm32`, so a
+package that ships its program as a per-platform optional dependency
+(turbo's `turbo-linux-64`, sherif's `sherif-linux-x64`) looks for a
+`wasi-wasm32` build that does not exist. A workspace installed with
+`native: true` gets the runner's own Linux builds as well, and its jobs get
+`IWCI_NODE_PLATFORM` (`linux-x64` or `linux-arm64`): `host-platform.cjs`
+then reports that platform and architecture, so the wrapper picks the build
+that was installed and starts it, natively in a sandboxed job. It stays
+until Edge.js can be told what to report, or a job's `node` is native.

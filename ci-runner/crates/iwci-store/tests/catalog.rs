@@ -54,6 +54,7 @@ impl Fixture {
             description: None,
             targets: BTreeMap::new(),
             aliases: Vec::new(),
+            commands: BTreeMap::new(),
         }
     }
 
@@ -98,8 +99,27 @@ fn version_selection() {
             "1.11.0-beta.1",
         ],
     );
+    // Rebuilds of an upstream release, published as any version is.
+    f.publish(&Namespace::Builtin, "bun", &["1.4.3", "1.4.4", "1.4.4.1"]);
     let c = f.catalog();
     let me = repo("r1");
+    for req in ["1", "1.4", "1.4.4", "1.4.4.1"] {
+        assert_eq!(
+            resolved_version(&c.resolve(&r(&format!("builtin:bun@{req}")), &me).unwrap()),
+            "1.4.4.1",
+            "{req}"
+        );
+    }
+    assert_eq!(
+        resolved_version(&c.resolve(&r("builtin:bun@1.4.3"), &me).unwrap()),
+        "1.4.3"
+    );
+    assert_eq!(
+        c.resolve(&r("builtin:bun@1.3"), &me)
+            .unwrap_err()
+            .to_string(),
+        "no version matches 1.3; available: 1.4.4.1, 1.4.4, 1.4.3"
+    );
     let pick =
         |req: &str| resolved_version(&c.resolve(&r(&format!("builtin:gofmt@{req}")), &me).unwrap());
     assert_eq!(pick("1"), "1.10.0");
@@ -129,14 +149,18 @@ fn version_selection() {
         .resolve(&r("builtin:gofmt@3"), &me)
         .unwrap_err()
         .to_string();
-    assert!(
-        err.contains("available: 2.0.0-rc.1, 1.11.0-beta.1, 1.10.0"),
-        "{err}"
+    // The message leaves the reference to the caller, which names it: it
+    // read `tools: builtin:bun@1.3: builtin:bun@1.3: no version matches`.
+    assert_eq!(
+        err,
+        "no version matches 3; available: 2.0.0-rc.1, 1.11.0-beta.1, 1.10.0, 1.2.7, 1.2.0, 1.0.0"
     );
-    assert!(matches!(
-        c.resolve(&r("builtin:nope@1"), &me),
-        Err(Error::NotFound { .. })
-    ));
+    let missing = c.resolve(&r("builtin:nope@1"), &me);
+    assert!(matches!(missing, Err(Error::NotFound { .. })));
+    assert_eq!(
+        missing.unwrap_err().to_string(),
+        "nothing is published under this name"
+    );
 }
 
 #[test]
@@ -244,6 +268,13 @@ fn bad_manifests_are_refused() {
             r#"{{"schema":1,"name":"e","version":"1.0.1","abi":"wasi","module":{{"sha256":"{h}","size":1}}}}"#
         ),
     );
+    // A rebuild's key, holding the upstream release's manifest.
+    write(
+        "builtins/i/1.0.0.1.json",
+        format!(
+            r#"{{"schema":1,"name":"i","version":"1.0.0","abi":"wasi","module":{{"sha256":"{h}","size":1}}}}"#
+        ),
+    );
     write(
         "builtins/g/1.0.0.json",
         format!(
@@ -259,6 +290,7 @@ fn bad_manifests_are_refused() {
         ("d", "its key says d@1.0.0"),
         ("e", "its key says e@1.0.0"),
         ("g", "files[0].path"),
+        ("i", "its key says i@1.0.0.1"),
     ] {
         let err = c
             .resolve(&r(&format!("builtin:{name}@1")), &me)
@@ -266,10 +298,15 @@ fn bad_manifests_are_refused() {
         assert!(matches!(err, Error::Manifest { .. }), "{name}: {err:?}");
         assert!(err.to_string().contains(want), "{name}: {err}");
     }
-    // Stray keys under a name's prefix are not versions.
+    // Stray keys under a name's prefix are not versions, and neither is a
+    // key this runner cannot parse: that is also how a runner from before
+    // rebuilds skips `1.4.4.1` and keeps resolving `1.4.4`.
     write("builtins/h/notes.txt", String::new());
     write("builtins/h/1.0.0.json.bak", String::new());
     write("builtins/h/nested/1.0.0.json", String::new());
+    write("builtins/h/1.0.0.0.json", String::new());
+    write("builtins/h/1.0.0.1.2.json", String::new());
+    write("builtins/h/1.0.0.1-rc.1.json", String::new());
     assert!(matches!(
         c.resolve(&r("builtin:h@1"), &me),
         Err(Error::NotFound { .. })
@@ -626,7 +663,7 @@ fn a_native_tool_resolves_to_this_runners_target() {
     let f = fixture();
     let me = repo("r");
     let target = |name: &str| iwci_store::TargetSource {
-        program: f.file(&format!("bun-{name}"), format!("ELF {name}").as_bytes()),
+        program: Some(f.file(&format!("bun-{name}"), format!("ELF {name}").as_bytes())),
         files: vec![FileSource {
             guest_path: "/lib64/ld.so".into(),
             source: f.file(&format!("ld-{name}"), format!("ld {name}").as_bytes()),
@@ -653,6 +690,7 @@ fn a_native_tool_resolves_to_this_runners_target() {
         ]
         .into(),
         aliases: vec!["bunx".into()],
+        commands: BTreeMap::new(),
     };
     publish_tool(&*f.store, &Namespace::Builtin, &draft).unwrap();
     let catalog = f.catalog();
@@ -673,6 +711,74 @@ fn a_native_tool_resolves_to_this_runners_target() {
     assert_eq!(&*module.bytes, b"ELF here");
     assert_eq!(files.len(), 1);
     assert_eq!(&*files[0].1.bytes, b"ld here");
+
+    // Built only for the other target: refused, saying for which.
+    let elsewhere = ToolDraft {
+        name: "elsewhere".into(),
+        targets: [(other.into(), target("there"))].into(),
+        aliases: Vec::new(),
+        ..draft
+    };
+    publish_tool(&*f.store, &Namespace::Builtin, &elsewhere).unwrap();
+    let err = f
+        .catalog()
+        .resolve(&r("builtin:elsewhere@1"), &me)
+        .unwrap_err();
+    assert!(matches!(err, Error::NoTarget { .. }), "{err:?}");
+    assert_eq!(err.to_string(), format!("1.4.4 has no build for {host}"));
+}
+
+/// A toolchain of several programs (`builtin:rust`) has no program of its
+/// own: its commands each run one of its files, and a file at several
+/// paths is one blob.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_native_tool_of_commands_resolves_with_no_program() {
+    let f = fixture();
+    let me = repo("r");
+    let cargo = f.file("cargo", b"ELF cargo");
+    let target = || iwci_store::TargetSource {
+        program: None,
+        files: ["/opt/rust/bin/cargo", "/opt/rust/bin/cargo-copy"]
+            .into_iter()
+            .map(|path| FileSource {
+                guest_path: path.into(),
+                source: cargo.clone(),
+            })
+            .collect(),
+    };
+    let draft = ToolDraft {
+        name: "rust".into(),
+        version: "1.100.0".parse().unwrap(),
+        abi: Abi::NativeGvisor,
+        module: None,
+        files: Vec::new(),
+        args: Vec::new(),
+        env: BTreeMap::new(),
+        description: None,
+        targets: [
+            ("x86_64-linux".to_string(), target()),
+            ("aarch64-linux".to_string(), target()),
+        ]
+        .into(),
+        aliases: Vec::new(),
+        commands: [("cargo".to_string(), "/opt/rust/bin/cargo".to_string())].into(),
+    };
+    let (manifest, report) = publish_tool(&*f.store, &Namespace::Builtin, &draft).unwrap();
+    assert_eq!(report.uploaded.len(), 1, "one blob for four files");
+    assert!(manifest.targets.values().all(|t| t.program.is_none()));
+    let Resolved::Tool { module, files, .. } =
+        f.catalog().resolve(&r("builtin:rust@1.100"), &me).unwrap()
+    else {
+        panic!("not a tool");
+    };
+    assert!(module.bytes.is_empty());
+    assert_eq!(files.len(), 2);
+    // A command must run one of every target's files.
+    let mut bad = draft.clone();
+    bad.commands = [("cargo".to_string(), "/opt/rust/bin/rustc".to_string())].into();
+    let err = publish_tool(&*f.store, &Namespace::Builtin, &bad).unwrap_err();
+    assert!(err.to_string().contains("not one of"), "{err}");
 }
 
 #[test]

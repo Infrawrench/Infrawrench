@@ -1,0 +1,36 @@
+diff --git a/src/edge_process.cc b/src/edge_process.cc
+index 00e937ec..671d7544 100644
+--- a/src/edge_process.cc
++++ b/src/edge_process.cc
+@@ -31,6 +31,7 @@
+ #include <string>
+ #include <string_view>
+ #include <type_traits>
++#include <unordered_set>
+ #include <vector>
+ #include <limits>
+ 
+@@ -3034,7 +3035,12 @@ std::optional<std::string> GetSharedProcessEnvironmentValue(const std::string& k
+ }
+ 
+ std::vector<std::string> ListSharedProcessEnvironmentKeys() {
++  // environ can name a variable twice (execve takes what it is given).
++  // Each name is listed once, where it first appears, which is the entry
++  // getenv() reads: Node's process.env enumerates the same, and a Proxy's
++  // ownKeys that repeats a key throws instead.
+   std::vector<std::string> out;
++  std::unordered_set<std::string> seen;
+ #if defined(_WIN32)
+   char** e = _environ;
+ #else
+@@ -3045,7 +3051,9 @@ std::vector<std::string> ListSharedProcessEnvironmentKeys() {
+     const char* entry = *e;
+     const char* sep = std::strchr(entry, '=');
+     if (sep == nullptr) continue;
+-    out.emplace_back(entry, static_cast<size_t>(sep - entry));
++    std::string key(entry, static_cast<size_t>(sep - entry));
++    if (!seen.insert(key).second) continue;
++    out.push_back(std::move(key));
+   }
+   return out;
+ }

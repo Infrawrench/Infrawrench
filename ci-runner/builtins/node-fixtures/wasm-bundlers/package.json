@@ -1,0 +1,12 @@
+{
+  "name": "wasm-bundlers",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "rolldown": "1.2.11"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-wasm32-wasi": "1.2.11"
+  }
+}

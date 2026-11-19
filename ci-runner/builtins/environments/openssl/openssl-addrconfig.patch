@@ -1,0 +1,11 @@
+--- a/crypto/bio/bio_addr.c
++++ b/crypto/bio/bio_addr.c
+@@ -727,7 +727,7 @@
+         hints.ai_family = family;
+         hints.ai_socktype = socktype;
+         hints.ai_protocol = protocol;
+-#ifdef AI_ADDRCONFIG
++#if defined(AI_ADDRCONFIG) && !defined(OPENSSL_NO_AI_ADDRCONFIG)
+ #ifdef AF_UNSPEC
+         if (host != NULL && family == AF_UNSPEC)
+ #endif

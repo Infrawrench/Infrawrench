@@ -171,6 +171,7 @@ impl LockIndexes {
                     iwci_spec::Ecosystem::Pnpm => {
                         let options = iwci_deps::pnpm::PnpmOptions {
                             only_importers: dep.only.clone(),
+                            native: crate::adapters::workspace::native_platform(dep),
                             ..Default::default()
                         };
                         iwci_deps::pnpm::KeyIndex::new(&read, root, &options)
@@ -178,7 +179,10 @@ impl LockIndexes {
                             .map(LockIndex::Pnpm)
                     }
                     iwci_spec::Ecosystem::Bun => {
-                        let options = iwci_deps::bun::BunOptions::default();
+                        let options = iwci_deps::bun::BunOptions {
+                            native: crate::adapters::workspace::native_platform(dep),
+                            ..Default::default()
+                        };
                         iwci_deps::bun::KeyIndex::new(&read, root, &options)
                             .ok()
                             .map(LockIndex::Bun)
@@ -827,6 +831,9 @@ pub trait Durations: Send + Sync {
 /// reads its snapshot, starts up), so a core interleaves several jobs
 /// better than it runs one; the operating system time-slices them. Billing
 /// charges each job its share, `1 / per_cpu` of a vCPU for its wall time.
+/// That share rounded up, 1 (`per_cpu` is at least 1), is the CPU count
+/// such a job is told (`iwci_runtime::Limits::told_cpus`), though it may
+/// use whatever CPU time no other job wants.
 ///
 /// A job with `cpus:` holds `cpus × per_cpu` slots instead, every slot of
 /// that many vCPUs, and is billed for them. While it waits for them, no
@@ -980,6 +987,8 @@ pub struct Restored {
     /// prefix; an exact hit is not saved again.
     pub exact: bool,
     pub entries: Vec<iwci_vfs::Entry>,
+    /// The modes saved with them ([`iwci_vfs::JobFs::modes_of`]).
+    pub modes: iwci_vfs::archive::ModeList,
 }
 
 /// The store behind `cache:`. An implementation decides where entries live
@@ -993,12 +1002,23 @@ pub trait Caches: Send + Sync {
         restore_keys: &[String],
         max_bytes: u64,
     ) -> Result<Option<Restored>, String>;
+    /// Saves `entries` and the modes recorded for their paths under `key`.
+    fn save_with_modes(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
+    ) -> Result<(), String>;
+    /// Saves `entries` with no modes (the durations record, tests).
     fn save(
         &self,
         key: &str,
         restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
-    ) -> Result<(), String>;
+    ) -> Result<(), String> {
+        self.save_with_modes(key, restore_keys, entries, &[])
+    }
 }
 
 /// A file a job left under its `downloads:` paths, ready to keep: masked
@@ -3281,12 +3301,17 @@ fn run_job<T: Tools>(
     let mut artifact_notes = Vec::new();
     let mut restored: HashSet<PathBuf> = HashSet::new();
     for (from, entries) in inherited {
-        if let Err(e) = fs.apply(entries) {
+        let (entries, modes) = artifact_modes(entries);
+        if let Err(e) = fs.apply(&entries) {
             return errored(
                 job,
                 format!("could not write the artifacts of `{from}`: {e}"),
                 started.elapsed(),
             );
+        }
+        let job_modes = fs.modes();
+        for (path, mode) in &modes {
+            job_modes.set(path, *mode);
         }
         let files = entries
             .iter()
@@ -3367,6 +3392,7 @@ fn run_job<T: Tools>(
             None => {}
             Some(Ok(Some(restored))) => match fs.apply(&restored.entries) {
                 Ok(()) => {
+                    fs.apply_modes(&restored.modes);
                     exact = restored.exact;
                     cache_lines.push(if restored.exact {
                         format!("cache `{key}`: restored")
@@ -3689,7 +3715,7 @@ fn run_job<T: Tools>(
         // `changes` walks a directory, so a path naming one file would find
         // nothing: read every change once (only what the job wrote lives in
         // its upper layer) and keep those at or under an artifact path.
-        let entries = written_under(&fs, &job.artifacts, &restored);
+        let entries = with_modes(&fs, written_under(&fs, &job.artifacts, &restored));
         keep_artifacts(entries, plan, shared, &mut status, &mut notes, kept);
     }
 
@@ -3774,7 +3800,7 @@ fn run_job<T: Tools>(
                     _ => 0,
                 })
                 .sum();
-            match store.save(key, restore_keys, &entries) {
+            match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
                 Ok(()) => {
                     cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
                 }
@@ -3888,7 +3914,9 @@ fn keep_artifacts(
 ) {
     let files = entries
         .iter()
-        .filter(|e| matches!(e, Entry::File { .. }))
+        .filter(|e| {
+            matches!(e, Entry::File { .. }) && entry_path(e) != std::path::Path::new(ARTIFACT_MODES)
+        })
         .count();
     let bytes: u64 = entries
         .iter()
@@ -4275,8 +4303,8 @@ fn job_tools(job: &PlannedJob) -> impl Iterator<Item = &ToolRef> {
 /// `dep`'s lockfile that package can resolve, as `(lockfile name, digest)`,
 /// to key it on in place of the whole file: pnpm, and Bun's isolated
 /// linker. `None` keys it on the whole file: any other job, which may reach
-/// every project from where it runs; Bun's hoisted linker, which puts every
-/// project's packages where any project can import them; the ecosystems
+/// every project from where it runs; Bun's hoisted linker and npm, which
+/// put every project's packages where any project can import them; the ecosystems
 /// whose projects `packages:` does not expand over (Go, Cargo, pip,
 /// Composer); and a lockfile the
 /// index cannot read (the install reports why).
@@ -4382,8 +4410,20 @@ fn task_cache_key(
         // Patch files, which `bun.lock` names without pinning their content.
         let bun_patches;
         let bundler_gemspecs;
+        // What an npm install writes beyond the lockfile: the native
+        // packages it puts WebAssembly builds in place of, which no lockfile
+        // names, and (since 2) `node_modules/.bin`.
+        if matches!(
+            dep.ecosystem,
+            iwci_spec::Ecosystem::Pnpm | iwci_spec::Ecosystem::Npm | iwci_spec::Ecosystem::Bun
+        ) {
+            hash.update(b"npm layout 2\0wasm builds\0");
+            hash.update(iwci_deps::wasm_builds::key().as_bytes());
+            hash.update([0]);
+        }
         let names: Vec<&str> = match dep.ecosystem {
             iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+            iwci_spec::Ecosystem::Npm => iwci_deps::npm::INPUT_FILES.to_vec(),
             iwci_spec::Ecosystem::Bun => {
                 let lock = snapshot.read(format!("{}/bun.lock", dep.dir)).ok();
                 bun_patches = iwci_deps::bun::patch_files(lock.as_deref());
@@ -4514,10 +4554,10 @@ fn replay(
         })
         .ok_or("the entry has no record of its run")?;
     let record: TaskRecord = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
-    if files
-        .iter()
-        .any(|e| !job.artifacts.iter().any(|a| entry_path(e).starts_with(a)))
-    {
+    if files.iter().any(|e| {
+        entry_path(e) != std::path::Path::new(ARTIFACT_MODES)
+            && !job.artifacts.iter().any(|a| entry_path(e).starts_with(a))
+    }) {
         // Only ever what the job kept: anything else is not this job's.
         return Err("the entry holds files outside the job's `artifacts:`".into());
     }
@@ -4618,6 +4658,58 @@ fn replay(
         waited_for: None,
         elsewhere: false,
     })
+}
+
+/// Where a list of artifacts keeps the modes of its files (`<octal mode>
+/// <path>` a line), which [`Entry`] does not carry: a program a job built
+/// is still executable in the job it is handed to. Under `/iwci`, which no
+/// job's artifacts can name; a list without one hands its files on as
+/// they always were.
+pub(crate) const ARTIFACT_MODES: &str = "/iwci/artifact-modes";
+
+/// `entries` with a record of the modes `fs` has for its files, when any
+/// has one.
+fn with_modes(fs: &JobFs, mut entries: Vec<Entry>) -> Vec<Entry> {
+    let modes = fs.modes();
+    let mut text = String::new();
+    for entry in &entries {
+        if let Entry::File { path, .. } = entry
+            && let Some(mode) = modes.get(path)
+            && let Some(path) = path.to_str()
+        {
+            text.push_str(&format!("{mode:o} {path}\n"));
+        }
+    }
+    if !text.is_empty() {
+        entries.push(Entry::File {
+            path: ARTIFACT_MODES.into(),
+            data: text.into_bytes().into(),
+        });
+    }
+    entries
+}
+
+/// The files of a list of artifacts, without its modes record, and the
+/// modes it records, by path.
+pub(crate) fn artifact_modes(entries: &[Entry]) -> (Vec<Entry>, Vec<(PathBuf, u32)>) {
+    let mut files = Vec::with_capacity(entries.len());
+    let mut modes = Vec::new();
+    for entry in entries {
+        match entry {
+            Entry::File { path, data } if path == std::path::Path::new(ARTIFACT_MODES) => {
+                for line in String::from_utf8_lossy(data).lines() {
+                    if let Some((mode, path)) = line.split_once(' ')
+                        && let Ok(mode) = u32::from_str_radix(mode, 8)
+                        && let Ok(path) = iwci_vfs::normalise(path)
+                    {
+                        modes.push((path, mode & 0o7777));
+                    }
+                }
+            }
+            other => files.push(other.clone()),
+        }
+    }
+    (files, modes)
 }
 
 fn entry_path(entry: &Entry) -> &std::path::Path {

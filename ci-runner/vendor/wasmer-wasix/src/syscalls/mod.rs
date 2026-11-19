@@ -687,11 +687,13 @@ where
     }
 }
 
-/// Waits for `work`, a socket accept or receive. Like Linux, these block
-/// with no time limit unless the program set one (`SO_RCVTIMEO`), so this
-/// ends the wait with `Errno::Intr` as soon as a signal is queued for the
-/// thread or the thread or its process is made to finish: that is what
-/// still stops a program blocked there. The syscall then asks
+/// Waits for `work`, a socket accept or receive or a blocking read of a
+/// pipe or socket pair. Like Linux, these block with no time limit unless
+/// the program set one (`SO_RCVTIMEO`), so this ends the wait with
+/// `Errno::Intr` as soon as a signal is queued for the thread or the thread
+/// or its process is made to finish: that is what still stops a program
+/// blocked there, and what lets the thread take part in another thread's
+/// `dlopen` (the linker's `Sigwakeup`). The syscall then asks
 /// `__sock_wait_restarts` whether to start the call over.
 pub(crate) async fn __sock_wait<T>(
     env: &WasiEnv,
@@ -700,25 +702,26 @@ pub(crate) async fn __sock_wait<T>(
     tokio::select! {
         biased;
         res = work => res,
-        _ = SignalQueued { thread: &env.thread, waker: None } => Err(Errno::Intr),
+        _ = SignalQueued { env, waker: None } => Err(Errno::Intr),
         _ = env.thread.join() => Err(Errno::Intr),
         _ = env.process.finished.await_termination() => Err(Errno::Intr),
     }
 }
 
-/// Ready once a signal is queued for the thread, which it leaves queued.
-/// Unlike `WasiThread::wait_for_signal` it takes its waker back when it is
+/// Ready once a signal is queued for the thread, which it leaves queued, or
+/// once another thread's link operation waits for this one. Unlike
+/// `WasiThread::wait_for_signal` it takes its waker back when it is
 /// dropped: every blocking call brings a new one, and the thread would
 /// otherwise keep them all until its next signal.
 struct SignalQueued<'a> {
-    thread: &'a WasiThread,
+    env: &'a WasiEnv,
     waker: Option<Waker>,
 }
 
 impl Future for SignalQueued<'_> {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let thread = self.thread;
+        let thread = &self.env.thread;
         let mut signals = thread.signals().lock().unwrap();
         if !signals.0.is_empty() {
             return Poll::Ready(());
@@ -728,6 +731,19 @@ impl Future for SignalQueued<'_> {
         }
         drop(signals);
         self.waker = Some(cx.waker().clone());
+        // A link operation raises its flag and then sends `Sigwakeup`, which
+        // this thread's own signal handling (a syscall's
+        // `do_pending_operations`, `__sock_wait_restarts`) can take off the
+        // queue after it last looked at the flag. Read once the waker is
+        // registered, the flag cannot be missed: an operation that raises it
+        // later wakes this wait with its `Sigwakeup`.
+        if self.env.try_inner().is_some_and(|inner| {
+            inner
+                .linker()
+                .is_some_and(|linker| linker.link_operation_pending())
+        }) {
+            return Poll::Ready(());
+        }
         Poll::Pending
     }
 }
@@ -735,13 +751,13 @@ impl Future for SignalQueued<'_> {
 impl Drop for SignalQueued<'_> {
     fn drop(&mut self) {
         if let Some(waker) = self.waker.take() {
-            let mut signals = self.thread.signals().lock().unwrap();
+            let mut signals = self.env.thread.signals().lock().unwrap();
             signals.1.retain(|w| !w.will_wake(&waker));
         }
     }
 }
 
-/// After `__sock_wait` ended a socket call with `Errno::Intr`: does the
+/// After `__sock_wait` ended a socket or pipe call with `Errno::Intr`: does the
 /// dynamic-linking work another thread is waiting on, runs the signal
 /// handlers (or exits, for a fatal signal or a thread made to finish), and
 /// says whether to start the call over. The program sees `EINTR` only for a
@@ -762,9 +778,15 @@ pub(crate) fn __sock_wait_restarts(
     };
     WasiEnv::do_pending_link_operations(ctx, false)?;
     let _ = WasiEnv::process_signals_and_exit(ctx)?;
-    // A signal still queued is one nothing here takes, and would end the
-    // next wait as soon as it started.
-    let stuck = !ctx.data().thread.signals().lock().unwrap().0.is_empty();
+    // A `Sigwakeup` queued since is the linker's next operation, which has
+    // raised its flag already, and the next wait (`SignalQueued`) sees that
+    // flag. Any other signal still queued is one nothing here takes, and
+    // would end the next wait as soon as it started.
+    let stuck = {
+        let mut signals = ctx.data().thread.signals().lock().unwrap();
+        signals.0.retain(|sig| *sig != Signal::Sigwakeup);
+        !signals.0.is_empty()
+    };
     Ok(!(delivered && handled_here) && !stuck)
 }
 
@@ -887,6 +909,9 @@ where
                     match guard.deref_mut() {
                         Kind::Socket { socket, .. } => {
                             std::mem::swap(socket, &mut new_socket);
+                            // iwci patch: a bound, listening or connected
+                            // AF_UNIX socket stays one.
+                            socket.set_unix(new_socket.unix());
                         }
                         _ => {
                             tracing::warn!(

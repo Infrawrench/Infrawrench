@@ -17,6 +17,8 @@ use wasmer_wasix_types::{
 };
 
 pub mod socket;
+// iwci patch: AF_UNIX stream sockets on a path (unix.rs).
+pub(crate) mod unix;
 
 pub use virtual_net::MAX_SOCKET_PAYLOAD;
 

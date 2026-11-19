@@ -48,15 +48,176 @@ use iwci_vfs::{Entry, Input, SnapshotBuilder};
 use sha2::Digest;
 use shared_buffer::OwnedBuffer;
 
-/// Bump when any installer's output changes for the same inputs, so layers
-/// cached by an older runner are not reused.
+/// Bump when what every key means changes; a change in one installer's
+/// output for the same inputs bumps that installer's [`Installer::version`]
+/// instead.
 pub const LAYOUT_VERSION: u32 = 1;
 
+/// An installer whose results are cached, each with its own version.
+///
+/// Keys name the installer and its version ([`InstallKey`]) beside
+/// [`LAYOUT_VERSION`], which is now for a change in what every key means;
+/// one installer's output changing is that installer's
+/// [`Installer::version`]. Keys of this shape are new, so every layer a
+/// runner cached before them is a miss, and [`LayerCache::compact`]
+/// removes it (its directory has no [`KEY_FILE`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Installer {
+    Pnpm,
+    Npm,
+    Bun,
+    Go,
+    Cargo,
+    Pip,
+    Composer,
+    Bundler,
+}
+
+impl Installer {
+    pub const ALL: [Installer; 8] = [
+        Installer::Pnpm,
+        Installer::Npm,
+        Installer::Bun,
+        Installer::Go,
+        Installer::Cargo,
+        Installer::Pip,
+        Installer::Composer,
+        Installer::Bundler,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Installer::Pnpm => "pnpm",
+            Installer::Npm => "npm",
+            Installer::Bun => "bun",
+            Installer::Go => "go",
+            Installer::Cargo => "cargo",
+            Installer::Pip => "pip",
+            Installer::Composer => "composer",
+            Installer::Bundler => "bundler",
+        }
+    }
+
+    /// The installer's version, part of every key it is cached under.
+    ///
+    /// **Bump an installer's number in the same change as anything that
+    /// alters what it writes for the same inputs**: which files or links
+    /// it makes and where, their contents, which packages it skips, the
+    /// notes it returns, or an error that used to be a success (and the
+    /// other way round). A cached install is replayed whenever the files
+    /// it read are unchanged, so without the bump a runner keeps serving
+    /// what the previous build of the installer made. Reading a file it
+    /// did not read before needs a bump too: the old layers never recorded
+    /// that read, so they would still be replayed with the file there. A
+    /// change in speed alone needs none. Layers of an older version are
+    /// never read again, and [`LayerCache::compact`] removes them.
+    pub fn version(self) -> u32 {
+        match self {
+            // 2: WebAssembly builds in place of Rollup, esbuild and
+            // Lightning CSS, `node_modules/.bin`, directory packages, pnpm
+            // 12 revisions and tar integrity. 3: a tarball's executable bits
+            // and executable bin targets.
+            Installer::Pnpm => 3,
+            // 2: a tarball's executable bits and executable bin targets.
+            Installer::Npm => 2,
+            // 2: WebAssembly builds and `node_modules/.bin`. 3: a tarball's
+            // executable bits and executable bin targets.
+            Installer::Bun => 3,
+            Installer::Go => 1,
+            Installer::Cargo => 1,
+            Installer::Pip => 1,
+            Installer::Composer => 1,
+            Installer::Bundler => 1,
+        }
+    }
+
+    fn named(name: &str) -> Option<Installer> {
+        Installer::ALL.into_iter().find(|i| i.name() == name)
+    }
+}
+
+/// What a cached install is keyed on: the installer and its version, the
+/// directory, and every option that changes its output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallKey {
+    installer: Installer,
+    rest: String,
+}
+
+impl InstallKey {
+    /// `options` is written out with `Debug`, so leave out anything that
+    /// does not change the output (a thread count) before passing it.
+    pub fn new(installer: Installer, dir: &str, options: &impl std::fmt::Debug) -> Self {
+        Self {
+            installer,
+            rest: format!("{dir}\0{options:?}"),
+        }
+    }
+
+    /// The key with something else the output depends on.
+    pub fn with(mut self, more: &str) -> Self {
+        self.rest.push('\0');
+        self.rest.push_str(more);
+        self
+    }
+
+    /// The installer and its version, as the key starts with them.
+    fn generation(installer: Installer) -> String {
+        format!(
+            "v{LAYOUT_VERSION}\0{}@{}",
+            installer.name(),
+            installer.version()
+        )
+    }
+
+    fn text(&self) -> String {
+        format!("{}\0{}", Self::generation(self.installer), self.rest)
+    }
+}
+
+impl From<&InstallKey> for InstallKey {
+    fn from(key: &InstallKey) -> Self {
+        key.clone()
+    }
+}
+
+/// Tests name keys by a bare string, as a pnpm install with that text.
+#[cfg(test)]
+impl From<&str> for InstallKey {
+    fn from(rest: &str) -> Self {
+        Self {
+            installer: Installer::Pnpm,
+            rest: rest.to_string(),
+        }
+    }
+}
+
+/// The file in each key's directory that holds the key's text, so
+/// [`LayerCache::compact`] can tell a current key from one no runner of
+/// this version will ask for.
+pub const KEY_FILE: &str = "key";
+
+/// Whether a key's text, as [`KEY_FILE`] holds it, is one this runner can
+/// ask for: the current layout and the current version of its installer.
+fn key_is_current(text: &str) -> bool {
+    let mut fields = text.splitn(3, '\0');
+    let (Some(layout), Some(installer)) = (fields.next(), fields.next()) else {
+        return false;
+    };
+    let Some((name, _)) = installer.split_once('@') else {
+        return false;
+    };
+    Installer::named(name)
+        .is_some_and(|i| format!("{layout}\0{installer}") == InstallKey::generation(i))
+}
+
 const MAGIC: &[u8; 8] = b"IWCILAYR";
+/// 3: the index carries the modes the install set, after its notes.
 /// 2: an index, then the files' bytes uncompressed and hashed in chunks
 /// (#998). 1 was a zstd stream with each file's bytes inline in the
-/// entries, which a runner now reads as a miss.
-const FORMAT: u32 = 2;
+/// entries. A runner reads a file of another format as a miss and removes
+/// it.
+const FORMAT: u32 = 3;
 /// The magic, the format, the index's length and the index's SHA-256.
 const HEADER: usize = 8 + 4 + 8 + 32;
 /// The data is hashed in chunks of this size, so a restore can check it on
@@ -91,6 +252,10 @@ pub enum Outcome {
 struct Layer {
     inputs: Vec<Input>,
     entries: Vec<Entry>,
+    /// The modes the install gave paths (`SnapshotBuilder::set_mode`):
+    /// executables Composer, Bundler and pip mark, which are not in the
+    /// entries.
+    modes: Vec<(PathBuf, u32)>,
     notes: Vec<String>,
     /// The stem of its files on disk.
     name: String,
@@ -131,6 +296,9 @@ pub struct Compacted {
     pub packed: usize,
     /// Bytes of unpacked copies removed.
     pub freed: u64,
+    /// Keys' directories removed because no runner of this version will
+    /// ask for them (an older layout or installer version).
+    pub removed: usize,
     pub problems: Vec<String>,
 }
 
@@ -163,16 +331,17 @@ impl LayerCache {
     /// Fills `builder` with what `install` produces, from the cache when the
     /// checkout in `builder` still matches what a cached install read.
     ///
-    /// `key` names the install: the ecosystem, its directory and every
-    /// option that changes its output. `install` gets an empty layer over
-    /// `builder` and returns notes (warnings) worth keeping with the result.
+    /// `key` names the install: the installer and its version, its
+    /// directory and every option that changes its output. `install` gets
+    /// an empty layer over `builder` and returns notes (warnings) worth
+    /// keeping with the result.
     pub fn install<E: std::fmt::Display>(
         &self,
         builder: &SnapshotBuilder,
-        key: &str,
+        key: impl Into<InstallKey>,
         install: impl FnOnce(&SnapshotBuilder) -> Result<Vec<String>, E>,
     ) -> Result<(Outcome, Vec<String>), String> {
-        let key = format!("v{LAYOUT_VERSION}\0{key}");
+        let key = key.into().text();
         let holds = |inputs: &[Input]| inputs.iter().all(|input| input.holds(builder.fs()));
 
         if let Some(layer) = self.lookup_memory(&key, &holds) {
@@ -204,15 +373,16 @@ impl LayerCache {
             name: inputs_name(&inputs),
             inputs,
             entries: scratch.entries(),
+            modes: scratch.modes(),
             notes,
         });
-        builder.apply(&layer.entries).map_err(|e| e.to_string())?;
+        apply(builder, &layer)?;
         // A cache that cannot be written is a slower next run, not a failed
         // one.
         let mut kept = layer.clone();
         if let Some(dir) = &self.dir {
             let dir = dir.join(key_dir(&key));
-            if self.save(&dir, &layer).is_ok() {
+            if self.save(&dir, &key, &layer).is_ok() {
                 // What memory keeps is the copy just written, as views of
                 // its mapping, which the kernel can page out and reclaim.
                 // The install's own buffers are the process's anonymous
@@ -237,7 +407,7 @@ impl LayerCache {
         layer: &Layer,
         outcome: Outcome,
     ) -> Result<(Outcome, Vec<String>), String> {
-        builder.apply(&layer.entries).map_err(|e| e.to_string())?;
+        apply(builder, layer)?;
         self.touch(key, &layer.name);
         Ok((outcome, layer.notes.clone()))
     }
@@ -322,9 +492,15 @@ impl LayerCache {
         }
     }
 
-    /// Writes a new layer unpacked, as used now.
-    fn save(&self, dir: &Path, layer: &Layer) -> std::io::Result<()> {
+    /// Writes a new layer unpacked, as used now, and the key it is under.
+    fn save(&self, dir: &Path, key: &str, layer: &Layer) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
+        let key_file = dir.join(KEY_FILE);
+        if std::fs::read(&key_file).ok().as_deref() != Some(key.as_bytes()) {
+            let temp = Temp::new(dir);
+            std::fs::write(&temp.0, key)?;
+            temp.rename_to(&key_file)?;
+        }
         let path = dir.join(format!("{}.{UNPACKED}", layer.name));
         write_unpacked(&path, layer)?;
         File::open(&path)?.set_modified((self.clock)())?;
@@ -384,6 +560,10 @@ impl LayerCache {
         let now = (self.clock)();
         let idle = |used: SystemTime| now.duration_since(used).unwrap_or_default();
         for dir in dirs.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+            if self.remove_if_stale(&dir, idle(modified(&dir).unwrap_or(now))) {
+                out.removed += 1;
+                continue;
+            }
             if let Ok(files) = std::fs::read_dir(&dir) {
                 for file in files.flatten() {
                     let stale = file.file_name().to_string_lossy().ends_with(".tmp")
@@ -429,6 +609,29 @@ impl LayerCache {
         out
     }
 
+    /// Removes a key's directory that no runner of this version asks for:
+    /// one whose [`KEY_FILE`] names another layout or installer version,
+    /// or one without that file (written before keys recorded themselves)
+    /// that nothing has changed for an hour, so a save that has made the
+    /// directory and not yet its key file is left alone.
+    fn remove_if_stale(&self, dir: &Path, idle: Duration) -> bool {
+        let stale = match std::fs::read_to_string(dir.join(KEY_FILE)) {
+            Ok(text) => !key_is_current(&text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => idle > STALE_TEMP,
+            Err(_) => false,
+        };
+        if !stale || std::fs::remove_dir_all(dir).is_err() {
+            return false;
+        }
+        if let Some(dir_name) = dir.file_name().and_then(|n| n.to_str()) {
+            let mut memory = self.memory.lock().expect("cache lock");
+            let (layers, order) = &mut *memory;
+            layers.retain(|key, _| key_dir(key) != dir_name);
+            order.retain(|key| layers.contains_key(key));
+        }
+        true
+    }
+
     /// Drops a layer from memory, so the mapping of its removed unpacked
     /// copy goes too.
     fn forget(&self, dir: &Path, name: &str) {
@@ -445,6 +648,12 @@ impl LayerCache {
         });
         order.retain(|key| layers.contains_key(key));
     }
+}
+
+/// Writes a layer's files and modes into `builder`.
+fn apply(builder: &SnapshotBuilder, layer: &Layer) -> Result<(), String> {
+    builder.apply(&layer.entries).map_err(|e| e.to_string())?;
+    builder.apply_modes(&layer.modes).map_err(|e| e.to_string())
 }
 
 fn touch_key(order: &mut Vec<String>, key: &str) {
@@ -574,6 +783,7 @@ fn pack(unpacked: &Path, packed: &Path, used: SystemTime) -> std::io::Result<()>
 #[derive(Debug)]
 struct Index {
     notes: Vec<String>,
+    modes: Vec<(PathBuf, u32)>,
     inputs: Vec<Input>,
     data_len: u64,
     /// SHA-256 of each `CHUNK` of the data.
@@ -616,6 +826,7 @@ impl Unpacked {
         Layer {
             inputs: self.index.inputs,
             entries,
+            modes: self.index.modes,
             notes: self.index.notes,
             name,
         }
@@ -764,6 +975,11 @@ fn encode_index(layer: &Layer, data_len: u64, chunks: &[[u8; 32]]) -> std::io::R
     for note in &layer.notes {
         write_str(&mut w, note)?;
     }
+    write_u32(&mut w, layer.modes.len())?;
+    for (path, mode) in &layer.modes {
+        write_path(&mut w, path)?;
+        w.write_all(&mode.to_le_bytes())?;
+    }
     write_u32(&mut w, layer.inputs.len())?;
     for input in &layer.inputs {
         match input {
@@ -779,6 +995,11 @@ fn encode_index(layer: &Layer, data_len: u64, chunks: &[[u8; 32]]) -> std::io::R
             Input::Absent { path } => {
                 w.write_all(&[2])?;
                 write_path(&mut w, path)?;
+            }
+            Input::Tree { path, sha256 } => {
+                w.write_all(&[3])?;
+                write_path(&mut w, path)?;
+                w.write_all(sha256)?;
             }
         }
     }
@@ -814,6 +1035,9 @@ fn decode_index(mut r: &[u8]) -> std::io::Result<Index> {
     let notes = (0..read_u32(r)?)
         .map(|_| read_string(r))
         .collect::<std::io::Result<_>>()?;
+    let modes = (0..read_u32(r)?)
+        .map(|_| Ok((PathBuf::from(read_string(r)?), read_u32(r)?)))
+        .collect::<std::io::Result<_>>()?;
     let mut inputs = Vec::new();
     for _ in 0..read_u32(r)? {
         let kind = read_u8(r)?;
@@ -826,6 +1050,11 @@ fn decode_index(mut r: &[u8]) -> std::io::Result<Index> {
             }
             1 => Input::Dir { path },
             2 => Input::Absent { path },
+            3 => {
+                let mut sha256 = [0u8; 32];
+                r.read_exact(&mut sha256)?;
+                Input::Tree { path, sha256 }
+            }
             _ => return Err(bad("unknown input kind")),
         });
     }
@@ -869,6 +1098,7 @@ fn decode_index(mut r: &[u8]) -> std::io::Result<Index> {
     }
     Ok(Index {
         notes,
+        modes,
         inputs,
         data_len,
         chunks,
@@ -970,7 +1200,7 @@ mod tests {
     }
 
     fn layer_dir(dir: &Path, key: &str) -> PathBuf {
-        dir.join(key_dir(&format!("v{LAYOUT_VERSION}\0{key}")))
+        dir.join(key_dir(&InstallKey::from(key).text()))
     }
 
     /// The one file of `kind` in a key's directory, if there is one.
@@ -1059,7 +1289,7 @@ mod tests {
     /// of a mapped file, and how many files there are.
     fn kept_mapped(cache: &LayerCache, key: &str) -> (bool, usize) {
         let memory = cache.memory.lock().unwrap();
-        let files: Vec<bool> = memory.0[&format!("v{LAYOUT_VERSION}\0{key}")]
+        let files: Vec<bool> = memory.0[&InstallKey::from(key).text()]
             .iter()
             .flat_map(|l| &l.entries)
             .filter_map(|e| match e {
@@ -1235,6 +1465,153 @@ mod tests {
             target.read("/app/node_modules/a/index.js").unwrap(),
             b"lock v1default"
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Executables an installer marks (Composer's `vendor/bin`, Bundler's
+    /// and pip's scripts) keep their mode on every path: fresh, from
+    /// memory, from disk unpacked, and from disk packed.
+    #[test]
+    fn modes_an_install_sets_survive_caching() {
+        let dir = temp_dir("modes");
+        let clock = Clock::new();
+        let runs = AtomicUsize::new(0);
+        let marking = |layer: &SnapshotBuilder| -> Result<Vec<String>, String> {
+            runs.fetch_add(1, Ordering::SeqCst);
+            layer
+                .read("/app/pnpm-lock.yaml")
+                .map_err(|e| e.to_string())?;
+            layer.write("/app/vendor/bin/tool", b"#!/bin/sh\n").unwrap();
+            layer.write("/app/vendor/lib.php", b"<?php\n").unwrap();
+            layer.set_mode("/app/vendor/bin/tool", 0o755).unwrap();
+            layer.set_mode("/app/vendor/bin", 0o755).unwrap();
+            Ok(Vec::new())
+        };
+        let check = |builder: SnapshotBuilder, outcome: Outcome, expected: Outcome| {
+            assert_eq!(outcome, expected);
+            let snapshot = builder.freeze();
+            assert_eq!(
+                snapshot.mode("/app/vendor/bin/tool"),
+                Some(0o755),
+                "{expected:?}"
+            );
+            assert_eq!(
+                snapshot.mode("/app/vendor/bin"),
+                Some(0o755),
+                "{expected:?}"
+            );
+            assert_eq!(snapshot.mode("/app/vendor/lib.php"), None, "{expected:?}");
+        };
+
+        let cache = clock.cache(&dir);
+        let fresh = checkout();
+        let outcome = cache.install(&fresh, "k", marking).unwrap().0;
+        check(fresh, outcome, Outcome::Installed);
+        let again = checkout();
+        let outcome = cache.install(&again, "k", marking).unwrap().0;
+        check(again, outcome, Outcome::Memory);
+        let unpacked = checkout();
+        let outcome = clock
+            .cache(&dir)
+            .install(&unpacked, "k", marking)
+            .unwrap()
+            .0;
+        check(unpacked, outcome, Outcome::Disk);
+        clock.advance(48);
+        assert_eq!(clock.cache(&dir).compact().packed, 1);
+        let packed = checkout();
+        let outcome = clock.cache(&dir).install(&packed, "k", marking).unwrap().0;
+        check(packed, outcome, Outcome::Disk);
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn keys_name_the_installer_and_its_version() {
+        let text = InstallKey::new(Installer::Npm, "/app", &("opts", 1)).text();
+        assert_eq!(
+            text,
+            format!("v{LAYOUT_VERSION}\0npm@2\0/app\0(\"opts\", 1)")
+        );
+        assert!(key_is_current(&text));
+        // Each installer's keys are its own, even for the same directory
+        // and options.
+        let dirs: std::collections::HashSet<String> = Installer::ALL
+            .into_iter()
+            .map(|i| key_dir(&InstallKey::new(i, "/app", &()).text()))
+            .collect();
+        assert_eq!(dirs.len(), Installer::ALL.len());
+        for installer in Installer::ALL {
+            assert_eq!(Installer::named(installer.name()), Some(installer));
+        }
+        assert_eq!(
+            InstallKey::new(Installer::Bundler, "/app", &())
+                .with("builds 3")
+                .text(),
+            format!("v{LAYOUT_VERSION}\0bundler@1\0/app\0()\0builds 3")
+        );
+        // Another version of the installer, or of the layout, is not.
+        assert!(!key_is_current(&text.replace("npm@2", "npm@1")));
+        assert!(!key_is_current(&text.replacen(
+            &format!("v{LAYOUT_VERSION}"),
+            &format!("v{}", LAYOUT_VERSION + 1),
+            1
+        )));
+        assert!(!key_is_current("v2\0yarn@1\0/app\0()"));
+        assert!(!key_is_current("pnpm /app"));
+    }
+
+    #[test]
+    fn layers_of_an_older_installer_version_are_missed_and_removed() {
+        let dir = temp_dir("old-version");
+        let runs = AtomicUsize::new(0);
+        let clock = Clock::new();
+        let cache = clock.cache(&dir);
+        cache.install(&checkout(), "k", install(&runs)).unwrap();
+        cache.install(&checkout(), "other", install(&runs)).unwrap();
+        let key_file = layer_dir(&dir, "k").join(KEY_FILE);
+        assert_eq!(
+            std::fs::read_to_string(&key_file).unwrap(),
+            InstallKey::from("k").text()
+        );
+        // Both current: compacting removes neither.
+        assert_eq!(cache.compact().removed, 0);
+
+        // What the directory of the same install looks like to a runner
+        // whose pnpm installer is a version further on: another key, so
+        // never read, and removed by the next compact, memory included.
+        let v = Installer::Pnpm.version();
+        let older = InstallKey::from("k")
+            .text()
+            .replace(&format!("pnpm@{v}"), &format!("pnpm@{}", v - 1));
+        std::fs::write(&key_file, older).unwrap();
+        assert_eq!(cache.compact().removed, 1);
+        assert!(!layer_dir(&dir, "k").exists());
+        assert!(layer_dir(&dir, "other").exists());
+        assert_eq!(
+            cache.install(&checkout(), "k", install(&runs)).unwrap().0,
+            Outcome::Installed
+        );
+        assert_eq!(runs.load(Ordering::SeqCst), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_key_directory_from_before_keys_were_recorded_is_removed_once_idle() {
+        let dir = temp_dir("keyless");
+        // A layer a runner cached before keys named their installer: a
+        // directory under a hash of `v1\0pnpm\0/app\0...`, no key file.
+        let old = dir.join(key_dir("v1\0pnpm\0/app\0PnpmOptions"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("0123456789abcdef0123456789abcdef.layer"), b"x").unwrap();
+        // Just made: a save may be about to write its key file.
+        assert_eq!(LayerCache::new(Some(dir.clone())).compact().removed, 0);
+        assert!(old.exists());
+        // An hour and more later it goes.
+        let clock = Clock::new();
+        assert!(clock.now() > SystemTime::now() + STALE_TEMP);
+        assert_eq!(clock.cache(&dir).compact().removed, 1);
+        assert!(!old.exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 
