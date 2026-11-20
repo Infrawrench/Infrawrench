@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   GENERATED_DOTENV_MARKER,
   emptyInfraenvDocument,
+  expandInfraenvValue,
   infraenvEntriesFor,
+  infraenvReferenceKey,
+  infraenvVariables,
   infraenvReferences,
   isGeneratedDotenv,
   parseInfraenv,
@@ -86,7 +89,7 @@ describe("parseInfraenv", () => {
 
   it.each([
     ["1BAD = x", "Invalid variable name"],
-    ['A = resource("only-one")', "resource() takes two arguments"],
+    ['A = resource("only-one")', 'resource() takes resource("<id>", "<output>")'],
     ["A = secret()", "secret() takes one argument"],
     ["A = resource(res, out)", "Malformed reference"],
     ['A = "unterminated', "Unterminated quoted value"],
@@ -170,6 +173,7 @@ describe("infraenvEntriesFor", () => {
     const { document } = parseInfraenv(SAMPLE);
     const refs = infraenvReferences(document);
     expect(refs.resources).toHaveLength(2);
+    expect(refs.problems).toEqual([]);
     expect(refs.secrets).toEqual(["STRIPE_SECRET_KEY"]);
   });
 });
@@ -208,5 +212,114 @@ describe("suggestInfraenvKey", () => {
     expect(suggestInfraenvKey("connectionString")).toBe("CONNECTION_STRING");
     expect(suggestInfraenvKey("prod db", "url")).toBe("PROD_DB_URL");
     expect(suggestInfraenvKey("3scale")).toBe("_3SCALE");
+  });
+});
+
+describe("by-name references and substitutions", () => {
+  const PORTABLE = `[vars]
+stage = dev
+team = storefront
+
+[env]
+DATABASE_URL = resource("neon/neon-branch", "\${team} / \${stage}", "connectionString")
+CACHE = resource("upstash/upstash-redis@Upstash \${stage}", "sessions", "restUrl")
+STRIPE = secret("STRIPE_\${stage}_KEY")
+LITERAL = "\${HOME} stays"
+ESCAPED = resource("neon/neon-branch", "a $\${b}", "connectionString")
+
+[vars.production]
+stage = prod
+
+[env.production]
+NODE_ENV = production
+`;
+
+  it("parses by-name references, [vars] and [vars.<env>]", () => {
+    const { document, problems } = parseInfraenv(PORTABLE);
+    expect(problems).toEqual([]);
+    expect(document.vars?.map((v) => [v.key, v.value])).toEqual([
+      ["stage", "dev"],
+      ["team", "storefront"],
+    ]);
+    expect(document.environments[0]!.vars?.map((v) => [v.key, v.value])).toEqual([
+      ["stage", "prod"],
+    ]);
+    expect(document.shared[1]!.value).toEqual({
+      kind: "named-resource",
+      match: {
+        pluginId: "upstash",
+        resourceTypeId: "upstash-redis",
+        name: "sessions",
+        account: "Upstash ${stage}",
+      },
+      output: "restUrl",
+    });
+  });
+
+  it("round-trips", () => {
+    const text = serializeInfraenv(parseInfraenv(PORTABLE).document);
+    expect(serializeInfraenv(parseInfraenv(text).document)).toBe(text);
+    expect(text).toContain("[vars.production]\nstage = prod\n\n[env.production]");
+  });
+
+  it("expands per environment, never touching literals", () => {
+    const { document } = parseInfraenv(PORTABLE);
+    const dev = infraenvVariables(document, null);
+    const prod = infraenvVariables(document, "production", { team: "web" });
+    expect(prod.get("environment")).toBe("production");
+    const db = document.shared[0]!.value;
+    expect(expandInfraenvValue(db, dev)).toMatchObject({
+      ok: true,
+      value: { match: { name: "storefront / dev" } },
+    });
+    expect(expandInfraenvValue(db, prod)).toMatchObject({
+      ok: true,
+      value: { match: { name: "web / prod" } },
+    });
+    expect(expandInfraenvValue(document.shared[2]!.value, prod)).toMatchObject({
+      value: { name: "STRIPE_prod_KEY" },
+    });
+    expect(document.shared[3]!.value).toEqual({ kind: "literal", value: "${HOME} stays" });
+    expect(expandInfraenvValue(document.shared[4]!.value, dev)).toMatchObject({
+      value: { match: { name: "a ${b}" } },
+    });
+  });
+
+  it("reports a substitution with no value, per scope", () => {
+    const { document } = parseInfraenv(
+      '[env]\nA = secret("K_${environment}")\n\n[env.staging]\nB = x\n',
+    );
+    const refs = infraenvReferences(document);
+    expect(refs.secrets).toEqual(["K_staging"]);
+    expect(refs.problems).toEqual([
+      {
+        line: 2,
+        key: "A",
+        message: "No value for ${environment}: set it in [vars] or pick an environment",
+      },
+    ]);
+  });
+
+  it.each([
+    ['A = resource("neon", "x", "y")', "resource() by name takes"],
+    ['A = resource("neon/branch@", "x", "y")', "resource() by name takes"],
+    ['[vars]\nA = secret("x")', "a substitution takes a plain value"],
+    ["[vars.prod]\nA = 1\n[vars.prod]\nB = 2", "[vars.prod] is declared twice"],
+  ])("reports %j", (source, message) => {
+    expect(
+      parseInfraenv(source)
+        .problems.map((p) => p.message)
+        .join("\n"),
+    ).toContain(message);
+  });
+
+  it("keys expanded references the same way everywhere", () => {
+    expect(
+      infraenvReferenceKey({
+        kind: "named-resource",
+        match: { pluginId: "neon", resourceTypeId: "neon-branch", name: "main" },
+        output: "connectionString",
+      }),
+    ).toBe("name:neon/neon-branch\u0000main\u0000connectionString");
   });
 });

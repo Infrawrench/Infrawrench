@@ -19,8 +19,13 @@ import {
   INFRAENV_FILE_NAME,
   INFRAENV_LIMITS,
   infraenvEntriesFor,
+  expandInfraenvValue,
+  infraenvReferenceKey,
   infraenvReferences,
+  infraenvValueHasTemplate,
+  infraenvVariables,
   parseInfraenv,
+  resourceKindOf,
   renderDotenv,
   type InfraenvCommitMode,
   type InfraenvCommitResult,
@@ -30,6 +35,8 @@ import {
   type InfraenvRepoFile,
   type InfraenvResolveResponse,
   type InfraenvResourceDescription,
+  type InfraenvResourceMatch,
+  type InfraenvResourceReference,
   type InfraenvSecretDescription,
   type InfraenvSource,
 } from "@infrawrench/client-core";
@@ -130,102 +137,37 @@ function checkSize(source: string): void {
   }
 }
 
-/** What every reference in the file points at, plus syntax and dangling-reference problems. */
-export async function describeInfraenv(
+/** At most this many same-named resources are read to report an ambiguous name. */
+const NAMED_LIMIT = 10;
+
+async function loadNamedRows(
   organizationId: string,
-  source: string,
-  reader: Pick<InfraenvReader, "resources" | "secrets"> = defaultReader,
-): Promise<InfraenvDescribeResponse> {
-  checkSize(source);
-  const { document, problems } = parseInfraenv(source);
-  const refs = infraenvReferences(document);
-  const [rows, secretRows, plugins] = await Promise.all([
-    reader.resources(
-      organizationId,
-      refs.resources.map((r) => r.resourceId),
-    ),
-    reader.secrets(organizationId, refs.secrets),
-    pluginsById(),
-  ]);
-
-  const resourceDescriptions: InfraenvResourceDescription[] = refs.resources.map((ref) => {
-    const row = rows.get(ref.resourceId);
-    if (!row) return { ...ref, found: false, outputKnown: false, sensitive: true };
-    const plugin = plugins.get(row.pluginId);
-    const type = plugin?.resourceTypes.find((t) => t.id === row.resourceTypeId);
-    const output = type?.outputs.find((o) => o.key === ref.output);
-    return {
-      ...ref,
-      found: true,
-      displayName: row.displayName,
-      pluginId: row.pluginId,
-      pluginName: plugin?.manifest.displayName ?? row.pluginId,
-      resourceTypeId: row.resourceTypeId,
-      resourceTypeName: type?.displayName ?? row.resourceTypeId,
-      accountId: row.accountId,
-      accountName: row.accountName,
-      ...(output ? { outputLabel: output.label } : {}),
-      outputKnown: output !== undefined,
-      // An undeclared output may hold anything: treat it as a secret.
-      sensitive: output ? output.sensitive || output.hidden === true : true,
-    };
-  });
-
-  const secretDescriptions: InfraenvSecretDescription[] = refs.secrets.map((name) => {
-    const row = secretRows.get(name);
-    return {
-      name,
-      found: row !== undefined,
-      hasValue: Boolean(row?.encryptedValue && row.encryptedValueIv),
-    };
-  });
-
-  // Dangling references, reported at each line that makes one.
-  const all = [...document.shared, ...document.environments.flatMap((e) => e.entries)];
-  const dangling: InfraenvProblem[] = [];
-  for (const entry of all) {
-    const v = entry.value;
-    if (v.kind === "resource") {
-      const d = resourceDescriptions.find(
-        (r) => r.resourceId === v.resourceId && r.output === v.output,
-      );
-      if (d && !d.found) {
-        dangling.push({
-          line: entry.line ?? 0,
-          key: entry.key,
-          message: `No resource ${v.resourceId} in this organization`,
-        });
-      } else if (d && !d.outputKnown) {
-        dangling.push({
-          line: entry.line ?? 0,
-          key: entry.key,
-          message: `${d.resourceTypeName ?? "The resource"} has no output "${v.output}"`,
-        });
-      }
-    } else if (v.kind === "secret") {
-      const d = secretDescriptions.find((s) => s.name === v.name);
-      if (d && !d.found) {
-        dangling.push({
-          line: entry.line ?? 0,
-          key: entry.key,
-          message: `No organization secret named ${v.name}`,
-        });
-      } else if (d && !d.hasValue) {
-        dangling.push({
-          line: entry.line ?? 0,
-          key: entry.key,
-          message: `The organization secret ${v.name} has no value yet`,
-        });
-      }
-    }
-  }
-
-  return {
-    problems: [...problems, ...dangling],
-    environments: document.environments.map((e) => e.name),
-    resources: resourceDescriptions,
-    secrets: secretDescriptions,
-  };
+  match: InfraenvResourceMatch,
+): Promise<InfraenvResourceRow[]> {
+  return db
+    .select({
+      id: resources.id,
+      pluginId: resources.pluginId,
+      resourceTypeId: resources.resourceTypeId,
+      accountId: resources.accountId,
+      parentResourceId: resources.parentResourceId,
+      displayName: resources.displayName,
+      accountName: accounts.displayName,
+    })
+    .from(resources)
+    .innerJoin(accounts, eq(accounts.id, resources.accountId))
+    .where(
+      and(
+        eq(resources.organizationId, organizationId),
+        eq(resources.pluginId, match.pluginId),
+        eq(resources.resourceTypeId, match.resourceTypeId),
+        eq(resources.displayName, match.name),
+        match.account !== undefined ? eq(accounts.displayName, match.account) : undefined,
+        isNull(resources.deletedAt),
+      ),
+    )
+    .orderBy(asc(resources.id))
+    .limit(NAMED_LIMIT);
 }
 
 type SecretRow = Pick<
@@ -239,6 +181,8 @@ export interface InfraenvReader {
     organizationId: string,
     ids: readonly string[],
   ): Promise<Map<string, InfraenvResourceRow>>;
+  /** Resources matching a by-name reference, at most a handful. */
+  named(organizationId: string, match: InfraenvResourceMatch): Promise<InfraenvResourceRow[]>;
   secrets(organizationId: string, names: readonly string[]): Promise<Map<string, SecretRow>>;
   resourceOutput(organizationId: string, row: InfraenvResourceRow, output: string): Promise<string>;
   secretValue(row: SecretRow): Promise<string | null>;
@@ -246,6 +190,7 @@ export interface InfraenvReader {
 
 const defaultReader: InfraenvReader = {
   resources: loadInfraenvResourceRows,
+  named: loadNamedRows,
   secrets: loadSecretRows,
   async resourceOutput(organizationId, row, output) {
     const ctx = await getClientForResource(
@@ -271,17 +216,166 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** What one expanded resource reference found: the row, or how many rows a name matched. */
+interface Found {
+  readonly row: InfraenvResourceRow | null;
+  /** For a by-name reference. */
+  readonly matches?: number;
+}
+
+/** Each distinct expanded reference looked up once, keyed by `infraenvReferenceKey`. */
+async function findResources(
+  organizationId: string,
+  refs: readonly InfraenvResourceReference[],
+  reader: Pick<InfraenvReader, "resources" | "named">,
+): Promise<Map<string, Found>> {
+  const out = new Map<string, Found>();
+  const ids = refs.flatMap((r) => (r.kind === "resource" ? [r.resourceId] : []));
+  const byId = await reader.resources(organizationId, ids);
+  for (const ref of refs) {
+    const key = infraenvReferenceKey(ref);
+    if (out.has(key)) continue;
+    if (ref.kind === "resource") {
+      out.set(key, { row: byId.get(ref.resourceId) ?? null });
+    } else {
+      const rows = await reader.named(organizationId, ref.match);
+      out.set(key, { row: rows.length === 1 ? rows[0]! : null, matches: rows.length });
+    }
+  }
+  return out;
+}
+
+/** What a reference that found nothing says, in the words both describe and resolve use. */
+function notFoundMessage(ref: InfraenvResourceReference, found: Found | undefined): string {
+  if (ref.kind === "resource") return `No resource ${ref.resourceId} in this organization`;
+  const m = ref.match;
+  const what = `${resourceKindOf(m)} named "${m.name}"`;
+  const n = found?.matches ?? 0;
+  if (n === 0) return `No ${what} in this organization`;
+  return `${n >= NAMED_LIMIT ? `${NAMED_LIMIT} or more` : n} resources match ${what}: add the account, as "${m.pluginId}/${m.resourceTypeId}@<account>", or pin one by id`;
+}
+
+/** What every reference in the file points at, plus syntax and dangling-reference problems. */
+export async function describeInfraenv(
+  organizationId: string,
+  source: string,
+  options: { vars?: Readonly<Record<string, string>> | undefined } = {},
+  reader: Pick<InfraenvReader, "resources" | "named" | "secrets"> = defaultReader,
+): Promise<InfraenvDescribeResponse> {
+  checkSize(source);
+  const { document, problems } = parseInfraenv(source);
+  const refs = infraenvReferences(document, options.vars);
+  const [found, secretRows, plugins] = await Promise.all([
+    findResources(organizationId, refs.resources, reader),
+    reader.secrets(organizationId, refs.secrets),
+    pluginsById(),
+  ]);
+
+  const resourceDescriptions: InfraenvResourceDescription[] = refs.resources.map((ref) => {
+    const key = infraenvReferenceKey(ref);
+    const f = found.get(key);
+    const base = {
+      ref: key,
+      output: ref.output,
+      ...(ref.kind === "resource"
+        ? { resourceId: ref.resourceId }
+        : { match: ref.match, matches: f?.matches ?? 0 }),
+    };
+    const row = f?.row;
+    if (!row) return { ...base, found: false, outputKnown: false, sensitive: true };
+    const plugin = plugins.get(row.pluginId);
+    const type = plugin?.resourceTypes.find((t) => t.id === row.resourceTypeId);
+    const output = type?.outputs.find((o) => o.key === ref.output);
+    return {
+      ...base,
+      resourceId: row.id,
+      found: true,
+      displayName: row.displayName,
+      pluginId: row.pluginId,
+      pluginName: plugin?.manifest.displayName ?? row.pluginId,
+      resourceTypeId: row.resourceTypeId,
+      resourceTypeName: type?.displayName ?? row.resourceTypeId,
+      accountId: row.accountId,
+      accountName: row.accountName,
+      ...(output ? { outputLabel: output.label } : {}),
+      outputKnown: output !== undefined,
+      // An undeclared output may hold anything: treat it as a secret.
+      sensitive: output ? output.sensitive || output.hidden === true : true,
+    };
+  });
+  const byRef = new Map(resourceDescriptions.map((d) => [d.ref, d]));
+
+  const secretDescriptions: InfraenvSecretDescription[] = refs.secrets.map((name) => {
+    const row = secretRows.get(name);
+    return {
+      name,
+      found: row !== undefined,
+      hasValue: Boolean(row?.encryptedValue && row.encryptedValueIv),
+    };
+  });
+  const bySecret = new Map(secretDescriptions.map((d) => [d.name, d]));
+
+  // Dangling references, at each line that makes one, in every scope that
+  // expands it (a by-name reference can find a resource for one environment
+  // and nothing for another).
+  const dangling = new Map<string, InfraenvProblem>();
+  // A reference without substitutions is the same in every scope: it reads once,
+  // with no environment named.
+  const note = (line: number, key: string, msg: string, scope: string | null) => {
+    const m = scope ? `${msg} (environment ${scope})` : msg;
+    dangling.set(`${line}\u0000${m}`, { line, key, message: m });
+  };
+  for (const scope of [null, ...document.environments.map((e) => e.name)]) {
+    const vars = infraenvVariables(document, scope, options.vars);
+    for (const entry of infraenvEntriesFor(document, scope)) {
+      const x = expandInfraenvValue(entry.value, vars);
+      if (!x.ok) continue; // Reported by infraenvReferences.
+      const v = x.value;
+      const line = entry.line ?? 0;
+      const where = infraenvValueHasTemplate(entry.value) ? scope : null;
+      if (v.kind === "resource" || v.kind === "named-resource") {
+        const d = byRef.get(infraenvReferenceKey(v));
+        if (d && !d.found) note(line, entry.key, notFoundMessage(v, found.get(d.ref)), where);
+        else if (d && !d.outputKnown) {
+          note(
+            line,
+            entry.key,
+            `${d.resourceTypeName ?? "The resource"} has no output "${v.output}"`,
+            where,
+          );
+        }
+      } else if (v.kind === "secret") {
+        const d = bySecret.get(v.name);
+        if (d && !d.found) note(line, entry.key, `No organization secret named ${v.name}`, where);
+        else if (d && !d.hasValue) {
+          note(line, entry.key, `The organization secret ${v.name} has no value yet`, where);
+        }
+      }
+    }
+  }
+  const problemsOut = [...dangling.values()];
+
+  return {
+    problems: [...problems, ...refs.problems, ...problemsOut],
+    environments: document.environments.map((e) => e.name),
+    resources: resourceDescriptions,
+    secrets: secretDescriptions,
+  };
+}
+
 export interface ResolveInfraenvInput {
   readonly source: string;
   readonly environment?: string | null | undefined;
+  readonly vars?: Readonly<Record<string, string>> | undefined;
   readonly sourceName?: string | undefined;
 }
 
 /**
  * Every variable of one environment with its value. A file with syntax
  * problems, or an environment it does not declare, is refused; a variable
- * whose source cannot be read is reported and left out, so one broken
- * reference does not hold up the rest of a pull.
+ * whose source cannot be read (including a substitution with no value) is
+ * reported and left out, so one broken reference does not hold up the rest
+ * of a pull.
  */
 export async function resolveInfraenv(
   organizationId: string,
@@ -307,15 +401,21 @@ export async function resolveInfraenv(
     );
   }
 
-  const entries = infraenvEntriesFor(document, environment);
-  const resourceIds = new Set<string>();
+  const vars = infraenvVariables(document, environment, input.vars);
+  const entries = infraenvEntriesFor(document, environment).map((entry) => ({
+    entry,
+    expanded: expandInfraenvValue(entry.value, vars),
+  }));
+  const refs: InfraenvResourceReference[] = [];
   const secretNames = new Set<string>();
-  for (const e of entries) {
-    if (e.value.kind === "resource") resourceIds.add(e.value.resourceId);
-    else if (e.value.kind === "secret") secretNames.add(e.value.name);
+  for (const { expanded } of entries) {
+    if (!expanded.ok) continue;
+    const v = expanded.value;
+    if (v.kind === "resource" || v.kind === "named-resource") refs.push(v);
+    else if (v.kind === "secret") secretNames.add(v.name);
   }
-  const [rows, secretRows] = await Promise.all([
-    reader.resources(organizationId, [...resourceIds]),
+  const [found, secretRows] = await Promise.all([
+    findResources(organizationId, refs, reader),
     reader.secrets(organizationId, [...secretNames]),
   ]);
 
@@ -332,38 +432,43 @@ export async function resolveInfraenv(
   };
 
   const settled = await Promise.all(
-    entries.map(async (entry): Promise<{ key: string; value: string } | InfraenvProblem> => {
-      const fail = (m: string): InfraenvProblem => ({
-        line: entry.line ?? 0,
-        key: entry.key,
-        message: m,
-      });
-      const v = entry.value;
-      switch (v.kind) {
-        case "literal":
-          return { key: entry.key, value: v.value };
-        case "resource": {
-          const row = rows.get(v.resourceId);
-          if (!row) return fail(`No resource ${v.resourceId} in this organization`);
-          try {
-            return { key: entry.key, value: await readOutput(row, v.output) };
-          } catch (err) {
-            return fail(`Could not read ${v.output} of ${row.displayName}: ${message(err)}`);
+    entries.map(
+      async ({ entry, expanded }): Promise<{ key: string; value: string } | InfraenvProblem> => {
+        const fail = (m: string): InfraenvProblem => ({
+          line: entry.line ?? 0,
+          key: entry.key,
+          message: m,
+        });
+        if (!expanded.ok) return fail(expanded.message);
+        const v = expanded.value;
+        switch (v.kind) {
+          case "literal":
+            return { key: entry.key, value: v.value };
+          case "resource":
+          case "named-resource": {
+            const f = found.get(infraenvReferenceKey(v));
+            const row = f?.row;
+            if (!row) return fail(notFoundMessage(v, f));
+            try {
+              return { key: entry.key, value: await readOutput(row, v.output) };
+            } catch (err) {
+              return fail(`Could not read ${v.output} of ${row.displayName}: ${message(err)}`);
+            }
+          }
+          case "secret": {
+            const row = secretRows.get(v.name);
+            if (!row) return fail(`No organization secret named ${v.name}`);
+            try {
+              const value = await reader.secretValue(row);
+              if (value === null) return fail(`The organization secret ${v.name} has no value yet`);
+              return { key: entry.key, value };
+            } catch (err) {
+              return fail(`Could not read the organization secret ${v.name}: ${message(err)}`);
+            }
           }
         }
-        case "secret": {
-          const row = secretRows.get(v.name);
-          if (!row) return fail(`No organization secret named ${v.name}`);
-          try {
-            const value = await reader.secretValue(row);
-            if (value === null) return fail(`The organization secret ${v.name} has no value yet`);
-            return { key: entry.key, value };
-          } catch (err) {
-            return fail(`Could not read the organization secret ${v.name}: ${message(err)}`);
-          }
-        }
-      }
-    }),
+      },
+    ),
   );
 
   const values: { key: string; value: string }[] = [];

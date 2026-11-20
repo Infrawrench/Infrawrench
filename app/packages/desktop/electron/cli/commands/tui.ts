@@ -11,7 +11,7 @@ import { CloudApi } from "../effect/cloud-api";
 import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { HELP } from "../help";
-import { runTui, type TuiRunner } from "../tui";
+import type { TuiRunner } from "../tui";
 
 /** The root help text (`../help.ts`), on stdout. */
 export const printHelp = Print.line(HELP);
@@ -28,6 +28,9 @@ export const home = Effect.gen(function* () {
   }
   const services = yield* Effect.context<CloudApi>();
   const runner: TuiRunner = (effect) => Effect.runPromiseWith(services)(effect);
+  // The dashboard and what it reads load here, not with this module: `help`
+  // and `tui` are in every command line's tree (`../effect/commands.ts`).
+  const { runTui } = yield* Effect.promise(() => import("../tui"));
   yield* Effect.promise(() => runTui(runner));
 });
 

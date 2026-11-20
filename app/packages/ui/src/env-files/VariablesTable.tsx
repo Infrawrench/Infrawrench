@@ -1,14 +1,19 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGT } from "gt-react";
-import type {
-  InfraenvDescribeResponse,
-  InfraenvDocument,
-  InfraenvEntry,
-  InfraenvValue,
-  InfraenvValueKind,
+import {
+  expandInfraenvValue,
+  infraenvTemplateNames,
+  infraenvVariables,
+  resourceKindOf,
+  type InfraenvDescribeResponse,
+  type InfraenvDocument,
+  type InfraenvEntry,
+  type InfraenvValue,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 import {
+  describedResource,
+  editorKind,
   overrideEntry,
   pickResource,
   putEntry,
@@ -17,9 +22,12 @@ import {
   rowProblem,
   rowsFor,
   scopeEntries,
+  toggledReference,
   withKind,
+  withResourceName,
+  type EditorKind,
   type EnvScope,
-  type ReferenceState,
+  type ReferenceCheck,
   type RowProblem,
 } from "./document.js";
 import { NewSecretModal } from "./NewSecretModal.js";
@@ -39,10 +47,11 @@ export interface VariablesTableProps {
 }
 
 const NEW_SECRET = "\u0000new";
+const TYPE_SECRET = "\u0000type";
 
 function useMessages() {
   const gt = useGT();
-  const kindLabel = (kind: InfraenvValueKind) =>
+  const kindLabel = (kind: EditorKind) =>
     kind === "literal" ? gt("Value") : kind === "resource" ? gt("Resource output") : gt("Secret");
   const rowMessage = (problem: RowProblem) => {
     switch (problem) {
@@ -58,16 +67,22 @@ function useMessages() {
         return gt("Pick a secret");
     }
   };
-  const referenceMessage = (state: ReferenceState) => {
-    switch (state) {
+  const referenceMessage = (check: ReferenceCheck) => {
+    switch (check.state) {
       case "resource-not-found":
         return gt("The resource is not in this organization");
+      case "ambiguous":
+        return gt("Matches {count} resources: add an account", { count: check.matches });
       case "output-unknown":
         return gt("The resource's type has no such output");
       case "secret-not-found":
-        return gt("No organization secret has this name");
+        return gt("No organization secret named {name}", { name: check.name });
       case "secret-without-value":
         return gt("The secret has no value set");
+      case "substitution-missing":
+        return gt("No value for {names} here", {
+          names: check.missing.map((m) => `\${${m}}`).join(", "),
+        });
       case "ok":
       case "unknown":
         return null;
@@ -77,7 +92,10 @@ function useMessages() {
 }
 
 /** One line describing where a value comes from, never a secret's value. */
-function useValueSummary(described: InfraenvDescribeResponse | null) {
+function useValueSummary(
+  described: InfraenvDescribeResponse | null,
+  vars: ReadonlyMap<string, string>,
+) {
   const gt = useGT();
   const ds = useDataString();
   return (entry: InfraenvEntry): string => {
@@ -87,22 +105,32 @@ function useValueSummary(described: InfraenvDescribeResponse | null) {
         return value.value === "" ? gt("(empty)") : value.value;
       case "secret":
         return value.name;
-      case "resource": {
-        const hit = described?.resources.find(
-          (r) => r.resourceId === value.resourceId && r.output === value.output,
-        );
+      case "resource":
+      case "named-resource": {
+        const hit = describedResource(value, described, vars);
         if (hit?.found && hit.displayName) {
           const parts = [
             hit.pluginName ? ds(hit.pluginName) : null,
             hit.displayName,
+            value.kind === "named-resource" ? (hit.accountName ?? null) : null,
             hit.outputLabel ? ds(hit.outputLabel) : value.output,
           ];
           return parts.filter(Boolean).join(" · ");
         }
-        return entry.comment ?? `${value.resourceId} · ${value.output}`;
+        if (entry.comment !== undefined) return entry.comment;
+        if (value.kind === "resource") return `${value.resourceId} · ${value.output}`;
+        const expanded = expandInfraenvValue(value, vars);
+        const shown =
+          expanded.ok && expanded.value.kind === "named-resource" ? expanded.value : value;
+        return `${resourceKindOf(shown.match)} · ${shown.match.name} · ${shown.output}`;
       }
     }
   };
+}
+
+/** A templated secret name, which the secret list cannot offer. */
+function isTemplated(name: string): boolean {
+  return infraenvTemplateNames(name).length > 0;
 }
 
 /**
@@ -119,9 +147,21 @@ export function VariablesTable({
   onSecretCreated,
 }: VariablesTableProps) {
   const { gt, kindLabel, rowMessage, referenceMessage } = useMessages();
-  const summary = useValueSummary(described);
-  const [pickerFor, setPickerFor] = useState<{ index: number | null } | null>(null);
+  // What `${name}` means in this scope: the server describes each scope with its own.
+  const vars = useMemo(() => infraenvVariables(doc, scope), [doc, scope]);
+  const summary = useValueSummary(described, vars);
+  const [pickerFor, setPickerFor] = useState<{ index: number | null; pin: boolean } | null>(null);
   const [newSecretFor, setNewSecretFor] = useState<number | null>(null);
+  /** Secret rows switched to a typed name, by `scope:index`. */
+  const [typedSecrets, setTypedSecrets] = useState<ReadonlySet<string>>(() => new Set());
+  const typedKey = (index: number) => `${scope ?? ""}:${index}`;
+  const setTyped = (index: number, typed: boolean) =>
+    setTypedSecrets((prev) => {
+      const next = new Set(prev);
+      if (typed) next.add(typedKey(index));
+      else next.delete(typedKey(index));
+      return next;
+    });
 
   const entries = scopeEntries(doc, scope);
   const rows = rowsFor(doc, scope);
@@ -141,7 +181,7 @@ export function VariablesTable({
         <ul className="divide-y divide-border rounded-xl border border-border bg-surface-raised">
           {rows.map((row) => {
             const { entry } = row;
-            const reference = referenceMessage(referenceState(entry.value, described));
+            const reference = referenceMessage(referenceState(entry.value, described, vars));
             if (row.inherited) {
               return (
                 <li key={`shared:${entry.key}`} className="px-3 py-2">
@@ -150,7 +190,7 @@ export function VariablesTable({
                       {entry.key}
                     </span>
                     <span className="w-32 shrink-0 text-xs text-on-surface-faint">
-                      {kindLabel(entry.value.kind)}
+                      {kindLabel(editorKind(entry.value))}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm text-on-surface-secondary">
                       {summary(entry)}
@@ -192,12 +232,12 @@ export function VariablesTable({
                   />
                   <select
                     className={`${fieldClass} w-40 shrink-0`}
-                    value={value.kind}
+                    value={editorKind(value)}
                     aria-label={gt("Source")}
                     onChange={(e) => {
-                      const kind = e.target.value as InfraenvValueKind;
+                      const kind = e.target.value as EditorKind;
                       update(index, withKind(entry, kind));
-                      if (kind === "resource") setPickerFor({ index });
+                      if (kind === "resource") setPickerFor({ index, pin: false });
                     }}
                   >
                     {(["literal", "resource", "secret"] as const).map((kind) => (
@@ -220,33 +260,51 @@ export function VariablesTable({
                         aria-label={gt("Value")}
                       />
                     )}
-                    {value.kind === "resource" && (
-                      <button
-                        type="button"
-                        className={`${inputClass} truncate text-left`}
-                        onClick={() => setPickerFor({ index })}
-                      >
-                        {value.resourceId ? (
-                          summary(entry)
-                        ) : (
-                          <span className="text-on-surface-faint">
-                            {gt("Pick a resource output…")}
-                          </span>
-                        )}
-                      </button>
+                    {(value.kind === "resource" || value.kind === "named-resource") && (
+                      <ResourceValue
+                        entry={entry}
+                        value={value}
+                        summary={summary(entry)}
+                        toggled={toggledReference(value, describedResource(value, described, vars))}
+                        onPick={() =>
+                          setPickerFor({
+                            index,
+                            pin: value.kind === "resource" && !!value.resourceId,
+                          })
+                        }
+                        onChange={(next) => update(index, next)}
+                      />
                     )}
                     {value.kind === "secret" &&
-                      (secrets === null ? (
-                        <input
-                          type="text"
-                          className={`${inputClass} font-mono`}
-                          value={value.name}
-                          spellCheck={false}
-                          onChange={(e) =>
-                            setValue(index, entry, { kind: "secret", name: e.target.value })
-                          }
-                          aria-label={gt("Secret name")}
-                        />
+                      (secrets === null ||
+                      typedSecrets.has(typedKey(index)) ||
+                      isTemplated(value.name) ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            className={`${inputClass} font-mono`}
+                            value={value.name}
+                            spellCheck={false}
+                            onChange={(e) =>
+                              setValue(index, entry, { kind: "secret", name: e.target.value })
+                            }
+                            aria-label={gt("Secret name")}
+                          />
+                          {secrets !== null && (
+                            <button
+                              type="button"
+                              className={`${quietButton} shrink-0`}
+                              onClick={() => {
+                                setTyped(index, false);
+                                if (isTemplated(value.name)) {
+                                  setValue(index, entry, { kind: "secret", name: "" });
+                                }
+                              }}
+                            >
+                              {gt("Pick from list")}
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <select
                           className={inputClass}
@@ -254,6 +312,7 @@ export function VariablesTable({
                           aria-label={gt("Secret")}
                           onChange={(e) => {
                             if (e.target.value === NEW_SECRET) setNewSecretFor(index);
+                            else if (e.target.value === TYPE_SECRET) setTyped(index, true);
                             else setValue(index, entry, { kind: "secret", name: e.target.value });
                           }}
                         >
@@ -270,6 +329,7 @@ export function VariablesTable({
                               {s.hasValue ? s.name : gt("{name} (no value)", { name: s.name })}
                             </option>
                           ))}
+                          <option value={TYPE_SECRET}>{gt("Type a name…")}</option>
                           {client.createSecret && (
                             <option value={NEW_SECRET}>{gt("New secret…")}</option>
                           )}
@@ -315,7 +375,7 @@ export function VariablesTable({
         <button
           type="button"
           className={secondaryButton}
-          onClick={() => setPickerFor({ index: null })}
+          onClick={() => setPickerFor({ index: null, pin: false })}
         >
           {gt("Add resource output")}
         </button>
@@ -324,9 +384,10 @@ export function VariablesTable({
       {pickerFor && (
         <ResourcePickerModal
           client={client}
+          initialPin={pickerFor.pin}
           onClose={() => setPickerFor(null)}
-          onPick={(source, output) => {
-            const entry = pickResource(entries, pickerFor.index, source, output);
+          onPick={(source, output, options) => {
+            const entry = pickResource(entries, pickerFor.index, source, output, options);
             onChange(putEntry(doc, scope, pickerFor.index, entry));
             setPickerFor(null);
           }}
@@ -344,6 +405,68 @@ export function VariablesTable({
             onSecretCreated(secret);
             setNewSecretFor(null);
           }}
+        />
+      )}
+    </div>
+  );
+}
+
+type ResourceReference = Extract<InfraenvValue, { kind: "resource" } | { kind: "named-resource" }>;
+
+/**
+ * A resource output's value cell: the summary (which opens the picker), a
+ * "By name" / "By id" switch, and for a by-name reference the name it looks
+ * for, editable so it can carry a substitution (`storefront / ${stage}`).
+ */
+function ResourceValue({
+  entry,
+  value,
+  summary,
+  toggled,
+  onPick,
+  onChange,
+}: {
+  entry: InfraenvEntry;
+  value: ResourceReference;
+  summary: string;
+  /** The same reference the other way round, when `/describe` found the resource. */
+  toggled: InfraenvValue | null;
+  onPick: () => void;
+  onChange: (entry: InfraenvEntry) => void;
+}) {
+  const gt = useGT();
+  const named = value.kind === "named-resource";
+  const picked = named ? value.match.pluginId !== "" : value.resourceId !== "";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <button type="button" className={`${inputClass} truncate text-left`} onClick={onPick}>
+          {picked ? (
+            summary
+          ) : (
+            <span className="text-on-surface-faint">{gt("Pick a resource output…")}</span>
+          )}
+        </button>
+        {picked && (
+          <button
+            type="button"
+            className={`${quietButton} shrink-0`}
+            disabled={toggled === null}
+            onClick={() => toggled && onChange({ ...entry, value: toggled })}
+            title={named ? gt("Pin by id") : gt("Find by name")}
+          >
+            {named ? gt("By name") : gt("By id")}
+          </button>
+        )}
+      </div>
+      {named && picked && (
+        <input
+          type="text"
+          className={`${inputClass} font-mono text-xs`}
+          value={value.match.name}
+          spellCheck={false}
+          onChange={(e) => onChange(withResourceName(entry, e.target.value))}
+          aria-label={gt("Resource name")}
         />
       )}
     </div>

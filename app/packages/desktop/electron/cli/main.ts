@@ -14,6 +14,7 @@ import { setTokenStoreReadOnly } from "../cloud-tokens";
 import { CliError } from "./context";
 import { setColorEnabled, printErr, c } from "./output";
 import { runEffectCli } from "./effect/run";
+import { markPhase, reportTiming } from "../startup-timing";
 
 /**
  * Make an Electron process behave like a terminal program. Three things the
@@ -75,7 +76,9 @@ function detectGuiRunning(): boolean {
  */
 async function bootstrap(): Promise<boolean> {
   await app.whenReady();
+  markPhase("app ready");
   const guiRunning = detectGuiRunning();
+  markPhase("lock probe");
 
   wireDbGetter();
   setDatabaseReadOnly(guiRunning);
@@ -123,10 +126,10 @@ function drained(stream: NodeJS.WriteStream): Promise<void> {
 }
 
 export async function runCli(): Promise<void> {
+  markPhase("cli modules loaded");
   installTerminalGuards();
-  // Terminal process: no GPU, no dock icon, as little Chromium as possible.
-  app.commandLine.appendSwitch("disable-gpu");
-  if (process.platform === "darwin") app.dock?.hide();
+  // No Dock icon and no GPU were settled in `../index.ts`, before this
+  // module (and the app's launch) got this far.
 
   const argv = process.argv.slice(process.argv.indexOf("--cli") + 1);
   setColorEnabled(
@@ -148,6 +151,8 @@ export async function runCli(): Promise<void> {
       exitCode = 1;
     }
   }
+  markPhase("command done");
+  reportTiming();
   await Promise.all([drained(process.stdout), drained(process.stderr)]);
   app.exit(cliExitStatus(exitCode));
 }

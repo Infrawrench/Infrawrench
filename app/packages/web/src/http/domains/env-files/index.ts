@@ -110,7 +110,9 @@ const EnvFilesHandlers = HttpApiBuilder.group(EnvFilesApi, "envFiles", (handlers
         const { organizationId } = yield* OrgPrincipal;
         // The schema caps the source at the size the service checks, so this
         // reads stored state and cannot refuse.
-        const described = yield* legacy(() => describeInfraenv(organizationId, payload.source));
+        const described = yield* legacy(() =>
+          describeInfraenv(organizationId, payload.source, { vars: payload.vars }),
+        );
         return yield* respond(InfraenvDescribeResponse)(described);
       }),
     )
@@ -121,6 +123,7 @@ const EnvFilesHandlers = HttpApiBuilder.group(EnvFilesApi, "envFiles", (handlers
           resolveInfraenv(organizationId, {
             source: payload.source,
             environment: payload.environment ?? null,
+            vars: payload.vars,
             sourceName: payload.sourceName,
           }),
         );

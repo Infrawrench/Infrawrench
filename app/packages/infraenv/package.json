@@ -1,0 +1,50 @@
+{
+  "name": "@infrawrench/infraenv",
+  "version": "0.1.0",
+  "description": "Keep .env in step with a committed .infraenv: pull it through Infrawrench from git hooks and CI, in plain Node.",
+  "license": "MIT",
+  "author": "Infrawrench Services, Inc. <astrid@infrawrench.com> (https://infrawrench.com)",
+  "homepage": "https://infrawrench.com/docs/features/env-files",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrawrench/Infrawrench.git",
+    "directory": "app/packages/infraenv"
+  },
+  "keywords": [
+    "dotenv",
+    "env",
+    "infraenv",
+    "infrawrench",
+    "secrets",
+    "git-hooks"
+  ],
+  "type": "module",
+  "bin": {
+    "infraenv": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist/*.mjs",
+    "skills",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sync:skill": "node scripts/sync-skill.mjs",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@infrawrench/client-core": "workspace:*",
+    "@types/node": "^22.20.1",
+    "kill-emudhra": "^0.1.1",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.10"
+  }
+}

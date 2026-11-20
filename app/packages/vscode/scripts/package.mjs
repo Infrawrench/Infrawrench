@@ -23,7 +23,7 @@ delete staged.devDependencies;
 staged.scripts = {};
 writeFileSync(path.join(stage, "package.json"), `${JSON.stringify(staged, null, 2)}\n`);
 
-for (const entry of ["dist", "media", "README.md", "CHANGELOG.md"]) {
+for (const entry of ["dist", "media", "syntaxes", "README.md", "CHANGELOG.md"]) {
   cpSync(path.join(root, entry), path.join(stage, entry), { recursive: true });
 }
 // The repository's licence, rather than a copy that could drift from it.

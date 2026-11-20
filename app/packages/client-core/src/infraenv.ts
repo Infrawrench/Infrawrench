@@ -19,14 +19,21 @@
  *
  * ```
  * [infrawrench]
- * org = org_123            # optional: the organization the references live in
  * output = .env            # optional: where `env pull` writes
+ *
+ * [vars]                   # substitutions for references, `${stage}`
+ * stage = dev
  *
  * [env]                    # shared by every environment
  * NODE_ENV = development
- * # Neon: main branch
- * DATABASE_URL = resource("res_abc", "connectionString")
+ * # By name: resolves in whichever organization pulls the file
+ * DATABASE_URL = resource("neon/neon-branch", "storefront / ${stage}", "connectionString")
+ * # By id: one resource in one organization
+ * CACHE_URL = resource("upstash:<account>:redis-1", "restUrl")
  * STRIPE_SECRET_KEY = secret("STRIPE_SECRET_KEY")
+ *
+ * [vars.production]        # substitutions for one environment
+ * stage = prod
  *
  * [env.production]         # overrides for one environment
  * NODE_ENV = production
@@ -35,6 +42,15 @@
  * Lines before any section header belong to `[env]`, so a plain dotenv file
  * of literals parses as-is. A quoted value is always a literal; only a bare
  * `resource(...)` or `secret(...)` is a reference.
+ *
+ * **Portability.** Nothing ties a file to one organization unless it says so
+ * (`[infrawrench] org`, optional): `secret()` names a secret, a by-name
+ * `resource()` names a plugin, type and display name, and `${var}`
+ * substitutions in their arguments absorb whatever differs between
+ * organizations or environments. Only a by-id `resource()` is bound to the
+ * organization whose resource it names. Substitution happens only inside
+ * reference arguments, never in literals, so a literal `${HOME}` stays as
+ * written; `$${` writes a literal `${`.
  *
  * Everything here is pure and platform neutral: web, desktop, the CLI and the
  * server all parse and print through it.
@@ -58,11 +74,36 @@ export const INFRAENV_LIMITS = {
   maxEnvironmentNameLength: 64,
 } as const;
 
+/**
+ * A resource found by what it is rather than by id: `plugin/type`, its display
+ * name and optionally its account's display name (`plugin/type@account`).
+ * Every field may hold `${var}` substitutions until it is expanded.
+ */
+export interface InfraenvResourceMatch {
+  readonly pluginId: string;
+  readonly resourceTypeId: string;
+  readonly name: string;
+  readonly account?: string | undefined;
+}
+
 /** Where one variable's value comes from. */
 export type InfraenvValue =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "resource"; readonly resourceId: string; readonly output: string }
+  | {
+      readonly kind: "named-resource";
+      readonly match: InfraenvResourceMatch;
+      readonly output: string;
+    }
   | { readonly kind: "secret"; readonly name: string };
+
+/** A `[vars]` / `[vars.<env>]` line: a substitution, never an environment variable. */
+export interface InfraenvVar {
+  readonly key: string;
+  readonly value: string;
+  readonly comment?: string | undefined;
+  readonly line?: number | undefined;
+}
 
 export type InfraenvValueKind = InfraenvValue["kind"];
 
@@ -79,10 +120,15 @@ export interface InfraenvEnvironment {
   readonly name: string;
   readonly entries: readonly InfraenvEntry[];
   readonly comment?: string | undefined;
+  /** `[vars.<name>]`: substitutions laid over `[vars]` for this environment. */
+  readonly vars?: readonly InfraenvVar[] | undefined;
 }
 
 export interface InfraenvSettings {
-  /** Organization id the references resolve in. */
+  /**
+   * Organization id to resolve in. Optional, and best left out: without it the
+   * file resolves in whichever organization pulls it.
+   */
   readonly org?: string | undefined;
   /** Path `env pull` writes to, relative to the file. */
   readonly output?: string | undefined;
@@ -92,6 +138,8 @@ export interface InfraenvDocument {
   /** Comment block at the top of the file, kept on a round trip. */
   readonly header?: string | undefined;
   readonly settings: InfraenvSettings;
+  /** `[vars]`: substitutions for every environment. */
+  readonly vars?: readonly InfraenvVar[] | undefined;
   /** `[env]`: applies to every environment. */
   readonly shared: readonly InfraenvEntry[];
   /** `[env.<name>]` sections, in file order. */
@@ -219,11 +267,24 @@ function parseValue(raw: string): ValueRead {
       };
     }
     if (call.name === "resource") {
+      if (call.args.length === 3) {
+        const [kind, name, output] = call.args as [string, string, string];
+        const match = parseResourceKind(kind, name);
+        if (!match || !name || !output) {
+          return {
+            ok: false,
+            message:
+              'resource() by name takes resource("<plugin>/<type>[@<account>]", "<name>", "<output>")',
+          };
+        }
+        return { ok: true, value: { kind: "named-resource", match, output } };
+      }
       const [resourceId, output] = call.args;
       if (call.args.length !== 2 || !resourceId || !output) {
         return {
           ok: false,
-          message: 'resource() takes two arguments: resource("<id>", "<output>")',
+          message:
+            'resource() takes resource("<id>", "<output>") or resource("<plugin>/<type>", "<name>", "<output>")',
         };
       }
       return { ok: true, value: { kind: "resource", resourceId, output } };
@@ -239,6 +300,19 @@ function parseValue(raw: string): ValueRead {
   return { ok: true, value: { kind: "literal", value: (hash < 0 ? s : s.slice(0, hash)).trim() } };
 }
 
+/** `plugin/type` or `plugin/type@account`, the first argument of a by-name `resource()`. */
+function parseResourceKind(kind: string, name: string): InfraenvResourceMatch | null {
+  const slash = kind.indexOf("/");
+  if (slash <= 0) return null;
+  const pluginId = kind.slice(0, slash);
+  const rest = kind.slice(slash + 1);
+  const at = rest.indexOf("@");
+  const resourceTypeId = at < 0 ? rest : rest.slice(0, at);
+  const account = at < 0 ? undefined : rest.slice(at + 1);
+  if (!resourceTypeId || account === "") return null;
+  return { pluginId, resourceTypeId, name, ...(account !== undefined ? { account } : {}) };
+}
+
 /** Does a double-quoted value that starts on this line close on it? */
 function opensMultiline(rawValue: string): boolean {
   const s = rawValue.trim();
@@ -250,8 +324,30 @@ export function parseInfraenv(source: string): InfraenvParseResult {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const settings: { org?: string; output?: string } = {};
   const shared: InfraenvEntry[] = [];
-  const environments: { name: string; entries: InfraenvEntry[]; comment?: string }[] = [];
-  let section: "settings" | "shared" | { env: (typeof environments)[number] } = "shared";
+  const vars: InfraenvVar[] = [];
+  const environments: {
+    name: string;
+    entries: InfraenvEntry[];
+    comment?: string;
+    vars?: InfraenvVar[];
+  }[] = [];
+  type Env = (typeof environments)[number];
+  let section: "settings" | "shared" | "vars" | { env: Env } | { varsOf: Env } = "shared";
+  const declared = new Set<string>();
+  const varsDeclared = new Set<string>();
+  /** The environment named, created on first mention by either of its sections. */
+  const environmentNamed = (envName: string, comment: string[]): Env => {
+    let env = environments.find((e) => e.name === envName);
+    if (!env) {
+      env = {
+        name: envName,
+        entries: [],
+        ...(comment.length ? { comment: comment.join("\n") } : {}),
+      };
+      environments.push(env);
+    }
+    return env;
+  };
   let pending: string[] = [];
   let header: string | undefined;
   let sawContent = false;
@@ -289,32 +385,36 @@ export function parseInfraenv(source: string): InfraenvParseResult {
       const name = sectionMatch[1]!.trim();
       if (name === "infrawrench") section = "settings";
       else if (name === "env") section = "shared";
-      else if (name.startsWith("env.")) {
-        const envName = name.slice(4);
+      else if (name === "vars") section = "vars";
+      else if (name.startsWith("env.") || name.startsWith("vars.")) {
+        const isVars = name.startsWith("vars.");
+        const envName = name.slice(isVars ? 5 : 4);
         if (!isInfraenvEnvironmentName(envName)) {
           problems.push({
             line: lineNo,
             message: `Invalid environment name "${envName}": use letters, digits, - and _`,
           });
-          section = { env: { name: envName, entries: [] } };
+          const stray: Env = { name: envName, entries: [] };
+          section = isVars ? { varsOf: stray } : { env: stray };
         } else {
-          let env = environments.find((e) => e.name === envName);
-          if (env) {
-            problems.push({ line: lineNo, message: `Environment "${envName}" is declared twice` });
-          } else {
-            env = {
-              name: envName,
-              entries: [],
-              ...(pending.length ? { comment: pending.join("\n") } : {}),
-            };
-            environments.push(env);
+          const seenSet = isVars ? varsDeclared : declared;
+          if (seenSet.has(envName)) {
+            problems.push({
+              line: lineNo,
+              message: `[${isVars ? "vars" : "env"}.${envName}] is declared twice`,
+            });
           }
-          section = { env };
+          seenSet.add(envName);
+          const env = environmentNamed(envName, isVars ? [] : pending);
+          if (!isVars && pending.length && env.comment === undefined) {
+            env.comment = pending.join("\n");
+          }
+          section = isVars ? { varsOf: env } : { env };
         }
       } else {
         problems.push({
           line: lineNo,
-          message: `Unknown section [${name}]: expected [infrawrench], [env] or [env.<name>]`,
+          message: `Unknown section [${name}]: expected [infrawrench], [vars], [env], [vars.<name>] or [env.<name>]`,
         });
         section = { env: { name, entries: [] } };
       }
@@ -354,6 +454,35 @@ export function parseInfraenv(source: string): InfraenvParseResult {
         problems.push({ line: lineNo, message: `The ${key} setting takes a plain value` });
       } else {
         settings[key as "org" | "output"] = v.value.value;
+      }
+      pending = [];
+      continue;
+    }
+
+    if (section === "vars" || (typeof section === "object" && "varsOf" in section)) {
+      const target = section === "vars" ? vars : (section.varsOf.vars ??= []);
+      const v = parseValue(rawValue);
+      if (!isInfraenvKey(key)) {
+        problems.push({
+          line: lineNo,
+          message: `Invalid substitution name "${key}": use letters, digits and _, not starting with a digit`,
+        });
+      } else if (!v.ok) {
+        problems.push({ line: lineNo, message: v.message });
+      } else if (v.value.kind !== "literal") {
+        problems.push({
+          line: lineNo,
+          message: `${key}: a substitution takes a plain value, not a reference`,
+        });
+      } else if (target.some((x) => x.key === key)) {
+        problems.push({ line: lineNo, message: `${key} is set twice in this section` });
+      } else {
+        target.push({
+          key,
+          value: v.value.value,
+          line: lineNo,
+          ...(pending.length ? { comment: pending.join("\n") } : {}),
+        });
       }
       pending = [];
       continue;
@@ -413,6 +542,7 @@ export function parseInfraenv(source: string): InfraenvParseResult {
     document: {
       ...(header !== undefined ? { header } : {}),
       settings,
+      ...(vars.length ? { vars } : {}),
       shared,
       environments: environments.filter((e) => isInfraenvEnvironmentName(e.name)),
     },
@@ -453,9 +583,26 @@ export function printInfraenvValue(value: InfraenvValue): string {
       return printLiteral(value.value);
     case "resource":
       return `resource(${doubleQuote(value.resourceId)}, ${doubleQuote(value.output)})`;
+    case "named-resource":
+      return `resource(${doubleQuote(resourceKindOf(value.match))}, ${doubleQuote(value.match.name)}, ${doubleQuote(value.output)})`;
     case "secret":
       return `secret(${doubleQuote(value.name)})`;
   }
+}
+
+/** `plugin/type` or `plugin/type@account`. */
+export function resourceKindOf(match: InfraenvResourceMatch): string {
+  return `${match.pluginId}/${match.resourceTypeId}${match.account !== undefined ? `@${match.account}` : ""}`;
+}
+
+function printVars(vars: readonly InfraenvVar[]): string[] {
+  const out: string[] = [];
+  for (const v of vars) {
+    out.push(...printComment(v.comment));
+    const p = printLiteral(v.value);
+    out.push(p === "" ? `${v.key} =` : `${v.key} = ${p}`);
+  }
+  return out;
 }
 
 function printComment(comment: string | undefined): string[] {
@@ -481,8 +628,10 @@ export function serializeInfraenv(doc: InfraenvDocument): string {
   if (doc.settings.org) settings.push(`org = ${printLiteral(doc.settings.org)}`);
   if (doc.settings.output) settings.push(`output = ${printLiteral(doc.settings.output)}`);
   if (settings.length) blocks.push(["[infrawrench]", ...settings]);
+  if (doc.vars?.length) blocks.push(["[vars]", ...printVars(doc.vars)]);
   blocks.push(["[env]", ...printEntries(doc.shared)]);
   for (const env of doc.environments) {
+    if (env.vars?.length) blocks.push([`[vars.${env.name}]`, ...printVars(env.vars)]);
     blocks.push([...printComment(env.comment), `[env.${env.name}]`, ...printEntries(env.entries)]);
   }
   return blocks.map((b) => b.join("\n")).join("\n\n") + "\n";
@@ -517,22 +666,206 @@ export function infraenvEnvironmentNames(doc: InfraenvDocument): string[] {
   return doc.environments.map((e) => e.name);
 }
 
-/** Every distinct reference the document makes, for a describe or a resolve. */
-export function infraenvReferences(doc: InfraenvDocument): {
-  resources: { resourceId: string; output: string }[];
-  secrets: string[];
-} {
-  const resources = new Map<string, { resourceId: string; output: string }>();
-  const secrets = new Set<string>();
-  for (const e of [...doc.shared, ...doc.environments.flatMap((x) => x.entries)]) {
-    if (e.value.kind === "resource") {
-      resources.set(`${e.value.resourceId}\u0000${e.value.output}`, {
-        resourceId: e.value.resourceId,
-        output: e.value.output,
-      });
-    } else if (e.value.kind === "secret") secrets.add(e.value.name);
+/** The built-in substitution: the environment being resolved. */
+export const INFRAENV_ENVIRONMENT_VAR = "environment";
+
+/**
+ * The substitutions one environment resolves with, lowest first: `[vars]`,
+ * then the built-in `environment` (the environment's name, when one is
+ * chosen), then `[vars.<environment>]`, then `overrides` (the CLI's `--var`,
+ * a request's `vars`).
+ */
+export function infraenvVariables(
+  doc: InfraenvDocument,
+  environment?: string | null,
+  overrides?: Readonly<Record<string, string>> | null,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const v of doc.vars ?? []) out.set(v.key, v.value);
+  if (environment) {
+    out.set(INFRAENV_ENVIRONMENT_VAR, environment);
+    const env = doc.environments.find((e) => e.name === environment);
+    for (const v of env?.vars ?? []) out.set(v.key, v.value);
   }
-  return { resources: [...resources.values()], secrets: [...secrets] };
+  for (const [k, v] of Object.entries(overrides ?? {})) out.set(k, v);
+  return out;
+}
+
+/** The names a template substitutes, in order, each once. */
+export function infraenvTemplateNames(template: string): string[] {
+  const names: string[] = [];
+  for (const m of template.matchAll(/\$?\$\{([^}]*)\}/g)) {
+    if (m[0].startsWith("$$")) continue;
+    const name = m[1]!.trim();
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+export type InfraenvExpansion = { ok: true; value: string } | { ok: false; missing: string[] };
+
+/** `${name}` replaced from `vars`; `$${` stays a literal `${`. */
+export function expandInfraenvTemplate(
+  template: string,
+  vars: ReadonlyMap<string, string>,
+): InfraenvExpansion {
+  const missing: string[] = [];
+  const value = template.replace(/\$?\$\{([^}]*)\}/g, (whole, raw: string) => {
+    if (whole.startsWith("$$")) return whole.slice(1);
+    const name = raw.trim();
+    const v = vars.get(name);
+    if (v === undefined) {
+      if (!missing.includes(name)) missing.push(name);
+      return whole;
+    }
+    return v;
+  });
+  return missing.length ? { ok: false, missing } : { ok: true, value };
+}
+
+/** Whether a value has a `${...}` left in any of its reference arguments. */
+export function infraenvValueHasTemplate(value: InfraenvValue): boolean {
+  return referenceStrings(value).some((t) => infraenvTemplateNames(t).length > 0);
+}
+
+function referenceStrings(value: InfraenvValue): string[] {
+  switch (value.kind) {
+    case "literal":
+      return [];
+    case "resource":
+      return [value.resourceId, value.output];
+    case "named-resource": {
+      const m = value.match;
+      return [
+        m.pluginId,
+        m.resourceTypeId,
+        m.name,
+        ...(m.account !== undefined ? [m.account] : []),
+        value.output,
+      ];
+    }
+    case "secret":
+      return [value.name];
+  }
+}
+
+export type InfraenvValueExpansion =
+  { ok: true; value: InfraenvValue } | { ok: false; message: string; missing: string[] };
+
+/**
+ * A reference with every substitution in its arguments filled in. Literals
+ * come back unchanged: substitution never touches a literal.
+ */
+export function expandInfraenvValue(
+  value: InfraenvValue,
+  vars: ReadonlyMap<string, string>,
+): InfraenvValueExpansion {
+  if (value.kind === "literal") return { ok: true, value };
+  const missing: string[] = [];
+  const x = (t: string) => {
+    const r = expandInfraenvTemplate(t, vars);
+    if (r.ok) return r.value;
+    for (const m of r.missing) if (!missing.includes(m)) missing.push(m);
+    return t;
+  };
+  let out: InfraenvValue;
+  switch (value.kind) {
+    case "resource":
+      out = { kind: "resource", resourceId: x(value.resourceId), output: x(value.output) };
+      break;
+    case "named-resource": {
+      const m = value.match;
+      out = {
+        kind: "named-resource",
+        match: {
+          pluginId: x(m.pluginId),
+          resourceTypeId: x(m.resourceTypeId),
+          name: x(m.name),
+          ...(m.account !== undefined ? { account: x(m.account) } : {}),
+        },
+        output: x(value.output),
+      };
+      break;
+    }
+    case "secret":
+      out = { kind: "secret", name: x(value.name) };
+      break;
+  }
+  if (missing.length) {
+    return {
+      ok: false,
+      missing,
+      message: `No value for ${missing.map((m) => `\${${m}}`).join(", ")}: set it in [vars]${
+        missing.includes(INFRAENV_ENVIRONMENT_VAR) ? " or pick an environment" : ""
+      }`,
+    };
+  }
+  return { ok: true, value: out };
+}
+
+/**
+ * A stable key for an expanded reference, the same on every surface: how an
+ * editor finds its row's entry in a describe response.
+ */
+export function infraenvReferenceKey(value: InfraenvValue): string {
+  switch (value.kind) {
+    case "literal":
+      return `literal:${value.value}`;
+    case "resource":
+      return `id:${value.resourceId}\u0000${value.output}`;
+    case "named-resource":
+      return `name:${resourceKindOf(value.match)}\u0000${value.match.name}\u0000${value.output}`;
+    case "secret":
+      return `secret:${value.name}`;
+  }
+}
+
+export type InfraenvResourceReference = Extract<
+  InfraenvValue,
+  { kind: "resource" } | { kind: "named-resource" }
+>;
+
+/**
+ * Every distinct reference the document makes once its substitutions are
+ * filled in, for `[env]` alone and for each environment, plus a problem for
+ * each reference a scope cannot expand. What describe looks up and resolve
+ * reads.
+ */
+export function infraenvReferences(
+  doc: InfraenvDocument,
+  overrides?: Readonly<Record<string, string>> | null,
+): {
+  resources: InfraenvResourceReference[];
+  secrets: string[];
+  problems: InfraenvProblem[];
+} {
+  const resources = new Map<string, InfraenvResourceReference>();
+  const secrets = new Set<string>();
+  const problems = new Map<string, InfraenvProblem>();
+  const scopes: (string | null)[] = [null, ...doc.environments.map((e) => e.name)];
+  for (const scope of scopes) {
+    const vars = infraenvVariables(doc, scope, overrides);
+    for (const entry of infraenvEntriesFor(doc, scope)) {
+      if (entry.value.kind === "literal") continue;
+      const x = expandInfraenvValue(entry.value, vars);
+      if (!x.ok) {
+        const message = scope ? `${x.message} (environment ${scope})` : x.message;
+        problems.set(`${entry.line ?? 0}\u0000${message}`, {
+          line: entry.line ?? 0,
+          key: entry.key,
+          message,
+        });
+        continue;
+      }
+      if (x.value.kind === "secret") secrets.add(x.value.name);
+      else if (x.value.kind !== "literal") resources.set(infraenvReferenceKey(x.value), x.value);
+    }
+  }
+  return {
+    resources: [...resources.values()],
+    secrets: [...secrets],
+    problems: [...problems.values()],
+  };
 }
 
 /**
@@ -600,9 +933,16 @@ export function suggestInfraenvKey(...parts: string[]): string {
 
 /** How one reference looks to a human: what the editors and `env check` show. */
 export interface InfraenvResourceDescription {
-  readonly resourceId: string;
+  /** `infraenvReferenceKey` of the expanded reference this describes. */
+  readonly ref: string;
+  /** The resource's id: the one named, or the one a by-name reference found. */
+  readonly resourceId?: string | undefined;
+  /** For a by-name reference, what it matched on (substitutions filled in). */
+  readonly match?: InfraenvResourceMatch | undefined;
+  /** For a by-name reference, how many resources matched (1 is the only good answer). */
+  readonly matches?: number | undefined;
   readonly output: string;
-  /** False when the resource is not in the organization (deleted, or a typo). */
+  /** False when the resource is not in the organization (deleted, a typo, or an ambiguous name). */
   readonly found: boolean;
   readonly displayName?: string | undefined;
   readonly pluginId?: string | undefined;

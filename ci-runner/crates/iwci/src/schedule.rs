@@ -3217,6 +3217,7 @@ fn run_job<T: Tools>(
         &options.access.lent,
         &job.access,
         options.access.trusted,
+        &options.secrets,
         crate::runner::now_secs(),
         job.timeout,
     ) {
@@ -3991,6 +3992,7 @@ fn run_external(
         &options.access.lent,
         &job.access,
         options.access.trusted,
+        &options.secrets,
         crate::runner::now_secs(),
         job.timeout,
     ) {

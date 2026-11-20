@@ -3,21 +3,30 @@ import { useGT } from "gt-react";
 import type { InfraenvSource, InfraenvSourceOutput } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
+import type { PickOptions } from "./document.js";
 import { dialogClass, inputClass, secondaryButton } from "./styles.js";
 import type { EnvFilesClient } from "./types.js";
 
 export interface ResourcePickerModalProps {
   client: EnvFilesClient;
-  onPick: (source: InfraenvSource, output: InfraenvSourceOutput) => void;
+  /** Start with "Pin by id" ticked, for a row that already pins its resource. */
+  initialPin?: boolean | undefined;
+  onPick: (source: InfraenvSource, output: InfraenvSourceOutput, options: PickOptions) => void;
   onClose: () => void;
 }
 
 /**
  * Pick one output of one synced resource: search the organization's
  * resources that declare outputs, then choose the output. Nothing is typed by
- * id; the search box only narrows the list.
+ * id; the search box only narrows the list. The reference finds the resource
+ * by name unless "Pin by id" is ticked.
  */
-export function ResourcePickerModal({ client, onPick, onClose }: ResourcePickerModalProps) {
+export function ResourcePickerModal({
+  client,
+  initialPin = false,
+  onPick,
+  onClose,
+}: ResourcePickerModalProps) {
   const gt = useGT();
   // A string, so the fetch effect depends on its value rather than on `gt`.
   const loadFailed = gt("Failed to load resources");
@@ -26,6 +35,7 @@ export function ResourcePickerModal({ client, onPick, onClose }: ResourcePickerM
   const [sources, setSources] = useState<readonly InfraenvSource[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<InfraenvSource | null>(null);
+  const [pin, setPin] = useState(initialPin);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +130,7 @@ export function ResourcePickerModal({ client, onPick, onClose }: ResourcePickerM
                 <li key={output.key}>
                   <button
                     type="button"
-                    onClick={() => onPick(selected, output)}
+                    onClick={() => onPick(selected, output, { pin, loaded: sources ?? [] })}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface-sunken"
                   >
                     <span className="min-w-0 flex-1">
@@ -140,6 +150,15 @@ export function ResourcePickerModal({ client, onPick, onClose }: ResourcePickerM
                 </li>
               ))}
             </ul>
+            <label className="flex items-center gap-2 text-xs text-on-surface-secondary">
+              <input
+                type="checkbox"
+                checked={pin}
+                onChange={(e) => setPin(e.target.checked)}
+                className="accent-accent"
+              />
+              {gt("Pin by id")}
+            </label>
           </div>
         )}
 

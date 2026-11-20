@@ -216,6 +216,33 @@
         }
       }
     },
+    "envFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "#/$defs/envFilePath" },
+        "environment": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+          "description": "The file's `[env.<name>]` section, laid over its `[env]`."
+        },
+        "vars": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$" },
+          "additionalProperties": { "type": "string", "maxLength": 256 },
+          "description": "Substitutions for `${name}` in the file's references, laid over its `[vars]`. Literal text."
+        }
+      }
+    },
+    "envFilePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!/)(?!.*(^|/)\\.{1,2}(/|$))[^\\\\]+$",
+      "description": "Relative to the repository's root, such as `.infraenv` or `apps/web/.infraenv`."
+    },
     "triggerFilter": {
       "type": "object",
       "additionalProperties": false,
@@ -479,6 +506,10 @@
             "statuses": { "$ref": "#/$defs/githubTokenLevel" }
           },
           "description": "A GitHub token for the run's own repository with these permissions (GitHub Actions' names), minted for the run from the Infrawrench GitHub App's installation: `GH_TOKEN` and `GITHUB_TOKEN` for gh and the API, `GH_REPO`, and Git credentials so `git push` to the repository works. Lasts an hour from when the run starts. Masked like secrets. Never for a pull request from a fork."
+        },
+        "env-file": {
+          "description": "A `.infraenv` file of the repository whose variables the job gets, resolved by the app when it sends the run from the file at the run's commit: literals as written, `resource()` references only when that resource and output are granted to CI for this repository and branch, and `secret()` from the repository's CI secrets (not the organisation's secrets). The job's own `env:` wins. Masked like secrets. Never for a pull request from a fork.",
+          "oneOf": [{ "$ref": "#/$defs/envFilePath" }, { "$ref": "#/$defs/envFile" }]
         },
         "args": {
           "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",

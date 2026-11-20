@@ -4,10 +4,11 @@
 - **Who Is On Call**: every rotation's current person, when they hand off, and who is next.
 - **Open Incidents**: open and mitigated incidents, worst first.
 - **Declare Incident**: title, severity and summary, confirmed before anything is sent.
+- **Check Environment File**: a local `.infraenv` (the path you type, the file or folder selected in Finder, or one you pick) checked for syntax offline and against your organization: its environments, what each resource and secret reference points at (with the account), and every problem. Actions open the file, show it in Finder, copy its path, and pull a `.env` for any environment beside it (where its `output` setting says, readable only by you; a `.env` Infrawrench did not generate is replaced only after you confirm). Values are never shown.
 
 ## Setup
 
-1. In Infrawrench, create an API key under Settings > API keys. The commands need `resources:read`, `costs:read`, `iac:read`, `incidents:read`, `team:read`, and `incidents:write` to declare.
+1. In Infrawrench, create an API key under Settings > API keys. The commands need `resources:read`, `costs:read`, `iac:read`, `incidents:read`, `team:read`, and `incidents:write` to declare. Pulling a `.env` needs `secrets:read`.
 2. Paste the key into the extension's **API Key** preference.
 3. For **Organization**, paste any Infrawrench address from inside your organization (the API keys page works), or the organization id.
 

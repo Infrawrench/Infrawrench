@@ -6,13 +6,16 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { getDb } from "../main-utils";
 import { Effect, Predicate, Schema } from "effect";
-import {
-  fetchLocalMetricSeries,
-  listAccountResourcesLive,
-  resolveResourceOutputs,
-} from "../plugin-runtime";
 import { CloudApi } from "./effect/cloud-api";
 import { CliFailure } from "./effect/errors";
+
+/**
+ * The main-process plugin runtime, loaded on first use. It brings every
+ * plugin and every driver (pg, mysql2, mongodb, ssh2, ...) with it, which is
+ * most of the CLI's startup time; a cloud command never needs it, and this
+ * module is imported by nearly every command and by the runner itself.
+ */
+const pluginRuntime = () => import("../plugin-runtime");
 
 /**
  * Error with a user-facing message and no stack trace on print, for Promise
@@ -108,6 +111,7 @@ export async function listLocalResources(
   account: AccountInfo,
   options: { typeId?: string } = {},
 ): Promise<ResourceListing> {
+  const { listAccountResourcesLive } = await pluginRuntime();
   const { resources, errors } = await listAccountResourcesLive(account, options);
   return {
     errors,
@@ -133,6 +137,7 @@ export async function loadLocalResourceOutputs(
   account: AccountInfo,
   row: ResourceRow,
 ): Promise<ResourceRow> {
+  const { resolveResourceOutputs } = await pluginRuntime();
   const outputs = await resolveResourceOutputs(account, row.resourceTypeId, row.id);
   return { ...row, outputs: { ...row.outputs, ...outputs } };
 }
@@ -173,6 +178,7 @@ export async function fetchLocalMetrics(
   resourceId: string,
   range?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
+  const { fetchLocalMetricSeries } = await pluginRuntime();
   return fetchLocalMetricSeries(account, resourceTypeId, resourceId, range);
 }
 

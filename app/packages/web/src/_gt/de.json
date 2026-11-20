@@ -23806,5 +23806,24 @@
       }
     },
     " committet."
-  ]
+  ],
+  "800c62805d5b8375": "Per ID anheften",
+  "d37a1aaf45991d3f": "Substitution benennen",
+  "93600173d634f143": "Diese Substitution ist hier doppelt gesetzt",
+  "e2b8129fdb3e431a": "Substitutionen",
+  "5773c0a86a76c357": "Substitution hinzufügen",
+  "f707542753234931": "Überschreiben",
+  "8fa4a713aeea2a30": "Name der Substitution",
+  "9dfb8d90c25effc7": "Wert der Substitution",
+  "379791f4e08f7b32": "Geteilte Überschreibungen",
+  "7826076b7381ff65": "Substitution",
+  "0d7495edb9087876": "Geteilten Wert verwenden",
+  "8d73280b9b6a8976": "Entspricht {count} Ressourcen: Konto hinzufügen",
+  "9b4e9a12204293ef": "Kein Organisations-Secret namens {name}",
+  "6442df087825e48f": "Kein Wert für {names} hier",
+  "74753bd6efa6f8b7": "Ressourcen-Output auswählen…",
+  "51137f36fc3c828c": "Nach Namen suchen",
+  "bd3d87dee985e997": "Nach Name",
+  "b42c55d7a720a720": "Nach ID",
+  "8ac9eef081af2cab": "Ressourcenname"
 }

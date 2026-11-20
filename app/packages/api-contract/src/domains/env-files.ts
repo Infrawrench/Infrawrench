@@ -48,15 +48,51 @@ const InfraenvProblem = Schema.Struct({
   key: Schema.optionalKey(Schema.String),
 }).annotate({ identifier: "InfraenvProblem" });
 
+const InfraenvVars = Schema.Record(
+  Schema.String.check(maxLength(INFRAENV_LIMITS.maxKeyLength)),
+  Schema.String.check(maxLength(4096)),
+).annotate({
+  description:
+    "Substitutions laid over the file's `[vars]` and `[vars.<environment>]`, like the CLI's `--var`.",
+  examples: [{ stage: "dev" }],
+});
+
 export const InfraenvDescribeRequest = Schema.Struct({
   source: InfraenvSourceText,
+  vars: Schema.optionalKey(InfraenvVars),
 }).annotate({ identifier: "InfraenvDescribeRequest" });
 
+const InfraenvResourceMatch = Schema.Struct({
+  pluginId: Schema.String,
+  resourceTypeId: Schema.String,
+  name: Schema.String,
+  account: Schema.optionalKey(Schema.String),
+}).annotate({ identifier: "InfraenvResourceMatch" });
+
 export const InfraenvResourceDescription = Schema.Struct({
-  resourceId: Schema.String,
+  ref: Schema.String.annotate({
+    description:
+      "client-core `infraenvReferenceKey` of the expanded reference: how an editor matches a row to its description.",
+  }),
+  resourceId: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "The resource named by id, or the one a by-name reference found.",
+    }),
+  ),
+  match: Schema.optionalKey(
+    InfraenvResourceMatch.annotate({
+      description: "For a by-name reference, what it matched on, substitutions filled in.",
+    }),
+  ),
+  matches: Schema.optionalKey(
+    Schema.Int.annotate({
+      description: "For a by-name reference, how many resources matched; only 1 resolves.",
+    }),
+  ),
   output: Schema.String,
   found: Schema.Boolean.annotate({
-    description: "False when the organization has no such resource (deleted, or a typo).",
+    description:
+      "False when the organization has no such resource (deleted, a typo, or a name that matches several).",
   }),
   displayName: Schema.optionalKey(Schema.String),
   pluginId: Schema.optionalKey(Schema.String),
@@ -90,6 +126,7 @@ export const InfraenvDescribeResponse = Schema.Struct({
 export const InfraenvResolveRequest = Schema.Struct({
   source: InfraenvSourceText,
   environment: Schema.optionalKey(Schema.NullOr(EnvironmentName)),
+  vars: Schema.optionalKey(InfraenvVars),
   sourceName: Schema.optionalKey(
     Schema.String.check(maxLength(512)).annotate({
       description:
@@ -209,9 +246,10 @@ export class EnvFilesGroup extends HttpApiGroup.make("envFiles")
       .annotate(OpenApi.Summary, "Check an .infraenv file")
       .annotate(
         OpenApi.Description,
-        "Parses the file and looks up every reference it makes: which resource, account and output " +
-          "each `resource()` names, and whether each `secret()` exists. Returns no values and calls " +
-          "no provider.",
+        "Parses the file and looks up every reference it makes, once per environment with that " +
+          "environment's substitutions filled in: which resource, account and output each " +
+          "`resource()` names or finds by name, and whether each `secret()` exists. Returns no " +
+          "values and calls no provider.",
       )
       .annotate(SuccessDescription, "What the file references")
       .annotate(InvalidRequestMessage, "Invalid .infraenv request")
@@ -226,7 +264,8 @@ export class EnvFilesGroup extends HttpApiGroup.make("envFiles")
       .annotate(OpenApi.Summary, "Resolve an .infraenv file into .env values")
       .annotate(
         OpenApi.Description,
-        "Resolves every variable of one environment: literals as written, `resource()` through the " +
+        "Resolves every variable of one environment: literals as written, `resource()` (by id, or " +
+          "by plugin, type and name in this organization, after `${var}` substitution) through the " +
           "resource's provider, `secret()` from the organization's secrets. Returns the values in " +
           "plaintext along with the generated `.env` text, and records an audit entry naming the " +
           "variables (never their values). A variable that does not resolve is reported in " +

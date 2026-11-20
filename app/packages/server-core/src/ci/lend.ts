@@ -1,9 +1,10 @@
 /**
  * What a run is lent: the `lent` field of the run request
  * (`ci-runner/README.md`, "HTTP API"), built at dispatch from what its jobs
- * name (`connections:`, `ssh-keys:`, `${{ resources.* }}`, `env-from:`, read
- * with its pipelines by `POST /v1/concurrency`) and what the organization
- * allows.
+ * name (`connections:`, `ssh-keys:`, `${{ resources.* }}`, `env-from:`,
+ * `env-file:`, read with its pipelines by `POST /v1/concurrency`) and what
+ * the organization allows. `env-file:` is `env-file.ts`'s; GitHub tokens are
+ * `github-token.ts`'s.
  *
  * - Only for a trusted run. A fork's pull request is never sent `lent`; the
  *   runner fails the jobs that name something with its own reason.
@@ -59,6 +60,7 @@ import { buildAad, decrypt } from "../encryption.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { getClientForResource } from "../peer-clients.js";
 import { ciPeerClient, tunnelRefusal, type CiPeerClient } from "./peers.js";
+import type { LentEnvFile } from "./env-file.js";
 import type { GithubTokenEntry } from "./github-token.js";
 
 /** A value as the run request carries it: secret as a whole, or shown and secret parts. */
@@ -87,6 +89,8 @@ export interface Lent {
   resources?: Record<string, LentResource>;
   /** By the permissions jobs ask for (`github-token.ts`). */
   "github-token"?: Record<string, GithubTokenEntry>;
+  /** By `envFileKey` (`env-file.ts`). */
+  "env-files"?: Record<string, LentEnvFile>;
 }
 
 /** What a run is, as lending checks it. */
@@ -106,8 +110,12 @@ export interface LendingRun {
 
 /** What one lend was, for the audit log. */
 export interface LendRecord {
-  /** `peer`: a resource lent as a connection of its peer plugin. */
-  kind: "connection" | "ssh-key" | "resource" | "peer";
+  /**
+   * `peer`: a resource lent as a connection of its peer plugin. `env-file`:
+   * the variables of a `.infraenv`, by name (its resources are `resource`
+   * records of their own).
+   */
+  kind: "connection" | "ssh-key" | "resource" | "peer" | "env-file";
   name: string;
   entityId: string;
   /** Who allowed it. */
@@ -166,7 +174,8 @@ export function needsLending(access: readonly CiJobAccess[] | null): boolean {
     names.connections.size > 0 ||
     names.sshKeys.size > 0 ||
     names.resources.size > 0 ||
-    names.envFrom.size > 0
+    names.envFrom.size > 0 ||
+    access.some((j) => j.envFile !== undefined)
   );
 }
 
@@ -775,7 +784,7 @@ async function readGrantedValue(
   return client.resolveOutput(resource.resourceTypeId, resource.id, output, resource.accountId);
 }
 
-const defaultReader: ResourceReader = {
+export const defaultResourceReader: ResourceReader = {
   async read(grant, resource, output) {
     const resolved = await getClientForResource(
       resource.pluginId,
@@ -939,7 +948,7 @@ export async function buildLent(
   run: LendingRun,
   access: readonly CiJobAccess[] | null,
   deps: LendDeps = defaultDeps,
-  reader: ResourceReader = defaultReader,
+  reader: ResourceReader = defaultResourceReader,
 ): Promise<{ lent: Lent; records: LendRecord[] } | null> {
   if (!access || run.fromFork || !needsLending(access)) return null;
   const names = referencedNames(access);
@@ -967,13 +976,20 @@ function entrySize(entry: unknown): number {
  */
 export function fitLent(lent: Lent, baseBytes: number): Lent {
   const out: Lent = JSON.parse(JSON.stringify(lent)) as Lent;
-  const maps = [out.connections, out["ssh-keys"], out.resources, out["github-token"]].filter(
-    (m): m is Record<string, LentEntry | LentResource | GithubTokenEntry> => m !== undefined,
+  const maps = [
+    out.connections,
+    out["ssh-keys"],
+    out.resources,
+    out["github-token"],
+    out["env-files"],
+  ].filter(
+    (m): m is Record<string, LentEntry | LentResource | GithubTokenEntry | LentEnvFile> =>
+      m !== undefined,
   );
   // `,"lent":` and a little room for the rest of the JSON punctuation.
   while (baseBytes + entrySize(out) + 16 > MAX_RUN_BODY_BYTES) {
     let largest: {
-      map: Record<string, LentEntry | LentResource | GithubTokenEntry>;
+      map: Record<string, LentEntry | LentResource | GithubTokenEntry | LentEnvFile>;
       name: string;
       size: number;
     } | null = null;
@@ -1008,7 +1024,9 @@ export async function auditLends(run: LendingRun, records: readonly LendRecord[]
             ? "account"
             : r.kind === "ssh-key"
               ? "ssh_key"
-              : "ci_resource_grant",
+              : r.kind === "env-file"
+                ? "ci_env_file"
+                : "ci_resource_grant",
         entityId: r.entityId,
         metadata: {
           runId: run.id,

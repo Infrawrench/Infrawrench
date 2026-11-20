@@ -40,7 +40,7 @@ const sources = import.meta.glob<string>("./*/**/*.md", {
 });
 
 /** Homepage order: the ones listed here first, then the rest by id. */
-const ORDER = ["infrawrench-cli", "migrate-github-actions"];
+const ORDER = ["infrawrench-cli", "infraenv", "migrate-github-actions"];
 
 function load(): Skill[] {
   const skills: Skill[] = [];
@@ -75,7 +75,20 @@ export function skillFileUrl(skill: Skill, path: string): string {
 
 /** SKILL.md as Claude Code and the Agent Skills format read it. */
 export function skillMd(skill: Skill): string {
-  return `---\nname: ${skill.id}\ndescription: ${skill.description}\n---\n\n${skill.files[0]!.content}`;
+  return `---\nname: ${skill.id}\ndescription: ${yamlScalar(skill.description)}\n---\n\n${skill.files[0]!.content}`;
+}
+
+/**
+ * A frontmatter value: plain when YAML reads it back unchanged, a JSON
+ * (double-quoted YAML) string otherwise, so a description with `: ` in it
+ * still parses. The npm package's `scripts/sync-skill.mjs` writes the same.
+ */
+function yamlScalar(value: string): string {
+  const plain =
+    value !== "" &&
+    !/: |\s#|^[\s\-?:,[\]{}#&*!|>'"%@`]|\s$|:$/.test(value) &&
+    !/[\n\r\t]/.test(value);
+  return plain ? value : JSON.stringify(value);
 }
 
 /** The files as written to disk, SKILL.md with its frontmatter. */

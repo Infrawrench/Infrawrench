@@ -66,15 +66,25 @@ EMPTY = secret("EMPTY")
 
 let reader: Reader;
 let outputReads: string[];
+let namedLookups: unknown[];
 
 beforeEach(() => {
   outputReads = [];
+  namedLookups = [];
   const secrets = new Map([
     ["STRIPE", secret("STRIPE", "stripe-test-value")],
     ["EMPTY", secret("EMPTY", null)],
   ]);
   reader = {
     resources: async (_org, ids) => new Map(ids.flatMap((id) => (id === RES ? [[id, row]] : []))),
+    named: async (_org, match) => {
+      namedLookups.push(match);
+      if (match.pluginId !== "neon" || match.resourceTypeId !== "branch") return [];
+      if (match.name === "main") return [row];
+      if (match.name === "twin")
+        return [row, { ...row, id: "neon:acct-2:br-9", accountName: "Neon EU" }];
+      return [];
+    },
     secrets: async (_org, names) =>
       new Map(names.flatMap((n) => (secrets.has(n) ? [[n, secrets.get(n)!]] : []))),
     resourceOutput: async (_org, r, output) => {
@@ -156,7 +166,7 @@ describe("resolveInfraenv", () => {
 describe("describeInfraenv", () => {
   it("labels references and reports dangling ones without reading values", async () => {
     const source = `${SOURCE}\n[env.staging]\nX = resource("${RES}", "nope")\nY = secret("MISSING")\n`;
-    const out = await describeInfraenv("org-1", source, reader);
+    const out = await describeInfraenv("org-1", source, {}, reader);
     expect(outputReads).toEqual([]);
     expect(out.environments).toEqual(["production", "staging"]);
     expect(out.resources.find((r) => r.output === "connectionString")).toMatchObject({
@@ -178,6 +188,58 @@ describe("describeInfraenv", () => {
       "The organization secret EMPTY has no value yet",
       'Branch has no output "nope"',
       "No organization secret named MISSING",
+    ]);
+  });
+});
+
+describe("by-name references and substitutions", () => {
+  const PORTABLE = `[vars]
+branch = main
+
+[env]
+DATABASE_URL = resource("neon/branch", "\${branch}", "connectionString")
+STRIPE = secret("\${secret}")
+
+[vars.staging]
+branch = twin
+
+[env.staging]
+`;
+
+  it("finds a resource by name in this organization, with substitutions", async () => {
+    const out = await resolveInfraenv(
+      "org-1",
+      { source: PORTABLE, vars: { secret: "STRIPE" } },
+      reader,
+    );
+    expect(out.values).toEqual([
+      { key: "DATABASE_URL", value: "postgres://u:p@db.example.com/app" },
+      { key: "STRIPE", value: "stripe-test-value" },
+    ]);
+    expect(namedLookups).toEqual([{ pluginId: "neon", resourceTypeId: "branch", name: "main" }]);
+  });
+
+  it("refuses an ambiguous name and a missing substitution, per variable", async () => {
+    const out = await resolveInfraenv(
+      "org-1",
+      { source: PORTABLE, environment: "staging" },
+      reader,
+    );
+    expect(out.values).toEqual([]);
+    expect(out.problems.map((p) => p.message)).toEqual([
+      '2 resources match neon/branch named "twin": add the account, as "neon/branch@<account>", or pin one by id',
+      "No value for ${secret}: set it in [vars]",
+    ]);
+  });
+
+  it("describes each scope's expansion", async () => {
+    const out = await describeInfraenv("org-1", PORTABLE, { vars: { secret: "STRIPE" } }, reader);
+    expect(out.resources.map((r) => [r.ref, r.found, r.matches])).toEqual([
+      ["name:neon/branch\u0000main\u0000connectionString", true, 1],
+      ["name:neon/branch\u0000twin\u0000connectionString", false, 2],
+    ]);
+    expect(out.problems.map((p) => p.message)).toEqual([
+      '2 resources match neon/branch named "twin": add the account, as "neon/branch@<account>", or pin one by id (environment staging)',
     ]);
   });
 });

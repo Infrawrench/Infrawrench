@@ -25,6 +25,7 @@ import {
   type EnvScope,
 } from "./document.js";
 import { EnvironmentNameModal, ImportModal } from "./SmallModals.js";
+import { SubstitutionsEditor } from "./SubstitutionsEditor.js";
 import { inputClass, labelClass, primaryButton, quietButton, secondaryButton } from "./styles.js";
 import type { EnvFilesClient, EnvFilesRepoList, EnvFilesSecret } from "./types.js";
 import { VariablesTable } from "./VariablesTable.js";
@@ -610,6 +611,8 @@ export function EnvFilesPanel({
               </>
             )}
           </div>
+
+          <SubstitutionsEditor doc={doc} scope={scope} onChange={setDoc} />
 
           <VariablesTable
             client={client}

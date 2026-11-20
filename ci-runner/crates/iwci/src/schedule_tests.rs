@@ -3271,6 +3271,107 @@ jobs:
     }
 }
 
+const FILE_DB_URL: &str = "postgres://ci:file-db-hunter2@db.internal/app";
+const FILE_STRIPE: &str = "stripe-file-hunter2";
+
+#[test]
+fn an_env_file_reaches_its_job_under_its_own_env_and_is_masked() {
+    let p = plan(
+        r#"
+name: x
+jobs:
+  test:
+    using: builtin:print@1
+    env-file: { path: .infraenv, environment: staging }
+    env:
+      LOG_LEVEL: own-wins
+  other:
+    using: builtin:print@1
+"#,
+    );
+    let key = p
+        .template("test")
+        .unwrap()
+        .access
+        .env_file
+        .as_ref()
+        .unwrap()
+        .key();
+    let lent: crate::lent::Lent = serde_json::from_value(serde_json::json!({
+        "env-files": {
+            key.clone(): {
+                "env": {
+                    "NODE_ENV": [{ "text": "staging" }],
+                    "LOG_LEVEL": [{ "text": "debug" }],
+                    "DATABASE_URL": FILE_DB_URL
+                },
+                "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" }
+            }
+        }
+    }))
+    .unwrap();
+    lent.check().unwrap();
+    let access = RunAccess {
+        lent: Arc::new(lent),
+        trusted: true,
+        external: None,
+    };
+    let secrets = BTreeMap::from([("STRIPE_SECRET_KEY".to_string(), FILE_STRIPE.to_string())]);
+    let (report, exec, events) = run_access(&p, access, secrets, None, None);
+    assert_eq!(status(&report, "test"), &Status::Passed, "{report:#?}");
+    let env = exec.seen_env.lock().unwrap()["test"].clone();
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    assert_eq!(get("NODE_ENV").as_deref(), Some("staging"));
+    assert_eq!(get("DATABASE_URL").as_deref(), Some(FILE_DB_URL));
+    assert_eq!(get("STRIPE_KEY").as_deref(), Some(FILE_STRIPE));
+    // The job's own `env:` wins over the file.
+    assert_eq!(get("LOG_LEVEL").as_deref(), Some("own-wins"));
+    assert!(
+        !exec.seen_env.lock().unwrap()["other"]
+            .iter()
+            .any(|(k, _)| k == "DATABASE_URL" || k == "STRIPE_KEY")
+    );
+
+    let test = report.jobs.iter().find(|j| j.id == "test").unwrap();
+    let stdout = &test.execution.as_ref().unwrap().stdout;
+    assert!(stdout.contains("DATABASE_URL=***"), "{stdout}");
+    assert!(stdout.contains("STRIPE_KEY=***"), "{stdout}");
+    assert!(stdout.contains("NODE_ENV=staging"), "{stdout}");
+    assert_eq!(
+        test.access.env_file.as_ref().map(|f| f.path.as_str()),
+        Some(".infraenv")
+    );
+    // Nothing secret anywhere a report or the live log goes.
+    let everything = format!(
+        "{}{}",
+        serde_json::to_string(&report).unwrap(),
+        serde_json::to_string(&events).unwrap()
+    );
+    for secret in [FILE_DB_URL, FILE_STRIPE] {
+        assert!(!everything.contains(secret), "{secret} leaked");
+    }
+
+    // A CI secret the run does not have fails the job before it starts,
+    // rather than leave the variable empty.
+    let lent: crate::lent::Lent = serde_json::from_value(serde_json::json!({
+        "env-files": { key: { "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" } } }
+    }))
+    .unwrap();
+    let access = RunAccess {
+        lent: Arc::new(lent),
+        trusted: true,
+        external: None,
+    };
+    let (report, exec, _) = run_access(&p, access, BTreeMap::new(), None, None);
+    match status(&report, "test") {
+        Status::Failed { reason } => {
+            assert!(reason.contains("not a CI secret"), "{reason}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(ran(&exec), ["other"]);
+}
+
 #[test]
 fn a_name_the_app_refused_or_never_sent_fails_the_job_before_it_runs() {
     let p = plan(

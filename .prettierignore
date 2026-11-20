@@ -66,3 +66,8 @@ ci-runner/vendor/virtual-fs/
 # @tybys/wasm-util's published bundle, vendored unmodified for the runner's
 # `node:wasi` (ci-runner/crates/iwci-runtime/node/README.md).
 ci-runner/crates/iwci-runtime/node/wasm-util.cjs
+
+# The npm package's copy of the infraenv agent skill, generated from the
+# website's skill folder by app/packages/infraenv/scripts/sync-skill.mjs; a
+# test holds it byte for byte to what the script writes.
+app/packages/infraenv/skills/

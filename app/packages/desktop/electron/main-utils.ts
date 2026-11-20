@@ -2,6 +2,7 @@ import { app, safeStorage } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { markPhase } from "./startup-timing";
 
 let _encryptionKey: Buffer | null = null;
 
@@ -125,6 +126,7 @@ class MasterKeyUnavailableError extends UserFacingError {
 export function getEncryptionKey(): Buffer {
   if (_encryptionKey) return _encryptionKey;
   const existing = readKeyFromDisk();
+  markPhase("master key read");
   if (existing) {
     _encryptionKey = existing;
     return _encryptionKey;

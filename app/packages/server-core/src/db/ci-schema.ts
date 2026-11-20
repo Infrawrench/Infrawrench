@@ -102,7 +102,19 @@ export interface CiJobAccess {
   envFrom?: string[];
   /** `github-token:`: each permission (GitHub Actions' names) and `read` or `write`. */
   githubToken?: Record<string, string>;
+  /** `env-file:`: the `.infraenv` the job's variables come from (`ci/env-file.ts`). */
+  envFile?: CiEnvFileUse;
   cloud?: Record<string, string>;
+}
+
+/** A job's `env-file:`, as the runner checked it: names only, never a value. */
+export interface CiEnvFileUse {
+  /** Relative to the repository's root. */
+  path: string;
+  /** The `[env.<name>]` section laid over `[env]`. */
+  environment?: string;
+  /** Substitutions laid over the file's `[vars]`. */
+  vars?: Record<string, string>;
 }
 
 /** One run of a repository's pipelines for a push or a pull request. */

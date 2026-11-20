@@ -575,6 +575,8 @@
 // enum. Additive.
 // 1.124.0: environment files under `/api/org/:orgId/env-files`: `POST
 // /describe`, `POST /resolve`, `GET /sources`, `GET /repos`, `GET /repo-file`
-// and `POST /commit`, with their `Infraenv*` schemas; `env-files` joins the
-// workspace `TabTarget` enum. Additive.
+// and `POST /commit`, with their `Infraenv*` schemas (describe and resolve
+// take optional `vars`; a resource description names a by-name reference's
+// `match` and `matches`); `env-files` joins the workspace `TabTarget` enum.
+// Additive.
 export const API_VERSION = "1.124.0";

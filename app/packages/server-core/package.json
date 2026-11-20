@@ -358,6 +358,7 @@
     "./ci/billing": "./src/ci/billing.ts",
     "./ci/bootstrap": "./src/ci/bootstrap.ts",
     "./ci/caches": "./src/ci/caches.ts",
+    "./ci/env-file": "./src/ci/env-file.ts",
     "./ci/cloud-jobs": "./src/ci/cloud-jobs.ts",
     "./ci/events": "./src/ci/events.ts",
     "./ci/pass": "./src/ci/pass.ts",

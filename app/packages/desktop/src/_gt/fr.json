@@ -23614,5 +23614,24 @@
       }
     },
     "."
-  ]
+  ],
+  "800c62805d5b8375": "Épingler par ID",
+  "d37a1aaf45991d3f": "Nommer la substitution",
+  "93600173d634f143": "Cette substitution est définie deux fois ici",
+  "e2b8129fdb3e431a": "Substitutions",
+  "5773c0a86a76c357": "Ajouter une substitution",
+  "f707542753234931": "Remplacer",
+  "8fa4a713aeea2a30": "Nom de la substitution",
+  "9dfb8d90c25effc7": "Valeur de la substitution",
+  "379791f4e08f7b32": "Remplacements partagés",
+  "7826076b7381ff65": "substitution",
+  "0d7495edb9087876": "Utiliser la valeur partagée",
+  "8d73280b9b6a8976": "Correspond à {count} ressources : ajoutez un compte",
+  "9b4e9a12204293ef": "Aucun secret d'organisation nommé {name}",
+  "6442df087825e48f": "Aucune valeur pour {names} ici",
+  "74753bd6efa6f8b7": "Choisir une sortie de ressource…",
+  "51137f36fc3c828c": "Rechercher par nom",
+  "bd3d87dee985e997": "Par nom",
+  "b42c55d7a720a720": "Par ID",
+  "8ac9eef081af2cab": "Nom de la ressource"
 }

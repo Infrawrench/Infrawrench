@@ -224,13 +224,19 @@ COMMANDS
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
   env pull            resolve the project's .infraenv into the .env it describes (mode 0600; never
                       replaces a hand-written .env without --force)   [--env <name>] [-f <.infraenv>]
+                      [--var name=value  sets the \${name} substitution over [vars], repeatable]
                       [--out <path>] [--stdout] [--force] [-q/--quiet] (cloud only)
-  env check           what each .infraenv reference points at (resource, account, output, secret)
-                      and what is broken; exit 1 on problems   [-f <.infraenv>] (cloud only)
-  env init            create a .infraenv for the current org and gitignore .env
-                      [--from .env  its keys as secret("KEY") lines, never its values] [-f <path>]
-  env hooks [status]  git hooks (post-checkout, post-merge, post-rewrite) that run env pull when the
-                      branch changes; install|uninstall keep a hook someone else wrote intact
+  env check           what each .infraenv reference points at (resource, account, output, secret;
+                      a by-name resource() shows what it matched, or none / ambiguous) and what is
+                      broken; exit 1 on problems   [-f <.infraenv>] [--var name=value] (cloud only)
+  env init            create a portable .infraenv (no org pinned), gitignore .env and install the
+                      env hooks   [--from .env  its keys as secret("KEY") lines, never its values]
+                      [-f <path>] [--no-hooks]
+  env hooks [status]  git hooks (post-checkout, post-merge, post-rewrite, post-commit) that pull when
+                      a commit changes .infraenv or .env is missing, in the background (log in
+                      .git/infraenv.log); they run the project's node_modules/.bin/infraenv when the
+                      npm package is installed, else infrawrench env pull. install|uninstall keep a
+                      hook someone else wrote intact
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
   seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a

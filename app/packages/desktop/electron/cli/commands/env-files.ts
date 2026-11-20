@@ -4,7 +4,7 @@
 //   env pull     resolve one environment and write `.env` (or print it)
 //   env check    what every reference points at, and what is broken
 //   env init     start a `.infraenv`, optionally from an existing `.env`'s keys
-//   env hooks    git hooks that pull again whenever the checkout changes
+//   env hooks    git hooks that pull again whenever a commit changes the file
 //
 // Cloud-only: `resource()` and `secret()` resolve against the organization's
 // synced resources and secrets on the server, which is also where the audit
@@ -12,12 +12,19 @@
 // `infraenv.ts` (the same parser and printer the server and the editors use),
 // loaded with a dynamic import like the main process's other client-core
 // helpers; the response schemas are checked against its wire types by `wire`.
+// So is the hook block (`infraenv-hooks.ts`), which the npm package's
+// installer writes too; `../env-git.ts` does the git and file I/O around it.
+//
+// The organization is `--org`, else the file's optional `org` setting, else
+// the current one. `env init` never writes `org`: a file without it resolves
+// in whichever organization pulls it.
 //
 // `--json` shapes:
 //   env pull    → { org, file, path, ...resolveResponse }   (path null with --stdout is refused)
 //   env check   → { org, file, ...describeResponse }
-//   env init    → { org, path, variables, gitignore }
+//   env init    → { path, variables, gitignore, hooks: [...install rows] | null }
 //   env hooks   → { hooksDir, hooks: [{ hook, path, state, change? }] }
+//                 (install adds infraenv and output, the paths the block names)
 import {
   chmodSync,
   existsSync,
@@ -27,7 +34,6 @@ import {
   renameSync,
   rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -37,8 +43,11 @@ import type {
   InfraenvDescribeResponse,
   InfraenvDocument,
   InfraenvEntry,
+  InfraenvHookState,
+  InfraenvHookWrite,
   InfraenvProblem,
   InfraenvResolveResponse,
+  InfraenvValue,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { CloudApi, decodeBody } from "../effect/cloud-api";
 import { CliExit, CliFailure, CliUsageError } from "../effect/errors";
@@ -46,25 +55,20 @@ import * as Print from "../effect/print";
 import { CliSession } from "../effect/session";
 import { spreadBody, wire } from "../effect/wire";
 import {
-  ENV_HOOKS,
-  foreignHookProblem,
-  gitHooksPath,
+  type GitRepository,
+  gitRepository,
   gitRoot,
-  hookBlock,
-  hookState,
-  type HookState,
-  type HookWrite,
   ignoreState,
-  mayExitEarly,
-  withBlock,
-  withoutBlock,
+  readHookFile,
+  replaceHookFile,
+  writeHookFile,
 } from "../env-git";
 import { c, safe } from "../output";
 
 const RESOLVE_PATH = "/env-files/resolve";
 const DESCRIBE_PATH = "/env-files/describe";
 
-/** client-core at runtime: the parser and printer. */
+/** client-core at runtime: the parser, the printer and the hook block. */
 const infraenv = Effect.promise(() => import("@infrawrench/client-core"));
 
 const Problem = Schema.Struct({
@@ -88,7 +92,18 @@ const DescribeWire = wire<InfraenvDescribeResponse>()(
     environments: Schema.Array(Schema.String),
     resources: Schema.Array(
       Schema.Struct({
-        resourceId: Schema.String,
+        // Optional here so a server from before by-name references still renders.
+        ref: Schema.optional(Schema.String),
+        resourceId: Schema.optional(Schema.String),
+        match: Schema.optional(
+          Schema.Struct({
+            pluginId: Schema.String,
+            resourceTypeId: Schema.String,
+            name: Schema.String,
+            account: Schema.optional(Schema.String),
+          }),
+        ),
+        matches: Schema.optional(Schema.Finite),
         output: Schema.String,
         found: Schema.Boolean,
         displayName: Schema.optional(Schema.String),
@@ -146,6 +161,34 @@ const fileFlag = Flag.String("file").pipe(
   ),
   Flag.optional,
 );
+
+const varFlag = Flag.String("var").pipe(
+  Flag.withMetavar("name=value"),
+  Flag.withDescription(
+    "Set the ${name} substitution, over the file's [vars] and [vars.<env>]. Repeatable",
+  ),
+  Flag.atLeast(0),
+);
+
+/** `--var name=value` lines as the request's `vars`; a later one wins. */
+const parseVars = Effect.fnUntraced(function* (raw: ReadonlyArray<string>) {
+  const ie = yield* infraenv;
+  const vars = new Map<string, string>();
+  for (const item of raw) {
+    const at = item.indexOf("=");
+    const name = at < 0 ? item : item.slice(0, at);
+    if (at < 0 || !ie.isInfraenvKey(name)) {
+      return yield* new CliUsageError({
+        message: `--var takes name=value, the name letters, digits and underscores not starting with a digit: got ${JSON.stringify(item)}`,
+      });
+    }
+    vars.set(name, item.slice(at + 1));
+  }
+  return Object.fromEntries(vars) as Record<string, string>;
+});
+
+/** The `vars` field of a request: absent when no `--var` was given. */
+const varsField = (vars: Record<string, string>) => (Object.keys(vars).length > 0 ? { vars } : {});
 
 /**
  * The `.infraenv` to use: `--file`, else the nearest one walking up from the
@@ -227,6 +270,7 @@ const pull = Command.make(
       Flag.optional,
     ),
     file: fileFlag,
+    var: varFlag,
     out: Flag.String("out").pipe(
       Flag.withMetavar("path"),
       Flag.withDescription("Write here (default: the file's output setting, else .env beside it)"),
@@ -262,6 +306,7 @@ const pull = Command.make(
         message: "--stdout prints the .env itself; drop --json, or drop --stdout to write the file",
       });
     }
+    const vars = yield* parseVars(input.var);
     const ie = yield* infraenv;
     const path = yield* locate(input.file);
     const shown = display(path);
@@ -318,6 +363,7 @@ const pull = Command.make(
       body: JSON.stringify({
         source,
         ...(environment === null ? {} : { environment }),
+        ...varsField(vars),
         sourceName: sourceName || ie.INFRAENV_FILE_NAME,
       }),
     });
@@ -378,12 +424,48 @@ const pull = Command.make(
 // ---------------------------------------------------------------------------
 
 type Mark = { readonly status: string; readonly label: string };
+type DescribedResource = Described["resources"][number];
 
-function describeEntry(entry: InfraenvEntry, described: Described): Mark {
-  const value = entry.value;
+/** One variable's reference as one scope resolves it. */
+interface Reference {
+  /** The value with its substitutions filled in, or as written when they could not be. */
+  readonly value: InfraenvValue;
+  /** client-core `infraenvReferenceKey` of the expanded value; null when it did not expand. */
+  readonly ref: string | null;
+  /** The substitutions that had no value, when it did not expand. */
+  readonly missing: readonly string[];
+  /** The value as the file writes it. */
+  readonly written: string;
+}
+
+/** `neon/neon-branch@acme "storefront / dev"`: what a by-name reference looks for. */
+const wantedLabel = (
+  value: Extract<InfraenvValue, { kind: "named-resource" }>,
+  match: DescribedResource["match"],
+): string => {
+  const m = match ?? value.match;
+  const kind = `${m.pluginId}/${m.resourceTypeId}${m.account !== undefined ? `@${m.account}` : ""}`;
+  return `${safe(kind)} ${safe(JSON.stringify(m.name))} ${c.dim(`· ${safe(value.output)}`)}`;
+};
+
+/** `main · Neon Branch · acme-neon · Connection string`: the resource a reference found. */
+const foundLabel = (found: DescribedResource): string => {
+  const kind = [found.pluginName, found.resourceTypeName].filter(Boolean).join(" ");
+  const details = [kind, found.accountName, found.outputLabel ?? found.output]
+    .filter((part): part is string => Boolean(part))
+    .map(safe);
+  return `${safe(found.displayName ?? found.resourceId ?? "")} ${c.dim(`· ${details.join(" · ")}`)}`;
+};
+
+function describeEntry(reference: Reference, described: Described): Mark {
+  const value = reference.value;
+  if (value.kind === "literal") return { status: "", label: c.dim("literal") };
+  if (reference.ref === null) {
+    const names = reference.missing.map((name) => `\${${name}}`).join(", ");
+    return { status: c.red(`✗ no value for ${safe(names)}`), label: safe(reference.written) };
+  }
+  const ref = reference.ref;
   switch (value.kind) {
-    case "literal":
-      return { status: "", label: c.dim("literal") };
     case "secret": {
       const found = described.secrets.find((s) => s.name === value.name);
       const label = `${c.dim("secret")} ${safe(value.name)}`;
@@ -392,20 +474,34 @@ function describeEntry(entry: InfraenvEntry, described: Described): Mark {
       return { status: c.green("✓"), label };
     }
     case "resource": {
-      const found = described.resources.find(
-        (r) => r.resourceId === value.resourceId && r.output === value.output,
-      );
+      const found =
+        described.resources.find((r) => r.ref === ref) ??
+        described.resources.find(
+          (r) =>
+            r.ref === undefined && r.resourceId === value.resourceId && r.output === value.output,
+        );
       if (!found?.found) {
         return {
           status: c.red("✗ resource not found"),
           label: `${safe(value.resourceId)} ${c.dim(`· ${safe(value.output)}`)}`,
         };
       }
-      const kind = [found.pluginName, found.resourceTypeName].filter(Boolean).join(" ");
-      const details = [kind, found.accountName, found.outputLabel ?? found.output]
-        .filter((part): part is string => Boolean(part))
-        .map(safe);
-      const label = `${safe(found.displayName ?? found.resourceId)} ${c.dim(`· ${details.join(" · ")}`)}`;
+      const label = foundLabel(found);
+      if (!found.outputKnown) return { status: c.yellow("! unknown output"), label };
+      return { status: c.green("✓"), label };
+    }
+    case "named-resource": {
+      const found = described.resources.find((r) => r.ref === ref);
+      if (!found?.found) {
+        const matches = found?.matches ?? 0;
+        return {
+          status: c.red(
+            matches > 1 ? `✗ ambiguous: ${matches} resources match` : "✗ no resource by that name",
+          ),
+          label: wantedLabel(value, found?.match),
+        };
+      }
+      const label = foundLabel(found);
       if (!found.outputKnown) return { status: c.yellow("! unknown output"), label };
       return { status: c.green("✓"), label };
     }
@@ -415,10 +511,20 @@ function describeEntry(entry: InfraenvEntry, described: Described): Mark {
 const printSections = Effect.fnUntraced(function* (
   document: InfraenvDocument,
   described: Described,
+  overrides: Record<string, string>,
 ) {
-  const sections: Array<{ name: string; entries: readonly InfraenvEntry[] }> = [
-    { name: "[env]", entries: document.shared },
-    ...document.environments.map((env) => ({ name: `[env.${env.name}]`, entries: env.entries })),
+  const ie = yield* infraenv;
+  const sections: Array<{
+    name: string;
+    scope: string | null;
+    entries: readonly InfraenvEntry[];
+  }> = [
+    { name: "[env]", scope: null, entries: document.shared },
+    ...document.environments.map((env) => ({
+      name: `[env.${env.name}]`,
+      scope: env.name,
+      entries: env.entries,
+    })),
   ];
   const width = Math.max(
     0,
@@ -431,8 +537,25 @@ const printSections = Effect.fnUntraced(function* (
       yield* Print.line(`  ${c.dim("(no variables)")}`);
       continue;
     }
+    // Each section resolves with its own substitutions: [vars], then the
+    // environment's name and [vars.<env>], then --var.
+    const vars = ie.infraenvVariables(document, section.scope, overrides);
     for (const entry of section.entries) {
-      const mark = describeEntry(entry, described);
+      const expanded = ie.expandInfraenvValue(entry.value, vars);
+      const reference: Reference = expanded.ok
+        ? {
+            value: expanded.value,
+            ref: ie.infraenvReferenceKey(expanded.value),
+            missing: [],
+            written: "",
+          }
+        : {
+            value: entry.value,
+            ref: null,
+            missing: expanded.missing,
+            written: ie.printInfraenvValue(entry.value),
+          };
+      const mark = describeEntry(reference, described);
       yield* Print.line(
         `  ${safe(entry.key).padEnd(width)}  ${mark.label}${mark.status ? `  ${mark.status}` : ""}`,
       );
@@ -440,13 +563,17 @@ const printSections = Effect.fnUntraced(function* (
   }
 });
 
+const sameProblem = (a: InfraenvProblem, b: InfraenvProblem) =>
+  a.line === b.line && a.message === b.message && (a.key ?? "") === (b.key ?? "");
+
 const check = Command.make(
   "check",
-  { file: fileFlag },
+  { file: fileFlag, var: varFlag },
   Effect.fn("env.check")(function* (input) {
     yield* requireCloud;
     const session = yield* CliSession;
     const api = yield* CloudApi;
+    const vars = yield* parseVars(input.var);
     const ie = yield* infraenv;
     const path = yield* locate(input.file);
     const shown = display(path);
@@ -455,9 +582,16 @@ const check = Command.make(
     const org = yield* orgFor(document.settings.org);
     const body = yield* api.json(org.id, DESCRIBE_PATH, {
       method: "POST",
-      body: JSON.stringify({ source }),
+      body: JSON.stringify({ source, ...varsField(vars) }),
     });
     const described = yield* decodeBody(DescribeWire, DESCRIBE_PATH)(body);
+
+    // A substitution with no value is the server's to report as well; the
+    // same client-core check here keeps it in the list either way.
+    const problems: InfraenvProblem[] = [...described.problems];
+    for (const problem of ie.infraenvReferences(document, vars).problems) {
+      if (!problems.some((known) => sameProblem(known, problem))) problems.push(problem);
+    }
 
     if (session.output === "json") {
       yield* Print.json(yield* spreadBody({ org: org.id, file: path }, body, DESCRIBE_PATH));
@@ -470,20 +604,122 @@ const check = Command.make(
             : "no environments: [env] only",
         ),
       );
-      yield* printSections(document, described);
+      yield* printSections(document, described, vars);
       yield* Print.line();
-      if (described.problems.length === 0) {
+      if (problems.length === 0) {
         yield* Print.line(c.green("No problems."));
       } else {
-        yield* Print.line(c.red(plural(described.problems.length, "problem")));
-        for (const problem of described.problems) {
+        yield* Print.line(c.red(plural(problems.length, "problem")));
+        for (const problem of problems) {
           yield* Print.line(`  ${problemLine(shown, problem)}`);
         }
       }
     }
-    if (described.problems.length > 0) return yield* new CliExit({ exitCode: 1 });
+    if (problems.length > 0) return yield* new CliExit({ exitCode: 1 });
   }),
 ).pipe(Command.withDescription("What every reference in .infraenv points at, and what is broken"));
+
+// ---------------------------------------------------------------------------
+// env hooks: the install shared by `env hooks install` and `env init`
+// ---------------------------------------------------------------------------
+
+interface HookRow {
+  readonly hook: string;
+  readonly path: string;
+  readonly state: InfraenvHookState;
+  readonly change: InfraenvHookWrite | "skipped";
+  readonly reason?: string;
+}
+
+/**
+ * The paths the hook block names, relative to the repository root where git
+ * runs hooks: the `.infraenv`, and the output it writes (its `output`
+ * setting, else `.env` beside it), which the block pulls when missing.
+ */
+const hookPaths = Effect.fnUntraced(function* (repo: GitRepository, infraenvPath: string) {
+  const ie = yield* infraenv;
+  const file = posix(relative(repo.root, realpathOr(infraenvPath)));
+  if (file.startsWith("../") || isAbsolute(file)) {
+    return yield* new CliFailure({
+      message: `${display(infraenvPath)} is outside this repository.`,
+    });
+  }
+  const source = yield* fsStep(`Could not read ${display(infraenvPath)}`, () =>
+    readFileSync(infraenvPath, "utf8"),
+  );
+  const setting = ie.parseInfraenv(source).document.settings.output;
+  const output = posix(
+    relative(
+      repo.root,
+      resolve(realpathOr(dirname(infraenvPath)), setting || ie.INFRAENV_DEFAULT_OUTPUT),
+    ),
+  );
+  return { file, output };
+});
+
+const readHook = (path: string) =>
+  fsStep(`Could not read ${display(path)}`, () => readHookFile(path));
+
+/**
+ * Put the block in every hook. A hook someone else wrote keeps its text with
+ * the block appended, unless its interpreter is not a shell (skipped, with
+ * why); one that may exit before the block runs gets a warning.
+ */
+const installHooks = Effect.fnUntraced(function* (
+  repo: GitRepository,
+  paths: { readonly file: string; readonly output: string },
+) {
+  const ie = yield* infraenv;
+  yield* fsStep(`Could not create ${display(repo.hooksDir)}`, () =>
+    mkdirSync(repo.hooksDir, { recursive: true }),
+  );
+  const rows: HookRow[] = [];
+  for (const hook of ie.INFRAENV_HOOKS) {
+    const path = join(repo.hooksDir, hook);
+    const before = yield* readHook(path);
+    const refused =
+      before !== null && ie.infraenvHookState(before) === "foreign"
+        ? ie.infraenvForeignHookProblem(before)
+        : null;
+    if (refused) {
+      rows.push({ hook, path, state: "foreign", change: "skipped", reason: refused });
+      continue;
+    }
+    const next = ie.withInfraenvHook(before, ie.infraenvHookBlock(hook, paths));
+    yield* fsStep(`Could not write ${display(path)}`, () =>
+      writeHookFile(path, next.text, before !== null, next.change !== "unchanged"),
+    );
+    rows.push({ hook, path, state: ie.infraenvHookState(next.text), change: next.change });
+    if (next.change === "appended" && before !== null && ie.infraenvHookMayExitEarly(before)) {
+      yield* Print.errLine(
+        c.yellow(
+          `warning: ${display(path)} has an exit before the end; move the infrawrench block above it if pull never runs.`,
+        ),
+      );
+    }
+  }
+  return rows;
+});
+
+/** Whether a hook already carries a block for another file (another `.infraenv` here). */
+const hooksTaken = Effect.fnUntraced(function* (
+  repo: GitRepository,
+  paths: { readonly file: string; readonly output: string },
+) {
+  const ie = yield* infraenv;
+  for (const hook of ie.INFRAENV_HOOKS) {
+    const text = yield* readHook(join(repo.hooksDir, hook));
+    const state = ie.infraenvHookState(text);
+    if (text === null || state === "absent" || state === "foreign") continue;
+    if (ie.withInfraenvHook(text, ie.infraenvHookBlock(hook, paths)).change !== "unchanged") {
+      return true;
+    }
+  }
+  return false;
+});
+
+const skippedText = (row: HookRow) =>
+  `skipped: ${row.reason ?? "it is not a shell script"}; add \`infrawrench env pull --quiet\` to it yourself`;
 
 // ---------------------------------------------------------------------------
 // env init
@@ -530,11 +766,16 @@ const init = Command.make(
       ),
       Flag.optional,
     ),
+    hooks: Flag.Boolean("hooks").pipe(
+      Flag.withDescription(
+        "Install the Git hooks that pull when a commit changes the file (--no-hooks skips them)",
+      ),
+      Flag.withDefault(true),
+    ),
   },
   Effect.fn("env.init")(function* (input) {
     yield* requireCloud;
     const session = yield* CliSession;
-    const api = yield* CloudApi;
     const ie = yield* infraenv;
     const cwd = process.cwd();
     const target = resolve(
@@ -560,11 +801,9 @@ const init = Command.make(
       }
     }
 
-    const org = yield* api.resolveOrg(session.org);
-    const empty = ie.emptyInfraenvDocument();
+    // No `org` setting: the file resolves in whichever organization pulls it.
     const document: InfraenvDocument = {
-      ...empty,
-      settings: { org: org.id },
+      ...ie.emptyInfraenvDocument(),
       shared: keys.map((key) => ({ key, value: { kind: "secret", name: key } })),
     };
     yield* fsStep(`Could not create ${display(target)}`, () => {
@@ -574,11 +813,23 @@ const init = Command.make(
 
     const gitignore = yield* ensureIgnored(join(dirname(target), ie.INFRAENV_DEFAULT_OUTPUT));
 
+    // Hooks, unless --no-hooks, outside a repository, or the repository's
+    // hooks already pull another .infraenv (pointing them here is
+    // `env hooks install -f`, a deliberate step).
+    let hookRows: HookRow[] | null = null;
+    let taken = false;
+    const repo = input.hooks ? yield* Effect.promise(() => gitRepository(dirname(target))) : null;
+    if (repo !== null) {
+      const paths = yield* hookPaths(repo, target);
+      taken = yield* hooksTaken(repo, paths);
+      if (!taken) hookRows = yield* installHooks(repo, paths);
+    }
+
     if (session.output === "json") {
-      return yield* Print.json({ org: org.id, path: target, variables: keys, gitignore });
+      return yield* Print.json({ path: target, variables: keys, gitignore, hooks: hookRows });
     }
     yield* Print.line(
-      `Created ${display(target)} for ${safe(org.displayName)}${
+      `Created ${display(target)}${
         Option.isSome(input.from)
           ? ` with ${plural(keys.length, "variable")} from ${input.from.value}`
           : ""
@@ -592,9 +843,27 @@ const init = Command.make(
       );
     }
     if (gitignore === "added") yield* Print.line(c.dim("Added .env to .gitignore"));
+    if (hookRows !== null) {
+      for (const row of hookRows) {
+        if (row.change === "skipped") {
+          yield* Print.errLine(c.yellow(`warning: ${display(row.path)} ${skippedText(row)}`));
+        }
+      }
+      yield* Print.line(
+        c.dim(
+          "Installed Git hooks that pull .env when a commit changes it; `infrawrench env hooks uninstall` removes them.",
+        ),
+      );
+    } else if (taken) {
+      yield* Print.line(
+        c.dim(
+          `Left the Git hooks alone: they pull another .infraenv. \`infrawrench env hooks install -f ${display(target)}\` points them here.`,
+        ),
+      );
+    }
     yield* Print.line(c.dim("Commit it, then run `infrawrench env pull` to write .env."));
   }),
-).pipe(Command.withDescription("Create a .infraenv for the current organization"));
+).pipe(Command.withDescription("Create a .infraenv and install the Git hooks that pull it"));
 
 // ---------------------------------------------------------------------------
 // env hooks
@@ -602,44 +871,40 @@ const init = Command.make(
 
 /** The repository and its hooks directory, or a failure outside one. */
 const repository = Effect.gen(function* () {
-  const cwd = process.cwd();
-  const root = yield* Effect.promise(() => gitRoot(cwd));
-  const hooks = yield* Effect.promise(() => gitHooksPath(cwd));
-  if (root === null || hooks === null) {
+  const repo = yield* Effect.promise(() => gitRepository(process.cwd()));
+  if (repo === null) {
     return yield* new CliFailure({
       message: "Not inside a Git repository: env hooks are Git hooks.",
     });
   }
-  return { root, hooksDir: isAbsolute(hooks) ? hooks : resolve(cwd, hooks) };
+  return repo;
 });
 
-const readHook = (path: string) =>
-  fsStep(`Could not read ${display(path)}`, () =>
-    existsSync(path) ? readFileSync(path, "utf8") : null,
-  );
-
-const STATE_TEXT: Record<HookState, string> = {
+const STATE_TEXT: Record<InfraenvHookState, string> = {
   absent: c.dim("not installed"),
   foreign: c.dim("not installed (another hook is there)"),
   ours: c.green("installed"),
   shared: c.green("installed (inside an existing hook)"),
 };
 
+const hookWidth = (hooks: readonly string[]) => Math.max(...hooks.map((hook) => hook.length));
+
 const hooksStatus = Effect.fn("env.hooks.status")(function* () {
   const session = yield* CliSession;
+  const ie = yield* infraenv;
   const { hooksDir } = yield* repository;
-  const rows: Array<{ hook: string; path: string; state: HookState }> = [];
-  for (const hook of ENV_HOOKS) {
+  const rows: Array<{ hook: string; path: string; state: InfraenvHookState }> = [];
+  for (const hook of ie.INFRAENV_HOOKS) {
     const path = join(hooksDir, hook);
-    rows.push({ hook, path, state: hookState(yield* readHook(path)) });
+    rows.push({ hook, path, state: ie.infraenvHookState(yield* readHook(path)) });
   }
   if (session.output === "json") return yield* Print.json({ hooksDir, hooks: rows });
-  const width = Math.max(...ENV_HOOKS.map((hook) => hook.length));
+  const width = hookWidth(ie.INFRAENV_HOOKS);
   for (const row of rows) yield* Print.line(`${row.hook.padEnd(width)}  ${STATE_TEXT[row.state]}`);
   yield* Print.line(c.dim(display(hooksDir)));
 });
 
-const CHANGE_TEXT: Record<HookWrite, string> = {
+const CHANGE_TEXT: Record<InfraenvHookWrite, string> = {
   created: "installed",
   updated: "updated",
   unchanged: "already installed",
@@ -651,93 +916,68 @@ const hooksInstall = Command.make(
   { file: fileFlag },
   Effect.fn("env.hooks.install")(function* (input) {
     const session = yield* CliSession;
-    const { root, hooksDir } = yield* repository;
+    const ie = yield* infraenv;
+    const repo = yield* repository;
     const infraenvPath = yield* locate(input.file);
-    const inRepo = posix(relative(root, realpathOr(infraenvPath)));
-    if (inRepo.startsWith("../") || isAbsolute(inRepo)) {
-      return yield* new CliFailure({
-        message: `${display(infraenvPath)} is outside this repository.`,
-      });
-    }
-    yield* fsStep(`Could not create ${display(hooksDir)}`, () =>
-      mkdirSync(hooksDir, { recursive: true }),
-    );
+    const paths = yield* hookPaths(repo, infraenvPath);
+    const rows = yield* installHooks(repo, paths);
 
-    const rows: Array<{
-      hook: string;
-      path: string;
-      state: HookState;
-      change: HookWrite | "skipped";
-      reason?: string;
-    }> = [];
-    for (const hook of ENV_HOOKS) {
-      const path = join(hooksDir, hook);
-      const before = yield* readHook(path);
-      const refused =
-        before !== null && hookState(before) === "foreign" ? foreignHookProblem(before) : null;
-      if (refused) {
-        rows.push({ hook, path, state: "foreign", change: "skipped", reason: refused });
-        continue;
-      }
-      const next = withBlock(before, hookBlock(hook, inRepo));
-      yield* fsStep(`Could not write ${display(path)}`, () => {
-        if (next.change !== "unchanged") writeFileSync(path, next.text);
-        const mode = before === null ? 0o755 : statSync(path).mode | 0o111;
-        chmodSync(path, mode & 0o7777);
+    if (session.output === "json") {
+      yield* Print.json({
+        hooksDir: repo.hooksDir,
+        infraenv: paths.file,
+        output: paths.output,
+        hooks: rows,
       });
-      rows.push({ hook, path, state: hookState(next.text), change: next.change });
-      if (next.change === "appended" && before !== null && mayExitEarly(before)) {
-        yield* Print.errLine(
-          c.yellow(
-            `warning: ${display(path)} has an exit before the end; move the infrawrench block above it if pull never runs.`,
-          ),
-        );
-      }
-    }
-
-    if (session.output === "json") yield* Print.json({ hooksDir, infraenv: inRepo, hooks: rows });
-    else {
-      const width = Math.max(...ENV_HOOKS.map((hook) => hook.length));
+    } else {
+      const width = hookWidth(ie.INFRAENV_HOOKS);
       for (const row of rows) {
         yield* Print.line(
           `${row.hook.padEnd(width)}  ${
             row.change === "skipped"
-              ? c.red(`skipped: ${row.reason}; add \`infrawrench env pull --quiet\` to it yourself`)
+              ? c.red(skippedText(row))
               : row.change === "unchanged"
                 ? c.dim(CHANGE_TEXT[row.change])
                 : c.green(CHANGE_TEXT[row.change])
           }`,
         );
       }
-      yield* Print.line(c.dim(`${inRepo} is pulled after branch checkouts, merges and rebases.`));
+      yield* Print.line(
+        c.dim(
+          `${safe(paths.file)} is pulled into ${safe(paths.output)} when a checkout, merge, rebase or commit changes it.`,
+        ),
+      );
     }
     if (rows.some((row) => row.change === "skipped")) return yield* new CliExit({ exitCode: 1 });
   }),
-).pipe(Command.withDescription("Pull again after every branch checkout, merge and rebase"));
+).pipe(
+  Command.withDescription(
+    "Pull again whenever a checkout, merge, rebase or commit changes the file",
+  ),
+);
 
 const hooksUninstall = Command.make(
   "uninstall",
   {},
   Effect.fn("env.hooks.uninstall")(function* () {
     const session = yield* CliSession;
+    const ie = yield* infraenv;
     const { hooksDir } = yield* repository;
     const rows: Array<{ hook: string; path: string; change: "removed" | "restored" | "none" }> = [];
-    for (const hook of ENV_HOOKS) {
+    for (const hook of ie.INFRAENV_HOOKS) {
       const path = join(hooksDir, hook);
       const before = yield* readHook(path);
-      const state = hookState(before);
+      const state = ie.infraenvHookState(before);
       if (before === null || state === "absent" || state === "foreign") {
         rows.push({ hook, path, change: "none" });
         continue;
       }
-      const rest = withoutBlock(before);
-      yield* fsStep(`Could not update ${display(path)}`, () =>
-        rest === null ? unlinkSync(path) : writeFileSync(path, rest),
-      );
+      const rest = ie.withoutInfraenvHook(before);
+      yield* fsStep(`Could not update ${display(path)}`, () => replaceHookFile(path, rest));
       rows.push({ hook, path, change: rest === null ? "removed" : "restored" });
     }
     if (session.output === "json") return yield* Print.json({ hooksDir, hooks: rows });
-    const width = Math.max(...ENV_HOOKS.map((hook) => hook.length));
+    const width = hookWidth(ie.INFRAENV_HOOKS);
     for (const row of rows) {
       yield* Print.line(
         `${row.hook.padEnd(width)}  ${
@@ -753,7 +993,7 @@ const hooksUninstall = Command.make(
 ).pipe(Command.withDescription("Remove the hooks (or the block, from a hook someone else wrote)"));
 
 const hooks = Command.make("hooks", {}, hooksStatus).pipe(
-  Command.withDescription("Git hooks that keep .env in step with the branch (bare: status)"),
+  Command.withDescription("Git hooks that keep .env in step with .infraenv (bare: status)"),
   Command.withSubcommands([
     hooksInstall,
     hooksUninstall,

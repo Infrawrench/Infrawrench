@@ -33,6 +33,7 @@ vi.mock("../cloud-tokens", () => ({
 import { Effect } from "effect";
 import { CliError } from "../cli/context";
 import { CloudApi } from "../cli/effect/cloud-api";
+import { COMMAND_LOADERS, type CommandName, commandWordsIn } from "../cli/effect/commands";
 import { commandNames } from "../cli/effect/root";
 import { runEffectCli } from "../cli/effect/run";
 import { HELP } from "../cli/help";
@@ -164,6 +165,47 @@ describe("effect/cli: routing", () => {
       "webhooks",
       "whoami",
     ]);
+  });
+
+  it("loads, for every word, a command of that name or alias", async () => {
+    for (const name of commandNames) {
+      const command = await COMMAND_LOADERS[name as CommandName]();
+      expect([command.name, command.alias]).toContain(name);
+    }
+  });
+
+  it("loads only the commands a line names, plus help and tui", () => {
+    expect(commandWordsIn(["--version"])).toEqual(["tui", "help"]);
+    expect(commandWordsIn(["--json", "whoami"])).toEqual(["whoami", "tui", "help"]);
+    // A flag value that names a command loads it too: one module too many is harmless.
+    expect(commandWordsIn(["costs", "--where", "tags", "--org", "x"])).toEqual([
+      "tags",
+      "costs",
+      "tui",
+      "help",
+    ]);
+    // Past `--` belongs to a remote command.
+    expect(commandWordsIn(["ssh-fanout", "-y", "--", "whoami"])).toEqual([
+      "ssh-fanout",
+      "tui",
+      "help",
+    ]);
+  });
+
+  it("does not load the plugin runtime for a cloud command", async () => {
+    tokens.getAuthStatus.mockResolvedValue({ authenticated: true, email: "ada@example.com" });
+    vi.resetModules();
+    const loaded = vi.fn();
+    vi.doMock("../plugin-runtime", () => {
+      loaded();
+      return {};
+    });
+    const fresh = await import("../cli/effect/run");
+    expect(
+      await fresh.runEffectCli(["whoami", "--json"], { version: "9.9.9", guiRunning: false }),
+    ).toBe(0);
+    expect(loaded).not.toHaveBeenCalled();
+    vi.doUnmock("../plugin-runtime");
   });
 });
 

@@ -775,9 +775,44 @@ jobs:
 
 ![The grant form under Resources jobs may read, opened from the "Search for resources" results: the DigitalOcean database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive password unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/grant-database.png)
 
+### Environment files
+
+A job can take its variables from a [`.infraenv` file](./env-files.md) in the repository, the same file `infrawrench env pull` turns into a `.env`:
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env-file: .infraenv
+    run: pnpm test
+  e2e:
+    using: env:bash-node@24
+    env-file: { path: apps/web/.infraenv, environment: staging, vars: { stage: ci } }
+    env:
+      LOG_LEVEL: debug # the job's own env: wins over the file
+    run: pnpm e2e
+```
+
+`path` is relative to the repository's root. `environment` picks the file's `[env.<name>]` section, laid over `[env]`, and `vars` sets `${name}` substitutions over the file's own `[vars]`. Everything in `env-file:` is written out literally: `${{ }}` is not read there.
+
+Anyone who can push a branch can edit the file, so the file decides nothing about what a job gets. When the run is sent, Infrawrench reads the file at the run's commit and checks each variable with the same permissions as everything else under CI access:
+
+- **Plain values** become variables as written.
+- **`resource(...)`**, by id or by name, is read only when that resource is [granted](#resources) for the repository and branch and the output it reads is ticked on the grant. The file names the resource, not the grant's name in pipelines, so any grant of it that covers the run will do. Otherwise every job that uses the file fails before it starts, naming the variable and what to grant, for example "`DATABASE_URL` in .infraenv reads connectionString of storefront / dev (neon/neon-branch), which is not granted to CI; grant storefront / dev to CI with the output connectionString for acme/web".
+- **`secret("NAME")` reads the repository's CI secrets**, the ones under [Secrets and variables](#secrets-and-variables) that `${{ secrets.NAME }}` reads, not your organization's secrets that the app and `infrawrench env pull` use. Organization secrets are never given to CI jobs, so set the ones your pipelines need as CI secrets under the same name. A secret the run does not have fails the job, where `${{ secrets.NAME }}` would read as empty.
+
+More about how the variables reach a job:
+
+- **The job's own `env:` wins.** The file's variables come after a connection's, an SSH key's, a GitHub token's and `env-from:`'s. Background services do not get them.
+- **Masked.** Resource values and secrets are masked in every log and output; plain values are not.
+- **All or nothing.** If one variable cannot be given, every job using the file fails with that variable's reason, and so does a file that does not parse, is missing at the commit, has no section for the `environment`, or is pinned to another organization.
+- **Never for a fork.** A pull request from a fork gets nothing from the file, and a job of it with `env-file:` fails.
+- **Audited.** Each run that is given a file is recorded in the [audit log](../team-and-billing/audit-log.md) with the variable names and where each came from, never the values, along with a record per granted resource naming who granted it.
+- A job with `env-file:` cannot use `task-cache:`.
+
 ### When a job is refused
 
-A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
+A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", which variable of an [environment file](#environment-files) is not granted, or, for a cloud job, which connection to opt in. It never runs with an empty value.
 
 ## Caches
 

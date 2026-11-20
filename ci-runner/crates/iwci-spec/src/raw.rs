@@ -370,6 +370,11 @@ pub struct Job {
     /// `GH_TOKEN`/`GITHUB_TOKEN` and Git credentials for the repository.
     #[serde(default)]
     pub github_token: Option<IndexMap<String, String>>,
+    /// A `.infraenv` file of the repository whose variables the app resolves
+    /// for the job when it sends the run, as its path or
+    /// `{ path, environment, vars }`. The job's own `env:` wins.
+    #[serde(default)]
+    pub env_file: Option<EnvFileRef>,
     /// Arguments for a tool (`builtin:` / `repo:`), as a list or one string
     /// split like a shell would split it (no expansion).
     #[serde(default)]
@@ -580,6 +585,52 @@ impl<'de> Deserialize<'de> for ConnectionRef {
                 .map_err(serde::de::Error::custom),
             _ => Err(serde::de::Error::custom(
                 "a connection is its name, or `{ name, namespace }`",
+            )),
+        }
+    }
+}
+
+/// `env-file:`: a path, or `{ path, environment, vars }`.
+#[derive(Debug, Clone)]
+pub enum EnvFileRef {
+    Path(String),
+    Full(EnvFileEntry),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct EnvFileEntry {
+    pub path: String,
+    /// The file's `[env.<name>]` section laid over its `[env]`.
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Substitutions laid over the file's own `[vars]`.
+    #[serde(default)]
+    pub vars: IndexMap<String, String>,
+}
+
+impl EnvFileRef {
+    pub fn entry(&self) -> EnvFileEntry {
+        match self {
+            EnvFileRef::Path(path) => EnvFileEntry {
+                path: path.clone(),
+                ..Default::default()
+            },
+            EnvFileRef::Full(e) => e.clone(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EnvFileRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(EnvFileRef::Path(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(EnvFileRef::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`env-file:` is a path, or `{ path, environment, vars }`",
             )),
         }
     }

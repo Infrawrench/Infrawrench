@@ -23615,5 +23615,24 @@
       }
     },
     "."
-  ]
+  ],
+  "800c62805d5b8375": "Fijar por ID",
+  "d37a1aaf45991d3f": "Nombra la sustitución",
+  "93600173d634f143": "Esta sustitución está definida dos veces aquí",
+  "e2b8129fdb3e431a": "Sustituciones",
+  "5773c0a86a76c357": "Añadir sustitución",
+  "f707542753234931": "Anular",
+  "8fa4a713aeea2a30": "Nombre de la sustitución",
+  "9dfb8d90c25effc7": "Valor de la sustitución",
+  "379791f4e08f7b32": "Anulaciones compartidas",
+  "7826076b7381ff65": "sustitución",
+  "0d7495edb9087876": "Usar la compartida",
+  "8d73280b9b6a8976": "Coincide con {count} recursos: añade una cuenta",
+  "9b4e9a12204293ef": "No hay ningún secreto de la organización llamado {name}",
+  "6442df087825e48f": "Falta el valor de {names} aquí",
+  "74753bd6efa6f8b7": "Selecciona una salida de recurso…",
+  "51137f36fc3c828c": "Buscar por nombre",
+  "bd3d87dee985e997": "Por nombre",
+  "b42c55d7a720a720": "Por ID",
+  "8ac9eef081af2cab": "Nombre del recurso"
 }

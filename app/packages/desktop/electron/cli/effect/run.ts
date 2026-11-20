@@ -25,7 +25,9 @@ import { CloudApi } from "./cloud-api";
 import type { CliCommandError } from "./errors";
 import { CliPlatform } from "./platform";
 import { HELP } from "../help";
-import { ROOT_NAME, root } from "./root";
+import { markPhase } from "../../startup-timing";
+import { loadCommands } from "./commands";
+import { ROOT_NAME, makeRoot } from "./root";
 import { CliHost } from "./session";
 
 export interface EffectCliOptions {
@@ -124,11 +126,16 @@ const reportDefect = (defect: unknown): Effect.Effect<number> =>
     return 1;
   });
 
-/** Run `argv` (everything after `--cli`) against {@link root}; resolves with the exit code. */
+/**
+ * Run `argv` (everything after `--cli`) against the root over the commands
+ * it names (`commands.ts`); resolves with the exit code.
+ */
 export async function runEffectCli(
   argv: ReadonlyArray<string>,
   options: EffectCliOptions,
 ): Promise<number> {
+  const root = makeRoot(await loadCommands(argv));
+  markPhase("commands loaded");
   const program = Command.runWith(root, { version: options.version })(argv).pipe(
     Effect.as(0),
     Effect.catch(reportFailure),

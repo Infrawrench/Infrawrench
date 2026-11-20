@@ -20,7 +20,14 @@ import {
   readInfraenvRepoFile,
   resolveInfraenv,
 } from "@infrawrench/server-core/env-files/service";
-import { GithubApiError } from "@infrawrench/server-core/github/issues-api";
+import { checkEnvFileForCi } from "@infrawrench/server-core/ci/env-file";
+import {
+  GithubApiError,
+  getBranchSha,
+  getDefaultBranch,
+  isRepoFullName,
+} from "@infrawrench/server-core/github/issues-api";
+import { orgInstallationIds } from "@infrawrench/server-core/github-issues/settings";
 import { err, ok, type ToolDefinition } from "./types";
 
 function failure(e: unknown) {
@@ -33,12 +40,23 @@ function failure(e: unknown) {
 const FORMAT =
   "`.infraenv` is a dotenv superset committed to the repository in place of `.env`. Sections: " +
   "`[infrawrench]` (`org = <org id>`, `output = .env`), `[env]` (shared by every environment) " +
-  "and `[env.<name>]` (overrides). Each line is `KEY = value` where value is a literal, " +
-  '`resource("<resourceId>", "<outputKey>")` (an output of a synced resource, read from the ' +
-  'provider at pull time) or `secret("<NAME>")` (an organization secret; create one with ' +
-  "write_workflow_secret). A quoted value is always a literal. Never write a secret value into " +
+  "and `[env.<name>]` (overrides), plus `[vars]` / `[vars.<name>]` substitutions. Each line is " +
+  "`KEY = value` where value is a literal, " +
+  '`resource("<plugin>/<type>", "<display name>", "<outputKey>")` (an output of a synced ' +
+  "resource found by name, so the file works in any organization; `<plugin>/<type>@<account>` " +
+  'narrows it to one account), `resource("<resourceId>", "<outputKey>")` (pinned by id), or ' +
+  '`secret("<NAME>")` (an organization secret; create one with write_workflow_secret). ' +
+  "`${name}` inside reference arguments is replaced from [vars] (the built-in `environment` is " +
+  "the environment's name). Prefer references by name. A quoted value is always a literal. Never write a secret value into " +
   "the file: reference it. A `# comment` line above a reference naming the resource keeps " +
   "reviews readable.";
+
+const vars = Schema.optionalKey(
+  Schema.Record(Schema.String, Schema.String).annotate({
+    description:
+      "Substitutions laid over the file's [vars] and [vars.<environment>], for `${name}` in reference arguments.",
+  }),
+);
 
 const source = Schema.String.check(Schema.isMaxLength(INFRAENV_LIMITS.maxSourceLength)).annotate({
   description: "The .infraenv text.",
@@ -82,11 +100,13 @@ export function envFileTools(): ToolDefinition[] {
         "Parse an .infraenv and look up every reference: which resource, account and output " +
         "each resource() names, whether each secret() exists and has a value, and every " +
         `problem with its line. Reads no values. Run it before committing. ${FORMAT}`,
-      inputSchema: { source },
+      inputSchema: { source, vars },
       risk: "read",
       permission: "resources:read",
-      handler: async (input, auth) =>
-        ok(await describeInfraenv(auth.organizationId, (input as { source: string }).source)),
+      handler: async (input, auth) => {
+        const args = input as { source: string; vars?: Record<string, string> };
+        return ok(await describeInfraenv(auth.organizationId, args.source, { vars: args.vars }));
+      },
     },
     {
       name: "resolve_env_file",
@@ -97,6 +117,7 @@ export function envFileTools(): ToolDefinition[] {
         "approval in chat. Prefer describe_env_file when you only need to check the file.",
       inputSchema: {
         source,
+        vars,
         environment: Schema.optionalKey(
           Schema.String.annotate({
             description: "An [env.<name>] section to lay over [env]. Omit for [env] alone.",
@@ -108,14 +129,90 @@ export function envFileTools(): ToolDefinition[] {
       permission: "secrets:read",
       requiresApproval: async () => true,
       handler: async (input, auth) => {
-        const args = input as { source: string; environment?: string };
+        const args = input as {
+          source: string;
+          environment?: string;
+          vars?: Record<string, string>;
+        };
         try {
           return ok(
             await resolveInfraenv(auth.organizationId, {
               source: args.source,
               environment: args.environment ?? null,
+              vars: args.vars,
             }),
           );
+        } catch (e) {
+          return failure(e);
+        }
+      },
+    },
+    {
+      name: "check_ci_env_file",
+      title: "Check what an Infrawrench CI job gets from an .infraenv",
+      description:
+        "What a job with `env-file:` would get from a repository's .infraenv on a branch, without " +
+        "running anything or reading any value: for each variable, a literal, a resource output " +
+        "and the CI grant that covers it, or a CI secret by name; or why the job would fail on it " +
+        "(no such resource, an ambiguous name, not granted to CI for this repository and branch, " +
+        "an output the grant does not tick, a substitution with no value). In CI, `secret()` reads " +
+        "the repository's CI secrets, not the organization's secrets: check those names with " +
+        "list_ci_values. Get `installationId` from list_ci_repositories.",
+      inputSchema: {
+        installationId: Schema.Number.annotate({
+          description: "The GitHub App installation, from list_ci_repositories.",
+        }),
+        repo: Schema.String.annotate({ description: "`owner/name`." }),
+        branch: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "The branch the job runs on (grants can be per branch). Default: the default branch.",
+          }),
+        ),
+        path: Schema.optionalKey(Schema.String.annotate({ description: "Default `.infraenv`." })),
+        environment: Schema.optionalKey(
+          Schema.String.annotate({ description: "The job's `env-file.environment`." }),
+        ),
+        vars,
+      },
+      risk: "read",
+      openWorld: true,
+      permission: "ci:read",
+      handler: async (input, auth) => {
+        const args = input as {
+          installationId: number;
+          repo: string;
+          branch?: string;
+          path?: string;
+          environment?: string;
+          vars?: Record<string, string>;
+        };
+        if (!isRepoFullName(args.repo)) return err("repo must be `owner/name`.");
+        if (!(await orgInstallationIds(auth.organizationId)).has(args.installationId)) {
+          return err("That GitHub installation is not connected to this organization.");
+        }
+        try {
+          const branch =
+            args.branch?.trim() || (await getDefaultBranch(args.installationId, args.repo));
+          const sha = await getBranchSha(args.installationId, args.repo, branch);
+          const check = await checkEnvFileForCi(
+            {
+              id: "check",
+              organizationId: auth.organizationId,
+              repoFullName: args.repo,
+              event: "push",
+              headRef: branch,
+              fromFork: false,
+              installationId: args.installationId,
+              sha,
+            },
+            {
+              path: args.path?.trim() || ".infraenv",
+              ...(args.environment ? { environment: args.environment } : {}),
+              ...(args.vars ? { vars: args.vars } : {}),
+            },
+          );
+          return ok({ branch, sha, ...check });
         } catch (e) {
           return failure(e);
         }

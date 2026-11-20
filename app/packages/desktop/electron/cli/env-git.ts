@@ -1,12 +1,15 @@
 // Git plumbing for `infrawrench env`: where the repository is, whether a path
-// is ignored, where hooks live, and the hook block `env hooks` manages.
+// is ignored, where hooks live, and reading and writing hook files.
 //
 // Git runs through `node:child_process` (no new dependencies), always with an
 // explicit working directory, and a git that is missing or fails reads as
 // "not a repository" rather than an error: every caller has a sensible answer
-// for that case. The hook text functions are pure so the tests can pin them.
+// for that case. The hook block itself is client-core's `infraenv-hooks.ts`
+// (pure text, shared with the npm package's installer); this module only does
+// the I/O around it.
 import { execFile } from "node:child_process";
-import { basename, dirname } from "node:path";
+import { chmodSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 
 interface GitResult {
   /** Exit code; -1 when git could not be run at all. */
@@ -40,6 +43,20 @@ export async function gitHooksPath(cwd: string): Promise<string | null> {
   return result.code === 0 && path !== "" ? path : null;
 }
 
+export interface GitRepository {
+  /** The worktree's top directory, where git runs hooks. */
+  readonly root: string;
+  /** The hooks directory, absolute. */
+  readonly hooksDir: string;
+}
+
+/** The repository `dir` is in, or null outside one. */
+export async function gitRepository(dir: string): Promise<GitRepository | null> {
+  const [root, hooks] = await Promise.all([gitRoot(dir), gitHooksPath(dir)]);
+  if (root === null || hooks === null) return null;
+  return { root, hooksDir: isAbsolute(hooks) ? hooks : resolve(dir, hooks) };
+}
+
 export type IgnoreState = "ignored" | "not-ignored" | "no-repo";
 
 /** Whether git would ignore `path` (which need not exist; its directory must). */
@@ -51,126 +68,26 @@ export async function ignoreState(path: string): Promise<IgnoreState> {
 }
 
 // ---------------------------------------------------------------------------
-// Hooks
+// Hook files
 // ---------------------------------------------------------------------------
 
-export const ENV_HOOKS = ["post-checkout", "post-merge", "post-rewrite"] as const;
-export type EnvHook = (typeof ENV_HOOKS)[number];
-
-export const HOOK_BEGIN = "# >>> infrawrench env >>>";
-export const HOOK_END = "# <<< infrawrench env <<<";
-
-const SHEBANG = "#!/bin/sh";
-
-/** When each hook pulls: a branch checkout, any merge, a rebase (not an amend). */
-const HOOK_CONDITION: Record<EnvHook, string> = {
-  "post-checkout": '[ "$3" = "1" ]',
-  "post-merge": "true",
-  "post-rewrite": '[ "$1" = "rebase" ]',
-};
-
-/** `value` as one single-quoted sh word. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+/** A hook's text, or null when there is no hook file. */
+export function readHookFile(path: string): string | null {
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
 /**
- * The managed block for one hook. `infraenv` is the file's path relative to
- * the repository root, where git runs hooks. Nothing in it can fail the git
- * operation: a missing CLI, a branch without the file or a failed pull all
- * end the block with status 0.
+ * Write a hook (when `changed`) and make sure it is executable: a new file
+ * gets 0755, an existing one keeps its mode plus the execute bits.
  */
-export function hookBlock(hook: EnvHook, infraenv: string): string {
-  const file = shellQuote(infraenv);
-  const condition = HOOK_CONDITION[hook] === "true" ? "" : `${HOOK_CONDITION[hook]} && `;
-  return [
-    HOOK_BEGIN,
-    "# Regenerates .env from .infraenv when the checkout changes.",
-    "# Managed by `infrawrench env hooks`; `infrawrench env hooks uninstall` removes it.",
-    `if ${condition}[ -f ${file} ] && command -v infrawrench >/dev/null 2>&1; then`,
-    `  infrawrench env pull --quiet -f ${file} || true`,
-    "fi",
-    HOOK_END,
-  ].join("\n");
+export function writeHookFile(path: string, text: string, existed: boolean, changed: boolean) {
+  if (changed) writeFileSync(path, text);
+  const mode = existed ? statSync(path).mode | 0o111 : 0o755;
+  chmodSync(path, mode & 0o7777);
 }
 
-/** Where the managed block sits in a hook's text: [start, end) including its newline. */
-function blockRange(text: string): [number, number] | null {
-  const begin = text.search(/^# >>> infrawrench env >>>$/m);
-  if (begin < 0) return null;
-  const endMarker = text.indexOf(HOOK_END, begin);
-  if (endMarker < 0) return null;
-  let end = endMarker + HOOK_END.length;
-  if (text[end] === "\n") end++;
-  return [begin, end];
-}
-
-/** A hook file holding nothing but a shebang and blank lines once the block is out. */
-function isBare(text: string): boolean {
-  return text
-    .split("\n")
-    .every((line, index) => line.trim() === "" || (index === 0 && line.startsWith("#!")));
-}
-
-export type HookState =
-  /** No hook file. */
-  | "absent"
-  /** A hook someone else wrote, without our block. */
-  | "foreign"
-  /** A hook file that is only our block. */
-  | "ours"
-  /** Someone else's hook with our block appended. */
-  | "shared";
-
-export function hookState(text: string | null): HookState {
-  if (text === null) return "absent";
-  const range = blockRange(text);
-  if (!range) return "foreign";
-  return isBare(text.slice(0, range[0]) + text.slice(range[1])) ? "ours" : "shared";
-}
-
-/**
- * Why a hook someone else wrote cannot take the block, or null when it can:
- * the block is POSIX sh, so the hook's interpreter must read it.
- */
-export function foreignHookProblem(text: string): string | null {
-  const first = text.split("\n")[0] ?? "";
-  if (!first.startsWith("#!")) return null;
-  return /\b(sh|bash|dash|zsh|ksh|ash)\b/.test(first)
-    ? null
-    : `it runs under ${first.slice(2).trim() || "another interpreter"}, not a shell`;
-}
-
-/** True when a hook someone else wrote may exit before an appended block runs. */
-export function mayExitEarly(text: string): boolean {
-  return /^\s*exit\b/m.test(text);
-}
-
-export type HookWrite = "created" | "updated" | "unchanged" | "appended";
-
-/** `text` (null: no file yet) with `block` installed, and what that did. */
-export function withBlock(text: string | null, block: string): { text: string; change: HookWrite } {
-  if (text === null) return { text: `${SHEBANG}\n${block}\n`, change: "created" };
-  const range = blockRange(text);
-  if (range) {
-    const next = `${text.slice(0, range[0])}${block}\n${text.slice(range[1])}`;
-    return { text: next, change: next === text ? "unchanged" : "updated" };
-  }
-  // One blank line between the hook and the block; `withoutBlock` takes it back out.
-  const separator = text.endsWith("\n") ? "\n" : "\n\n";
-  return { text: `${text}${separator}${block}\n`, change: "appended" };
-}
-
-/**
- * `text` with the block taken out: null when nothing else is left (the file
- * was ours, so it goes), the original hook otherwise.
- */
-export function withoutBlock(text: string): string | null {
-  const range = blockRange(text);
-  if (!range) return text;
-  let before = text.slice(0, range[0]);
-  const after = text.slice(range[1]);
-  if (after === "" && before.endsWith("\n\n")) before = before.slice(0, -1);
-  const rest = before + after;
-  return isBare(rest) ? null : rest;
+/** Replace a hook's text, or delete the file when `text` is null. */
+export function replaceHookFile(path: string, text: string | null): void {
+  if (text === null) unlinkSync(path);
+  else writeFileSync(path, text);
 }
