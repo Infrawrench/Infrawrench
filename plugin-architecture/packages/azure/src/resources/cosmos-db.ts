@@ -4,10 +4,19 @@ export const CosmosDBAccountResourceType = rt({
   name: "Cosmos DB Account",
   id: "azure-cosmos-db",
   description: "An Azure Cosmos DB account",
+  // Only the API for MongoDB has a cross-provider equivalent; the lister
+  // stores the ARM account `kind`, the create form's value too.
+  equivalence: [
+    {
+      category: "managed-mongodb",
+      when: { fieldKey: "kind", oneOf: ["MongoDB"] },
+      createFields: { kind: "MongoDB" },
+    },
+  ],
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("kind", "Kind", { showcase: true }),
     f("databaseAccountOfferType", "Offer Type"),
     f("provisioningState", "Provisioning State", { showcase: true }),

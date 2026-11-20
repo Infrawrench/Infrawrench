@@ -49,19 +49,38 @@ export const EcsInstanceResourceType = rt({
   id: "ecs-instance",
   name: "ECS Instance",
   description: "An Elastic Compute Service virtual machine",
+  equivalence: "vm",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     zoneField,
     f("instanceType", "Instance Type", {
+      sizing: "instance-type",
       description:
         "Changing it resizes the instance (ModifyInstanceSpec for pay-as-you-go, ModifyPrepayInstanceSpec for subscription). Most types need the instance stopped first.",
     }),
     f("instanceTypeFamily", "Type Family", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
-    f("memoryGb", "Memory (GB)", { kind: "number", required: false, editable: false }),
-    f("gpus", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
+    f("memoryGb", "Memory (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "memory-gb",
+    }),
+    f("gpus", "GPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "gpu-count",
+    }),
     f("status", "Status", {
       showcase: true,
       kind: "enum",
@@ -158,12 +177,14 @@ export const DiskResourceType = rt({
   id: "disk",
   name: "Disk",
   description: "An ECS block storage disk (cloud disk or ESSD)",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     zoneField,
     f("sizeGb", "Size (GB)", {
+      sizing: "disk-gb",
       showcase: true,
       kind: "number",
       description: "Disks can only grow. A disk attached to a running instance is resized online.",
@@ -357,9 +378,10 @@ export const EipResourceType = rt({
   id: "eip",
   name: "Elastic IP",
   description: "An Elastic IP Address",
+  equivalence: "static-ip",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("ipAddress", "IP Address", { showcase: true, editable: false }),
     f("bandwidthMbps", "Bandwidth (Mbps)", { kind: "number", description: "Peak bandwidth" }),
     f("status", "Status", {
@@ -404,9 +426,10 @@ export const SlbResourceType = rt({
   id: "slb",
   name: "Classic Load Balancer",
   description: "A Server Load Balancer (CLB) instance",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("address", "Address", { showcase: true, editable: false }),
     f("addressType", "Address Type", {
       kind: "enum",
@@ -447,9 +470,10 @@ export const AlbResourceType = rt({
   id: "alb",
   name: "Application Load Balancer",
   description: "An Application Load Balancer (ALB) instance",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("dnsName", "DNS Name", { editable: false }),
     f("addressType", "Address Type", { required: false, editable: false }),
     f("edition", "Edition", { required: false, editable: false }),
@@ -470,24 +494,46 @@ export const RdsInstanceResourceType = rt({
   id: "rds-instance",
   name: "ApsaraDB RDS Instance",
   description: "A managed MySQL, PostgreSQL, SQL Server or MariaDB instance",
+  // The lister stores RDS's `Engine` (MySQL, PostgreSQL, MariaDB, SQLServer);
+  // the create form's engine is an `engine|version` pair from RDS_ENGINES.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["PostgreSQL"] },
+      createFields: { engine: "PostgreSQL|17.0" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["MySQL", "MariaDB"] },
+      createFields: { engine: "MySQL|8.0" },
+    },
+  ],
   fields: [
     f("name", "Description"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     zoneField,
     f("engine", "Engine", { editable: false }),
     f("engineVersion", "Engine Version", { editable: false }),
     f("instanceClass", "Instance Class", {
+      sizing: "instance-type",
       description: "Changing it scales the instance; RDS switches over once the new spec is ready",
     }),
-    f("storageGb", "Storage (GB)", { kind: "number", required: false }),
+    f("storageGb", "Storage (GB)", { kind: "number", required: false, sizing: "disk-gb" }),
     f("storageType", "Storage Type", { required: false, editable: false }),
     f("category", "Edition", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
     f("memoryMb", "Memory (MB)", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      sizing: "memory-mb",
     }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("payType", "Billing", { required: false, editable: false }),
@@ -508,14 +554,21 @@ export const RedisInstanceResourceType = rt({
   id: "redis-instance",
   name: "Tair (Redis) Instance",
   description: "An ApsaraDB for Redis / Tair (Redis OSS-compatible) instance",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     zoneField,
     f("instanceClass", "Instance Class", {
+      sizing: "instance-type",
       description: "Changing it scales the instance online (a brief switchover at the end)",
     }),
-    f("capacityMb", "Memory (MB)", { kind: "number", required: false, editable: false }),
+    f("capacityMb", "Memory (MB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "memory-mb",
+    }),
     f("engineVersion", "Engine Version", { showcase: true, required: false, editable: false }),
     f("architecture", "Architecture", { required: false, editable: false }),
     f("instanceType", "Engine", { showcase: true, required: false, editable: false }),
@@ -537,9 +590,10 @@ export const OssBucketResourceType = rt({
   id: "oss-bucket",
   name: "OSS Bucket",
   description: "An Object Storage Service bucket",
+  equivalence: "object-storage",
   fields: [
     f("name", "Name", { editable: false }),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("storageClass", "Storage Class", { required: false, editable: false }),
     f("acl", "Access", {
       kind: "enum",
@@ -590,9 +644,10 @@ export const AckClusterResourceType = rt({
   id: "ack-cluster",
   name: "ACK Cluster",
   description: "A Container Service for Kubernetes (ACK) cluster",
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("clusterType", "Cluster Type", { required: false, editable: false }),
     f("clusterSpec", "Edition", { required: false, editable: false }),
     f("kubernetesVersion", "Kubernetes Version", {
@@ -646,17 +701,23 @@ export const AckNodePoolResourceType = rt({
   description: "A pool of worker nodes in an ACK cluster",
   parentTypeId: "ack-cluster",
   pinnable: false,
+  equivalence: "kubernetes-node-pool",
   fields: [
     f("name", "Name"),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("clusterId", "Cluster", { editable: false }),
     f("desiredSize", "Desired Nodes", {
       kind: "number",
+      sizing: "node-count",
       description: "Scale the pool by changing the desired node count",
     }),
     f("totalNodes", "Nodes", { kind: "number", required: false, editable: false }),
     f("healthyNodes", "Healthy Nodes", { kind: "number", required: false, editable: false }),
-    f("instanceTypes", "Instance Types", { required: false, editable: false }),
+    f("instanceTypes", "Instance Types", {
+      required: false,
+      editable: false,
+      sizing: "instance-type",
+    }),
     f("autoScaling", "Auto Scaling", { kind: "boolean", required: false, editable: false }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
   ],
@@ -677,19 +738,22 @@ export const FcFunctionResourceType = rt({
   id: "fc-function",
   name: "Function",
   description: "A Function Compute 3.0 function",
+  equivalence: "serverless-function",
   fields: [
     f("name", "Name", { editable: false }),
     f("description", "Description", { required: false }),
-    { ...regionField, showcase: true },
+    { ...regionField, showcase: true, sizing: "region" },
     f("runtime", "Runtime", { showcase: true, required: false, editable: false }),
     f("handler", "Handler", { required: false, editable: false }),
     f("memoryMb", "Memory (MB)", {
       showcase: true,
       kind: "number",
+      sizing: "memory-mb",
       description: "64 to 32768 MB, a multiple of 64",
     }),
     f("cpu", "vCPUs", {
       kind: "number",
+      sizing: "vcpus",
       required: false,
       description: "0.05 to 16 vCPUs; memory must be 1 to 4 times the vCPUs in GB",
     }),
@@ -708,6 +772,7 @@ export const DnsDomainResourceType = rt({
   id: "dns-domain",
   name: "DNS Domain",
   description: "A domain hosted on Alibaba Cloud DNS",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Domain", { editable: false }),
     f("recordCount", "Records", {

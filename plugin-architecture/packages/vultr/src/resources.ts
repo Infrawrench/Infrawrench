@@ -24,6 +24,7 @@ export const InstanceResourceType = rt({
   name: "Instance",
   id: "instance",
   description: "A Vultr cloud compute instance",
+  equivalence: "vm",
   fields: [
     f("label", "Label"),
     f("hostname", "Hostname", { required: false, editable: false }),
@@ -42,14 +43,32 @@ export const InstanceResourceType = rt({
     }),
     f("serverStatus", "Server Status", { required: false, editable: false }),
     f("plan", "Plan", {
+      sizing: "instance-type",
       description:
         "Vultr plan id, e.g. vc2-1c-1gb. Changing it upgrades the instance; Vultr only allows moving to a plan with at least as much disk",
     }),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("os", "Operating System", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
-    f("ramMb", "Memory (MB)", { showcase: true, kind: "number", required: false, editable: false }),
-    f("diskGb", "Disk (GB)", { kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
+    f("ramMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "memory-mb",
+    }),
+    f("diskGb", "Disk (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     f("bandwidthGb", "Bandwidth Allowance (GB)", {
       kind: "number",
       required: false,
@@ -191,14 +210,16 @@ export const BlockStorageResourceType = rt({
   plural: "Block Storage Volumes",
   id: "block-storage",
   description: "A Vultr Block Storage volume",
+  equivalence: "block-volume",
   fields: [
     f("label", "Label", { required: false }),
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Volumes can grow but never shrink",
     }),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("blockType", "Type", {
       kind: "enum",
       enumValues: ["high_perf", "storage_opt"],
@@ -274,9 +295,12 @@ export const KubernetesClusterResourceType = rt({
   id: "kubernetes-cluster",
   apiDocsUrl: "https://www.vultr.com/api/#tag/kubernetes/operation/create-kubernetes-cluster",
   description: "A Vultr Kubernetes Engine (VKE) cluster",
+  // The largest pool's plan and the node total, as the create form's first
+  // pool takes them; the pools are also listed as `node-pool`.
+  equivalence: "kubernetes-cluster",
   fields: [
     f("label", "Label"),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("version", "Kubernetes Version", { editable: false }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("haControlPlanes", "HA Control Plane", { kind: "boolean", required: false, editable: false }),
@@ -290,8 +314,14 @@ export const KubernetesClusterResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("nodeCount", "Nodes", { showcase: true, kind: "number", required: false, editable: false }),
-    f("nodePlan", "Node Plan", { required: false, editable: false }),
+    f("nodeCount", "Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "node-count",
+    }),
+    f("nodePlan", "Node Plan", { required: false, editable: false, sizing: "instance-type" }),
     created(),
   ],
   outputs: [
@@ -355,10 +385,11 @@ export const NodePoolResourceType = rt({
   id: "node-pool",
   pinnable: false,
   description: "A pool of identical worker nodes in a VKE cluster",
+  equivalence: "kubernetes-node-pool",
   fields: [
     f("label", "Label", { editable: false }),
-    f("plan", "Node Plan", { showcase: true, editable: false }),
-    f("nodeQuantity", "Nodes", { kind: "number" }),
+    f("plan", "Node Plan", { showcase: true, editable: false, sizing: "instance-type" }),
+    f("nodeQuantity", "Nodes", { kind: "number", sizing: "node-count" }),
     f("autoScaler", "Autoscaler", { kind: "boolean", required: false }),
     f("minNodes", "Autoscaler Minimum", { kind: "number", required: false }),
     f("maxNodes", "Autoscaler Maximum", { kind: "number", required: false }),
@@ -366,7 +397,7 @@ export const NodePoolResourceType = rt({
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("nodesActive", "Active Nodes", { kind: "number", required: false, editable: false }),
     f("clusterId", "Cluster", { required: false, editable: false }),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false, sizing: "region" }),
   ],
   outputs: [],
   parentTypeId: "kubernetes-cluster",
@@ -391,6 +422,25 @@ export const DatabaseResourceType = rt({
   name: "Managed Database",
   id: "database",
   description: "A Vultr Managed Database (MySQL, PostgreSQL, Valkey or Kafka)",
+  // The lister stores the API's `database_engine`, the same ids the create
+  // form's engine select offers; Valkey replaced Redis.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["pg"] },
+      createFields: { engine: "pg" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["mysql"] },
+      createFields: { engine: "mysql" },
+    },
+    {
+      category: "managed-redis",
+      when: { fieldKey: "engine", oneOf: ["valkey", "redis"] },
+      createFields: { engine: "valkey" },
+    },
+  ],
   fields: [
     f("label", "Label"),
     f("engine", "Engine", {
@@ -399,15 +449,33 @@ export const DatabaseResourceType = rt({
       editable: false,
     }),
     f("version", "Version", { editable: false }),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("plan", "Plan", {
+      sizing: "instance-type",
       description:
         "Changing the plan resizes the cluster; Vultr only allows moving to a larger disk",
     }),
-    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
-    f("ramMb", "Memory (MB)", { showcase: true, kind: "number", required: false, editable: false }),
-    f("diskGb", "Disk (GB)", { kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
+    f("ramMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "memory-mb",
+    }),
+    f("diskGb", "Disk (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     f("replicas", "Replica Nodes", { kind: "number", required: false, editable: false }),
     f("trustedIps", "Trusted IPs", {
       required: false,
@@ -568,9 +636,10 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   id: "load-balancer",
   description: "A Vultr managed load balancer",
+  equivalence: "load-balancer",
   fields: [
     f("label", "Label", { required: false }),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("ipv4", "IPv4", { required: false, editable: false }),
     f("ipv6", "IPv6", { required: false, editable: false }),
@@ -578,6 +647,7 @@ export const LoadBalancerResourceType = rt({
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "Odd number from 1 to 99; each node is billed",
     }),
     f("balancingAlgorithm", "Algorithm", {
@@ -691,11 +761,12 @@ export const ReservedIpResourceType = rt({
   name: "Reserved IP",
   id: "reserved-ip",
   description: "A reserved IPv4 address or IPv6 subnet",
+  equivalence: "static-ip",
   fields: [
     f("label", "Label", { required: false }),
     f("address", "Address", { showcase: true, required: false, editable: false }),
     f("ipType", "Type", { kind: "enum", enumValues: ["v4", "v6"], editable: false }),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("instanceId", "Attached Instance", {
       required: false,
       editable: false,
@@ -720,6 +791,7 @@ export const DomainResourceType = rt({
   name: "DNS Domain",
   id: "domain",
   description: "A domain hosted on Vultr DNS",
+  equivalence: "dns-zone",
   fields: [
     f("domain", "Domain", { showcase: true, editable: false }),
     f("dnsSec", "DNSSEC", { kind: "enum", required: false, enumValues: ["enabled", "disabled"] }),
@@ -785,9 +857,11 @@ export const ObjectStorageResourceType = rt({
   plural: "Object Storage Subscriptions",
   id: "object-storage",
   description: "A Vultr Object Storage subscription (an S3 endpoint with its own keys)",
+  // The subscription is the billed unit; its buckets cost nothing on their own.
+  equivalence: "object-storage",
   fields: [
     f("label", "Label"),
-    { ...region(), showcase: true },
+    { ...region(), showcase: true, sizing: "region" },
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("tier", "Tier", { showcase: true, required: false, editable: false }),
     f("s3Hostname", "S3 Hostname", { required: false, editable: false }),

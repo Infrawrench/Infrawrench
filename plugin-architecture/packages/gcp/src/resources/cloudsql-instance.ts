@@ -6,11 +6,25 @@ export const CloudSqlInstanceResourceType = rt({
   id: "cloudsql-instance",
   iconKey: "database",
   description: "A Google Cloud SQL managed database instance",
+  // `databaseVersion` is Cloud SQL's engine-and-version id (POSTGRES_16,
+  // MYSQL_8_0, SQLSERVER_...), the same id space as the create form's select.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "databaseVersion", prefix: "POSTGRES" },
+      createFields: { databaseVersion: "POSTGRES_18" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "databaseVersion", prefix: "MYSQL" },
+      createFields: { databaseVersion: "MYSQL_8_4" },
+    },
+  ],
   fields: [
     f("name", "Name"),
     f("databaseVersion", "Database Version", { required: false }),
-    f("region", "Region", { showcase: true }),
-    f("tier", "Machine Tier", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
+    f("tier", "Machine Tier", { showcase: true, required: false, sizing: "instance-type" }),
     f("state", "State", { showcase: true, required: false }),
     f("publicIpAddress", "Public IP", {
       required: false,

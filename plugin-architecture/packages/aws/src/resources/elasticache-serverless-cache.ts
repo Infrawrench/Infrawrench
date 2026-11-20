@@ -15,8 +15,16 @@ export const ElastiCacheServerlessCacheResourceType = rt({
   description: "An Amazon ElastiCache Serverless cache running Valkey, Redis OSS or Memcached",
   // Edit = ModifyServerlessCache. The engine, network placement and
   // connection type are fixed at creation.
+  equivalence: [
+    {
+      category: "managed-redis",
+      when: { fieldKey: "engine", oneOf: ["valkey", "redis"] },
+      createFields: { engine: "valkey" },
+    },
+  ],
   fields: [
     f("name", "Cache Name", { editable: false }),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("engine", "Engine", {
       showcase: true,
       kind: "enum",

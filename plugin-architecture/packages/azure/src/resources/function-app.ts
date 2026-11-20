@@ -4,10 +4,11 @@ export const FunctionAppResourceType = rt({
   name: "Function App",
   id: "azure-function-app",
   description: "An Azure Function App",
+  equivalence: "serverless-function",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("state", "State", { showcase: true }),
     f("kind", "Kind", { showcase: true, required: false }),
     f("runtime", "Runtime", { showcase: true, required: false }),

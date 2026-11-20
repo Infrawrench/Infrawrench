@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.122.0",
+    "version": "1.123.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -455,6 +455,9 @@
     },
     {
       "name": "Moment"
+    },
+    {
+      "name": "Migration estimates"
     },
     {
       "name": "Realized savings"
@@ -56872,6 +56875,7 @@
               "status-pages",
               "quotas",
               "price-catalog",
+              "migration-estimates",
               "incidents",
               "slos",
               "services",
@@ -56922,6 +56926,13 @@
             ]
           },
           "canvasId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "estimateId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -61156,6 +61167,1185 @@
           "error",
           "fetchedAt",
           "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationScenarioCreated": {
+        "type": "object",
+        "properties": {
+          "scenarioModelId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "monthlyDelta": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "scenarioModelId",
+          "name",
+          "currency",
+          "monthlyDelta"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationScenarioInput": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day the migration lands: the scenario's recurring change starts here."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The scenario model's name. Defaults to the estimate's name and target."
+          }
+        },
+        "required": [
+          "startDate"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTerraformResult": {
+        "type": "object",
+        "properties": {
+          "hcl": {
+            "type": "string"
+          },
+          "exported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "address"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unsupported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "hcl",
+          "exported",
+          "unsupported"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationEstimateResult": {
+        "type": "object",
+        "properties": {
+          "estimateId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "service",
+                  "resources"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "resourceCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "kind",
+              "label",
+              "resourceCount"
+            ],
+            "additionalProperties": false
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "$ref": "#/components/schemas/PluginId"
+              },
+              "pluginName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "pluginId",
+              "pluginName"
+            ],
+            "additionalProperties": false
+          },
+          "region": {
+            "$ref": "#/components/schemas/MigrationRegionNote"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationRow"
+            }
+          },
+          "unmatched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationUnmatchedRow"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/MigrationTotals"
+          },
+          "displayCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "terraform": {
+            "type": "boolean",
+            "description": "The target plugin can write Terraform for at least one matched row."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "estimateId",
+          "name",
+          "source",
+          "target",
+          "region",
+          "rows",
+          "unmatched",
+          "totals",
+          "displayCurrency",
+          "terraform",
+          "truncated",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTotals": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "target": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "currentUnknown": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "targetUnknown": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unmatchedCurrent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "comparable": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "currency": {
+                    "type": "string"
+                  },
+                  "current": {
+                    "type": "number"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "pairedDelta": {
+                    "type": "number",
+                    "description": "Target minus current over the rows priced on both sides. Negative saves money."
+                  },
+                  "pairedRows": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "currency",
+                  "current",
+                  "target",
+                  "pairedDelta",
+                  "pairedRows"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every figure in one currency (the org's display currency, or the one currency all figures are in); null when they cannot be converted."
+          }
+        },
+        "required": [
+          "current",
+          "target",
+          "currentUnknown",
+          "targetUnknown",
+          "unmatchedCurrent",
+          "comparable"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationMoney": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "examples": [
+              "USD"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationUnmatchedRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-category",
+              "no-target-type"
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCost"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "category",
+          "reason",
+          "current"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationCost": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Per month (730 hours)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "billed",
+              "estimate",
+              "list-price"
+            ],
+            "description": "`billed`: the resource's own spend in collected cost data over the last 30 days, scaled to 730 hours. `estimate`: the plugin's estimate for the configuration. `list-price`: the size's published list price times the count."
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "Only part of the resource could be priced; the true figure is higher."
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "basis",
+          "partial"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationCategory": {
+        "type": "string",
+        "enum": [
+          "vm",
+          "kubernetes-cluster",
+          "kubernetes-node-pool",
+          "managed-postgres",
+          "managed-mysql",
+          "managed-redis",
+          "managed-mongodb",
+          "object-storage",
+          "block-volume",
+          "file-storage",
+          "load-balancer",
+          "container-app",
+          "serverless-function",
+          "container-registry",
+          "static-ip",
+          "dns-zone"
+        ],
+        "description": "What a resource is across providers, as its plugin declares it. Resources are matched to the target's type of the same category."
+      },
+      "MigrationRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/MigrationCategory"
+          },
+          "sourceRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceArea": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instanceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "specs": {
+            "type": "object",
+            "properties": {
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memoryGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuCount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuModel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "diskGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "count": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "vcpus",
+              "memoryGb",
+              "gpuCount",
+              "gpuModel",
+              "diskGb",
+              "count"
+            ],
+            "additionalProperties": false
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCost"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What it costs now; null when nothing can price it (never 0)."
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "resourceTypeName": {
+                "type": "string"
+              },
+              "sizeId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sizeLabel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memoryGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuCount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "region": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "regionLabel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cost": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MigrationCost"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "overridden": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "resourceTypeId",
+              "resourceTypeName",
+              "sizeId",
+              "sizeLabel",
+              "vcpus",
+              "memoryGb",
+              "gpuCount",
+              "region",
+              "regionLabel",
+              "cost",
+              "overridden"
+            ],
+            "additionalProperties": false
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no-account",
+                  "source-size-unknown",
+                  "no-size-match",
+                  "no-price",
+                  "catalog-unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the target has no figure, when it has none."
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationSizeOption"
+            },
+            "description": "Target sizes for the picker: qualifying first, cheapest first."
+          },
+          "targetTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "category",
+          "sourceRegion",
+          "sourceArea",
+          "instanceType",
+          "specs",
+          "current",
+          "target",
+          "note",
+          "candidates",
+          "targetTypes"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationSizeOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "vcpus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memoryGb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gpuCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gpuModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "monthly": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One unit, per month; null if unpriced."
+          },
+          "meetsSpec": {
+            "type": "boolean",
+            "description": "Meets or exceeds the source's known vCPUs, memory and GPUs."
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "vcpus",
+          "memoryGb",
+          "gpuCount",
+          "gpuModel",
+          "monthly",
+          "meetsSpec"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationArea": {
+        "type": "string",
+        "enum": [
+          "north-america",
+          "south-america",
+          "europe",
+          "asia-pacific",
+          "middle-east",
+          "africa",
+          "oceania"
+        ]
+      },
+      "MigrationRegionNote": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regionLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceAreas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationArea"
+            }
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "user",
+              "nearest",
+              "default",
+              "none"
+            ]
+          },
+          "crossesArea": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Some sources are in another area than the target region; null if unknown."
+          }
+        },
+        "required": [
+          "region",
+          "regionLabel",
+          "area",
+          "sourceAreas",
+          "choice",
+          "crossesArea"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationEstimate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MigrationEstimateSource"
+          },
+          "sourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetPluginId": {
+            "type": "string"
+          },
+          "targetRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MigrationRowOverride"
+            }
+          },
+          "createdByUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source",
+          "sourceName",
+          "targetPluginId",
+          "targetRegion",
+          "overrides",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationRowOverride": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target resource type, of the row's category."
+          },
+          "sizeId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target size: a catalog SKU or size-picker id."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MigrationEstimateSource": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "service"
+                ]
+              },
+              "serviceId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The service's id or slug."
+              }
+            },
+            "required": [
+              "kind",
+              "serviceId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resources"
+                ]
+              },
+              "resourceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "kind",
+              "resourceIds"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "What to price: a service's members (resolved on every read, so the estimate follows the service) or a set of resource ids."
+      },
+      "MigrationEstimateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "source": {
+            "$ref": "#/components/schemas/MigrationEstimateSource"
+          },
+          "targetPluginId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The provider to price on, as a plugin id (`hetzner`, `gcp`)."
+          },
+          "targetRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A region of the target provider, or null for the one nearest the source resources."
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MigrationRowOverride"
+            },
+            "description": "Per source resource id, the user's target type and size in place of the match."
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "targetPluginId"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTargets": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationTargetProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTargetProvider": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationCategory"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "area": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MigrationArea"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "area"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "priceCatalog": {
+            "type": "boolean"
+          },
+          "needsAccount": {
+            "type": "boolean",
+            "description": "Pricing on this provider needs one of the org's accounts on it."
+          },
+          "hasAccount": {
+            "type": "boolean"
+          },
+          "terraform": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "categories",
+          "regions",
+          "priceCatalog",
+          "needsAccount",
+          "hasAccount",
+          "terraform"
         ],
         "additionalProperties": false
       },
@@ -127016,6 +128206,625 @@
         "summary": "Compare equivalent instances across providers",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdPriceCatalogCompare"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/targets": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationTargets"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every provider with at least one resource type that declares a cross-provider category, with its categories, the regions it can be priced in (with their area) and whether pricing it needs one of the org's accounts.\n\n_Requires permission: `costs:read`._",
+        "summary": "Providers an estimate can target",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesTargets"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/preview": {
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Matches each resource to the target's type of the same category, picks the cheapest size meeting or exceeding its vCPUs, memory and GPUs (or the override), and prices it beside what the resource costs now. Resources with no equivalent are listed apart with the reason. A figure nothing can price is null, never 0. A read despite the method.\n\n_Requires permission: `costs:read`._",
+        "summary": "Compute an unsaved migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:read",
+        "operationId": "postOrgOrgIdMigrationEstimatesPreview"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estimates, most recently changed first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEstimate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List saved migration estimates",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimates",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Stores the inputs only; the figures are computed on every read. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Save a migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdMigrationEstimates"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate's inputs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a saved migration estimate",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesId",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Name, source, target, region and overrides together. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Replace a migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "putOrgOrgIdMigrationEstimatesId"
+      },
+      "delete": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Delete a migration estimate",
+        "x-required-permission": "costs:write",
+        "operationId": "deleteOrgOrgIdMigrationEstimatesId",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/result": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The saved inputs priced now: current spend as the caller's cost visibility scope sees it, and today's list prices.\n\n_Requires permission: `costs:read`._",
+        "summary": "Compute a saved migration estimate",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesIdResult"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/terraform": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HCL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationTerraformResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "HCL for the matched rows through the target plugin's own Terraform export, with each row's matched type, size and region. Rows the export cannot map are listed with the reason. 400 when the target has no Terraform export.\n\n_Requires permission: `costs:read`._",
+        "summary": "Terraform for the target provider",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesIdTerraform"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/scenario": {
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scenario model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationScenarioCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a scenario model with one recurring monthly amount, the estimate's paired delta (target minus current over the rows priced on both sides), from `startDate`. 400 when the estimate has no single-currency delta. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Turn an estimate into a scenario model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationScenarioInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdMigrationEstimatesIdScenario"
       }
     },
     "/api/org/{orgId}/savings/realized": {

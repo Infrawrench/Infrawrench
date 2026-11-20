@@ -5,11 +5,16 @@ export const ManagedRedisResourceType = rt({
   id: "azure-managed-redis",
   description:
     "An Azure Managed Redis cluster (Microsoft.Cache/redisEnterprise): the successor to Azure Cache for Redis, which Microsoft is retiring",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("location", "Location", { showcase: true }),
-    f("sku", "SKU", { showcase: true, description: "Performance tier and size, e.g. Balanced_B5" }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
+    f("sku", "SKU", {
+      showcase: true,
+      sizing: "instance-type",
+      description: "Performance tier and size, e.g. Balanced_B5",
+    }),
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("resourceState", "Resource State", { required: false }),
     f("redisVersion", "Redis Version", { required: false }),

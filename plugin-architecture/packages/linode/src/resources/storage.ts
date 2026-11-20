@@ -6,15 +6,18 @@ export const VolumeResourceType = rt({
   name: "Volume",
   id: "volume",
   description: "A Linode Block Storage volume",
+  equivalence: "block-volume",
   fields: [
     f("label", "Label"),
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Volumes can grow (10 to 16,384 GB) but never shrink",
     }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
@@ -65,10 +68,12 @@ export const BucketResourceType = rt({
   name: "Bucket",
   id: "bucket",
   description: "A Linode Object Storage bucket",
+  equivalence: "object-storage",
   fields: [
     f("name", "Name", { editable: false }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,

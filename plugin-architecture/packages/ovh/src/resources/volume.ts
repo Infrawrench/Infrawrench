@@ -15,14 +15,17 @@ export const VolumeResourceType = rt({
   name: "Volume",
   plural: "Volumes",
   description: "An OVHcloud Public Cloud block storage volume",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("region", "Region", { showcase: true, editable: false }),
+    f("region", "Region", { showcase: true, editable: false, sizing: "region" }),
     f("availabilityZone", "Availability Zone", { required: false, editable: false }),
+    // The create form names the size `size`; the synced value is `sizeGb`.
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Volume size. OVH can only grow a volume (upsize), never shrink it",
     }),
     f("type", "Type", { showcase: true, kind: "enum", enumValues: TYPES, editable: false }),

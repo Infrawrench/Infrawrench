@@ -5,13 +5,14 @@ export const ContainerAppResourceType = rt({
   id: "azure-container-app",
   description:
     "An Azure Container Apps app: a serverless container with HTTP ingress, scale-to-zero and revisions, running inside a Container Apps environment",
+  equivalence: "container-app",
   fields: [
     // Name, environment and placement are fixed at create time. The editable
     // fields all live in the app's `template`, so every edit rolls out a new
     // revision (Azure's own behaviour for template changes).
     f("name", "Name", { editable: false }),
     f("resourceGroup", "Resource Group", { editable: false }),
-    f("location", "Location", { showcase: true, editable: false }),
+    f("location", "Location", { showcase: true, editable: false, sizing: "region" }),
     f("environment", "Environment", {
       editable: false,
       description: "Container Apps environment the app runs in",
@@ -26,6 +27,7 @@ export const ContainerAppResourceType = rt({
     f("cpu", "CPU (cores)", {
       kind: "number",
       required: false,
+      sizing: "vcpus",
       description:
         "vCPU for the first container. Consumption pairs CPU with memory at 1 core : 2 GiB (0.25/0.5Gi up to 4/8Gi)",
     }),
@@ -36,6 +38,7 @@ export const ContainerAppResourceType = rt({
     f("minReplicas", "Min Replicas", {
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "0 lets the app scale to zero when idle",
     }),
     f("maxReplicas", "Max Replicas", { kind: "number", required: false }),

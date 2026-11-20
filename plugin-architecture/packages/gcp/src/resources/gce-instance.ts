@@ -5,13 +5,16 @@ export const GceInstanceResourceType = rt({
   id: "gce-instance",
   iconKey: "cpu",
   description: "A Google Compute Engine virtual machine instance",
+  equivalence: "vm",
   fields: [
     // GCE instance names are immutable; the only editable field is
     // machineType (the right-sizing resize path).
     f("name", "Name", { editable: false }),
-    f("zone", "Zone", { showcase: true, editable: false }),
+    // A zone, the only location a VM stores (and the create form's key).
+    f("zone", "Zone", { showcase: true, editable: false, sizing: "region" }),
     f("machineType", "Machine Type", {
       showcase: true,
+      sizing: "instance-type",
       description:
         "Machine type name, e.g. e2-standard-2. Changing it resizes the instance (only allowed while it is stopped)",
     }),

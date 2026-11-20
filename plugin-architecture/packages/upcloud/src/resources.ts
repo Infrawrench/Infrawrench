@@ -21,20 +21,29 @@ export const ServerResourceType = rt({
   name: "Server",
   id: "server",
   description: "An UpCloud cloud server",
+  equivalence: "vm",
   fields: [
     f("title", "Title"),
     f("hostname", "Hostname"),
     f("state", "State", { showcase: true, required: false, editable: false }),
     f("plan", "Plan", {
       description: "Simple plan, e.g. 2xCPU-4GB. Changing it needs the server to be stopped",
+      sizing: "instance-type",
     }),
-    { ...zone(), showcase: true },
-    f("cores", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    { ...zone(), showcase: true, sizing: "region" },
+    f("cores", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
     f("memoryMb", "Memory (MB)", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      sizing: "memory-mb",
     }),
     f("firewall", "Firewall", {
       kind: "boolean",
@@ -107,11 +116,13 @@ export const StorageResourceType = rt({
   plural: "Storages",
   id: "storage",
   description: "An UpCloud block storage device",
+  equivalence: "block-volume",
   fields: [
     f("title", "Title"),
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Storage can grow but never shrink",
     }),
     f("tier", "Tier", {
@@ -119,7 +130,7 @@ export const StorageResourceType = rt({
       enumValues: ["maxiops", "standard", "hdd"],
       editable: false,
     }),
-    { ...zone(), showcase: true },
+    { ...zone(), showcase: true, sizing: "region" },
     f("state", "State", { showcase: true, required: false, editable: false }),
     f("serverIds", "Attached Servers", {
       required: false,
@@ -257,10 +268,11 @@ export const FloatingIpResourceType = rt({
   name: "Floating IP",
   id: "floating-ip",
   description: "A floating IP address that can move between servers",
+  equivalence: "static-ip",
   fields: [
     f("address", "Address", { showcase: true, editable: false }),
     f("family", "Family", { required: false, editable: false }),
-    { ...zone(), showcase: true },
+    { ...zone(), showcase: true, sizing: "region" },
     f("serverId", "Assigned Server", {
       required: false,
       editable: false,
@@ -286,9 +298,10 @@ export const KubernetesClusterResourceType = rt({
   name: "Kubernetes Cluster",
   id: "kubernetes-cluster",
   description: "An UpCloud Managed Kubernetes cluster",
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name", { editable: false }),
-    { ...zone(), showcase: true },
+    { ...zone(), showcase: true, sizing: "region" },
     f("version", "Kubernetes Version", { editable: false }),
     f("plan", "Control Plane Plan", { required: false, editable: false }),
     f("state", "State", { showcase: true, required: false, editable: false }),
@@ -310,8 +323,15 @@ export const KubernetesClusterResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("nodeCount", "Nodes", { showcase: true, kind: "number", required: false, editable: false }),
-    f("nodePlan", "Node Plan", { required: false, editable: false }),
+    f("nodeCount", "Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "node-count",
+    }),
+    // The largest node group's plan; the cluster's other groups may differ.
+    f("nodePlan", "Node Plan", { required: false, editable: false, sizing: "instance-type" }),
     labels(),
   ],
   outputs: [
@@ -372,14 +392,15 @@ export const NodeGroupResourceType = rt({
   id: "node-group",
   pinnable: false,
   description: "A group of identical worker nodes in an UpCloud Kubernetes cluster",
+  equivalence: "kubernetes-node-pool",
   fields: [
     f("name", "Name", { editable: false }),
-    f("plan", "Node Plan", { showcase: true, editable: false }),
-    f("count", "Nodes", { kind: "number" }),
+    f("plan", "Node Plan", { showcase: true, editable: false, sizing: "instance-type" }),
+    f("count", "Nodes", { kind: "number", sizing: "node-count" }),
     f("state", "State", { showcase: true, required: false, editable: false }),
     f("antiAffinity", "Anti-affinity", { kind: "boolean", required: false, editable: false }),
     f("clusterId", "Cluster", { required: false, editable: false }),
-    f("region", "Zone", { showcase: true, required: false, editable: false }),
+    f("region", "Zone", { showcase: true, required: false, editable: false, sizing: "region" }),
   ],
   outputs: [],
   parentTypeId: "kubernetes-cluster",
@@ -404,6 +425,23 @@ export const DatabaseResourceType = rt({
   name: "Managed Database",
   id: "database",
   description: "An UpCloud Managed Database (PostgreSQL, MySQL, Valkey or OpenSearch)",
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "type", oneOf: ["pg"] },
+      createFields: { type: "pg" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "type", oneOf: ["mysql"] },
+      createFields: { type: "mysql" },
+    },
+    {
+      category: "managed-redis",
+      when: { fieldKey: "type", oneOf: ["valkey", "redis"] },
+      createFields: { type: "valkey" },
+    },
+  ],
   fields: [
     f("title", "Title"),
     f("type", "Engine", {
@@ -412,10 +450,15 @@ export const DatabaseResourceType = rt({
       editable: false,
     }),
     f("version", "Version", { required: false, editable: false }),
-    { ...zone(), showcase: true },
+    { ...zone(), showcase: true, sizing: "region" },
     f("state", "State", { showcase: true, required: false, editable: false }),
     f("powered", "Powered On", { kind: "boolean", required: false }),
-    f("plan", "Plan", { description: "Changing the plan resizes the service" }),
+    // The bare plan name (`2x2xCPU-4GB-100GB`), which already counts the nodes;
+    // the create form's plan ids are `{engine}:{plan}`.
+    f("plan", "Plan", {
+      description: "Changing the plan resizes the service",
+      sizing: "instance-type",
+    }),
     f("nodeCount", "Nodes", { showcase: true, kind: "number", required: false, editable: false }),
     f("host", "Host", { required: false, editable: false }),
     f("port", "Port", { required: false, editable: false }),
@@ -561,9 +604,10 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   id: "load-balancer",
   description: "An UpCloud Managed Load Balancer",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    { ...zone(), showcase: true },
+    { ...zone(), showcase: true, sizing: "region" },
     f("plan", "Plan", {
       kind: "enum",
       enumValues: ["development", "production-small", "production-medium", "production-large"],
@@ -620,9 +664,11 @@ export const ObjectStorageResourceType = rt({
   id: "object-storage",
   apiDocsUrl: "https://developers.upcloud.com/1.3/21-managed-object-storage/#create-service",
   description: "An UpCloud Managed Object Storage service (S3-compatible)",
+  // The service, not the bucket, is what UpCloud bills (per stored GB).
+  equivalence: "object-storage",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, editable: false }),
+    f("region", "Region", { showcase: true, editable: false, sizing: "region" }),
     f("configuredStatus", "Configured Status", {
       kind: "enum",
       required: false,
@@ -631,7 +677,12 @@ export const ObjectStorageResourceType = rt({
     f("operationalState", "State", { required: false, editable: false }),
     f("endpoint", "Public Endpoint", { required: false, editable: false }),
     f("totalObjects", "Objects", { kind: "number", required: false, editable: false }),
-    f("totalSizeGb", "Stored (GB)", { kind: "number", required: false, editable: false }),
+    f("totalSizeGb", "Stored (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     labels(),
   ],
   outputs: [o("endpoint", "S3 Endpoint")],

@@ -4,6 +4,7 @@ import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
 import { ResourceReportsPanel } from "@infrawrench/ui/resource-reports";
 import { createDesktopResourceReportsClient } from "@/lib/resource-reports-client";
+import { useStartMigrationEstimate } from "./useStartMigrationEstimate";
 import {
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
@@ -21,6 +22,7 @@ export function DesktopResourceReportsPanel({ reportId }: { reportId?: string | 
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopResourceReportsClient(), []);
+  const migration = useStartMigrationEstimate();
 
   if (!activeCloudOrgId) {
     return (
@@ -51,7 +53,14 @@ export function DesktopResourceReportsPanel({ reportId }: { reportId?: string | 
             ),
           )
         }
+        onEstimateMigration={(resourceIds) =>
+          migration.start({
+            source: { kind: "resources", resourceIds },
+            label: gt("{count} selected resources", { count: resourceIds.length }),
+          })
+        }
       />
+      {migration.dialog}
     </div>
   );
 }

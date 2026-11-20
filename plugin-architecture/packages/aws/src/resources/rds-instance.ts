@@ -17,8 +17,25 @@ export const RDSInstanceResourceType = rt({
     },
   },
   description: "An Amazon RDS database instance",
+  // Aurora's compute is its member instances, listed here too; the
+  // `rds-cluster` itself carries no category so it is not counted twice.
+  // DocumentDB and Neptune members (`docdb`, `neptune`) match no rule here:
+  // DocumentDB is counted through `documentdb-cluster`.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["postgres", "aurora-postgresql"] },
+      createFields: { engine: "postgres" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["mysql", "mariadb", "aurora-mysql"] },
+      createFields: { engine: "mysql" },
+    },
+  ],
   fields: [
     f("dbInstanceId", "DB Instance ID"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("engine", "Engine", {
       kind: "enum",
       enumValues: [
@@ -34,12 +51,13 @@ export const RDSInstanceResourceType = rt({
       ],
     }),
     f("engineVersion", "Engine Version"),
-    f("instanceClass", "Instance Class"),
+    f("instanceClass", "Instance Class", { sizing: "instance-type" }),
     f("vcpus", "vCPUs", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      sizing: "vcpus",
       description: "vCPUs of the instance class, which RDS Extended Support bills on",
     }),
     f("engineLifecycleSupport", "Extended Support", {
@@ -49,7 +67,12 @@ export const RDSInstanceResourceType = rt({
         "Whether RDS keeps this instance on paid Extended Support past the end of standard support, or upgrades it",
     }),
     f("status", "Status", { showcase: true }),
-    f("allocatedStorage", "Storage (GB)", { showcase: true, kind: "number", required: false }),
+    f("allocatedStorage", "Storage (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "disk-gb",
+    }),
     f("availabilityZone", "Availability Zone", { showcase: true, required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("vpcId", "VPC ID", { required: false, description: "VPC of the instance's DB subnet group" }),

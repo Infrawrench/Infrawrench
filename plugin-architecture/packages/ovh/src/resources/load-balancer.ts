@@ -5,9 +5,10 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   description:
     "An OVHcloud Public Cloud load balancer from the older beta API; new deployments use the Public Cloud Load Balancer type",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("size", "Size", {
       showcase: true,
       kind: "enum",

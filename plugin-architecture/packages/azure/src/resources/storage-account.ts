@@ -4,10 +4,11 @@ export const StorageAccountResourceType = rt({
   name: "Storage Account",
   id: "azure-storage-account",
   description: "An Azure Storage Account",
+  equivalence: "object-storage",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("kind", "Kind", { showcase: true }),
     f("sku", "SKU", { showcase: true }),
     f("provisioningState", "Provisioning State", { showcase: true }),

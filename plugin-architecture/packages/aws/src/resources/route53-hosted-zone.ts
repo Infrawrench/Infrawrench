@@ -4,6 +4,7 @@ export const Route53HostedZoneResourceType = rt({
   name: "Route 53 Hosted Zone",
   id: "route53-hosted-zone",
   description: "An Amazon Route 53 DNS hosted zone",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Domain Name"),
     f("hostedZoneId", "Hosted Zone ID"),

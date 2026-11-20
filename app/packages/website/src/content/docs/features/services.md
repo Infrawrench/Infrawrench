@@ -23,6 +23,9 @@ on-call rotation, an SLO within budget, tested backups? Above the scorecards sit
 - **[CLI](./cli.md):** `infrawrench services` and `infrawrench scorecards` (which prints the org
   grade first).
 
+**Estimate migration** on a service's page shows what its resources would cost on another
+provider, side by side with today. See [Migration estimates](./migration-estimates.md).
+
 ## Create a service
 
 Click **New service** and fill in what you know. Only the name is required, and every reference

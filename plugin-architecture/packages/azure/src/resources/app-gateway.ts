@@ -4,10 +4,11 @@ export const AppGatewayResourceType = rt({
   name: "Application Gateway",
   id: "azure-app-gateway",
   description: "An Azure Application Gateway (Layer 7 load balancer)",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("sku", "SKU"),
     f("tier", "Tier"),
     f("capacity", "Capacity", { kind: "number", required: false }),

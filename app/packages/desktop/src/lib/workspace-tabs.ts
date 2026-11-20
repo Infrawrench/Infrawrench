@@ -36,6 +36,7 @@ import {
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -90,6 +91,7 @@ export {
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -267,6 +269,14 @@ export function getWorkspaceNavigateArgs(
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
     case "price-catalog":
       return { to: "/price-catalog", ...(replace ? { replace: true } : {}) };
+    // Migration estimates: the Resource reports shape, `?estimate=<id>`
+    // (always pass `search` so going back to the list clears it).
+    case "migration-estimates":
+      return {
+        to: "/migration-estimates",
+        search: target.estimateId ? { estimate: target.estimateId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "incidents":
       // Search passed explicitly, the settings/chat rule: navigating from an
       // incident back to the list must CLEAR ?incident= or the route resolves
@@ -523,6 +533,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "price-catalog") {
     return priceCatalogTabTarget();
+  }
+  if (segments[0] === "migration-estimates") {
+    const params = new URLSearchParams(search ?? "");
+    return migrationEstimatesTabTarget(params.get("estimate") ?? undefined);
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");

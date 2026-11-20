@@ -5,9 +5,10 @@ export const CloudFunctionResourceType = rt({
   id: "cloud-function",
   iconKey: "function",
   description: "A Google Cloud Function (2nd gen)",
+  equivalence: "serverless-function",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("runtime", "Runtime", { showcase: true, required: false }),
     f("state", "State", { showcase: true, required: false }),
     f("stateMessage", "State Message", { required: false }),

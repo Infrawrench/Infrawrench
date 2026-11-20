@@ -4,10 +4,11 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   id: "azure-load-balancer",
   description: "An Azure Load Balancer",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("sku", "SKU"),
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("frontendIpCount", "Frontend IPs", { showcase: true, kind: "number", required: false }),

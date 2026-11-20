@@ -195,6 +195,11 @@ export function priceCatalogTabTarget(): WorkspaceTabTarget {
   return { kind: "price-catalog" };
 }
 
+/** Migration estimates. One tab, optionally remembering which estimate is open. */
+export function migrationEstimatesTabTarget(estimateId?: string): WorkspaceTabTarget {
+  return { kind: "migration-estimates", ...(estimateId ? { estimateId } : {}) };
+}
+
 /**
  * Incident mode. One tab, optionally remembering which incident it was on:
  * during an incident people flip between the timeline and everything else, and

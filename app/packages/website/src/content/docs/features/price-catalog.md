@@ -33,6 +33,10 @@ Matches are based on published specs only. An `m7i.large` and a `CX22` are compa
 
 ![Compare providers mode for 8 vCPU / 32 GB in North America, showing one row per provider with the cheapest match, its monthly price and runners-up](https://agent-assets.infrawrench.com/docs-screenshots/features/price-catalog/compare-providers.png)
 
+## Estimate a whole migration
+
+To price a whole service, or a set of resources, on another provider, with each resource matched to an equivalent size and set beside what it costs today, use a [migration estimate](./migration-estimates.md). It reads the same price lists.
+
 ## Use in estimate
 
 **Use in estimate** opens that provider's create form with the instance type and region filled in, so the [estimate badge](./cost-estimates.md) prices the whole setup (disks, node counts and all) before you create anything. You need an account on that provider. If you have several, pick which one to use.

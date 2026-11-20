@@ -4,8 +4,10 @@ export const AppRunnerServiceResourceType = rt({
   name: "App Runner Service",
   id: "apprunner-service",
   description: "An AWS App Runner service",
+  equivalence: "container-app",
   fields: [
     f("serviceName", "Name"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("status", "Status", {
       showcase: true,
       kind: "enum",

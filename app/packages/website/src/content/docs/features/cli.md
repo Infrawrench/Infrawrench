@@ -447,6 +447,13 @@ infrawrench prices compare --vcpus 8 --memory 32
 infrawrench prices compare m7i.xlarge --provider aws --json
 ```
 
+`migrate-estimate` prices a service, or a list of resources, on another provider beside what it costs today: each resource matched to the target's equivalent and sized at least as large, with the total change and anything that has no equivalent. `--save <name>` keeps it as a [migration estimate](./migration-estimates.md) you can open in the app. Cloud only; takes `--json`:
+
+```
+infrawrench migrate-estimate --service checkout-api --to hetzner
+infrawrench migrate-estimate --resources <id>,<id> --to gcp --region europe-west3 --json
+```
+
 `estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized. It's the same figure the create form and the resource page show. Cloud only. This is a projection, not a bill: `costs` shows what you were actually charged, while `estimate` shows the run rate the resource's current setup implies. Pass the full resource id, or a display name or external id with `--account`:
 
 ```

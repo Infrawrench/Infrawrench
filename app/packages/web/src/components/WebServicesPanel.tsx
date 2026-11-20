@@ -15,6 +15,7 @@ import {
 import { usePermissions } from "@/auth/permissions-context";
 import { createWebServicesClient } from "@/lib/services-client";
 import { getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
+import { useStartMigrationEstimate } from "./useStartMigrationEstimate";
 
 /**
  * Web host for the shared Services screen, rendered as the "services"
@@ -44,6 +45,8 @@ export function WebServicesPanel({
     [orgId, canWrite, canReadTeam, canReadCosts],
   );
   const navigate = useNavigate();
+  const migration = useStartMigrationEstimate(orgId);
+  const startMigration = migration.start;
   // The org grade's pillar cards lead to the page each one reads. Ownership
   // is recorded per resource and has no org-level page; service standards
   // reads the matrix on the same view.
@@ -68,7 +71,17 @@ export function WebServicesPanel({
         onNavigate={onNavigate}
         onOpenResource={onOpenResource}
         orgScorecardLinks={orgScorecardLinks}
+        onEstimateMigration={
+          startMigration && canReadCosts
+            ? (service) =>
+                startMigration({
+                  source: { kind: "service", serviceId: service.id },
+                  label: service.name,
+                })
+            : undefined
+        }
       />
+      {migration.dialog}
     </div>
   );
 }

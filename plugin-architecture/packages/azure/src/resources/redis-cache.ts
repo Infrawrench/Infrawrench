@@ -4,10 +4,11 @@ export const RedisCacheResourceType = rt({
   name: "Redis Cache",
   id: "azure-redis-cache",
   description: "An Azure Cache for Redis instance",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("sku", "SKU", { showcase: true }),
     f("capacity", "Capacity", { kind: "number" }),
     f("provisioningState", "Provisioning State", { showcase: true }),

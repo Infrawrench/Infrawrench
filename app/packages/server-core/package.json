@@ -101,6 +101,7 @@
     "./cost/dates": "./src/cost/dates.ts",
     "./cost/estimate": "./src/cost/estimate.ts",
     "./price-catalog": "./src/price-catalog/index.ts",
+    "./migration-estimate": "./src/migration-estimate/index.ts",
     "./cost/carbon": "./src/cost/carbon.ts",
     "./cost/forecast": "./src/cost/forecast.ts",
     "./cost/budget-eval": "./src/cost/budget-eval.ts",

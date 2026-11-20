@@ -36,6 +36,7 @@ import { Route as JitAccessRouteImport } from './routes/jit-access'
 import { Route as K8sEfficiencyRouteImport } from './routes/k8s-efficiency'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
+import { Route as MigrationEstimatesRouteImport } from './routes/migration-estimates'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
@@ -192,6 +193,11 @@ const MetricAlertsRoute = MetricAlertsRouteImport.update({
   path: '/metric-alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MigrationEstimatesRoute = MigrationEstimatesRouteImport.update({
+  id: '/migration-estimates',
+  path: '/migration-estimates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MomentRoute = MomentRouteImport.update({
   id: '/moment',
   path: '/moment',
@@ -322,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -371,6 +378,7 @@ export interface FileRoutesByTo {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -421,6 +429,7 @@ export interface FileRoutesById {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -472,6 +481,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -521,6 +531,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -570,6 +581,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -620,6 +632,7 @@ export interface RootRouteChildren {
   K8sEfficiencyRoute: typeof K8sEfficiencyRoute
   LogsRoute: typeof LogsRoute
   MetricAlertsRoute: typeof MetricAlertsRoute
+  MigrationEstimatesRoute: typeof MigrationEstimatesRoute
   MomentRoute: typeof MomentRoute
   PostureRoute: typeof PostureRoute
   PriceCatalogRoute: typeof PriceCatalogRoute
@@ -833,6 +846,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MetricAlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/migration-estimates': {
+      id: '/migration-estimates'
+      path: '/migration-estimates'
+      fullPath: '/migration-estimates'
+      preLoaderRoute: typeof MigrationEstimatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/moment': {
       id: '/moment'
       path: '/moment'
@@ -1004,6 +1024,7 @@ const rootRouteChildren: RootRouteChildren = {
   K8sEfficiencyRoute: K8sEfficiencyRoute,
   LogsRoute: LogsRoute,
   MetricAlertsRoute: MetricAlertsRoute,
+  MigrationEstimatesRoute: MigrationEstimatesRoute,
   MomentRoute: MomentRoute,
   PostureRoute: PostureRoute,
   PriceCatalogRoute: PriceCatalogRoute,

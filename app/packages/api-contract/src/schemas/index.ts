@@ -31,6 +31,7 @@ export * from "./form";
 export * from "./invoices";
 export * from "./k8s-efficiency";
 export * from "./metric-alerts";
+export * from "./migration-estimates";
 export * from "./primitives";
 export * from "./resource-reports";
 export * from "./saved-filters";

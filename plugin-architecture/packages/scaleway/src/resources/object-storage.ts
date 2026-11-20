@@ -6,9 +6,10 @@ export const ObjectStorageResourceType = rt({
   name: "Object Storage Bucket",
   plural: "Object Storage Buckets",
   description: "A Scaleway Object Storage bucket (S3-compatible)",
+  equivalence: "object-storage",
   fields: [
     f("name", "Bucket Name"),
-    f("region", "Region", { showcase: true, kind: "enum", enumValues: REGIONS }),
+    f("region", "Region", { showcase: true, kind: "enum", enumValues: REGIONS, sizing: "region" }),
   ],
   outputs: [
     o("endpoint", "Endpoint URL"),

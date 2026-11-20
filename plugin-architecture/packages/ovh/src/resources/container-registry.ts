@@ -4,9 +4,10 @@ export const ContainerRegistryResourceType = rt({
   id: "container-registry",
   name: "Container Registry",
   description: "An OVHcloud Managed Private Registry (Harbor)",
+  equivalence: "container-registry",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("status", "Status", {
       showcase: true,
       kind: "enum",
@@ -23,7 +24,12 @@ export const ContainerRegistryResourceType = rt({
         "UPDATING",
       ],
     }),
-    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", required: false }),
+    f("sizeGb", "Size (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "disk-gb",
+    }),
     f("version", "Harbor Version", { showcase: true, required: false }),
     f("iamEnabled", "OVHcloud IAM", { kind: "boolean", required: false }),
   ],

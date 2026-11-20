@@ -107,6 +107,7 @@ import { creditsDomain } from "./domains/credits/index";
 import { carbonDomain } from "./domains/carbon/index";
 import { momentDomain } from "./domains/moment/index";
 import { priceCatalogDomain } from "./domains/price-catalog/index";
+import { migrationEstimatesDomain } from "./domains/migration-estimates/index";
 import { savingsDomain } from "./domains/savings/index";
 import { savingsFindingsDomain } from "./domains/savings-findings/index";
 import { invoicesDomain } from "./domains/invoices/index";
@@ -270,6 +271,7 @@ export const DOMAINS: readonly Domain[] = [
   carbonDomain,
   momentDomain,
   priceCatalogDomain,
+  migrationEstimatesDomain,
   savingsDomain,
   savingsFindingsDomain,
   searchDomain,

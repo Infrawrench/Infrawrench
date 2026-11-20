@@ -4,10 +4,11 @@ export const AppServiceResourceType = rt({
   name: "App Service",
   id: "azure-app-service",
   description: "An Azure App Service web app",
+  equivalence: "container-app",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("state", "State", { showcase: true }),
     f("kind", "Kind", { showcase: true, required: false }),
     f("appServicePlan", "App Service Plan", { required: false }),

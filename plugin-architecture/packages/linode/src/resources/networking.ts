@@ -6,10 +6,12 @@ export const NodeBalancerResourceType = rt({
   name: "NodeBalancer",
   id: "nodebalancer",
   description: "A Linode NodeBalancer (managed load balancer)",
+  equivalence: "load-balancer",
   fields: [
     f("label", "Label"),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
@@ -180,10 +182,12 @@ export const ReservedIpResourceType = rt({
   name: "Reserved IP",
   id: "reserved-ip",
   description: "A reserved public IPv4 address",
+  equivalence: "static-ip",
   fields: [
     f("address", "Address", { showcase: true, editable: false }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
@@ -217,6 +221,7 @@ export const DomainResourceType = rt({
   name: "Domain",
   id: "domain",
   description: "A domain hosted on Linode DNS Manager",
+  equivalence: "dns-zone",
   fields: [
     f("domain", "Domain", { showcase: true, editable: false }),
     f("type", "Type", {

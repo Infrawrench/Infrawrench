@@ -211,6 +211,9 @@ COMMANDS
   prices compare      the cheapest instance per provider meeting a spec   [--vcpus 4] [--memory 16]
                       [--gpus 1] [--gpu-model L4] [--area europe] [--rate spot], or a product's
                       specs: prices compare <sku> --provider <plugin>
+  migrate-estimate    what a service or a set of resources would cost on another provider, side
+                      by side (cloud only)   --service <id|slug|name> | --resources <id,id>
+                      --to <plugin> [--region <id>] [--save <name>]
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)

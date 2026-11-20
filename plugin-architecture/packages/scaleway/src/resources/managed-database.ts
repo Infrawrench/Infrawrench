@@ -7,6 +7,20 @@ export const ManagedDatabaseResourceType = rt({
   id: "rdb-instance",
   name: "Managed Database",
   description: "A Scaleway Managed Database (RDB) instance",
+  // The lister stores the engine name alone ("PostgreSQL", "MySQL"); the
+  // create form takes it with its major version ("PostgreSQL-16").
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", prefix: "PostgreSQL" },
+      createFields: { engine: "PostgreSQL-16" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", prefix: "MySQL" },
+      createFields: { engine: "MySQL-8" },
+    },
+  ],
   fields: [
     f("name", "Name"),
     f("engine", "Engine", {
@@ -21,9 +35,11 @@ export const ManagedDatabaseResourceType = rt({
       kind: "enum",
       enumValues: SCW_REGIONS,
       editable: false,
+      sizing: "region",
     }),
     f("nodeType", "Node Type", {
       showcase: true,
+      sizing: "instance-type",
       description:
         "Instance node type, e.g. DB-DEV-S, db-pro2-xs. Changing it upgrades the instance in place (Scaleway can only scale up)",
     }),
@@ -33,6 +49,7 @@ export const ManagedDatabaseResourceType = rt({
     f("volumeSizeGb", "Volume Size (GB)", {
       kind: "number",
       required: false,
+      sizing: "disk-gb",
       description: "Storage size; Block (sbs) volumes can grow in place",
     }),
     f("backupsEnabled", "Automatic Backups", { kind: "boolean", required: false, editable: false }),

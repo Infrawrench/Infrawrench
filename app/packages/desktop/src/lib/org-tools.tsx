@@ -39,6 +39,7 @@ import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
+import { MigrationEstimatesIcon } from "@infrawrench/ui/migration-estimates/MigrationEstimatesIcon";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
@@ -59,6 +60,7 @@ import {
   invoicesTabTarget,
   jitAccessTabTarget,
   k8sEfficiencyTabTarget,
+  migrationEstimatesTabTarget,
   logsTabTarget,
   queryMonitorsTabTarget,
   resourceReportsTabTarget,
@@ -285,6 +287,17 @@ export function useOrgTools(): SidebarToolDef[] {
             label: gt("Price catalog"),
             icon: <PriceCatalogIcon />,
             onClick: () => void navigate({ to: "/price-catalog" }),
+          },
+          // Cloud-only: the current side is the cloud's billed spend, and the
+          // target is priced with the org's accounts.
+          {
+            key: "migration-estimates",
+            label: gt("Migration estimates"),
+            icon: <MigrationEstimatesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, migrationEstimatesTabTarget(), {
+                label: gt("Migration estimates"),
+              }),
           },
           // Cloud-only for the same reason as Probes: an incident is
           // org-scoped and declaring one composes cloud features.
