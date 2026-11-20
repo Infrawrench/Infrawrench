@@ -45,8 +45,14 @@ is a picker:
 
 You can use either or both:
 
-- **Pick them.** Click **Add resources** on the service page and choose from any account and
-  provider.
+- **Pick them.** The editor's **Add resources** tab searches every account at once: type any mix
+  of name, type, account and provider (`aws prod db`), narrow the results with the provider
+  chips, and tick what belongs. **Enter** ticks the top result and **Select all** ticks every
+  result shown, and ticks survive a new search, so a service spanning several providers is one
+  pass. **In this service** lists the members you'll end up with: untick one to take it out, or
+  tick an excluded one to let it back in. Nothing changes until you save, and the footer counts
+  what will be added and removed. The service page's **Add resources** button opens the same
+  picker on its own.
 - **Add a membership rule.** A rule adds every resource that matches it, now and in future. A
   database tagged `service=checkout` joins the service the next time it syncs, with no one
   editing the service. A rule matches on:
@@ -57,11 +63,18 @@ You can use either or both:
 
   You can narrow any rule to one provider or one account.
 
+  Rules sit on the editor's **Membership rules** tab, and a saved rule shows how many resources it
+  matches now.
+
 If you remove a resource that a rule matched, it's **excluded** rather than deleted, so the rule
 doesn't add it straight back. Excluded resources are listed at the bottom of the members table
-with a **Restore** button.
+with a **Restore** button, and in the editor's **In this service** tab, unticked.
 
-![The service editor: name and tier filled in, the owners picker with two members chosen, the on-call schedule, SLO and runbook pickers, and the membership rules section with a tag rule "service = checkout" and a name rule "starts with checkout-" narrowed to the AWS provider](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor.png)
+![The service editor: details (name, slug, tier, owners, on-call) on the left; on the right the Add resources tab with a search box, provider filter chips (All, Amazon Web Services, Cloudflare, Kubernetes, Google Cloud) and a ticked list of resources with provider logos, rule badges ("Rule 2"), a "New" badge on two picked resources and a "Will be removed" badge on one unticked member; the footer reads "2 to add · 1 to remove"](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-resources.png)
+
+![The service editor's In this service tab: every member with its type, account and provider, rule-matched ones marked "Rule 1" / "Rule 2", and a filter box above the list](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-members.png)
+
+![The service editor's Membership rules tab: a tag rule "service = checkout" matching 2 resources and a name rule "starts with checkout-" narrowed to AWS matching 5, with the dashed Add rule button below](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-rules.png)
 
 ## What the service page shows
 

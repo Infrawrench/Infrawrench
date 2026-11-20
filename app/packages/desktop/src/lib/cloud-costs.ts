@@ -481,7 +481,7 @@ export function saveCloudSavingsSettings(
 
 /**
  * The spotlight index (`GET /search`), resources only: the manual-entry
- * picker, and the service editor's member picker (`cloud-services.ts`).
+ * picker.
  */
 export function searchCloudResourceIndex(orgId: string, query: string) {
   return cloudClient("search")

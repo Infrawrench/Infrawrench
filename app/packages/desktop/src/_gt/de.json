@@ -23508,5 +23508,22 @@
   "e59658a60685d0e8": "Ressourcenberichte öffnen",
   "9c3d362b303cc146": "Es gibt noch keine Services zum Schätzen.",
   "6be83ef052f49ef5": "Erstellen Sie einen Service aus den Ressourcen, aus denen eine App besteht, oder wählen Sie Ressourcen in einem Ressourcenbericht aus und klicken Sie dort auf „Migration schätzen“.",
-  "d202a188369fb174": "Service erstellen"
+  "d202a188369fb174": "Service erstellen",
+  "950925a03ff12b77": "Bereits Mitglied",
+  "e789232097a764cc": "Höchstens {max} Ressourcen auf einmal hinzufügen.",
+  "9eae1f1b6382ffc1": "Nach Name, Typ, Konto oder Anbieter suchen",
+  "d650b40b3b6eab7b": "Nach Anbieter filtern",
+  "6ebcbccd2c2153e4": "Die besten {count} Treffer werden angezeigt; Suche eingrenzen, um weitere zu sehen.",
+  "f4064a0e83d9002e": "Alle {count} auswählen",
+  "e4b77fc03410f9fc": "Trifft auf {count} Ressourcen zu",
+  "ea68b47a82e1876d": "Die Mitglieder konnten nicht geladen werden",
+  "0ad41d8fd1763f5b": "Wird ausgeschlossen",
+  "527e16f32a350963": "Wird entfernt",
+  "3345e8f4fe13c463": "Wird wiederhergestellt",
+  "10be8ad80ac682b6": "Der Service wurde gespeichert, aber einige Ressourcen wurden nicht aktualisiert: {error}",
+  "051e7442ab9e7888": "In diesem Service",
+  "ceb236aad8ff9af4": "{count} hinzuzufügen",
+  "3759b71fb25c19db": "{count} zu entfernen",
+  "810d8e7e35ccaaab": "Zuverlässigkeit",
+  "2e96b40860b43b17": "Mitglieder filtern"
 }

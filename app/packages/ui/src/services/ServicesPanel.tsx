@@ -427,7 +427,8 @@ export function ServicesPanel({
           existing={editing.existing}
           onSaved={(saved) => {
             if (!editing.existing && saved) onNavigate({ serviceId: saved.id });
-            else setReloadKey((k) => k + 1);
+            // Always reload too: the editor saves members after the service itself.
+            setReloadKey((k) => k + 1);
           }}
           onClose={() => setEditing(null)}
         />

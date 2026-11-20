@@ -24,6 +24,8 @@ export interface ServiceResourceOption {
   displayName: string;
   pluginId: string;
   pluginDisplayName?: string | undefined;
+  /** The provider's logo as inline SVG from its manifest; empty or absent when it has none. */
+  pluginLogoSvg?: string | undefined;
   resourceTypeId: string;
   resourceTypeLabel?: string | undefined;
   accountId: string;

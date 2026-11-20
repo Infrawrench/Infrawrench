@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useGT } from "gt-react";
 import {
   SERVICE_LIMITS,
@@ -18,6 +18,7 @@ import {
   type Service,
   type ServiceInput,
   type ServiceLink,
+  type ServiceMember,
   type ServiceMembershipRule,
   type ServiceNameMatch,
   type ServiceRuleKind,
@@ -27,8 +28,15 @@ import {
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
+import { CloseIcon, PlusIcon, SearchIcon } from "../components/icons/ChromeIcons.js";
 import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import { useDataString } from "../i18n/data-strings.js";
+import {
+  ResourcePicker,
+  ResourceRow,
+  memberAsOption,
+  type PickerRowState,
+} from "./ResourcePicker.js";
 import {
   errorMessage,
   fieldClass,
@@ -39,7 +47,7 @@ import {
   smallButtonClass,
   useTierLabel,
 } from "./shared.js";
-import type { ServiceAccountOption, ServicesClient } from "./types.js";
+import type { ServiceAccountOption, ServiceResourceOption, ServicesClient } from "./types.js";
 
 /** Common ISO 4217 codes offered beside the free field; any three letters work. */
 const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "INR", "SEK", "NZD"];
@@ -73,8 +81,52 @@ const EMPTY_PICKERS: PickerData = {
   accounts: null,
 };
 
+/** The service's membership as the server last reported it. */
+interface Membership {
+  status: "loading" | "ready" | "error";
+  error: string | null;
+  members: Map<string, ServiceMember>;
+  excluded: Map<string, ServiceMember>;
+}
+
+/** What Save will do to the membership, on top of {@link Membership}. */
+interface PendingMembership {
+  /** Resources to add by hand. */
+  added: Map<string, ServiceResourceOption>;
+  /** Current members to take out: removed if added by hand, excluded if a rule matched them. */
+  dropped: Set<string>;
+  /** Excluded resources to let back in. */
+  restored: Set<string>;
+}
+
+const NO_PENDING: PendingMembership = { added: new Map(), dropped: new Set(), restored: new Set() };
+
+type RightTab = "add" | "members" | "rules";
+
+function membershipOf(members: ServiceMember[], excluded: ServiceMember[]): Membership {
+  return {
+    status: "ready",
+    error: null,
+    members: new Map(members.map((m) => [m.resourceId, m])),
+    excluded: new Map(excluded.map((m) => [m.resourceId, m])),
+  };
+}
+
 function emptyRule(kind: ServiceRuleKind = "tag"): ServiceMembershipRule {
   return normalizeServiceRule({ kind });
+}
+
+function sameRule(a: ServiceMembershipRule | undefined, b: ServiceMembershipRule): boolean {
+  return (
+    a !== undefined &&
+    JSON.stringify(normalizeServiceRule(a)) === JSON.stringify(normalizeServiceRule(b))
+  );
+}
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 /** Every value a virtual tag can produce that the definition or its last run names. */
@@ -114,16 +166,34 @@ function withMissing(
   ];
 }
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="space-y-3">
+      <h3
+        id={id}
+        className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-faint"
+      >
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 function RuleEditor({
   rule,
   index,
   pickers,
+  matchCount,
   onChange,
   onRemove,
 }: {
   rule: ServiceMembershipRule;
   index: number;
   pickers: PickerData;
+  /** How many resources the saved rule matches now; null when unknown or edited. */
+  matchCount: number | null;
   onChange: (rule: ServiceMembershipRule) => void;
   onRemove: () => void;
 }) {
@@ -148,11 +218,15 @@ function RuleEditor({
     <div
       role="group"
       aria-labelledby={groupId}
-      className="rounded-lg border border-border bg-surface-raised p-2.5 space-y-2"
+      className="space-y-2 rounded-xl border border-border bg-surface-raised p-3"
     >
       <div className="flex items-center gap-2">
-        <span id={groupId} className="text-xs font-medium text-on-surface-secondary">
-          {gt("Rule {n}", { n })}
+        <span
+          id={groupId}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-xs font-semibold text-on-surface-secondary tabular-nums"
+        >
+          <span className="sr-only">{gt("Rule {n}", { n })}</span>
+          <span aria-hidden="true">{n}</span>
         </span>
         <select
           aria-label={gt("Rule {n} kind", { n })}
@@ -166,13 +240,19 @@ function RuleEditor({
             </option>
           ))}
         </select>
+        {matchCount !== null && (
+          <span className="text-xs text-on-surface-faint">
+            {gt("Matches {count} resources", { count: matchCount })}
+          </span>
+        )}
         <button
           type="button"
           onClick={onRemove}
-          className={`${smallButtonClass} ml-auto text-danger`}
+          className="ml-auto rounded-md p-1 text-on-surface-faint hover:bg-surface-sunken hover:text-danger"
           aria-label={gt("Remove rule {n}", { n })}
+          title={gt("Remove")}
         >
-          {gt("Remove")}
+          <CloseIcon size={14} />
         </button>
       </div>
 
@@ -322,10 +402,14 @@ function RuleEditor({
 }
 
 /**
- * The service editor. Everything is a picker: owners from the org's members,
- * the on-call schedule, SLOs and runbooks from their own lists, tag keys from
- * what the org's data carries, virtual tags from their definitions, and the
- * provider and account narrowing from the connected accounts.
+ * The service editor: details on the left, what is in the service on the
+ * right. Resources are ticked straight from a search of every account, the
+ * current members can be unticked in place, and rules sit beside both, so a
+ * service is built in one dialog and one Save. Everything else is a picker:
+ * owners from the org's members, the on-call schedule, SLOs and runbooks from
+ * their own lists, tag keys from the org's data, virtual tags from their
+ * definitions, and the provider and account narrowing from the connected
+ * accounts.
  */
 export function ServiceEditorModal({
   client,
@@ -337,6 +421,7 @@ export function ServiceEditorModal({
   const dataString = useDataString();
   const tierLabel = useTierLabel();
   const ids = {
+    title: useId(),
     name: useId(),
     slug: useId(),
     description: useId(),
@@ -347,9 +432,11 @@ export function ServiceEditorModal({
     currency: useId(),
     currencies: useId(),
     links: useId(),
-    rules: useId(),
+    memberFilter: useId(),
+    tabs: useId(),
   };
 
+  const canPick = Boolean(client.addMembers);
   const [name, setName] = useState(existing?.name ?? "");
   const [slug, setSlug] = useState(existing?.slug ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
@@ -368,8 +455,23 @@ export function ServiceEditorModal({
   );
   const [currency, setCurrency] = useState(existing?.budgetCurrency ?? "USD");
   const [pickers, setPickers] = useState<PickerData>(EMPTY_PICKERS);
+  const [tab, setTab] = useState<RightTab>(canPick ? "add" : "rules");
+  const [membership, setMembership] = useState<Membership>(() =>
+    existing
+      ? { status: "loading", error: null, members: new Map(), excluded: new Map() }
+      : membershipOf([], []),
+  );
+  const [pending, setPending] = useState<PendingMembership>(NO_PENDING);
+  // Provider names, logos and type labels the search has shown, to dress member rows with.
+  const [known, setKnown] = useState<ReadonlyMap<string, Partial<ServiceResourceOption>>>(
+    new Map(),
+  );
+  const [memberFilter, setMemberFilter] = useState("");
+  // A service this dialog created whose members did not all save: Save again updates it.
+  const [created, setCreated] = useState<Service | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const target = existing ?? created;
 
   useEffect(() => {
     let cancelled = false;
@@ -404,12 +506,154 @@ export function ServiceEditorModal({
     };
   }, [client]);
 
+  const existingId = existing?.id;
+  useEffect(() => {
+    if (!existingId) return;
+    let cancelled = false;
+    client.getService(existingId).then(
+      (detail) => {
+        if (!cancelled) setMembership(membershipOf(detail.members, detail.excluded));
+      },
+      (e) => {
+        if (!cancelled)
+          setMembership({
+            status: "error",
+            error: errorMessage(e, gt("The members could not be loaded")),
+            members: new Map(),
+            excluded: new Map(),
+          });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [client, existingId, gt]);
+
+  const learn = (rows: ServiceResourceOption[]) => {
+    const fresh = rows.filter(
+      (r) => !known.has(r.pluginId) || !known.has(`${r.pluginId}:${r.resourceTypeId}`),
+    );
+    if (fresh.length === 0) return;
+    setKnown((prev) => {
+      const next = new Map(prev);
+      for (const r of fresh) {
+        next.set(r.pluginId, {
+          pluginDisplayName: r.pluginDisplayName,
+          pluginLogoSvg: r.pluginLogoSvg || undefined,
+        });
+        if (r.resourceTypeLabel) {
+          next.set(`${r.pluginId}:${r.resourceTypeId}`, { resourceTypeLabel: r.resourceTypeLabel });
+        }
+      }
+      return next;
+    });
+  };
+
+  const stateOf = (row: ServiceResourceOption): PickerRowState => {
+    if (membership.status === "loading") {
+      return { checked: false, lockedReason: gt("Loading members…") };
+    }
+    const member = membership.members.get(row.id);
+    if (member) {
+      if (pending.dropped.has(row.id)) {
+        return {
+          checked: false,
+          badge: {
+            text: member.source === "rule" ? gt("Will be excluded") : gt("Will be removed"),
+            tone: "danger",
+          },
+        };
+      }
+      return member.source === "rule"
+        ? {
+            checked: true,
+            badge: { text: gt("Rule {n}", { n: (member.ruleIndex ?? 0) + 1 }), tone: "neutral" },
+          }
+        : { checked: true };
+    }
+    if (membership.excluded.has(row.id)) {
+      return pending.restored.has(row.id)
+        ? { checked: true, badge: { text: gt("Will be restored"), tone: "accent" } }
+        : { checked: false, badge: { text: gt("Excluded"), tone: "neutral" } };
+    }
+    return pending.added.has(row.id)
+      ? { checked: true, badge: { text: gt("New"), tone: "accent" } }
+      : { checked: false };
+  };
+
+  const toggle = (row: ServiceResourceOption) => {
+    if (membership.status === "loading") return;
+    setPending((prev) => {
+      if (membership.members.has(row.id)) {
+        const dropped = new Set(prev.dropped);
+        if (!dropped.delete(row.id)) dropped.add(row.id);
+        return { ...prev, dropped };
+      }
+      if (membership.excluded.has(row.id)) {
+        const restored = new Set(prev.restored);
+        if (!restored.delete(row.id)) restored.add(row.id);
+        return { ...prev, restored };
+      }
+      const added = new Map(prev.added);
+      if (!added.delete(row.id)) added.set(row.id, row);
+      return { ...prev, added };
+    });
+  };
+
+  const selectMany = (rows: ServiceResourceOption[]) => {
+    setPending((prev) => {
+      const added = new Map(prev.added);
+      const restored = new Set(prev.restored);
+      const dropped = new Set(prev.dropped);
+      for (const row of rows) {
+        if (membership.members.has(row.id)) dropped.delete(row.id);
+        else if (membership.excluded.has(row.id)) restored.add(row.id);
+        else added.set(row.id, row);
+      }
+      return { added, dropped, restored };
+    });
+  };
+
+  const memberCount =
+    membership.members.size - pending.dropped.size + pending.added.size + pending.restored.size;
+  const toAdd = pending.added.size + pending.restored.size;
+  const toRemove = pending.dropped.size;
+
+  // The "In this service" list: changes first, then members, then the excluded.
+  const memberRows = useMemo(() => {
+    const byName = (a: ServiceResourceOption, b: ServiceResourceOption) =>
+      a.displayName.localeCompare(b.displayName);
+    const fromMembers = (map: Map<string, ServiceMember>) =>
+      [...map.values()]
+        .map((m): ServiceResourceOption => ({
+          ...known.get(m.pluginId),
+          ...known.get(`${m.pluginId}:${m.resourceTypeId}`),
+          ...memberAsOption(m),
+        }))
+        .sort(byName);
+    const excluded = fromMembers(membership.excluded);
+    return [
+      ...[...pending.added.values()].sort(byName),
+      ...excluded.filter((r) => pending.restored.has(r.id)),
+      ...fromMembers(membership.members),
+      ...excluded.filter((r) => !pending.restored.has(r.id)),
+    ];
+  }, [membership, pending.added, pending.restored, known]);
+  const filterText = memberFilter.trim().toLowerCase();
+  const shownMemberRows = filterText
+    ? memberRows.filter((r) =>
+        `${r.displayName} ${r.accountName ?? ""} ${r.pluginDisplayName ?? dataString(r.pluginId)} ${r.resourceTypeLabel ?? ""}`
+          .toLowerCase()
+          .includes(filterText),
+      )
+    : memberRows;
+
   const slugTrimmed = slug.trim();
   const budgetTrimmed = budget.trim();
   const budgetNumber = budgetTrimmed === "" ? null : Number(budgetTrimmed);
   const input: ServiceInput = {
     name: name.trim(),
-    ...(slugTrimmed && slugTrimmed !== existing?.slug ? { slug: slugTrimmed } : {}),
+    ...(slugTrimmed && slugTrimmed !== target?.slug ? { slug: slugTrimmed } : {}),
     description: description.trim() ? description.trim() : null,
     tier,
     ownerTeam: ownerTeam.trim() ? ownerTeam.trim() : null,
@@ -423,24 +667,91 @@ export function ServiceEditorModal({
     budgetCurrency: budgetNumber === null ? null : currency.trim().toUpperCase() || null,
   };
 
+  /**
+   * Apply the pending membership to a saved service. What fails stays
+   * pending, and the membership is re-read so the lists show what the
+   * server now has; the returned message names the first failure.
+   */
+  const applyMembership = async (serviceId: string): Promise<string | null> => {
+    const failed: PendingMembership = { added: new Map(), dropped: new Set(), restored: new Set() };
+    let firstError: string | null = null;
+    const note = (e: unknown, fallback: string) => {
+      firstError ??= errorMessage(e, fallback);
+    };
+    if (client.addMembers) {
+      for (const batch of chunks(
+        [...pending.added.values()],
+        SERVICE_LIMITS.maxMembersPerRequest,
+      )) {
+        try {
+          await client.addMembers(
+            serviceId,
+            batch.map((r) => r.id),
+          );
+        } catch (e) {
+          for (const r of batch) failed.added.set(r.id, r);
+          note(e, gt("Failed to add the resources"));
+        }
+      }
+    }
+    for (const id of pending.dropped) {
+      try {
+        await client.removeMember?.(serviceId, id);
+      } catch (e) {
+        failed.dropped.add(id);
+        note(e, gt("Failed to remove the resource"));
+      }
+    }
+    for (const id of pending.restored) {
+      try {
+        await client.restoreMember?.(serviceId, id);
+      } catch (e) {
+        failed.restored.add(id);
+        note(e, gt("Failed to restore the resource"));
+      }
+    }
+    if (firstError !== null) {
+      setPending(failed);
+      try {
+        const detail = await client.getService(serviceId);
+        setMembership(membershipOf(detail.members, detail.excluded));
+      } catch {
+        // The lists keep what they showed; the error below already says something failed.
+      }
+    }
+    return firstError;
+  };
+
   const save = async () => {
     const problem = validateServiceInput(input);
     if (problem) {
       setError(problem);
       return;
     }
-    if (existing ? !client.updateService : !client.createService) {
+    if (target ? !client.updateService : !client.createService) {
       setError(gt("Editing services isn't available here."));
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const saved = existing
-        ? await client.updateService!(existing.id, input)
+      const saved = target
+        ? await client.updateService!(target.id, input)
         : await client.createService!(input);
+      if (!target && saved) setCreated(saved);
+      const serviceId = saved?.id ?? target?.id;
+      const membershipError =
+        serviceId && (toAdd > 0 || toRemove > 0) ? await applyMembership(serviceId) : null;
       onSaved(saved);
-      onClose();
+      if (membershipError === null) {
+        onClose();
+        return;
+      }
+      setError(
+        gt("The service was saved, but some resources were not updated: {error}", {
+          error: membershipError,
+        }),
+      );
     } catch (e) {
       setError(errorMessage(e, gt("Failed to save the service")));
     } finally {
@@ -472,325 +783,508 @@ export function ServiceEditorModal({
     missing,
   );
 
+  const ruleMatches = (i: number): number | null => {
+    if (membership.status !== "ready" || !sameRule(existing?.rules[i], rules[i]!)) return null;
+    let count = 0;
+    for (const m of membership.members.values()) {
+      if (m.source === "rule" && m.ruleIndex === i) count += 1;
+    }
+    return count;
+  };
+
+  const tabs: Array<{ key: RightTab; label: string; count: number | null }> = [
+    ...(canPick
+      ? [
+          { key: "add" as const, label: gt("Add resources"), count: null },
+          {
+            key: "members" as const,
+            label: gt("In this service"),
+            count: membership.status === "loading" ? null : memberCount,
+          },
+        ]
+      : []),
+    { key: "rules", label: gt("Membership rules"), count: rules.length || null },
+  ];
+  const tabId = (key: RightTab) => `${ids.tabs}-${key}`;
+
+  const pendingSummary = [
+    toAdd > 0 ? gt("{count} to add", { count: toAdd }) : null,
+    toRemove > 0 ? gt("{count} to remove", { count: toRemove }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const title = target ? gt("Edit service") : gt("New service");
+
   return (
-    <Modal onClose={dismiss} ariaLabel={existing ? gt("Edit service") : gt("New service")}>
-      <div className="w-[40rem] max-w-[94vw] max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-xl">
-        <h2 className="text-sm font-semibold text-on-surface">
-          {existing ? gt("Edit service") : gt("New service")}
-        </h2>
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          {gt(
-            "A service groups resources across providers and accounts, says who owns it and links its SLOs, runbooks and on-call schedule.",
-          )}
-        </p>
-
-        <div className="mt-4 flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass} htmlFor={ids.name}>
-                {gt("Name")}
-              </label>
-              <input
-                id={ids.name}
-                type="text"
-                maxLength={SERVICE_LIMITS.nameMaxLength}
-                className={inputClass}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={gt("Checkout API")}
-              />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor={ids.slug}>
-                {gt("Slug (optional)")}
-              </label>
-              <input
-                id={ids.slug}
-                type="text"
-                maxLength={SERVICE_LIMITS.slugMaxLength}
-                className={inputClass}
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                placeholder={slugifyServiceName(name) || gt("Derived from the name")}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelClass} htmlFor={ids.description}>
-              {gt("Description (optional)")}
-            </label>
-            <textarea
-              id={ids.description}
-              rows={2}
-              maxLength={SERVICE_LIMITS.descriptionMaxLength}
-              className={inputClass}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass} htmlFor={ids.tier}>
-                {gt("Tier")}
-              </label>
-              <select
-                id={ids.tier}
-                className={inputClass}
-                value={tier === null ? "" : String(tier)}
-                onChange={(e) =>
-                  setTier(e.target.value ? (Number(e.target.value) as ServiceTier) : null)
-                }
-              >
-                <option value="">{gt("Untiered")}</option>
-                {SERVICE_TIERS.map((t) => (
-                  <option key={t} value={t}>
-                    {tierLabel(t)}
-                  </option>
-                ))}
-              </select>
-              {tier !== null && (
-                <p className="mt-1 text-xs text-on-surface-faint">
-                  {dataString(SERVICE_TIER_DESCRIPTIONS[tier])}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className={labelClass} htmlFor={ids.team}>
-                {gt("Owning team (optional)")}
-              </label>
-              <input
-                id={ids.team}
-                type="text"
-                maxLength={SERVICE_LIMITS.ownerTeamMaxLength}
-                className={inputClass}
-                value={ownerTeam}
-                onChange={(e) => setOwnerTeam(e.target.value)}
-                placeholder={gt("Payments")}
-              />
-            </div>
-          </div>
-
-          <div>
-            <span className={labelClass}>{gt("Owners")}</span>
-            <MultiSelect
-              label={gt("Owners")}
-              placeholder={gt("Choose members…")}
-              options={ownerOptions}
-              value={ownerUserIds}
-              onChange={setOwnerUserIds}
-              status={statusFor(pickers.owners, gt("No members to choose from"))}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass} htmlFor={ids.onCall}>
-              {gt("On-call schedule")}
-            </label>
-            <select
-              id={ids.onCall}
-              className={inputClass}
-              value={onCallScheduleId}
-              onChange={(e) => setOnCallScheduleId(e.target.value)}
-            >
-              <option value="">
-                {pickers.schedules === null ? gt("Loading schedules…") : gt("None")}
-              </option>
-              {onCallScheduleId &&
-                !(pickers.schedules ?? []).some((s) => s.id === onCallScheduleId) && (
-                  <option value={onCallScheduleId}>
-                    {existing?.onCallScheduleName ?? missing}
-                  </option>
-                )}
-              {(pickers.schedules ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.enabled ? s.name : gt("{name} (disabled)", { name: s.name })}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <span className={labelClass}>{gt("SLOs")}</span>
-              <MultiSelect
-                label={gt("SLOs")}
-                placeholder={gt("Link SLOs…")}
-                options={sloOptions}
-                value={sloIds}
-                onChange={setSloIds}
-                status={statusFor(pickers.slos, gt("No SLOs yet"))}
-              />
-            </div>
-            <div>
-              <span className={labelClass}>{gt("Runbooks")}</span>
-              <MultiSelect
-                label={gt("Runbooks")}
-                placeholder={gt("Link runbooks…")}
-                options={runbookOptions}
-                value={runbookIds}
-                onChange={setRunbookIds}
-                status={statusFor(pickers.runbooks, gt("No runbooks yet"))}
-              />
-            </div>
-          </div>
-
-          <div role="group" aria-labelledby={ids.links}>
-            <div className="flex items-center justify-between mb-1">
-              <span id={ids.links} className="text-xs font-medium text-on-surface-secondary">
-                {gt("Links")}
-              </span>
-              <button
-                type="button"
-                className={smallButtonClass}
-                disabled={links.length >= SERVICE_LIMITS.maxLinks}
-                onClick={() => setLinks([...links, { label: "", url: "" }])}
-              >
-                {gt("Add link")}
-              </button>
-            </div>
-            {links.length === 0 && (
-              <p className="text-xs text-on-surface-faint">
-                {gt("Dashboards, repositories, docs: anything somebody on call should find fast.")}
+    <Modal onClose={dismiss} ariaLabel={title}>
+      <div className="flex h-[min(50rem,92vh)] w-[74rem] max-w-[96vw] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+        <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
+          <div className="min-w-0 flex-1">
+            <h2 id={ids.title} className="text-sm font-semibold text-on-surface">
+              {title}
+            </h2>
+            {name.trim() && (
+              <p className="truncate text-xs text-on-surface-faint">
+                {name.trim()}
+                <span className="font-mono">
+                  {" · "}
+                  {slugTrimmed || slugifyServiceName(name)}
+                </span>
               </p>
             )}
-            <div className="space-y-1.5">
-              {links.map((link, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    aria-label={gt("Link {n} label", { n: i + 1 })}
-                    className={`${fieldClass} w-40 shrink-0`}
-                    maxLength={SERVICE_LIMITS.linkLabelMaxLength}
-                    placeholder={gt("Label")}
-                    value={link.label}
-                    onChange={(e) =>
-                      setLinks(links.map((l, j) => (j === i ? { ...l, label: e.target.value } : l)))
-                    }
-                  />
-                  <input
-                    type="url"
-                    aria-label={gt("Link {n} URL", { n: i + 1 })}
-                    className={`${fieldClass} min-w-0 flex-1`}
-                    maxLength={SERVICE_LIMITS.linkUrlMaxLength}
-                    placeholder="https://"
-                    value={link.url}
-                    onChange={(e) =>
-                      setLinks(links.map((l, j) => (j === i ? { ...l, url: e.target.value } : l)))
-                    }
-                  />
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            disabled={saving}
+            className="rounded-lg p-1.5 text-on-surface-faint hover:bg-surface-sunken hover:text-on-surface"
+            aria-label={gt("Close")}
+          >
+            <CloseIcon size={16} />
+          </button>
+        </header>
+
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] md:overflow-hidden">
+          {/* Details */}
+          <div className="space-y-6 border-border p-5 md:overflow-y-auto md:border-r">
+            <Section title={gt("Details")}>
+              <div>
+                <label className={labelClass} htmlFor={ids.name}>
+                  {gt("Name")}
+                </label>
+                <input
+                  id={ids.name}
+                  type="text"
+                  maxLength={SERVICE_LIMITS.nameMaxLength}
+                  className={inputClass}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={gt("Checkout API")}
+                />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={ids.slug}>
+                  {gt("Slug (optional)")}
+                </label>
+                <input
+                  id={ids.slug}
+                  type="text"
+                  maxLength={SERVICE_LIMITS.slugMaxLength}
+                  className={`${inputClass} font-mono`}
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                  placeholder={slugifyServiceName(name) || gt("Derived from the name")}
+                />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={ids.description}>
+                  {gt("Description (optional)")}
+                </label>
+                <textarea
+                  id={ids.description}
+                  rows={2}
+                  maxLength={SERVICE_LIMITS.descriptionMaxLength}
+                  className={`${inputClass} resize-y`}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+              <div>
+                <span id={ids.tier} className={labelClass}>
+                  {gt("Tier")}
+                </span>
+                <div
+                  role="radiogroup"
+                  aria-labelledby={ids.tier}
+                  className="flex gap-1 rounded-lg border border-border bg-surface-sunken p-1"
+                >
+                  {[null, ...SERVICE_TIERS].map((t) => {
+                    const active = tier === t;
+                    return (
+                      <button
+                        key={t ?? "none"}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setTier(t)}
+                        className={`flex-1 whitespace-nowrap rounded-md px-1.5 py-1 text-xs transition-colors ${
+                          active
+                            ? "bg-surface-raised font-medium text-on-surface shadow-sm"
+                            : "text-on-surface-secondary hover:text-on-surface"
+                        }`}
+                      >
+                        {tierLabel(t)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {tier !== null && (
+                  <p className="mt-1.5 text-xs text-on-surface-faint">
+                    {dataString(SERVICE_TIER_DESCRIPTIONS[tier])}
+                  </p>
+                )}
+              </div>
+            </Section>
+
+            <Section title={gt("Ownership")}>
+              <div>
+                <label className={labelClass} htmlFor={ids.team}>
+                  {gt("Owning team (optional)")}
+                </label>
+                <input
+                  id={ids.team}
+                  type="text"
+                  maxLength={SERVICE_LIMITS.ownerTeamMaxLength}
+                  className={inputClass}
+                  value={ownerTeam}
+                  onChange={(e) => setOwnerTeam(e.target.value)}
+                  placeholder={gt("Payments")}
+                />
+              </div>
+              <div>
+                <span className={labelClass}>{gt("Owners")}</span>
+                <MultiSelect
+                  label={gt("Owners")}
+                  placeholder={gt("Choose members…")}
+                  options={ownerOptions}
+                  value={ownerUserIds}
+                  onChange={setOwnerUserIds}
+                  status={statusFor(pickers.owners, gt("No members to choose from"))}
+                />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={ids.onCall}>
+                  {gt("On-call schedule")}
+                </label>
+                <select
+                  id={ids.onCall}
+                  className={inputClass}
+                  value={onCallScheduleId}
+                  onChange={(e) => setOnCallScheduleId(e.target.value)}
+                >
+                  <option value="">
+                    {pickers.schedules === null ? gt("Loading schedules…") : gt("None")}
+                  </option>
+                  {onCallScheduleId &&
+                    !(pickers.schedules ?? []).some((s) => s.id === onCallScheduleId) && (
+                      <option value={onCallScheduleId}>
+                        {existing?.onCallScheduleName ?? missing}
+                      </option>
+                    )}
+                  {(pickers.schedules ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.enabled ? s.name : gt("{name} (disabled)", { name: s.name })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Section>
+
+            <Section title={gt("Reliability")}>
+              <div>
+                <span className={labelClass}>{gt("SLOs")}</span>
+                <MultiSelect
+                  label={gt("SLOs")}
+                  placeholder={gt("Link SLOs…")}
+                  options={sloOptions}
+                  value={sloIds}
+                  onChange={setSloIds}
+                  status={statusFor(pickers.slos, gt("No SLOs yet"))}
+                />
+              </div>
+              <div>
+                <span className={labelClass}>{gt("Runbooks")}</span>
+                <MultiSelect
+                  label={gt("Runbooks")}
+                  placeholder={gt("Link runbooks…")}
+                  options={runbookOptions}
+                  value={runbookIds}
+                  onChange={setRunbookIds}
+                  status={statusFor(pickers.runbooks, gt("No runbooks yet"))}
+                />
+              </div>
+              <div role="group" aria-labelledby={ids.links}>
+                <span id={ids.links} className={labelClass}>
+                  {gt("Links")}
+                </span>
+                <div className="space-y-1.5">
+                  {links.map((link, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        aria-label={gt("Link {n} label", { n: i + 1 })}
+                        className={`${fieldClass} w-28 shrink-0`}
+                        maxLength={SERVICE_LIMITS.linkLabelMaxLength}
+                        placeholder={gt("Label")}
+                        value={link.label}
+                        onChange={(e) =>
+                          setLinks(
+                            links.map((l, j) => (j === i ? { ...l, label: e.target.value } : l)),
+                          )
+                        }
+                      />
+                      <input
+                        type="url"
+                        aria-label={gt("Link {n} URL", { n: i + 1 })}
+                        className={`${fieldClass} min-w-0 flex-1`}
+                        maxLength={SERVICE_LIMITS.linkUrlMaxLength}
+                        placeholder="https://"
+                        value={link.url}
+                        onChange={(e) =>
+                          setLinks(
+                            links.map((l, j) => (j === i ? { ...l, url: e.target.value } : l)),
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-md p-1 text-on-surface-faint hover:bg-surface-sunken hover:text-danger"
+                        aria-label={gt("Remove link {n}", { n: i + 1 })}
+                        title={gt("Remove")}
+                        onClick={() => setLinks(links.filter((_, j) => j !== i))}
+                      >
+                        <CloseIcon size={14} />
+                      </button>
+                    </div>
+                  ))}
                   <button
                     type="button"
-                    className={`${smallButtonClass} text-danger shrink-0`}
-                    aria-label={gt("Remove link {n}", { n: i + 1 })}
-                    onClick={() => setLinks(links.filter((_, j) => j !== i))}
+                    className={`${smallButtonClass} inline-flex items-center gap-1`}
+                    disabled={links.length >= SERVICE_LIMITS.maxLinks}
+                    onClick={() => setLinks([...links, { label: "", url: "" }])}
                   >
-                    {gt("Remove")}
+                    <PlusIcon size={12} />
+                    {gt("Add link")}
                   </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            </Section>
+
+            <Section title={gt("Budget")}>
+              <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
+                <div>
+                  <label className={labelClass} htmlFor={ids.currency}>
+                    {gt("Currency")}
+                  </label>
+                  <input
+                    id={ids.currency}
+                    type="text"
+                    maxLength={3}
+                    className={`${inputClass} font-mono uppercase`}
+                    list={ids.currencies}
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  />
+                  <datalist id={ids.currencies}>
+                    {COMMON_CURRENCIES.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className={labelClass} htmlFor={ids.budget}>
+                    {gt("Monthly budget (optional)")}
+                  </label>
+                  <input
+                    id={ids.budget}
+                    type="number"
+                    min={0}
+                    step="any"
+                    className={`${inputClass} tabular-nums`}
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-on-surface-faint">
+                {gt(
+                  "The cost scorecard check compares the last 30 days of member spend with this.",
+                )}
+              </p>
+            </Section>
           </div>
 
-          <div role="group" aria-labelledby={ids.rules}>
-            <div className="flex items-center justify-between mb-1">
-              <span id={ids.rules} className="text-xs font-medium text-on-surface-secondary">
-                {gt("Membership rules")}
-              </span>
-              <button
-                type="button"
-                className={smallButtonClass}
-                disabled={rules.length >= SERVICE_LIMITS.maxRules}
-                onClick={() => setRules([...rules, emptyRule()])}
-              >
-                {gt("Add rule")}
-              </button>
+          {/* Resources */}
+          <div className="flex min-h-[32rem] flex-col p-5 md:min-h-0">
+            <div
+              role="tablist"
+              aria-label={gt("Resources")}
+              className="-mx-1 mb-3 flex gap-1 border-b border-border"
+            >
+              {tabs.map((t) => {
+                const active = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    id={tabId(t.key)}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls={`${tabId(t.key)}-panel`}
+                    onClick={() => setTab(t.key)}
+                    className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-1 text-sm transition-colors ${
+                      active
+                        ? "border-accent font-medium text-on-surface"
+                        : "border-transparent text-on-surface-secondary hover:text-on-surface"
+                    }`}
+                  >
+                    {t.label}
+                    {t.count !== null && (
+                      <span
+                        className={`rounded-full px-1.5 text-[11px] tabular-nums ${
+                          active
+                            ? "bg-accent/15 text-accent"
+                            : "bg-surface-sunken text-on-surface-faint"
+                        }`}
+                      >
+                        {t.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-xs text-on-surface-faint mb-1.5">
-              {gt(
-                "Resources a rule matches join the service on their own, alongside the ones you add by hand. A virtual tag rule only matches resources with per-resource cost rows.",
-              )}
-            </p>
-            <div className="space-y-2">
-              {rules.map((rule, i) => (
-                <RuleEditor
-                  key={i}
-                  rule={rule}
-                  index={i}
-                  pickers={pickers}
-                  onChange={(next) => setRules(rules.map((r, j) => (j === i ? next : r)))}
-                  onRemove={() => setRules(rules.filter((_, j) => j !== i))}
+
+            <div
+              id={`${tabId(tab)}-panel`}
+              role="tabpanel"
+              aria-labelledby={tabId(tab)}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              {tab === "add" && (
+                <ResourcePicker
+                  client={client}
+                  stateOf={stateOf}
+                  onToggle={toggle}
+                  onSelectMany={selectMany}
+                  onResults={learn}
                 />
-              ))}
-            </div>
-          </div>
+              )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass} htmlFor={ids.budget}>
-                {gt("Monthly budget (optional)")}
-              </label>
-              <input
-                id={ids.budget}
-                type="number"
-                min={0}
-                step="any"
-                className={inputClass}
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor={ids.currency}>
-                {gt("Currency")}
-              </label>
-              <input
-                id={ids.currency}
-                type="text"
-                maxLength={3}
-                className={inputClass}
-                list={ids.currencies}
-                disabled={budgetTrimmed === ""}
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-              />
-              <datalist id={ids.currencies}>
-                {COMMON_CURRENCIES.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          <p className="text-xs text-on-surface-faint -mt-1">
-            {gt("The cost scorecard check compares the last 30 days of member spend with this.")}
-          </p>
+              {tab === "members" && (
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  {memberRows.length > 8 && (
+                    <div className="relative">
+                      <label htmlFor={ids.memberFilter} className="sr-only">
+                        {gt("Filter members")}
+                      </label>
+                      <SearchIcon
+                        size={14}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-faint"
+                      />
+                      <input
+                        id={ids.memberFilter}
+                        type="search"
+                        className="w-full rounded-lg border border-border bg-surface-sunken py-2 pl-8 pr-2.5 text-sm text-on-surface focus:border-accent-subtle focus:outline-none"
+                        value={memberFilter}
+                        onChange={(e) => setMemberFilter(e.target.value)}
+                        placeholder={gt("Filter members")}
+                      />
+                    </div>
+                  )}
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface-raised">
+                    {membership.status === "loading" ? (
+                      <p role="status" className="p-4 text-sm text-on-surface-faint">
+                        {gt("Loading members…")}
+                      </p>
+                    ) : membership.status === "error" ? (
+                      <p role="alert" className="p-4 text-sm text-danger">
+                        {membership.error}
+                      </p>
+                    ) : shownMemberRows.length === 0 ? (
+                      <div className="flex flex-col items-center gap-3 p-8 text-center">
+                        <p className="text-sm text-on-surface-faint">
+                          {memberRows.length === 0
+                            ? gt("No members yet. Add resources by hand or with a membership rule.")
+                            : gt("No resources match.")}
+                        </p>
+                        {memberRows.length === 0 && (
+                          <button
+                            type="button"
+                            className={secondaryButtonClass}
+                            onClick={() => setTab("add")}
+                          >
+                            {gt("Add resources")}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {shownMemberRows.map((row) => (
+                          <ResourceRow
+                            key={row.id}
+                            row={row}
+                            state={stateOf(row)}
+                            onToggle={toggle}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
 
-          {error !== null && (
-            <div role="alert" className="text-sm text-danger">
-              {error}
+              {tab === "rules" && (
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+                  <p className="text-xs text-on-surface-faint">
+                    {gt(
+                      "Resources a rule matches join the service on their own, alongside the ones you add by hand. A virtual tag rule only matches resources with per-resource cost rows.",
+                    )}
+                  </p>
+                  {rules.map((rule, i) => (
+                    <RuleEditor
+                      key={i}
+                      rule={rule}
+                      index={i}
+                      pickers={pickers}
+                      matchCount={ruleMatches(i)}
+                      onChange={(next) => setRules(rules.map((r, j) => (j === i ? next : r)))}
+                      onRemove={() => setRules(rules.filter((_, j) => j !== i))}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-on-surface-secondary hover:border-border-strong hover:text-on-surface disabled:opacity-50"
+                    disabled={rules.length >= SERVICE_LIMITS.maxRules}
+                    onClick={() => setRules([...rules, emptyRule()])}
+                  >
+                    <PlusIcon size={14} />
+                    {gt("Add rule")}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-
-          <div className="mt-1 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={dismiss}
-              disabled={saving}
-              className={secondaryButtonClass}
-            >
-              {gt("Cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              className={primaryButtonClass}
-            >
-              {saving ? gt("Saving…") : existing ? gt("Save") : gt("Create service")}
-            </button>
           </div>
         </div>
+
+        <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
+          <div className="min-w-0 flex-1">
+            {error !== null ? (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            ) : pendingSummary ? (
+              <p className="text-xs text-on-surface-secondary">{pendingSummary}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            disabled={saving}
+            className={secondaryButtonClass}
+          >
+            {gt("Cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className={primaryButtonClass}
+          >
+            {saving ? gt("Saving…") : target ? gt("Save") : gt("Create service")}
+          </button>
+        </footer>
       </div>
     </Modal>
   );

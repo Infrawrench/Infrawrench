@@ -23705,5 +23705,22 @@
   "e59658a60685d0e8": "Abrir informes de recursos",
   "9c3d362b303cc146": "Aún no hay servicios que estimar.",
   "6be83ef052f49ef5": "Crea un servicio a partir de los recursos que componen una aplicación, o selecciona recursos en un informe de recursos y elige Estimar migración allí.",
-  "d202a188369fb174": "Crear un servicio"
+  "d202a188369fb174": "Crear un servicio",
+  "950925a03ff12b77": "Ya es miembro",
+  "e789232097a764cc": "Añade como máximo {max} recursos a la vez.",
+  "9eae1f1b6382ffc1": "Buscar por nombre, tipo, cuenta o proveedor",
+  "d650b40b3b6eab7b": "Filtrar por proveedor",
+  "6ebcbccd2c2153e4": "Mostrando las {count} mejores coincidencias; acota la búsqueda para ver otras.",
+  "f4064a0e83d9002e": "Seleccionar todos ({count})",
+  "e4b77fc03410f9fc": "Coincide con {count} recursos",
+  "ea68b47a82e1876d": "No se pudieron cargar los miembros",
+  "0ad41d8fd1763f5b": "Se excluirá",
+  "527e16f32a350963": "Se quitará",
+  "3345e8f4fe13c463": "Se restaurará",
+  "10be8ad80ac682b6": "El servicio se guardó, pero algunos recursos no se actualizaron: {error}",
+  "051e7442ab9e7888": "En este servicio",
+  "ceb236aad8ff9af4": "{count} por añadir",
+  "3759b71fb25c19db": "{count} por quitar",
+  "810d8e7e35ccaaab": "Fiabilidad",
+  "2e96b40860b43b17": "Filtrar miembros"
 }

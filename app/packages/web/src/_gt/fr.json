@@ -23704,5 +23704,22 @@
   "e59658a60685d0e8": "Ouvrir les rapports de ressources",
   "9c3d362b303cc146": "Il n’y a pas encore de service à estimer.",
   "6be83ef052f49ef5": "Créez un service à partir des ressources qui composent une application, ou sélectionnez des ressources dans un rapport de ressources et choisissez Estimer la migration.",
-  "d202a188369fb174": "Créer un service"
+  "d202a188369fb174": "Créer un service",
+  "950925a03ff12b77": "Déjà membre",
+  "e789232097a764cc": "Ajoutez au maximum {max} ressources à la fois.",
+  "9eae1f1b6382ffc1": "Rechercher par nom, type, compte ou fournisseur",
+  "d650b40b3b6eab7b": "Filtrer par fournisseur",
+  "6ebcbccd2c2153e4": "Affichage des {count} meilleurs résultats ; affinez la recherche pour voir les autres.",
+  "f4064a0e83d9002e": "Tout sélectionner ({count})",
+  "e4b77fc03410f9fc": "Correspond à {count} ressources",
+  "ea68b47a82e1876d": "Impossible de charger les membres",
+  "0ad41d8fd1763f5b": "Sera exclue",
+  "527e16f32a350963": "Sera retirée",
+  "3345e8f4fe13c463": "Sera restaurée",
+  "10be8ad80ac682b6": "Le service a été enregistré, mais certaines ressources n'ont pas été mises à jour : {error}",
+  "051e7442ab9e7888": "Dans ce service",
+  "ceb236aad8ff9af4": "{count} à ajouter",
+  "3759b71fb25c19db": "{count} à retirer",
+  "810d8e7e35ccaaab": "Fiabilité",
+  "2e96b40860b43b17": "Filtrer les membres"
 }
