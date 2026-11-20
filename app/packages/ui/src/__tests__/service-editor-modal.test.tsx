@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Service, ServiceMember } from "@infrawrench/client-core";
+import { normalizeServiceRule, type Service, type ServiceMember } from "@infrawrench/client-core";
 import { ServiceEditorModal } from "../services/ServiceEditorModal.js";
 import type { ServiceResourceOption, ServicesClient } from "../services/types.js";
 
@@ -30,9 +30,7 @@ const service: Service = {
   onCallScheduleId: null,
   sloIds: [],
   runbookIds: [],
-  rules: [
-    { kind: "name", nameMatch: "starts_with", value: "checkout-" } as Service["rules"][number],
-  ],
+  rules: [normalizeServiceRule({ kind: "name", nameMatch: "prefix", value: "checkout-" })],
   monthlyBudget: null,
   budgetCurrency: null,
   owners: [],
