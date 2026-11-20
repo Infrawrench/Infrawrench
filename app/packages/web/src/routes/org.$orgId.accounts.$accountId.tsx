@@ -5,6 +5,7 @@ import {
   useUIStore,
   useTabId,
   getAccountRootType,
+  useLiveRefresh,
   RESOURCES_CHANGED_EVENT,
   type ResourcesChangedDetail,
 } from "@infrawrench/ui";
@@ -159,13 +160,11 @@ export function AccountPanel({
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId, resyncType]);
 
-  // Auto-refresh every 30s, just re-reads the DB, no provider calls.
-  useEffect(() => {
-    const id = setInterval(() => {
-      setLoadVersion((v) => v + 1);
-    }, 30_000);
-    return () => clearInterval(id);
-  }, []);
+  // Re-read the DB (no provider calls) when a sync writes this account's
+  // resources; every 30s without a push channel.
+  useLiveRefresh("account-resources", { accountId }, () => setLoadVersion((v) => v + 1), {
+    fallbackMs: 30_000,
+  });
 
   // When the user focuses a section, kick off a fresh provider-side sync for
   // that type so slow-to-poll groups get priority loading. Each type only

@@ -181,6 +181,13 @@ The web API, the SPA and most of the poller also run on Cloudflare Workers (`app
 - **The web edge Worker has no plugin code.** Its build defines `__INFRAWRENCH_EDGE_PLUGINS__`, so `loadPlugins()` returns manifests and resource types from `plugin-registry-edge.gen.json` and every plugin function is a gateway-only stub. Import plugins through `plugin-loader` (or `BUNDLED_PLUGINS` from `plugin-registry` in tests and scripts), never a plugin package directly from code the API reaches, or the provider SDKs come back into a bundle that only just fits a 128 MB isolate.
 - **Worker entry files load the server code lazily** (the dynamic `import()`s in both `edge/worker.ts`). A static import of the API, the pass registry, `plugin-loader` or anything that reaches them puts several hundred ms of module evaluation back into startup, and Cloudflare rejects the deploy (`10021`). Run `wrangler check startup` from the `edge/` directory after touching either entry.
 
+## Live updates
+
+A panel that refetches our own Postgres state on a timer uses `useLiveRefresh` (ui `live/`; `useLiveRefetch` on mobile) with its old interval as `fallbackMs`, never a bare `setInterval`; it then updates the moment a write lands where Neon Realtime is configured and polls everywhere else. KNOWLEDGE.md ("Live updates") has the design. A clock tick, provider-side state, or relay state (bastion status) stays an interval.
+
+- **A new topic** is a name in client-core's `LIVE_TOPICS` and an entry in server-core's `LIVE_TOPIC_DEFINITIONS`, with the permission its list route takes, plus an `API_VERSION` minor bump (the topic enum is on the wire).
+- **A signal is not the data**: its SQL binds the org as `$1`, selects ids, statuses and counters only (its rows reach the subscriber), and is deterministic (no `now()`; time-only changes are the safety refetch's job). Anything cost-visibility scoped stays on polling.
+
 ## Server environment variables
 
 Every server-side variable read through `process.env` (web, poller, github-watcher) must be added to **both** places in the same change:

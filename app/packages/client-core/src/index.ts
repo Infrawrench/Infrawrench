@@ -10,6 +10,28 @@ export {
 } from "./tokens";
 export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOptions } from "./fetch";
 export {
+  LIVE_TOPICS,
+  LIVE_DEBOUNCE_MS,
+  LIVE_RENEW_EARLY_MS,
+  LIVE_RENEW_RETRY_MS,
+  LIVE_SAFETY_MS,
+  connectNeonRealtime,
+  createLiveWatcher,
+  fetchLiveTicket,
+  readLiveTicket,
+  type LiveNeonClient,
+  type LiveNeonConnector,
+  type LiveNeonSubscription,
+  type LiveSealedQuery,
+  type LiveTicket,
+  type LiveTicketSource,
+  type LiveTopic,
+  type LiveTopicParams,
+  type LiveWatchOptions,
+  type LiveWatcher,
+  type LiveWatcherDeps,
+} from "./live";
+export {
   isSeatLimitResponse,
   SeatLimitReachedClientError,
   PlanRequiredClientError,

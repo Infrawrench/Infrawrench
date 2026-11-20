@@ -32,6 +32,7 @@ import {
   PagingProvidersApi,
   ProbesApi,
   HeartbeatsApi,
+  LiveApi,
   ResourceReportsApi,
   SlosApi,
 } from "@infrawrench/api-contract";
@@ -260,6 +261,7 @@ function desktopCloudApi<Id extends string, Groups extends HttpApiGroup.Constrai
 export const DESKTOP_CLOUD_APIS = {
   probes: desktopCloudApi(ProbesApi),
   heartbeats: desktopCloudApi(HeartbeatsApi),
+  live: desktopCloudApi(LiveApi),
   slos: desktopCloudApi(SlosApi),
   accessReview: desktopCloudApi(AccessReviewApi),
   calendar: desktopCloudApi(CalendarApi),

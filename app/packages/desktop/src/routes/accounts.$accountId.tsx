@@ -29,6 +29,7 @@ import {
   isProviderOAuthCancelled,
   type AccountOAuthStatus,
   CreateTile,
+  useLiveRefresh,
 } from "@infrawrench/ui";
 import {
   accountSyncsResources,
@@ -362,13 +363,17 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     return () => window.removeEventListener("iw:resource-attach", handler);
   }, [accountId]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
+  // Re-read in the background when the cloud syncs this account (every 30s
+  // without a push channel, and always in local mode).
+  useLiveRefresh(
+    "account-resources",
+    { accountId },
+    () => {
       backgroundLoadRef.current = true;
       setLoadVersion((v) => v + 1);
-    }, 30_000);
-    return () => clearInterval(id);
-  }, []);
+    },
+    { fallbackMs: 30_000 },
+  );
 
   // Move focus to the rename input when entering edit mode (intentional focus management).
   useEffect(() => {

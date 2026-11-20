@@ -347,6 +347,28 @@ app_env = {
   # front the edge Worker. Unset means on whenever APP_URL and the secret are.
   # REALTIME_RELAY = "off"
 
+  # Live updates (server-core/src/live/): panels refetch the moment their rows
+  # change instead of polling. Both OPTIONAL as a pair; without them every
+  # panel polls on its own interval, as before.
+  #
+  # NEON_REALTIME_URL / NEON_REALTIME_SECRET: from the Realtime page of the
+  # Neon branch DATABASE_URL points at (Postgres database > Realtime > Enable
+  # Realtime), or `neon env pull --service realtime`. Enabling Realtime turns
+  # on logical replication for the whole Neon project, which restarts its
+  # computes once. The secret seals each panel's org-scoped query; it never
+  # reaches a browser. Rotating it on Neon needs the new value here and an
+  # apply (plus deploy-edge for the Workers).
+  # NEON_REALTIME_URL    = "wss://..."
+  # NEON_REALTIME_SECRET = "..."
+  #
+  # NEON_REALTIME_DB: OPTIONAL. The database the sealed queries read; defaults
+  # to the database name in DATABASE_URL.
+  # NEON_REALTIME_DB = "core"
+  #
+  # LIVE_UPDATES: OPTIONAL. "poll" turns live updates off (back to polling)
+  # without removing the Neon values: the rollback.
+  # LIVE_UPDATES = "poll"
+
   # Egress guard (server-core/src/egress-guard.ts). Both OPTIONAL.
   #
   # Every connection the web and poller pods open to a tenant-supplied

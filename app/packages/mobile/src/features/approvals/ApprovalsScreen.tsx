@@ -15,6 +15,7 @@ import { useOrgPermissions } from "@/lib/permissions";
 import { Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
 import { ApprovalCard } from "./ApprovalCard";
+import { useLiveRefetch } from "@/lib/live";
 
 /**
  * Org-wide approvals inbox: every run in the org suspended on
@@ -55,7 +56,11 @@ export default function ApprovalsScreen() {
     queryKey: approvalsKey,
     queryFn: () => fetchWorkflowApprovals(api, orgId, "pending"),
     enabled: canRead,
-    refetchInterval: POLL_MS,
+  });
+  useLiveRefetch("workflow-approvals", {}, () => list.refetch(), {
+    fallbackMs: POLL_MS,
+    safetyMs: 60_000,
+    enabled: canRead,
   });
 
   const decide = useMutation({

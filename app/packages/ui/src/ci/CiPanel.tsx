@@ -20,6 +20,7 @@ import { CiValuesCard } from "./CiValuesCard.js";
 import { CiAccessCard } from "./CiAccessCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
 import { formatDuration } from "./format.js";
+import { useLiveRefresh } from "../live/index.js";
 
 export interface CiPanelProps {
   client: CiClient;
@@ -684,11 +685,12 @@ function RunDetailView({
 
   // Follow a run that has not finished.
   const status = detail?.run.status;
-  useEffect(() => {
-    if (!status || !ACTIVE.includes(status)) return;
-    const timer = setInterval(() => setNonce((n) => n + 1), 5000);
-    return () => clearInterval(timer);
-  }, [status]);
+  useLiveRefresh("ci-runs", {}, () => setNonce((n) => n + 1), {
+    fallbackMs: 5000,
+    // The signal covers the newest runs; an older one still settles.
+    safetyMs: 30_000,
+    enabled: status !== undefined && ACTIVE.includes(status),
+  });
 
   const download = useCallback(
     async (jobId: string, path: string) => {
@@ -840,21 +842,19 @@ export function CiPanel({
   }, [client, filter, nonce, loadFailed]);
 
   // Keep the list current while the tab is open: new runs arrive from
-  // webhooks at any time, so it polls even when nothing is running, faster
-  // while something is. Not while a run's detail is open (it follows its own
-  // run) or while the window is hidden.
+  // webhooks at any time. Live where the server pushes; otherwise it polls
+  // even when nothing is running, faster while something is. Not while a
+  // run's detail is open (it follows its own run) or while the window is hidden.
   const anyActive = useMemo(() => (runs ?? []).some((r) => ACTIVE.includes(r.status)), [runs]);
   const loaded = status !== null;
-  useEffect(() => {
-    if (selectedRunId || !loaded) return;
-    const timer = setInterval(
-      () => {
-        if (typeof document === "undefined" || document.visibilityState === "visible") refresh();
-      },
-      anyActive ? 5_000 : 15_000,
-    );
-    return () => clearInterval(timer);
-  }, [anyActive, selectedRunId, loaded, refresh]);
+  useLiveRefresh(
+    "ci-runs",
+    {},
+    () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") refresh();
+    },
+    { fallbackMs: anyActive ? 5_000 : 15_000, enabled: !selectedRunId && loaded },
+  );
 
   return (
     <div className="space-y-6">

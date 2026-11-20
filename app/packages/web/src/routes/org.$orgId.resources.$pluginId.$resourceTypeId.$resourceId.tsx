@@ -4,6 +4,8 @@ import { useGT } from "gt-react";
 import {
   useUIStore,
   useTabId,
+  useLiveWatcher,
+  watchLive,
   resourceTabTitle,
   RESOURCES_CHANGED_EVENT,
   REFRESH_RESOURCE_EVENT,
@@ -175,6 +177,7 @@ export function ResourcePanel({
 }: ResourcePanelProps) {
   const gt = useGT();
   const tabId = useTabId();
+  const live = useLiveWatcher();
   const [store, setStore] = useState<{
     forKey: string;
     data: ResourceDetailResponse | null;
@@ -292,20 +295,23 @@ export function ResourcePanel({
       setPromptModal(detail);
     }
 
-    const id = setInterval(refreshFromDb, 30_000);
+    // Re-read stored state when a sync touches this resource (every 30s without a push channel).
+    const stopLive = watchLive(live, "resource", { resourceId }, refreshFromDb, {
+      fallbackMs: 30_000,
+    });
     window.addEventListener(RESOURCES_CHANGED_EVENT, refreshFromDb);
     window.addEventListener(REFRESH_RESOURCE_EVENT, refreshFromProvider);
     window.addEventListener(INVOKE_PLUGIN_ACTION_EVENT, handlePluginAction);
     window.addEventListener(PROMPT_NOSQL_COMMAND_EVENT, handlePromptNoSqlCommand);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stopLive();
       window.removeEventListener(RESOURCES_CHANGED_EVENT, refreshFromDb);
       window.removeEventListener(REFRESH_RESOURCE_EVENT, refreshFromProvider);
       window.removeEventListener(INVOKE_PLUGIN_ACTION_EVENT, handlePluginAction);
       window.removeEventListener(PROMPT_NOSQL_COMMAND_EVENT, handlePromptNoSqlCommand);
     };
-  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent]);
+  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent, live]);
 
   if (error) {
     return (

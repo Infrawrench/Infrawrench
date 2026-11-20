@@ -40,6 +40,8 @@ import {
   useUIStore,
   useTabId,
   useStableGT,
+  useLiveWatcher,
+  watchLive,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { mirrorEditedResourceRow, type AccountRow } from "../db/rows";
@@ -200,6 +202,7 @@ export function ResourcePanel({
   const clientRef = useRef<HostPluginClient | null>(null);
   const cloudCtxRef = useRef<CloudCtx | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const live = useLiveWatcher();
   const [hasStorageToken, setHasStorageToken] = useState(false);
   const [sshConfig, setSshConfig] = useState<SshConfig | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
@@ -527,7 +530,8 @@ export function ResourcePanel({
     peerPanesRef.current = peerPanes;
   }, [peerPanes]);
 
-  // Background refresh: auto every 30 s and on manual "Refresh" action
+  // Background refresh: when the cloud syncs this resource (every 30 s without
+  // a push channel, and always in local mode) and on the manual "Refresh" action
   useEffect(() => {
     function bgRefresh() {
       if (loadingRef.current) return; // skip if a navigation is already in flight
@@ -539,13 +543,15 @@ export function ResourcePanel({
         handlePeerPaneOpenRef.current();
       }
     }
-    const id = setInterval(bgRefresh, 30_000);
+    const stopLive = watchLive(live, "resource", { resourceId: decodedResourceId }, bgRefresh, {
+      fallbackMs: 30_000,
+    });
     window.addEventListener(REFRESH_RESOURCE_EVENT, bgRefresh);
     return () => {
-      clearInterval(id);
+      stopLive();
       window.removeEventListener(REFRESH_RESOURCE_EVENT, bgRefresh);
     };
-  }, []);
+  }, [live, decodedResourceId]);
 
   // Listen for schema-emitted navigate-to-resource actions. The target account
   // is the first colon-segment of the resource ID (see ListerContext.id).

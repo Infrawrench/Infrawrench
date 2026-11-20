@@ -16,6 +16,7 @@ import { useOrgPermissions } from "@/lib/permissions";
 import { Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
 import { AccessRequestCard } from "./AccessRequestCard";
+import { useLiveRefetch } from "@/lib/live";
 
 /**
  * Break-glass requests on a phone, and the reason this is the mobile surface
@@ -57,7 +58,11 @@ export default function AccessRequestsScreen() {
     queryKey: key,
     queryFn: () => fetchAccessRequests(api, orgId),
     enabled: canRead,
-    refetchInterval: POLL_MS,
+  });
+  useLiveRefetch("access-requests", {}, () => list.refetch(), {
+    fallbackMs: POLL_MS,
+    safetyMs: 60_000,
+    enabled: canRead,
   });
 
   const decide = useMutation({

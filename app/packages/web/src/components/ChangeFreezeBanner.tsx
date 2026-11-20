@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useGT } from "gt-react";
+import { useLiveRefresh } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import { CHANGE_FREEZE_CHANGED_EVENT } from "@/lib/change-freeze-events";
 
@@ -51,14 +52,16 @@ export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
 
   useEffect(() => {
     void refresh();
-    const interval = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
     const onChanged = () => void refresh();
     window.addEventListener(CHANGE_FREEZE_CHANGED_EVENT, onChanged);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener(CHANGE_FREEZE_CHANGED_EVENT, onChanged);
-    };
+    return () => window.removeEventListener(CHANGE_FREEZE_CHANGED_EVENT, onChanged);
   }, [refresh]);
+  // A freeze someone else declares or ends shows at once; one that starts on
+  // its own schedule is not a write, so the safety refetch keeps the poll's pace.
+  useLiveRefresh("change-freezes", {}, refresh, {
+    fallbackMs: POLL_INTERVAL_MS,
+    safetyMs: POLL_INTERVAL_MS,
+  });
 
   if (!freeze) return null;
 

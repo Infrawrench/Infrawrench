@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.121.0",
+    "version": "1.122.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -389,6 +389,9 @@
     },
     {
       "name": "Heartbeats"
+    },
+    {
+      "name": "Live updates"
     },
     {
       "name": "Services"
@@ -15914,6 +15917,109 @@
         },
         "required": [
           "heartbeats"
+        ],
+        "additionalProperties": false
+      },
+      "LiveTicket": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "driver": {
+                "type": "string",
+                "enum": [
+                  "poll"
+                ],
+                "description": "No push channel is configured: refetch on your own interval."
+              }
+            },
+            "required": [
+              "driver"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "driver": {
+                "type": "string",
+                "enum": [
+                  "neon"
+                ],
+                "description": "Subscribe to `query` at `url` with the Neon Realtime client and refetch whenever its result changes. The result carries ids and statuses only, never the data itself."
+              },
+              "url": {
+                "type": "string",
+                "description": "The Neon Realtime WebSocket URL."
+              },
+              "query": {
+                "$ref": "#/components/schemas/LiveSealedQuery"
+              }
+            },
+            "required": [
+              "driver",
+              "url",
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "How to learn that a topic changed. Clients should treat an unknown `driver` as `poll`."
+      },
+      "LiveSealedQuery": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "Opaque encrypted capability. A bearer credential: keep it out of URLs and logs."
+          },
+          "queryFingerprint": {
+            "type": "string",
+            "description": "Stable identity of the query; a renewal carries the same one."
+          },
+          "expiresAt": {
+            "type": "number",
+            "description": "Unix milliseconds. Ask for a fresh ticket shortly before this to renew."
+          }
+        },
+        "required": [
+          "capability",
+          "queryFingerprint",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "LiveTicketRequest": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "enum": [
+              "jit-requests",
+              "access-requests",
+              "workflow-approvals",
+              "change-freezes",
+              "account-resources",
+              "resource",
+              "ci-runs"
+            ],
+            "description": "What to watch. `jit-requests` and `access-requests` need `access:read`, `workflow-approvals` `workflows:read`, `change-freezes` `freezes:read`, `account-resources` (with `accountId`) and `resource` (with `resourceId`) `resources:read`, and `ci-runs` `ci:read`."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "The account, for `account-resources`."
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "The resource, for `resource`."
+          },
+          "workflowId": {
+            "type": "string",
+            "description": "Narrow `workflow-approvals` to one workflow's pending approvals."
+          }
+        },
+        "required": [
+          "topic"
         ],
         "additionalProperties": false
       },
@@ -92107,6 +92213,83 @@
         "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
         "summary": "Signal a run failed",
         "operationId": "postPingTokenFail"
+      }
+    },
+    "/api/org/{orgId}/live/tickets": {
+      "post": {
+        "tags": [
+          "Live updates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ticket for watching one topic: either `poll` (no push channel on this server) or a sealed Neon Realtime query scoped to the organization. Each topic needs the read permission of the list it signals; a ticket expires after about a minute and is renewed by asking again, which checks the permission again.",
+        "summary": "Get a live-update ticket",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveTicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "postOrgOrgIdLiveTickets"
       }
     },
     "/api/org/{orgId}/slos": {

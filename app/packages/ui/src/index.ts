@@ -1558,3 +1558,11 @@ export type {
   PriceCatalogPanelProps,
 } from "./price-catalog/PriceCatalogPanel.js";
 export { PriceCatalogIcon } from "./components/icons/PriceCatalogIcon.js";
+export {
+  LiveUpdatesProvider,
+  useLiveRefresh,
+  useLiveRefreshEach,
+  useLiveWatcher,
+  watchLive,
+  type LiveRefreshOptions,
+} from "./live/index.js";

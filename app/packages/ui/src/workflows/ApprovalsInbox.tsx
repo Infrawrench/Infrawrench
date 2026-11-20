@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { T, useGT } from "gt-react";
 
+import { useLiveRefresh } from "../live/index.js";
 import { ApprovalCard } from "./ApprovalCard.js";
 import type { ApprovalsClient, WorkflowApprovalRow } from "./types.js";
 
@@ -66,9 +67,10 @@ export function ApprovalsInbox({
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), pollMs);
-    return () => clearInterval(t);
-  }, [refresh, pollMs]);
+  }, [refresh]);
+  // A request lapsing on its timer is a sweep's write, but the safety refetch
+  // keeps the list honest between sweeps.
+  useLiveRefresh("workflow-approvals", {}, refresh, { fallbackMs: pollMs, safetyMs: 60_000 });
 
   const decide = useCallback(
     async (approvalId: string, decision: "approve" | "deny") => {

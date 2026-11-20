@@ -149,6 +149,7 @@ export * from "./domains/pr-checks";
 export * from "./domains/price-catalog";
 export * from "./domains/probes";
 export * from "./domains/heartbeats";
+export * from "./domains/live";
 export * from "./domains/profile";
 export * from "./domains/provider-oauth";
 export * from "./domains/push";
@@ -308,6 +309,7 @@ import { PrChecksApi } from "./domains/pr-checks";
 import { PriceCatalogApi } from "./domains/price-catalog";
 import { ProbesApi } from "./domains/probes";
 import { HeartbeatsApi } from "./domains/heartbeats";
+import { LiveApi } from "./domains/live";
 import { ProfileApi } from "./domains/profile";
 import { ProviderOAuthApi } from "./domains/provider-oauth";
 import { PushApi } from "./domains/push";
@@ -456,6 +458,7 @@ export const API_DEFINITIONS = {
   leases: LeasesApi,
   linear: LinearApi,
   "linux-apps": LinuxAppsApi,
+  live: LiveApi,
   "log-workspaces": LogWorkspacesApi,
   "metric-alerts": MetricAlertsApi,
   moment: MomentApi,

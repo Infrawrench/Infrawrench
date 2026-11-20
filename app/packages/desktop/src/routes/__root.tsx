@@ -36,7 +36,6 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
-  PaletteHostProvider,
   usePaletteIntent,
   useRecordRecentTabs,
   type PaletteHostValue,
@@ -44,6 +43,7 @@ import {
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
+import { DesktopOrgProviders } from "../lib/live-updates";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { PromptHost } from "@infrawrench/ui/workflows";
 import { DesktopCommandPalette } from "../components/CommandPalette";
@@ -616,7 +616,7 @@ function RootLayout() {
   }
 
   return (
-    <PaletteHostProvider value={paletteHost}>
+    <DesktopOrgProviders orgId={activeOrgId} paletteHost={paletteHost}>
       <DndShell
         onPinToDashboard={(r, d) => {
           void handlePinToDashboard(r, d);
@@ -932,6 +932,6 @@ function RootLayout() {
           />
         )}
       </DndShell>
-    </PaletteHostProvider>
+    </DesktopOrgProviders>
   );
 }
