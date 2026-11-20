@@ -8,7 +8,9 @@ import {
   getWorkspaceNavigateArgs,
   migrationEstimatesTabTarget,
   navigateToWorkspaceTarget,
+  resourceReportsTabTarget,
   resourceTabTarget,
+  servicesTabTarget,
 } from "@/lib/workspace-tabs";
 
 /**
@@ -55,6 +57,14 @@ export function DesktopMigrationEstimatesPanel({
               resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
             ),
           )
+        }
+        onOpenServices={() =>
+          void navigateToWorkspaceTarget(navigate, servicesTabTarget(), { label: gt("Services") })
+        }
+        onOpenResourceReports={() =>
+          void navigateToWorkspaceTarget(navigate, resourceReportsTabTarget(), {
+            label: gt("Resource reports"),
+          })
         }
       />
     </div>

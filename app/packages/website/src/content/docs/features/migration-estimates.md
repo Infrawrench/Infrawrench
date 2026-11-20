@@ -14,7 +14,7 @@ Each resource is matched to the target's equivalent (a virtual machine to a virt
 
 - **From a service:** open the service on the [Services](./services.md) page and click **Estimate migration**. The estimate follows the service: resources added to it later are included the next time you open the estimate.
 - **From a selection:** open a [resource report](./resource-reports.md), tick the resources you want, and click **Estimate migration**. Selections can span pages and providers.
-- **From the list:** open **Migration estimates** in the sidebar (under Costs) and click **New estimate**, then pick a service.
+- **From the list:** open **Migration estimates** in the sidebar (under Costs) and click **New estimate**, then pick a service. If your organization has no services yet, the dialog offers **Create a service**, which opens the Services page, and **Open resource reports**, where you can estimate a selection instead.
 
 ![The Migration estimates list, with saved estimates for a service on Hetzner Cloud, a service on Google Cloud and a hand-picked set of resources on DigitalOcean](https://agent-assets.infrawrench.com/docs-screenshots/features/migration-estimates/estimates-list.png)
 

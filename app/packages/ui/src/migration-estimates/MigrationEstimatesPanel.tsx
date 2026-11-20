@@ -34,6 +34,10 @@ export interface MigrationEstimatesPanelProps {
   onEstimateChange: (estimateId: string | null) => void;
   /** A row's source resource: the host opens its detail view. */
   onOpenResource?: ((ref: MigrationResourceRef) => void) | undefined;
+  /** Opens the Services tab: where an estimate's source service is created. */
+  onOpenServices?: (() => void) | undefined;
+  /** Opens Resource reports: where resources are selected to estimate. */
+  onOpenResourceReports?: (() => void) | undefined;
 }
 
 const buttonClass =
@@ -106,6 +110,8 @@ export function MigrationEstimatesPanel({
   estimateId,
   onEstimateChange,
   onOpenResource,
+  onOpenServices,
+  onOpenResourceReports,
 }: MigrationEstimatesPanelProps) {
   if (estimateId) {
     return (
@@ -118,7 +124,14 @@ export function MigrationEstimatesPanel({
       />
     );
   }
-  return <EstimateList client={client} onOpen={(id) => onEstimateChange(id)} />;
+  return (
+    <EstimateList
+      client={client}
+      onOpen={(id) => onEstimateChange(id)}
+      onOpenServices={onOpenServices}
+      onOpenResourceReports={onOpenResourceReports}
+    />
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -128,9 +141,13 @@ export function MigrationEstimatesPanel({
 function EstimateList({
   client,
   onOpen,
+  onOpenServices,
+  onOpenResourceReports,
 }: {
   client: MigrationEstimatesClient;
   onOpen: (id: string) => void;
+  onOpenServices: (() => void) | undefined;
+  onOpenResourceReports: (() => void) | undefined;
 }) {
   const gt = useGT();
   const gtData = useDataString();
@@ -180,6 +197,20 @@ function EstimateList({
         <div className="rounded-xl border border-border p-6 text-sm text-on-surface-faint">
           {gt(
             "No estimates yet. Start one from a service, from resources selected in a resource report, or with New estimate.",
+          )}
+          {(onOpenServices || onOpenResourceReports) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {onOpenServices && (
+                <button type="button" className={buttonClass} onClick={onOpenServices}>
+                  {gt("Open services")}
+                </button>
+              )}
+              {onOpenResourceReports && (
+                <button type="button" className={buttonClass} onClick={onOpenResourceReports}>
+                  {gt("Open resource reports")}
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (
@@ -239,6 +270,8 @@ function EstimateList({
             setCreating(false);
             onOpen(created.id);
           }}
+          onOpenServices={onOpenServices}
+          onOpenResourceReports={onOpenResourceReports}
         />
       )}
     </div>

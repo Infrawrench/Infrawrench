@@ -984,6 +984,10 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               ),
             )
           }
+          onOpenServices={() => void navigate(getWorkspaceNavigateArgs(servicesTabTarget()))}
+          onOpenResourceReports={() =>
+            void navigate(getWorkspaceNavigateArgs(resourceReportsTabTarget()))
+          }
         />
       );
     case "incidents":

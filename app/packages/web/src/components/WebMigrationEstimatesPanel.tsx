@@ -12,11 +12,15 @@ export function WebMigrationEstimatesPanel({
   estimateId,
   onSelectEstimate,
   onOpenResource,
+  onOpenServices,
+  onOpenResourceReports,
 }: {
   orgId: string;
   estimateId?: string | undefined;
   onSelectEstimate: (estimateId: string | null) => void;
   onOpenResource: (ref: MigrationResourceRef) => void;
+  onOpenServices: () => void;
+  onOpenResourceReports: () => void;
 }) {
   const client = useMigrationClient(orgId);
   return (
@@ -28,6 +32,8 @@ export function WebMigrationEstimatesPanel({
         estimateId={estimateId}
         onEstimateChange={onSelectEstimate}
         onOpenResource={onOpenResource}
+        onOpenServices={onOpenServices}
+        onOpenResourceReports={onOpenResourceReports}
       />
     </div>
   );

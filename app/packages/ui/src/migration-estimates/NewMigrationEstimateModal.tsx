@@ -29,6 +29,10 @@ export interface NewMigrationEstimateModalProps {
   excludePluginIds?: readonly string[] | undefined;
   onClose: () => void;
   onCreated: (estimate: MigrationEstimate) => void;
+  /** Opens the Services tab, offered when the org has no services to pick. */
+  onOpenServices?: (() => void) | undefined;
+  /** Opens Resource reports, where a selection of resources can be estimated. */
+  onOpenResourceReports?: (() => void) | undefined;
 }
 
 /**
@@ -43,6 +47,8 @@ export function NewMigrationEstimateModal({
   excludePluginIds,
   onClose,
   onCreated,
+  onOpenServices,
+  onOpenResourceReports,
 }: NewMigrationEstimateModalProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -100,6 +106,9 @@ export function NewMigrationEstimateModal({
 
   const effectiveSource: MigrationEstimateSource | null =
     source?.source ?? (serviceId ? { kind: "service", serviceId } : null);
+  // Nothing to estimate: say where a source comes from instead of showing a
+  // form that cannot be submitted.
+  const noSource = !source && services !== null && services.length === 0;
   const canSubmit = Boolean(client.create && effectiveSource && target && name.trim() && !busy);
 
   async function submit() {
@@ -132,109 +141,129 @@ export function NewMigrationEstimateModal({
       >
         <h2 className="mb-1 text-base font-semibold text-on-surface">{gt("Estimate migration")}</h2>
         {source && <p className="mb-4 text-sm text-on-surface-secondary">{source.label}</p>}
-        <div className="flex flex-col gap-3">
-          {!source && (
+        {noSource ? (
+          <div className="rounded-lg border border-border bg-surface-sunken p-4 text-sm">
+            <p className="text-on-surface">{gt("There are no services to estimate yet.")}</p>
+            <p className="mt-1 text-on-surface-secondary">
+              {gt(
+                "Create a service from the resources an app is made of, or select resources in a resource report and choose Estimate migration there.",
+              )}
+            </p>
+            {(onOpenServices || onOpenResourceReports) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {onOpenServices && (
+                  <button type="button" className={primaryClass} onClick={onOpenServices}>
+                    {gt("Create a service")}
+                  </button>
+                )}
+                {onOpenResourceReports && (
+                  <button type="button" className={buttonClass} onClick={onOpenResourceReports}>
+                    {gt("Open resource reports")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {!source && (
+              <div>
+                <label className={labelClass} htmlFor="migration-service">
+                  {gt("Service")}
+                </label>
+                <select
+                  id="migration-service"
+                  className={inputClass}
+                  value={serviceId}
+                  onChange={(e) => setServiceId(e.target.value)}
+                  disabled={services === null}
+                >
+                  <option value="">
+                    {services === null ? gt("Loading…") : gt("Choose a service")}
+                  </option>
+                  {(services ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
-              <label className={labelClass} htmlFor="migration-service">
-                {gt("Service")}
+              <label className={labelClass} htmlFor="migration-target">
+                {gt("Target provider")}
               </label>
               <select
-                id="migration-service"
+                id="migration-target"
                 className={inputClass}
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                disabled={services === null}
+                value={targetPluginId}
+                onChange={(e) => {
+                  setTargetPluginId(e.target.value);
+                  setTargetRegion("");
+                }}
+                disabled={targets === null}
               >
                 <option value="">
-                  {services === null ? gt("Loading…") : gt("Choose a service")}
+                  {targets === null ? gt("Loading…") : gt("Choose a provider")}
                 </option>
-                {(services ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+                {offered.map((t) => (
+                  <option key={t.pluginId} value={t.pluginId}>
+                    {t.needsAccount && !t.hasAccount
+                      ? gt("{provider} (needs an account to price)", {
+                          provider: gtData(t.pluginName),
+                        })
+                      : gtData(t.pluginName)}
                   </option>
                 ))}
               </select>
-              {services !== null && services.length === 0 && (
-                <p className="mt-1 text-xs text-on-surface-faint">
-                  {gt(
-                    "No services yet. Select resources in a resource report to estimate them instead.",
-                  )}
-                </p>
-              )}
             </div>
-          )}
-          <div>
-            <label className={labelClass} htmlFor="migration-target">
-              {gt("Target provider")}
-            </label>
-            <select
-              id="migration-target"
-              className={inputClass}
-              value={targetPluginId}
-              onChange={(e) => {
-                setTargetPluginId(e.target.value);
-                setTargetRegion("");
-              }}
-              disabled={targets === null}
-            >
-              <option value="">
-                {targets === null ? gt("Loading…") : gt("Choose a provider")}
-              </option>
-              {offered.map((t) => (
-                <option key={t.pluginId} value={t.pluginId}>
-                  {t.needsAccount && !t.hasAccount
-                    ? gt("{provider} (needs an account to price)", {
-                        provider: gtData(t.pluginName),
-                      })
-                    : gtData(t.pluginName)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {target && target.regions.length > 0 && (
+            {target && target.regions.length > 0 && (
+              <div>
+                <label className={labelClass} htmlFor="migration-region">
+                  {gt("Region")}
+                </label>
+                <select
+                  id="migration-region"
+                  className={inputClass}
+                  value={targetRegion}
+                  onChange={(e) => setTargetRegion(e.target.value)}
+                >
+                  <option value="">{gt("Nearest to the resources")}</option>
+                  {target.regions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
-              <label className={labelClass} htmlFor="migration-region">
-                {gt("Region")}
+              <label className={labelClass} htmlFor="migration-name">
+                {gt("Name")}
               </label>
-              <select
-                id="migration-region"
+              <input
+                id="migration-name"
                 className={inputClass}
-                value={targetRegion}
-                onChange={(e) => setTargetRegion(e.target.value)}
-              >
-                <option value="">{gt("Nearest to the resources")}</option>
-                {target.regions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
+                value={name}
+                maxLength={120}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameTouched(true);
+                }}
+              />
             </div>
-          )}
-          <div>
-            <label className={labelClass} htmlFor="migration-name">
-              {gt("Name")}
-            </label>
-            <input
-              id="migration-name"
-              className={inputClass}
-              value={name}
-              maxLength={120}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameTouched(true);
-              }}
-            />
           </div>
-        </div>
+        )}
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className={buttonClass}>
             {gt("Cancel")}
           </button>
-          <button type="submit" className={primaryClass} disabled={!canSubmit}>
-            {busy ? gt("Estimating…") : gt("Estimate")}
-          </button>
+          {!noSource && (
+            <button type="submit" className={primaryClass} disabled={!canSubmit}>
+              {busy ? gt("Estimating…") : gt("Estimate")}
+            </button>
+          )}
         </div>
       </form>
     </Modal>
