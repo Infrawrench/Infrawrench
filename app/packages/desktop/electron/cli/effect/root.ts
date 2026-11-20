@@ -85,6 +85,7 @@ import { scorecards } from "../commands/scorecards";
 import { apps } from "../commands/apps";
 import { sshFanout } from "../commands/ssh-fanout";
 import { config } from "../commands/config";
+import { env } from "../commands/env-files";
 import { help, home, tui } from "../commands/tui";
 import { CliSession, globalFlags, makeSession } from "./session";
 
@@ -165,6 +166,7 @@ const subcommands = [
   posture,
   prices,
   prCheck,
+  env,
   services,
   jit,
   leaks,

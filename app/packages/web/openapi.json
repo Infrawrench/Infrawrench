@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.123.0",
+    "version": "1.124.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -389,6 +389,9 @@
     },
     {
       "name": "Heartbeats"
+    },
+    {
+      "name": "Environment files"
     },
     {
       "name": "Live updates"
@@ -15920,6 +15923,608 @@
         },
         "required": [
           "heartbeats"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvCommitResult": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull-request"
+            ]
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string"
+          },
+          "commitUrl": {
+            "type": "string"
+          },
+          "pullRequest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "number",
+                  "url"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "branch",
+          "commitSha",
+          "commitUrl",
+          "pullRequest"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvCommitRequest": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 201,
+            "description": "`owner/name`.",
+            "examples": [
+              "acme/web"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Path of the file in the repository. Defaults to `.infraenv` in the editors.",
+            "examples": [
+              ".infraenv",
+              "apps/web/.infraenv"
+            ]
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The branch to commit to, or to open the pull request against. Null means the default branch."
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The blob sha the file had when it was read, or null for a new file. A file changed since then answers 400 rather than being overwritten."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull-request"
+            ],
+            "description": "Commit straight to the branch, or to a new branch with a pull request."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "installationId",
+          "repo",
+          "path",
+          "content",
+          "sha",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepoFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the file does not exist on that branch yet."
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blob sha to send back with a commit that replaces the file."
+          }
+        },
+        "required": [
+          "path",
+          "branch",
+          "content",
+          "sha"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepoList": {
+        "type": "object",
+        "properties": {
+          "appConfigured": {
+            "type": "boolean"
+          },
+          "repos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvRepo"
+            }
+          }
+        },
+        "required": [
+          "appConfigured",
+          "repos"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepo": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "installationId",
+          "fullName",
+          "defaultBranch"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSourceList": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSource"
+            }
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSourceOutput"
+            }
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "outputs"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSourceOutput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "suggestedKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "sensitive"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResolveResponse": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvProblem"
+            },
+            "description": "Variables that did not resolve, with why. They are left out of `values` and `dotenv`."
+          },
+          "dotenv": {
+            "type": "string",
+            "description": "The resolved `.env` text, starting with its auto-generated header."
+          }
+        },
+        "required": [
+          "environment",
+          "values",
+          "problems",
+          "dotenv"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvProblem": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "1-based; 0 for the file as a whole."
+          },
+          "message": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResolveRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "description": "An `[env.<name>]` section to lay over `[env]`. Omit for `[env]` alone.",
+                "examples": [
+                  "production"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceName": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "The file's path, named in the generated `.env` header. Defaults to `.infraenv`."
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvDescribeResponse": {
+        "type": "object",
+        "properties": {
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvProblem"
+            },
+            "description": "Syntax problems, then references that point at nothing."
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvResourceDescription"
+            }
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSecretDescription"
+            }
+          }
+        },
+        "required": [
+          "problems",
+          "environments",
+          "resources",
+          "secrets"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSecretDescription": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "hasValue": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "found",
+          "hasValue"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResourceDescription": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean",
+            "description": "False when the organization has no such resource (deleted, or a typo)."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "outputLabel": {
+            "type": "string"
+          },
+          "outputKnown": {
+            "type": "boolean",
+            "description": "False when the resource's type does not declare this output."
+          },
+          "sensitive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "resourceId",
+          "output",
+          "found",
+          "outputKnown",
+          "sensitive"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvDescribeRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "GithubPermissionRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "github_permission_required"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "accountLogin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "permissions",
+          "installationId",
+          "accountLogin",
+          "manageUrl"
         ],
         "additionalProperties": false
       },
@@ -41947,60 +42552,6 @@
         "additionalProperties": false,
         "description": "What an installation has **accepted**. An installation made before issue filing existed shows `issues: none` until an owner of the GitHub account approves the app's updated permissions."
       },
-      "GithubPermissionRequired": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string",
-            "enum": [
-              "github_permission_required"
-            ]
-          },
-          "permissions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "installationId": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "accountLogin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "manageUrl": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "error",
-          "code",
-          "permissions",
-          "installationId",
-          "accountLogin",
-          "manageUrl"
-        ],
-        "additionalProperties": false
-      },
       "WorkflowMetric": {
         "type": "object",
         "properties": {
@@ -56868,6 +57419,7 @@
               "iac",
               "environment-diff",
               "environments",
+              "env-files",
               "ssh-fanout",
               "metric-alerts",
               "probes",
@@ -93403,6 +93955,459 @@
         "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
         "summary": "Signal a run failed",
         "operationId": "postPingTokenFail"
+      }
+    },
+    "/api/org/{orgId}/env-files/describe": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the file references",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvDescribeResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Parses the file and looks up every reference it makes: which resource, account and output each `resource()` names, and whether each `secret()` exists. Returns no values and calls no provider.\n\n_Requires permission: `resources:read`._",
+        "summary": "Check an .infraenv file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvDescribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:read",
+        "operationId": "postOrgOrgIdEnvFilesDescribe"
+      }
+    },
+    "/api/org/{orgId}/env-files/resolve": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvResolveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Resolves every variable of one environment: literals as written, `resource()` through the resource's provider, `secret()` from the organization's secrets. Returns the values in plaintext along with the generated `.env` text, and records an audit entry naming the variables (never their values). A variable that does not resolve is reported in `problems` and left out. A file with syntax errors answers 400.\n\n_Requires permission: `secrets:read`._",
+        "summary": "Resolve an .infraenv file into .env values",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "secrets:read",
+        "operationId": "postOrgOrgIdEnvFilesResolve"
+      }
+    },
+    "/api/org/{orgId}/env-files/sources": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Matches the resource's name, id, type or account."
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resources with outputs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvSourceList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Synced resources whose type declares outputs, each with those outputs and, where the type has a secret export template, the variable name it suggests. Backs the editor's picker.\n\n_Requires permission: `resources:read`._",
+        "summary": "List resources an .infraenv variable can reference",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdEnvFilesSources"
+      }
+    },
+    "/api/org/{orgId}/env-files/repos": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvRepoList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every repository the organization's GitHub App installations can reach.\n\n_Requires permission: `github-issues:read`._",
+        "summary": "List repositories an .infraenv can be read from and committed to",
+        "x-required-permission": "github-issues:read",
+        "operationId": "getOrgOrgIdEnvFilesRepos"
+      }
+    },
+    "/api/org/{orgId}/env-files/repo-file": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 201,
+              "description": "`owner/name`.",
+              "examples": [
+                "acme/web"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "description": "Path of the file in the repository. Defaults to `.infraenv` in the editors.",
+              "examples": [
+                ".infraenv",
+                "apps/web/.infraenv"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvRepoFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The file's text and blob sha on a branch (the default branch when omitted). A file that does not exist yet answers 200 with `content: null`.\n\n_Requires permission: `github-issues:read`._",
+        "summary": "Read an .infraenv file from a repository",
+        "x-required-permission": "github-issues:read",
+        "operationId": "getOrgOrgIdEnvFilesRepoFile"
+      }
+    },
+    "/api/org/{orgId}/env-files/commit": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvCommitResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Writes the file to the branch in one commit, or to a new branch with a pull request. The text is checked first: a file with syntax errors is refused, so nothing unparseable is committed. Values are never committed; the file only holds references.\n\n_Requires permission: `github-issues:write`._",
+        "summary": "Commit an .infraenv file to a repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "github-issues:write",
+        "operationId": "postOrgOrgIdEnvFilesCommit"
       }
     },
     "/api/org/{orgId}/live/tickets": {

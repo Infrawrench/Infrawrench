@@ -66,6 +66,7 @@
     "./anthropic-client": "./src/anthropic-client.ts",
     "./workflows/ai": "./src/workflows/ai.ts",
     "./workflow-secrets": "./src/workflow-secrets.ts",
+    "./env-files/service": "./src/env-files/service.ts",
     "./github/app": "./src/github/app.ts",
     "./github/issues-api": "./src/github/issues-api.ts",
     "./github-issues/settings": "./src/github-issues/settings.ts",

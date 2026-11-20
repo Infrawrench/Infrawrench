@@ -94,6 +94,7 @@ export function useToolDescriptions(): Record<string, string> {
       ci: gt("Pipelines on every push and pull request."),
       delivery: gt("How often, how fast and how safely you ship."),
       environments: gt("Short-lived copies of an environment, made from a template."),
+      "env-files": gt("Each project's environment variables, committed as references."),
       "environment-diff": gt("Two accounts compared side by side."),
       agents: gt("Coding agents running on cloud machines."),
       workflows: gt("Scripts that act across all your accounts."),

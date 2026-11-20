@@ -23722,5 +23722,91 @@
   "ceb236aad8ff9af4": "{count} por añadir",
   "3759b71fb25c19db": "{count} por quitar",
   "810d8e7e35ccaaab": "Fiabilidad",
-  "2e96b40860b43b17": "Filtrar miembros"
+  "2e96b40860b43b17": "Filtrar miembros",
+  "fae4b600aae39545": "Archivos de entorno",
+  "2b80f8090cc51f57": "No se pudo confirmar el archivo",
+  "87dc88811b90def0": "Hacer commit de {path}",
+  "f899d48809040f68": "Ver commit",
+  "6d756f8b97a5c0d8": "Ver pull request",
+  "505588a07583c327": "Cómo",
+  "a01b71c7c36d05f5": "Abrir una pull request",
+  "536819cba5d0068c": "Hacer commit en {branch}",
+  "6a6414ad0953cd0d": "Volver a cargar el archivo desde GitHub",
+  "fd30e8593953f414": "Haciendo commit…",
+  "25365ab0e948f8bf": "No se pudo resolver el archivo",
+  "9a3068fc26b720ff": "Descargar .env",
+  "cfa9090037180d4e": "Solo compartidas",
+  "3436605b62757e1b": "Se descargaron {count} variables. Estas se omitieron:",
+  "bacc48f9cc0d7611": "Resolviendo…",
+  "4f6e7a29e54632d2": "No se pudieron cargar los repositorios",
+  "b74c1ee4cfb6f232": "¿Descartar los cambios que no has confirmado?",
+  "df7848145c122e1d": "{path} aún no existe en {branch}.",
+  "a6082e5961676fe7": "No se pudo abrir el archivo",
+  "571d5da74643b467": "El texto tiene problemas. ¿Cambiar de todos modos y descartar las líneas que no se pueden interpretar?",
+  "cb47b5907e24179f": "Archivo nuevo",
+  "99e0f614982890b9": "Cargando repositorios…",
+  "c3a3e3b0a1a6de59": "No hay repositorios de GitHub conectados a esta organización.",
+  "25de80292b7922b2": "Este servidor no tiene ninguna GitHub App configurada.",
+  "f4886c494d0aaf50": "Predeterminada ({branch})",
+  "72328812709844f7": "{repo} · {branch} · {path}",
+  "4736de2f52becd4e": "No guardado en un repositorio",
+  "3d0e76aaf49ac209": " · cambios sin guardar",
+  "53c162d8868a1d0e": "Añadir entorno",
+  "3699b573c2bfd963": "¿Quitar el entorno \"{name}\"?",
+  "bd52a233f685b517": "Contenido del archivo",
+  "434a6889c9b431e3": "¿Descartar tus cambios y volver a leer el archivo?",
+  "569309e4cebb5821": "Línea {line}: {message}",
+  "61e71c309a679761": "Usa letras, dígitos y _, sin empezar por un dígito",
+  "a61c7390d11d3bec": "Ya existe un secreto con este nombre",
+  "8b1da710061b4a74": "No se pudo crear el secreto",
+  "5bcb2c39b6643c08": "Secreto nuevo",
+  "e10876b540e116b8": "Crear secreto",
+  "ce3f7f4a07e4a38a": "Elige una salida de recurso",
+  "ff1a87b1f0f87c44": "Buscar por nombre, tipo o cuenta",
+  "9b92c4258dd34c9b": "No hay recursos con salidas.",
+  "5cf5a4c30c67320b": "Usa letras, dígitos, - y _, empezando por una letra o un dígito",
+  "845b18b5ca07a5f3": "Ya existe un entorno con este nombre",
+  "6ff564878fda5427": "Un archivo admite como máximo 50 entornos",
+  "f3f7aa6d451f1658": "Renombrar entorno",
+  "7ac6dfce0b2a70b3": "Salida de recurso",
+  "1ac38bc9bd8da2a2": "Nombra la variable",
+  "8e50811bc3e851bd": "Esta variable está definida dos veces aquí",
+  "35b5205e7e88519c": "Elige un secreto",
+  "d046295ca57d8888": "El recurso no está en esta organización",
+  "18865fc49918865c": "El tipo del recurso no tiene esa salida",
+  "0e0022620b039508": "Ningún secreto de la organización tiene este nombre",
+  "72ff60c1adb3e869": "El secreto no tiene ningún valor establecido",
+  "8576955aad30fbb4": "Las variables de entorno de cada proyecto, confirmadas como referencias.",
+  "0212242d5c105b65": [
+    "Pull request #",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " abierta desde ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    },
+    "."
+  ],
+  "ea57292a218493b1": [
+    "Commit realizado en ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    },
+    "."
+  ]
 }

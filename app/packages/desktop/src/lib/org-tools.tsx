@@ -11,6 +11,7 @@ import {
   DomainsIcon,
   EnvironmentDiffIcon,
   EnvironmentsIcon,
+  EnvFilesIcon,
   ExpiryIcon,
   FanoutIcon,
   GraphIcon,
@@ -55,6 +56,7 @@ import {
   dnsTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   graphTabTarget,
   iacTabTarget,
   invoicesTabTarget,
@@ -317,6 +319,18 @@ export function useOrgTools(): SidebarToolDef[] {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, environmentsTabTarget(), {
                 label: gt("Environments"),
+              }),
+          },
+          // Cloud-only: references resolve against the org's synced
+          // resources and secrets, and the file is read from and committed
+          // to GitHub through the org's GitHub App.
+          {
+            key: "env-files",
+            label: gt("Environment files"),
+            icon: <EnvFilesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, envFilesTabTarget(), {
+                label: gt("Environment files"),
               }),
           },
         ]

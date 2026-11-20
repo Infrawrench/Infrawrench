@@ -222,6 +222,15 @@ COMMANDS
   pr-check            the pull request check (monthly cost change, blast radius, warnings) for
                       the local working tree vs a base, or for an open pull request; posts
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
+  env pull            resolve the project's .infraenv into the .env it describes (mode 0600; never
+                      replaces a hand-written .env without --force)   [--env <name>] [-f <.infraenv>]
+                      [--out <path>] [--stdout] [--force] [-q/--quiet] (cloud only)
+  env check           what each .infraenv reference points at (resource, account, output, secret)
+                      and what is broken; exit 1 on problems   [-f <.infraenv>] (cloud only)
+  env init            create a .infraenv for the current org and gitignore .env
+                      [--from .env  its keys as secret("KEY") lines, never its values] [-f <path>]
+  env hooks [status]  git hooks (post-checkout, post-merge, post-rewrite) that run env pull when the
+                      branch changes; install|uninstall keep a hook someone else wrote intact
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
   seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a

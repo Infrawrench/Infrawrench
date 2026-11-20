@@ -160,6 +160,9 @@ const DesktopProbesPanel = lazyPanel(() =>
 const DesktopHeartbeatsPanel = lazyPanel(() =>
   import("@/components/DesktopHeartbeatsPanel").then((m) => m.DesktopHeartbeatsPanel),
 );
+const DesktopEnvFilesPanel = lazyPanel(() =>
+  import("@/components/DesktopEnvFilesPanel").then((m) => m.DesktopEnvFilesPanel),
+);
 const DesktopStatusPagesPanel = lazyPanel(() =>
   import("@/components/DesktopStatusPagesPanel").then((m) => m.DesktopStatusPagesPanel),
 );
@@ -902,6 +905,8 @@ function renderPanel(
       return <DesktopProbesPanel />;
     case "heartbeats":
       return <DesktopHeartbeatsPanel />;
+    case "env-files":
+      return <DesktopEnvFilesPanel />;
     case "status-pages":
       return <DesktopStatusPagesPanel />;
     case "quotas":

@@ -32,6 +32,7 @@ import {
   PagingProvidersApi,
   ProbesApi,
   HeartbeatsApi,
+  EnvFilesApi,
   LiveApi,
   ResourceReportsApi,
   SlosApi,
@@ -262,6 +263,7 @@ function desktopCloudApi<Id extends string, Groups extends HttpApiGroup.Constrai
 export const DESKTOP_CLOUD_APIS = {
   probes: desktopCloudApi(ProbesApi),
   heartbeats: desktopCloudApi(HeartbeatsApi),
+  envFiles: desktopCloudApi(EnvFilesApi),
   live: desktopCloudApi(LiveApi),
   slos: desktopCloudApi(SlosApi),
   accessReview: desktopCloudApi(AccessReviewApi),

@@ -100,6 +100,7 @@ describe("effect/cli: routing", () => {
       "diff",
       "dns",
       "dora",
+      "env",
       "estimate",
       "expiring",
       "export",

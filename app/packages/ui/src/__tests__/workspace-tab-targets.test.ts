@@ -29,6 +29,7 @@ import {
   deliveryTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -111,6 +112,10 @@ describe("tab target factories", () => {
 
   it("environmentsTabTarget", () => {
     expect(environmentsTabTarget()).toEqual({ kind: "environments" });
+  });
+
+  it("envFilesTabTarget", () => {
+    expect(envFilesTabTarget()).toEqual({ kind: "env-files" });
   });
 
   it("probesTabTarget", () => {

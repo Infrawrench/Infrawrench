@@ -11,6 +11,7 @@ import {
   logsTabTarget,
   probesTabTarget,
   heartbeatsTabTarget,
+  envFilesTabTarget,
   runbooksTabTarget,
   servicesTabTarget,
   settingsTabTarget,
@@ -58,6 +59,7 @@ const TOOL_PERMISSIONS: Readonly<Record<string, string>> = {
   "status-pages": "resources:read",
   probes: "resources:read",
   heartbeats: "resources:read",
+  "env-files": "resources:read",
   logs: "resources:read",
 };
 
@@ -231,6 +233,7 @@ export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
       go("status-pages", gt("Status pages"), statusPagesTabTarget(), "resources:read");
       go("probes", gt("Probes"), probesTabTarget(), "resources:read");
       go("heartbeats", gt("Heartbeats"), heartbeatsTabTarget(), "resources:read");
+      go("env-files", gt("Environment files"), envFilesTabTarget(), "resources:read");
       go("logs", gt("Logs"), logsTabTarget(), "resources:read");
       go("workflows", gt("Workflows"), workflowsTabTarget(), null, false);
     }

@@ -1117,6 +1117,7 @@ export { ciCronDue, nextCiCronDue, parseCiCron, type CiCron } from "./ci-cron";
 export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
 export * from "./migration-estimates";
+export * from "./infraenv";
 export * from "./custom-costs";
 export * from "./exchange-rate-csv";
 export * from "./unit-cost-export";

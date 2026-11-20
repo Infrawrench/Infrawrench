@@ -29,6 +29,7 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -58,6 +59,7 @@ import {
 export {
   homeTabTarget,
   heartbeatsTabTarget,
+  envFilesTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
@@ -364,6 +366,12 @@ export function getWorkspaceNavigateArgs(
     case "environments":
       return {
         to: "/org/$orgId/environments",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "env-files":
+      return {
+        to: "/org/$orgId/env-files",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -745,6 +753,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "environments") {
     return environmentsTabTarget();
+  }
+  if (s[0] === "env-files") {
+    return envFilesTabTarget();
   }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

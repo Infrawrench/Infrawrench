@@ -109,6 +109,9 @@ const NODE_ROUTES: readonly RegExp[] = [
   // catalogs, size pickers, estimates, Terraform export), which the edge
   // registry only stubs. Saving, listing and the targets list stay on the edge.
   new RegExp(`${ORG}/migration-estimates/(preview|[^/]+/(result|terraform|scenario))$`),
+  // Resolving an .infraenv reads each resource output through its plugin
+  // client. Describing it, the picker and the GitHub routes stay on the edge.
+  new RegExp(`${ORG}/env-files/resolve$`),
   new RegExp(
     `${ORG}/(` +
       [

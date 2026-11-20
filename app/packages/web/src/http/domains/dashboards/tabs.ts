@@ -60,6 +60,7 @@ const ALWAYS_VALID_TAB_KINDS: ReadonlySet<string> = new Set([
   "iac",
   "environment-diff",
   "environments",
+  "env-files",
   "ssh-fanout",
   "metric-alerts",
   "probes",
