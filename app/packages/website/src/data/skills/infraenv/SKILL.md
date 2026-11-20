@@ -21,12 +21,13 @@ A project that uses Infrawrench commits `.infraenv` instead of `.env`. It lists 
 
 ## Commands
 
-| npm package (`npx infraenv` or `node_modules/.bin/infraenv`) | Desktop CLI                        | What it does                                                       |
-| ------------------------------------------------------------ | ---------------------------------- | ------------------------------------------------------------------ |
-| `infraenv check [--var k=v]`                                 | `infrawrench env check`            | What each reference points at, and every problem. Exit 1 on any.   |
-| `infraenv pull [--env <name>] [--var k=v] [--stdout]`        | `infrawrench env pull`             | Resolve and write `.env` (mode 0600). Exit 1 if a variable failed. |
-| `infraenv install` / `uninstall` / `status`                  | `infrawrench env hooks install`    | Git hooks that pull again when a commit changes `.infraenv`.       |
-|                                                              | `infrawrench env init --from .env` | A new `.infraenv` with one `secret("KEY")` line per `.env` key.    |
+| npm package (`npx infraenv` or `node_modules/.bin/infraenv`) | Desktop CLI                        | What it does                                                         |
+| ------------------------------------------------------------ | ---------------------------------- | -------------------------------------------------------------------- |
+| `infraenv check [--var k=v]`                                 | `infrawrench env check`            | What each reference points at, and every problem. Exit 1 on any.     |
+| `infraenv pull [--env <name>] [--var k=v] [--stdout]`        | `infrawrench env pull`             | Resolve and write `.env` (mode 0600). Exit 1 if a variable failed.   |
+| `infraenv install` / `uninstall` / `status`                  | `infrawrench env hooks install`    | Git hooks that pull again when a commit changes `.infraenv`.         |
+|                                                              | `infrawrench env init --from .env` | A new `.infraenv` with one `secret("KEY")` line per `.env` key.      |
+| `await config()` from `@infrawrench/infraenv` (in code)      |                                    | Load `.infraenv` into `process.env` at startup; keeps set variables. |
 
 The npm package reads `INFRAWRENCH_API_KEY` (an `iwk_` key) when it is set, else the key `infraenv login` stored; the desktop CLI uses the desktop app's sign-in. In a third-party CI, set `INFRAWRENCH_API_KEY` and run `npx @infrawrench/infraenv pull --env <name>`; in Infrawrench CI, a job's `env-file:` key loads the file without a key.
 

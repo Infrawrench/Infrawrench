@@ -11,19 +11,14 @@ import {
   infraenvOutputPath,
   infraenvPullDecision,
   parseInfraenv,
-  type InfraenvProblem,
 } from "@infrawrench/client-core";
 import { createApi } from "../api";
 import type { ParsedArgs } from "../args";
 import { writeSecretFile } from "../config";
 import { ignoreState } from "../git";
-import { Exit, Failure, UsageError, plural, printer, safe, type Io } from "../io";
+import { Exit, Failure, UsageError, plural, printer, problemLine, safe, type Io } from "../io";
 import { display, locateInfraenv, posix, readText } from "../locate";
 import { credentialsOrDelegate, explainWrongOrg, resolveOrg } from "../session";
-
-/** `.infraenv:12 DATABASE_URL: Resource not found`. */
-export const problemLine = (file: string, problem: InfraenvProblem): string =>
-  `${file}${problem.line > 0 ? `:${problem.line}` : ""} ${problem.key ? `${safe(problem.key)}: ` : ""}${safe(problem.message)}`;
 
 export async function pull(io: Io, args: ParsedArgs): Promise<number> {
   const p = printer(io);

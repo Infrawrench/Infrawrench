@@ -1,10 +1,10 @@
 # @infrawrench/infraenv
 
-Keep `.env` in step with a committed `.infraenv`, in plain Node.
+Load a committed `.infraenv` into `process.env`, or keep `.env` in step with it, in plain Node.
 
 A project that uses [Infrawrench](https://infrawrench.com) commits `.infraenv` instead of `.env`. It lists every environment variable and says where its value comes from (a literal, an output of a resource in your infrastructure, or an organization secret), so it is reviewed and versioned like code and never holds a secret value. `infraenv pull` resolves it through Infrawrench into the `.env` your app reads. The format is described in the [env files guide](https://infrawrench.com/docs/features/env-files).
 
-This package is the small, fast way to pull: from git hooks, from CI, or by hand. It needs Node 20 or later and has no dependencies. If you have the Infrawrench desktop app, its CLI (`infrawrench env pull`) does the same thing.
+This package loads it straight into `process.env` from your code, dotenv style, and is the small, fast way to pull: from git hooks, from CI, or by hand. It needs Node 20 or later and has no dependencies. If you have the Infrawrench desktop app, its CLI (`infrawrench env pull`) does the same thing.
 
 ## Install
 
@@ -12,7 +12,67 @@ This package is the small, fast way to pull: from git hooks, from CI, or by hand
 npm install --save-dev @infrawrench/infraenv
 ```
 
-Then install the git hooks from your `prepare` script, the way Husky does:
+(a regular dependency instead when your code imports it, below)
+
+## Use it in your code
+
+Install it as a regular dependency when your code imports it (`npm install @infrawrench/infraenv`), then load the environment once, at startup:
+
+```js
+import { config } from "@infrawrench/infraenv";
+
+await config(); // process.env now has what .infraenv describes
+```
+
+Or as a side effect, before anything that reads `process.env`:
+
+```js
+import "@infrawrench/infraenv/config";
+```
+
+```sh
+node --import @infrawrench/infraenv/config app.js
+```
+
+CommonJS cannot wait for a promise at load time, so it gets a synchronous version, which **blocks** while it resolves in a child process:
+
+```js
+require("@infrawrench/infraenv").configSync();
+// or, as a side effect:
+require("@infrawrench/infraenv/config");
+```
+
+`config()` finds the nearest `.infraenv` the way `infraenv pull` does and assigns each value into `process.env`, keeping any variable that is already set (like dotenv). It returns `{ keys, skipped, problems, environment, source }`: which keys it assigned and which it left alone, never the values. `load()` takes the same options and returns `{ values, problems, environment, source }` without touching `process.env`.
+
+Where the values come from (`source: "auto"`, the default):
+
+- **With credentials** (the `apiKey` option, `INFRAWRENCH_API_KEY`, or the key `infraenv login` stored), from the Infrawrench API. Each call is an audited `secrets:read` resolve, so call it once at startup, not per request; on serverless, every cold start resolves.
+- **Without**, from the `.env` that `infraenv pull` or its git hooks wrote, and only when it carries Infrawrench's generated header and was pulled for the same environment. A hand-written `.env` is refused. This is the everyday development case: the hooks keep `.env` current and your code needs no key.
+- Otherwise it throws, saying to set `INFRAWRENCH_API_KEY`, run `infraenv login` or run `infraenv pull`.
+
+| Option        | Default                                                    | What it does                                                                                        |
+| ------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `environment` | `INFRAENV_ENVIRONMENT`, else `[env]` alone                 | The `[env.<name>]` section to lay over `[env]`.                                                     |
+| `override`    | `false`                                                    | Replace variables that are already set (`config` and `configSync` only).                            |
+| `required`    | none                                                       | Keys that must be set afterwards; throws naming the missing ones.                                   |
+| `strict`      | `false`                                                    | Throw when a variable does not resolve. Otherwise problems are returned and written once to stderr. |
+| `quiet`       | `false`                                                    | Do not write problems to stderr.                                                                    |
+| `source`      | `"auto"`                                                   | `"api"` or `"file"` forces one of the two sources above.                                            |
+| `cwd`         | `process.cwd()`                                            | Where to look for `.infraenv` from.                                                                 |
+| `file`        | the nearest `.infraenv`                                    | A path to the file.                                                                                 |
+| `vars`        | none                                                       | Substitutions for `${name}` in references, like `--var`.                                            |
+| `org`         | `INFRAWRENCH_ORG_ID`, the file's `org`, the key's own      | The organization to resolve in.                                                                     |
+| `apiKey`      | `INFRAWRENCH_API_KEY`, else the stored login               | An `iwk_` key.                                                                                      |
+| `baseUrl`     | `INFRAWRENCH_BASE_URL`, else `https://app.infrawrench.com` | Another Infrawrench server.                                                                         |
+| `timeout`     | `120000`                                                   | `configSync` only: how long to block, in milliseconds.                                              |
+
+`@infrawrench/infraenv/config` reads its options from the environment: `INFRAENV_ENVIRONMENT`, `INFRAENV_FILE`, `INFRAENV_OVERRIDE=1` and `INFRAENV_STRICT=1`.
+
+Errors are `InfraenvError`s, with `problems` and `missing` for `strict` and `required` failures. Nothing in this package prints or throws a value, and the library never writes a file: `load()` keeps the values in memory.
+
+## Pull from git hooks
+
+To keep a `.env` on disk for tools that read one, install the git hooks from your `prepare` script, the way Husky does:
 
 ```json
 {

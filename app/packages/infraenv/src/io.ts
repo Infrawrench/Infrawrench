@@ -68,6 +68,13 @@ export class Exit extends Error {
 // the cursor or change the terminal's colours.
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 
+/** One problem as every surface prints it: `.infraenv:12 DATABASE_URL: Resource not found`. */
+export const problemLine = (
+  file: string,
+  problem: { readonly line: number; readonly key?: string | undefined; readonly message: string },
+): string =>
+  `${file}${problem.line > 0 ? `:${problem.line}` : ""} ${problem.key ? `${safe(problem.key)}: ` : ""}${safe(problem.message)}`;
+
 export function safe(value: string | null | undefined): string {
   if (value === null || value === undefined) return "";
   return value.replace(CONTROL_CHARACTERS, "");

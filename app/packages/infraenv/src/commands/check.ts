@@ -13,10 +13,9 @@ import {
 } from "@infrawrench/client-core";
 import { createApi } from "../api";
 import type { ParsedArgs } from "../args";
-import { plural, printer, safe, type Io, type Paint } from "../io";
+import { plural, printer, problemLine, safe, type Io, type Paint } from "../io";
 import { display, locateInfraenv, readText } from "../locate";
 import { credentialsOrDelegate, explainWrongOrg, resolveOrg } from "../session";
-import { problemLine } from "./pull";
 
 function mark(state: InfraenvCheckState, message: string | undefined, c: Paint): string {
   switch (state) {

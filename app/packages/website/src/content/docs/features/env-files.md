@@ -175,6 +175,29 @@ It authenticates with `INFRAWRENCH_API_KEY` when that's set (an `iwk_` key, whic
 
 With Husky, chain them: `"prepare": "husky && infraenv install"`. Set `INFRAENV_SKIP_INSTALL=1` to skip the hooks for one install.
 
+### In your code
+
+The package also loads the file straight into `process.env`, the way dotenv does, so your program needs no `.env` step. Use one of:
+
+```js
+// ESM: resolve, then assign every variable that is not already set
+import { config } from "@infrawrench/infraenv";
+await config({ environment: "production" });
+
+// Or as a side effect, before anything reads process.env
+import "@infrawrench/infraenv/config";
+
+// CommonJS: blocks until the variables are set
+require("@infrawrench/infraenv").configSync();
+```
+
+`node --import @infrawrench/infraenv/config app.js` does the same without touching your code. Set `INFRAENV_ENVIRONMENT` to pick an environment; `override`, `required` (keys that must be set) and `strict` (throw when a variable does not resolve) are options, and `load()` returns the values without assigning them. Where the values come from:
+
+- With an API key (`INFRAWRENCH_API_KEY`, the key `infraenv login` stored, or the `apiKey` option), from Infrawrench. Each call is an audited secret read, so run it once at startup.
+- Without one, from the `.env` that `infraenv pull` or the git hooks wrote, as long as it has the generated header and is for the same environment. A hand-written `.env` is never read.
+
+Nothing prints or throws a value, and the library never writes a file.
+
 ### In any CI
 
 Any CI system that can run Node can pull the `.env` for a job: store an API key with **Secrets: read** as a CI secret, then
