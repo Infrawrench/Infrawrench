@@ -8,7 +8,7 @@ sidebar_order: 5
 
 Each resource is matched to the target's equivalent (a virtual machine to a virtual machine, a managed PostgreSQL to a managed PostgreSQL), sized at least as large as it is today, and priced beside its current cost. Resources with no equivalent are listed apart with the reason, so nothing goes missing without you knowing.
 
-<insert [A migration estimate for a service moving from AWS to Hetzner: the three summary cards (Today, On Hetzner, Change per month) above the table of resources with their size today, current cost, matched Hetzner size and estimate, and the "No equivalent on Hetzner" list below] here>
+![A migration estimate for a service moving from AWS to Hetzner Cloud: the three summary cards (Today, On Hetzner Cloud, Change per month) above the table of resources with their size today, current cost, matched Hetzner Cloud size and estimate, and the "No equivalent on Hetzner Cloud" list below](https://agent-assets.infrawrench.com/docs-screenshots/features/migration-estimates/estimate.png)
 
 ## Start an estimate
 
@@ -16,7 +16,11 @@ Each resource is matched to the target's equivalent (a virtual machine to a virt
 - **From a selection:** open a [resource report](./resource-reports.md), tick the resources you want, and click **Estimate migration**. Selections can span pages and providers.
 - **From the list:** open **Migration estimates** in the sidebar (under Costs) and click **New estimate**, then pick a service.
 
+![The Migration estimates list, with saved estimates for a service on Hetzner Cloud, a service on Google Cloud and a hand-picked set of resources on DigitalOcean](https://agent-assets.infrawrench.com/docs-screenshots/features/migration-estimates/list.png)
+
 Pick the provider to price on and, optionally, a region. Leave the region on **Nearest to the resources** and Infrawrench picks the target's first region in the part of the world most of the resources run in.
+
+![The Estimate migration dialog with the checkout-api service, Hetzner Cloud as the target provider, the region left on Nearest to the resources, and a suggested name](https://agent-assets.infrawrench.com/docs-screenshots/features/migration-estimates/new-estimate.png)
 
 Estimates are saved, so you can come back to them. They store only what to price and your choices; the figures are worked out again every time you open one, from current spend and current list prices.
 
