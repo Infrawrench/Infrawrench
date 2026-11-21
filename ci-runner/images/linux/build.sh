@@ -33,7 +33,8 @@
 #      there.
 #   4. The agent at /usr/local/sbin/iwci-guest (it is PID 1), the empty
 #      /.iwci/{rw,ws,base,root} it mounts on, /etc/iwci-image.
-#   5. `mkfs.erofs --tar=f -zlz4hc` over a tar of the tree, and image.json.
+#   5. `mkfs.erofs --tar=f` (uncompressed) over a tar of the tree, checked
+#      with fsck.erofs, and image.json.
 #
 # Runs as root on Ubuntu 24.04 of the target architecture (x86_64 or
 # aarch64); it cannot cross-build, because packages.txt runs installers in
@@ -143,7 +144,7 @@ case "$arch" in
 esac
 
 missing=()
-for tool in debootstrap mkfs.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
+for tool in debootstrap mkfs.erofs fsck.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 [[ -e /usr/include/libelf.h ]] || missing+=("libelf-dev (libelf.h)")
@@ -548,8 +549,18 @@ step "rootfs.erofs"
 tar -C "$root" --numeric-owner --xattrs --xattrs-include='*' \
   --exclude='./proc/*' --exclude='./sys/*' --exclude='./dev/*' \
   -cf "$work/rootfs.tar" .
-mkfs.erofs -zlz4hc,12 -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
+# Uncompressed: Ubuntu 24.04's erofs-utils (1.7.1) wrote about a fifth of
+# the files (small ones: Go's sources, npm's, headers, scripts like
+# `which`) unreadable when compressing from a tar ("per-inode big pcluster
+# without sb feature", EUCLEAN on read), with every -z mode tried. The
+# root is built once per host, so the space (about 3 GB rather than 1.6)
+# costs little, and reads skip decompression.
+mkfs.erofs -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
 rm -f "$work/rootfs.tar"
+# Every file read back, so an image a machine could not read is never
+# installed.
+fsck.erofs "$stage/rootfs.erofs" >/dev/null ||
+  die "fsck.erofs found $stage/rootfs.erofs corrupt; the previous image is untouched"
 
 kernel_sha="$(sha "$stage/$kfile")"
 rootfs_sha="$(sha "$stage/rootfs.erofs")"

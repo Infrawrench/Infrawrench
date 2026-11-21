@@ -19,7 +19,7 @@ Both aim at what GitHub's hosted runners have for everyday CI ([Ubuntu 24.04](ht
 <vm-dir>/linux/
   vmlinux          x86_64: the uncompressed kernel (the microvm machine boots it through its PVH note)
   Image            aarch64: arch/arm64/boot/Image
-  rootfs.erofs     the root file system, lz4hc-compressed erofs, shared read only by every machine
+  rootfs.erofs     the root file system, uncompressed erofs checked with fsck.erofs, shared read only by every machine
   image.json       {"os","image","arch","version","kernel","kernel_version","kernel_sha256","rootfs_sha256","agent_sha256","snapshot","features","caches"}
   kernel.config    the kernel's full .config (for reference)
   packages.lock    every package and release in the root, with its version
