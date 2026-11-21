@@ -294,6 +294,24 @@ pub struct Setup {
     /// The link's addresses, or `None` for a job with `network: false`,
     /// whose machine has no network device at all.
     pub network: Option<Network>,
+    /// The run's `/tmp/workflow`, served by the runner over virtio-fs, to
+    /// mount rather than receive a copy of. Only sent to an agent whose
+    /// [`Hello::virtiofs`] says it can.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratch: Option<ScratchMount>,
+}
+
+/// The tag the run's `/tmp/workflow` device carries.
+pub const SCRATCH_TAG: &str = "iwci-scratch";
+
+/// A virtio-fs device to mount ([`Setup::scratch`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ScratchMount {
+    /// The device's tag.
+    pub tag: String,
+    /// Where the job sees it: a clean absolute Unix path.
+    pub at: String,
 }
 
 /// The machine's side of its one link ([`GUEST_IPV4`] and the gateway).
@@ -424,6 +442,10 @@ pub struct Hello {
     /// Whether the files it collects carry real Unix modes. Windows has
     /// none to give; the runner then keeps each file's mode as it was.
     pub modes: bool,
+    /// Whether it can mount a virtio-fs device ([`Setup::scratch`]). An
+    /// older agent says nothing, which is no.
+    #[serde(default)]
+    pub virtiofs: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

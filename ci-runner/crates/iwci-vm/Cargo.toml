@@ -17,12 +17,24 @@ hex.workspace = true
 # The job's files go to the machine, and come back, as tar archives.
 # Already in the tree through iwci-deps.
 tar = { version = "0.4.46", default-features = false }
+# The FUSE requests virtio-fs carries are answered from a `virtual-fs` file
+# system, whose files are driven with `block_on` as `iwci-vfs` does.
+futures.workspace = true
 
 # Machines run on Linux hosts only (KVM). The machine's network is the
 # gVisor sandbox's gateway, so both go through the runner's one policy.
 [target.'cfg(target_os = "linux")'.dependencies]
 iwci-sandbox.workspace = true
 libc = "0.2"
+# The run's `/tmp/workflow` reaches a Linux machine over virtio-fs, served
+# by the runner itself from memory (`virtiofs.rs`): the vhost-user side of
+# the device and the virtqueues, from rust-vmm (what virtiofsd is built on).
+vhost = { version = "0.18", features = ["vhost-user-backend"] }
+vhost-user-backend = "0.24"
+virtio-queue = "0.18"
+virtio-bindings = "0.2"
+vm-memory = { version = "0.18", features = ["backend-mmap", "backend-atomic"] }
+vmm-sys-util = "0.15"
 
 [dev-dependencies]
 # The conversation is tested against the real agent, over pipes.

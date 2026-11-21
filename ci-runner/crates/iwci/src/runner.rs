@@ -152,8 +152,8 @@ pub struct RunRequest {
     /// output and reports. See [`crate::lent`].
     #[serde(default)]
     pub lent: crate::lent::Lent,
-    /// Shares the run with other runners: its pipelines that say `split:`
-    /// may have jobs taken by a runner sent the same request with
+    /// Shares the run with other runners: its pipelines may have jobs
+    /// taken by a runner sent the same request with
     /// `split.of` naming this run. See [`SplitRequest`].
     #[serde(default)]
     pub split: Option<SplitRequest>,
@@ -376,8 +376,8 @@ pub enum PipelineOutput {
         file: String,
         name: String,
     },
-    /// On a helper's run: a pipeline it took no part in, because it does
-    /// not say `split:` or the run it helps was done with it already.
+    /// On a helper's run: a pipeline it took no part in, because the run
+    /// it helps was done with it already.
     NotShared {
         file: String,
         name: String,
@@ -501,11 +501,16 @@ pub struct PrepareOutput {
     pub problems: Vec<String>,
 }
 
+/// How long a helper that has joined waits for the run's secrets before
+/// it goes on without them.
+const SECRETS_WAIT: Duration = Duration::from_secs(10);
+
 /// The request a helper runs: the primary's, at exactly the commit the
 /// primary resolved it to (a request that names only a branch would
 /// otherwise run whatever that branch's head is by the time the helper
-/// joins), and with no secrets and nothing lent, whatever was sent: a
-/// helper only runs jobs that are given neither.
+/// joins), and with no secrets and nothing lent, whatever was sent: the
+/// secrets come sealed from the primary once the helper joins, and a
+/// helper never runs a job that is lent anything.
 pub fn helper_request(req: &RunRequest, commit: &str) -> RunRequest {
     RunRequest {
         sha: Some(commit.to_string()),
@@ -884,8 +889,31 @@ impl Runner {
                     },
                 }
             };
+            // The commit, fetched while the run decides whether it wants
+            // help, so that a helper asked at its start builds as soon as
+            // the primary does. Only the git cache is warmed: what the
+            // helper runs is still the commit the primary resolved.
+            if let Some(sha) = req.sha.as_deref() {
+                let _ = self.resolve(&helper_request(req, sha));
+            }
             match split.0.wait_to_be_asked(&room, &stopped) {
-                Asked::Join(commit) => as_helper = Some(helper_request(req, &commit)),
+                Asked::Join(commit) => {
+                    let mut joining = helper_request(req, &commit);
+                    // The run's secrets, sealed by the primary to a key
+                    // made for this run alone. Without them the helper
+                    // takes only jobs given none.
+                    if let Ok(opener) = crate::sealed::Opener::new()
+                        && split.0.publish_key(opener.public()).is_ok()
+                        && let Some(sealed) = split.0.wait_for_secrets(SECRETS_WAIT, &stopped)
+                        && let Ok(plain) = opener.open(&sealed)
+                        && let Ok(secrets) =
+                            serde_json::from_slice::<BTreeMap<String, String>>(&plain)
+                    {
+                        joining.secrets = Secrets(secrets);
+                        split.0.got_secrets();
+                    }
+                    as_helper = Some(joining);
+                }
                 Asked::Over => {
                     return Ok(RunOutput {
                         run_id: run.as_str().to_string(),
@@ -1060,7 +1088,7 @@ impl Runner {
                 passed = false;
                 cancelled = true;
                 // A helper is told too, though the pipeline never started.
-                if let (Some(split), None, Some(_)) = (&split, &helping, plan.split) {
+                if let (Some(split), None) = (&split, &helping) {
                     schedule::Split::end(&*split.0.pipeline(file));
                 }
                 pipelines.push(PipelineOutput::Cancelled {
@@ -1069,10 +1097,10 @@ impl Runner {
                 });
                 continue;
             }
-            // A helper only takes part in a pipeline that is shared and
-            // that the run it helps has not finished with.
+            // A helper only takes part in a pipeline that the run it helps
+            // has not finished with.
             if let (Some(split), Some(_)) = (&split, &helping)
-                && (plan.split.is_none() || split.0.ended(file))
+                && split.0.ended(file)
             {
                 pipelines.push(PipelineOutput::NotShared {
                     file: file.clone(),
@@ -1082,7 +1110,6 @@ impl Runner {
             }
             options.split = split
                 .as_ref()
-                .filter(|_| plan.split.is_some())
                 .map(|split| split.0.pipeline(file) as Arc<dyn schedule::Split>);
             // A helper is stopped by the run it helps, so it always has
             // something to stop it with.

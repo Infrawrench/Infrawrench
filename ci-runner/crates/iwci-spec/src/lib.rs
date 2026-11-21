@@ -153,11 +153,6 @@ pub const MAX_TIMEOUT_SECS: u64 = 6 * 60 * 60;
 pub const DEFAULT_MEMORY: u64 = 2 << 30;
 /// What the run's shared `/tmp/workflow` holds unless `scratch:` says.
 pub const DEFAULT_SCRATCH: u64 = 1 << 30;
-/// What a job's artifacts may be for another runner to be sent them
-/// (`split: { artifacts }`) unless the pipeline says, and the most it may
-/// say.
-pub const DEFAULT_SPLIT_ARTIFACTS: u64 = 4 << 20;
-pub const MAX_SPLIT_ARTIFACTS: u64 = 256 << 20;
 /// Where every job of a run finds the scratch directory they share.
 pub const SCRATCH_PATH: &str = "/tmp/workflow";
 /// The most `tools:` one job may list.
@@ -808,29 +803,6 @@ impl Validator<'_> {
             },
         };
 
-        let split = match &raw.split {
-            None | Some(raw::Split::On(false)) => None,
-            Some(raw::Split::On(true)) => Some(DEFAULT_SPLIT_ARTIFACTS),
-            Some(raw::Split::Full(map)) => Some(match &map.artifacts {
-                None => DEFAULT_SPLIT_ARTIFACTS,
-                Some(text) => match units::parse_bytes(text) {
-                    Some(b) if b <= MAX_SPLIT_ARTIFACTS => b,
-                    Some(_) => {
-                        self.error("split.artifacts", "must be at most 256MiB");
-                        DEFAULT_SPLIT_ARTIFACTS
-                    }
-                    None => {
-                        self.error(
-                            "split.artifacts",
-                            format!("`{text}` is not a size; use e.g. `512KiB` or `8MiB`"),
-                        );
-                        DEFAULT_SPLIT_ARTIFACTS
-                    }
-                },
-            }),
-        }
-        .map(|artifact_bytes| SplitSpec { artifact_bytes });
-
         Plan {
             name: raw.name,
             triggers,
@@ -838,7 +810,6 @@ impl Validator<'_> {
             workspaces,
             jobs,
             scratch_bytes,
-            split,
             decls: self.decls.clone(),
             ctx: self.ctx.clone(),
         }

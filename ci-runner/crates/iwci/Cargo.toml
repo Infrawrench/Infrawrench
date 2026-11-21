@@ -23,6 +23,7 @@ iwci-git.workspace = true
 iwci-deps.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+futures.workspace = true
 hex.workspace = true
 sha2.workspace = true
 globset.workspace = true
@@ -40,6 +41,9 @@ getrandom = "0.3"
 # in the tree through tokio.
 libc = "0.2"
 signal-hook-registry = "1"
+# A split run's secrets reach a helper sealed to a key only it holds
+# (`sealed.rs`). Already in the tree through rustls.
+ring = "0.17"
 # Job caches are stored as one zstd stream each.
 zstd = { version = "0.13", default-features = false }
 # A cloud job's artifacts travel to and from its machine as tar archives.

@@ -6,10 +6,12 @@
 //! read; this writes that into the job's files and the scratch, as the
 //! job's own writes, and reports the machine's run as the job's execution.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use iwci_spec::{Action, VmOs};
+use iwci_vfs::Entry;
 use iwci_vm::{Host, Os, Shell};
 
 use crate::machines::{Collected, MachineRun, Machines, apply};
@@ -66,6 +68,8 @@ impl Machines for VmMachines {
                 sink(err, data);
             }
         };
+        let scratch = run.scratch;
+        let settle = move || scratch.settle();
         let outcome = self.host.run(iwci_vm::Job {
             id: &run.job.id,
             os: os(run.vm.os),
@@ -80,7 +84,15 @@ impl Machines for VmMachines {
             cwd: &run.cwd,
             workspace: Some((run.workspace_key.as_str(), run.workspace)),
             fs: run.fs,
-            scratch: run.scratch,
+            // Served to the machine as the job's view when it can be: it
+            // then waits for another runner's file only when the job opens
+            // it, and what the job writes is shared as it is closed. A
+            // copy otherwise, which needs everything here first.
+            scratch: iwci_vm::Scratch {
+                live: Some(run.scratch.as_dyn()),
+                files: run.scratch.fs(),
+                settle: &settle,
+            },
             scratch_at: iwci_spec::SCRATCH_PATH,
             collect: &run.collect.paths,
             repository: run.collect.repository.as_deref(),
@@ -98,9 +110,23 @@ impl Machines for VmMachines {
                 "what the machine sent back could not all be kept: {e}"
             ));
         }
-        if let Err(e) = apply(run.scratch, &collected(outcome.scratch), &["/".into()]) {
+        let scratch = collected(outcome.scratch);
+        if let Err(e) = apply(run.scratch.fs(), &scratch, &["/".into()]) {
             notes.push(format!("/tmp/workflow: {e}"));
         }
+        // The job's own writes, for the other runners of a split run.
+        run.scratch
+            .wrote(
+                scratch
+                    .deleted
+                    .iter()
+                    .map(PathBuf::as_path)
+                    .chain(scratch.entries.iter().map(|(entry, _)| match entry {
+                        Entry::Dir { path }
+                        | Entry::File { path, .. }
+                        | Entry::Symlink { path, .. } => path.as_path(),
+                    })),
+            );
         let exited = outcome.exited.unwrap_or_default();
         let mut stderr = outcome.stderr;
         for note in notes {

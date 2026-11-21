@@ -50,8 +50,11 @@ pub struct MachineRun<'a> {
     /// The job's files: the workspace's with what the job starts with
     /// written over them.
     pub fs: &'a JobFs,
-    /// The run's `/tmp/workflow`, rooted at `/`.
-    pub scratch: &'a JobFs,
+    /// The run's `/tmp/workflow`, rooted at `/`, as the job sees it. A
+    /// machine is given a copy, so [`crate::schedule::ScratchView::settle`] first; what
+    /// comes back is written to [`crate::schedule::ScratchView::fs`] and noted with
+    /// [`crate::schedule::ScratchView::wrote`].
+    pub scratch: &'a crate::schedule::ScratchView,
     /// Every variable the job gets, secrets included, as for any job.
     pub env: Vec<(String, String)>,
     /// The job's working directory, a Unix path.

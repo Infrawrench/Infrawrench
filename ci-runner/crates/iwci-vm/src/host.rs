@@ -8,8 +8,11 @@
 //!    link's bridge to the runner's gateway.
 //! 4. The conversation: hello, setup, the job's files in (on Linux only
 //!    what it starts with beyond the workspace image; on Windows all of
-//!    them), the script, and back what it left under the paths asked for
-//!    and in the run's `/tmp/workflow`.
+//!    them), the script, and back what it left under the paths asked for.
+//!    The run's `/tmp/workflow` is served to a Linux machine over
+//!    virtio-fs (`virtiofs.rs`) when the host's QEMU and the image's
+//!    agent can, so nothing of it is copied and the job sees it live;
+//!    otherwise it is copied in whole and what changed comes back.
 //! 5. Stop the machine and remove its directory, whatever happened.
 //!
 //! The job's timeout, a cancel, and a hang (no output and the machine's
@@ -23,8 +26,10 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use iwci_vfs::{JobFs, Snapshot};
-use iwci_vm_proto::{Collect, Exec, Exited, Network, PROTOCOL, Setup, Shell};
+use iwci_vfs::{DynFs, JobFs, Snapshot};
+use iwci_vm_proto::{
+    Collect, Exec, Exited, Network, PROTOCOL, SCRATCH_TAG, ScratchMount, Setup, Shell,
+};
 
 use crate::agent::{Agent, Failed, Ran, Tick, Watch};
 use crate::archive::{self, Moded};
@@ -85,7 +90,7 @@ pub struct Job<'a> {
     /// The job's files: the workspace's, and what it starts with.
     pub fs: &'a JobFs,
     /// The run's `/tmp/workflow`, rooted at `/`, and where the job sees it.
-    pub scratch: &'a JobFs,
+    pub scratch: Scratch<'a>,
     pub scratch_at: &'a str,
     /// Unix paths whose contents come back.
     pub collect: &'a [String],
@@ -96,6 +101,18 @@ pub struct Job<'a> {
     pub stall_after: Option<Duration>,
     /// What each of stdout and stderr keeps for the report.
     pub output_cap: usize,
+}
+
+/// The run's `/tmp/workflow` for one job.
+pub struct Scratch<'a> {
+    /// What the job sees, served to a Linux machine as it is, over
+    /// virtio-fs, when the host and the image can.
+    pub live: Option<DynFs>,
+    /// Otherwise its files are copied in and what the job changed comes
+    /// back into these: `settle` first, so everything another runner wrote
+    /// is here to copy.
+    pub files: &'a JobFs,
+    pub settle: &'a (dyn Fn() -> Result<(), String> + Sync),
 }
 
 /// What a machine sent back for one file system.
@@ -150,6 +167,9 @@ pub struct Host {
     qemu_img: Option<PathBuf>,
     workspaces: Option<Workspaces>,
     problems: Vec<String>,
+    /// QEMU has `vhost-user-fs-device`: a Linux machine is served the
+    /// run's `/tmp/workflow` rather than a copy of it.
+    virtiofs: bool,
 }
 
 /// `name` on `PATH`, or `path` when given and present.
@@ -162,6 +182,19 @@ fn find(path: Option<&Path>, name: &str) -> Option<PathBuf> {
             .map(|dir| dir.join(name))
             .find(|p| p.is_file())
     })
+}
+
+/// Whether `qemu` lists the virtio-fs device a Linux machine's
+/// `/tmp/workflow` is served over.
+fn has_virtiofs(qemu: &Path) -> bool {
+    Command::new(qemu)
+        .args(["-device", "help"])
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|out| {
+            let text = String::from_utf8_lossy(&out.stdout) + String::from_utf8_lossy(&out.stderr);
+            text.contains("\"vhost-user-fs-device\"")
+        })
 }
 
 fn kvm() -> Result<(), String> {
@@ -189,6 +222,7 @@ impl Host {
             qemu_img: None,
             workspaces: None,
             problems: Vec::new(),
+            virtiofs: false,
             config,
         };
         if !cfg!(target_os = "linux") {
@@ -217,6 +251,13 @@ impl Host {
             ));
             host.problems = problems;
             return host;
+        }
+        host.virtiofs = host.qemu.as_deref().is_some_and(has_virtiofs);
+        if !host.virtiofs {
+            problems.push(
+                "Linux: /tmp/workflow is copied into each machine and back: this QEMU has no vhost-user-fs-device"
+                    .into(),
+            );
         }
         match LinuxImage::open(&host.config.dir.join("linux"), arch.name()) {
             Ok(image) => match find(host.config.mkfs_erofs.as_deref(), "mkfs.erofs") {
@@ -292,9 +333,21 @@ impl Host {
             // always gets a link; one without a network gets a dead end.
             net: (job.network || job.os == Os::Windows).then(|| dir.join("net.sock")),
             console: dir.join("console.log"),
+            scratch: (cfg!(target_os = "linux")
+                && job.os == Os::Linux
+                && self.virtiofs
+                && job.scratch.live.is_some())
+            .then(|| dir.join("scratch.sock")),
         };
         let agent_listener = listen(&sockets.agent)?;
         let net_listener = sockets.net.as_deref().map(listen).transpose()?;
+        // Listening before QEMU starts, and stopped after it has (it is
+        // dropped after `machine`).
+        #[cfg(target_os = "linux")]
+        let _serving = match (&sockets.scratch, &job.scratch.live) {
+            (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(fs.clone(), path)?),
+            _ => None,
+        };
 
         let (args, boot): (Vec<OsString>, Duration) = match job.os {
             Os::Linux => {
@@ -413,6 +466,9 @@ impl Host {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64);
+        // Served, when the device is there and the agent can mount it; an
+        // older image's agent gets the copy.
+        let live = sockets.scratch.is_some() && hello.virtiofs;
         agent
             .setup(
                 Setup {
@@ -420,6 +476,10 @@ impl Host {
                     time_ms: now_ms,
                     hostname: "iwci".into(),
                     network: job.network.then(Network::standard),
+                    scratch: live.then(|| ScratchMount {
+                        tag: SCRATCH_TAG.into(),
+                        at: job.scratch_at.into(),
+                    }),
                 },
                 STEP,
             )
@@ -433,10 +493,17 @@ impl Host {
             Os::Linux => archive::own(job.fs),
             Os::Windows => archive::whole(job.fs),
         };
-        let scratch = archive::whole(job.scratch);
-        agent
-            .put(&[("/", &files), (job.scratch_at, &scratch)], STEP)
-            .map_err(|e| machine.failed(e))?;
+        if live {
+            agent
+                .put(&[("/", &files)], STEP)
+                .map_err(|e| machine.failed(e))?;
+        } else {
+            (job.scratch.settle)()?;
+            let scratch = archive::whole(job.scratch.files);
+            agent
+                .put(&[("/", &files), (job.scratch_at, &scratch)], STEP)
+                .map_err(|e| machine.failed(e))?;
+        }
         let mut transfer_ms = transfer.elapsed().as_millis() as u64;
 
         // The script, until it ends or is stopped.
@@ -527,7 +594,9 @@ impl Host {
         // What it left, for the scheduler to read as any job's files.
         let back = Instant::now();
         let mut paths: Vec<String> = job.collect.to_vec();
-        paths.push(job.scratch_at.to_string());
+        if !live {
+            paths.push(job.scratch_at.to_string());
+        }
         let (collected, entries, done) = agent
             .collect(
                 Collect {

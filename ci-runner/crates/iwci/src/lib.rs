@@ -10,4 +10,5 @@ pub mod machines;
 pub mod memory;
 pub mod runner;
 pub mod schedule;
+pub mod sealed;
 pub mod server;

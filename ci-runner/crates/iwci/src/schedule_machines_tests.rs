@@ -24,8 +24,16 @@ struct Seen {
 /// - `share`: writes `/tmp/workflow/shared.txt`;
 /// - `venv`: makes `/app/.venv`, which ignores itself as Python's does;
 /// - `fail`: exits 2.
-struct FakeMachines {
+pub(super) struct FakeMachines {
     seen: Mutex<Seen>,
+}
+
+impl FakeMachines {
+    pub(super) fn new() -> Self {
+        Self {
+            seen: Mutex::default(),
+        }
+    }
 }
 
 fn files(fs: &iwci_vfs::JobFs, root: &str) -> Vec<String> {
@@ -61,7 +69,7 @@ impl Machines for FakeMachines {
             seen.collect.insert(run.job.id.clone(), run.collect.clone());
             let mut start = files(run.fs, "/app/out");
             start.extend(
-                files(run.scratch, "/")
+                files(run.scratch.fs(), "/")
                     .into_iter()
                     .map(|p| format!("scratch:{p}")),
             );
@@ -120,7 +128,9 @@ impl Machines for FakeMachines {
             | iwci_vfs::Entry::Symlink { path, .. } => asked(path),
         });
         apply(run.fs, &back, &allowed)?;
-        apply(run.scratch, &shared, &["/".into()])?;
+        apply(run.scratch.fs(), &shared, &["/".into()])?;
+        run.scratch
+            .wrote(shared.entries.iter().map(|(e, _)| entry_path(e)));
         Ok(Execution {
             exit_code,
             stdout: format!("ran {script}\n"),

@@ -24,8 +24,12 @@
 //! its frames dropped instead.
 //!
 //! No machine has a display, a monitor, a serial port of the host's, or
-//! any host file system: the agent's virtio-serial port and the network
-//! link are its only ways out, both sockets the runner holds.
+//! any host file system: the agent's virtio-serial port, the network link
+//! and (Linux) the run's `/tmp/workflow` over virtio-fs are its only ways
+//! out, all sockets the runner holds. The last is served from the
+//! runner's memory (`virtiofs.rs`), never from a directory of the host's;
+//! a vhost-user device needs the guest's memory shared with its back end,
+//! so a machine that has it gets its memory from a `memfd` QEMU shares.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -77,6 +81,9 @@ pub struct Sockets {
     pub net: Option<PathBuf>,
     /// The guest's console (`hvc0` on Linux), for when it does not start.
     pub console: PathBuf,
+    /// The run's `/tmp/workflow` as a virtio-fs device (Linux): the
+    /// runner listens, QEMU connects.
+    pub scratch: Option<PathBuf>,
 }
 
 /// A Linux micro VM.
@@ -161,16 +168,27 @@ fn net(args: &mut Vec<OsString>, path: &Path, device: &str) {
 /// The arguments for a Linux machine.
 pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     let mut args = Vec::new();
-    match m.arch {
-        Arch::X86_64 => push(
-            &mut args,
-            &[
-                "-M",
-                "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off",
-            ],
-        ),
-        Arch::Aarch64 => push(&mut args, &["-M", "virt,gic-version=host"]),
+    let mut machine = match m.arch {
+        Arch::X86_64 => {
+            "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off".to_string()
+        }
+        Arch::Aarch64 => "virt,gic-version=host".to_string(),
+    };
+    if m.sockets.scratch.is_some() {
+        // A vhost-user device's back end reads and writes the guest's
+        // memory itself.
+        machine.push_str(",memory-backend=mem");
+        args.push("-object".into());
+        args.push(
+            format!(
+                "memory-backend-memfd,id=mem,size={}M,share=on",
+                m.memory_mib
+            )
+            .into(),
+        );
     }
+    args.push("-M".into());
+    args.push(machine.into());
     common(&mut args, m.memory_mib, m.cpus);
     args.push("-kernel".into());
     args.push(m.kernel.into());
@@ -187,6 +205,18 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
         net(&mut args, path, "virtio-net-device");
     }
     push(&mut args, &["-device", "virtio-rng-device"]);
+    if let Some(path) = &m.sockets.scratch {
+        args.push("-chardev".into());
+        args.push(path_arg("socket,id=scratch,path=", path));
+        args.push("-device".into());
+        args.push(
+            format!(
+                "vhost-user-fs-device,chardev=scratch,tag={}",
+                iwci_vm_proto::SCRATCH_TAG
+            )
+            .into(),
+        );
+    }
     // The workspace first and the root last: see the module's note.
     if let Some(ws) = m.workspace {
         args.push("-drive".into());
@@ -301,7 +331,48 @@ mod tests {
             agent: "/m/agent.sock".into(),
             net: net.then(|| "/m/net.sock".into()),
             console: "/m/console.log".into(),
+            scratch: None,
         }
+    }
+
+    #[test]
+    fn a_linux_machine_with_the_scratch_over_virtio_fs_shares_its_memory() {
+        let s = Sockets {
+            scratch: Some("/m/scratch.sock".into()),
+            ..sockets(false)
+        };
+        let args = strings(&linux_args(&Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            memory_mib: 1024,
+            cpus: 1,
+            sockets: &s,
+        }));
+        let text = args.join(" ");
+        for want in [
+            "-object memory-backend-memfd,id=mem,size=1024M,share=on",
+            ",memory-backend=mem",
+            "-m 1024M",
+            "socket,id=scratch,path=/m/scratch.sock",
+            "vhost-user-fs-device,chardev=scratch,tag=iwci-scratch",
+        ] {
+            assert!(text.contains(want), "{want} not in {text}");
+        }
+        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
+        // Without it, the memory is QEMU's own.
+        let plain = strings(&linux_args(&Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            memory_mib: 1024,
+            cpus: 1,
+            sockets: &sockets(false),
+        }))
+        .join(" ");
+        assert!(!plain.contains("memfd") && !plain.contains("vhost-user"));
     }
 
     #[test]

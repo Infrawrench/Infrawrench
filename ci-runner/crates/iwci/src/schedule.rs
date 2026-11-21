@@ -19,7 +19,7 @@
 //! the ordering, skipping, output and change-policy rules are tested on
 //! their own.
 //!
-//! A run may be shared with other runners (`split:`): see [`Split`] and
+//! A run may be shared with other runners: see [`Split`] and
 //! the `split` module, which holds everything about it but the few places
 //! below where a job is claimed, deferred or reported.
 //!
@@ -45,6 +45,11 @@ use serde::Serialize;
 #[path = "schedule_split.rs"]
 mod split;
 pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
+
+#[path = "schedule_scratch.rs"]
+mod scratch;
+use scratch::Published;
+pub use scratch::{Layer, LayerEntry, Scratch, ScratchView, object_name as scratch_object_name};
 
 #[path = "schedule_inflight.rs"]
 mod inflight;
@@ -241,8 +246,9 @@ fn sandbox_need<T: Tools>(tools: &T, job: &PlannedJob) -> Option<u64> {
 pub struct Invocation<'a> {
     pub job: &'a PlannedJob,
     pub fs: &'a JobFs,
-    /// The run's shared `/tmp/workflow`, the same one for every job.
-    pub scratch: &'a JobFs,
+    /// The run's shared `/tmp/workflow`, the same one for every job, as
+    /// this job sees it: in a split run, with what the other runners wrote.
+    pub scratch: &'a ScratchView,
     /// The job's own `env:` over the workspace's, over the runner's `IWCI_*`.
     pub env: Vec<(String, String)>,
     /// The workspace's command directories, to go first on `PATH`.
@@ -306,7 +312,7 @@ pub enum LogEvent {
         /// Replayed from the task cache rather than run.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         cached: bool,
-        /// The runner that ran it, when another one did (`split:`).
+        /// The runner that ran it, when another one did.
         #[serde(skip_serializing_if = "Option::is_none")]
         remote: Option<String>,
     },
@@ -763,7 +769,7 @@ pub struct Options {
     /// by the shape of the plan alone and reserves every job's `memory:`.
     pub durations: Option<Arc<dyn Durations>>,
     /// What this run shares with other runners, when it is split across
-    /// them; only a pipeline that says `split:` uses it.
+    /// them.
     pub split: Option<Arc<dyn Split>>,
     /// The helper jobs running on this runner, every run's together, so
     /// its own runs can have their slots and memory back.
@@ -1728,7 +1734,7 @@ struct Finished {
     /// What the key's `artifacts:` kept, every matrix entry's together.
     artifacts: Arc<Vec<Entry>>,
     /// Some of what it, or a job it needed, kept is not on this runner
-    /// (`split:`), so nothing that needs it can run here.
+    /// (a split run), so nothing that needs it can run here.
     elsewhere: bool,
     /// It, or a job it needed, read a secret or was lent something: what
     /// it left (artifacts, outputs) may carry that, so a job handed it
@@ -2204,15 +2210,20 @@ pub fn run<T: Tools>(
     activate(&mut state.lock().unwrap(), plan, options);
     // One scratch directory for the whole run, held to `scratch:` as a
     // job's files are held to its `memory:`.
-    let scratch = iwci_vfs::SnapshotBuilder::new()
-        .freeze()
-        .fork_limited(Arc::new(JobBudget {
-            cap: plan.scratch_bytes,
-            used: AtomicU64::new(0),
-            peak: AtomicU64::new(0),
-            refused: AtomicBool::new(false),
-            gauge: None,
-        }));
+    // In a split run every runner keeps its own and sends the others what
+    // its jobs write (`schedule_scratch.rs`).
+    let scratch = Scratch::new(
+        iwci_vfs::SnapshotBuilder::new()
+            .freeze()
+            .fork_limited(Arc::new(JobBudget {
+                cap: plan.scratch_bytes,
+                used: AtomicU64::new(0),
+                peak: AtomicU64::new(0),
+                refused: AtomicBool::new(false),
+                gauge: None,
+            })),
+        sharing.is_some(),
+    );
     let lent_values = options.access.lent.secret_values();
     let mask = Arc::new(Masker::new(
         options.secrets.values().chain(lent_values.iter()),
@@ -2346,11 +2357,15 @@ pub fn run<T: Tools>(
             scope.spawn(|| inflight::watch(inflight, &state, &wake, plan, options));
         }
         // A split run: one thread follows what the other runners write,
-        // and a few read in the jobs they finished.
+        // a few read in the jobs they finished, and a few the files they
+        // wrote to `/tmp/workflow`. The first stops the last when it ends.
         if let Some(sharing) = sharing {
-            scope.spawn(|| split::watch(sharing, &state, &wake, plan, options));
+            scope.spawn(|| split::watch(sharing, &state, &wake, plan, options, &shared));
             for _ in 0..split::FETCHERS {
                 scope.spawn(|| split::fetch(sharing, &state, &wake, plan, options, &shared));
+            }
+            for _ in 0..scratch::SCRATCH_FETCHERS {
+                scope.spawn(|| scratch.fetch(sharing.split, plan.scratch_bytes));
             }
         }
         // Cloud jobs: each waits for its executor on a thread of its own,
@@ -2640,9 +2655,22 @@ pub fn run<T: Tools>(
                         sharing.running.fetch_add(1, Ordering::SeqCst);
                     }
                     lookup.lease = reserved.clone();
+                    // `/tmp/workflow` as the job sees it. What a job whose
+                    // files may carry a secret writes there never leaves
+                    // this runner; a wait for another runner's file ends
+                    // with the job.
+                    let view = shared.scratch.view(
+                        handed || !split::secret_free(&job),
+                        cancel.clone(),
+                        Some(
+                            Instant::now()
+                                + job.timeout.saturating_mul(2)
+                                + Duration::from_secs(60),
+                        ),
+                    );
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
-                        &inherited, lookup, cancel, &mut kept, &mut saved,
+                        &inherited, lookup, cancel, &mut kept, &mut saved, &view,
                     );
                     report.queued_ms = queued_ms;
                     report.cpus = job.cpus;
@@ -2658,7 +2686,19 @@ pub fn run<T: Tools>(
                     // for it reads the entry as soon as the marker goes.
                     let ended = inflight::ended(&report, saved.as_deref());
                     if let Some(sharing) = sharing {
-                        if sharing.hands_back(&report) {
+                        // What it wrote to `/tmp/workflow`, for the jobs that
+                        // need it on other runners.
+                        let scratch = publish_scratch(sharing, &shared);
+                        // A helper gives back a job whose files it could not
+                        // send, one that wanted a file only the primary has,
+                        // and any once it has dropped files unsent: the
+                        // primary runs it with everything there.
+                        let scratch_back = sharing.helper
+                            && (scratch.is_err()
+                                || view.withheld().is_some()
+                                || view.kept_back()
+                                || shared.scratch.spoiled());
+                        if sharing.hands_back(&report) || scratch_back {
                             if let Some(marker) = marker {
                                 marker.end(Ended::Stopped);
                             }
@@ -2679,7 +2719,15 @@ pub fn run<T: Tools>(
                             );
                             continue;
                         }
-                        sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
+                        sharing.publish(
+                            &job,
+                            &mut report,
+                            &kept,
+                            saved.as_deref(),
+                            handed,
+                            &mask,
+                            scratch,
+                        );
                     }
                     complete(&state, &wake, plan, options, template, report, kept);
                     // After its entry was saved, if it was, and after the
@@ -3066,9 +3114,36 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
     }
 }
 
+/// Sends what a job that just ended wrote to `/tmp/workflow`, a few times
+/// if the store does not take it: this runner's layers that hold it, or
+/// why it could not be sent. A helper that may send no more drops what
+/// it has not sent.
+fn publish_scratch(sharing: &split::Sharing<'_>, shared: &RunShared<'_>) -> Result<u64, String> {
+    let mut last = String::new();
+    for wait in [0u64, 50, 200] {
+        std::thread::sleep(Duration::from_millis(wait));
+        match shared
+            .scratch
+            .publish(sharing.split, shared.mask, sharing.scratch_cap)
+        {
+            Published::Nothing | Published::Layer(_) => return Ok(shared.scratch.layers()),
+            Published::TooMuch => {
+                shared.scratch.forget_unsent();
+                sharing.unfit.store(true, Ordering::SeqCst);
+                return Err(format!(
+                    "more than the {} KiB this runner may send",
+                    sharing.scratch_cap.div_ceil(1024)
+                ));
+            }
+            Published::Failed(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
 /// What every job of one run shares.
 struct RunShared<'a> {
-    scratch: &'a JobFs,
+    scratch: &'a Scratch,
     mask: &'a Arc<Masker>,
     /// Bytes of artifacts kept so far, held to the run's `scratch:` limit:
     /// both live in memory for the whole run.
@@ -3190,6 +3265,7 @@ fn run_job<T: Tools>(
     cancel: Option<iwci_runtime::Cancel>,
     kept: &mut Vec<Entry>,
     saved_key: &mut Option<String>,
+    scratch: &ScratchView,
 ) -> JobReport {
     let started = Instant::now();
     // The task cache was looked up before the job was queued (`look_up`);
@@ -3528,7 +3604,7 @@ fn run_job<T: Tools>(
                 plan.workspaces[job.workspace].key
             ),
             fs: &fs,
-            scratch: shared.scratch,
+            scratch,
             env,
             cwd: job.cwd.clone(),
             collect: crate::machines::collect_paths(
@@ -3548,7 +3624,7 @@ fn run_job<T: Tools>(
             Invocation {
                 job,
                 fs: &fs,
-                scratch: shared.scratch,
+                scratch,
                 env,
                 path: &workspace.path,
                 log,
