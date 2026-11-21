@@ -275,8 +275,9 @@ fi
 if [[ "$snapshot" == none ]]; then
   mirror="$live_mirror"
 else
-  # Plain http, like the live mirrors: the chroot has no CA certificates
-  # until apt installs them, and apt checks every index signature anyway.
+  # snapshot.ubuntu.com answers plain http with a redirect to https, so
+  # the root is bootstrapped with ca-certificates (below) for apt in the
+  # chroot to follow it; apt checks every index signature either way.
   mirror="http://snapshot.ubuntu.com/$archive/$snapshot"
   curl -fsS -o /dev/null "$mirror/dists/$SUITE/InRelease" ||
     die "the snapshot $mirror does not answer; pick another --snapshot, or --snapshot none for the live archive"
@@ -285,6 +286,7 @@ fi
 step "debootstrap $SUITE ($debarch) from $mirror"
 rm -rf "$root"
 debootstrap --variant=minbase --arch="$debarch" --components=main,universe \
+  --include=ca-certificates \
   --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
   "$SUITE" "$root" "$mirror"
 
