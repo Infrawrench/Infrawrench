@@ -77,6 +77,7 @@ const FLUSH: u32 = 25;
 const INIT: u32 = 26;
 const OPENDIR: u32 = 27;
 const READDIR: u32 = 28;
+const READDIRPLUS: u32 = 44;
 const RELEASEDIR: u32 = 29;
 const FSYNCDIR: u32 = 30;
 const CREATE: u32 = 35;
@@ -110,7 +111,18 @@ const ATOMIC_O_TRUNC: u32 = 1 << 3;
 const BIG_WRITES: u32 = 1 << 5;
 const PARALLEL_DIROPS: u32 = 1 << 18;
 const MAX_PAGES_FLAG: u32 = 1 << 22;
-const WANTED: u32 = ASYNC_READ | ATOMIC_O_TRUNC | BIG_WRITES | PARALLEL_DIROPS | MAX_PAGES_FLAG;
+/// A directory listing carries each entry's attributes, so walking a
+/// tree (`find`, a build's globbing) is one request per directory rather
+/// than one per file; the kernel decides when it is worth it.
+const DO_READDIRPLUS: u32 = 1 << 13;
+const READDIRPLUS_AUTO: u32 = 1 << 14;
+const WANTED: u32 = ASYNC_READ
+    | ATOMIC_O_TRUNC
+    | BIG_WRITES
+    | PARALLEL_DIROPS
+    | MAX_PAGES_FLAG
+    | DO_READDIRPLUS
+    | READDIRPLUS_AUTO;
 
 // `SETATTR` valid bits.
 const FATTR_MODE: u32 = 1 << 0;
@@ -253,9 +265,9 @@ struct Node {
 
 enum Handle {
     File(Box<Mutex<Box<dyn VirtualFile + Send + Sync + 'static>>>),
-    /// A directory's entries as they were when it was opened: name,
-    /// number, type.
-    Dir(Vec<(String, u64, u32)>),
+    /// A directory's path and its entries as they were when it was
+    /// opened: name, number, type.
+    Dir(PathBuf, Vec<(String, u64, u32)>),
 }
 
 #[derive(Default)]
@@ -404,7 +416,8 @@ impl Server {
             WRITE => self.write(&mut args),
             RELEASE | RELEASEDIR => self.release(&mut args),
             OPENDIR => self.opendir(node),
-            READDIR => self.readdir(&mut args),
+            READDIR => self.readdir(&mut args, false),
+            READDIRPLUS => self.readdir(&mut args, true),
             STATFS => Ok(statfs()),
             FLUSH | FSYNC | FSYNCDIR | SYNCFS => Ok(Vec::new()),
             _ => Err(ENOSYS),
@@ -855,24 +868,43 @@ impl Server {
             let id = self.node_for(&full, false);
             entries.push((name.to_string(), id, kind));
         }
-        let fh = self.add_handle(Handle::Dir(entries));
+        let fh = self.add_handle(Handle::Dir(path, entries));
         Ok(Out::default().u64(fh).u32(0).u32(0).done())
     }
 
-    fn readdir(&self, args: &mut Args<'_>) -> Answer {
+    /// `READDIR`, or with `plus` `READDIRPLUS`: each entry then comes
+    /// after its `fuse_entry_out`, and counts as a lookup of its name
+    /// (never `.` and `..`, whose entry the kernel ignores).
+    fn readdir(&self, args: &mut Args<'_>, plus: bool) -> Answer {
         let fh = args.u64()?;
         let offset = args.u64()? as usize;
         let size = args.u32()?.min(MAX_IO) as usize;
         let handle = self.file(fh)?;
-        let Handle::Dir(entries) = handle.as_ref() else {
+        let Handle::Dir(dir, entries) = handle.as_ref() else {
             return Err(ENOTDIR);
         };
         let mut out = Vec::new();
         for (i, (name, id, kind)) in entries.iter().enumerate().skip(offset) {
             let len = 24 + name.len();
             let padded = len.div_ceil(8) * 8;
-            if out.len() + padded > size {
+            let entry_len = if plus { 128 } else { 0 };
+            if out.len() + entry_len + padded > size {
                 break;
+            }
+            let mut id = *id;
+            if plus {
+                let path = dir.join(name);
+                let found = (name != "." && name != "..")
+                    .then(|| self.stat(&path).ok())
+                    .flatten();
+                match found {
+                    Some(meta) => {
+                        id = self.node_for(&path, true);
+                        out.extend(self.entry(id, &path, &meta));
+                    }
+                    // Not looked up: the kernel skips an entry of node 0.
+                    None => out.resize(out.len() + 128, 0),
+                }
             }
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&((i + 1) as u64).to_le_bytes());

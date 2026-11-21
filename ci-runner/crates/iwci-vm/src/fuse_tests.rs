@@ -352,3 +352,42 @@ fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
     assert_eq!(call(&s, SETATTR, file, &[0u8; 88]).0, -EROFS);
     assert_eq!(fs.read("/app/a.txt").unwrap(), b"source");
 }
+
+#[test]
+fn readdirplus_gives_each_entry_its_attributes_and_counts_it_as_a_lookup() {
+    let (s, fs) = server();
+    fs.write("/d/a.txt", b"12345").unwrap();
+    fs.write("/d/b.txt", b"1").unwrap();
+    let d = u64_at(&lookup(&s, ROOT, "d").1, 0);
+    let fh = u64_at(&ok(&s, OPENDIR, d, &[0u8; 8]), 0);
+    let mut body = Vec::new();
+    body.extend(le64(fh));
+    body.extend(le64(0));
+    body.extend(le32(4096));
+    body.extend([0u8; 20]);
+    let out = ok(&s, READDIRPLUS, 0, &body);
+    let mut at = 0;
+    let mut seen = Vec::new();
+    while at < out.len() {
+        let node = u64_at(&out, at);
+        let size = u64_at(&out, at + 40 + 8);
+        let len = u32_at(&out, at + 128 + 16) as usize;
+        let name = String::from_utf8(out[at + 128 + 24..at + 128 + 24 + len].to_vec()).unwrap();
+        seen.push((name, node != 0, size));
+        at += 128 + (24 + len).div_ceil(8) * 8;
+    }
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            (".".to_string(), false, 0),
+            ("..".to_string(), false, 0),
+            ("a.txt".to_string(), true, 5),
+            ("b.txt".to_string(), true, 1),
+        ]
+    );
+    // a.txt was looked up by the listing: one forget and it is gone.
+    let a = u64_at(&lookup(&s, d, "a.txt").1, 0);
+    s.handle(&req(FORGET, a, &le64(2)));
+    assert_eq!(call(&s, GETATTR, a, &[0u8; 16]).0, -ENOENT);
+}
