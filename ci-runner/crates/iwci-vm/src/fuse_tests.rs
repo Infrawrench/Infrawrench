@@ -327,10 +327,15 @@ fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
     assert_eq!(u64_at(&entry, 16), READ_ONLY_VALID_SECS, "names are kept");
     let app = u64_at(&entry, 0);
     let file = u64_at(&lookup(&s, app, "a.txt").1, 0);
-    // Read: allowed, with the pages kept across opens.
-    let open = ok(&s, OPEN, file, &[0u8; 8]);
-    assert_eq!(u32_at(&open, 8), FOPEN_KEEP_CACHE);
-    assert_eq!(read(&s, u64_at(&open, 0), 0, 100), b"source");
+    // No OPEN: the kernel reads by node, with no handle.
+    assert_eq!(call(&s, OPEN, file, &[0u8; 8]).0, -ENOSYS);
+    let mut body = Vec::new();
+    body.extend(le64(0));
+    body.extend(le64(2));
+    body.extend(le32(100));
+    body.extend([0u8; 20]);
+    assert_eq!(ok(&s, READ, file, &body), b"urce");
+    assert_eq!(call(&s, FLUSH, file, &[0u8; 24]).0, -ENOSYS);
     // Every way of writing is refused.
     let mut wr = le32(O_RDWR);
     wr.extend(le32(0));
@@ -390,4 +395,22 @@ fn readdirplus_gives_each_entry_its_attributes_and_counts_it_as_a_lookup() {
     let a = u64_at(&lookup(&s, d, "a.txt").1, 0);
     s.handle(&req(FORGET, a, &le64(2)));
     assert_eq!(call(&s, GETATTR, a, &[0u8; 16]).0, -ENOENT);
+}
+
+#[test]
+fn only_a_read_only_server_takes_no_open() {
+    let mut body = Vec::new();
+    body.extend(le32(7));
+    body.extend(le32(38));
+    body.extend(le32(0));
+    body.extend(le32(NO_OPEN_SUPPORT | ASYNC_READ));
+    body.extend([0u8; 48]);
+    let (rw, _) = server();
+    assert_eq!(u32_at(&ok(&rw, INIT, 0, &body), 12), ASYNC_READ);
+    let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+    let ro = Server::read_only(fs.as_dyn(), fs.modes());
+    assert_eq!(
+        u32_at(&ok(&ro, INIT, 0, &body), 12),
+        ASYNC_READ | NO_OPEN_SUPPORT
+    );
 }

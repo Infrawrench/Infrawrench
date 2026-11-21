@@ -116,6 +116,11 @@ const MAX_PAGES_FLAG: u32 = 1 << 22;
 /// than one per file; the kernel decides when it is worth it.
 const DO_READDIRPLUS: u32 = 1 << 13;
 const READDIRPLUS_AUTO: u32 = 1 << 14;
+/// A read-only server answers `OPEN` with `ENOSYS` when this is agreed:
+/// the kernel then sends no `OPEN` or `RELEASE` at all, reads by node,
+/// and keeps a file's pages across opens, so a file already in the
+/// machine costs no round trip to open.
+const NO_OPEN_SUPPORT: u32 = 1 << 17;
 const WANTED: u32 = ASYNC_READ
     | ATOMIC_O_TRUNC
     | BIG_WRITES
@@ -412,13 +417,16 @@ impl Server {
             LINK => self.link(node, &mut args),
             OPEN => self.open(node, &mut args),
             CREATE => self.create(node, &mut args),
-            READ => self.read(&mut args),
+            READ => self.read(node, &mut args),
             WRITE => self.write(&mut args),
             RELEASE | RELEASEDIR => self.release(&mut args),
             OPENDIR => self.opendir(node),
             READDIR => self.readdir(&mut args, false),
             READDIRPLUS => self.readdir(&mut args, true),
             STATFS => Ok(statfs()),
+            // Nothing to flush in what nothing writes: the kernel stops
+            // asking.
+            FLUSH if self.read_only => Err(ENOSYS),
             FLUSH | FSYNC | FSYNCDIR | SYNCFS => Ok(Vec::new()),
             _ => Err(ENOSYS),
         };
@@ -503,11 +511,15 @@ impl Server {
         if major < KERNEL_VERSION {
             return Err(EIO);
         }
+        let mut wanted = WANTED;
+        if self.read_only {
+            wanted |= NO_OPEN_SUPPORT;
+        }
         Ok(Out::default()
             .u32(KERNEL_VERSION)
             .u32(KERNEL_MINOR)
             .u32(max_readahead)
-            .u32(flags & WANTED)
+            .u32(flags & wanted)
             .u16(16) // max_background
             .u16(12) // congestion_threshold
             .u32(MAX_IO) // max_write
@@ -760,6 +772,10 @@ impl Server {
         if self.read_only && (flags & O_ACCMODE != 0 || flags & O_TRUNC != 0) {
             return Err(EROFS);
         }
+        if self.read_only {
+            // Reads come by node (`read_node`): see `NO_OPEN_SUPPORT`.
+            return Err(ENOSYS);
+        }
         let fh = self.open_file(&path, flags & !(O_CREAT | O_EXCL), false)?;
         let keep = if self.read_only { FOPEN_KEEP_CACHE } else { 0 };
         Ok(Out::default().u64(fh).u32(keep).u32(0).done())
@@ -791,15 +807,42 @@ impl Server {
         self.lock().handles.get(&fh).cloned().ok_or(EBADF)
     }
 
-    fn read(&self, args: &mut Args<'_>) -> Answer {
+    fn read(&self, node: u64, args: &mut Args<'_>) -> Answer {
         let fh = args.u64()?;
         let offset = args.u64()?;
         let size = args.u32()?.min(MAX_IO) as usize;
+        // A read-only server opens nothing: the kernel reads by node.
+        if self.read_only && !self.lock().handles.contains_key(&fh) {
+            return self.read_node(node, offset, size);
+        }
         let handle = self.file(fh)?;
         let Handle::File(file) = handle.as_ref() else {
             return Err(EISDIR);
         };
         let mut file = file.lock().unwrap_or_else(|e| e.into_inner());
+        block_on(file.seek(std::io::SeekFrom::Start(offset))).map_err(io_errno)?;
+        let mut buf = vec![0u8; size];
+        let mut got = 0;
+        while got < size {
+            let n = block_on(file.read(&mut buf[got..])).map_err(io_errno)?;
+            if n == 0 {
+                break;
+            }
+            got += n;
+        }
+        buf.truncate(got);
+        Ok(buf)
+    }
+
+    /// Reads `size` bytes at `offset` of the file `node` names.
+    fn read_node(&self, node: u64, offset: u64, size: usize) -> Answer {
+        let path = self.path_of(node)?;
+        let mut file = self
+            .fs
+            .new_open_options()
+            .read(true)
+            .open(&path)
+            .map_err(errno)?;
         block_on(file.seek(std::io::SeekFrom::Start(offset))).map_err(io_errno)?;
         let mut buf = vec![0u8; size];
         let mut got = 0;
