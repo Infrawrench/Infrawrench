@@ -411,6 +411,29 @@ tar -C "$root/usr/local" -xzf "$dl/go.tar.gz" --no-same-owner
 ln -sf ../go/bin/go "$root/usr/local/bin/go"
 ln -sf ../go/bin/gofmt "$root/usr/local/bin/gofmt"
 
+# goenv's binary on the PATH and GOENV_ROOT, where the Go versions and their
+# shims go, in /root/.goenv, as for rbenv: shims for `go` and `gofmt` from
+# the start (a stand-in version lends the names), which run the Go above
+# until a version is chosen. goenv 3 installs gopls, golangci-lint,
+# staticcheck and delve after every `goenv install` unless told not to:
+# 51 s and 150 MB more a version, measured on ci-1, so it is told not to.
+read -r v s < <(release_line goenv)
+fetch "https://github.com/go-nv/goenv/releases/download/$v/goenv_${v}_linux_$goarch.tar.gz" "$s" "goenv.tar.gz"
+rm -rf "$work/goenv"
+mkdir -p "$work/goenv"
+tar -C "$work/goenv" -xzf "$dl/goenv.tar.gz" --no-same-owner goenv
+install -m 0755 "$work/goenv/goenv" "$root/usr/local/bin/goenv"
+install -d "$root/root/.goenv/versions" "$root/root/.goenv/shims"
+printf 'enabled: false\ntools: []\n' >"$root/root/.goenv/default-tools.yaml"
+stand_in="$root/root/.goenv/versions/iwci-shim-names/bin"
+install -d "$stand_in"
+for name in go gofmt; do
+  install -m 0755 /dev/null "$stand_in/$name"
+done
+in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
+rm -rf "$root/root/.goenv/versions/iwci-shim-names"
+[[ -x "$root/root/.goenv/shims/go" ]] || die "goenv rehash made no shims"
+
 read -r v s < <(release_line rustup)
 fetch "https://static.rust-lang.org/rustup/archive/$v/$rusttriple/rustup-init" "$s" "rustup-init"
 install -m 0755 "$dl/rustup-init" "$root/tmp/rustup-init"
@@ -470,14 +493,21 @@ EOF
 # Everything above is on the default PATH already; this records the rest
 # for shells and anything that reads pam_env's file.
 # The agent reads it too, so these are every job's (a job's `env:` wins).
-# rbenv's shims come first: with no version chosen they run the system
-# Ruby. BASH_ENV makes `nvm` a command in `bash` scripts (see below).
+# goenv's and rbenv's shims come first: with no version chosen they run
+# the Go in /usr/local and the system Ruby. Go keeps its usual GOPATH and
+# build cache (goenv would otherwise move both per version, the build
+# cache into the versions it caches). BASH_ENV makes `nvm` a command in
+# `bash` scripts (see below).
 # A Ruby that ruby-build compiles comes without its documentation, which
 # takes minutes and nobody reads in CI.
 cat >"$root/etc/environment" <<'EOF'
-PATH="/root/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PATH="/root/.goenv/shims:/root/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 NVM_DIR="/root/.nvm"
 RBENV_ROOT="/root/.rbenv"
+GOENV_ROOT="/root/.goenv"
+GOENV_DISABLE_GOPATH="1"
+GOENV_DISABLE_GOCACHE="1"
+GOENV_ASSUME_YES="1"
 BASH_ENV="/etc/iwci/bash_env"
 RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
@@ -593,7 +623,8 @@ cat >"$stage/image.json" <<EOF
   "features": ["files-virtiofs"],
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
-    { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 }
+    { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
+    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 }
   ]
 }
 EOF
