@@ -583,15 +583,85 @@ jobs:
             "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
+  # The standalone CLI (KNOWLEDGE.md "Standalone CLI"): the desktop app's CLI
+  # as a Node single executable per platform, plus the .debs that go to the
+  # APT repository beside the app's and the npm tarball. Built natively on
+  # each platform: the executable embeds a V8 code cache, which only loads
+  # where it was compiled, and macOS needs codesign. Only the packages the
+  # bundle reads are built, not the desktop app's whole closure.
+  cli-build:
+    strategy:
+      matrix:
+        runner:
+          [
+            ubuntu-24.04,
+            ubuntu-24.04-arm,
+            macos-15,
+            macos-15-intel,
+            windows-2025-vs2026,
+            windows-11-arm,
+          ]
+    runs-on: ${{ matrix.runner }}
+    name: Build the standalone CLI on ${{ matrix.runner }}
+    needs: [check-if-release]
+    if: ${{ needs.check-if-release.outputs.package-version != '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: Skip workerd build (unsupported on Windows ARM64)
+        if: matrix.runner == 'windows-11-arm'
+        shell: bash
+        run: 'sed -i "s/workerd: true/workerd: false/" pnpm-workspace.yaml'
+      # No install scripts: the bundle needs no native build and no Electron binary.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build what the bundle reads
+        run: pnpm turbo build --filter=@infrawrench/client-core --filter=@infrawrench/api-contract --filter=@infrawrench/plugin-base
+      - name: Build the bundle and the executable
+        shell: bash
+        working-directory: app/packages/desktop
+        run: |
+          set -euo pipefail
+          node scripts/build-cli.mjs
+          node scripts/package-cli.mjs
+      # One npm tarball per release, from the Linux x64 runner.
+      - name: Pack the npm package
+        if: matrix.runner == 'ubuntu-24.04'
+        working-directory: app/packages/desktop
+        run: node scripts/pack-cli-npm.mjs
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp app/packages/desktop/out/cli/release/ \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/cli/" \
+            --recursive --endpoint-url "${R2_ENDPOINT}"
+          if [ -d app/packages/desktop/out/cli/npm ]; then
+            aws s3 cp app/packages/desktop/out/cli/npm/ \
+              "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/cli-npm/" \
+              --recursive --endpoint-url "${R2_ENDPOINT}"
+          fi
+
   publish-release:
     runs-on: ubuntu-24.04-arm
     name: Publish release
-    needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
+    needs:
+      [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build, cli-build]
     # A skip propagates through the whole needs graph, not just one hop: the
     # build jobs run past a skipped rust-tar with !cancelled(), but that skip
     # still reaches here through them, so this condition has to spell out the
     # results it wants too — !cancelled() turns off the implicit success gate.
-    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.linux-arm64-build.result == 'success' && needs.linux-x64-build.result == 'success' && needs.macos-build.result == 'success' && needs.windows-build.result == 'success' }}
+    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.linux-arm64-build.result == 'success' && needs.linux-x64-build.result == 'success' && needs.macos-build.result == 'success' && needs.windows-build.result == 'success' && needs.cli-build.result == 'success' }}
     steps:
       - name: Download artifacts from R2
         env:
@@ -635,6 +705,13 @@ jobs:
           # Windows — installers already named correctly via win.artifactName.
           mv dist-windows-2025-vs2026/*.exe dist/
           mv dist-windows-11-arm/*.exe dist/
+
+          # The standalone CLI: archives with no version in their names, so
+          # releases/latest/download/<name> is what install.sh fetches, and
+          # its .debs, which the apt step below uploads with the app's.
+          mv cli/* dist/
+          (cd dist && sha256sum infrawrench-cli-*.tar.gz infrawrench-cli-*.zip infrawrench-cli_*.deb > infrawrench-cli-SHA256SUMS)
+          cat dist/infrawrench-cli-SHA256SUMS
       - name: Merge updater metadata
         run: |
           set -eo pipefail
@@ -652,7 +729,7 @@ jobs:
           mv dist-linux-x64/latest-linux.yml dist/
           mv dist-linux-arm64/latest-linux-arm64.yml dist/
       - name: Clean staging dirs
-        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-windows-2025-vs2026 dist-windows-11-arm repo
+        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-windows-2025-vs2026 dist-windows-11-arm cli cli-npm repo
       - name: Create release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
@@ -667,3 +744,51 @@ jobs:
         env:
           WORKERAPT_KEY: ${{ secrets.APT_KEY }}
         run: npx -y workerapt-upload@0.1.0 --repo infrawrench --dist desktop --cat stable --url https://apt.infrawrench.com/ dist/*.deb
+
+  # `@infrawrench/cli` on npm: the tarball cli-build packed from the bundle
+  # this release's executables embed, at the app's version. Trusted
+  # publishing (no stored token; provenance is automatic): the package's
+  # trusted publisher on npmjs.com is this repository, this workflow file and
+  # the `release` environment. Skip-if-present, so a re-run after a later
+  # failure does not fail here.
+  publish-cli-npm:
+    runs-on: ubuntu-24.04
+    name: Publish the standalone CLI to npm
+    needs: [check-if-release, publish-release]
+    if: ${{ !cancelled() && needs.publish-release.result == 'success' }}
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Download the tarball from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/cli-npm/" npm/ \
+            --recursive --endpoint-url "${R2_ENDPOINT}"
+          ls -l npm/
+      # Trusted publishing needs npm >= 11.5.1; the bundled CLI may be older.
+      # Pinned rather than @latest: this job holds the id-token that publishes.
+      - run: npm install -g npm@11.21.0
+      - name: Publish
+        env:
+          VERSION: ${{ needs.check-if-release.outputs.package-version }}
+        run: |
+          set -euo pipefail
+          TARBALL="npm/infrawrench-cli-${VERSION}.tgz"
+          test -f "$TARBALL"
+          if npm view "@infrawrench/cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::@infrawrench/cli@${VERSION} is already published; skipping."
+            exit 0
+          fi
+          npm publish "$TARBALL" --access public

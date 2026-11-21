@@ -25,6 +25,8 @@ import {
 } from "./context";
 import { CloudApi, type OrgInfo } from "./effect/cloud-api";
 import { wire } from "./effect/wire";
+import { NotSignedIn } from "./effect/errors";
+import { isStandaloneCli } from "./edition";
 import type { CostQueryResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
@@ -124,11 +126,15 @@ function followScroll(scroll: number, index: number, visible: number, total: num
 
 /** The full-screen dashboard, until `q`. The caller checks that both ends are a terminal. */
 export async function runTui(runner: TuiRunner): Promise<void> {
-  const scopes: Scope[] = [{ kind: "local", org: null, label: "Local" }];
+  // The standalone CLI has no local workspace (`./edition.ts`).
+  const scopes: Scope[] = isStandaloneCli() ? [] : [{ kind: "local", org: null, label: "Local" }];
   // Signed out is the local workspace alone, not an error.
   for (const org of await runner(CloudApi.use((api) => api.orgs))) {
     scopes.push({ kind: "org", org, label: org.displayName });
   }
+  // ...unless there is no local workspace either. `run.ts` prints a typed
+  // failure thrown from here as its one line.
+  if (scopes.length === 0) throw new NotSignedIn();
 
   const state: TuiState = {
     scopes,

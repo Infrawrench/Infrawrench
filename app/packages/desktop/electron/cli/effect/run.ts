@@ -24,9 +24,10 @@ import { c, colorIsEnabled, printErr, println } from "../output";
 import { CloudApi } from "./cloud-api";
 import type { CliCommandError } from "./errors";
 import { CliPlatform } from "./platform";
-import { HELP } from "../help";
+import { rootHelp } from "../help";
+import { desktopOnlyCommand } from "../edition";
 import { markPhase } from "../../startup-timing";
-import { loadCommands } from "./commands";
+import { isDesktopOnlyHere, loadCommands } from "./commands";
 import { ROOT_NAME, makeRoot } from "./root";
 import { CliHost } from "./session";
 
@@ -52,7 +53,7 @@ const presenter: CliOutput.Presenter = {
       const formatter = CliOutput.defaultFormatter({ colors: colorIsEnabled() });
       switch (event._tag) {
         case "Help":
-          println(isRoot(event.commandPath) ? HELP : formatter.formatHelpDoc(event.helpDoc));
+          println(isRoot(event.commandPath) ? rootHelp() : formatter.formatHelpDoc(event.helpDoc));
           return;
         case "InvalidInvocation": {
           if (!isRoot(event.commandPath)) {
@@ -61,6 +62,10 @@ const presenter: CliOutput.Presenter = {
             return;
           }
           const typo = unknownCommand(event.errors);
+          if (typo !== undefined && isDesktopOnlyHere(typo)) {
+            printErr(desktopOnlyCommand(typo));
+            return;
+          }
           if (typo !== undefined) {
             printErr(`Unknown command "${typo}". Run \`infrawrench help\`.`);
             return;

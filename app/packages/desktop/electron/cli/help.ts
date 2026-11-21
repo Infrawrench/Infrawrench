@@ -9,6 +9,8 @@
 // verbs under a word, the cross-command flag notes and which commands read
 // them). Each command's own `--help` is `effect/cli`'s, generated from its
 // flags.
+import { isStandaloneCli } from "./edition";
+
 export const HELP = `infrawrench: manage your infrastructure from the terminal
 
 USAGE
@@ -528,3 +530,44 @@ FLAGS
 
 The CLI shares the desktop app's data: the same local accounts, the same
 cloud session, the same organizations. Sign in once, use both.`;
+
+/**
+ * Entries of {@link HELP} the standalone CLI leaves out, whole lines each:
+ * the desktop-only commands (`DESKTOP_ONLY_COMMANDS` in `effect/commands.ts`)
+ * and the flag only they take. A test checks every one is still in HELP, so
+ * a reworded entry fails rather than reappearing.
+ */
+export const DESKTOP_ONLY_HELP: ReadonlyArray<string> = [
+  `  apps <resource>     graphical applications installed on a Linux host
+                      (--check what it is missing, --install to fix it)
+                      (--launch <id> opens one in the app; --key, --user to connect)
+`,
+  `  cli install         install this shell command (also: uninstall, status)
+`,
+  `  --launch <app-id>   apps: open this application in the desktop app
+`,
+];
+
+/** Lines the standalone CLI rewords rather than drops: [desktop, standalone]. */
+export const STANDALONE_REWORDED: ReadonlyArray<readonly [string, string]> = [
+  [
+    "  --user <name>       ssh-fanout, apps: username override for VM hosts",
+    "  --user <name>       ssh-fanout: username override for VM hosts",
+  ],
+];
+
+export const DESKTOP_FOOTER = `The CLI shares the desktop app's data: the same local accounts, the same
+cloud session, the same organizations. Sign in once, use both.`;
+
+const STANDALONE_FOOTER = `This is the standalone CLI: it works with your Infrawrench Cloud
+organizations and keeps its own session (\`infrawrench login\`). Local
+accounts (--local) and apps need the desktop app's \`infrawrench\` command.`;
+
+/** The root help this build prints: {@link HELP}, less what it cannot run. */
+export function rootHelp(): string {
+  if (!isStandaloneCli()) return HELP;
+  let text = HELP;
+  for (const entry of DESKTOP_ONLY_HELP) text = text.replace(entry, "");
+  for (const [desktop, standalone] of STANDALONE_REWORDED) text = text.replace(desktop, standalone);
+  return text.replace(DESKTOP_FOOTER, STANDALONE_FOOTER);
+}

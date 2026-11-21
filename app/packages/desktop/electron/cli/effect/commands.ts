@@ -8,6 +8,7 @@
 // its line in `../help.ts`. The keys are `commandNames` (`root.ts`), and
 // `cli-effect.test.ts` checks each loader answers a command of that name.
 import { help, tui } from "../commands/tui";
+import { isStandaloneCli } from "../edition";
 
 export const COMMAND_LOADERS = {
   login: () => import("../commands/auth").then((m) => m.login),
@@ -135,8 +136,24 @@ export function commandWordsIn(argv: ReadonlyArray<string>): ReadonlyArray<Comma
   return (Object.keys(COMMAND_LOADERS) as CommandName[]).filter((name) => named.has(name));
 }
 
+/**
+ * Commands that drive the desktop app itself, so the standalone CLI
+ * (`../edition.ts`) leaves them out: `cli` installs the shim that launches
+ * the app, and `apps` streams a Linux application into one of its tabs.
+ * `run.ts` answers either name with `desktopOnlyCommand` there.
+ */
+export const DESKTOP_ONLY_COMMANDS: ReadonlySet<CommandName> = new Set<CommandName>([
+  "cli",
+  "apps",
+]);
+
+/** Whether this build of the CLI offers `name` (`DESKTOP_ONLY_COMMANDS`). */
+export const isDesktopOnlyHere = (name: string): boolean =>
+  isStandaloneCli() && isCommandName(name) && DESKTOP_ONLY_COMMANDS.has(name);
+
 /** Load the commands {@link commandWordsIn} names; an alias and its command once. */
 export async function loadCommands(argv: ReadonlyArray<string>): Promise<AnyCommand[]> {
-  const loaded = await Promise.all(commandWordsIn(argv).map((name) => COMMAND_LOADERS[name]()));
+  const names = commandWordsIn(argv).filter((name) => !isDesktopOnlyHere(name));
+  const loaded = await Promise.all(names.map((name) => COMMAND_LOADERS[name]()));
   return [...new Set(loaded)];
 }

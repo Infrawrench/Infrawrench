@@ -1,10 +1,13 @@
 ---
 title: Command-line interface
-description: Run Infrawrench from any terminal with an interactive TUI dashboard, plus scriptable JSON and text output that uses the desktop app's accounts and cloud session.
+description: Run Infrawrench from any terminal with an interactive TUI dashboard, plus scriptable JSON and text output. Use it through the desktop app, or install it on its own from npm, APT or a single executable.
 sidebar_order: 13
 ---
 
-> **Desktop app required.** The `infrawrench` command runs through the desktop app, so it sees the same data: your local accounts, your cloud session, and every organization you belong to.
+The `infrawrench` command comes two ways:
+
+- **Through the desktop app.** The app installs a shell command that runs the CLI inside it, so it sees the same data: your local accounts, your cloud session, and every organization you belong to. See [Install the shell command](#install-the-shell-command).
+- **On its own.** The standalone CLI needs no desktop app. It works with your Infrawrench Cloud organizations, which makes it the one for servers, CI jobs and machines without a desktop. See [Install without the desktop app](#install-without-the-desktop-app).
 
 You can use the CLI in three ways:
 
@@ -30,9 +33,55 @@ infrawrench cli uninstall
 
 After you update the app, `infrawrench cli status` warns you if the launcher points at an older build. Run `infrawrench cli install` again to refresh it.
 
+## Install without the desktop app
+
+The standalone CLI is the same `infrawrench` command, built to run without the desktop app. Pick whichever install suits the machine.
+
+**npm** (any platform with Node.js 22 or newer):
+
+```
+npm install -g @infrawrench/cli
+npx @infrawrench/cli whoami          # or run it once without installing
+```
+
+**Debian and Ubuntu**, from the same APT repository as the desktop app, so `apt upgrade` keeps it current:
+
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.infrawrench.com/infrawrench/key.asc | sudo tee /etc/apt/keyrings/infrawrench.asc > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/infrawrench.asc] https://apt.infrawrench.com/infrawrench desktop stable" | sudo tee /etc/apt/sources.list.d/infrawrench.list > /dev/null
+sudo apt-get update
+sudo apt install infrawrench-cli
+```
+
+If you already added the repository for the desktop app, `sudo apt install infrawrench-cli` is all you need. The two packages install side by side: the app is `Infrawrench`, the CLI is `infrawrench`.
+
+**Install script** (Linux and macOS, x64 and arm64). It downloads a single executable with nothing else to install, checks it against the release's checksums, and puts it in `/usr/local/bin`, or in `~/.local/bin` if that isn't writable:
+
+```
+curl -fsSL https://infrawrench.com/cli/install.sh | sh
+```
+
+Set `INFRAWRENCH_INSTALL_DIR` to choose another directory, or `INFRAWRENCH_VERSION` (for example `2.4.0`) to install a particular release. Run the script again to update. It won't replace the desktop app's shell command if that's already at the same path.
+
+**Download it yourself.** Each [release](https://github.com/Infrawrench/Infrawrench/releases/latest) carries `infrawrench-cli-<os>-<arch>.tar.gz` for Linux and macOS, `.zip` for Windows, and `infrawrench-cli-SHA256SUMS` to check them against. Unpack it and put `infrawrench` on your `PATH`.
+
+### How it differs from the desktop app's CLI
+
+- **It keeps its own sign-in.** Run `infrawrench login` once. The session is stored in `~/.config/infrawrench-cli` (`~/Library/Application Support/infrawrench-cli` on macOS, `%APPDATA%\infrawrench-cli` on Windows); set `INFRAWRENCH_CONFIG_DIR` to keep it somewhere else. The folder is readable only by you, and its key sits beside the session rather than in your OS keychain, the way most CLIs store their tokens.
+- **It works with your cloud organizations only.** Local accounts live in the desktop app, so `--local` and `apps` ask you to use the desktop app's command instead, and listings show no "Local" workspace.
+- **Everything else is the same**, command for command, and it shares the desktop app's version number.
+
+`login` opens your browser and waits for it on `127.0.0.1:43117`. On a server you reach over SSH, forward that port first, then open the printed link in your local browser:
+
+```
+ssh -L 43117:127.0.0.1:43117 my-server
+infrawrench login
+```
+
 ## Sign in and pick an organization
 
-The CLI uses the desktop app's session. If you're already signed in to the app, there's nothing to do: `infrawrench whoami` shows your account. You can also sign in from the CLI:
+The desktop app's CLI uses the app's session. If you're already signed in to the app, there's nothing to do: `infrawrench whoami` shows your account. You can also sign in from the CLI (the [standalone CLI](#install-without-the-desktop-app) always signs in this way):
 
 ```
 infrawrench login     # opens your browser (PKCE), then returns to the terminal

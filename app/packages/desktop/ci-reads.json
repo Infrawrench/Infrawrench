@@ -1,0 +1,9 @@
+{
+  "reads": [
+    {
+      "files": ["app/packages/website/public/cli/install.sh"],
+      "from": ["electron/__tests__/cli-install-script.test.ts"],
+      "why": "Runs the standalone CLI's install script, which the website serves, against a fake release."
+    }
+  ]
+}

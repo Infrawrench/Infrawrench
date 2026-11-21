@@ -18,6 +18,7 @@ import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { CliSession } from "../effect/session";
 import { c, println } from "../output";
+import { isStandaloneCli } from "../edition";
 
 // Loopback redirect port for the PKCE callback. Must be whitelisted as
 // http://127.0.0.1:43117/callback on the WorkOS application.
@@ -161,7 +162,9 @@ export const whoami = Command.make(
     }
     if (!status.authenticated) {
       return yield* Print.line(
-        "Not signed in. Run `infrawrench login`, or sign in from the desktop app.",
+        isStandaloneCli()
+          ? "Not signed in. Run `infrawrench login`."
+          : "Not signed in. Run `infrawrench login`, or sign in from the desktop app.",
       );
     }
     yield* Print.line(`Signed in as ${c.bold(status.email ?? "unknown")}`);

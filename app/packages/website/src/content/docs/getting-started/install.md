@@ -53,6 +53,10 @@ The prompt can show up a little while after the download finishes. If an update 
 
 ![Update-ready dialog showing the version number with Later and Restart now buttons](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/update-ready-dialog.png)
 
+### Command line
+
+The desktop app can put an `infrawrench` command on your `PATH`. To use the CLI without the app, on a server or in CI, install it from npm, APT or a single executable instead. See [Command-line interface](../features/cli.md#install-without-the-desktop-app).
+
 ## Web app
 
 ### Create an account
