@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "license": "BUSL-1.1",
   "private": true,
-  "publisher": "infrawrench",
+  "publisher": "Infrawrench",
   "icon": "media/icon.png",
   "homepage": "https://infrawrench.com/docs/features/vscode-extension",
   "categories": [
