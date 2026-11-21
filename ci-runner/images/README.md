@@ -11,7 +11,7 @@
 
 Both aim at what GitHub's hosted runners have for everyday CI ([Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [Windows 11 Arm64](https://github.com/actions/runner-images/blob/main/images/windows/Windows11-VS2026-Arm64-Readme.md)) without the very large items.
 
-**Status:** written and checked statically (shellcheck, xmllint, every kernel config symbol against the pinned kernel's Kconfig, every pinned sum fetched from its publisher), but neither image has been built or booted yet: they were written on a machine without KVM. Expect the first build of each to need fixes.
+**Status:** written and checked statically (shellcheck, xmllint, every kernel config symbol against the pinned kernel's Kconfig, every pinned sum fetched from its publisher), `ubuntu-24.04` (x86_64) was first built and booted on ci-1 on 2026-11-21; that first build needed the legacy xtables options in `kernel.config`, `ca-certificates` in the bootstrap (the snapshot archive redirects to https), and the agent to accept the `/dev` the kernel mounts itself. The aarch64 build and `windows-11-arm` have still not been built or booted.
 
 ## Where the runner expects them
 

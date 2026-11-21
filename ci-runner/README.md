@@ -5317,10 +5317,10 @@ the routes; the short version:
 
 ## Known limitations
 
-- **Virtual machines are new.** `platform: linux` is tested against the
-  real agent over pipes and with a fake machine in the scheduler, but the
-  image (`images/linux`) has not yet been built and booted on a KVM host,
-  so expect the first real runs to find problems. No machine job can use
+- **Virtual machines are new.** `platform: linux` has run on one KVM host
+  so far (ci-1, x86_64, from 2026-11-21), where machine jobs boot in about
+  four seconds and hand files to each other through `/tmp/workflow` over
+  virtio-fs; the aarch64 image has not been built yet. No machine job can use
   the task cache. `platform: windows` is turned off: the parser refuses it
   and no runner offers it (`VmOs::enabled`).
 - **File locks need a C library that asks for them.** The runner keeps
