@@ -52,7 +52,7 @@ There is no init system, so nothing runs Docker's daemon until a job asks: `iwci
 
 ### The kernel
 
-The newest kernel.org longterm series (6.18, pinned to 6.18.63 and checked against the sum in kernel.org's signed `sha256sums.asc`), `make defconfig` plus [`linux/kernel.config`](linux/kernel.config), merged with `scripts/kconfig/merge_config.sh`. No modules: everything is built in, including virtio over MMIO and PCI, erofs with lz4, overlayfs, tmpfs, ext4, FUSE, cgroup v2 controllers, namespaces, seccomp, BPF, bridge, veth, vxlan, nf_tables with the iptables compatibility layer, `IP_PNP`, kvm-clock and (x86_64) PVH. The build fails if a line of the fragment did not survive `olddefconfig`, so an upstream rename stops the build instead of dropping a feature.
+The newest kernel.org longterm series (6.18, pinned to 6.18.63 and checked against the sum in kernel.org's signed `sha256sums.asc`), `make defconfig` plus [`linux/kernel.config`](linux/kernel.config), merged with `scripts/kconfig/merge_config.sh`. No modules: everything is built in, including virtio over MMIO and PCI, erofs with lz4, overlayfs, tmpfs, ext4, FUSE and virtio-fs (the run's `/tmp/workflow`, served by the runner), cgroup v2 controllers, namespaces, seccomp, BPF, bridge, veth, vxlan, nf_tables with the iptables compatibility layer, `IP_PNP`, kvm-clock and (x86_64) PVH. The build fails if a line of the fragment did not survive `olddefconfig`, so an upstream rename stops the build instead of dropping a feature.
 
 ### Building it
 

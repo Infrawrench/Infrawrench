@@ -504,3 +504,90 @@ fn a_bad_layer_is_refused() {
     assert!(object_name("12.list") && object_name("3.0"));
     assert!(!object_name("x.list") && !object_name("1.") && !object_name("1.a/b"));
 }
+
+/// A FUSE request as a machine's kernel writes it (`iwci_vm::fuse`).
+fn fuse_req(opcode: u32, node: u64, body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&((40 + body.len()) as u32).to_le_bytes());
+    out.extend_from_slice(&opcode.to_le_bytes());
+    out.extend_from_slice(&1u64.to_le_bytes());
+    out.extend_from_slice(&node.to_le_bytes());
+    out.resize(40, 0);
+    out.extend_from_slice(body);
+    out
+}
+
+/// The reply's error and body.
+fn fuse_call(
+    server: &iwci_vm::fuse::Server,
+    opcode: u32,
+    node: u64,
+    body: &[u8],
+) -> (i32, Vec<u8>) {
+    let out = server.handle(&fuse_req(opcode, node, body)).unwrap();
+    (
+        i32::from_le_bytes(out[4..8].try_into().unwrap()),
+        out[16..].to_vec(),
+    )
+}
+
+#[test]
+fn a_machine_sees_another_runners_file_at_once_and_waits_only_to_read_it() {
+    let (_, one, two) = pair();
+    let a = scratch();
+    view(&a).write("/shared.txt", b"from ci-1").unwrap();
+    a.publish(&one, &no_secrets(), CAP);
+    let b = scratch();
+    b.catch_up(&two, "ci-1", 1).unwrap();
+    let server = iwci_vm::fuse::Server::new(view(&b).as_dyn());
+
+    // LOOKUP: listed with its size, nothing fetched yet.
+    let (error, entry) = fuse_call(&server, 1, 1, b"shared.txt\0");
+    assert_eq!(error, 0);
+    let node = u64::from_le_bytes(entry[0..8].try_into().unwrap());
+    assert_eq!(u64::from_le_bytes(entry[48..56].try_into().unwrap()), 9);
+    assert!(b.fs().read("/shared.txt").is_err());
+
+    // OPEN waits for the file alone; with a fetcher running it comes.
+    let reader = Arc::new(two);
+    let _fetching = fetching(&b, reader.clone());
+    let (error, open) = fuse_call(&server, 14, node, &[0u8; 8]);
+    assert_eq!(error, 0);
+    let fh = u64::from_le_bytes(open[0..8].try_into().unwrap());
+    let mut read = Vec::new();
+    read.extend_from_slice(&fh.to_le_bytes());
+    read.extend_from_slice(&0u64.to_le_bytes());
+    read.extend_from_slice(&100u32.to_le_bytes());
+    read.extend_from_slice(&[0u8; 20]);
+    assert_eq!(fuse_call(&server, 15, 0, &read), (0, b"from ci-1".to_vec()));
+
+    // What the machine writes is the job's write: sent once closed.
+    let mut create = Vec::new();
+    create.extend_from_slice(&(0o1u32 | 0o100).to_le_bytes()); // O_WRONLY | O_CREAT
+    create.extend_from_slice(&0o644u32.to_le_bytes());
+    create.extend_from_slice(&0u32.to_le_bytes());
+    create.extend_from_slice(&0u32.to_le_bytes());
+    create.extend_from_slice(b"back.txt\0");
+    let (error, made) = fuse_call(&server, 35, 1, &create);
+    assert_eq!(error, 0);
+    let fh = u64::from_le_bytes(made[128..136].try_into().unwrap());
+    let mut write = Vec::new();
+    write.extend_from_slice(&fh.to_le_bytes());
+    write.extend_from_slice(&0u64.to_le_bytes());
+    write.extend_from_slice(&2u32.to_le_bytes());
+    write.extend_from_slice(&[0u8; 20]);
+    write.extend_from_slice(b"ok");
+    assert_eq!(fuse_call(&server, 16, 0, &write).0, 0);
+    assert_eq!(
+        b.publish(reader.as_ref(), &no_secrets(), CAP),
+        Published::Nothing,
+        "still open"
+    );
+    let mut release = fh.to_le_bytes().to_vec();
+    release.extend_from_slice(&[0u8; 16]);
+    assert_eq!(fuse_call(&server, 18, 0, &release).0, 0);
+    assert_eq!(
+        b.publish(reader.as_ref(), &no_secrets(), CAP),
+        Published::Layer(1)
+    );
+}

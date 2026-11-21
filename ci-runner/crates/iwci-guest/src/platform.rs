@@ -23,6 +23,17 @@ pub trait Platform: Send + Sync {
     fn job_cgroups(&self) -> bool {
         false
     }
+
+    /// Whether it can mount a virtio-fs device.
+    fn virtiofs(&self) -> bool {
+        false
+    }
+
+    /// Mounts the virtio-fs device `tag` at `at` (the run's
+    /// `/tmp/workflow`, served by the runner).
+    fn mount_scratch(&self, _tag: &str, _at: &std::path::Path) -> Result<(), String> {
+        Err("this machine cannot mount a virtio-fs device".into())
+    }
 }
 
 /// No effects at all: tests and `serve-stdio`.
@@ -130,6 +141,41 @@ impl Platform for LinuxMachine {
 
     fn job_cgroups(&self) -> bool {
         true
+    }
+
+    fn virtiofs(&self) -> bool {
+        std::fs::read_to_string("/proc/filesystems").is_ok_and(|text| {
+            text.lines()
+                .any(|l| l.split_whitespace().last() == Some("virtiofs"))
+        })
+    }
+
+    fn mount_scratch(&self, tag: &str, at: &std::path::Path) -> Result<(), String> {
+        use std::os::unix::ffi::OsStrExt;
+        std::fs::create_dir_all(at).map_err(|e| format!("making {}: {e}", at.display()))?;
+        let source = std::ffi::CString::new(tag).map_err(|_| "a tag with a NUL in it")?;
+        let target = std::ffi::CString::new(at.as_os_str().as_bytes())
+            .map_err(|_| "a path with a NUL in it")?;
+        let kind = c"virtiofs";
+        // SAFETY: every pointer is a NUL-terminated string that lives
+        // through the call, and no data is passed.
+        let done = unsafe {
+            libc::mount(
+                source.as_ptr(),
+                target.as_ptr(),
+                kind.as_ptr(),
+                libc::MS_NOSUID | libc::MS_NODEV,
+                std::ptr::null(),
+            )
+        };
+        if done != 0 {
+            return Err(format!(
+                "mounting {tag} at {}: {}",
+                at.display(),
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
     }
 }
 

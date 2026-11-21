@@ -702,11 +702,21 @@ jobs:
   clone, the artifacts of the jobs it needs, lent files and restored
   caches. The clone is a read-only erofs image made once per commit and
   shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
-  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, the run's
-  `/tmp/workflow` (shared with isolate jobs), and, for `changes:`, the
-  clone without what its `.gitignore` ignores. A job's `npm ci` stays in
-  the machine, and artifacts in ignored directories (`dist`) still come
-  back. All of it is at most twice the job's `memory:`.
+  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
+  `changes:`, the clone without what its `.gitignore` ignores. A job's
+  `npm ci` stays in the machine, and artifacts in ignored directories
+  (`dist`) still come back. All of it is at most twice the job's
+  `memory:`.
+- **`/tmp/workflow` is mounted, not copied.** The runner serves the run's
+  scratch directory to the machine over virtio-fs, from its own memory,
+  as the job's view of it: the same directory isolate jobs see, live, in
+  both directions. A file another runner wrote shows at once and is
+  waited for only when the job opens it, and a file the job closes is
+  shared from then on. Nothing of it is copied in or out. A runner whose
+  QEMU has no `vhost-user-fs-device`, or an image whose agent predates it,
+  gets the old way instead: the whole directory copied in before the
+  script (after everything another runner sent has arrived) and what
+  changed copied back after it; the runner's log says so at start.
 - **Network.** The machine's traffic goes through the runner's own gateway
   under the same policy as an isolate's ([Networking](#networking)):
   public addresses only, never the host. `network: false` cuts it off.

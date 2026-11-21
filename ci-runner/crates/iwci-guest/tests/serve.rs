@@ -38,6 +38,7 @@ fn setup(hostname: &str) -> HostMsg {
         time_ms: 1_700_000_000_000,
         hostname: hostname.into(),
         network: Some(Network::standard()),
+        scratch: None,
     })
 }
 
@@ -58,6 +59,7 @@ fn says_hello_then_sets_up_the_machine() {
         time_ms: 0,
         hostname: "job".into(),
         network: None,
+        scratch: None,
     }));
     match host.receive() {
         GuestMsg::Error { message } => assert!(message.contains("protocol"), "{message}"),

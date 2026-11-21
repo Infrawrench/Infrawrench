@@ -68,9 +68,8 @@ impl Machines for VmMachines {
                 sink(err, data);
             }
         };
-        // A copy of `/tmp/workflow` goes in: everything another runner
-        // sent has to be here first.
-        run.scratch.settle()?;
+        let scratch = run.scratch;
+        let settle = move || scratch.settle();
         let outcome = self.host.run(iwci_vm::Job {
             id: &run.job.id,
             os: os(run.vm.os),
@@ -85,7 +84,15 @@ impl Machines for VmMachines {
             cwd: &run.cwd,
             workspace: Some((run.workspace_key.as_str(), run.workspace)),
             fs: run.fs,
-            scratch: run.scratch.fs(),
+            // Served to the machine as the job's view when it can be: it
+            // then waits for another runner's file only when the job opens
+            // it, and what the job writes is shared as it is closed. A
+            // copy otherwise, which needs everything here first.
+            scratch: iwci_vm::Scratch {
+                live: Some(run.scratch.as_dyn()),
+                files: run.scratch.fs(),
+                settle: &settle,
+            },
             scratch_at: iwci_spec::SCRATCH_PATH,
             collect: &run.collect.paths,
             repository: run.collect.repository.as_deref(),

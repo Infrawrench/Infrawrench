@@ -63,6 +63,7 @@ fn a_job_goes_in_runs_and_comes_back() {
                 time_ms: 0,
                 hostname: "iwci".into(),
                 network: Some(Network::standard()),
+                scratch: None,
             },
             STEP,
         )
@@ -189,6 +190,7 @@ fn a_failing_script_reports_its_exit_and_stops_when_asked() {
                 time_ms: 0,
                 hostname: "iwci".into(),
                 network: None,
+                scratch: None,
             },
             STEP,
         )
