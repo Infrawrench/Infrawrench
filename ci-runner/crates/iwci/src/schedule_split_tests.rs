@@ -35,6 +35,11 @@ struct SplitStore {
     helpers: Mutex<HashMap<String, u64>>,
     /// Every claim tried: who, and for which job.
     tried: Mutex<Vec<(String, String)>>,
+    /// Scratch objects, by runner and name, and each runner's layers.
+    scratch: Mutex<HashMap<(String, String), Vec<u8>>>,
+    layers: Mutex<HashMap<String, u64>>,
+    /// Reads of scratch objects that fail before one works.
+    failing_scratch_reads: AtomicUsize,
 }
 
 impl SplitStore {
@@ -185,7 +190,29 @@ impl Split for MemorySplit {
             ended: self.store.ended.load(Ordering::SeqCst),
             primary: Some(self.store.primary.load(Ordering::SeqCst)),
             helpers: self.store.helpers.lock().unwrap().clone(),
+            scratch: self.store.layers.lock().unwrap().clone(),
         })
+    }
+    fn put_scratch(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        self.store
+            .scratch
+            .lock()
+            .unwrap()
+            .insert((self.runner.into(), name.into()), bytes.to_vec());
+        Ok(())
+    }
+    fn get_scratch(&self, runner: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+        fails(&self.store.failing_scratch_reads)?;
+        let scratch = self.store.scratch.lock().unwrap();
+        Ok(scratch
+            .get(&(runner.to_string(), name.to_string()))
+            .cloned())
+    }
+    fn scratch_layer(&self, layer: u64) -> Result<(), String> {
+        let mut layers = self.store.layers.lock().unwrap();
+        let n = layers.entry(self.runner.into()).or_default();
+        *n = (*n).max(layer);
+        Ok(())
     }
     fn timing(&self) -> Timing {
         self.timing
@@ -641,6 +668,7 @@ fn the_primary_runs_again_a_job_whose_artifacts_it_cannot_get() {
         kept: Kept::TaskCache {
             key: "task/a/0123456789abcdef".into(),
         },
+        scratch: 0,
     };
     store
         .done
@@ -1235,6 +1263,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
         kept: Kept::TaskCache {
             key: "task/a/abc".into(),
         },
+        scratch: 0,
     };
     let text = serde_json::to_string(&done).unwrap();
     let back: Done = serde_json::from_str(&text).unwrap();
@@ -1459,6 +1488,7 @@ fn everything_in_another_runners_record_is_masked_where_it_is_read() {
         cpus: None,
         queued_ms: 0,
         kept: Kept::None,
+        scratch: 0,
     };
     store
         .done
@@ -1609,6 +1639,7 @@ fn a_job_whose_outputs_a_helper_could_not_mask_is_run_by_the_primary() {
         cpus: None,
         queued_ms: 0,
         kept: Kept::None,
+        scratch: 0,
     };
     store
         .done
@@ -1656,4 +1687,101 @@ fn outputs_a_helper_wrote_that_hold_no_secret_plan_the_same_on_both() {
     let mut ran: Vec<String> = one.ran.iter().chain(&two.ran).cloned().collect();
     ran.sort();
     assert_eq!(ran, ids(&one), "each job once");
+}
+
+#[test]
+fn what_a_job_writes_to_the_scratch_reaches_the_job_that_needs_it_on_the_other_runner() {
+    // `w` writes its id to /tmp/workflow/shared.txt and `r`, which needs
+    // it, prints the file: once from the helper to the primary, once the
+    // other way.
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  w:\n    using: builtin:scratch-write@1\n  r:\n    using: builtin:scratch-read@1\n    needs: [w]\n",
+    );
+    for (writer, reader) in [("ci-2", "ci-1"), ("ci-1", "ci-2")] {
+        let store = Arc::new(SplitStore::default());
+        store.give("w", writer);
+        store.give("r", reader);
+        let (one, two) = both(
+            &p,
+            &options(Some(primary(&store, PATIENT)), 1),
+            &options(Some(helper(&store, PATIENT)), 4),
+        );
+        assert!(one.report.passed(), "{:#?}", one.report.jobs);
+        assert!(two.report.passed(), "{:#?}", two.report.jobs);
+        let (wrote, read) = if writer == "ci-1" {
+            (&one, &two)
+        } else {
+            (&two, &one)
+        };
+        assert!(wrote.ran.contains(&"w".to_string()), "{writer}");
+        assert!(read.ran.contains(&"r".to_string()), "{reader}");
+        assert_eq!(read.stdout("r"), "w", "{writer} to {reader}");
+        assert_eq!(one.stdout("r"), "w");
+        // Its record names the layer that holds what it wrote.
+        assert_eq!(store.done_of("w").unwrap().scratch, 1);
+        assert_eq!(store.layers.lock().unwrap()[writer], 1);
+    }
+}
+
+#[test]
+fn a_helper_gives_back_a_job_that_wanted_a_file_only_the_primary_may_have() {
+    // The primary ran `gate`, and by then one of its jobs that reads a
+    // secret had written /tmp/workflow/shared.txt, which its layer lists
+    // as withheld. `r` needs `gate` and reads the file: on the helper it
+    // cannot, so the helper hands it back rather than fail it.
+    let p = plan(
+        "name: x\nsplit: true\njobs:\n  gate:\n    using: builtin:ok@1\n  r:\n    using: builtin:scratch-read@1\n    needs: [gate]\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    store.give("gate", "ci-1");
+    store.give("r", "ci-2");
+    let layer = Layer {
+        entries: vec![LayerEntry::Withheld {
+            path: "/shared.txt".into(),
+            size: 5,
+        }],
+    };
+    store.scratch.lock().unwrap().insert(
+        ("ci-1".into(), "1.list".into()),
+        serde_json::to_vec(&layer).unwrap(),
+    );
+    store.layers.lock().unwrap().insert("ci-1".into(), 1);
+    let gate = Done {
+        runner: "ci-1".into(),
+        result: Status::Passed,
+        blocks: false,
+        execution: Some(Execution::default()),
+        changes: Vec::new(),
+        commit: None,
+        outputs: BTreeMap::new(),
+        caches: Vec::new(),
+        downloads: Vec::new(),
+        notes: Vec::new(),
+        duration_ms: 5,
+        peak_memory_mib: 0,
+        held_memory_mib: 0,
+        cpus: None,
+        queued_ms: 0,
+        kept: Kept::None,
+        scratch: 1,
+    };
+    store
+        .done
+        .lock()
+        .unwrap()
+        .insert("gate".into(), serde_json::to_vec(&gate).unwrap());
+    let exec = SplitExec::new();
+    // No primary answers, so the helper ends once it has handed `r` back.
+    let report = go(&p, &exec, &options(Some(helper(&store, FAST)), 2));
+    assert_eq!(exec.ran(), ["r"]);
+    let back = store.back.lock().unwrap().clone();
+    assert!(
+        back.iter().any(|(job, by, _)| job == "r" && by == "ci-2"),
+        "{back:?}"
+    );
+    assert!(
+        store.done_of("r").is_none(),
+        "a job handed back has no record"
+    );
+    assert!(!report.passed());
 }

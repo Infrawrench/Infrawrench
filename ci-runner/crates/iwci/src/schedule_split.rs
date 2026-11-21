@@ -26,9 +26,12 @@
 //!   and runs again one whose artifacts it cannot get. A store that does
 //!   not answer is a job run here.
 //!
-//! Only a pipeline that says `split:` is shared: the run's scratch
-//! directory does not cross runners, and nothing in a pipeline says
-//! whether its jobs use it.
+//! - **`/tmp/workflow` crosses as layers** (`schedule_scratch.rs`): a
+//!   job's record names the layers of its runner that hold what it wrote
+//!   there, and a runner takes those in before the jobs that need it
+//!   start.
+//!
+//! Only a pipeline that says `split:` is shared, for now.
 
 use super::*;
 
@@ -55,6 +58,9 @@ pub struct Seen {
     pub primary: Option<u64>,
     /// The same for each helper, by its name.
     pub helpers: HashMap<String, u64>,
+    /// Each runner's scratch layers stored so far, by its name
+    /// ([`Split::scratch_layer`]).
+    pub scratch: HashMap<String, u64>,
 }
 
 /// How often a split run looks, and how long it waits.
@@ -123,6 +129,16 @@ pub trait Split: Send + Sync {
     /// The primary is finished with this pipeline, or cancelled it.
     fn end(&self);
     fn seen(&self) -> Result<Seen, String>;
+    /// Stores this runner's scratch object `name`: a layer's list
+    /// (`<layer>.list`) or some of its files (`<layer>.<n>`). Every file a
+    /// layer names is stored before its list, and the list before
+    /// [`Split::scratch_layer`] says so.
+    fn put_scratch(&self, name: &str, bytes: &[u8]) -> Result<(), String>;
+    /// `runner`'s scratch object `name`.
+    fn get_scratch(&self, runner: &str, name: &str) -> Result<Option<Vec<u8>>, String>;
+    /// Says this runner's scratch layers up to `layer` are all stored, for
+    /// [`Split::seen`].
+    fn scratch_layer(&self, layer: u64) -> Result<(), String>;
     fn timing(&self) -> Timing {
         Timing::default()
     }
@@ -168,10 +184,15 @@ pub struct Done {
     pub cpus: Option<u32>,
     pub queued_ms: u64,
     pub kept: Kept,
+    /// The scratch layers of its runner that hold what it wrote to
+    /// `/tmp/workflow`: a runner takes them in before the jobs that need
+    /// it start there.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub scratch: u64,
 }
 
 impl Done {
-    fn of(runner: &str, report: &JobReport, kept: Kept, mask: &Masker) -> Self {
+    fn of(runner: &str, report: &JobReport, kept: Kept, scratch: u64, mask: &Masker) -> Self {
         let text = |t: &String| mask.mask(t);
         Done {
             runner: runner.to_string(),
@@ -217,6 +238,7 @@ impl Done {
             cpus: report.cpus,
             queued_ms: report.queued_ms,
             kept,
+            scratch,
         }
     }
 }
@@ -481,6 +503,9 @@ pub(super) struct Sharing<'a> {
     pub split: &'a dyn Split,
     pub spec: iwci_spec::SplitSpec,
     pub helper: bool,
+    /// The most this runner may send of the run's `/tmp/workflow`, in
+    /// all ([`Scratch::publish`]).
+    pub scratch_cap: u64,
     /// Jobs whose record this runner wrote or has taken in.
     settled: Mutex<HashSet<String>>,
     /// Jobs of the pipeline running on this runner now.
@@ -506,6 +531,10 @@ pub(super) enum Received {
     /// There is a record and it does not read as one.
     Unreadable,
 }
+
+/// How many times its `scratch:` a trusted run may send of
+/// `/tmp/workflow`.
+const SCRATCH_SENDS: u64 = 4;
 
 /// Whether masking left a job's outputs as the runner that ran it wrote
 /// them.
@@ -546,10 +575,19 @@ impl<'a> Sharing<'a> {
             // more than a pipeline that says nothing does.
             spec.artifact_bytes = spec.artifact_bytes.min(iwci_spec::DEFAULT_SPLIT_ARTIFACTS);
         }
+        // A pipeline's files can be rewritten and sent again, so a run may
+        // send a few times its `scratch:`; a fork's no more than a pipeline
+        // that says nothing may send as artifacts.
+        let scratch_cap = if options.access.trusted {
+            plan.scratch_bytes.saturating_mul(SCRATCH_SENDS)
+        } else {
+            iwci_spec::DEFAULT_SPLIT_ARTIFACTS
+        };
         Some(Sharing {
             split,
             spec,
             helper: split.helper(),
+            scratch_cap,
             settled: Mutex::default(),
             running: AtomicU64::new(0),
             unfit: AtomicBool::new(false),
@@ -641,7 +679,10 @@ impl<'a> Sharing<'a> {
 
     /// Tells the other runners how a job this runner ran went, and puts
     /// what it kept where they can get it. `handed` when the job started
-    /// with what a job that reads secrets left.
+    /// with what a job that reads secrets left. `scratch` is this runner's
+    /// scratch layers that hold what the job wrote to `/tmp/workflow`, or
+    /// why they could not be sent.
+    #[allow(clippy::too_many_arguments)]
     pub fn publish(
         &self,
         job: &PlannedJob,
@@ -650,6 +691,7 @@ impl<'a> Sharing<'a> {
         saved: Option<&str>,
         handed: bool,
         mask: &Masker,
+        scratch: Result<u64, String>,
     ) {
         self.settled
             .lock()
@@ -658,7 +700,16 @@ impl<'a> Sharing<'a> {
         let bytes = file_bytes(kept);
         let cap = self.spec.artifact_bytes;
         let mut stays = None;
-        let kept_in = if report.status != Status::Passed || kept.is_empty() {
+        let layers = *scratch.as_ref().unwrap_or(&0);
+        let kept_in = if let Err(why) = &scratch {
+            // What needs it reads what it wrote, which is only here.
+            report.notes.push(format!(
+                "split: what it wrote to /tmp/workflow stays on `{}` ({}), so the jobs that need it run there",
+                self.split.runner(),
+                mask.mask(why)
+            ));
+            Kept::Local
+        } else if report.status != Status::Passed || kept.is_empty() {
             Kept::None
         } else if let Some(key) = saved {
             Kept::TaskCache {
@@ -695,7 +746,7 @@ impl<'a> Sharing<'a> {
                 self.split.runner()
             ));
         }
-        let done = Done::of(self.split.runner(), report, kept_in, mask);
+        let done = Done::of(self.split.runner(), report, kept_in, layers, mask);
         let body = serde_json::to_vec(&done).expect("serialisable");
         if !retried(|| self.split.finish(&job.id, &body)) {
             self.owe(Owed::Done(job.id.clone(), body));
@@ -718,6 +769,16 @@ impl<'a> Sharing<'a> {
             },
             Ok(None) | Err(_) => return Received::Retry,
         };
+        // What it wrote to `/tmp/workflow` shows here before anything that
+        // needs it starts; the files themselves come in the background.
+        if done.scratch > 0
+            && shared
+                .scratch
+                .catch_up(self.split, &done.runner, done.scratch)
+                .is_err()
+        {
+            return Received::Retry;
+        }
         // The runner that wrote it may not have had the run's secrets (a
         // helper is sent none), so every piece of text in it is masked
         // here, as this runner's own report of the job would be.
@@ -1042,13 +1103,16 @@ pub(super) fn helped(options: &Options, reserved: u64, slots: usize) -> Option<H
 /// [`Timing::poll`]: moves the jobs they finished to the fetchers, takes
 /// back what a helper gave up or died holding, asks for help when this
 /// runner's queue backs up, and ends a helper whose primary is done or
-/// gone.
+/// gone. Keeps `/tmp/workflow` in step both ways while it does: takes in
+/// the other runners' layers, and sends what was closed here while
+/// another runner runs jobs that could read it.
 pub(super) fn watch<'p>(
     sharing: &Sharing<'_>,
     state: &Mutex<State<'p>>,
     wake: &Wake,
     plan: &'p Plan,
     options: &Options,
+    shared: &RunShared<'_>,
 ) {
     let split = sharing.split;
     let timing = split.timing();
@@ -1106,6 +1170,10 @@ pub(super) fn watch<'p>(
             continue;
         }
         let seen = split.seen().ok();
+        for (runner, layers) in seen.iter().flat_map(|s| &s.scratch) {
+            // A layer not readable yet is looked for again next time.
+            let _ = shared.scratch.catch_up(split, runner, *layers);
+        }
         let now = Instant::now();
         if sharing.helper && silent("", seen.as_ref().map(|s| s.primary), now) >= timing.lease {
             // The primary is gone: so is this runner.
@@ -1117,8 +1185,11 @@ pub(super) fn watch<'p>(
         let mut released = Vec::new();
         let mut ask = false;
         let mut left_behind = false;
+        let readers_elsewhere;
         {
             let mut s = state.lock().unwrap();
+            // The primary always runs jobs while a helper does.
+            readers_elsewhere = sharing.helper || !s.remote.is_empty();
             let mut settled = sharing.settled.lock().unwrap_or_else(|e| e.into_inner());
             for id in seen.iter().flat_map(|s| &s.done) {
                 if settled.contains(id) {
@@ -1243,6 +1314,15 @@ pub(super) fn watch<'p>(
         if left_behind && let Some(cancel) = &options.cancel {
             cancel.cancel();
         }
+        if readers_elsewhere
+            && shared
+                .scratch
+                .publish(split, shared.mask, sharing.scratch_cap)
+                == Published::TooMuch
+        {
+            // The jobs that wrote it are handed back as they end.
+            sharing.unfit.store(true, Ordering::SeqCst);
+        }
         sharing.settle();
         for id in released {
             let _ = split.release(&id);
@@ -1264,6 +1344,7 @@ pub(super) fn watch<'p>(
     if !ended && !sharing.helper {
         split.end();
     }
+    shared.scratch.stop();
 }
 
 /// Takes in the jobs other runners finished: reads each one's record and

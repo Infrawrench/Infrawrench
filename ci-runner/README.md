@@ -726,7 +726,8 @@ later job (`needs:`) pick it up without a cache or an output. It starts
 empty, it is gone when the run ends, it is held in memory and capped by the
 top-level `scratch:` (default 1 GiB), and nothing under it counts as a
 change to the repository. Jobs running at the same time share it as they
-would share a disk, so give them different paths.
+would share a disk, so give them different paths. In a
+[split run](#split-runs) it is shared across runners too.
 
 ### Artifacts
 
@@ -1163,11 +1164,29 @@ split:
   artifacts: 8MiB # default 4MiB, at most 256MiB; 0MiB sends none
 ```
 
-- **Off by default, because the scratch directory does not cross
-  runners.** Jobs of a split pipeline that run on different runners do not
-  see the same `/tmp/workflow`, and nothing in a pipeline says whether its
-  jobs use it. Turn `split:` on only for a pipeline whose jobs hand things
-  on through `artifacts:` and `outputs:`.
+- **Off by default, for now.** It is to become the runners' own choice,
+  with nothing in the pipeline to say.
+- **`/tmp/workflow` is shared across runners.** Every runner keeps its
+  own copy, and what a job writes there reaches the others: a file is
+  sent once nothing has it open for writing, when the job that wrote it
+  ends at the latest and within about a second while another runner runs
+  jobs of the pipeline. A job that `needs` another starts only once
+  everything that job wrote is listed where it runs. A file from another
+  runner shows in the directory, with its size, before its bytes are
+  there; they come in the background, and opening a file that has not
+  come yet waits for that file alone and has it fetched next (a file of
+  1 MiB or more travels on its own, smaller ones together). A file written
+  by a job that reads a secret (or was handed what one left), or one that
+  holds a secret's value, stays on the runner that has the run: it shows
+  on a helper, and a helper job that opens it is handed back to that
+  runner, which runs it with the file there. A run sends at most four
+  times its `scratch:` of these files (a fork's pull request at most
+  4 MiB); past that the runner that has the run keeps the rest the same
+  way, and a helper gives back the jobs that wrote them. A write on one
+  runner that the other has not sent yet is kept over the other's copy, so
+  two jobs that write one file at the same time on two runners can each
+  end with their own, as two jobs on one disk that share a path can
+  overwrite each other.
 - **Both runners run the same commit and plan the same run.** The primary
   writes down the commit it resolved the request to, and a helper runs
   exactly that or does not join: a request that names only a branch (a
@@ -1278,7 +1297,10 @@ split:
   in the same way.
 - **Cost.** A split pipeline's primary makes two small writes to the store
   for each job it starts and one listing a second; a helper that is never
-  asked makes one listing every five seconds.
+  asked makes one listing every five seconds. A job that writes to
+  `/tmp/workflow` adds one write for its layer's list and one per object
+  of its files (4 MiB of small files to an object), and each runner reads
+  each other runner's lists and the objects its jobs open or are sent.
 
 ### What changed from the first sketch
 
@@ -5488,18 +5510,21 @@ What a split run keeps under `splits/<owner>/<repo-id>/<run-id>/`, `<run-id>`
 being the run's id on the runner that has it, `<pipeline>` a hash of the
 pipeline's file name and `<job>` the job id in hex:
 
-| Key                                        | What                                                                                                                                               |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state/primary.<n>`                        | The primary is alive; `<n>` moves every ten seconds.                                                                                               |
-| `state/helper/<runner>.<n>`                | The same for a helper.                                                                                                                             |
-| `state/help.<version>`                     | The primary, a runner of that version, has more ready jobs than it can start.                                                                      |
-| `state/end`                                | The run is over.                                                                                                                                   |
-| `state/ended/<pipeline>`                   | That pipeline is over, or cancelled.                                                                                                               |
-| `state/done/<pipeline>/<job>`              | How a job went on the runner that ran it: its report. The primary's is masked; a helper's is masked by the primary when it reads it. Written once. |
-| `state/commit.<sha>`                       | The commit the primary resolved the request to; a helper runs that one.                                                                            |
-| `state/back/<pipeline>/<job>.<runner>.<n>` | That helper gave the job up. Written before it lets go of the claim.                                                                               |
-| `claims/<pipeline>/<job>`                  | The name of the runner that runs the job. Written only if absent.                                                                                  |
-| `artifacts/<pipeline>/<job>.<runner>`      | What a job without a task cache entry kept on that runner, when small enough: a zstd archive.                                                      |
+| Key                                         | What                                                                                                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state/primary.<n>`                         | The primary is alive; `<n>` moves every ten seconds.                                                                                               |
+| `state/helper/<runner>.<n>`                 | The same for a helper.                                                                                                                             |
+| `state/help.<version>`                      | The primary, a runner of that version, has more ready jobs than it can start.                                                                      |
+| `state/end`                                 | The run is over.                                                                                                                                   |
+| `state/ended/<pipeline>`                    | That pipeline is over, or cancelled.                                                                                                               |
+| `state/done/<pipeline>/<job>`               | How a job went on the runner that ran it: its report. The primary's is masked; a helper's is masked by the primary when it reads it. Written once. |
+| `state/commit.<sha>`                        | The commit the primary resolved the request to; a helper runs that one.                                                                            |
+| `state/back/<pipeline>/<job>.<runner>.<n>`  | That helper gave the job up. Written before it lets go of the claim.                                                                               |
+| `claims/<pipeline>/<job>`                   | The name of the runner that runs the job. Written only if absent.                                                                                  |
+| `artifacts/<pipeline>/<job>.<runner>`       | What a job without a task cache entry kept on that runner, when small enough: a zstd archive.                                                      |
+| `scratch/<pipeline>/<runner>/<layer>.list`  | One of that runner's `/tmp/workflow` layers: what changed, with each file's size and object, or that it stays on that runner. JSON.                |
+| `scratch/<pipeline>/<runner>/<layer>.<n>`   | Files of that layer: one of 1 MiB or more, or smaller ones together up to 4 MiB. A zstd archive.                                                   |
+| `state/scratch/<pipeline>/<runner>.<layer>` | That runner's layers up to this one are stored. Only the latest is kept.                                                                           |
 
 A runner follows the others with one listing of `state/`. The primary
 deletes everything but `state/end` when the run ends; every server sweeps

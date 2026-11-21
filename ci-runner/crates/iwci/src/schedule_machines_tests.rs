@@ -61,7 +61,7 @@ impl Machines for FakeMachines {
             seen.collect.insert(run.job.id.clone(), run.collect.clone());
             let mut start = files(run.fs, "/app/out");
             start.extend(
-                files(run.scratch, "/")
+                files(run.scratch.fs(), "/")
                     .into_iter()
                     .map(|p| format!("scratch:{p}")),
             );
@@ -120,7 +120,9 @@ impl Machines for FakeMachines {
             | iwci_vfs::Entry::Symlink { path, .. } => asked(path),
         });
         apply(run.fs, &back, &allowed)?;
-        apply(run.scratch, &shared, &["/".into()])?;
+        apply(run.scratch.fs(), &shared, &["/".into()])?;
+        run.scratch
+            .wrote(shared.entries.iter().map(|(e, _)| entry_path(e)));
         Ok(Execution {
             exit_code,
             stdout: format!("ran {script}\n"),

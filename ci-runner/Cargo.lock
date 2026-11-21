@@ -2884,6 +2884,7 @@ dependencies = [
  "bytes",
  "ed25519-dalek",
  "flate2",
+ "futures",
  "getrandom 0.3.4",
  "globset",
  "hex",

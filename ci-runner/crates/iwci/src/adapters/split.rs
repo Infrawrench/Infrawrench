@@ -16,6 +16,9 @@
 //! | `state/back/<pipeline>/<job>.<runner>.<n>` | that helper gave the job up |
 //! | `claims/<pipeline>/<job>` | who runs the job: the runner's name |
 //! | `artifacts/<pipeline>/<job>.<runner>` | what a job without a task cache entry kept on that runner, when small enough |
+//! | `scratch/<pipeline>/<runner>/<layer>.list` | one of that runner's `/tmp/workflow` layers: what changed, and where each file is (`schedule::Layer`) |
+//! | `scratch/<pipeline>/<runner>/<layer>.<n>` | some of that layer's files: one large file, or several small ones |
+//! | `state/scratch/<pipeline>/<runner>.<layer>` | that runner's layers up to this one are stored; the last one only |
 //!
 //! `<pipeline>` is a hash of the pipeline's file name and `<job>` the job
 //! id in hex, so every key stays inside the store's key grammar. All of
@@ -40,7 +43,7 @@ use iwci_store::{ObjectStore, RepoId};
 use iwci_vfs::{Entry, archive};
 use sha2::Digest;
 
-use crate::schedule::{Claim, Seen, Split, Timing};
+use crate::schedule::{Claim, Seen, Split, Timing, scratch_object_name};
 
 /// The prefix of every split run's objects.
 pub const PREFIX: &str = "splits";
@@ -254,6 +257,7 @@ impl SplitRun {
             run: self.clone(),
             pipeline: pipeline_segment(file),
             back: AtomicU64::new(0),
+            scratch_marker: AtomicU64::new(0),
         })
     }
 
@@ -419,6 +423,8 @@ pub struct PipelineSplit {
     pipeline: String,
     /// Jobs this runner handed back, to tell each time apart.
     back: AtomicU64,
+    /// The last scratch layer this runner said it stored.
+    scratch_marker: AtomicU64,
 }
 
 impl PipelineSplit {
@@ -428,6 +434,15 @@ impl PipelineSplit {
             self.run.root,
             self.pipeline,
             hex::encode(job)
+        )
+    }
+}
+
+impl PipelineSplit {
+    fn scratch_key(&self, runner: &str, name: &str) -> String {
+        format!(
+            "{}/scratch/{}/{runner}/{name}",
+            self.run.root, self.pipeline
         )
     }
 }
@@ -604,6 +619,14 @@ impl Split for PipelineSplit {
                 if let Some(id) = mine(rest).and_then(|hex_id| job_id(&hex_id)) {
                     seen.done.push(id);
                 }
+            } else if let Some(rest) = key.strip_prefix("scratch/") {
+                if let Some(rest) = mine(rest)
+                    && let Some((runner, n)) = rest.rsplit_once('.')
+                    && let Ok(n) = n.parse::<u64>()
+                {
+                    let layers = seen.scratch.entry(runner.to_string()).or_default();
+                    *layers = (*layers).max(n);
+                }
             } else if let Some(rest) = key.strip_prefix("back/")
                 && let Some(rest) = mine(rest)
                 && let Some((rest, n)) = rest.rsplit_once('.')
@@ -615,6 +638,52 @@ impl Split for PipelineSplit {
         }
         seen.helpers = helpers;
         Ok(seen)
+    }
+
+    fn put_scratch(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        if !scratch_object_name(name) {
+            return Err(format!("`{name}` is not a scratch object"));
+        }
+        self.run
+            .store
+            .put(
+                &self.scratch_key(&self.run.runner, name),
+                bytes,
+                "application/octet-stream",
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    fn get_scratch(&self, runner: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+        if runner_name(Some(runner)) != runner {
+            return Err("the record names no runner".into());
+        }
+        if !scratch_object_name(name) {
+            return Err(format!("`{name}` is not a scratch object"));
+        }
+        self.run
+            .store
+            .get(&self.scratch_key(runner, name))
+            .map_err(|e| e.to_string())
+    }
+
+    fn scratch_layer(&self, layer: u64) -> Result<(), String> {
+        let marker = |n: u64| {
+            format!(
+                "{}/state/scratch/{}/{}.{n}",
+                self.run.root, self.pipeline, self.run.runner
+            )
+        };
+        self.run
+            .store
+            .put(&marker(layer), b"", "text/plain")
+            .map_err(|e| e.to_string())?;
+        // One marker each, so the listing every runner reads stays short.
+        let before = self.scratch_marker.swap(layer, Ordering::SeqCst);
+        if before != 0 && before < layer {
+            let _ = self.run.store.delete(&marker(before));
+        }
+        Ok(())
     }
 
     fn timing(&self) -> Timing {

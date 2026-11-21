@@ -835,7 +835,7 @@ split: true
 
 Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they are small (4 MiB in total by default, `split: { artifacts: 16MiB }` to change it). Larger ones stay where the job ran, and so do the jobs that need them.
 
-Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
+Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. The shared `/tmp/workflow` directory works across runners: a file one job closes shows on the other runner straight away and its contents follow in the background, and a job starts only once everything the jobs it `needs:` wrote there is listed. A file written by a job that reads secrets stays on the runner that has the run, and a job that wants it runs there.
 
 A job another runner ran is billed like any other job of the run.
 
