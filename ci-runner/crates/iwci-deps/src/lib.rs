@@ -29,4 +29,8 @@ pub mod npmrc;
 pub mod pip;
 pub mod pnpm;
 pub mod scripts;
+
+/// How a warning that install scripts did not run ends, so a workspace
+/// that runs them (`install-scripts: true`) can leave it out.
+pub const SCRIPTS_NOT_RUN: &str = "nothing here runs them";
 pub mod wasm_builds;

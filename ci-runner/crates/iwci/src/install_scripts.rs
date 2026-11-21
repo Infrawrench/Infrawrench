@@ -82,11 +82,9 @@ pub fn run(
         }
         if !plan.blocked.is_empty() {
             lines.push(format!(
-                "install scripts ({} in {}): {} not allowed by {}'s settings, as {} would leave them: {}",
+                "install scripts ({} in {}): left out, as {}'s settings leave them: {}",
                 manager.name(),
                 dep.dir,
-                count(plan.blocked.len(), "package's", "packages'"),
-                manager.name(),
                 manager.name(),
                 plan.blocked.join(", ")
             ));
@@ -124,8 +122,8 @@ pub fn run(
                 let deleted = deleted_paths(&deleted);
                 apply(builder, &deleted, &entries, &found.modes)?;
                 lines.push(format!(
-                    "install scripts: {} from the cache ({})",
-                    count(steps, "package's", "packages'"),
+                    "install scripts: those of {}, from the cache ({})",
+                    count(steps, "package", "packages"),
                     named.join(", ")
                 ));
                 return Ok(());
@@ -179,8 +177,8 @@ pub fn run(
     let entries: Vec<Entry> = entries.into_iter().map(|(e, _)| e).collect();
     apply(builder, &deleted, &entries, &modes)?;
     lines.push(format!(
-        "install scripts: ran {} in a virtual machine in {:.1} s ({})",
-        count(steps, "package's", "packages'"),
+        "install scripts: ran those of {} in a virtual machine in {:.1} s ({})",
+        count(steps, "package", "packages"),
         started.elapsed().as_secs_f64(),
         named.join(", ")
     ));
@@ -204,12 +202,8 @@ pub fn run(
 
 fn no_machines(named: &[String]) -> String {
     format!(
-        "install-scripts: true: {} to run ({}), and this runner has no Linux virtual machines to run them in",
-        count(
-            named.len(),
-            "package's install scripts",
-            "packages' install scripts"
-        ),
+        "install-scripts: true: the install scripts of {} to run ({}), and this runner has no Linux virtual machines to run them in",
+        count(named.len(), "package", "packages"),
         named.join(", ")
     )
 }

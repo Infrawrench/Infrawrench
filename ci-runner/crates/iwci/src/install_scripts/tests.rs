@@ -171,7 +171,7 @@ fn what_the_scripts_changed_is_kept_and_cached() {
     assert_eq!(snap.mode("/app/node_modules/a/built.txt"), Some(0o755));
     assert!(snap.read("/app/node_modules/a/stale").is_err());
     assert!(
-        lines[0].starts_with("install scripts: ran 1 package's in a virtual machine"),
+        lines[0].starts_with("install scripts: ran those of 1 package in a virtual machine"),
         "{lines:?}"
     );
 
@@ -182,7 +182,7 @@ fn what_the_scripts_changed_is_kept_and_cached() {
     assert_eq!(machine.scripts.lock().unwrap().len(), 1);
     assert_eq!(
         lines,
-        vec!["install scripts: 1 package's from the cache (a@1.0.0)"]
+        vec!["install scripts: those of 1 package, from the cache (a@1.0.0)"]
     );
     let snap = again.freeze();
     assert_eq!(

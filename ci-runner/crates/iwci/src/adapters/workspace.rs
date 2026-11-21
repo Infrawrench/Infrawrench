@@ -337,7 +337,13 @@ impl Workspaces for GitWorkspaces {
                 }
             }
             .map_err(|e| format!("{} in {}: {e}", dep.ecosystem.name(), dep.dir))?;
-            warnings.extend(notes);
+            // Install scripts run after all (`install-scripts: true`): the
+            // install's own word that they did not is no longer so.
+            warnings.extend(
+                notes
+                    .into_iter()
+                    .filter(|n| !(spec.install_scripts && n.ends_with(iwci_deps::SCRIPTS_NOT_RUN))),
+            );
             installs.push(format!(
                 "{} in {}: {}",
                 dep.ecosystem.name(),
