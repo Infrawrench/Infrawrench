@@ -106,6 +106,9 @@ pub struct Linux<'a> {
     pub memory_mib: u64,
     pub cpus: u32,
     pub sockets: &'a Sockets,
+    /// Back the machine's shared memory with 2 MiB huge pages (`hugetlb`):
+    /// see [`linux_args`].
+    pub huge_pages: bool,
 }
 
 fn push(args: &mut Vec<OsString>, items: &[&str]) {
@@ -192,12 +195,23 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     };
     if m.sockets.scratch.is_some() || m.sockets.files.is_some() {
         // A vhost-user device's back end reads and writes the guest's
-        // memory itself.
+        // memory itself, so it is a shared memfd. In 4 KiB pages that
+        // costs the guest's boot dearly (measured on ci-1: init at 0.61 s
+        // for 2 GiB and 1.86 s for 8 GiB, against 0.15 s in QEMU's own
+        // memory), in 2 MiB huge pages nothing (0.16 s and 0.19 s). The
+        // pages are reserved when QEMU maps them, so a host without them
+        // fails QEMU's start, never a running job, and the runner starts
+        // it again without (`Host::run`).
         machine.push_str(",memory-backend=mem");
         args.push("-object".into());
+        let huge = if m.huge_pages {
+            ",hugetlb=on,hugetlbsize=2M"
+        } else {
+            ""
+        };
         args.push(
             format!(
-                "memory-backend-memfd,id=mem,size={}M,share=on",
+                "memory-backend-memfd,id=mem,size={}M,share=on{huge}",
                 m.memory_mib
             )
             .into(),
@@ -374,6 +388,36 @@ mod tests {
     }
 
     #[test]
+    fn shared_memory_is_in_huge_pages_when_asked() {
+        let s = Sockets {
+            scratch: Some("/m/scratch.sock".into()),
+            ..sockets(false)
+        };
+        let linux = |huge_pages| Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            memory_mib: 2048,
+            cpus: 1,
+            sockets: &s,
+            huge_pages,
+        };
+        let huge = strings(&linux_args(&linux(true))).join(" ");
+        assert!(
+            huge.contains(
+                "memory-backend-memfd,id=mem,size=2048M,share=on,hugetlb=on,hugetlbsize=2M"
+            ),
+            "{huge}"
+        );
+        let plain = strings(&linux_args(&linux(false))).join(" ");
+        assert!(
+            plain.contains("size=2048M,share=on ") && !plain.contains("hugetlb"),
+            "{plain}"
+        );
+    }
+
+    #[test]
     fn a_linux_machine_can_have_its_own_files_streamed_in() {
         let s = Sockets {
             files: Some("/m/files.sock".into()),
@@ -387,6 +431,7 @@ mod tests {
             memory_mib: 512,
             cpus: 1,
             sockets: &s,
+            huge_pages: false,
         }));
         let text = args.join(" ");
         for want in [
@@ -416,6 +461,7 @@ mod tests {
             memory_mib: 1024,
             cpus: 1,
             sockets: &s,
+            huge_pages: false,
         }));
         let text = args.join(" ");
         for want in [
@@ -436,6 +482,7 @@ mod tests {
             memory_mib: 1024,
             cpus: 1,
             sockets: &sockets(false),
+            huge_pages: false,
         }))
         .join(" ");
         assert!(!plain.contains("memfd") && !plain.contains("vhost-user"));
@@ -452,6 +499,7 @@ mod tests {
             memory_mib: 2048,
             cpus: 2,
             sockets: &s,
+            huge_pages: false,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M microvm,acpi=off,"), "{text}");
@@ -489,6 +537,7 @@ mod tests {
             memory_mib: 512,
             cpus: 1,
             sockets: &s,
+            huge_pages: false,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M virt,gic-version=host"));
