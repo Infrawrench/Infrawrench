@@ -740,10 +740,11 @@ jobs:
   under the same policy as an isolate's ([Networking](#networking)):
   public addresses only, never the host. `network: false` cuts it off.
 - **Version managers, cached.** The image has `nvm`, rbenv (with
-  ruby-build) and Bun beside its default Node.js and Ruby, and keeps what
-  nvm and rbenv install between runs of a job on its own, as an
-  environment keeps Go's build cache ([Environment caches](#environment-caches)):
-  `nvm install 22` or `rbenv install 3.4.9` downloads or compiles once,
+  ruby-build), goenv and Bun beside its default Node.js, Ruby and Go, and
+  keeps what nvm, rbenv and goenv install between runs of a job on its
+  own, as an environment keeps Go's build cache
+  ([Environment caches](#environment-caches)): `nvm install 22`,
+  `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once,
   and the next run restores it before the machine starts. `env-cache:`
   turns them off as it does an environment's.
 - **What it cannot have.** Keys that only mean something in an isolate are
@@ -4083,8 +4084,8 @@ job cache that the environment wrote:
 false }` turns off the ones it names.
 
 A virtual machine's image declares caches the same way, in its
-`image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`) and
-`rbenv` (`/root/.rbenv`), keyed by the image's name rather than its
+`image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`),
+`rbenv` (`/root/.rbenv`) and `goenv` (`/root/.goenv`), keyed by the image's name rather than its
 version (`machine:ubuntu-24.04`), so a rebuild of the image on the same
 Ubuntu release keeps them. Only what the job added is saved there too:
 the image's own files are its read-only root, never the job's.
