@@ -1,0 +1,151 @@
+# Publish the VS Code extension (app/packages/vscode) to the Visual Studio
+# Marketplace and Open VSX (which Cursor and VSCodium install from).
+#
+# Shape: publish-infraenv.yml with two registries. One job builds and packages
+# the .vsix once and publishes that same file to both, then a second job tags
+# the release.
+#
+# Gate: publishing happens when the version changes. `version` in the
+# extension's package.json is the single source, and the tag
+# `vscode-v<version>` in this repository is the ledger, so a re-run on an
+# unchanged version is a no-op. Both publishes pass `--skip-duplicate`, so a
+# re-run after a partial failure (one registry took it, the other did not, or
+# the tag push failed) finishes the job instead of failing on the first.
+# Cutting a release is one edit: bump the version (and CHANGELOG.md) and merge.
+#
+# Authentication:
+# - Marketplace: Trusted Publishing (`vsce publish --oidc`), no stored token.
+#   The policy on the `Infrawrench` publisher names this repository, this
+#   workflow file and the `release` environment. Azure DevOps PATs are not an
+#   option: the global PATs the Marketplace needs are retired on 2026-12-01.
+# - Open VSX has no OIDC exchange, so it takes the `OVSX_PAT` secret of the
+#   `release` environment (a token from open-vsx.org/user-settings/tokens for
+#   a member of the `infrawrench` namespace). Open VSX looks namespaces up
+#   case-insensitively, which is why it matches the `Infrawrench` publisher.
+name: Publish VS Code extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/vscode/**"
+      # What the bundle inlines.
+      - "app/packages/client-core/src/**"
+      - ".github/workflows/publish-vscode.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if this version is already tagged"
+        type: boolean
+        default: false
+
+# Not cancel-safe: a cancelled run can publish without tagging.
+concurrency:
+  group: publish-vscode
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: "Marketplace and Open VSX"
+    # workflow_dispatch can target any ref; only main may publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      published: ${{ steps.marketplace.outputs.published }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Tags are the publish ledger; a shallow clone cannot see them.
+          fetch-depth: 0
+
+      - id: gate
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./app/packages/vscode/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Forced publish of the VS Code extension v$VERSION."
+          elif git rev-parse -q --verify "refs/tags/vscode-v$VERSION" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VS Code extension v$VERSION is already released (tag vscode-v$VERSION). Nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          node-version: 24
+      - if: steps.gate.outputs.publish == 'true'
+        run: corepack enable
+      # `--ignore-scripts` skips native builds the extension never loads.
+      - if: steps.gate.outputs.publish == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # client-core resolves through its dist, so turbo builds it first. The
+      # package script bundles with esbuild and runs `vsce package` on a
+      # staged copy (scripts/package.mjs).
+      - name: Build, test and package
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm exec turbo run build --filter=@infrawrench/vscode
+          pnpm --filter @infrawrench/vscode test
+          pnpm --filter @infrawrench/vscode package
+          test -f "app/packages/vscode/out/infrawrench-$VERSION.vsix"
+
+      - name: Publish to the Marketplace
+        id: marketplace
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: app/packages/vscode
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          node "$(node -p "require.resolve('@vscode/vsce/vsce')")" publish \
+            --oidc --skip-duplicate --packagePath "out/infrawrench-$VERSION.vsix"
+
+      # Pinned rather than @latest: this step holds the Open VSX token.
+      - name: Publish to Open VSX
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: app/packages/vscode
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -euo pipefail
+          npx --yes ovsx@1.3.0 publish "out/infrawrench-$VERSION.vsix" --skip-duplicate
+
+  tag:
+    name: Record the release
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Tag vscode-v${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          V="${{ needs.publish.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/vscode-v$V" >/dev/null; then
+            echo "::notice::vscode-v$V is already tagged."
+            exit 0
+          fi
+          git tag -a "vscode-v$V" -m "VS Code extension v$V published to the Marketplace and Open VSX"
+          git push origin "vscode-v$V"
