@@ -341,6 +341,18 @@ impl Host {
         let arch = self.arch.ok_or("no machines on this host")?;
         let qemu_bin = self.qemu.as_ref().ok_or("QEMU is not installed")?;
         let started = Instant::now();
+        // `IWCI_BOOT_TIMES=1`: when each step of a machine's start ended,
+        // from the start of `run_in`, on stderr.
+        let times = std::env::var_os("IWCI_BOOT_TIMES").is_some();
+        let mark = |step: &str| {
+            if times {
+                eprintln!(
+                    "iwci: machine {}: {step} at {} ms",
+                    job.id,
+                    started.elapsed().as_millis()
+                );
+            }
+        };
         let memory_mib = job.memory_bytes.div_ceil(1 << 20);
         let sockets = Sockets {
             agent: dir.join("agent.sock"),
@@ -458,6 +470,7 @@ impl Host {
 
         let log = std::fs::File::create(dir.join("qemu.log"))
             .map_err(|e| format!("the emulator's log: {e}"))?;
+        mark("set up");
         let child = Command::new(qemu_bin)
             .args(&args)
             .stdin(Stdio::null())
@@ -473,10 +486,13 @@ impl Host {
             gateway: None,
         };
         let deadline = started + boot.min(job.timeout + boot);
+        mark("started QEMU");
         let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
+        mark("agent port connected");
         if let Some(listener) = &net_listener {
             let stream = machine.accept(listener, deadline, job.cancelled)?;
             self.connect_link(&mut machine, stream, job.network)?;
+            mark("network linked");
         }
 
         let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
@@ -494,7 +510,10 @@ impl Host {
         let mut outcome = Outcome {
             image: hello.image.clone(),
             arch: hello.arch.clone(),
-            boot_ms: started.elapsed().as_millis() as u64,
+            boot_ms: {
+                mark("hello");
+                started.elapsed().as_millis() as u64
+            },
             ..Default::default()
         };
         let now_ms = std::time::SystemTime::now()
