@@ -504,7 +504,8 @@ cat >"$stage/image.json" <<EOF
   "kernel_sha256": "$kernel_sha",
   "rootfs_sha256": "$rootfs_sha",
   "agent_sha256": "$agent_sha",
-  "snapshot": "$snapshot"
+  "snapshot": "$snapshot",
+  "features": ["files-virtiofs"]
 }
 EOF
 

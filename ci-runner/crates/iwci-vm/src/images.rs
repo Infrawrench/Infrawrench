@@ -36,6 +36,10 @@ pub struct ImageInfo {
     pub arch: String,
     #[serde(default)]
     pub version: String,
+    /// What its agent can do beyond the first images' (`files-virtiofs`).
+    /// An older image lists none.
+    #[serde(default)]
+    pub features: Vec<String>,
     /// Windows: the versioned machine type the states were saved with
     /// (`virt-8.2,gic-version=host`): `virt` alone moves with QEMU
     /// upgrades, and a state restores only into the type it was saved on.

@@ -316,3 +316,115 @@ fn modes_live_in_the_served_file_systems_record_so_the_next_machine_sees_them() 
     ok(&next, RENAME, ROOT, &body);
     assert_eq!(fs.modes().get(Path::new("/go.sh")), Some(0o755));
 }
+
+#[test]
+fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
+    let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+    fs.write("/app/a.txt", b"source").unwrap();
+    let s = Server::read_only(fs.as_dyn(), fs.modes());
+    let (error, entry) = lookup(&s, ROOT, "app");
+    assert_eq!(error, 0);
+    assert_eq!(u64_at(&entry, 16), READ_ONLY_VALID_SECS, "names are kept");
+    let app = u64_at(&entry, 0);
+    let file = u64_at(&lookup(&s, app, "a.txt").1, 0);
+    // No OPEN: the kernel reads by node, with no handle.
+    assert_eq!(call(&s, OPEN, file, &[0u8; 8]).0, -ENOSYS);
+    let mut body = Vec::new();
+    body.extend(le64(0));
+    body.extend(le64(2));
+    body.extend(le32(100));
+    body.extend([0u8; 20]);
+    assert_eq!(ok(&s, READ, file, &body), b"urce");
+    assert_eq!(call(&s, FLUSH, file, &[0u8; 24]).0, -ENOSYS);
+    // No OPENDIR either: a listing comes by node, with no handle.
+    assert_eq!(call(&s, OPENDIR, app, &[0u8; 8]).0, -ENOSYS);
+    let mut body = Vec::new();
+    body.extend(le64(0));
+    body.extend(le64(0));
+    body.extend(le32(4096));
+    body.extend([0u8; 20]);
+    let listing = ok(&s, READDIR, app, &body);
+    assert!(listing.windows(5).any(|w| w == b"a.txt"));
+    // Every way of writing is refused.
+    let mut wr = le32(O_RDWR);
+    wr.extend(le32(0));
+    assert_eq!(call(&s, OPEN, file, &wr).0, -EROFS);
+    let mut trunc = le32(O_TRUNC);
+    trunc.extend(le32(0));
+    assert_eq!(call(&s, OPEN, file, &trunc).0, -EROFS);
+    let mut create = le32(O_RDWR | O_CREAT);
+    create.extend(le32(0o644));
+    create.extend(le32(0));
+    create.extend(le32(0));
+    create.extend(name("new"));
+    assert_eq!(call(&s, CREATE, app, &create).0, -EROFS);
+    assert_eq!(call(&s, UNLINK, app, &name("a.txt")).0, -EROFS);
+    let mut mkdir = le32(0o755);
+    mkdir.extend(le32(0));
+    mkdir.extend(name("d"));
+    assert_eq!(call(&s, MKDIR, app, &mkdir).0, -EROFS);
+    assert_eq!(call(&s, SETATTR, file, &[0u8; 88]).0, -EROFS);
+    assert_eq!(fs.read("/app/a.txt").unwrap(), b"source");
+}
+
+#[test]
+fn readdirplus_gives_each_entry_its_attributes_and_counts_it_as_a_lookup() {
+    let (s, fs) = server();
+    fs.write("/d/a.txt", b"12345").unwrap();
+    fs.write("/d/b.txt", b"1").unwrap();
+    let d = u64_at(&lookup(&s, ROOT, "d").1, 0);
+    let fh = u64_at(&ok(&s, OPENDIR, d, &[0u8; 8]), 0);
+    let mut body = Vec::new();
+    body.extend(le64(fh));
+    body.extend(le64(0));
+    body.extend(le32(4096));
+    body.extend([0u8; 20]);
+    let out = ok(&s, READDIRPLUS, 0, &body);
+    let mut at = 0;
+    let mut seen = Vec::new();
+    while at < out.len() {
+        let node = u64_at(&out, at);
+        let size = u64_at(&out, at + 40 + 8);
+        let len = u32_at(&out, at + 128 + 16) as usize;
+        let name = String::from_utf8(out[at + 128 + 24..at + 128 + 24 + len].to_vec()).unwrap();
+        seen.push((name, node != 0, size));
+        at += 128 + (24 + len).div_ceil(8) * 8;
+    }
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            (".".to_string(), false, 0),
+            ("..".to_string(), false, 0),
+            ("a.txt".to_string(), true, 5),
+            ("b.txt".to_string(), true, 1),
+        ]
+    );
+    // a.txt was looked up by the listing: one forget and it is gone.
+    let a = u64_at(&lookup(&s, d, "a.txt").1, 0);
+    s.handle(&req(FORGET, a, &le64(2)));
+    assert_eq!(call(&s, GETATTR, a, &[0u8; 16]).0, -ENOENT);
+}
+
+#[test]
+fn only_a_read_only_server_takes_no_open() {
+    let mut body = Vec::new();
+    body.extend(le32(7));
+    body.extend(le32(38));
+    body.extend(le32(0));
+    body.extend(le32(NO_OPEN_SUPPORT | ASYNC_READ));
+    body.extend([0u8; 48]);
+    let (rw, _) = server();
+    assert_eq!(u32_at(&ok(&rw, INIT, 0, &body), 12), ASYNC_READ);
+    let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+    let ro = Server::read_only(fs.as_dyn(), fs.modes());
+    assert_eq!(
+        u32_at(&ok(&ro, INIT, 0, &body), 12),
+        ASYNC_READ | NO_OPEN_SUPPORT
+    );
+    body[12..16].copy_from_slice(&(NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT).to_le_bytes());
+    assert_eq!(
+        u32_at(&ok(&ro, INIT, 0, &body), 12),
+        NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT
+    );
+}

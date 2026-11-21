@@ -26,6 +26,7 @@ pub mod init;
 pub mod plan;
 pub mod platform;
 pub mod port;
+pub mod prefetch;
 pub mod put;
 pub mod root;
 pub mod stamp;

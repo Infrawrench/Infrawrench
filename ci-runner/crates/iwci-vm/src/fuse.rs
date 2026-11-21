@@ -45,6 +45,11 @@ const MAX_PAGES: u16 = 256;
 /// How long the kernel may trust a name or attributes. Short: other jobs,
 /// and other runners, change the directory while the machine runs.
 const VALID_SECS: u64 = 1;
+/// The same for a file system served read only, which nothing changes
+/// while the machine runs: the kernel caches it as it would a disk.
+const READ_ONLY_VALID_SECS: u64 = 24 * 60 * 60;
+/// `FOPEN_KEEP_CACHE`: the kernel keeps a file's pages across opens.
+const FOPEN_KEEP_CACHE: u32 = 1 << 1;
 const ROOT: u64 = 1;
 const IN_HEADER: usize = 40;
 const OUT_HEADER: usize = 16;
@@ -72,6 +77,7 @@ const FLUSH: u32 = 25;
 const INIT: u32 = 26;
 const OPENDIR: u32 = 27;
 const READDIR: u32 = 28;
+const READDIRPLUS: u32 = 44;
 const RELEASEDIR: u32 = 29;
 const FSYNCDIR: u32 = 30;
 const CREATE: u32 = 35;
@@ -93,6 +99,7 @@ const ENOTDIR: i32 = 20;
 const EISDIR: i32 = 21;
 const EINVAL: i32 = 22;
 const ENOSPC: i32 = 28;
+const EROFS: i32 = 30;
 const ENAMETOOLONG: i32 = 36;
 const ENOSYS: i32 = 38;
 const ENOTEMPTY: i32 = 39;
@@ -104,7 +111,28 @@ const ATOMIC_O_TRUNC: u32 = 1 << 3;
 const BIG_WRITES: u32 = 1 << 5;
 const PARALLEL_DIROPS: u32 = 1 << 18;
 const MAX_PAGES_FLAG: u32 = 1 << 22;
-const WANTED: u32 = ASYNC_READ | ATOMIC_O_TRUNC | BIG_WRITES | PARALLEL_DIROPS | MAX_PAGES_FLAG;
+/// A directory listing carries each entry's attributes, so walking a
+/// tree (`find`, a build's globbing) is one request per directory rather
+/// than one per file; the kernel decides when it is worth it.
+const DO_READDIRPLUS: u32 = 1 << 13;
+const READDIRPLUS_AUTO: u32 = 1 << 14;
+/// A read-only server answers `OPEN` with `ENOSYS` when this is agreed:
+/// the kernel then sends no `OPEN` or `RELEASE` at all, reads by node,
+/// and keeps a file's pages across opens, so a file already in the
+/// machine costs no round trip to open.
+const NO_OPEN_SUPPORT: u32 = 1 << 17;
+/// The same for directories: no `OPENDIR` or `RELEASEDIR`, listings by
+/// node, kept by the kernel. A walk of a tree the machine has listed once
+/// then asks the server nothing (measured on ci-1: these two were the
+/// only requests left in a second walk of a clone).
+const NO_OPENDIR_SUPPORT: u32 = 1 << 24;
+const WANTED: u32 = ASYNC_READ
+    | ATOMIC_O_TRUNC
+    | BIG_WRITES
+    | PARALLEL_DIROPS
+    | MAX_PAGES_FLAG
+    | DO_READDIRPLUS
+    | READDIRPLUS_AUTO;
 
 // `SETATTR` valid bits.
 const FATTR_MODE: u32 = 1 << 0;
@@ -247,9 +275,9 @@ struct Node {
 
 enum Handle {
     File(Box<Mutex<Box<dyn VirtualFile + Send + Sync + 'static>>>),
-    /// A directory's entries as they were when it was opened: name,
-    /// number, type.
-    Dir(Vec<(String, u64, u32)>),
+    /// A directory's path and its entries as they were when it was
+    /// opened: name, number, type.
+    Dir(PathBuf, Vec<(String, u64, u32)>),
 }
 
 #[derive(Default)]
@@ -269,7 +297,11 @@ pub struct Server {
     fs: DynFs,
     /// The modes of the served files, by path.
     modes: Modes,
+    /// Nothing may be written ([`Server::read_only`]).
+    read_only: bool,
     tables: Mutex<Tables>,
+    /// Requests answered, by opcode, for [`Server::counts`].
+    counts: Mutex<std::collections::BTreeMap<u32, u64>>,
 }
 
 impl std::fmt::Debug for Server {
@@ -297,7 +329,35 @@ impl Server {
         Self {
             fs,
             modes,
+            read_only: false,
             tables: Mutex::new(tables),
+            counts: Mutex::default(),
+        }
+    }
+
+    /// How many requests of each opcode it has answered: what a machine
+    /// asked of the runner, for tuning.
+    pub fn counts(&self) -> Vec<(u32, u64)> {
+        let counts = self.counts.lock().unwrap_or_else(|e| e.into_inner());
+        counts.iter().map(|(k, v)| (*k, *v)).collect()
+    }
+
+    /// Serves `fs` read only: a machine's own files, which the runner
+    /// does not change while the machine runs. Every write is `EROFS`
+    /// (the machine writes to its overlay above them), and the kernel may
+    /// cache names, attributes and pages for as long as it likes.
+    pub fn read_only(fs: DynFs, modes: Modes) -> Self {
+        Self {
+            read_only: true,
+            ..Self::new(fs, modes)
+        }
+    }
+
+    fn valid_secs(&self) -> u64 {
+        if self.read_only {
+            READ_ONLY_VALID_SECS
+        } else {
+            VALID_SECS
         }
     }
 
@@ -323,11 +383,34 @@ impl Server {
         let Ok((len, opcode, unique, node)) = header else {
             return None;
         };
+        *self
+            .counts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(opcode)
+            .or_default() += 1;
         // The request is what its header says, and no more.
         if (len as usize) < IN_HEADER || len as usize > request.len() {
             return Some(reply(unique, Err(EINVAL)));
         }
         args.buf = &request[..len as usize];
+        if self.read_only
+            && matches!(
+                opcode,
+                SETATTR
+                    | SYMLINK
+                    | MKDIR
+                    | UNLINK
+                    | RMDIR
+                    | RENAME
+                    | RENAME2
+                    | LINK
+                    | CREATE
+                    | WRITE
+            )
+        {
+            return Some(reply(unique, Err(EROFS)));
+        }
         let answer = match opcode {
             FORGET => {
                 if let Ok(n) = args.u64() {
@@ -355,12 +438,16 @@ impl Server {
             LINK => self.link(node, &mut args),
             OPEN => self.open(node, &mut args),
             CREATE => self.create(node, &mut args),
-            READ => self.read(&mut args),
+            READ => self.read(node, &mut args),
             WRITE => self.write(&mut args),
             RELEASE | RELEASEDIR => self.release(&mut args),
             OPENDIR => self.opendir(node),
-            READDIR => self.readdir(&mut args),
+            READDIR => self.readdir(node, &mut args, false),
+            READDIRPLUS => self.readdir(node, &mut args, true),
             STATFS => Ok(statfs()),
+            // Nothing to flush in what nothing writes: the kernel stops
+            // asking.
+            FLUSH if self.read_only => Err(ENOSYS),
             FLUSH | FSYNC | FSYNCDIR | SYNCFS => Ok(Vec::new()),
             _ => Err(ENOSYS),
         };
@@ -445,11 +532,15 @@ impl Server {
         if major < KERNEL_VERSION {
             return Err(EIO);
         }
+        let mut wanted = WANTED;
+        if self.read_only {
+            wanted |= NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT;
+        }
         Ok(Out::default()
             .u32(KERNEL_VERSION)
             .u32(KERNEL_MINOR)
             .u32(max_readahead)
-            .u32(flags & WANTED)
+            .u32(flags & wanted)
             .u16(16) // max_background
             .u16(12) // congestion_threshold
             .u32(MAX_IO) // max_write
@@ -497,8 +588,8 @@ impl Server {
         let mut out = Out::default();
         out.u64(node)
             .u64(0) // generation
-            .u64(VALID_SECS)
-            .u64(VALID_SECS)
+            .u64(self.valid_secs())
+            .u64(self.valid_secs())
             .u32(0)
             .u32(0);
         let mut body = out.done();
@@ -526,7 +617,7 @@ impl Server {
         let path = self.path_of(node)?;
         let meta = self.stat(&path)?;
         let mut out = Out::default();
-        out.u64(VALID_SECS).u32(0).u32(0);
+        out.u64(self.valid_secs()).u32(0).u32(0);
         let mut body = out.done();
         body.extend(self.attr(node, &path, &meta));
         Ok(body)
@@ -699,8 +790,16 @@ impl Server {
         if self.stat(&path)?.is_dir() {
             return Err(EISDIR);
         }
+        if self.read_only && (flags & O_ACCMODE != 0 || flags & O_TRUNC != 0) {
+            return Err(EROFS);
+        }
+        if self.read_only {
+            // Reads come by node (`read_node`): see `NO_OPEN_SUPPORT`.
+            return Err(ENOSYS);
+        }
         let fh = self.open_file(&path, flags & !(O_CREAT | O_EXCL), false)?;
-        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+        let keep = if self.read_only { FOPEN_KEEP_CACHE } else { 0 };
+        Ok(Out::default().u64(fh).u32(keep).u32(0).done())
     }
 
     fn create(&self, parent: u64, args: &mut Args<'_>) -> Answer {
@@ -729,15 +828,42 @@ impl Server {
         self.lock().handles.get(&fh).cloned().ok_or(EBADF)
     }
 
-    fn read(&self, args: &mut Args<'_>) -> Answer {
+    fn read(&self, node: u64, args: &mut Args<'_>) -> Answer {
         let fh = args.u64()?;
         let offset = args.u64()?;
         let size = args.u32()?.min(MAX_IO) as usize;
+        // A read-only server opens nothing: the kernel reads by node.
+        if self.read_only && !self.lock().handles.contains_key(&fh) {
+            return self.read_node(node, offset, size);
+        }
         let handle = self.file(fh)?;
         let Handle::File(file) = handle.as_ref() else {
             return Err(EISDIR);
         };
         let mut file = file.lock().unwrap_or_else(|e| e.into_inner());
+        block_on(file.seek(std::io::SeekFrom::Start(offset))).map_err(io_errno)?;
+        let mut buf = vec![0u8; size];
+        let mut got = 0;
+        while got < size {
+            let n = block_on(file.read(&mut buf[got..])).map_err(io_errno)?;
+            if n == 0 {
+                break;
+            }
+            got += n;
+        }
+        buf.truncate(got);
+        Ok(buf)
+    }
+
+    /// Reads `size` bytes at `offset` of the file `node` names.
+    fn read_node(&self, node: u64, offset: u64, size: usize) -> Answer {
+        let path = self.path_of(node)?;
+        let mut file = self
+            .fs
+            .new_open_options()
+            .read(true)
+            .open(&path)
+            .map_err(errno)?;
         block_on(file.seek(std::io::SeekFrom::Start(offset))).map_err(io_errno)?;
         let mut buf = vec![0u8; size];
         let mut got = 0;
@@ -780,6 +906,18 @@ impl Server {
     }
 
     fn opendir(&self, node: u64) -> Answer {
+        if self.read_only {
+            // Listings come by node (`readdir`): see `NO_OPENDIR_SUPPORT`.
+            return Err(ENOSYS);
+        }
+        let (path, entries) = self.listing(node)?;
+        let fh = self.add_handle(Handle::Dir(path, entries));
+        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+    }
+
+    /// A directory's path and its entries: name, number, type.
+    #[allow(clippy::type_complexity)]
+    fn listing(&self, node: u64) -> Result<(PathBuf, Vec<(String, u64, u32)>), i32> {
         let path = self.path_of(node)?;
         let meta = self.stat(&path)?;
         if !meta.is_dir() {
@@ -806,24 +944,51 @@ impl Server {
             let id = self.node_for(&full, false);
             entries.push((name.to_string(), id, kind));
         }
-        let fh = self.add_handle(Handle::Dir(entries));
-        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+        Ok((path, entries))
     }
 
-    fn readdir(&self, args: &mut Args<'_>) -> Answer {
+    /// `READDIR`, or with `plus` `READDIRPLUS`: each entry then comes
+    /// after its `fuse_entry_out`, and counts as a lookup of its name
+    /// (never `.` and `..`, whose entry the kernel ignores).
+    fn readdir(&self, node: u64, args: &mut Args<'_>, plus: bool) -> Answer {
         let fh = args.u64()?;
         let offset = args.u64()? as usize;
         let size = args.u32()?.min(MAX_IO) as usize;
-        let handle = self.file(fh)?;
-        let Handle::Dir(entries) = handle.as_ref() else {
-            return Err(ENOTDIR);
+        // A read-only server opens no directory: it lists by node.
+        let listed;
+        let handle;
+        let (dir, entries) = if self.read_only && !self.lock().handles.contains_key(&fh) {
+            listed = self.listing(node)?;
+            (&listed.0, &listed.1)
+        } else {
+            handle = self.file(fh)?;
+            match handle.as_ref() {
+                Handle::Dir(dir, entries) => (dir, entries),
+                Handle::File(_) => return Err(ENOTDIR),
+            }
         };
         let mut out = Vec::new();
         for (i, (name, id, kind)) in entries.iter().enumerate().skip(offset) {
             let len = 24 + name.len();
             let padded = len.div_ceil(8) * 8;
-            if out.len() + padded > size {
+            let entry_len = if plus { 128 } else { 0 };
+            if out.len() + entry_len + padded > size {
                 break;
+            }
+            let mut id = *id;
+            if plus {
+                let path = dir.join(name);
+                let found = (name != "." && name != "..")
+                    .then(|| self.stat(&path).ok())
+                    .flatten();
+                match found {
+                    Some(meta) => {
+                        id = self.node_for(&path, true);
+                        out.extend(self.entry(id, &path, &meta));
+                    }
+                    // Not looked up: the kernel skips an entry of node 0.
+                    None => out.resize(out.len() + 128, 0),
+                }
             }
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&((i + 1) as u64).to_le_bytes());

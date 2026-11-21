@@ -9,10 +9,16 @@
 //! every machine (the image's root, and the workspace's files when the
 //! job has a clone); what the job writes goes to a tmpfs inside it.
 //!
-//! virtio-mmio devices reach the guest in the reverse of the order QEMU is
-//! given them (each new transport bus is put at the head of QEMU's list),
-//! so the root disk comes last to be `vda`, and the agent finds the
-//! workspace disk by its serial (`iwci-ws`) rather than its name.
+//! The root disk has to be `vda` (`root=/dev/vda`). How virtio-mmio
+//! devices are numbered differs by machine: `virt` (aarch64) lists them in
+//! its device tree in the reverse of the order QEMU is given them (each
+//! new transport bus goes at the head of QEMU's list), so there the root
+//! disk comes last; `microvm` (x86_64) plugs them into its transports in
+//! command-line order and names them so on the kernel's command line, so
+//! there it comes first. ci-1's first machine with a workspace disk found
+//! that the hard way: `vda` was the workspace and init was not there. The
+//! agent finds the workspace disk by its serial (`iwci-ws`), never its
+//! name.
 //!
 //! **Windows** is Windows 11 on Arm under the aarch64 `virt` machine with
 //! UEFI, on PCI virtio devices (virtio-win's ARM64 drivers), its disk a
@@ -84,6 +90,9 @@ pub struct Sockets {
     /// The run's `/tmp/workflow` as a virtio-fs device (Linux): the
     /// runner listens, QEMU connects.
     pub scratch: Option<PathBuf>,
+    /// The job's own files as a read-only virtio-fs device (Linux), in
+    /// place of a workspace disk image and an archive of the rest.
+    pub files: Option<PathBuf>,
 }
 
 /// A Linux micro VM.
@@ -112,12 +121,15 @@ fn path_arg(prefix: &str, path: &Path) -> OsString {
 /// The kernel's command line: the agent is init, the root the read-only
 /// image, and the network (when there is one) configured by the kernel
 /// itself, IPv4 only.
-pub fn kernel_cmdline(network: bool) -> String {
+pub fn kernel_cmdline(network: bool, files: bool) -> String {
     let mut line = String::from(
         "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet ipv6.disable=1",
     );
     if network {
         line.push_str(" ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off");
+    }
+    if files {
+        line.push_str(&format!(" iwci.files={}", iwci_vm_proto::FILES_TAG));
     }
     line
 }
@@ -174,7 +186,7 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
         }
         Arch::Aarch64 => "virt,gic-version=host".to_string(),
     };
-    if m.sockets.scratch.is_some() {
+    if m.sockets.scratch.is_some() || m.sockets.files.is_some() {
         // A vhost-user device's back end reads and writes the guest's
         // memory itself.
         machine.push_str(",memory-backend=mem");
@@ -193,7 +205,7 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     args.push("-kernel".into());
     args.push(m.kernel.into());
     args.push("-append".into());
-    args.push(kernel_cmdline(m.sockets.net.is_some()).into());
+    args.push(kernel_cmdline(m.sockets.net.is_some(), m.sockets.files.is_some()).into());
 
     // The console and the agent share one virtio-serial device.
     agent_port(&mut args, m.sockets, "virtio-serial-device");
@@ -205,6 +217,18 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
         net(&mut args, path, "virtio-net-device");
     }
     push(&mut args, &["-device", "virtio-rng-device"]);
+    if let Some(path) = &m.sockets.files {
+        args.push("-chardev".into());
+        args.push(path_arg("socket,id=files,path=", path));
+        args.push("-device".into());
+        args.push(
+            format!(
+                "vhost-user-fs-device,chardev=files,tag={}",
+                iwci_vm_proto::FILES_TAG
+            )
+            .into(),
+        );
+    }
     if let Some(path) = &m.sockets.scratch {
         args.push("-chardev".into());
         args.push(path_arg("socket,id=scratch,path=", path));
@@ -217,19 +241,28 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
             .into(),
         );
     }
-    // The workspace first and the root last: see the module's note.
+    // The root disk where the machine makes it `vda`: see the module's
+    // note.
+    let root = |args: &mut Vec<OsString>| {
+        args.push("-drive".into());
+        args.push(path_arg(
+            "if=none,id=root,format=raw,readonly=on,file=",
+            m.rootfs,
+        ));
+        push(args, &["-device", "virtio-blk-device,drive=root"]);
+    };
+    if m.arch == Arch::X86_64 {
+        root(&mut args);
+    }
     if let Some(ws) = m.workspace {
         args.push("-drive".into());
         args.push(path_arg("if=none,id=ws,format=raw,readonly=on,file=", ws));
         args.push("-device".into());
         args.push(format!("virtio-blk-device,drive=ws,serial={WORKSPACE_SERIAL}").into());
     }
-    args.push("-drive".into());
-    args.push(path_arg(
-        "if=none,id=root,format=raw,readonly=on,file=",
-        m.rootfs,
-    ));
-    push(&mut args, &["-device", "virtio-blk-device,drive=root"]);
+    if m.arch == Arch::Aarch64 {
+        root(&mut args);
+    }
     args
 }
 
@@ -332,7 +365,37 @@ mod tests {
             net: net.then(|| "/m/net.sock".into()),
             console: "/m/console.log".into(),
             scratch: None,
+            files: None,
         }
+    }
+
+    #[test]
+    fn a_linux_machine_can_have_its_own_files_streamed_in() {
+        let s = Sockets {
+            files: Some("/m/files.sock".into()),
+            ..sockets(false)
+        };
+        let args = strings(&linux_args(&Linux {
+            arch: Arch::Aarch64,
+            kernel: Path::new("/img/Image"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            memory_mib: 512,
+            cpus: 1,
+            sockets: &s,
+        }));
+        let text = args.join(" ");
+        for want in [
+            "memory-backend-memfd,id=mem,size=512M,share=on",
+            "virt,gic-version=host,memory-backend=mem",
+            "socket,id=files,path=/m/files.sock",
+            "vhost-user-fs-device,chardev=files,tag=iwci-files",
+            "iwci.files=iwci-files",
+        ] {
+            assert!(text.contains(want), "{want} not in {text}");
+        }
+        assert!(!text.contains("iwci-ws"));
+        assert!(!kernel_cmdline(false, false).contains("iwci.files"));
     }
 
     #[test]
@@ -360,7 +423,6 @@ mod tests {
         ] {
             assert!(text.contains(want), "{want} not in {text}");
         }
-        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
         // Without it, the memory is QEMU's own.
         let plain = strings(&linux_args(&Linux {
             arch: Arch::X86_64,
@@ -404,10 +466,10 @@ mod tests {
         let append = &args[args.iter().position(|a| a == "-append").unwrap() + 1];
         assert!(append.contains("init=/usr/local/sbin/iwci-guest"));
         assert!(append.contains("ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off"));
-        // The root disk is the last device, so the guest names it vda.
-        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
+        // microvm numbers its devices in command-line order: the root
+        // disk comes before the workspace's, so the guest names it vda.
         assert!(
-            text.find("drive=ws").unwrap() < text.find("drive=root").unwrap(),
+            text.find("drive=root").unwrap() < text.find("drive=ws").unwrap(),
             "{text}"
         );
     }

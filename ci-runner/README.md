@@ -700,8 +700,22 @@ jobs:
   (`crates/iwci-vm-proto`).
 - **Files.** The machine starts from the same files an isolate would: the
   clone, the artifacts of the jobs it needs, lent files and restored
-  caches. The clone is a read-only erofs image made once per commit and
-  shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
+  caches. On an image that can (its `image.json` lists `files-virtiofs`,
+  as every image built since this did), they are streamed in: the runner
+  serves the job's files read only over virtio-fs, as the lower layer of
+  the machine's root, and a file crosses only when it is read. From the
+  moment the machine is up its agent reads the whole tree ahead of the job
+  in the background (four low-priority threads, breadth first, at most a
+  quarter of the machine's memory and files of at most 256 MiB), so most
+  reads find the file in the machine already, and nothing is asked of the
+  runner a second time: names, attributes, listings and pages stay in the
+  machine's cache, and no file or directory is opened over the wire.
+  Measured on ci-1 against the disk image, a job that reads most of a
+  216 MB clone right after boot takes the same time, a second walk of it
+  is faster, and no image has to be made for the commit. An older image
+  gets the clone as a read-only erofs disk made once per commit, and the
+  rest copied in. Either way, what the job writes stays in the machine's
+  own memory, and afterwards it sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
   `changes:`, the clone without what its `.gitignore` ignores. A job's
   `npm ci` stays in the machine, and artifacts in ignored directories
