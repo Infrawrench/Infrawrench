@@ -45,6 +45,11 @@ const MAX_PAGES: u16 = 256;
 /// How long the kernel may trust a name or attributes. Short: other jobs,
 /// and other runners, change the directory while the machine runs.
 const VALID_SECS: u64 = 1;
+/// The same for a file system served read only, which nothing changes
+/// while the machine runs: the kernel caches it as it would a disk.
+const READ_ONLY_VALID_SECS: u64 = 24 * 60 * 60;
+/// `FOPEN_KEEP_CACHE`: the kernel keeps a file's pages across opens.
+const FOPEN_KEEP_CACHE: u32 = 1 << 1;
 const ROOT: u64 = 1;
 const IN_HEADER: usize = 40;
 const OUT_HEADER: usize = 16;
@@ -93,6 +98,7 @@ const ENOTDIR: i32 = 20;
 const EISDIR: i32 = 21;
 const EINVAL: i32 = 22;
 const ENOSPC: i32 = 28;
+const EROFS: i32 = 30;
 const ENAMETOOLONG: i32 = 36;
 const ENOSYS: i32 = 38;
 const ENOTEMPTY: i32 = 39;
@@ -269,6 +275,8 @@ pub struct Server {
     fs: DynFs,
     /// The modes of the served files, by path.
     modes: Modes,
+    /// Nothing may be written ([`Server::read_only`]).
+    read_only: bool,
     tables: Mutex<Tables>,
 }
 
@@ -297,7 +305,27 @@ impl Server {
         Self {
             fs,
             modes,
+            read_only: false,
             tables: Mutex::new(tables),
+        }
+    }
+
+    /// Serves `fs` read only: a machine's own files, which the runner
+    /// does not change while the machine runs. Every write is `EROFS`
+    /// (the machine writes to its overlay above them), and the kernel may
+    /// cache names, attributes and pages for as long as it likes.
+    pub fn read_only(fs: DynFs, modes: Modes) -> Self {
+        Self {
+            read_only: true,
+            ..Self::new(fs, modes)
+        }
+    }
+
+    fn valid_secs(&self) -> u64 {
+        if self.read_only {
+            READ_ONLY_VALID_SECS
+        } else {
+            VALID_SECS
         }
     }
 
@@ -328,6 +356,23 @@ impl Server {
             return Some(reply(unique, Err(EINVAL)));
         }
         args.buf = &request[..len as usize];
+        if self.read_only
+            && matches!(
+                opcode,
+                SETATTR
+                    | SYMLINK
+                    | MKDIR
+                    | UNLINK
+                    | RMDIR
+                    | RENAME
+                    | RENAME2
+                    | LINK
+                    | CREATE
+                    | WRITE
+            )
+        {
+            return Some(reply(unique, Err(EROFS)));
+        }
         let answer = match opcode {
             FORGET => {
                 if let Ok(n) = args.u64() {
@@ -497,8 +542,8 @@ impl Server {
         let mut out = Out::default();
         out.u64(node)
             .u64(0) // generation
-            .u64(VALID_SECS)
-            .u64(VALID_SECS)
+            .u64(self.valid_secs())
+            .u64(self.valid_secs())
             .u32(0)
             .u32(0);
         let mut body = out.done();
@@ -526,7 +571,7 @@ impl Server {
         let path = self.path_of(node)?;
         let meta = self.stat(&path)?;
         let mut out = Out::default();
-        out.u64(VALID_SECS).u32(0).u32(0);
+        out.u64(self.valid_secs()).u32(0).u32(0);
         let mut body = out.done();
         body.extend(self.attr(node, &path, &meta));
         Ok(body)
@@ -699,8 +744,12 @@ impl Server {
         if self.stat(&path)?.is_dir() {
             return Err(EISDIR);
         }
+        if self.read_only && (flags & O_ACCMODE != 0 || flags & O_TRUNC != 0) {
+            return Err(EROFS);
+        }
         let fh = self.open_file(&path, flags & !(O_CREAT | O_EXCL), false)?;
-        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+        let keep = if self.read_only { FOPEN_KEEP_CACHE } else { 0 };
+        Ok(Out::default().u64(fh).u32(keep).u32(0).done())
     }
 
     fn create(&self, parent: u64, args: &mut Args<'_>) -> Answer {

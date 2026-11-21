@@ -247,12 +247,22 @@ impl Serving {
     /// `socket`, which exists before this returns, so QEMU can be started
     /// at once.
     pub fn start(fs: DynFs, modes: Modes, socket: &Path) -> Result<Serving, String> {
+        Self::with_server(Server::new(fs, modes), socket)
+    }
+
+    /// [`Serving::start`] for a file system the machine only reads
+    /// ([`Server::read_only`]).
+    pub fn start_read_only(fs: DynFs, modes: Modes, socket: &Path) -> Result<Serving, String> {
+        Self::with_server(Server::read_only(fs, modes), socket)
+    }
+
+    fn with_server(server: Server, socket: &Path) -> Result<Serving, String> {
         let _ = std::fs::remove_file(socket);
         let mut listener =
             Listener::new(socket, true).map_err(|e| format!("virtio-fs socket: {e}"))?;
         let (sender, receiver) = mpsc::channel::<Work>();
         let inner = Arc::new(Inner {
-            server: Arc::new(Server::new(fs, modes)),
+            server: Arc::new(server),
             memory: Mutex::new(None),
             work: Mutex::new(Some(sender)),
         });

@@ -303,6 +303,13 @@ pub struct Setup {
 
 /// The tag the run's `/tmp/workflow` device carries.
 pub const SCRATCH_TAG: &str = "iwci-scratch";
+/// The tag the job's own files carry when they are served read only
+/// rather than given as a disk image and an archive; the kernel's command
+/// line says `iwci.files=<tag>` then, for the agent to mount at boot.
+pub const FILES_TAG: &str = "iwci-files";
+/// What `image.json` lists under `features` when its agent mounts
+/// [`FILES_TAG`].
+pub const FILES_FEATURE: &str = "files-virtiofs";
 
 /// A virtio-fs device to mount ([`Setup::scratch`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

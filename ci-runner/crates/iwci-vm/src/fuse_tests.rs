@@ -316,3 +316,39 @@ fn modes_live_in_the_served_file_systems_record_so_the_next_machine_sees_them() 
     ok(&next, RENAME, ROOT, &body);
     assert_eq!(fs.modes().get(Path::new("/go.sh")), Some(0o755));
 }
+
+#[test]
+fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
+    let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+    fs.write("/app/a.txt", b"source").unwrap();
+    let s = Server::read_only(fs.as_dyn(), fs.modes());
+    let (error, entry) = lookup(&s, ROOT, "app");
+    assert_eq!(error, 0);
+    assert_eq!(u64_at(&entry, 16), READ_ONLY_VALID_SECS, "names are kept");
+    let app = u64_at(&entry, 0);
+    let file = u64_at(&lookup(&s, app, "a.txt").1, 0);
+    // Read: allowed, with the pages kept across opens.
+    let open = ok(&s, OPEN, file, &[0u8; 8]);
+    assert_eq!(u32_at(&open, 8), FOPEN_KEEP_CACHE);
+    assert_eq!(read(&s, u64_at(&open, 0), 0, 100), b"source");
+    // Every way of writing is refused.
+    let mut wr = le32(O_RDWR);
+    wr.extend(le32(0));
+    assert_eq!(call(&s, OPEN, file, &wr).0, -EROFS);
+    let mut trunc = le32(O_TRUNC);
+    trunc.extend(le32(0));
+    assert_eq!(call(&s, OPEN, file, &trunc).0, -EROFS);
+    let mut create = le32(O_RDWR | O_CREAT);
+    create.extend(le32(0o644));
+    create.extend(le32(0));
+    create.extend(le32(0));
+    create.extend(name("new"));
+    assert_eq!(call(&s, CREATE, app, &create).0, -EROFS);
+    assert_eq!(call(&s, UNLINK, app, &name("a.txt")).0, -EROFS);
+    let mut mkdir = le32(0o755);
+    mkdir.extend(le32(0));
+    mkdir.extend(name("d"));
+    assert_eq!(call(&s, MKDIR, app, &mkdir).0, -EROFS);
+    assert_eq!(call(&s, SETATTR, file, &[0u8; 88]).0, -EROFS);
+    assert_eq!(fs.read("/app/a.txt").unwrap(), b"source");
+}

@@ -105,6 +105,22 @@ fn workspace_disk() -> Option<String> {
     None
 }
 
+/// The tag of the virtio-fs device the job's own files are served on,
+/// when the kernel's command line names one (`iwci.files=<tag>`): the
+/// runner streams them in rather than giving a workspace disk.
+fn files_tag(cmdline: &str) -> Option<&str> {
+    cmdline
+        .split_whitespace()
+        .find_map(|word| word.strip_prefix("iwci.files="))
+        .filter(|tag| {
+            !tag.is_empty()
+                && tag.len() <= 36
+                && tag
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+}
+
 /// Mounts the job's root and changes into it.
 pub fn build_root() -> io::Result<()> {
     let nosuid = libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC;
@@ -127,11 +143,18 @@ pub fn build_root() -> io::Result<()> {
     mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
     mkdir("/.iwci/rw/upper")?;
     mkdir("/.iwci/rw/work")?;
-    let disk = workspace_disk();
-    let workspace = disk.is_some();
-    if let Some(disk) = &disk {
-        mount(disk, "/.iwci/ws", Some("erofs"), libc::MS_RDONLY, None)?;
-    }
+    // The job's files: streamed in over virtio-fs, read only, or a disk
+    // image of the workspace. Either is the overlay's upper lower layer.
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    let workspace = if let Some(tag) = files_tag(&cmdline) {
+        mount(tag, "/.iwci/ws", Some("virtiofs"), libc::MS_RDONLY, None)?;
+        true
+    } else if let Some(disk) = workspace_disk() {
+        mount(&disk, "/.iwci/ws", Some("erofs"), libc::MS_RDONLY, None)?;
+        true
+    } else {
+        false
+    };
     mount("/", "/.iwci/base", None, libc::MS_BIND, None)?;
     let lower = if workspace {
         "/.iwci/ws:/.iwci/base"
@@ -290,5 +313,19 @@ pub fn run() -> ! {
         if pid < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
             power_off();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::files_tag;
+
+    #[test]
+    fn the_files_tag_comes_from_the_command_line_and_only_a_plain_one() {
+        let line = "console=hvc0 root=/dev/vda ro init=/usr/local/sbin/iwci-guest iwci.files=iwci-files quiet";
+        assert_eq!(files_tag(line), Some("iwci-files"));
+        assert_eq!(files_tag("console=hvc0 quiet"), None);
+        assert_eq!(files_tag("iwci.files="), None);
+        assert_eq!(files_tag("iwci.files=../x"), None);
     }
 }

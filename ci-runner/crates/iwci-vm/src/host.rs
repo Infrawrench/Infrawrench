@@ -12,7 +12,11 @@
 //!    The run's `/tmp/workflow` is served to a Linux machine over
 //!    virtio-fs (`virtiofs.rs`) when the host's QEMU and the image's
 //!    agent can, so nothing of it is copied and the job sees it live;
-//!    otherwise it is copied in whole and what changed comes back.
+//!    otherwise it is copied in whole and what changed comes back. The
+//!    job's own files are streamed in the same way, read only, as the
+//!    lower layer of the machine's root, when the image's agent says it
+//!    can mount them (`files-virtiofs`): no workspace image is made and no
+//!    archive is sent, and a file crosses only when it is read.
 //! 5. Stop the machine and remove its directory, whatever happened.
 //!
 //! The job's timeout, a cancel, and a hang (no output and the machine's
@@ -28,7 +32,8 @@ use std::time::{Duration, Instant};
 
 use iwci_vfs::{DynFs, JobFs, Snapshot};
 use iwci_vm_proto::{
-    Collect, Exec, Exited, Network, PROTOCOL, SCRATCH_TAG, ScratchMount, Setup, Shell,
+    Collect, Exec, Exited, FILES_FEATURE, Network, PROTOCOL, SCRATCH_TAG, ScratchMount, Setup,
+    Shell,
 };
 
 use crate::agent::{Agent, Failed, Ran, Tick, Watch};
@@ -282,6 +287,16 @@ impl Host {
         host
     }
 
+    /// Whether a Linux machine's own files are streamed in over virtio-fs:
+    /// QEMU has the device and the image's agent mounts it at boot.
+    fn streams_files(&self) -> bool {
+        self.virtiofs
+            && self
+                .linux
+                .as_ref()
+                .is_some_and(|image| image.info.features.iter().any(|f| f == FILES_FEATURE))
+    }
+
     /// The kinds of machine it can start.
     pub fn platforms(&self) -> Vec<Os> {
         let mut out = Vec::new();
@@ -338,6 +353,8 @@ impl Host {
                 && self.virtiofs
                 && job.scratch.live.is_some())
             .then(|| dir.join("scratch.sock")),
+            files: (cfg!(target_os = "linux") && job.os == Os::Linux && self.streams_files())
+                .then(|| dir.join("files.sock")),
         };
         let agent_listener = listen(&sockets.agent)?;
         let net_listener = sockets.net.as_deref().map(listen).transpose()?;
@@ -352,6 +369,17 @@ impl Host {
             )?),
             _ => None,
         };
+        // The job's own files, read only: the machine writes to its
+        // overlay above them, and what it left is collected as before.
+        #[cfg(target_os = "linux")]
+        let _serving_files = match &sockets.files {
+            Some(path) => Some(crate::virtiofs::Serving::start_read_only(
+                job.fs.as_dyn(),
+                job.fs.modes(),
+                path,
+            )?),
+            None => None,
+        };
 
         let (args, boot): (Vec<OsString>, Duration) = match job.os {
             Os::Linux => {
@@ -360,6 +388,8 @@ impl Host {
                     .as_ref()
                     .ok_or("this runner has no Linux image")?;
                 let workspace = match job.workspace {
+                    // Streamed in instead (`sockets.files`).
+                    Some(_) if sockets.files.is_some() => None,
                     Some((key, snapshot)) => self
                         .workspaces
                         .as_ref()
@@ -494,13 +524,17 @@ impl Host {
         // on Windows everything. The run's scratch either way.
         let transfer = Instant::now();
         let files = match job.os {
+            // Streamed in: there is nothing to send.
+            Os::Linux if sockets.files.is_some() => Vec::new(),
             Os::Linux => archive::own(job.fs),
             Os::Windows => archive::whole(job.fs),
         };
         if live {
-            agent
-                .put(&[("/", &files)], STEP)
-                .map_err(|e| machine.failed(e))?;
+            if !files.is_empty() {
+                agent
+                    .put(&[("/", &files)], STEP)
+                    .map_err(|e| machine.failed(e))?;
+            }
         } else {
             (job.scratch.settle)()?;
             let scratch = archive::whole(job.scratch.files);
