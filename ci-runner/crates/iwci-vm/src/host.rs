@@ -193,6 +193,21 @@ fn find(path: Option<&Path>, name: &str) -> Option<PathBuf> {
     })
 }
 
+/// Whether `child` has exited, or does within a second: a machine whose
+/// sockets closed under the runner is on its way out.
+fn exits(child: &mut Child) -> bool {
+    let until = Instant::now() + Duration::from_secs(1);
+    loop {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// Whether the host has, or may make, 2 MiB huge pages: a pool
 /// (`nr_hugepages`) or room to make them when asked
 /// (`nr_overcommit_hugepages`).
@@ -545,37 +560,39 @@ impl Host {
                 gateway: None,
             };
             mark("started QEMU");
-            match machine.accept(&agent_listener, deadline, job.cancelled) {
-                Ok(stream) => {
-                    launched = Some((machine, stream));
+            // Everything up to the agent's hello: QEMU connects its sockets
+            // before it maps the guest's memory, so a machine that could
+            // not have its huge pages still connects, then goes.
+            let mut start = || -> Result<_, String> {
+                let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
+                mark("agent port connected");
+                if let Some(listener) = &net_listener {
+                    let stream = machine.accept(listener, deadline, job.cancelled)?;
+                    self.connect_link(&mut machine, stream, job.network)?;
+                    mark("network linked");
+                }
+                let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
+                let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
+                let left = deadline.saturating_duration_since(Instant::now());
+                let hello = agent
+                    .hello(left.max(Duration::from_secs(5)))
+                    .map_err(|e| machine.failed(e))?;
+                Ok((agent, hello))
+            };
+            match start() {
+                Ok((agent, hello)) => {
+                    launched = Some((machine, agent, hello));
                     break;
                 }
                 // Huge pages the host could not give: the same machine in
                 // ordinary pages.
-                Err(e)
-                    if *huge_pages
-                        && n + 1 < attempts.len()
-                        && matches!(machine.child.try_wait(), Ok(Some(_))) =>
-                {
+                Err(e) if *huge_pages && n + 1 < attempts.len() && exits(&mut machine.child) => {
                     fell_back = Some(e);
                 }
                 Err(e) => return Err(e),
             }
         }
-        let (mut machine, agent_stream) = launched.ok_or("the machine did not start")?;
-        mark("agent port connected");
-        if let Some(listener) = &net_listener {
-            let stream = machine.accept(listener, deadline, job.cancelled)?;
-            self.connect_link(&mut machine, stream, job.network)?;
-            mark("network linked");
-        }
-
-        let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
-        let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
-        let left = deadline.saturating_duration_since(Instant::now());
-        let hello = agent
-            .hello(left.max(Duration::from_secs(5)))
-            .map_err(|e| machine.failed(e))?;
+        let (mut machine, mut agent, hello) = launched.ok_or("the machine did not start")?;
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "the machine's agent speaks protocol {}, this runner {PROTOCOL}: the image needs rebuilding with this runner's agent",
