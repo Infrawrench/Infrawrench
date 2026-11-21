@@ -169,7 +169,14 @@ install script then:
 - adds `iwci` to the group `kvm`, which owns `/dev/kvm`, and the unit gets
   `SupplementaryGroups=kvm`;
 - makes `/var/lib/iwci/machines` (root, group `iwci`, 0750) and sets
-  `IWCI_MACHINES` in the unit to it.
+  `IWCI_MACHINES` in the unit to it;
+- lets the kernel make 2 MiB huge pages on demand, up to the host's
+  memory (`vm.nr_overcommit_hugepages` in
+  `/etc/sysctl.d/60-iwci-machines.conf`): a machine's memory goes in them,
+  which cuts its boot from about 0.85 s to 0.36 s at 2 GiB; nothing is
+  reserved until a machine starts, and its pages go back when it stops.
+  A pool (`vm.nr_hugepages`) would save another 0.1 s a boot, but pins
+  its memory whether or not a machine runs, so it is not set.
 
 The image is not uploaded from here: its root is a few GB. Build it on the
 host with `ci-runner/images/linux/build.sh --out /var/lib/iwci/machines/linux`

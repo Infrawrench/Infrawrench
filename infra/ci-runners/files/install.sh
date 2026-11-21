@@ -138,6 +138,14 @@ if [[ "$machines" == "true" ]]; then
   getent group kvm >/dev/null || groupadd --system kvm
   usermod -aG kvm iwci
   install -d -o root -g iwci -m 0750 /var/lib/iwci/machines
+  # 2 MiB huge pages for machines' memory, made when a machine maps it and
+  # given back when it stops (an upper bound, not a reservation). A machine
+  # with a virtio-fs device has its memory in a shared memfd, which in
+  # 4 KiB pages costs its boot 0.5 s at 2 GiB and 1.7 s at 8 GiB (measured
+  # on ci-1); the runner falls back to them when the pages are not there.
+  huge_pages=$(($(awk '/^MemTotal:/ { print $2 }' /proc/meminfo) / 2048))
+  echo "vm.nr_overcommit_hugepages = $huge_pages" >/etc/sysctl.d/60-iwci-machines.conf
+  sysctl -q -p /etc/sysctl.d/60-iwci-machines.conf
   if [[ ! -e /dev/kvm ]]; then
     echo "warning: no /dev/kvm: the runner will run no virtual machines here (x86_64 needs VT-x or AMD-V, Graviton a .metal instance)" >&2
   fi

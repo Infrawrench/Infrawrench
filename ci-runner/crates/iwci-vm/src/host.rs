@@ -175,6 +175,10 @@ pub struct Host {
     /// QEMU has `vhost-user-fs-device`: a Linux machine is served the
     /// run's `/tmp/workflow` rather than a copy of it.
     virtiofs: bool,
+    /// The host lends 2 MiB huge pages (`vm.nr_overcommit_hugepages`, or a
+    /// pool): a machine's shared memory is put in them, which is most of
+    /// what its boot costs otherwise (`qemu::linux_args`).
+    huge_pages: bool,
 }
 
 /// `name` on `PATH`, or `path` when given and present.
@@ -187,6 +191,34 @@ fn find(path: Option<&Path>, name: &str) -> Option<PathBuf> {
             .map(|dir| dir.join(name))
             .find(|p| p.is_file())
     })
+}
+
+/// Whether `child` has exited, or does within a second: a machine whose
+/// sockets closed under the runner is on its way out.
+fn exits(child: &mut Child) -> bool {
+    let until = Instant::now() + Duration::from_secs(1);
+    loop {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Whether the host has, or may make, 2 MiB huge pages: a pool
+/// (`nr_hugepages`) or room to make them when asked
+/// (`nr_overcommit_hugepages`).
+fn lends_huge_pages() -> bool {
+    let read = |name: &str| {
+        std::fs::read_to_string(format!("/sys/kernel/mm/hugepages/hugepages-2048kB/{name}"))
+            .ok()
+            .and_then(|t| t.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    read("nr_hugepages") + read("nr_overcommit_hugepages") > 0
 }
 
 /// Whether `qemu` lists the virtio-fs device a Linux machine's
@@ -228,6 +260,7 @@ impl Host {
             workspaces: None,
             problems: Vec::new(),
             virtiofs: false,
+            huge_pages: false,
             config,
         };
         if !cfg!(target_os = "linux") {
@@ -258,6 +291,13 @@ impl Host {
             return host;
         }
         host.virtiofs = host.qemu.as_deref().is_some_and(has_virtiofs);
+        host.huge_pages = lends_huge_pages();
+        if host.virtiofs && !host.huge_pages {
+            problems.push(
+                "Linux: machines boot slower: the host lends no 2 MiB huge pages (vm.nr_overcommit_hugepages)"
+                    .into(),
+            );
+        }
         if !host.virtiofs {
             problems.push(
                 "Linux: /tmp/workflow is copied into each machine and back: this QEMU has no vhost-user-fs-device"
@@ -341,6 +381,18 @@ impl Host {
         let arch = self.arch.ok_or("no machines on this host")?;
         let qemu_bin = self.qemu.as_ref().ok_or("QEMU is not installed")?;
         let started = Instant::now();
+        // `IWCI_BOOT_TIMES=1`: when each step of a machine's start ended,
+        // from the start of `run_in`, on stderr.
+        let times = std::env::var_os("IWCI_BOOT_TIMES").is_some();
+        let mark = |step: &str| {
+            if times {
+                eprintln!(
+                    "iwci: machine {}: {step} at {} ms",
+                    job.id,
+                    started.elapsed().as_millis()
+                );
+            }
+        };
         let memory_mib = job.memory_bytes.div_ceil(1 << 20);
         let sockets = Sockets {
             agent: dir.join("agent.sock"),
@@ -358,30 +410,18 @@ impl Host {
         };
         let agent_listener = listen(&sockets.agent)?;
         let net_listener = sockets.net.as_deref().map(listen).transpose()?;
-        // Listening before QEMU starts, and stopped after it has (it is
-        // dropped after `machine`).
-        #[cfg(target_os = "linux")]
-        let _serving = match (&sockets.scratch, &job.scratch.live) {
-            (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(
-                fs.clone(),
-                job.scratch.files.modes(),
-                path,
-            )?),
-            _ => None,
-        };
-        // The job's own files, read only: the machine writes to its
-        // overlay above them, and what it left is collected as before.
-        #[cfg(target_os = "linux")]
-        let _serving_files = match &sockets.files {
-            Some(path) => Some(crate::virtiofs::Serving::start_read_only(
-                job.fs.as_dyn(),
-                job.fs.modes(),
-                path,
-            )?),
-            None => None,
+        // Shared memory in huge pages when the host lends them, else in
+        // 4 KiB pages: tried in that order (`qemu::linux_args`).
+        let shared = sockets.scratch.is_some() || sockets.files.is_some();
+        let tries: Vec<bool> = if shared && self.huge_pages {
+            vec![true, false]
+        } else {
+            vec![false]
         };
 
-        let (args, boot): (Vec<OsString>, Duration) = match job.os {
+        // The arguments for each try, and how long the machine has to say
+        // hello.
+        let (attempts, boot): (Vec<(Vec<OsString>, bool)>, Duration) = match job.os {
             Os::Linux => {
                 let image = self
                     .linux
@@ -397,16 +437,28 @@ impl Host {
                         .image(key, snapshot)?,
                     None => None,
                 };
-                let args = qemu::linux_args(&qemu::Linux {
-                    arch,
-                    kernel: &image.kernel,
-                    rootfs: &image.rootfs,
-                    workspace: workspace.as_deref(),
-                    memory_mib,
-                    cpus: job.cpus.unwrap_or(self.config.cpus),
-                    sockets: &sockets,
-                });
-                (args, LINUX_BOOT)
+                let attempts = tries
+                    .iter()
+                    .map(|&huge_pages| {
+                        let args = qemu::linux_args(&qemu::Linux {
+                            arch,
+                            kernel: &image.kernel,
+                            rootfs: &image.rootfs,
+                            workspace: workspace.as_deref(),
+                            // Huge pages come whole.
+                            memory_mib: if huge_pages {
+                                memory_mib.div_ceil(2) * 2
+                            } else {
+                                memory_mib
+                            },
+                            cpus: job.cpus.unwrap_or(self.config.cpus),
+                            sockets: &sockets,
+                            huge_pages,
+                        });
+                        (args, huge_pages)
+                    })
+                    .collect();
+                (attempts, LINUX_BOOT)
             }
             Os::Windows => {
                 let image = self
@@ -446,7 +498,7 @@ impl Host {
                     incoming: restore.as_ref().map(|r| r.state.as_path()),
                 });
                 (
-                    args,
+                    vec![(args, false)],
                     if restore.is_some() {
                         WINDOWS_RESTORE
                     } else {
@@ -456,35 +508,102 @@ impl Host {
             }
         };
 
-        let log = std::fs::File::create(dir.join("qemu.log"))
-            .map_err(|e| format!("the emulator's log: {e}"))?;
-        let child = Command::new(qemu_bin)
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(log.try_clone().map_err(|e| e.to_string())?)
-            .stderr(log)
-            .spawn()
-            .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
-        let mut machine = Machine {
-            child,
-            dir: dir.to_path_buf(),
-            bridge: Vec::new(),
-            #[cfg(target_os = "linux")]
-            gateway: None,
-        };
+        // Listening before QEMU starts, and stopped after it has (they are
+        // dropped after `machine`); started again for a second try, since
+        // each takes one connection.
+        #[cfg(target_os = "linux")]
+        let mut _serving: Option<crate::virtiofs::Serving> = None;
+        // The job's own files, read only: the machine writes to its
+        // overlay above them, and what it left is collected as before.
+        #[cfg(target_os = "linux")]
+        let mut _serving_files: Option<crate::virtiofs::Serving> = None;
         let deadline = started + boot.min(job.timeout + boot);
-        let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
-        if let Some(listener) = &net_listener {
-            let stream = machine.accept(listener, deadline, job.cancelled)?;
-            self.connect_link(&mut machine, stream, job.network)?;
+        let mut fell_back = None;
+        let mut launched = None;
+        for (n, (args, huge_pages)) in attempts.iter().enumerate() {
+            #[cfg(target_os = "linux")]
+            {
+                _serving = None;
+                _serving_files = None;
+                _serving = match (&sockets.scratch, &job.scratch.live) {
+                    (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(
+                        fs.clone(),
+                        job.scratch.files.modes(),
+                        path,
+                    )?),
+                    _ => None,
+                };
+                _serving_files = match &sockets.files {
+                    Some(path) => Some(crate::virtiofs::Serving::start_read_only(
+                        job.fs.as_dyn(),
+                        job.fs.modes(),
+                        path,
+                    )?),
+                    None => None,
+                };
+            }
+            let log = std::fs::File::create(dir.join("qemu.log"))
+                .map_err(|e| format!("the emulator's log: {e}"))?;
+            mark("set up");
+            let mut args = args.clone();
+            if times && let Some(at) = args.iter().position(|a| a == "-append") {
+                // The agent's own steps on the console (`init::mark`).
+                args[at + 1].push(" iwci.times");
+            }
+            let child = Command::new(qemu_bin)
+                .args(&args)
+                .stdin(Stdio::null())
+                .stdout(log.try_clone().map_err(|e| e.to_string())?)
+                .stderr(log)
+                .spawn()
+                .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
+            let mut machine = Machine {
+                child,
+                dir: dir.to_path_buf(),
+                bridge: Vec::new(),
+                #[cfg(target_os = "linux")]
+                gateway: None,
+            };
+            mark("started QEMU");
+            // Everything up to the agent's hello: QEMU connects its sockets
+            // before it maps the guest's memory, so a machine that could
+            // not have its huge pages still connects, then goes.
+            let mut start = || -> Result<_, String> {
+                let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
+                mark("agent port connected");
+                if let Some(listener) = &net_listener {
+                    let stream = machine.accept(listener, deadline, job.cancelled)?;
+                    self.connect_link(&mut machine, stream, job.network)?;
+                    mark("network linked");
+                }
+                let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
+                let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
+                let left = deadline.saturating_duration_since(Instant::now());
+                let hello = agent
+                    .hello(left.max(Duration::from_secs(5)))
+                    .map_err(|e| machine.failed(e))?;
+                Ok((agent, hello))
+            };
+            match start() {
+                Ok((agent, hello)) => {
+                    launched = Some((machine, agent, hello));
+                    break;
+                }
+                // Huge pages the host could not give: the same machine in
+                // ordinary pages.
+                Err(e) if *huge_pages && n + 1 < attempts.len() && exits(&mut machine.child) => {
+                    fell_back = Some(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
-
-        let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
-        let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
-        let left = deadline.saturating_duration_since(Instant::now());
-        let hello = agent
-            .hello(left.max(Duration::from_secs(5)))
-            .map_err(|e| machine.failed(e))?;
+        let (mut machine, mut agent, hello) = launched.ok_or("the machine did not start")?;
+        if times {
+            let console = std::fs::read_to_string(dir.join("console.log")).unwrap_or_default();
+            for line in console.lines().filter(|l| l.contains("of uptime")) {
+                eprintln!("iwci: machine {}: {line}", job.id);
+            }
+        }
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "the machine's agent speaks protocol {}, this runner {PROTOCOL}: the image needs rebuilding with this runner's agent",
@@ -494,9 +613,18 @@ impl Host {
         let mut outcome = Outcome {
             image: hello.image.clone(),
             arch: hello.arch.clone(),
-            boot_ms: started.elapsed().as_millis() as u64,
+            boot_ms: {
+                mark("hello");
+                started.elapsed().as_millis() as u64
+            },
             ..Default::default()
         };
+        if let Some(why) = fell_back {
+            outcome.notes.push(format!(
+                "the machine started without huge pages, which the host could not give ({}); it boots slower so",
+                why.lines().next().unwrap_or_default()
+            ));
+        }
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64);

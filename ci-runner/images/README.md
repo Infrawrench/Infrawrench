@@ -39,7 +39,7 @@ Both aim at what GitHub's hosted runners have for everyday CI ([Ubuntu 24.04](ht
 
 ### How the runner boots it
 
-- x86_64: `qemu-system-x86_64 -M microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off -enable-kvm -cpu host -nodefaults -no-user-config -kernel vmlinux`
+- x86_64: `qemu-system-x86_64 -M microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=on -enable-kvm -cpu host -nodefaults -no-user-config -kernel vmlinux`
 - aarch64: `qemu-system-aarch64 -M virt,gic-version=host -enable-kvm -cpu host -nodefaults -no-user-config -kernel Image`
 - `-append "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet"`, plus `ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off ipv6.disable=1` when the job has a network.
 - virtio-mmio devices only: `virtio-blk-device` for `rootfs.erofs` (read only), `virtio-blk-device` for the job's workspace (read-only erofs, optional, `serial=iwci-ws`), `virtio-net-device` (optional), and `virtio-serial-device` with a `virtconsole` (hvc0) and a `virtserialport,name=org.infrawrench.iwci.agent`.
