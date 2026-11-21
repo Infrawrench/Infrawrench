@@ -298,6 +298,8 @@ pub struct Server {
     /// Nothing may be written ([`Server::read_only`]).
     read_only: bool,
     tables: Mutex<Tables>,
+    /// Requests answered, by opcode, for [`Server::counts`].
+    counts: Mutex<std::collections::BTreeMap<u32, u64>>,
 }
 
 impl std::fmt::Debug for Server {
@@ -327,7 +329,15 @@ impl Server {
             modes,
             read_only: false,
             tables: Mutex::new(tables),
+            counts: Mutex::default(),
         }
+    }
+
+    /// How many requests of each opcode it has answered: what a machine
+    /// asked of the runner, for tuning.
+    pub fn counts(&self) -> Vec<(u32, u64)> {
+        let counts = self.counts.lock().unwrap_or_else(|e| e.into_inner());
+        counts.iter().map(|(k, v)| (*k, *v)).collect()
     }
 
     /// Serves `fs` read only: a machine's own files, which the runner
@@ -371,6 +381,12 @@ impl Server {
         let Ok((len, opcode, unique, node)) = header else {
             return None;
         };
+        *self
+            .counts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(opcode)
+            .or_default() += 1;
         // The request is what its header says, and no more.
         if (len as usize) < IN_HEADER || len as usize > request.len() {
             return Some(reply(unique, Err(EINVAL)));

@@ -332,6 +332,13 @@ impl Drop for Serving {
         for worker in self.workers.drain(..) {
             let _ = worker.join();
         }
+        if std::env::var_os("IWCI_VIRTIOFS_COUNTS").is_some() {
+            eprintln!(
+                "iwci: virtio-fs {}: requests by opcode {:?}",
+                self.socket.display(),
+                self.inner.server.counts()
+            );
+        }
         let _ = std::fs::remove_file(&self.socket);
     }
 }
