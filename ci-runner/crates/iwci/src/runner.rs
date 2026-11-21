@@ -803,6 +803,7 @@ impl Runner {
             threads: self.cpus,
             git: Some(self.git.clone()),
             prebuilt: Arc::new(crate::gem_builds::from_store(self.store.clone())),
+            scripts: None,
         };
         let mut author = self.author.clone();
         author.time = now_secs() as i64;
@@ -954,7 +955,7 @@ impl Runner {
             None => None,
         };
         let ctx = r.context(req);
-        let (tools, executor, workspaces, committer) = self.parts(&r, req);
+        let (tools, executor, mut workspaces, committer) = self.parts(&r, req);
         let default_branch = req
             .default_branch
             .clone()
@@ -969,6 +970,11 @@ impl Runner {
             r.event,
             quota,
         ));
+        workspaces.scripts = Some(crate::install_scripts::ScriptHost {
+            machines: self.machines.clone(),
+            caches: Some(caches.clone()),
+            commit: r.sha.clone(),
+        });
         // Task cache keys this run computes, and the ones other runs do,
         // in the same scopes as the entries. The runners of a split run
         // count as one run, the primary's.

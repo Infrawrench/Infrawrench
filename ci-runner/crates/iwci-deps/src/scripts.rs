@@ -697,16 +697,14 @@ fn package_manager_major(root: &Value, manager: &str) -> Option<u64> {
 
 /// An `.npmrc` boolean, last line wins.
 fn npmrc_bool(text: &str, key: &str) -> Option<bool> {
-    text.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.starts_with('#') || line.starts_with(';') {
-                return None;
-            }
-            let (k, v) = line.split_once('=')?;
-            (k.trim() == key).then(|| v.trim().trim_matches('"') == "true")
-        })
-        .last()
+    text.lines().rev().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') || line.starts_with(';') {
+            return None;
+        }
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().trim_matches('"') == "true")
+    })
 }
 
 /// A package a policy names: by name, or `name@1.2.3 || 1.2.4` (exact
