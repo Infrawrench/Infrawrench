@@ -2968,6 +2968,14 @@ fn install_scripts_is_on_for_workspaces_with_a_node_install_only() {
     );
     // The pnpm workspace runs them; Go's and the machine's have nothing.
     let flags: Vec<bool> = on.iter().map(|w| w.install_scripts).collect();
+    // A runner with Linux machines is what such a run needs, as a
+    // machine job does.
+    let plan = parse(
+        "name: x\ninstall-scripts: true\nworkspace:\n  deps: [npm]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(plan.vm_platforms(), vec![VmOs::Linux]);
     assert_eq!(flags, vec![true, false, false]);
     let off =
         workspaces("name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n");

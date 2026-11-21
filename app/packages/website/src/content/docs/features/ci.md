@@ -318,6 +318,18 @@ A machine has no `using:`, `deps:`, `tools:`, `services:` or `task-cache:`: its 
 
 `changes: fail` and `changes: { commit: ... }` count only what git would see: a new file that the repository's `.gitignore` ignores, such as `node_modules` or a build folder, is not a change, in a machine or in the sandbox.
 
+### Install scripts
+
+The install of a workspace's `deps:` runs no package's install script. With `install-scripts: true` at the top of the pipeline, a workspace with a pnpm, npm or Bun install also runs the scripts its package manager would have run (`postinstall`, native builds, the project's own `prepare`) in a Linux machine, and every job starts from what they wrote:
+
+```yaml
+install-scripts: true
+workspace:
+  deps: [pnpm]
+```
+
+Which packages' scripts run is your package manager's setting: pnpm's `allowBuilds` (or `onlyBuiltDependencies`), npm's `allowScripts`, and Bun's `trustedDependencies` or its built-in list of trusted packages. The run shows which were left out. When nothing is left to run, no machine starts. What the scripts wrote is kept for the same commit, so a retried run reuses it; a new commit runs them again.
+
 ## Monorepos: a job per package
 
 In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:

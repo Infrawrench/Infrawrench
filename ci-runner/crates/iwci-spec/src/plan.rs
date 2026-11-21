@@ -37,13 +37,17 @@ impl Plan {
     }
 
     /// The kinds of virtual machine the pipeline's jobs run in, sorted,
-    /// each once: what a runner must have to run all of it.
+    /// each once: what a runner must have to run all of it. A workspace
+    /// with `install-scripts: true` runs them in a Linux machine.
     pub fn vm_platforms(&self) -> Vec<VmOs> {
         let mut out: Vec<VmOs> = self
             .jobs
             .iter()
             .filter_map(|t| t.vm.as_ref().map(|v| v.os))
             .collect();
+        if self.workspaces.iter().any(|w| w.install_scripts) {
+            out.push(VmOs::Linux);
+        }
         out.sort();
         out.dedup();
         out

@@ -34,7 +34,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    modules (a `GOMODCACHE`), Cargo crates (a `vendor/` directory), Python
    wheels (the interpreter's user site) and Composer packages (`vendor/`
    and its autoloader). No package manager runs and no install script
-   executes; Rollup and esbuild are installed as their WebAssembly builds
+   executes (unless [`install-scripts: true`](#install-scripts) runs them
+   in a Linux machine afterwards); Rollup and esbuild are installed as their WebAssembly builds
    (see [Tools and environments](#tools-and-environments)). Both its
    results are cached: see [Caching](#caching).
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
@@ -99,14 +100,15 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key           | Meaning                                                                                                                                        |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | Required.                                                                                                                                      |
-| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.           |
-| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                         |
-| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                               |
-| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency). |
-| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                           |
+| Key               | Meaning                                                                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | Required.                                                                                                                                                                                                              |
+| `on`              | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.                                                                                   |
+| `workspace`       | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                                                                 |
+| `scratch`         | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                                                                       |
+| `concurrency`     | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                                                         |
+| `install-scripts` | `true` runs the install scripts the project's package manager would run (`postinstall`, native builds) after the runner's own install of `deps:`, in a Linux virtual machine. See [Install scripts](#install-scripts). |
+| `jobs`            | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                                                                                                   |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
 in UTC: five fields (minute, hour, day of month, month, day of week) taking
@@ -2100,7 +2102,8 @@ install:
   directory, and inode numbers Node read as one number; `vendor/README.md`).
 - **Install scripts that fetch a native binary fail**, as any native
   package does (esbuild's `postinstall` cannot find a build for `wasm32`).
-  `--ignore-scripts` skips them.
+  `--ignore-scripts` skips them. [`install-scripts: true`](#install-scripts) runs the
+  workspace's in a Linux machine instead.
 
 ### Tools in a script
 
@@ -2481,6 +2484,70 @@ passed in 36 s, oxlint 1.92.0 under Bun found nothing in its 50 files in
 1.2 s, and vercel/ai's `pnpm test` (700089c) ran turbo natively and each
 package's vitest through pnpm, with `managePackageManagerVersions: false`
 so pnpm 10 did not switch to the pnpm 12 it pins.
+
+### Install scripts
+
+The runner's own install of `deps:` runs no package's install script:
+the jobs are `wasm32`, and a script that builds or downloads a native
+binary has nothing to build it for. With `install-scripts: true` at the
+top of the pipeline, a workspace with a pnpm, npm or Bun install then runs
+the scripts its package manager would have run, in a Linux
+[virtual machine](#platforms), and every job starts from what they wrote:
+generated code (`prisma generate`), patched files (`patch-package`), a
+project's `prepare` build, and native addons for jobs in the native
+sandbox.
+
+```yaml
+install-scripts: true
+workspace:
+  deps: [pnpm]
+```
+
+- **Only what the package manager would run.** pnpm 10 and later builds
+  only what `allowBuilds` or `onlyBuiltDependencies` allows (from
+  `pnpm-workspace.yaml` or `package.json`'s `pnpm` field;
+  `dangerouslyAllowAllBuilds` allows the rest), and pnpm 9 everything but
+  `neverBuiltDependencies`, by the project's `packageManager`. npm 12 runs
+  what `allowScripts` in `package.json` allows, and a project without the
+  field runs none on npm 12 (by `packageManager` or `devEngines`) and every
+  package's otherwise, as npm 11 did. Bun runs `trustedDependencies`, or
+  without it its own list of trusted packages (Bun 1.4.5's). The projects'
+  own `preinstall`, `install`, `postinstall` and `prepare` scripts run too,
+  workspace packages included. `ignore-scripts` (`.npmrc`, pnpm's
+  `ignoreScripts`, `bunfig.toml`'s `install.ignoreScripts`) runs nothing,
+  and pnpm's `ignoreDepScripts` only the projects'. A line on the run names
+  the packages left out.
+- **In the order the package managers run them**: each package after the
+  packages it depends on, found as Node finds them, and the projects last.
+  `install` is `node-gyp rebuild` for a package with a `binding.gyp` and
+  neither `preinstall` nor `install`. Each script runs in its package's
+  directory with npm's lifecycle variables (`npm_lifecycle_event`,
+  `npm_package_name`, `INIT_CWD` and the rest), the `node_modules/.bin`
+  directories above it on its `PATH`, and node-gyp building against the
+  image's Node.js 24 headers, so nothing is downloaded for them.
+- **No machine when there is nothing to run.** The plan is made on the
+  runner from the installed tree, and a workspace whose packages have no
+  script to run starts none.
+- **One machine per workspace and commit**, with 4 GiB of memory, the
+  network, no secrets and 30 minutes for every script together. What the
+  scripts changed under the clone comes back and is written into the
+  workspace before any job starts; a script that fails fails the jobs of
+  that workspace, with its output.
+- **Kept for the same commit.** What they wrote is kept with the
+  repository's caches, under the commit, the workspace and the plan, so a
+  retried run and another pipeline file of the same commit take it from
+  there. A new commit runs them again: any
+  script can read the commit's files (`prisma generate` reads the schema),
+  so nothing narrower would be safe. A pull request's scripts write only
+  to its own scope, as its `cache:` entries do.
+- **A runner with machines takes the run.** A pipeline with
+  `install-scripts: true` needs `linux` as a `platform: linux` job does, and
+  the jobs of such a workspace stay on the runner that has the run. On a
+  runner without machines, a workspace with scripts to run fails, saying
+  so.
+- Native addons are built for the machine, Linux on the runner's
+  architecture with glibc and Node.js 24's ABI: they load in the native
+  sandbox, not in an isolate.
 
 ### kubectl
 
