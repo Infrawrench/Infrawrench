@@ -182,7 +182,11 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     let mut args = Vec::new();
     let mut machine = match m.arch {
         Arch::X86_64 => {
-            "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off".to_string()
+            // The RTC stays: without one the kernel waits out two reads of
+            // the legacy CMOS clock (the PM trace read and `rtc_cmos`), 3.4
+            // of a 3.5 s boot measured on ci-1; with it the kernel reaches
+            // init in 0.15 s.
+            "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=on".to_string()
         }
         Arch::Aarch64 => "virt,gic-version=host".to_string(),
     };
