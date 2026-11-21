@@ -119,7 +119,8 @@ pub fn build_root() -> io::Result<()> {
         libc::MS_NOSUID,
         Some("mode=0755"),
     ) {
-        Err(e) if e.raw_os_error() == Some(libc::EBUSY) => {}
+        // `mount` keeps the kind of the error, not its number.
+        Err(e) if e.kind() == io::ErrorKind::ResourceBusy => {}
         other => other?,
     }
 
