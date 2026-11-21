@@ -816,7 +816,8 @@ jobs:
           VERSION: ${{ needs.check-if-release.outputs.package-version }}
         run: |
           set -euo pipefail
-          TARBALL="npm/infrawrench-cli-${VERSION}.tgz"
+          # `./`: without it npm reads `npm/<file>` as a GitHub `user/repo`.
+          TARBALL="./npm/infrawrench-cli-${VERSION}.tgz"
           test -f "$TARBALL"
           if npm view "@infrawrench/cli@${VERSION}" version >/dev/null 2>&1; then
             echo "::notice::@infrawrench/cli@${VERSION} is already published; skipping."
