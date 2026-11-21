@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- The first release published from CI with npm trusted publishing, so it carries provenance. No code changes from 0.2.0, which was published by hand to create the package.
+
 ## 0.2.0
 
 - A library, dotenv style: `config()` resolves `.infraenv` and assigns into `process.env` without replacing what is set (`override: true` does); `load()` returns the values instead; `configSync()` does `config()`'s work for CommonJS, blocking in a child process.

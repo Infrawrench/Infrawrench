@@ -1,6 +1,6 @@
 {
   "name": "@infrawrench/infraenv",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Load a committed .infraenv into process.env, or pull it into .env from git hooks and CI, through Infrawrench. Plain Node, no dependencies.",
   "license": "MIT",
   "author": "Infrawrench Services, Inc. <astrid@infrawrench.com> (https://infrawrench.com)",
