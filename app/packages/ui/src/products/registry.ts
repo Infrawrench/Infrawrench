@@ -84,7 +84,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "delivery",
     name: PRODUCT_NAMES.delivery,
-    tools: ["ci", "delivery", "environments", "environment-diff"],
+    tools: ["ci", "delivery", "environments", "env-files", "environment-diff"],
   },
   {
     id: "automation",

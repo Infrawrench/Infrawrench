@@ -443,9 +443,10 @@ export async function dispatchRun(id: string): Promise<void> {
   // before anything is lent, so the body's size includes them.
   withPlatforms(body, concurrency);
 
-  // Connections, SSH keys and resources its jobs name, checked and read now
-  // (never for a fork's run). Reading them calls plugins, which the edge
-  // cannot: there the run waits for the gateway's pass to send it.
+  // Connections, SSH keys, resources and environment files its jobs name,
+  // checked and read now (never for a fork's run). Reading them calls
+  // plugins, which the edge cannot: there the run waits for the gateway's
+  // pass to send it.
   if (!row.fromFork && namesSomethingLent(access)) {
     if (!pluginCodeAvailable()) {
       await deferToGateway(row);
@@ -455,6 +456,14 @@ export async function dispatchRun(id: string): Promise<void> {
     const { auditLends, buildLent, fitLent } = await import("./lend.js");
     const built = await buildLent(row, access);
     if (built) {
+      // `env-file:`: the file read at the run's commit, each reference
+      // checked against the grants like the rest.
+      const { lendEnvFiles } = await import("./env-file.js");
+      const files = await lendEnvFiles(row, access);
+      if (files) {
+        built.lent["env-files"] = files.entries;
+        built.records.push(...files.records);
+      }
       // Audited as soon as it is minted or read, whatever happens to the
       // request next (a proxy that times out, a cancel while it is sent).
       await auditLends(row, built.records);
@@ -582,14 +591,15 @@ async function deferToGateway(row: CiRunRow): Promise<void> {
     .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")));
 }
 
-/** A job of the run names a connection, SSH key or resource to be lent. */
+/** A job of the run names a connection, SSH key, resource or environment file to be lent. */
 export function namesSomethingLent(access: readonly CiJobAccess[] | null): boolean {
   return (access ?? []).some(
     (j) =>
       (j.connections?.length ?? 0) > 0 ||
       (j.sshKeys?.length ?? 0) > 0 ||
       Object.keys(j.resources ?? {}).length > 0 ||
-      (j.envFrom?.length ?? 0) > 0,
+      (j.envFrom?.length ?? 0) > 0 ||
+      j.envFile !== undefined,
   );
 }
 

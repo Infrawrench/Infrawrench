@@ -1,0 +1,96 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Infrawrench environment map",
+  "scopeName": "source.infraenv",
+  "patterns": [
+    { "include": "#comment-line" },
+    { "include": "#section" },
+    { "include": "#assignment" },
+    { "include": "#reference" },
+    { "include": "#string-double" },
+    { "include": "#string-single" },
+    { "include": "#comment-trailing" }
+  ],
+  "repository": {
+    "comment-line": {
+      "match": "^\\s*(#).*$",
+      "name": "comment.line.number-sign.infraenv",
+      "captures": { "1": { "name": "punctuation.definition.comment.infraenv" } }
+    },
+    "comment-trailing": {
+      "match": "(?<=\\s)(#).*$",
+      "name": "comment.line.number-sign.infraenv",
+      "captures": { "1": { "name": "punctuation.definition.comment.infraenv" } }
+    },
+    "section": {
+      "match": "^\\s*(\\[)\\s*(?:(infrawrench|env|vars)(?:(\\.)([A-Za-z0-9][A-Za-z0-9_-]*))?|([^\\]]*))\\s*(\\])",
+      "captures": {
+        "1": { "name": "punctuation.definition.section.begin.infraenv" },
+        "2": { "name": "entity.name.section.infraenv" },
+        "3": { "name": "punctuation.separator.section.infraenv" },
+        "4": { "name": "entity.name.tag.environment.infraenv" },
+        "5": { "name": "invalid.illegal.section.infraenv" },
+        "6": { "name": "punctuation.definition.section.end.infraenv" }
+      }
+    },
+    "assignment": {
+      "match": "^\\s*(?:(export)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+      "captures": {
+        "1": { "name": "storage.modifier.export.infraenv" },
+        "2": { "name": "variable.other.key.infraenv" },
+        "3": { "name": "keyword.operator.assignment.infraenv" }
+      }
+    },
+    "reference": {
+      "begin": "(?<==)\\s*\\b(resource|secret)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "support.function.reference.infraenv" },
+        "2": { "name": "punctuation.definition.arguments.begin.infraenv" }
+      },
+      "end": "(\\))|$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.arguments.end.infraenv" }
+      },
+      "patterns": [
+        { "include": "#argument" },
+        { "match": ",", "name": "punctuation.separator.arguments.infraenv" }
+      ]
+    },
+    "argument": {
+      "begin": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.infraenv" } },
+      "end": "\"|$",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.infraenv" } },
+      "name": "string.quoted.double.argument.infraenv",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.infraenv" },
+        { "match": "\\$\\$\\{", "name": "constant.character.escape.substitution.infraenv" },
+        {
+          "match": "(\\$\\{)\\s*([^}\\s]*)\\s*(\\})",
+          "name": "meta.substitution.infraenv",
+          "captures": {
+            "1": { "name": "punctuation.definition.template-expression.begin.infraenv" },
+            "2": { "name": "variable.other.substitution.infraenv" },
+            "3": { "name": "punctuation.definition.template-expression.end.infraenv" }
+          }
+        }
+      ]
+    },
+    "string-double": {
+      "begin": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.infraenv" } },
+      "end": "\"",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.infraenv" } },
+      "name": "string.quoted.double.infraenv",
+      "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.infraenv" }]
+    },
+    "string-single": {
+      "match": "(')[^']*(')",
+      "name": "string.quoted.single.infraenv",
+      "captures": {
+        "1": { "name": "punctuation.definition.string.begin.infraenv" },
+        "2": { "name": "punctuation.definition.string.end.infraenv" }
+      }
+    }
+  }
+}

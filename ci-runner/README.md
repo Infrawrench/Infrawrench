@@ -208,6 +208,7 @@ everything through.
 | `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
 | `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
 | `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
+| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                    |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -407,8 +408,8 @@ in a plan or a report.
   it starts, with the app's reason ("staging is not lent to CI for
   acme/web on feature/x"), and so does an output it did not grant. A job of
   an untrusted run (a pull request from a fork) that names anything fails
-  the same way: "connections, SSH keys and resources are never lent to an
-  untrusted run".
+  the same way: "connections, SSH keys, resources, GitHub tokens and
+  environment files are never lent to an untrusted run".
 - **Only the job that names it.** Files are written into that job's own file
   system (mode `0600` unless the app says otherwise; a directory made for
   them, such as `~/.ssh`, is `0700`), never into the clone, the shared
@@ -492,6 +493,80 @@ is an error when the file is parsed.
   another runner in a [split run](#split-runs).
 - `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
   request's `github-token`, below).
+
+### Environment files
+
+A job can take its variables from a `.infraenv` file in the repository,
+the committed map of a project's environment that `infrawrench env pull`
+turns into a `.env` (literals, `resource(...)` references to resource
+outputs and `secret(...)` references, with `[env.<name>]` sections and
+`[vars]` substitutions):
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env-file: .infraenv
+    run: pnpm test
+  e2e:
+    using: env:bash-node@24
+    env-file: { path: apps/web/.infraenv, environment: staging, vars: { stage: ci } }
+    env:
+      LOG_LEVEL: debug # the job's own `env:` wins over the file
+    run: pnpm e2e
+```
+
+| Key           | Meaning                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| `path`        | Relative to the repository's root, without `.` or `..`, up to 256 characters. The string form is this. |
+| `environment` | The file's `[env.<name>]` section laid over its `[env]`, and its `[vars.<name>]` over `[vars]`.        |
+| `vars`        | Up to 16 substitutions for `${name}` in the file's references, laid over the file's own, literal text. |
+
+The file is anyone's who can push a branch, so it decides nothing about
+what a job may have: the app does, at dispatch, with the opt-ins every
+other lend uses.
+
+- **Read at the run's commit, by the app.** When it sends the run, the app
+  reads the file through the GitHub App installation at the commit the run
+  checks out, and resolves the job's environment of it. The runner only
+  lists the job's `env-file:` as written (`POST /v1/concurrency`, each
+  job's `env-file`); the file's text is never in a request, a plan or a
+  report.
+- **Literals** become variables as written.
+- **`resource(...)`**, by id or by name (after substitution), is read only
+  when an admin granted that resource to CI for this repository and branch
+  and ticked that output, as for `${{ resources.<name>.<output> }}` (see
+  [Connections, SSH keys and resources](#connections-ssh-keys-and-resources)).
+  The file names the resource, not the grant, so any grant of it that
+  covers the run will do. Anything else fails the job before it starts,
+  naming the variable and what to grant ("`DATABASE_URL` in .infraenv
+  reads connectionString of storefront / dev (neon/neon-branch), which is
+  not granted to CI; grant storefront / dev to CI with the output
+  connectionString for acme/web"); it never runs with an empty value.
+- **`secret("<NAME>")` reads the repository's CI secrets** (see
+  [Secrets and variables](#secrets-and-variables), the same store as
+  `${{ secrets.<NAME> }}`), not the organisation's secrets the app and
+  `infrawrench env pull` resolve it from: those are not CI's. The app sends
+  only the name; the runner fills it in from the run's secrets when the job
+  starts. A secret the run does not have fails the job, unlike
+  `${{ secrets.<NAME> }}`, which reads as empty.
+- **Under the job's own `env:`.** The file's variables come after a
+  connection's, a key's, a GitHub token's and `env-from:`'s, and the job's
+  own `env:` wins. Services do not get them.
+- **Masked.** Resource values and CI secrets are masked like every lent
+  value; literals are not.
+- **Whole or not at all.** One variable that cannot be lent fails every job
+  that uses the file, with that variable's reason. A file that does not
+  parse, is not at the commit, lacks the `environment`, or pins another
+  organisation (`org` under `[infrawrench]`) fails them the same way.
+- **Never for a fork.** A pull request from a fork is sent nothing, and a
+  job of it with `env-file:` fails as with any other lent name.
+- Literal, like every lent name: `${{ }}` is not read in `env-file:`, since
+  the app resolves it before the run starts.
+- A job with `env-file:` cannot be task-cached, and is not shared with
+  another runner in a [split run](#split-runs).
+- `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
+  request's `env-files`, below), with `secret(...)` from `IWCI_SECRET_<NAME>`.
 
 ### Cloud jobs
 
@@ -4785,6 +4860,18 @@ it is masked, and an untrusted run is given none of it:
     "r2-assets": { "env": { "AWS_ACCESS_KEY_ID": "<value>", "AWS_SECRET_ACCESS_KEY": "<value>" } },
     "stripe-key": { "refused": "stripe-key is not granted to CI for acme/web" }
   },
+  "env-files": {
+    "{\"path\":\".infraenv\",\"environment\":\"staging\"}": {
+      "env": {
+        "NODE_ENV": [{ "text": "staging" }],
+        "DATABASE_URL": "<a granted resource's output>"
+      },
+      "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" }
+    },
+    "{\"path\":\".infraenv\"}": {
+      "refused": "`CACHE_URL` in .infraenv reads restUrl of cache (upstash/redis), which is not granted to CI; grant cache to CI with the output restUrl for acme/web"
+    }
+  },
   "github-token": {
     "contents=write,pull-requests=write": {
       "env": {
@@ -4826,7 +4913,8 @@ it is masked, and an untrusted run is given none of it:
   joined in the order the job lists them, connections before keys, with
   the stricter mode.
 - **Variables** may not be `IWCI_*`. A connection's and key's come first,
-  then `env-from`'s, then the job's own `env:`, which wins.
+  then `env-from`'s, then `env-files`', then the job's own `env:`, which
+  wins.
 - **Refusals.** `refused` (1 to 1024 characters) instead of the material,
   or `refused-outputs` per output, is what a job that names it fails with.
   A name the job uses that `lent` does not have fails it as "connection
@@ -4834,6 +4922,15 @@ it is masked, and an untrusted run is given none of it:
 - **GitHub tokens** are keyed by the permissions jobs ask for, in order,
   `name=level` joined by commas (`contents=write,pull-requests=write`);
   a job is given the entry for exactly its own `github-token:`.
+- **Environment files** are keyed by the job's `env-file:` as compact JSON:
+  `path`, then `environment` and `vars` (sorted by name) when set, such as
+  `{"path":".infraenv","environment":"staging"}`; a job is given the entry
+  for exactly its own. `env` is the variables the app resolved; `secrets`
+  names, per variable, a secret of the request's `secrets` (the
+  repository's CI secrets), filled in when the job starts and masked. A
+  secret the request does not have fails the job. Up to 2,000 variables per
+  file. A runner before 0.3.45 refuses a request with `env-files`, and a
+  pipeline with `env-file:`, rather than run without them.
 - **Expiry.** `expires-at` (seconds since the Unix epoch), on any
   connection, key or token entry: a job that names it and starts less than
   a minute before then fails with that reason, and one whose timeout ends
@@ -4978,7 +5075,7 @@ it is masked, and an untrusted run is given none of it:
   it. `jobs` lists each
   job key that runs on a cloud account or is lent anything, which is what
   the app resolves before it dispatches the run:
-  `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...] }`
+  `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...], "github-token"?: { "<permission>": "read" | "write" }, "env-file"?: { "path", "environment"?, "vars"?: { "<name>": "<value>" } } }`
   (a key is left out when empty; `cloud` holds the block as written, its
   `machine`, `image`, `region` and `gpu` possibly with `${{ matrix }}`
   still in them; `resources` includes what the job's services read). One

@@ -40,6 +40,7 @@ import {
   DeliveryIcon,
   CiIcon,
   EnvironmentsIcon,
+  EnvFilesIcon,
 } from "@infrawrench/ui";
 import { useDisabledProducts } from "@/lib/disabled-products";
 import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
@@ -139,6 +140,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Environments"),
       icon: <EnvironmentsIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/environments", params: { orgId: orgId! } }),
+    },
+    {
+      key: "env-files",
+      label: gt("Environment files"),
+      icon: <EnvFilesIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/env-files", params: { orgId: orgId! } }),
     },
     {
       key: "expiring",

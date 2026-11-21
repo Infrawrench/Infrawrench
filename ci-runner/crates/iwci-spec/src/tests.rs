@@ -2285,6 +2285,108 @@ fn lent_names_are_checked_where_they_are_written() {
 }
 
 #[test]
+fn an_env_file_is_listed_for_the_app_with_a_key_both_sides_compute() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  plain:
+    using: env:bash@5
+    env-file: .infraenv
+    run: x
+  staging:
+    using: env:bash@5
+    env-file:
+      path: apps/web/.infraenv
+      environment: staging
+      vars: { stage: ci, region: "eu \"west\"" }
+    run: x
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let plain = &plan.template("plain").unwrap().access;
+    assert_eq!(
+        plain.env_file,
+        Some(EnvFileUse {
+            path: ".infraenv".into(),
+            ..Default::default()
+        })
+    );
+    assert!(!plain.is_empty());
+    assert_eq!(
+        plain.env_file.as_ref().unwrap().key(),
+        r#"{"path":".infraenv"}"#
+    );
+    let staging = plan
+        .template("staging")
+        .unwrap()
+        .access
+        .env_file
+        .clone()
+        .unwrap();
+    // Sorted vars, in the order and escaping the app's `JSON.stringify` uses.
+    assert_eq!(
+        staging.key(),
+        r#"{"path":"apps/web/.infraenv","environment":"staging","vars":{"region":"eu \"west\"","stage":"ci"}}"#
+    );
+    // As the concurrency answer lists it.
+    let json = serde_json::to_value(&plan.template("staging").unwrap().access).unwrap();
+    assert_eq!(
+        json["env-file"],
+        serde_json::json!({
+            "path": "apps/web/.infraenv",
+            "environment": "staging",
+            "vars": { "region": "eu \"west\"", "stage": "ci" }
+        })
+    );
+}
+
+#[test]
+fn an_env_file_is_checked_where_it_is_written() {
+    for (yaml, needle) in [
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: /etc/env }\n",
+            "relative to the repository's root",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: a/../.infraenv }\n",
+            "without `.` or `..`",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: \"${{ vars.F }}\" }\n",
+            "the path is literal",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, environment: \"prod env\" } }\n",
+            "is not an environment name",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, vars: { 1x: a } } }\n",
+            "is not a substitution name",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, vars: { s: \"${{ commit.branch }}\" } } }\n",
+            "literal text",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, zzz: 1 } }\n",
+            "unknown field `zzz`",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: [a] }\n",
+            "is a path, or",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: .infraenv, task-cache: true }\n",
+            "a job with `env-file:` cannot be task-cached",
+        ),
+    ] {
+        assert_error(yaml, needle);
+    }
+}
+
+#[test]
 fn a_github_token_is_asked_for_by_permission() {
     let plan = parse(
         r#"

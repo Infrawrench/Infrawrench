@@ -9,6 +9,7 @@ import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb, type SqlValue } from "sql.js";
 import { MIGRATIONS } from "../src/db/schema";
 import { setDbGetter } from "./main-utils";
+import { markPhase } from "./startup-timing";
 
 let _sqlite: SqlJsDb | null = null;
 let _sqlitePath: string;
@@ -29,6 +30,7 @@ export async function getSqlite(): Promise<SqlJsDb> {
   const sqlJsMain = require.resolve("sql.js");
   const wasmPath = path.join(path.dirname(sqlJsMain), "sql-wasm.wasm");
   const SQL = await initSqlJs({ locateFile: () => wasmPath });
+  markPhase("sql.js loaded");
 
   _sqlitePath = path.join(app.getPath("userData"), "infrawrench.db");
   if (fs.existsSync(_sqlitePath)) {
@@ -58,6 +60,7 @@ export async function getSqlite(): Promise<SqlJsDb> {
     }
   }
   persist();
+  markPhase("database open");
 
   return _sqlite;
 }

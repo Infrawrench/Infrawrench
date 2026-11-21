@@ -51,6 +51,8 @@ export type WorkspaceTabTarget =
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
   | { kind: "environments" }
+  /** Environment files: a repository's `.infraenv`, edited and resolved. Single-instance. */
+  | { kind: "env-files" }
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
@@ -239,6 +241,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "environment-diff";
     case "environments":
       return "environments";
+    case "env-files":
+      return "env-files";
     case "ssh-fanout":
       return "ssh-fanout";
     case "metric-alerts":
@@ -352,6 +356,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Env diff";
     case "environments":
       return "Environments";
+    case "env-files":
+      return "Environment files";
     // Titles match the sidebar tiles the pages are opened from.
     case "ssh-fanout":
       return "Fan-out";
@@ -424,6 +430,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "dns":
     case "iac":
     case "environments":
+    case "env-files":
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":

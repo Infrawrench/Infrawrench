@@ -21,6 +21,7 @@ import { pagingProvidersDomain } from "./domains/paging-providers/index";
 import { incidentsDomain } from "./domains/incidents/index";
 import { probesDomain } from "./domains/probes/index";
 import { heartbeatsDomain } from "./domains/heartbeats/index";
+import { envFilesDomain } from "./domains/env-files/index";
 import { liveDomain } from "./domains/live/index";
 import { slosDomain } from "./domains/slos/index";
 import { servicesDomain } from "./domains/services/index";
@@ -192,6 +193,7 @@ export const DOMAINS: readonly Domain[] = [
   incidentsDomain,
   probesDomain,
   heartbeatsDomain,
+  envFilesDomain,
   liveDomain,
   slosDomain,
   servicesDomain,

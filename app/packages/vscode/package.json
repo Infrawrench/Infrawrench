@@ -1,8 +1,8 @@
 {
   "name": "@infrawrench/vscode",
   "displayName": "Infrawrench",
-  "description": "See the live resource, monthly cost, owning service and open posture findings behind every Terraform block, estimate the cost of your working-tree diff, and search your Infrawrench org from the command palette.",
-  "version": "0.1.0",
+  "description": "See the live resource, monthly cost, owning service and open posture findings behind every Terraform block, estimate the cost of your working-tree diff, check and pull .infraenv environment files, and search your Infrawrench org from the command palette.",
+  "version": "0.2.0",
   "license": "BUSL-1.1",
   "private": true,
   "publisher": "infrawrench",
@@ -17,7 +17,9 @@
     "infrastructure",
     "cloud cost",
     "finops",
-    "posture"
+    "posture",
+    "dotenv",
+    "environment variables"
   ],
   "engines": {
     "vscode": "^1.90.0"
@@ -25,7 +27,9 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:terraform",
+    "onLanguage:infraenv",
     "workspaceContains:**/*.tf",
+    "workspaceContains:**/.infraenv",
     "onView:infrawrench.services"
   ],
   "contributes": {
@@ -53,6 +57,21 @@
       {
         "command": "infrawrench.estimateDiff",
         "title": "Estimate Cost of Working Tree Changes",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.checkInfraenv",
+        "title": "Check .infraenv",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.pullDotenv",
+        "title": "Pull .env",
+        "category": "Infrawrench"
+      },
+      {
+        "command": "infrawrench.insertInfraenvReference",
+        "title": "Insert Resource Reference",
         "category": "Infrawrench"
       },
       {
@@ -104,6 +123,10 @@
         {
           "command": "infrawrench.openBlock",
           "when": "false"
+        },
+        {
+          "command": "infrawrench.insertInfraenvReference",
+          "when": "editorLangId == infraenv"
         }
       ],
       "view/title": [
@@ -119,8 +142,52 @@
           "when": "resourceExtname == .tf",
           "group": "navigation@90"
         }
+      ],
+      "editor/context": [
+        {
+          "command": "infrawrench.insertInfraenvReference",
+          "when": "editorLangId == infraenv",
+          "group": "infrawrench@1"
+        },
+        {
+          "command": "infrawrench.checkInfraenv",
+          "when": "editorLangId == infraenv",
+          "group": "infrawrench@2"
+        },
+        {
+          "command": "infrawrench.pullDotenv",
+          "when": "editorLangId == infraenv",
+          "group": "infrawrench@3"
+        }
       ]
     },
+    "languages": [
+      {
+        "id": "infraenv",
+        "aliases": [
+          "Infrawrench Environment",
+          "infraenv"
+        ],
+        "filenames": [
+          ".infraenv"
+        ],
+        "extensions": [
+          ".infraenv"
+        ],
+        "filenamePatterns": [
+          "**/.infraenv",
+          "*.infraenv"
+        ],
+        "configuration": "./syntaxes/infraenv.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "infraenv",
+        "scopeName": "source.infraenv",
+        "path": "./syntaxes/infraenv.tmLanguage.json"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

@@ -23,6 +23,7 @@ import { Route as CostReportsRouteImport } from './routes/cost-reports'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as DnsRouteImport } from './routes/dns'
+import { Route as EnvFilesRouteImport } from './routes/env-files'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
@@ -126,6 +127,11 @@ const DeliveryRoute = DeliveryRouteImport.update({
 const DnsRoute = DnsRouteImport.update({
   id: '/dns',
   path: '/dns',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvFilesRoute = EnvFilesRouteImport.update({
+  id: '/env-files',
+  path: '/env-files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
@@ -315,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
@@ -365,6 +372,7 @@ export interface FileRoutesByTo {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
@@ -416,6 +424,7 @@ export interface FileRoutesById {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
@@ -468,6 +477,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
@@ -518,6 +528,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
@@ -568,6 +579,7 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
@@ -619,6 +631,7 @@ export interface RootRouteChildren {
   CostsRoute: typeof CostsRoute
   DeliveryRoute: typeof DeliveryRoute
   DnsRoute: typeof DnsRoute
+  EnvFilesRoute: typeof EnvFilesRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
   EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
@@ -753,6 +766,13 @@ declare module '@tanstack/react-router' {
       path: '/dns'
       fullPath: '/dns'
       preLoaderRoute: typeof DnsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/env-files': {
+      id: '/env-files'
+      path: '/env-files'
+      fullPath: '/env-files'
+      preLoaderRoute: typeof EnvFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/environment-diff': {
@@ -1011,6 +1031,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostsRoute: CostsRoute,
   DeliveryRoute: DeliveryRoute,
   DnsRoute: DnsRoute,
+  EnvFilesRoute: EnvFilesRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
   EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,

@@ -339,6 +339,7 @@ const TAB_KINDS = [
   "iac",
   "environment-diff",
   "environments",
+  "env-files",
   "ssh-fanout",
   "metric-alerts",
   "probes",

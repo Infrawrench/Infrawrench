@@ -138,6 +138,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns env-files route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "env-files" });
+    expect(args).toEqual({
+      to: "/org/$orgId/env-files",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns heartbeats route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "heartbeats" });
     expect(args).toEqual({
@@ -670,6 +678,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the env-files path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/env-files")).toEqual({ kind: "env-files" });
   });
 
   it("parses the heartbeats path", () => {

@@ -150,6 +150,7 @@ export * from "./domains/price-catalog";
 export * from "./domains/migration-estimates";
 export * from "./domains/probes";
 export * from "./domains/heartbeats";
+export * from "./domains/env-files";
 export * from "./domains/live";
 export * from "./domains/profile";
 export * from "./domains/provider-oauth";
@@ -311,6 +312,7 @@ import { PriceCatalogApi } from "./domains/price-catalog";
 import { MigrationEstimatesApi } from "./domains/migration-estimates";
 import { ProbesApi } from "./domains/probes";
 import { HeartbeatsApi } from "./domains/heartbeats";
+import { EnvFilesApi } from "./domains/env-files";
 import { LiveApi } from "./domains/live";
 import { ProfileApi } from "./domains/profile";
 import { ProviderOAuthApi } from "./domains/provider-oauth";
@@ -437,6 +439,7 @@ export const API_DEFINITIONS = {
   dns: DnsApi,
   dora: DoraApi,
   "environment-diff": EnvironmentDiffApi,
+  "env-files": EnvFilesApi,
   environments: EnvironmentsApi,
   "event-subscriptions": EventSubscriptionsApi,
   expiring: ExpiringApi,

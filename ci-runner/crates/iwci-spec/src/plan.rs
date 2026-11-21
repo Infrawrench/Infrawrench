@@ -305,6 +305,36 @@ pub struct JobAccess {
     /// `pull-requests`) and its level, `read` or `write`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub github_token: BTreeMap<String, String>,
+    /// `env-file:`: the repository file whose variables the app resolves
+    /// for the job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_file: Option<EnvFileUse>,
+}
+
+/// A job's `env-file:`, checked: a path in the repository, the
+/// environment chosen and the substitutions given. The app reads the file
+/// at the run's commit and resolves it when it sends the run.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct EnvFileUse {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
+}
+
+impl EnvFileUse {
+    /// The key a run request's `lent.env-files` has this file's variables
+    /// under: the use as compact JSON, `path`, then `environment` and
+    /// `vars` (sorted) when set, such as
+    /// `{"path":".infraenv","environment":"staging","vars":{"stage":"ci"}}`.
+    /// Jobs that read the same file the same way share an entry. Nothing in
+    /// it has a control character, so the app's `JSON.stringify` writes the
+    /// same text.
+    pub fn key(&self) -> String {
+        serde_json::to_string(self).expect("strings and maps of strings serialise")
+    }
 }
 
 impl JobAccess {
@@ -314,6 +344,7 @@ impl JobAccess {
             && self.resources.is_empty()
             && self.env_from.is_empty()
             && self.github_token.is_empty()
+            && self.env_file.is_none()
     }
 
     /// The key a run request's `lent.github-token` has the token for this

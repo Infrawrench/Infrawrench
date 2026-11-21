@@ -73,6 +73,14 @@ TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `types
 - A new per-resource finding kind (vulnerabilities, leaked secrets, compliance) shows in the VS Code Terraform hover by appending a `ResourceSection` to `RESOURCE_SECTIONS` in `vscode/src/sections.ts`, and in Raycast's resource detail through `raycast/src/lib/insight.ts`.
 - The desktop's `infrawrench://open/…` links are built and parsed by client-core's `desktopDeepLink`/`parseDesktopDeepLink`; a new link kind changes both, plus `DeepLinkHost`.
 
+## `infraenv` npm package
+
+`app/packages/infraenv` (`@infrawrench/infraenv`, bin `infraenv`) pulls `.infraenv` from git hooks and CI in plain Node; KNOWLEDGE.md ("Environment files") has the design. It is published to npm by `.github/workflows/publish-infraenv.yml` when its `package.json` version changes, MIT like the SDKs, and is not a desktop dependency.
+
+- **It has no `dependencies`.** tsdown bundles client-core and kill-emudhra into `dist/`; anything new it imports goes in `devDependencies` and is bundled too.
+- **`pull` and `check` mirror `infrawrench env pull|check`**: a flag or a refusal added to one goes to the other, the same rule as web and desktop. The git hook block is client-core's `infraenv-hooks.ts`, which both write byte for byte; change it there, never in either installer.
+- **`skills/infraenv/` is generated** from `website/src/data/skills/infraenv/` by `pnpm --filter @infrawrench/infraenv sync:skill`; a change to the website's skill reruns it in the same commit (a test fails otherwise).
+
 ## Analytics (PostHog)
 
 The web SPA, website and instances site share `@infrawrench/analytics` (source-only; KNOWLEDGE.md "PostHog analytics" has the consent model). A new browser surface uses it rather than calling `posthog-js` directly, and adds the package path to its deploy workflow's `paths`. The package imports the SDK inside `initAnalytics`, after first render; nothing imports `posthog-js` statically, or it is back in every first download. The privacy policy (`website/src/pages/privacy.astro`, `#posthog`) describes exactly what is collected; a change to what PostHog records (masking, identify properties, a new surface) changes that page in the same commit. A new web route with a secret in its path goes in `TOKEN_SEGMENT` (`web/src/lib/analytics.ts`) so the token never reaches PostHog.

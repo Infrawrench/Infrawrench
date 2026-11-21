@@ -67,6 +67,7 @@
       "entitlements": "build/info.plist",
       "entitlementsInherit": "build/info.plist",
       "extendInfo": {
+        "LSUIElement": true,
         "NSMicrophoneUsageDescription": "Infrawrench uses the microphone so you can record a clip in the Speech tab and transcribe it against your own speech provider."
       },
       "artifactName": "${productName}-${arch}.${ext}",

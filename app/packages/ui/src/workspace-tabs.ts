@@ -165,6 +165,11 @@ export function environmentsTabTarget(): WorkspaceTabTarget {
   return { kind: "environments" };
 }
 
+/** Environment files: a repository's `.infraenv`, edited, resolved and committed. */
+export function envFilesTabTarget(): WorkspaceTabTarget {
+  return { kind: "env-files" };
+}
+
 export function sshFanoutTabTarget(): WorkspaceTabTarget {
   return { kind: "ssh-fanout" };
 }

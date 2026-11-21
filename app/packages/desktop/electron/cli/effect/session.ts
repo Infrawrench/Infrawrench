@@ -6,6 +6,7 @@ import { Context, Effect, Option } from "effect";
 import { Flag } from "effect/cli";
 import { setColorEnabled } from "../output";
 import { CliUsageError } from "./errors";
+import { markPhase } from "../../startup-timing";
 
 export type OutputMode = "json" | "text";
 
@@ -91,6 +92,7 @@ export interface GlobalFlagValues {
  * `output.ts`, which every printer reads.
  */
 export const makeSession = Effect.fnUntraced(function* (flags: GlobalFlagValues) {
+  markPhase("command line parsed");
   const host = yield* CliHost;
   if (flags.json && flags.text) {
     return yield* new CliUsageError({ message: "--json and --text are mutually exclusive" });

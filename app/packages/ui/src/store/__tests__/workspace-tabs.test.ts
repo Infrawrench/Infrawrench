@@ -184,6 +184,21 @@ describe("environments tab kind", () => {
   });
 });
 
+describe("env-files tab kind", () => {
+  it("is a singleton tab id", () => {
+    expect(getWorkspaceTabId({ kind: "env-files" })).toBe("env-files");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "env-files" })).toBe("Environment files");
+  });
+
+  it("is not the environments tab", () => {
+    expect(workspaceTabTargetsEqual({ kind: "env-files" }, { kind: "env-files" })).toBe(true);
+    expect(workspaceTabTargetsEqual({ kind: "env-files" }, { kind: "environments" })).toBe(false);
+  });
+});
+
 describe("probes tab kind", () => {
   it("is a singleton tab id", () => {
     expect(getWorkspaceTabId({ kind: "probes" })).toBe("probes");

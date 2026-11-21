@@ -24,7 +24,12 @@
 import { and, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { ciRuns, type CiConcurrencyEntry, type CiJobAccess } from "../db/schema.js";
+import {
+  ciRuns,
+  type CiConcurrencyEntry,
+  type CiEnvFileUse,
+  type CiJobAccess,
+} from "../db/schema.js";
 import { upsertCheck } from "./checks.js";
 import { proxyFetch } from "./proxy.js";
 
@@ -189,6 +194,22 @@ export function nothingToRun(answer: ResolvedPipelines): boolean {
 
 const isString = (v: unknown): v is string => typeof v === "string";
 
+/** A job's `env-file:` as the runners list it, or null when it has none (or it is malformed). */
+function envFileFrom(raw: unknown): CiEnvFileUse | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { path, environment, vars } = raw as Record<string, unknown>;
+  if (!isString(path) || path === "") return null;
+  const out: CiEnvFileUse = { path };
+  if (isString(environment)) out.environment = environment;
+  if (typeof vars === "object" && vars !== null) {
+    const entries = Object.entries(vars as Record<string, unknown>).filter(
+      (e): e is [string, string] => isString(e[1]),
+    );
+    if (entries.length > 0) out.vars = Object.fromEntries(entries);
+  }
+  return out;
+}
+
 /**
  * What each job names to be lent and its `cloud:` block, as the runners'
  * answer lists them. Read leniently: anything malformed is left out, and a
@@ -237,6 +258,8 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
         }
         if (Object.keys(permissions).length > 0) entry.githubToken = permissions;
       }
+      const envFile = envFileFrom(job["env-file"]);
+      if (envFile) entry.envFile = envFile;
       if (typeof job["cloud"] === "object" && job["cloud"] !== null) {
         const cloud: Record<string, string> = {};
         for (const [k, v] of Object.entries(job["cloud"] as Record<string, unknown>)) {

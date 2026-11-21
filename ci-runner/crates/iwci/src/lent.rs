@@ -1,7 +1,7 @@
 //! What the app lends a run's jobs (`RunRequest::lent`): the credentials
 //! of Infrawrench connections (a kubeconfig, an SSH host entry), SSH keys,
-//! infrastructure resources' outputs, and GitHub tokens for the run's own
-//! repository.
+//! infrastructure resources' outputs, GitHub tokens for the run's own
+//! repository, and the variables of the repository's `.infraenv` files.
 //!
 //! The runner holds no stored credential of its own. Before a run the app
 //! asks which names its jobs use (`POST /v1/concurrency`, each job's
@@ -33,7 +33,12 @@ pub const MAX_REASON: usize = 1024;
 pub const DEFAULT_MODE: u32 = 0o600;
 
 /// Why a job of an untrusted run that names anything lent fails.
-pub const UNTRUSTED: &str = "connections, SSH keys, resources and GitHub tokens are never lent to an untrusted run (a pull request from a fork)";
+pub const UNTRUSTED: &str = "connections, SSH keys, resources, GitHub tokens and environment files are never lent to an untrusted run (a pull request from a fork)";
+
+/// The longest key `lent.env-files` may have ([`iwci_spec::EnvFileUse::key`]).
+pub const MAX_ENV_FILE_KEY: usize = 8 << 10;
+/// The most variables one environment file may set.
+pub const MAX_ENV_FILE_VARS: usize = 2000;
 
 /// A lent value with less than this left when its job starts is refused
 /// rather than handed to a job that could not use it.
@@ -54,6 +59,10 @@ pub struct Lent {
     /// (`contents=write,pull-requests=write`).
     #[serde(default)]
     pub github_token: BTreeMap<String, LentItem>,
+    /// Each `env-file:` jobs use, keyed as [`iwci_spec::EnvFileUse::key`]
+    /// says, resolved by the app from the file at the run's commit.
+    #[serde(default)]
+    pub env_files: BTreeMap<String, LentEnvFile>,
 }
 
 /// Names only, so logging a request cannot print a value.
@@ -67,6 +76,7 @@ impl std::fmt::Debug for Lent {
                 "github_token",
                 &self.github_token.keys().collect::<Vec<_>>(),
             )
+            .field("env_files", &self.env_files.keys().collect::<Vec<_>>())
             .finish()
     }
 }
@@ -115,6 +125,24 @@ pub struct LentResource {
     /// Outputs of a granted resource that are not granted, and why.
     #[serde(default)]
     pub refused_outputs: BTreeMap<String, String>,
+}
+
+/// A `.infraenv` file as the app resolved it for the run: the variables it
+/// set (a literal as shown text, a resource output as a secret), the ones
+/// that read the repository's CI secrets by name, or why the job may not
+/// have it.
+#[derive(Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct LentEnvFile {
+    #[serde(default)]
+    pub env: BTreeMap<String, LentValue>,
+    /// Variable to the name of the run's secret (`secrets`, the
+    /// repository's CI secrets) it reads, filled in when the job starts:
+    /// the app never reads those. One the run does not have fails the job.
+    #[serde(default)]
+    pub secrets: BTreeMap<String, String>,
+    #[serde(default)]
+    pub refused: Option<String>,
 }
 
 /// A value: a string, which is secret as a whole, or a list of parts that
@@ -229,6 +257,7 @@ impl Lent {
             && self.ssh_keys.is_empty()
             && self.resources.is_empty()
             && self.github_token.is_empty()
+            && self.env_files.is_empty()
     }
 
     /// Checks a request's material: names, sizes, variables and paths.
@@ -297,6 +326,35 @@ impl Lent {
         if self.resources.len() > MAX_ENTRIES {
             return Err(format!("over {MAX_ENTRIES} resources"));
         }
+        if self.env_files.len() > MAX_ENTRIES {
+            return Err(format!("over {MAX_ENTRIES} environment files"));
+        }
+        for (key, file) in &self.env_files {
+            let what = "environment file";
+            if key.is_empty() || key.len() > MAX_ENV_FILE_KEY || key.chars().any(char::is_control) {
+                return Err(format!("{what}: `{key}` is not a valid key"));
+            }
+            let what = format!("environment file `{key}`");
+            if let Some(reason) = &file.refused {
+                reason_ok(&what, reason)?;
+                if !file.env.is_empty() || !file.secrets.is_empty() {
+                    return Err(format!("{what}: is refused and lent at once"));
+                }
+                continue;
+            }
+            if file.env.len() + file.secrets.len() > MAX_ENV_FILE_VARS {
+                return Err(format!("{what}: over {MAX_ENV_FILE_VARS} variables"));
+            }
+            env_ok(&what, &file.env)?;
+            for (k, secret) in &file.secrets {
+                if !is_env_key(k) || k.starts_with("IWCI_") || file.env.contains_key(k) {
+                    return Err(format!("{what}: `{k}` is not a variable it may set"));
+                }
+                if !name_ok(secret) {
+                    return Err(format!("{what}: `{k}` names no secret"));
+                }
+            }
+        }
         for (name, resource) in &self.resources {
             let what = format!("resource `{name}`");
             if !name_ok(name) {
@@ -341,6 +399,12 @@ impl Lent {
                 out.extend(v.secrets().into_iter().cloned());
             }
         }
+        // A file's `secret()` values are the run's secrets, masked as those.
+        for f in self.env_files.values() {
+            for v in f.env.values() {
+                out.extend(v.secrets().into_iter().cloned());
+            }
+        }
         out
     }
 
@@ -368,8 +432,8 @@ impl Lent {
 /// What a job is given of what the run was lent.
 #[derive(Debug, Default)]
 pub struct ForJob {
-    /// The connections' and keys' variables, then `env-from:`'s: under the
-    /// job's own `env:`.
+    /// The connections', keys' and GitHub token's variables, then
+    /// `env-from:`'s, then `env-file:`'s: under the job's own `env:`.
     pub env: Vec<(String, String)>,
     /// Each path once: content from every item that writes it, in the
     /// order the job names them, and the strictest of their modes.
@@ -389,12 +453,14 @@ fn minutes(secs: u64) -> String {
 
 /// What `access` names, from `lent`, or the reason the job fails: a name
 /// the request did not supply or refused, material that has expired (`now`
-/// is seconds since the Unix epoch), or any name at all in an untrusted
-/// run. Material that expires before `timeout` is up is given, with a note.
+/// is seconds since the Unix epoch), an environment file's secret the run
+/// does not have in `secrets`, or any name at all in an untrusted run.
+/// Material that expires before `timeout` is up is given, with a note.
 pub fn for_job(
     lent: &Lent,
     access: &JobAccess,
     trusted: bool,
+    secrets: &BTreeMap<String, String>,
     now: u64,
     timeout: Duration,
 ) -> Result<ForJob, String> {
@@ -478,6 +544,34 @@ pub fn for_job(
             out.env.push((k.clone(), v.text()));
         }
     }
+    if let Some(file) = &access.env_file {
+        let key = file.key();
+        let lent_file = lent
+            .env_files
+            .get(&key)
+            .ok_or_else(|| format!("environment file `{}` was not lent to this run", file.path))?;
+        if let Some(reason) = &lent_file.refused {
+            return Err(reason.clone());
+        }
+        let mut vars: Vec<(String, String)> = lent_file
+            .env
+            .iter()
+            .map(|(k, v)| (k.clone(), v.text()))
+            .collect();
+        for (k, name) in &lent_file.secrets {
+            let value = secrets.get(name).ok_or_else(|| {
+                format!(
+                    "`{k}` in {} reads secret(\"{name}\"), which is not a CI secret of this repository or its organisation; set it with the CI secrets (CI reads those, not the organisation's secrets)",
+                    file.path
+                )
+            })?;
+            vars.push((k.clone(), value.clone()));
+        }
+        for (k, v) in vars {
+            out.env.retain(|(e, _)| *e != k);
+            out.env.push((k, v));
+        }
+    }
     // Every output the job reads, checked now, so a refusal fails the job
     // before anything starts rather than when its value is filled in.
     for (name, outputs) in &access.resources {
@@ -495,6 +589,17 @@ mod tests {
 
     const NOW: u64 = 1_800_000_000;
     const TEN_MINUTES: Duration = Duration::from_secs(600);
+
+    /// [`super::for_job`] for a run with no secrets.
+    fn for_job(
+        lent: &Lent,
+        access: &JobAccess,
+        trusted: bool,
+        now: u64,
+        timeout: Duration,
+    ) -> Result<ForJob, String> {
+        super::for_job(lent, access, trusted, &BTreeMap::new(), now, timeout)
+    }
 
     fn lent(json: &str) -> Lent {
         let lent: Lent = serde_json::from_str(json).unwrap();
@@ -783,6 +888,93 @@ mod tests {
         );
     }
 
+    fn env_file_access(path: &str, environment: Option<&str>) -> JobAccess {
+        JobAccess {
+            env_file: Some(iwci_spec::EnvFileUse {
+                path: path.into(),
+                environment: environment.map(str::to_string),
+                vars: BTreeMap::new(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// As the app lends a `.infraenv`: literals as shown text, a granted
+    /// resource's output as a secret, `secret()` by the CI secret's name.
+    const ENV_FILES: &str = r#"{
+        "env-files": {
+            "{\"path\":\".infraenv\",\"environment\":\"staging\"}": {
+                "env": {
+                    "NODE_ENV": [{ "text": "staging" }],
+                    "DATABASE_URL": "postgres://ci:file-db-pass@db/app"
+                },
+                "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" }
+            },
+            "{\"path\":\".infraenv\"}": {
+                "refused": "`CACHE_URL` in .infraenv reads cache-1, which is not granted to CI for acme/web on main"
+            }
+        }
+    }"#;
+
+    #[test]
+    fn an_env_file_is_given_by_its_key_with_ci_secrets_filled_in() {
+        let lent: Lent = serde_json::from_str(ENV_FILES).unwrap();
+        lent.check().unwrap();
+        let job = env_file_access(".infraenv", Some("staging"));
+        let secrets = BTreeMap::from([(
+            "STRIPE_SECRET_KEY".to_string(),
+            "stripe-ci-placeholder".to_string(),
+        )]);
+        let got = super::for_job(&lent, &job, true, &secrets, NOW, TEN_MINUTES).unwrap();
+        let env: BTreeMap<_, _> = got.env.iter().cloned().collect();
+        assert_eq!(env["NODE_ENV"], "staging");
+        assert_eq!(env["DATABASE_URL"], "postgres://ci:file-db-pass@db/app");
+        assert_eq!(env["STRIPE_KEY"], "stripe-ci-placeholder");
+        // The resource output is masked; the literal is not; the CI
+        // secret is masked as the run's secrets are.
+        let masked = lent.secret_values();
+        assert!(masked.contains(&"postgres://ci:file-db-pass@db/app".to_string()));
+        assert!(!masked.contains(&"staging".to_string()));
+        assert!(!format!("{lent:?}").contains("file-db-pass"));
+
+        // A CI secret the run does not have fails the job, saying where
+        // secrets come from in CI.
+        let err =
+            super::for_job(&lent, &job, true, &BTreeMap::new(), NOW, TEN_MINUTES).unwrap_err();
+        assert!(
+            err.contains("`STRIPE_KEY` in .infraenv reads secret(\"STRIPE_SECRET_KEY\")"),
+            "{err}"
+        );
+        assert!(err.contains("not the organisation's secrets"), "{err}");
+        // A refusal is the job's reason; another use of the file is another key.
+        assert!(
+            for_job(
+                &lent,
+                &env_file_access(".infraenv", None),
+                true,
+                NOW,
+                TEN_MINUTES
+            )
+            .unwrap_err()
+            .contains("not granted to CI")
+        );
+        assert_eq!(
+            for_job(
+                &lent,
+                &env_file_access(".infraenv", Some("prod")),
+                true,
+                NOW,
+                TEN_MINUTES
+            )
+            .unwrap_err(),
+            "environment file `.infraenv` was not lent to this run"
+        );
+        assert_eq!(
+            super::for_job(&lent, &job, false, &secrets, NOW, TEN_MINUTES).unwrap_err(),
+            UNTRUSTED
+        );
+    }
+
     #[test]
     fn a_request_is_checked_before_the_run_starts() {
         for (json, needle) in [
@@ -817,6 +1009,18 @@ mod tests {
             (
                 r#"{"resources": {"r": {"refused": ""}}}"#,
                 "reason has 1 to",
+            ),
+            (
+                r#"{"env-files": {"k": {"env": {"IWCI_X": "x"}}}}"#,
+                "is not a variable it may set",
+            ),
+            (
+                r#"{"env-files": {"k": {"env": {"A": "x"}, "secrets": {"A": "S"}}}}"#,
+                "is not a variable it may set",
+            ),
+            (
+                r#"{"env-files": {"k": {"refused": "no", "secrets": {"A": "S"}}}}"#,
+                "refused and lent at once",
             ),
         ] {
             let lent: Lent = serde_json::from_str(json).unwrap();

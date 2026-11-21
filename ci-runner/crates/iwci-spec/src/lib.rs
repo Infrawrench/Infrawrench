@@ -332,6 +332,57 @@ pub(crate) fn is_grant_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
 }
 
+/// The most substitutions one `env-file:` may set with `vars:`.
+pub const MAX_ENV_FILE_VARS: usize = 16;
+/// The longest an `env-file:` substitution's value may be, in characters.
+pub const MAX_ENV_FILE_VAR_VALUE: usize = 256;
+
+/// Why `path` is not an `env-file:` path: relative to the repository's
+/// root, without `.` or `..` segments or a backslash, up to 256 characters.
+fn env_file_path_problem(path: &str) -> Option<&'static str> {
+    if path.is_empty() || path.chars().count() > 256 {
+        Some("a path has 1 to 256 characters")
+    } else if path.chars().any(char::is_control) || path.contains('\\') {
+        Some("a path has no control characters or backslashes")
+    } else if path.contains("${{") {
+        Some(
+            "the path is literal, so the app can read the file before the run starts; `${{ }}` is not allowed here",
+        )
+    } else if path.starts_with('/')
+        || path
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        Some(
+            "a path is relative to the repository's root, such as `.infraenv` or `apps/web/.infraenv`, without `.` or `..`",
+        )
+    } else {
+        None
+    }
+}
+
+/// A `.infraenv` environment's name: `[env.<name>]`.
+fn is_env_file_environment(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
+}
+
+/// A `.infraenv` substitution's name: `${name}`.
+fn is_env_file_var(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && (bytes[0].is_ascii_alphabetic() || bytes[0] == b'_')
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+}
+
 /// An Infrawrench connection's or SSH key's name as the app shows it: any
 /// text up to 128 characters without control characters or padding, and
 /// literal, so the app can resolve it before the run starts.
@@ -1606,6 +1657,11 @@ impl Validator<'_> {
                     "a job that is lent a GitHub token cannot be task-cached",
                 );
             }
+            if job.env_file.is_some() {
+                // Its variables are read fresh for every run, from outside
+                // anything the key can hold.
+                self.error(&at, "a job with `env-file:` cannot be task-cached");
+            }
         }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
@@ -2045,6 +2101,9 @@ impl Validator<'_> {
                 }
             }
         }
+        if let Some(file) = &job.env_file {
+            access.env_file = self.env_file(&format!("{path}.env-file"), &file.entry());
+        }
         let services = match &job.services {
             Some(raw::Services::Map(m)) => m.values().map(|s| &s.env).collect(),
             _ => Vec::new(),
@@ -2062,6 +2121,62 @@ impl Validator<'_> {
             }
         }
         access
+    }
+
+    /// `env-file:`, checked: everything in it is literal, since the app
+    /// reads the file and resolves it before the run starts.
+    fn env_file(&mut self, at: &str, entry: &raw::EnvFileEntry) -> Option<EnvFileUse> {
+        let mut ok = true;
+        if let Some(problem) = env_file_path_problem(&entry.path) {
+            self.error(at, format!("`{}`: {problem}", entry.path));
+            ok = false;
+        }
+        if let Some(env) = &entry.environment
+            && !is_env_file_environment(env)
+        {
+            self.error(
+                at,
+                format!("`{env}` is not an environment name (letters, digits, `-` and `_`, starting with a letter or digit, up to 64)"),
+            );
+            ok = false;
+        }
+        if entry.vars.len() > MAX_ENV_FILE_VARS {
+            self.error(
+                at,
+                format!(
+                    "sets {} vars; the limit is {MAX_ENV_FILE_VARS}",
+                    entry.vars.len()
+                ),
+            );
+            ok = false;
+        }
+        for (key, value) in &entry.vars {
+            if !is_env_file_var(key) {
+                self.error(
+                    at,
+                    format!("`{key}` is not a substitution name (letters, digits and `_`, not starting with a digit, up to 64)"),
+                );
+                ok = false;
+            } else if value.chars().count() > MAX_ENV_FILE_VAR_VALUE
+                || value.chars().any(char::is_control)
+                || value.contains("${{")
+            {
+                self.error(
+                    at,
+                    format!("`vars.{key}` is up to {MAX_ENV_FILE_VAR_VALUE} characters of literal text, without control characters or `${{{{ }}}}`: the app reads it before the run starts"),
+                );
+                ok = false;
+            }
+        }
+        ok.then(|| EnvFileUse {
+            path: entry.path.clone(),
+            environment: entry.environment.clone(),
+            vars: entry
+                .vars
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        })
     }
 
     /// Checks a job's `downloads:` and returns its retention and `when:`.

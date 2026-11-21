@@ -91,6 +91,10 @@ fn schema_matches_the_structs() {
             "/$defs/connection",
         ),
         (
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    env-file: { path: .infraenv, zzz: 1 }\n",
+            "/$defs/envFile",
+        ),
+        (
             "name: x\njobs:\n  a:\n    using: builtin:t@1\n    packages: { zzz: 1 }\n",
             "/$defs/packageFilter",
         ),

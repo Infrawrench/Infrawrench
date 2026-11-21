@@ -31,6 +31,7 @@ import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cos
 import { Route as OrgOrgIdCostsRouteImport } from './routes/org.$orgId.costs'
 import { Route as OrgOrgIdDeliveryRouteImport } from './routes/org.$orgId.delivery'
 import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
+import { Route as OrgOrgIdEnvFilesRouteImport } from './routes/org.$orgId.env-files'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdEnvironmentsRouteImport } from './routes/org.$orgId.environments'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
@@ -224,6 +225,11 @@ const OrgOrgIdDeliveryRoute = OrgOrgIdDeliveryRouteImport.update({
 const OrgOrgIdDnsRoute = OrgOrgIdDnsRouteImport.update({
   id: '/dns',
   path: '/dns',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdEnvFilesRoute = OrgOrgIdEnvFilesRouteImport.update({
+  id: '/env-files',
+  path: '/env-files',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdEnvironmentDiffRoute = OrgOrgIdEnvironmentDiffRouteImport.update({
@@ -704,6 +710,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
+  '/org/$orgId/env-files': typeof OrgOrgIdEnvFilesRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
@@ -810,6 +817,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
+  '/org/$orgId/env-files': typeof OrgOrgIdEnvFilesRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
@@ -918,6 +926,7 @@ export interface FileRoutesById {
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
   '/org/$orgId/delivery': typeof OrgOrgIdDeliveryRoute
   '/org/$orgId/dns': typeof OrgOrgIdDnsRoute
+  '/org/$orgId/env-files': typeof OrgOrgIdEnvFilesRoute
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/environments': typeof OrgOrgIdEnvironmentsRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
@@ -1028,6 +1037,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
     | '/org/$orgId/dns'
+    | '/org/$orgId/env-files'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
@@ -1134,6 +1144,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
     | '/org/$orgId/dns'
+    | '/org/$orgId/env-files'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
@@ -1241,6 +1252,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/costs'
     | '/org/$orgId/delivery'
     | '/org/$orgId/dns'
+    | '/org/$orgId/env-files'
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/environments'
     | '/org/$orgId/expiring'
@@ -1493,6 +1505,13 @@ declare module '@tanstack/react-router' {
       path: '/dns'
       fullPath: '/org/$orgId/dns'
       preLoaderRoute: typeof OrgOrgIdDnsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/env-files': {
+      id: '/org/$orgId/env-files'
+      path: '/env-files'
+      fullPath: '/org/$orgId/env-files'
+      preLoaderRoute: typeof OrgOrgIdEnvFilesRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/environment-diff': {
@@ -2351,6 +2370,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdCostsRoute: typeof OrgOrgIdCostsRoute
   OrgOrgIdDeliveryRoute: typeof OrgOrgIdDeliveryRoute
   OrgOrgIdDnsRoute: typeof OrgOrgIdDnsRoute
+  OrgOrgIdEnvFilesRoute: typeof OrgOrgIdEnvFilesRoute
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdEnvironmentsRoute: typeof OrgOrgIdEnvironmentsRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
@@ -2402,6 +2422,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdCostsRoute: OrgOrgIdCostsRoute,
   OrgOrgIdDeliveryRoute: OrgOrgIdDeliveryRoute,
   OrgOrgIdDnsRoute: OrgOrgIdDnsRoute,
+  OrgOrgIdEnvFilesRoute: OrgOrgIdEnvFilesRoute,
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdEnvironmentsRoute: OrgOrgIdEnvironmentsRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,

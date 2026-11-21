@@ -29,6 +29,7 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -85,6 +86,7 @@ export {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -255,6 +257,8 @@ export function getWorkspaceNavigateArgs(
     }
     case "environments":
       return { to: "/environments", ...(replace ? { replace: true } : {}) };
+    case "env-files":
+      return { to: "/env-files", ...(replace ? { replace: true } : {}) };
     case "ssh-fanout":
       return { to: "/ssh-fanout", ...(replace ? { replace: true } : {}) };
     case "metric-alerts":
@@ -512,6 +516,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "environments") {
     return environmentsTabTarget();
+  }
+  if (segments[0] === "env-files") {
+    return envFilesTabTarget();
   }
   if (segments[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

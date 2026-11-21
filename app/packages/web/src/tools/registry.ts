@@ -39,6 +39,7 @@ import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
 import { vulnerabilityTools } from "./vulnerabilities";
 import { ciTools } from "./ci";
+import { envFileTools } from "./env-files";
 import { forProduct } from "./products";
 import type { ToolDefinition } from "./types";
 
@@ -51,7 +52,8 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     // (`./products`); `./generic` tags its own per tool. Untagged modules are always available: connections,
     // SSH keys and host keys, Linux apps and the per-plugin create tools are
     // Infrastructure; sleep/wake schedules act on resources; GitHub issues and
-    // IaC pull requests, the moment view and custom graphs cut across apps.
+    // IaC pull requests, the moment view, custom graphs and environment files
+    // cut across apps.
     ...genericTools(),
     ...connectionTools(),
     ...forProduct("costs", costTools()),
@@ -82,6 +84,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...linuxAppTools(),
+    ...envFileTools(),
     ...forProduct("security", vulnerabilityTools()),
     ...forProduct("delivery", ciTools()),
     ...(await perPluginCreateTools()),

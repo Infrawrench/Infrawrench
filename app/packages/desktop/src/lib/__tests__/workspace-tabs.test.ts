@@ -10,6 +10,7 @@ import {
   invoicesTabTarget,
   probesTabTarget,
   heartbeatsTabTarget,
+  envFilesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -78,6 +79,11 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns probes route args", () => {
     const args = getWorkspaceNavigateArgs(probesTabTarget());
     expect(args.to).toBe("/probes");
+  });
+
+  it("returns env-files route args", () => {
+    const args = getWorkspaceNavigateArgs(envFilesTabTarget());
+    expect(args.to).toBe("/env-files");
   });
 
   it("returns heartbeats route args", () => {
@@ -525,6 +531,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the env-files path", () => {
+    expect(syncWorkspaceRouteFromPath("/env-files")).toEqual({ kind: "env-files" });
   });
 
   it("parses the heartbeats path", () => {
