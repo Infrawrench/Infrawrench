@@ -741,7 +741,7 @@ describe("env hooks", () => {
     expect(result.infraenv).toBe("apps/web/.infraenv");
     expect(result.output).toBe("apps/web/config/app.env");
     const text = readFileSync(join(dir, ".githooks/post-merge"), "utf8");
-    expect(text).toContain("infrawrench env pull --quiet -f 'apps/web/.infraenv'");
+    expect(text).toContain(`"$iw_env_bin" env pull --quiet -f 'apps/web/.infraenv'`);
     expect(text).toContain("[ ! -f 'apps/web/config/app.env' ]");
     expect(existsSync(hook("post-merge"))).toBe(false);
   });

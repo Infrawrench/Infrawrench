@@ -5,7 +5,7 @@
  * CLI boots Electron, so it is the slow path, and it says so once on stderr.
  */
 import { spawn } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { ParsedArgs } from "./args";
 import type { Io } from "./io";
@@ -24,8 +24,12 @@ export function findOnPath(name: string, io: Pick<Io, "env" | "platform">): stri
     for (const extension of extensions) {
       const candidate = join(dir, name + extension);
       try {
-        if (!statSync(candidate).isFile()) continue;
-        if (io.platform !== "win32") accessSync(candidate, constants.X_OK);
+        const stat = statSync(candidate);
+        if (!stat.isFile()) continue;
+        // The mode's execute bits rather than access(X_OK): some sandboxes
+        // (Infrawrench CI's among them) answer X_OK for any file but report
+        // real modes through stat.
+        if (io.platform !== "win32" && (stat.mode & 0o111) === 0) continue;
         return candidate;
       } catch {
         // Not here.

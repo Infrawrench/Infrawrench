@@ -921,7 +921,10 @@ mod tests {
         let lent: Lent = serde_json::from_str(ENV_FILES).unwrap();
         lent.check().unwrap();
         let job = env_file_access(".infraenv", Some("staging"));
-        let secrets = BTreeMap::from([("STRIPE_SECRET_KEY".to_string(), "stripe-ci-placeholder".to_string())]);
+        let secrets = BTreeMap::from([(
+            "STRIPE_SECRET_KEY".to_string(),
+            "stripe-ci-placeholder".to_string(),
+        )]);
         let got = super::for_job(&lent, &job, true, &secrets, NOW, TEN_MINUTES).unwrap();
         let env: BTreeMap<_, _> = got.env.iter().cloned().collect();
         assert_eq!(env["NODE_ENV"], "staging");
