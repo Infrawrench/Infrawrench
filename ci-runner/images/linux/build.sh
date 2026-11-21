@@ -390,6 +390,19 @@ mkdir -p "$work/ruby-build"
 tar -C "$work/ruby-build" -xzf "$dl/ruby-build.tar.gz" --strip-components=1 --no-same-owner
 PREFIX="$root/usr/local" "$work/ruby-build/install.sh"
 install -d "$root/root/.rbenv/versions" "$root/root/.rbenv/shims"
+# Shims for Ruby's own commands from the start, which run the system Ruby
+# until a version is chosen: otherwise bash remembers /usr/bin/ruby from a
+# job's first `ruby`, and keeps running it after `rbenv install` makes the
+# shim. rbenv only makes shims for what a version has, so a stand-in
+# version lends the names and goes again.
+stand_in="$root/root/.rbenv/versions/iwci-shim-names/bin"
+install -d "$stand_in"
+for name in ruby gem bundle bundler erb irb rake rdoc ri racc rbs rdbg; do
+  install -m 0755 /dev/null "$stand_in/$name"
+done
+in_root env RBENV_ROOT=/root/.rbenv rbenv rehash
+rm -rf "$root/root/.rbenv/versions/iwci-shim-names"
+[[ -x "$root/root/.rbenv/shims/ruby" ]] || die "rbenv rehash made no shims"
 
 read -r v s < <(release_line go)
 fetch "https://go.dev/dl/go$v.linux-$goarch.tar.gz" "$s" "go.tar.gz"
