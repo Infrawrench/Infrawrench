@@ -33,7 +33,8 @@
 #      there.
 #   4. The agent at /usr/local/sbin/iwci-guest (it is PID 1), the empty
 #      /.iwci/{rw,ws,base,root} it mounts on, /etc/iwci-image.
-#   5. `mkfs.erofs --tar=f -zlz4hc` over a tar of the tree, and image.json.
+#   5. `mkfs.erofs --tar=f` (uncompressed) over a tar of the tree, checked
+#      with fsck.erofs, and image.json.
 #
 # Runs as root on Ubuntu 24.04 of the target architecture (x86_64 or
 # aarch64); it cannot cross-build, because packages.txt runs installers in
@@ -120,6 +121,7 @@ case "$arch" in
     kfile=vmlinux
     kbuilt=vmlinux
     nodearch=x64
+    bunarch=x64
     goarch=amd64
     rusttriple=x86_64-unknown-linux-gnu
     filearch="x86-64"
@@ -132,6 +134,7 @@ case "$arch" in
     kfile=Image
     kbuilt=arch/arm64/boot/Image
     nodearch=arm64
+    bunarch=aarch64
     goarch=arm64
     rusttriple=aarch64-unknown-linux-gnu
     filearch="ARM aarch64"
@@ -141,7 +144,7 @@ case "$arch" in
 esac
 
 missing=()
-for tool in debootstrap mkfs.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
+for tool in debootstrap mkfs.erofs fsck.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 [[ -e /usr/include/libelf.h ]] || missing+=("libelf-dev (libelf.h)")
@@ -356,6 +359,51 @@ tar -C "$root/usr/local" -xJf "$dl/node.tar.xz" --strip-components=1 --no-same-o
   --exclude='*/CHANGELOG.md' --exclude='*/README.md'
 in_root corepack enable pnpm yarn
 
+read -r v s < <(release_line nvm)
+fetch "https://github.com/nvm-sh/nvm/archive/refs/tags/v$v.tar.gz" "$s" "nvm.tar.gz"
+rm -rf "$root/root/.nvm"
+install -d "$root/root/.nvm/versions/node"
+tar -C "$root/root/.nvm" -xzf "$dl/nvm.tar.gz" --strip-components=1 --no-same-owner \
+  "nvm-$v/nvm.sh" "nvm-$v/nvm-exec" "nvm-$v/bash_completion" "nvm-$v/LICENSE.md"
+
+read -r v s < <(release_line bun)
+fetch "https://github.com/oven-sh/bun/releases/download/bun-v$v/bun-linux-$bunarch.zip" "$s" "bun.zip"
+install -m 0644 "$dl/bun.zip" "$root/tmp/bun.zip"
+in_root unzip -q -o -j /tmp/bun.zip "bun-linux-$bunarch/bun" -d /usr/local/bin
+rm -f "$root/tmp/bun.zip"
+chmod 0755 "$root/usr/local/bin/bun"
+ln -sf bun "$root/usr/local/bin/bunx"
+
+# rbenv's own files in /usr/local/rbenv, ruby-build's commands on the
+# PATH (rbenv finds `rbenv-install` there), and RBENV_ROOT, where the
+# rubies and their shims go, in /root/.rbenv.
+read -r v s < <(release_line rbenv)
+fetch "https://github.com/rbenv/rbenv/archive/refs/tags/v$v.tar.gz" "$s" "rbenv.tar.gz"
+rm -rf "$root/usr/local/rbenv"
+install -d "$root/usr/local/rbenv"
+tar -C "$root/usr/local/rbenv" -xzf "$dl/rbenv.tar.gz" --strip-components=1 --no-same-owner
+ln -sf ../rbenv/bin/rbenv "$root/usr/local/bin/rbenv"
+read -r v s < <(release_line ruby-build)
+fetch "https://github.com/rbenv/ruby-build/archive/refs/tags/v$v.tar.gz" "$s" "ruby-build.tar.gz"
+rm -rf "$work/ruby-build"
+mkdir -p "$work/ruby-build"
+tar -C "$work/ruby-build" -xzf "$dl/ruby-build.tar.gz" --strip-components=1 --no-same-owner
+PREFIX="$root/usr/local" "$work/ruby-build/install.sh"
+install -d "$root/root/.rbenv/versions" "$root/root/.rbenv/shims"
+# Shims for Ruby's own commands from the start, which run the system Ruby
+# until a version is chosen: otherwise bash remembers /usr/bin/ruby from a
+# job's first `ruby`, and keeps running it after `rbenv install` makes the
+# shim. rbenv only makes shims for what a version has, so a stand-in
+# version lends the names and goes again.
+stand_in="$root/root/.rbenv/versions/iwci-shim-names/bin"
+install -d "$stand_in"
+for name in ruby gem bundle bundler erb irb rake rdoc ri racc rbs rdbg; do
+  install -m 0755 /dev/null "$stand_in/$name"
+done
+in_root env RBENV_ROOT=/root/.rbenv rbenv rehash
+rm -rf "$root/root/.rbenv/versions/iwci-shim-names"
+[[ -x "$root/root/.rbenv/shims/ruby" ]] || die "rbenv rehash made no shims"
+
 read -r v s < <(release_line go)
 fetch "https://go.dev/dl/go$v.linux-$goarch.tar.gz" "$s" "go.tar.gz"
 rm -rf "$root/usr/local/go"
@@ -421,11 +469,38 @@ EOF
 
 # Everything above is on the default PATH already; this records the rest
 # for shells and anything that reads pam_env's file.
+# The agent reads it too, so these are every job's (a job's `env:` wins).
+# rbenv's shims come first: with no version chosen they run the system
+# Ruby. BASH_ENV makes `nvm` a command in `bash` scripts (see below).
+# A Ruby that ruby-build compiles comes without its documentation, which
+# takes minutes and nobody reads in CI.
 cat >"$root/etc/environment" <<'EOF'
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PATH="/root/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+NVM_DIR="/root/.nvm"
+RBENV_ROOT="/root/.rbenv"
+BASH_ENV="/etc/iwci/bash_env"
+RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
+EOF
+
+# nvm is a shell function, so it is defined for every bash, scripts
+# included, but its 4,000 lines are read only when it is first called.
+install -d "$root/etc/iwci"
+cat >"$root/etc/iwci/bash_env" <<'EOF'
+# Read by every non-interactive bash (BASH_ENV in /etc/environment).
+if ! declare -F nvm >/dev/null && [ -s "${NVM_DIR:-/root/.nvm}/nvm.sh" ]; then
+  nvm() {
+    unset -f nvm
+    # shellcheck disable=SC1091
+    . "${NVM_DIR:-/root/.nvm}/nvm.sh" --no-use && nvm "$@"
+  }
+fi
+EOF
+cat >>"$root/root/.bashrc" <<'EOF'
+export NVM_DIR="/root/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 EOF
 
 # Jobs run as root over files the workspace image owns, and use LFS.
@@ -487,8 +562,18 @@ step "rootfs.erofs"
 tar -C "$root" --numeric-owner --xattrs --xattrs-include='*' \
   --exclude='./proc/*' --exclude='./sys/*' --exclude='./dev/*' \
   -cf "$work/rootfs.tar" .
-mkfs.erofs -zlz4hc,12 -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
+# Uncompressed: Ubuntu 24.04's erofs-utils (1.7.1) wrote about a fifth of
+# the files (small ones: Go's sources, npm's, headers, scripts like
+# `which`) unreadable when compressing from a tar ("per-inode big pcluster
+# without sb feature", EUCLEAN on read), with every -z mode tried. The
+# root is built once per host, so the space (about 3 GB rather than 1.6)
+# costs little, and reads skip decompression.
+mkfs.erofs -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
 rm -f "$work/rootfs.tar"
+# Every file read back, so an image a machine could not read is never
+# installed.
+fsck.erofs "$stage/rootfs.erofs" >/dev/null ||
+  die "fsck.erofs found $stage/rootfs.erofs corrupt; the previous image is untouched"
 
 kernel_sha="$(sha "$stage/$kfile")"
 rootfs_sha="$(sha "$stage/rootfs.erofs")"
@@ -505,7 +590,11 @@ cat >"$stage/image.json" <<EOF
   "rootfs_sha256": "$rootfs_sha",
   "agent_sha256": "$agent_sha",
   "snapshot": "$snapshot",
-  "features": ["files-virtiofs"]
+  "features": ["files-virtiofs"],
+  "caches": [
+    { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
+    { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 }
+  ]
 }
 EOF
 

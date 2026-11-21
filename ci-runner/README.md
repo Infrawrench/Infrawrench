@@ -172,42 +172,42 @@ everything through.
 
 ### Jobs
 
-| Key            | Meaning                                                                                                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                |
-| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                         |
-| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                    |
-| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
-| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
-| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
-| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
-| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
-| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
-| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
-| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
-| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                      |
-| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
-| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
-| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
-| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
-| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                         |
-| `cpus`         | Whole vCPUs the job holds and is told it has, from `1` to `64`, instead of its share of one, with which it is told 1. See [Limits](#limits).                                                                       |
-| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
-| `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
-| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
-| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
-| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
-| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
-| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
-| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
-| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
-| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
-| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
-| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
-| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
-| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                    |
+| Key            | Meaning                                                                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                 |
+| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                          |
+| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                     |
+| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                               |
+| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                    |
+| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                    |
+| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                           |
+| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                      |
+| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                      |
+| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                   |
+| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                    |
+| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                           |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                       |
+| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                                |
+| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                           |
+| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                         |
+| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                       |
+| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                       |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                          |
+| `cpus`         | Whole vCPUs the job holds and is told it has, from `1` to `64`, instead of its share of one, with which it is told 1. See [Limits](#limits).                                                                        |
+| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                      |
+| `env-cache`    | `false` turns off the caches the job's environment or machine image keeps on its own (Go's build cache, nvm's versions), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches). |
+| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                      |
+| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                               |
+| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                        |
+| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                      |
+| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                        |
+| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                      |
+| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                             |
+| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).  |
+| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                      |
+| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                              |
+| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                            |
+| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                     |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -739,8 +739,15 @@ jobs:
 - **Network.** The machine's traffic goes through the runner's own gateway
   under the same policy as an isolate's ([Networking](#networking)):
   public addresses only, never the host. `network: false` cuts it off.
+- **Version managers, cached.** The image has `nvm`, rbenv (with
+  ruby-build) and Bun beside its default Node.js and Ruby, and keeps what
+  nvm and rbenv install between runs of a job on its own, as an
+  environment keeps Go's build cache ([Environment caches](#environment-caches)):
+  `nvm install 22` or `rbenv install 3.4.9` downloads or compiles once,
+  and the next run restores it before the machine starts. `env-cache:`
+  turns them off as it does an environment's.
 - **What it cannot have.** Keys that only mean something in an isolate are
-  errors: `using`, `args`, `deps`, `tools`, `services`, `env-cache` and
+  errors: `using`, `args`, `deps`, `tools`, `services` and
   `task-cache` (the script installs and starts what it needs, and `cache:`
   keeps it between runs). A machine job stays on
   the runner that has its run; helpers never take one
@@ -4074,6 +4081,13 @@ job cache that the environment wrote:
 
 `env-cache: false` turns them all off for a job; `env-cache: { go-build:
 false }` turns off the ones it names.
+
+A virtual machine's image declares caches the same way, in its
+`image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`) and
+`rbenv` (`/root/.rbenv`), keyed by the image's name rather than its
+version (`machine:ubuntu-24.04`), so a rebuild of the image on the same
+Ubuntu release keeps them. Only what the job added is saved there too:
+the image's own files are its read-only root, never the job's.
 
 An environment declares them in its `build.json` (which `iwci publish`
 turns into its manifest), beside `env`:

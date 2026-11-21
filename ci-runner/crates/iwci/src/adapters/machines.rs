@@ -54,6 +54,24 @@ impl Machines for VmMachines {
         self.host.overhead(os(vm))
     }
 
+    fn env_caches(&self, vm: VmOs) -> Vec<crate::env_cache::EnvCacheDecl> {
+        let Some((image, caches)) = self.host.caches(os(vm)) else {
+            return Vec::new();
+        };
+        caches
+            .iter()
+            .map(|c| crate::env_cache::EnvCacheDecl {
+                name: c.name.clone(),
+                path: c.path.clone(),
+                max_bytes: c.max_bytes,
+                // Kept across rebuilds of the image, which keep its
+                // libraries' ABI (the same Ubuntu release); a cache is
+                // never read by another image.
+                environment: format!("machine:{image}"),
+            })
+            .collect()
+    }
+
     fn run(&self, run: MachineRun<'_>) -> Result<Execution, String> {
         let Action::Script { script } = &run.job.action else {
             return Err("a job on a virtual machine runs a `run:` script".into());

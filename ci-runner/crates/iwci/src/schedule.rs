@@ -3488,10 +3488,15 @@ fn run_job<T: Tools>(
         }
         cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
     }
-    // The environment's own caches, which `env-cache:` can turn off.
-    let env_caches: Vec<crate::env_cache::Active> = match (&options.caches, &tool) {
-        (Some(store), Some(tool)) => tools
-            .env_caches(tool)
+    // The environment's own caches, which `env-cache:` can turn off: an
+    // isolate's environment's, or a machine image's.
+    let env_decls = match (&job.vm, &options.machines, &tool) {
+        (Some(vm), Some(machines), _) => machines.env_caches(vm.os),
+        (None, _, Some(tool)) => tools.env_caches(tool),
+        _ => Vec::new(),
+    };
+    let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
+        Some(store) => env_decls
             .into_iter()
             .filter(|c| job.env_cache.keeps(&c.name))
             .map(|c| {
@@ -3612,6 +3617,7 @@ fn run_job<T: Tools>(
                 root.as_deref(),
                 OUTPUT_PATH,
                 options.caches.is_some(),
+                &env_caches.iter().map(|c| c.path()).collect::<Vec<_>>(),
             ),
             log,
             cancel,

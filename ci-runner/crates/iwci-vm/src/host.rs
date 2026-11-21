@@ -349,6 +349,16 @@ impl Host {
         out
     }
 
+    /// The image of `os`'s name (`ubuntu-24.04`) and the caches it
+    /// declares, when the runner has that image.
+    pub fn caches(&self, os: Os) -> Option<(&str, &[crate::images::ImageCache])> {
+        let info = match os {
+            Os::Linux => &self.linux.as_ref()?.info,
+            Os::Windows => &self.windows.as_ref()?.info,
+        };
+        Some((info.image.as_str(), info.caches.as_slice()))
+    }
+
     /// Why a kind of machine is not offered, for the runner's log.
     pub fn problems(&self) -> &[String] {
         &self.problems

@@ -1884,12 +1884,6 @@ impl Validator<'_> {
                 "starts services in the job's isolate; on a virtual machine, start them in the script (`docker run -d`, `pg_ctl start`)",
             );
         }
-        if job.env_cache.is_some() {
-            refuse(
-                "env-cache",
-                "keeps an isolate environment's caches; use `cache:` for a virtual machine's",
-            );
-        }
         if matches!(
             job.task_cache,
             Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))

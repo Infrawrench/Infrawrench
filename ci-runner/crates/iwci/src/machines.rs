@@ -31,6 +31,13 @@ pub trait Machines: Send + Sync {
     /// with it.
     fn overhead(&self, os: VmOs) -> u64;
 
+    /// The caches a machine of `os` keeps on its own (its image's
+    /// `caches`, such as the versions nvm installs), restored and saved
+    /// as an isolate environment's are ([`crate::env_cache`]).
+    fn env_caches(&self, _os: VmOs) -> Vec<crate::env_cache::EnvCacheDecl> {
+        Vec::new()
+    }
+
     /// Runs the job's script in a fresh machine, and writes what it left
     /// under `run.collect` into `run.fs` and what it left in the run's
     /// `/tmp/workflow` into `run.scratch` before it returns. An `Err` is
@@ -107,6 +114,7 @@ pub fn collect_paths(
     root: Option<&str>,
     output: &str,
     caches: bool,
+    env_caches: &[&str],
 ) -> Collecting {
     let repository = root
         .filter(|_| !matches!(job.changes, iwci_spec::ChangePolicy::Ignore))
@@ -121,6 +129,7 @@ pub fn collect_paths(
             paths.extend(cache.paths.iter().cloned());
         }
     }
+    paths.extend(env_caches.iter().map(|p| p.to_string()));
     paths.sort();
     paths.dedup();
     let mut out: Vec<String> = Vec::with_capacity(paths.len());
@@ -256,7 +265,13 @@ jobs:
         // comes back without what git ignores, and artifacts and caches
         // are often there (`dist`, `node_modules`).
         assert_eq!(
-            collect_paths(&job, Some("/app"), "/iwci/output", true),
+            collect_paths(
+                &job,
+                Some("/app"),
+                "/iwci/output",
+                true,
+                &["/root/.nvm/versions"]
+            ),
             Collecting {
                 paths: [
                     "/app/dist",
@@ -264,6 +279,7 @@ jobs:
                     "/app/out",
                     "/iwci/output",
                     "/root/.cache",
+                    "/root/.nvm/versions",
                     "/root/report.xml"
                 ]
                 .map(String::from)
@@ -277,7 +293,7 @@ jobs:
             "name: t\njobs:\n  a:\n    platform: linux\n    run: make\n    artifacts: [out]\n    cache: { key: k, paths: [/root/.cache] }\n",
         );
         assert_eq!(
-            collect_paths(&job, Some("/app"), "/iwci/output", false),
+            collect_paths(&job, Some("/app"), "/iwci/output", false, &[]),
             Collecting {
                 paths: vec!["/app/out".into(), "/iwci/output".into()],
                 repository: None,
