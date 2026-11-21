@@ -21,18 +21,19 @@
 //! taken), extended attributes, `mknod`, `fallocate` and `lseek`'s
 //! data/hole queries (all `ENOSYS`, which the kernel remembers), DAX, and
 //! the kernel's write-back cache. Ownership is root's, as every job in a
-//! machine runs as root, and modes the machine sets are kept here for as
-//! long as the machine runs.
+//! machine runs as root. Modes are the scratch directory's own record
+//! (`iwci_vfs::Modes`), as the copy into and out of a machine kept them, so
+//! a script one machine job marks executable runs in the next.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use futures::executor::block_on;
-use iwci_vfs::DynFs;
 use iwci_vfs::virtual_fs::{
     AsyncReadExt, AsyncSeekExt, AsyncWriteExt, FsError, Metadata, OpenOptionsConfig, VirtualFile,
 };
+use iwci_vfs::{DynFs, Modes};
 
 /// The ABI this server speaks; the kernel answers with what it speaks too,
 /// and both use the lower.
@@ -258,8 +259,6 @@ struct Tables {
     next_node: u64,
     handles: HashMap<u64, std::sync::Arc<Handle>>,
     next_handle: u64,
-    /// Modes set with `chmod` (and given at creation), by node.
-    modes: HashMap<u64, u32>,
 }
 
 /// Answers FUSE requests from one file system. Shared by the threads that
@@ -268,6 +267,8 @@ struct Tables {
 /// can wait (a file still coming from another runner).
 pub struct Server {
     fs: DynFs,
+    /// The modes of the served files, by path.
+    modes: Modes,
     tables: Mutex<Tables>,
 }
 
@@ -278,7 +279,8 @@ impl std::fmt::Debug for Server {
 }
 
 impl Server {
-    pub fn new(fs: DynFs) -> Self {
+    /// Serves `fs`, its files' modes kept in `modes`.
+    pub fn new(fs: DynFs, modes: Modes) -> Self {
         let mut tables = Tables {
             next_node: ROOT + 1,
             next_handle: 1,
@@ -294,6 +296,7 @@ impl Server {
         tables.by_path.insert(PathBuf::from("/"), ROOT);
         Self {
             fs,
+            modes,
             tables: Mutex::new(tables),
         }
     }
@@ -413,11 +416,11 @@ impl Server {
             }
             None => false,
         };
-        if gone && let Some(entry) = t.nodes.remove(&node) {
-            if t.by_path.get(&entry.path) == Some(&node) {
-                t.by_path.remove(&entry.path);
-            }
-            t.modes.remove(&node);
+        if gone
+            && let Some(entry) = t.nodes.remove(&node)
+            && t.by_path.get(&entry.path) == Some(&node)
+        {
+            t.by_path.remove(&entry.path);
         }
     }
 
@@ -458,8 +461,8 @@ impl Server {
             .done())
     }
 
-    fn attr(&self, node: u64, meta: &Metadata) -> Vec<u8> {
-        let mode = self.lock().modes.get(&node).copied();
+    fn attr(&self, node: u64, path: &Path, meta: &Metadata) -> Vec<u8> {
+        let mode = self.modes.get(path);
         let ft = meta.file_type();
         let (kind, default, nlink) = if ft.is_dir() {
             (S_IFDIR, 0o755, 2)
@@ -490,7 +493,7 @@ impl Server {
         out.done()
     }
 
-    fn entry(&self, node: u64, meta: &Metadata) -> Vec<u8> {
+    fn entry(&self, node: u64, path: &Path, meta: &Metadata) -> Vec<u8> {
         let mut out = Out::default();
         out.u64(node)
             .u64(0) // generation
@@ -499,7 +502,7 @@ impl Server {
             .u32(0)
             .u32(0);
         let mut body = out.done();
-        body.extend(self.attr(node, meta));
+        body.extend(self.attr(node, path, meta));
         body
     }
 
@@ -511,7 +514,7 @@ impl Server {
     fn found(&self, path: &Path) -> Answer {
         let meta = self.stat(path)?;
         let node = self.node_for(path, true);
-        Ok(self.entry(node, &meta))
+        Ok(self.entry(node, path, &meta))
     }
 
     fn lookup(&self, parent: u64, args: &mut Args<'_>) -> Answer {
@@ -525,7 +528,7 @@ impl Server {
         let mut out = Out::default();
         out.u64(VALID_SECS).u32(0).u32(0);
         let mut body = out.done();
-        body.extend(self.attr(node, &meta));
+        body.extend(self.attr(node, &path, &meta));
         Ok(body)
     }
 
@@ -561,7 +564,7 @@ impl Server {
             }
         }
         if valid & FATTR_MODE != 0 {
-            self.lock().modes.insert(node, mode & 0o7777);
+            self.modes.set(&path, mode & 0o7777);
         }
         // Ownership and times are not kept: everything is root's, and a
         // file's times are when it was last written.
@@ -589,10 +592,8 @@ impl Server {
         let umask = args.u32()?;
         let path = self.child(parent, args.name()?)?;
         self.fs.create_dir(&path).map_err(errno)?;
-        let answer = self.found(&path)?;
-        let node = self.node_for(&path, false);
-        self.lock().modes.insert(node, mode & !umask & 0o7777);
-        Ok(answer)
+        self.modes.set(&path, mode & !umask & 0o7777);
+        self.found(&path)
     }
 
     fn unlink(&self, parent: u64, args: &mut Args<'_>, dir: bool) -> Answer {
@@ -629,6 +630,7 @@ impl Server {
         if flags & RENAME_NOREPLACE != 0 && self.fs.symlink_metadata(&to).is_ok() {
             return Err(EEXIST);
         }
+        // The served file system moves the modes along (`Modes::renamed`).
         block_on(self.fs.rename(&from, &to)).map_err(errno)?;
         // Every node at or under the old name moves with it.
         let mut t = self.lock();
@@ -708,6 +710,9 @@ impl Server {
         args.skip(4)?;
         let path = self.child(parent, args.name()?)?;
         let fh = self.open_file(&path, flags | O_CREAT, true)?;
+        if flags & O_EXCL != 0 || self.modes.get(&path).is_none() {
+            self.modes.set(&path, mode & !umask & 0o7777);
+        }
         let entry = match self.found(&path) {
             Ok(entry) => entry,
             Err(e) => {
@@ -715,8 +720,6 @@ impl Server {
                 return Err(e);
             }
         };
-        let node = self.node_for(&path, false);
-        self.lock().modes.insert(node, mode & !umask & 0o7777);
         let mut body = entry;
         body.extend(Out::default().u64(fh).u32(0).u32(0).done());
         Ok(body)

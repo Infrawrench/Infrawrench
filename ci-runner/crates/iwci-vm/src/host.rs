@@ -345,7 +345,11 @@ impl Host {
         // dropped after `machine`).
         #[cfg(target_os = "linux")]
         let _serving = match (&sockets.scratch, &job.scratch.live) {
-            (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(fs.clone(), path)?),
+            (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(
+                fs.clone(),
+                job.scratch.files.modes(),
+                path,
+            )?),
             _ => None,
         };
 

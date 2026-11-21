@@ -4,7 +4,7 @@ use super::*;
 
 fn server() -> (Server, iwci_vfs::JobFs) {
     let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
-    (Server::new(fs.as_dyn()), fs)
+    (Server::new(fs.as_dyn(), fs.modes()), fs)
 }
 
 /// A request: header (40 bytes) then `body`.
@@ -289,4 +289,30 @@ fn a_forgotten_node_is_gone_and_its_name_gets_a_new_one() {
     // The root is never forgotten.
     s.handle(&req(FORGET, ROOT, &le64(100)));
     ok(&s, GETATTR, ROOT, &[0u8; 16]);
+}
+
+#[test]
+fn modes_live_in_the_served_file_systems_record_so_the_next_machine_sees_them() {
+    let (s, fs) = server();
+    let (node, fh) = create(&s, ROOT, "run.sh", 0o644);
+    release(&s, fh);
+    let mut body = le32(FATTR_MODE);
+    body.extend(le32(0));
+    body.extend(le64(0));
+    body.extend(le64(0));
+    body.extend([0u8; 8 + 8 + 8 + 8 + 12]);
+    body.extend(le32(0o755));
+    body.extend([0u8; 16]);
+    ok(&s, SETATTR, node, &body);
+    assert_eq!(fs.modes().get(Path::new("/run.sh")), Some(0o755));
+    // A new server, as the next machine gets, over the same files.
+    let next = Server::new(fs.as_dyn(), fs.modes());
+    let (_, entry) = lookup(&next, ROOT, "run.sh");
+    assert_eq!(entry_size_mode(&entry).1, S_IFREG | 0o755);
+    // A rename takes the mode along.
+    let mut body = le64(ROOT);
+    body.extend(name("run.sh"));
+    body.extend(name("go.sh"));
+    ok(&next, RENAME, ROOT, &body);
+    assert_eq!(fs.modes().get(Path::new("/go.sh")), Some(0o755));
 }

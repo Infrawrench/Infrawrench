@@ -29,7 +29,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use iwci_vfs::DynFs;
+use iwci_vfs::{DynFs, Modes};
 use vhost::vhost_user::Listener;
 use vhost::vhost_user::message::{VhostUserProtocolFeatures, VhostUserVirtioFeatures};
 use vhost_user_backend::{VhostUserBackend, VhostUserDaemon, VringRwLock, VringT};
@@ -233,15 +233,16 @@ pub struct Serving {
 }
 
 impl Serving {
-    /// Starts serving `fs` on a socket at `socket`, which exists before
-    /// this returns, so QEMU can be started at once.
-    pub fn start(fs: DynFs, socket: &Path) -> Result<Serving, String> {
+    /// Starts serving `fs` (its files' modes in `modes`) on a socket at
+    /// `socket`, which exists before this returns, so QEMU can be started
+    /// at once.
+    pub fn start(fs: DynFs, modes: Modes, socket: &Path) -> Result<Serving, String> {
         let _ = std::fs::remove_file(socket);
         let mut listener =
             Listener::new(socket, true).map_err(|e| format!("virtio-fs socket: {e}"))?;
         let (sender, receiver) = mpsc::channel::<Work>();
         let inner = Arc::new(Inner {
-            server: Arc::new(Server::new(fs)),
+            server: Arc::new(Server::new(fs, modes)),
             memory: Mutex::new(None),
             work: Mutex::new(Some(sender)),
         });

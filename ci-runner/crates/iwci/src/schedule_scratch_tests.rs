@@ -539,7 +539,7 @@ fn a_machine_sees_another_runners_file_at_once_and_waits_only_to_read_it() {
     a.publish(&one, &no_secrets(), CAP);
     let b = scratch();
     b.catch_up(&two, "ci-1", 1).unwrap();
-    let server = iwci_vm::fuse::Server::new(view(&b).as_dyn());
+    let server = iwci_vm::fuse::Server::new(view(&b).as_dyn(), b.fs().modes());
 
     // LOOKUP: listed with its size, nothing fetched yet.
     let (error, entry) = fuse_call(&server, 1, 1, b"shared.txt\0");
