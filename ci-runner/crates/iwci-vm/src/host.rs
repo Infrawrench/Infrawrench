@@ -545,8 +545,13 @@ impl Host {
             let log = std::fs::File::create(dir.join("qemu.log"))
                 .map_err(|e| format!("the emulator's log: {e}"))?;
             mark("set up");
+            let mut args = args.clone();
+            if times && let Some(at) = args.iter().position(|a| a == "-append") {
+                // The agent's own steps on the console (`init::mark`).
+                args[at + 1].push(" iwci.times");
+            }
             let child = Command::new(qemu_bin)
-                .args(args)
+                .args(&args)
                 .stdin(Stdio::null())
                 .stdout(log.try_clone().map_err(|e| e.to_string())?)
                 .stderr(log)
@@ -593,6 +598,12 @@ impl Host {
             }
         }
         let (mut machine, mut agent, hello) = launched.ok_or("the machine did not start")?;
+        if times {
+            let console = std::fs::read_to_string(dir.join("console.log")).unwrap_or_default();
+            for line in console.lines().filter(|l| l.contains("of uptime")) {
+                eprintln!("iwci: machine {}: {line}", job.id);
+            }
+        }
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "the machine's agent speaks protocol {}, this runner {PROTOCOL}: the image needs rebuilding with this runner's agent",

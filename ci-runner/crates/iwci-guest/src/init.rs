@@ -298,17 +298,32 @@ pub fn agent() -> io::Result<()> {
             });
     }
     let port = open_linux()?;
+    mark("agent port open");
     let mut tree = Overlay::linux();
     serve_port(port, &LinuxMachine, &mut tree)
 }
 
 /// Runs as the machine's PID 1. Never returns: the machine powers off when
 /// the agent ends, or when the root cannot be built.
+/// With `iwci.times` on the kernel's command line (the runner adds it
+/// under `IWCI_BOOT_TIMES`), the machine's uptime at `step` on the console.
+pub fn mark(step: &str) {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    if cmdline.split_whitespace().any(|w| w == "iwci.times") {
+        let uptime = std::fs::read_to_string("/proc/uptime").unwrap_or_default();
+        eprintln!(
+            "iwci-guest: {step} at {} s of uptime",
+            uptime.split_whitespace().next().unwrap_or("?")
+        );
+    }
+}
+
 pub fn run() -> ! {
     if let Err(e) = build_root() {
         eprintln!("iwci-guest: could not build the job's root: {e}");
         power_off();
     }
+    mark("root built");
     for (key, value) in ENVIRONMENT {
         // SAFETY: the process has one thread so far.
         unsafe { std::env::set_var(key, value) };
