@@ -1835,9 +1835,11 @@ fn a_pipeline_with_machine_jobs_gives_the_helper_only_what_waits() {
     // The primary has the machines and runs one job at a time; `vm` writes
     // to /tmp/workflow in its machine, `r` reads it, and the four `w`s
     // could run anywhere. What the primary has no room for goes to the
-    // helper once it has waited.
+    // helper once it has waited. The `w`s take 50 ms each, so with one slot
+    // the later ones always wait past `ask_after` (20 ms) for the helper to
+    // take: instant ones could all end inside it.
     let p = plan(
-        "name: x\njobs:\n  vm:\n    platform: linux\n    run: share\n  r:\n    using: builtin:scratch-read@1\n    needs: [vm]\n  w:\n    using: builtin:ok@1\n    matrix: [a, b, c, d]\n",
+        "name: x\njobs:\n  vm:\n    platform: linux\n    run: share\n  r:\n    using: builtin:scratch-read@1\n    needs: [vm]\n  w:\n    using: builtin:slow@1\n    matrix: [a, b, c, d]\n",
     );
     let store = Arc::new(SplitStore::default());
     let mut first = options(Some(primary(&store, PATIENT)), 1);
@@ -1846,7 +1848,11 @@ fn a_pipeline_with_machine_jobs_gives_the_helper_only_what_waits() {
     let (one, two) = both(&p, &first, &second);
     assert!(one.report.passed(), "{:#?}", one.report.jobs);
     assert!(two.report.passed(), "{:#?}", two.report.jobs);
-    assert!(store.asked.load(Ordering::SeqCst));
+    // Whether the primary asked is a race here and not asserted: both
+    // runners start together, and a helper takes a job that has waited
+    // whether or not it was asked, so it can empty the primary's queue
+    // first (`the_primary_asks_for_help_only_when_jobs_wait` covers
+    // asking, with the primary alone).
     assert_eq!(one.job("vm").remote, None);
     assert!(
         !store.tried_by("ci-2").contains(&"vm".to_string()),
