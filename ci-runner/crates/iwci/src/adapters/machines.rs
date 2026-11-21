@@ -72,6 +72,53 @@ impl Machines for VmMachines {
             .collect()
     }
 
+    fn run_script(
+        &self,
+        run: crate::machines::ScriptRun<'_>,
+    ) -> Result<crate::machines::ScriptOutcome, String> {
+        // No `/tmp/workflow`: an empty one, copied in and out.
+        let scratch = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+        let settle = || Ok(());
+        let never = || false;
+        let outcome = self.host.run(iwci_vm::Job {
+            id: run.id,
+            os: Os::Linux,
+            memory_bytes: run.memory_bytes,
+            cpus: None,
+            timeout: run.timeout,
+            network: true,
+            shell: Shell::Bash,
+            script: run.script,
+            env: run.env,
+            cwd: run.cwd,
+            workspace: Some((run.workspace_key.as_str(), run.workspace)),
+            fs: run.fs,
+            scratch: iwci_vm::Scratch {
+                live: None,
+                files: &scratch,
+                settle: &settle,
+            },
+            scratch_at: iwci_spec::SCRATCH_PATH,
+            collect: run.collect,
+            repository: None,
+            output: None,
+            cancelled: &never,
+            stall_after: self.stall_after,
+            output_cap: iwci_runtime::DEFAULT_OUTPUT_CAP,
+        })?;
+        let mut stderr = outcome.stderr;
+        for note in outcome.notes {
+            stderr.push_str(&format!("[iwci] {note}\n"));
+        }
+        Ok(crate::machines::ScriptOutcome {
+            exit_code: outcome.exited.map(|e| e.code),
+            stdout: outcome.stdout,
+            stderr,
+            boot_ms: outcome.boot_ms,
+            collected: collected(outcome.files),
+        })
+    }
+
     fn run(&self, run: MachineRun<'_>) -> Result<Execution, String> {
         let Action::Script { script } = &run.job.action else {
             return Err("a job on a virtual machine runs a `run:` script".into());

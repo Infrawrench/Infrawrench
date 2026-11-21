@@ -28,6 +28,11 @@ pub struct Pipeline {
     /// ignored, so a pipeline written for an older runner still parses.
     #[serde(default)]
     pub split: Option<serde_yaml_ng::Value>,
+    /// Run the install scripts the project's package manager would run
+    /// (`postinstall`, native builds) after the runner's own install of
+    /// `deps:`, in a Linux virtual machine.
+    #[serde(default)]
+    pub install_scripts: Option<bool>,
     pub jobs: IndexMap<String, Job>,
 }
 

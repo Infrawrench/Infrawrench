@@ -5,6 +5,7 @@ pub mod cli;
 pub mod env_cache;
 pub mod external;
 pub mod gem_builds;
+pub mod install_scripts;
 pub mod lent;
 pub mod machines;
 pub mod memory;

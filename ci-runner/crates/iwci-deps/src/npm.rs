@@ -1314,15 +1314,17 @@ pub fn install(
             named.push_str(&format!(" and {} more", count - NAMED_IN_WARNING));
         }
         report.warnings.push(format!(
-            "npm ci would have run the install scripts of {count} package{} ({named}); nothing here runs them",
-            if count == 1 { "" } else { "s" }
+            "npm ci would have run the install scripts of {count} package{} ({named}); {}",
+            if count == 1 { "" } else { "s" },
+            crate::SCRIPTS_NOT_RUN
         ));
     }
     let scripts = project_scripts(builder, &root, &tree);
     if !scripts.is_empty() {
         report.warnings.push(format!(
-            "npm ci would have run {}; nothing here runs them",
-            scripts.join(", ")
+            "npm ci would have run {}; {}",
+            scripts.join(", "),
+            crate::SCRIPTS_NOT_RUN
         ));
     }
     report.elapsed = started.elapsed();

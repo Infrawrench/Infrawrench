@@ -29,6 +29,9 @@ pub struct GitWorkspaces {
     /// Native extensions built ahead of time for `env:ruby`, placed where
     /// Bundler looks for a gem's compiled part.
     pub prebuilt: Arc<dyn iwci_deps::bundler::PrebuiltExtensions>,
+    /// What `install-scripts: true` runs its scripts with: the runner's
+    /// machines and the run's caches.
+    pub scripts: Option<crate::install_scripts::ScriptHost>,
 }
 
 /// Packages' git commits (Composer's, Bundler's), through the run's git
@@ -334,7 +337,13 @@ impl Workspaces for GitWorkspaces {
                 }
             }
             .map_err(|e| format!("{} in {}: {e}", dep.ecosystem.name(), dep.dir))?;
-            warnings.extend(notes);
+            // Install scripts run after all (`install-scripts: true`): the
+            // install's own word that they did not is no longer so.
+            warnings.extend(
+                notes
+                    .into_iter()
+                    .filter(|n| !(spec.install_scripts && n.ends_with(iwci_deps::SCRIPTS_NOT_RUN))),
+            );
             installs.push(format!(
                 "{} in {}: {}",
                 dep.ecosystem.name(),
@@ -345,6 +354,9 @@ impl Workspaces for GitWorkspaces {
                     iwci_deps::cache::Outcome::Installed => "installed",
                 }
             ));
+        }
+        if spec.install_scripts {
+            crate::install_scripts::run(self.scripts.as_ref(), &builder, spec, &mut installs)?;
         }
         // The platform a `native: true` install chose, as a file too: a
         // `node` started without the variable reads it there

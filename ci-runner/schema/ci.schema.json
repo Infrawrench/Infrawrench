@@ -81,6 +81,10 @@
       "deprecated": true,
       "description": "No longer used: runs are shared between runners whenever that helps. Ignored, so pipelines that still say it keep working."
     },
+    "install-scripts": {
+      "type": "boolean",
+      "description": "Run the install scripts the project's package manager would run (postinstall, native builds; pnpm's allowBuilds, npm's allowScripts and Bun's trustedDependencies decide which) after the runner's own install of `deps:`, in a Linux virtual machine. Nothing starts when there are none to run."
+    },
     "jobs": {
       "type": "object",
       "minProperties": 1,

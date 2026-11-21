@@ -38,6 +38,14 @@ pub trait Machines: Send + Sync {
         Vec::new()
     }
 
+    /// Runs a `bash` script in a fresh Linux machine for the runner itself
+    /// rather than for a job: the install scripts of `install-scripts:
+    /// true` ([`crate::install_scripts`]). What it left under
+    /// `run.collect` comes back in the outcome, not written anywhere.
+    fn run_script(&self, _run: ScriptRun<'_>) -> Result<ScriptOutcome, String> {
+        Err("this runner has no Linux virtual machines".into())
+    }
+
     /// Runs the job's script in a fresh machine, and writes what it left
     /// under `run.collect` into `run.fs` and what it left in the run's
     /// `/tmp/workflow` into `run.scratch` before it returns. An `Err` is
@@ -71,6 +79,35 @@ pub struct MachineRun<'a> {
     pub collect: Collecting,
     pub log: Option<OutputSink>,
     pub cancel: Option<iwci_runtime::Cancel>,
+}
+
+/// A script for [`Machines::run_script`].
+pub struct ScriptRun<'a> {
+    /// Names the machine in the runner's log.
+    pub id: &'a str,
+    /// The files it starts from, and a key that names them.
+    pub workspace: &'a Snapshot,
+    pub workspace_key: String,
+    pub fs: &'a JobFs,
+    pub script: &'a str,
+    pub env: Vec<(String, String)>,
+    pub cwd: &'a str,
+    /// Unix paths whose changes come back.
+    pub collect: &'a [String],
+    pub memory_bytes: u64,
+    pub timeout: std::time::Duration,
+}
+
+/// How a [`ScriptRun`] went.
+#[derive(Debug, Default)]
+pub struct ScriptOutcome {
+    /// `None` when it did not exit by itself (timed out).
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub boot_ms: u64,
+    /// What it changed under the paths it was asked for.
+    pub collected: Collected,
 }
 
 /// What a runner says when a job asks for machines it does not have.
