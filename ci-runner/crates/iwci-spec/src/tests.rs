@@ -2969,7 +2969,8 @@ fn install_scripts_is_on_for_workspaces_with_a_node_install_only() {
     // The pnpm workspace runs them; Go's and the machine's have nothing.
     let flags: Vec<bool> = on.iter().map(|w| w.install_scripts).collect();
     assert_eq!(flags, vec![true, false, false]);
-    let off = workspaces("name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n");
+    let off =
+        workspaces("name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n");
     assert!(!off[0].install_scripts);
     // It is part of the workspace's key, which stays as it was without it.
     assert_ne!(on[0].key, off[0].key);

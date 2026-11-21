@@ -28,4 +28,5 @@ pub mod npm;
 pub mod npmrc;
 pub mod pip;
 pub mod pnpm;
+pub mod scripts;
 pub mod wasm_builds;
