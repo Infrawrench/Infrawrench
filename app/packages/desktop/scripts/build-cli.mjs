@@ -126,11 +126,17 @@ export async function buildCli({ dev = false, out = resolve(root, "out/cli") } =
       }));
       b.onResolve({ filter: /^\.\.?\// }, (args) => {
         if (args.importer.includes("node_modules")) return undefined;
+        // A replaced module may not exist at all: `env.ts` is gitignored and
+        // generated, so a fresh checkout (the release runners) has none.
+        const base = resolve(args.resolveDir, args.path);
+        for (const candidate of [base, `${base}.ts`]) {
+          const swapped = replaced.get(candidate);
+          if (swapped) return { path: swapped };
+        }
         const target = resolveSource(args.resolveDir, args.path);
         if (!target) return undefined;
         if (desktopOnly.has(target)) return { path: STUB };
-        const swapped = replaced.get(target);
-        return swapped ? { path: swapped } : undefined;
+        return undefined;
       });
     },
   };

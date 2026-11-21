@@ -13,11 +13,46 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = path.join(__dirname, "../../../website/public/cli/install.sh");
+
+/**
+ * Installing extracts the archive with `tar -xz`, which needs `tar` and
+ * `gzip` on PATH. Infrawrench CI's `env:bash-node@24.0.18` has neither (they
+ * arrived in 24.0.22), so the install cases run where both exist and the
+ * refusals, which never extract, run everywhere.
+ */
+const HAS_TAR = ["tar", "gzip"].every(
+  (tool) => spawnSync("sh", ["-c", `command -v ${tool}`]).status === 0,
+);
+
+/** One regular file as a POSIX ustar archive. */
+function tarball(name: string, content: string, mode: number): Buffer {
+  const data = Buffer.from(content);
+  const header = Buffer.alloc(512);
+  const field = (offset: number, length: number, value: string) =>
+    header.write(value, offset, length, "ascii");
+  const octal = (value: number, length: number) => value.toString(8).padStart(length - 1, "0");
+  field(0, 100, name);
+  field(100, 8, octal(mode, 8));
+  field(108, 8, octal(0, 8));
+  field(116, 8, octal(0, 8));
+  field(124, 12, octal(data.length, 12));
+  field(136, 12, octal(Math.floor(Date.now() / 1000), 12));
+  field(148, 8, "        ");
+  field(156, 1, "0");
+  field(257, 6, "ustar");
+  field(263, 2, "00");
+  let sum = 0;
+  for (const byte of header) sum += byte;
+  field(148, 8, `${octal(sum, 7)}\0`);
+  const padding = Buffer.alloc((512 - (data.length % 512)) % 512);
+  return Buffer.concat([header, data, padding, Buffer.alloc(1024)]);
+}
 
 describe.skipIf(process.platform === "win32")("install.sh", () => {
   let tmp: string;
@@ -25,15 +60,15 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
   let bin: string;
   let stubs: string;
 
-  /** A fake `infrawrench` packed the way `package-cli.mjs` packs the real one. */
+  /**
+   * A fake `infrawrench` packed the way `package-cli.mjs` packs the real one.
+   * Packed here rather than with `tar`, so the cases that never extract it
+   * need no `tar` either.
+   */
   function publish(asset: string, sums?: string): void {
-    const staging = path.join(tmp, "staging");
-    mkdirSync(staging, { recursive: true });
-    writeFileSync(path.join(staging, "infrawrench"), "#!/bin/sh\necho 1.2.3\n", { mode: 0o755 });
-    spawnSync("tar", ["-czf", path.join(release, asset), "-C", staging, "infrawrench"]);
-    const hash = createHash("sha256")
-      .update(readFileSync(path.join(release, asset)))
-      .digest("hex");
+    const archive = gzipSync(tarball("infrawrench", "#!/bin/sh\necho 1.2.3\n", 0o755));
+    writeFileSync(path.join(release, asset), archive);
+    const hash = createHash("sha256").update(archive).digest("hex");
     writeFileSync(path.join(release, "infrawrench-cli-SHA256SUMS"), sums ?? `${hash}  ${asset}\n`);
   }
 
@@ -83,7 +118,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     ["Linux", "x86_64", "infrawrench-cli-linux-x64.tar.gz"],
     ["Linux", "aarch64", "infrawrench-cli-linux-arm64.tar.gz"],
     ["Darwin", "arm64", "infrawrench-cli-darwin-arm64.tar.gz"],
-  ])("installs the %s %s build", (system, machine, asset) => {
+  ])("installs the %s %s build", { skip: !HAS_TAR }, (system, machine, asset) => {
     stub(system, machine);
     publish(asset);
     const result = install();

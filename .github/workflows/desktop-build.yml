@@ -589,6 +589,37 @@ jobs:
   # each platform: the executable embeds a V8 code cache, which only loads
   # where it was compiled, and macOS needs codesign. Only the packages the
   # bundle reads are built, not the desktop app's whole closure.
+  # The standalone CLI's build on every push that is not a release, so a
+  # change that breaks it fails here rather than holding up the next release
+  # (cli-build below does the real thing, on every platform, for a release).
+  # One runner, nothing uploaded.
+  cli-check:
+    runs-on: ubuntu-24.04
+    name: Check the standalone CLI builds
+    needs: [check-if-release]
+    if: ${{ needs.check-if-release.outputs.package-version == '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build what the bundle reads
+        run: pnpm turbo build --filter=@infrawrench/client-core --filter=@infrawrench/api-contract --filter=@infrawrench/plugin-base
+      # A fresh checkout, like the release runners: no env.ts.
+      - name: Build the bundle, the executable and the npm package
+        shell: bash
+        working-directory: app/packages/desktop
+        run: |
+          set -euo pipefail
+          test ! -e env.ts
+          node scripts/build-cli.mjs
+          node scripts/package-cli.mjs
+          node scripts/pack-cli-npm.mjs
+
   cli-build:
     strategy:
       matrix:
