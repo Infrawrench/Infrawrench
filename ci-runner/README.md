@@ -1158,13 +1158,14 @@ that is the runners' to decide, from what each job needs and what each
 runner has free. A pipeline that still says `split:` (it once turned this
 on) is read as if it did not.
 
-- **When a helper is asked.** The primary asks for help once a job another
-  runner could run has waited two seconds in its queue. A pipeline with
-  machine jobs ([Platforms](#platforms)) asks at once: its run is on a
-  runner that has machines, and for three seconds after a job a helper
-  could run is ready, while a helper is there, the primary leaves it to
-  the helper and keeps its own slots for what only it can run. After
-  that, or with no helper, it runs the job itself.
+- **A run stays on one runner while that runner has room.** The proxy
+  places it on the runner where it is expected to finish soonest, which
+  is the one with the most cores for it (see the proxy's placement), so
+  the heavier runner takes it when it can. The primary asks for help only
+  once a job another runner could run has waited two seconds in its
+  queue, and a helper that has joined takes only jobs that have waited
+  that long without the primary starting them. A run that fits one
+  runner never pays for a second clone or for files crossing the store.
 - **`/tmp/workflow` is shared across runners.** Every runner keeps its
   own copy, and what a job writes there reaches the others: a file is
   sent once nothing has it open for writing, when the job that wrote it
@@ -1197,13 +1198,11 @@ on) is read as if it did not.
   completes it from the record the first writes when the job ends, so the
   jobs that need it become ready on both.
 - **The primary asks, the helper decides.** Until it is asked, a helper
-  only fetches the commit (when the request names one, so that a helper
-  asked at the start of a run builds when the primary does), holds none
-  of the runs its runner may help (`--helping`), and looks at the store
-  every half second for the first fifteen seconds of an offer and every
-  five after that. Once asked, it joins when it has a free slot, none of
-  its own runs' jobs waits for memory, and it helps fewer than
-  `--helping` runs.
+  only fetches the commit (when the request names one, so that it can
+  build at once when it joins), holds none of the runs its runner may
+  help (`--helping`), and looks at the store once every five seconds.
+  Once asked, it joins when it has a free slot, none of its own runs'
+  jobs waits for memory, and it helps fewer than `--helping` runs.
 - **A helper's own runs come first.** A helper starts a job only with a
   slot that is free and memory that fits at that moment, never waiting for
   either, and never while a job of one of its own runs waits for memory or
@@ -1305,8 +1304,7 @@ on) is read as if it did not.
   in the same way.
 - **Cost.** A primary makes two small writes to the store for each job it
   starts and one listing a second while a pipeline runs; a helper that is
-  never asked makes one listing every half second for fifteen seconds and
-  one every five after that. A helper that joins adds a write for its key
+  never asked makes one listing every five seconds. A helper that joins adds a write for its key
   and the primary one for the sealed secrets. A job that writes to
   `/tmp/workflow` adds one write for its layer's list and one per object
   of its files (4 MiB of small files to an object), and each runner reads

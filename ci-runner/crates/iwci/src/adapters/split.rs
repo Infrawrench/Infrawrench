@@ -56,12 +56,6 @@ fn help_key() -> String {
     format!("help.{}", crate::server::lifecycle::VERSION)
 }
 
-/// For this long after an offer a helper looks for an ask every
-/// [`EAGER_OFFER_STEP`] rather than every [`Timing::offer`]: a run that
-/// knows it wants help asks at its start.
-pub const EAGER_OFFER: Duration = Duration::from_secs(15);
-pub const EAGER_OFFER_STEP: Duration = Duration::from_millis(500);
-
 /// After this long, what a split run left in the store is swept.
 pub const SWEEP_AFTER_SECS: u64 = 24 * 60 * 60;
 /// Objects deleted at once when a run's are cleared.
@@ -288,7 +282,6 @@ impl SplitRun {
     /// one listing every [`Timing::offer`]. Over when the run ends first, its
     /// primary goes quiet, or `stopped` says so.
     pub fn wait_to_be_asked(&self, room: &dyn Fn() -> bool, stopped: &dyn Fn() -> bool) -> Asked {
-        let offered = Instant::now();
         let mut beat: (Option<u64>, Instant) = (None, Instant::now());
         loop {
             if stopped() {
@@ -329,14 +322,7 @@ impl SplitRun {
                 return Asked::Over;
             }
             // In short steps, so a drain or a cancel is not kept waiting.
-            // Often at first, when a run that knows it wants help (one
-            // with machine jobs) asks; then every `offer`.
-            let every = if offered.elapsed() < EAGER_OFFER {
-                self.timing.offer.min(EAGER_OFFER_STEP)
-            } else {
-                self.timing.offer
-            };
-            let until = Instant::now() + every;
+            let until = Instant::now() + self.timing.offer;
             while Instant::now() < until && !stopped() {
                 std::thread::sleep(Duration::from_millis(100).min(self.timing.offer));
             }

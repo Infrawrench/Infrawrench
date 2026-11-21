@@ -1809,10 +1809,33 @@ fn a_helper_gives_back_a_job_that_wanted_a_file_only_the_primary_may_have() {
 }
 
 #[test]
-fn a_pipeline_with_machine_jobs_asks_at_once_and_leaves_the_rest_to_the_helper() {
+fn a_run_stays_on_one_runner_while_that_runner_has_room() {
+    // Four slots for four jobs: none waits as long as the primary waits
+    // before it asks, so the helper takes none.
+    let p = plan("name: x\njobs:\n  w:\n    using: builtin:ok@1\n    matrix: [a, b, c, d]\n");
+    let slow = Timing {
+        ask_after: Duration::from_millis(500),
+        ..PATIENT
+    };
+    let store = Arc::new(SplitStore::default());
+    let (one, two) = both(
+        &p,
+        &options(Some(primary(&store, slow)), 4),
+        &options(Some(helper(&store, slow)), 4),
+    );
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert_eq!(one.ran.len(), 4, "{:?}", one.ran);
+    assert!(two.ran.is_empty(), "{:?}", two.ran);
+    assert!(store.tried_by("ci-2").is_empty());
+    assert!(!store.asked.load(Ordering::SeqCst));
+}
+
+#[test]
+fn a_pipeline_with_machine_jobs_gives_the_helper_only_what_waits() {
     // The primary has the machines and runs one job at a time; `vm` writes
     // to /tmp/workflow in its machine, `r` reads it, and the four `w`s
-    // could run anywhere.
+    // could run anywhere. What the primary has no room for goes to the
+    // helper once it has waited.
     let p = plan(
         "name: x\njobs:\n  vm:\n    platform: linux\n    run: share\n  r:\n    using: builtin:scratch-read@1\n    needs: [vm]\n  w:\n    using: builtin:ok@1\n    matrix: [a, b, c, d]\n",
     );
@@ -1823,16 +1846,15 @@ fn a_pipeline_with_machine_jobs_asks_at_once_and_leaves_the_rest_to_the_helper()
     let (one, two) = both(&p, &first, &second);
     assert!(one.report.passed(), "{:#?}", one.report.jobs);
     assert!(two.report.passed(), "{:#?}", two.report.jobs);
-    assert!(store.asked.load(Ordering::SeqCst), "asked without waiting");
+    assert!(store.asked.load(Ordering::SeqCst));
     assert_eq!(one.job("vm").remote, None);
     assert!(
         !store.tried_by("ci-2").contains(&"vm".to_string()),
         "a machine job is never tried by a helper"
     );
-    let helped = two.ran.iter().filter(|id| id.starts_with("w[")).count();
     assert!(
-        helped >= 3,
-        "the helper took the `w`s: {:?} {:?}",
+        two.ran.iter().any(|id| id.starts_with("w[")),
+        "the helper took what waited: {:?} {:?}",
         one.ran,
         two.ran
     );

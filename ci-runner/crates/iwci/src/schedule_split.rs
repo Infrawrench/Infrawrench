@@ -34,12 +34,11 @@
 //! - **A helper gets the run's secrets sealed** to a key of its own when
 //!   it joins (`crate::sealed`), and then runs jobs given secrets that
 //!   keep no artifacts ([`Sharing::may_share`]).
-//! - **A pipeline with machine jobs is planned for**: it asks for help at
-//!   once and leaves its helpers the jobs they could run for a moment
-//!   ([`leave_to_helpers`]).
+//! - **A run stays on one runner where it can.** The primary asks only
+//!   once a job has waited for room, and a helper takes only jobs that
+//!   have waited as long without the primary starting them ([`spare`]).
 
 use super::*;
-use std::sync::atomic::AtomicUsize;
 
 /// How a claim went.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -535,13 +534,6 @@ pub(super) struct Sharing<'a> {
     /// Whether the helpers may have the run's secrets: on a helper,
     /// whether it has them ([`Sharing::may_share`]).
     pub secrets: bool,
-    /// The pipeline has jobs only the runner that has the run can run
-    /// (machines): that runner asks for help at once, and leaves the
-    /// helpers the rest for a moment ([`leave_to_helpers`]).
-    pub mixed: bool,
-    /// Helpers that have said they are alive within a lease, as the last
-    /// look found them.
-    pub helpers_live: AtomicUsize,
     /// Jobs whose record this runner wrote or has taken in.
     settled: Mutex<HashSet<String>>,
     /// Jobs of the pipeline running on this runner now.
@@ -630,8 +622,6 @@ impl<'a> Sharing<'a> {
             split,
             secrets: split.has_secrets(),
             artifact_bytes,
-            mixed: plan.jobs.iter().any(|t| t.vm.is_some()),
-            helpers_live: AtomicUsize::new(0),
             helper: split.helper(),
             scratch_cap,
             settled: Mutex::default(),
@@ -1020,36 +1010,6 @@ impl<'a> Sharing<'a> {
     }
 }
 
-/// How long the primary of a pipeline with machine jobs leaves a job a
-/// helper could run to the helpers, from when the job is ready.
-pub(super) const PREFER_HELPERS: Duration = Duration::from_secs(3);
-
-/// Whether the primary leaves a queued job to the helpers for now. In a
-/// pipeline with machine jobs the runner that has the run is the one with
-/// machines, and its slots are best kept for what only it can run: for
-/// [`PREFER_HELPERS`] after a job a helper could run is ready, while a
-/// helper is alive, the primary does not start it, and a helper that has
-/// room claims it. After that, or with no helper, the primary runs it as
-/// before. A job taken back from a helper is never left again.
-pub(super) fn leave_to_helpers(
-    sharing: &Sharing<'_>,
-    template: &JobTemplate,
-    job: &PlannedJob,
-    lookup: &Lookup,
-    finished: &HashMap<String, Finished>,
-    options: &Options,
-) -> bool {
-    !sharing.helper
-        && sharing.mixed
-        && sharing.helpers_live.load(Ordering::SeqCst) > 0
-        && lookup.sandbox.is_none()
-        && !lookup.local
-        && lookup
-            .queued
-            .is_some_and(|at| at.elapsed() < PREFER_HELPERS)
-        && runs_here(sharing, template, job, finished, options)
-}
-
 /// Whether a helper may run `job` of `template` at all: one any runner
 /// may run, that fits this runner, whose artifacts would cross, and whose
 /// needs all left their artifacts here.
@@ -1119,16 +1079,28 @@ pub(super) fn spare(
     if options.slots.as_ref().is_some_and(|s| s.free() == 0) {
         return None;
     }
+    // Only what has waited as long as the primary waits before it asks:
+    // a job the primary had room for is started there within that time,
+    // so a run stays on one runner while it can. In queue order, last
+    // first.
+    let wait = sharing.split.timing().ask_after;
+    let open: Vec<usize> = (0..queue.len())
+        .rev()
+        .filter(|&pos| queue[pos].1.2.queued.is_none_or(|at| at.elapsed() >= wait))
+        .collect();
     let (pos, lease) = match &options.memory {
-        None => (queue.len() - 1, None),
+        None => (*open.first()?, None),
         Some(budget) => {
-            let asks = queue.iter().rev().map(|(_, (_, j, l))| Ask {
-                bytes: l.reserve,
-                limit: j.memory_bytes,
-                expected: l.expected,
+            let asks = open.iter().map(|&pos| {
+                let (_, (_, j, l)) = &queue[pos];
+                Ask {
+                    bytes: l.reserve,
+                    limit: j.memory_bytes,
+                    expected: l.expected,
+                }
             });
             let (nth, lease) = budget.admit_spare(asks)?;
-            (queue.len() - 1 - nth, Some(lease))
+            (open[nth], Some(lease))
         }
     };
     if let Some(slots) = &options.slots {
@@ -1269,13 +1241,6 @@ pub(super) fn watch<'p>(
                     sealed_for.insert(runner.clone());
                 }
             }
-            let now = Instant::now();
-            let live = seen
-                .iter()
-                .flat_map(|s| &s.helpers)
-                .filter(|(name, beat)| silent(name, Some(Some(**beat)), now) < timing.lease)
-                .count();
-            sharing.helpers_live.store(live, Ordering::SeqCst);
         }
         for (runner, layers) in seen.iter().flat_map(|s| &s.scratch) {
             // A layer not readable yet is looked for again next time.
@@ -1408,16 +1373,15 @@ pub(super) fn watch<'p>(
                     || sharing.running.load(Ordering::SeqCst) > 0;
             }
             if !sharing.helper {
-                // A pipeline with machine jobs asks as soon as a helper
-                // could take something; any other once a job has waited.
+                // Only once a job another runner could run has waited:
+                // a run stays on one runner while that runner has room.
                 ask = !asked
                     && s.queue.iter().any(|(_, (_, job, lookup))| {
                         sharing.may_share(job)
                             && lookup.sandbox.is_none()
-                            && (sharing.mixed
-                                || lookup
-                                    .queued
-                                    .is_some_and(|at| at.elapsed() >= timing.ask_after))
+                            && lookup
+                                .queued
+                                .is_some_and(|at| at.elapsed() >= timing.ask_after)
                     });
             }
         }

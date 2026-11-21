@@ -177,9 +177,9 @@ const HELP_TIMEOUT_MS = 5000;
  * want. So the proxy offers every time and decides nothing: it cannot
  * see which jobs a pipeline has, how long a run's queue is, or what a
  * helper will have free a minute from now, and both runners can. Every
- * pipeline may be shared; a run with machine jobs asks at once, and a
- * helper that joins is sent the run's secrets by the runner that has it,
- * sealed through the store, never through an offer.
+ * pipeline may be shared, but a run stays on its runner while that runner
+ * has room; a helper that joins is sent the run's secrets by the runner
+ * that has it, sealed through the store, never through an offer.
  *
  * Nothing is kept about the run: a helper that refuses, is down or
  * answers late is one helper fewer, and cancelling, status and logs go to
