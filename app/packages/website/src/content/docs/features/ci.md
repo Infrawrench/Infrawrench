@@ -42,6 +42,12 @@ jobs:
 
 The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. The check's **Details** link opens the run in Infrawrench.
 
+### Check your first run
+
+- **No check on GitHub:** Confirm the GitHub App can see the repository and **Run CI** is enabled for its account. Check that the commit contains a pipeline under `.infrawrench/ci/`.
+- **Skipped:** Compare the event, branch and changed paths with the pipeline's `on:` filters. With the example above, a push to a feature branch does not match the push trigger. Open a pull request to exercise the other trigger.
+- **Awaiting approval:** For a pull request from a fork, open the run in Infrawrench. A maintainer can review the changes and approve or reject the run.
+
 A push or pull request that no pipeline runs on (every pipeline's `on:` names other branches or events, or its `paths:` leave the change out) is not a run: nothing is sent to the runners, it is not billed, and the runs table leaves it out (pick **Nothing to run** under **Show** to list them). A push like that shows nothing on GitHub, so pushing to a branch with an open pull request leaves only the pull request's check. A pull request like that gets an **Infrawrench CI / pull request** check concluded as skipped, which a branch protection rule requiring that check accepts, so the pull request can still be merged.
 
 Each job has its own check too, named after its pipeline and the event (**Test / build (pull request)**), which turns from waiting to running to passed or failed as the job does. A matrix's entries, or a `packages:` job's packages, share one check that lists each of them. Require the run's check (**Infrawrench CI / pull request**) in a branch protection rule: it covers every job, whichever jobs a change adds or removes.
