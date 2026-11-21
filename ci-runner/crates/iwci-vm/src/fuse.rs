@@ -50,9 +50,6 @@ const VALID_SECS: u64 = 1;
 const READ_ONLY_VALID_SECS: u64 = 24 * 60 * 60;
 /// `FOPEN_KEEP_CACHE`: the kernel keeps a file's pages across opens.
 const FOPEN_KEEP_CACHE: u32 = 1 << 1;
-/// `FOPEN_CACHE_DIR`: the kernel keeps a directory's listing across
-/// opens, so walking a tree again asks the server nothing.
-const FOPEN_CACHE_DIR: u32 = 1 << 3;
 const ROOT: u64 = 1;
 const IN_HEADER: usize = 40;
 const OUT_HEADER: usize = 16;
@@ -124,6 +121,11 @@ const READDIRPLUS_AUTO: u32 = 1 << 14;
 /// and keeps a file's pages across opens, so a file already in the
 /// machine costs no round trip to open.
 const NO_OPEN_SUPPORT: u32 = 1 << 17;
+/// The same for directories: no `OPENDIR` or `RELEASEDIR`, listings by
+/// node, kept by the kernel. A walk of a tree the machine has listed once
+/// then asks the server nothing (measured on ci-1: these two were the
+/// only requests left in a second walk of a clone).
+const NO_OPENDIR_SUPPORT: u32 = 1 << 24;
 const WANTED: u32 = ASYNC_READ
     | ATOMIC_O_TRUNC
     | BIG_WRITES
@@ -440,8 +442,8 @@ impl Server {
             WRITE => self.write(&mut args),
             RELEASE | RELEASEDIR => self.release(&mut args),
             OPENDIR => self.opendir(node),
-            READDIR => self.readdir(&mut args, false),
-            READDIRPLUS => self.readdir(&mut args, true),
+            READDIR => self.readdir(node, &mut args, false),
+            READDIRPLUS => self.readdir(node, &mut args, true),
             STATFS => Ok(statfs()),
             // Nothing to flush in what nothing writes: the kernel stops
             // asking.
@@ -532,7 +534,7 @@ impl Server {
         }
         let mut wanted = WANTED;
         if self.read_only {
-            wanted |= NO_OPEN_SUPPORT;
+            wanted |= NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT;
         }
         Ok(Out::default()
             .u32(KERNEL_VERSION)
@@ -904,6 +906,18 @@ impl Server {
     }
 
     fn opendir(&self, node: u64) -> Answer {
+        if self.read_only {
+            // Listings come by node (`readdir`): see `NO_OPENDIR_SUPPORT`.
+            return Err(ENOSYS);
+        }
+        let (path, entries) = self.listing(node)?;
+        let fh = self.add_handle(Handle::Dir(path, entries));
+        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+    }
+
+    /// A directory's path and its entries: name, number, type.
+    #[allow(clippy::type_complexity)]
+    fn listing(&self, node: u64) -> Result<(PathBuf, Vec<(String, u64, u32)>), i32> {
         let path = self.path_of(node)?;
         let meta = self.stat(&path)?;
         if !meta.is_dir() {
@@ -930,25 +944,28 @@ impl Server {
             let id = self.node_for(&full, false);
             entries.push((name.to_string(), id, kind));
         }
-        let fh = self.add_handle(Handle::Dir(path, entries));
-        let cache = if self.read_only {
-            FOPEN_KEEP_CACHE | FOPEN_CACHE_DIR
-        } else {
-            0
-        };
-        Ok(Out::default().u64(fh).u32(cache).u32(0).done())
+        Ok((path, entries))
     }
 
     /// `READDIR`, or with `plus` `READDIRPLUS`: each entry then comes
     /// after its `fuse_entry_out`, and counts as a lookup of its name
     /// (never `.` and `..`, whose entry the kernel ignores).
-    fn readdir(&self, args: &mut Args<'_>, plus: bool) -> Answer {
+    fn readdir(&self, node: u64, args: &mut Args<'_>, plus: bool) -> Answer {
         let fh = args.u64()?;
         let offset = args.u64()? as usize;
         let size = args.u32()?.min(MAX_IO) as usize;
-        let handle = self.file(fh)?;
-        let Handle::Dir(dir, entries) = handle.as_ref() else {
-            return Err(ENOTDIR);
+        // A read-only server opens no directory: it lists by node.
+        let listed;
+        let handle;
+        let (dir, entries) = if self.read_only && !self.lock().handles.contains_key(&fh) {
+            listed = self.listing(node)?;
+            (&listed.0, &listed.1)
+        } else {
+            handle = self.file(fh)?;
+            match handle.as_ref() {
+                Handle::Dir(dir, entries) => (dir, entries),
+                Handle::File(_) => return Err(ENOTDIR),
+            }
         };
         let mut out = Vec::new();
         for (i, (name, id, kind)) in entries.iter().enumerate().skip(offset) {

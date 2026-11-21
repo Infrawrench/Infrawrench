@@ -336,9 +336,15 @@ fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
     body.extend([0u8; 20]);
     assert_eq!(ok(&s, READ, file, &body), b"urce");
     assert_eq!(call(&s, FLUSH, file, &[0u8; 24]).0, -ENOSYS);
-    // A listing is kept by the kernel across opens.
-    let dir = ok(&s, OPENDIR, app, &[0u8; 8]);
-    assert_eq!(u32_at(&dir, 8), FOPEN_KEEP_CACHE | FOPEN_CACHE_DIR);
+    // No OPENDIR either: a listing comes by node, with no handle.
+    assert_eq!(call(&s, OPENDIR, app, &[0u8; 8]).0, -ENOSYS);
+    let mut body = Vec::new();
+    body.extend(le64(0));
+    body.extend(le64(0));
+    body.extend(le32(4096));
+    body.extend([0u8; 20]);
+    let listing = ok(&s, READDIR, app, &body);
+    assert!(listing.windows(5).any(|w| w == b"a.txt"));
     // Every way of writing is refused.
     let mut wr = le32(O_RDWR);
     wr.extend(le32(0));
@@ -415,5 +421,10 @@ fn only_a_read_only_server_takes_no_open() {
     assert_eq!(
         u32_at(&ok(&ro, INIT, 0, &body), 12),
         ASYNC_READ | NO_OPEN_SUPPORT
+    );
+    body[12..16].copy_from_slice(&(NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT).to_le_bytes());
+    assert_eq!(
+        u32_at(&ok(&ro, INIT, 0, &body), 12),
+        NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT
     );
 }
