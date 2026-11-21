@@ -166,17 +166,20 @@ const HELP_TIMEOUT_MS = 5000;
  * `"split": { "runner": <its name> }` in the request, and every other such
  * runner (up to `MAX_HELPERS`) is then sent the same request, without its
  * `secrets` and `lent`, with
- * `"split": { "of": <the run's id there>, "runner": <its name> }`. A
- * helper only runs jobs that are given no secret and lent nothing, so it
- * is sent none: an offer sits on a runner for the whole of a run it may
- * never be asked to help. The `token` stays, since a helper fetches the
- * commit. That is an offer, not a run: the runner that has the run asks for help
+ * `"split": { "of": <the run's id there>, "runner": <its name> }`. An
+ * offer sits on a runner for the whole of a run it may never be asked to
+ * help, so it carries no secret: a helper that joins gets them sealed to
+ * a key of its own (below), and never runs a job that is lent anything.
+ * The `token` stays, since a helper fetches the commit, which it does as
+ * soon as it is offered one the request names. That is an offer, not a run: the runner that has the run asks for help
  * through the store they share when its queue backs up, and a helper
  * takes jobs only while it has slots and memory its own runs do not
  * want. So the proxy offers every time and decides nothing: it cannot
- * see whether a pipeline says `split:`, how long a run's queue is, or
- * what a helper will have free a minute from now, and both runners can.
- * A pipeline that does not say `split:` is not shared whatever is sent.
+ * see which jobs a pipeline has, how long a run's queue is, or what a
+ * helper will have free a minute from now, and both runners can. Every
+ * pipeline may be shared; a run with machine jobs asks at once, and a
+ * helper that joins is sent the run's secrets by the runner that has it,
+ * sealed through the store, never through an offer.
  *
  * Nothing is kept about the run: a helper that refuses, is down or
  * answers late is one helper fewer, and cancelling, status and logs go to

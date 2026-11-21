@@ -24,8 +24,16 @@ struct Seen {
 /// - `share`: writes `/tmp/workflow/shared.txt`;
 /// - `venv`: makes `/app/.venv`, which ignores itself as Python's does;
 /// - `fail`: exits 2.
-struct FakeMachines {
+pub(super) struct FakeMachines {
     seen: Mutex<Seen>,
+}
+
+impl FakeMachines {
+    pub(super) fn new() -> Self {
+        Self {
+            seen: Mutex::default(),
+        }
+    }
 }
 
 fn files(fs: &iwci_vfs::JobFs, root: &str) -> Vec<String> {

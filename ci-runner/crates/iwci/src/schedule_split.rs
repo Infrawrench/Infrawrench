@@ -1,4 +1,5 @@
-//! One run on more than one runner (`split:`).
+//! One run on more than one runner. Nothing in a pipeline asks for it:
+//! the runners decide (`split:` is retired and ignored).
 //!
 //! The runner that has a run (the primary) and each runner helping it (a
 //! helper) plan the same run from the same request, so they have the same
@@ -15,7 +16,7 @@
 //!   dependents become ready as if it had run there.
 //! - **Artifacts cross through the task cache entry** the job saved, or,
 //!   for a job without one, as an object of their own when they are small
-//!   enough (`split: { artifacts }`). What does not cross stays where it
+//!   enough ([`SPLIT_ARTIFACTS`]). What does not cross stays where it
 //!   ran, and so do the jobs that need it.
 //! - **A helper only ever uses what its own runs leave** ([`spare`]): a
 //!   free slot and free memory while none of its runs' jobs wait for
@@ -30,10 +31,15 @@
 //!   job's record names the layers of its runner that hold what it wrote
 //!   there, and a runner takes those in before the jobs that need it
 //!   start.
-//!
-//! Only a pipeline that says `split:` is shared, for now.
+//! - **A helper gets the run's secrets sealed** to a key of its own when
+//!   it joins (`crate::sealed`), and then runs jobs given secrets that
+//!   keep no artifacts ([`Sharing::may_share`]).
+//! - **A pipeline with machine jobs is planned for**: it asks for help at
+//!   once and leaves its helpers the jobs they could run for a moment
+//!   ([`leave_to_helpers`]).
 
 use super::*;
+use std::sync::atomic::AtomicUsize;
 
 /// How a claim went.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +67,9 @@ pub struct Seen {
     /// Each runner's scratch layers stored so far, by its name
     /// ([`Split::scratch_layer`]).
     pub scratch: HashMap<String, u64>,
+    /// Helpers that want the run's secrets, and the public key to seal
+    /// them to (`crate::sealed`).
+    pub keys: Vec<(String, Vec<u8>)>,
 }
 
 /// How often a split run looks, and how long it waits.
@@ -139,6 +148,14 @@ pub trait Split: Send + Sync {
     /// Says this runner's scratch layers up to `layer` are all stored, for
     /// [`Split::seen`].
     fn scratch_layer(&self, layer: u64) -> Result<(), String>;
+    /// Whether this runner has the run's secrets: the runner that has the
+    /// run always, a helper once it has opened what was sealed to it.
+    fn has_secrets(&self) -> bool {
+        !self.helper()
+    }
+    /// Stores the run's secrets sealed to `runner`'s key. The first one
+    /// written stays.
+    fn seal_for(&self, runner: &str, sealed: &[u8]) -> Result<(), String>;
     fn timing(&self) -> Timing {
         Timing::default()
     }
@@ -474,10 +491,17 @@ pub(super) fn secret_free(job: &PlannedJob) -> bool {
 /// what only the primary is sent. A job that is handed what such a job
 /// left stays too ([`runs_here`]).
 pub(super) fn shareable(job: &PlannedJob) -> bool {
-    job.cloud.is_none()
-        && !matches!(job.changes, ChangePolicy::Commit { .. })
-        && job.downloads.is_none()
-        && secret_free(job)
+    !tied(job) && secret_free(job)
+}
+
+/// Whether a job can only run on the runner that has the run, secrets
+/// aside: a cloud job, one that commits, one that keeps downloads, and
+/// one lent anything.
+pub(super) fn tied(job: &PlannedJob) -> bool {
+    job.cloud.is_some()
+        || matches!(job.changes, ChangePolicy::Commit { .. })
+        || job.downloads.is_some()
+        || !job.access.is_empty()
 }
 
 /// What this runner still owes the others of a split run: something the
@@ -501,11 +525,23 @@ fn retried(mut write: impl FnMut() -> Result<(), String>) -> bool {
 /// One pipeline's split, for the run's threads.
 pub(super) struct Sharing<'a> {
     pub split: &'a dyn Split,
-    pub spec: iwci_spec::SplitSpec,
+    /// The most one job's artifacts may be for another runner to be sent
+    /// them when the task cache does not hold them.
+    pub artifact_bytes: u64,
     pub helper: bool,
     /// The most this runner may send of the run's `/tmp/workflow`, in
     /// all ([`Scratch::publish`]).
     pub scratch_cap: u64,
+    /// Whether the helpers may have the run's secrets: on a helper,
+    /// whether it has them ([`Sharing::may_share`]).
+    pub secrets: bool,
+    /// The pipeline has jobs only the runner that has the run can run
+    /// (machines): that runner asks for help at once, and leaves the
+    /// helpers the rest for a moment ([`leave_to_helpers`]).
+    pub mixed: bool,
+    /// Helpers that have said they are alive within a lease, as the last
+    /// look found them.
+    pub helpers_live: AtomicUsize,
     /// Jobs whose record this runner wrote or has taken in.
     settled: Mutex<HashSet<String>>,
     /// Jobs of the pipeline running on this runner now.
@@ -535,6 +571,13 @@ pub(super) enum Received {
 /// How many times its `scratch:` a trusted run may send of
 /// `/tmp/workflow`.
 const SCRATCH_SENDS: u64 = 4;
+/// The most one job's artifacts may be for another runner to be sent
+/// them, when the task cache does not hold them. A job that keeps more
+/// has the jobs that need it run where it ran.
+pub(super) const SPLIT_ARTIFACTS: u64 = 64 << 20;
+/// The same for a run nobody vouches for (a fork's pull request), and the
+/// most of `/tmp/workflow` it may send.
+pub(super) const UNTRUSTED_SPLIT_ARTIFACTS: u64 = 4 << 20;
 
 /// Whether masking left a job's outputs as the runner that ran it wrote
 /// them.
@@ -569,23 +612,26 @@ impl<'a> Sharing<'a> {
     /// asks for it.
     pub fn of(plan: &Plan, options: &'a Options) -> Option<Self> {
         let split = options.split.as_deref()?;
-        let mut spec = plan.split?;
-        if !options.access.trusted {
-            // A fork's pull request says how much its jobs may send no
-            // more than a pipeline that says nothing does.
-            spec.artifact_bytes = spec.artifact_bytes.min(iwci_spec::DEFAULT_SPLIT_ARTIFACTS);
-        }
+        // A fork's pull request sends less: whatever it sends is stored.
+        let artifact_bytes = if options.access.trusted {
+            SPLIT_ARTIFACTS
+        } else {
+            UNTRUSTED_SPLIT_ARTIFACTS
+        };
         // A pipeline's files can be rewritten and sent again, so a run may
         // send a few times its `scratch:`; a fork's no more than a pipeline
         // that says nothing may send as artifacts.
         let scratch_cap = if options.access.trusted {
             plan.scratch_bytes.saturating_mul(SCRATCH_SENDS)
         } else {
-            iwci_spec::DEFAULT_SPLIT_ARTIFACTS
+            UNTRUSTED_SPLIT_ARTIFACTS
         };
         Some(Sharing {
             split,
-            spec,
+            secrets: split.has_secrets(),
+            artifact_bytes,
+            mixed: plan.jobs.iter().any(|t| t.vm.is_some()),
+            helpers_live: AtomicUsize::new(0),
             helper: split.helper(),
             scratch_cap,
             settled: Mutex::default(),
@@ -593,6 +639,14 @@ impl<'a> Sharing<'a> {
             unfit: AtomicBool::new(false),
             owed: Mutex::default(),
         })
+    }
+
+    /// Whether `job` may run on a helper. Nothing tied to the runner that
+    /// has the run ([`tied`]); and a job given secrets only when the
+    /// helper has them and the job keeps no artifacts, since those are
+    /// never sent and the jobs that need them would have it run again.
+    pub fn may_share(&self, job: &PlannedJob) -> bool {
+        !tied(job) && (secret_free(job) || (self.secrets && job.artifacts.is_empty()))
     }
 
     /// Claims `job` before it starts. `false` when another runner has it.
@@ -698,7 +752,7 @@ impl<'a> Sharing<'a> {
             .unwrap_or_else(|e| e.into_inner())
             .insert(job.id.clone());
         let bytes = file_bytes(kept);
-        let cap = self.spec.artifact_bytes;
+        let cap = self.artifact_bytes;
         let mut stays = None;
         let layers = *scratch.as_ref().unwrap_or(&0);
         let kept_in = if let Err(why) = &scratch {
@@ -723,7 +777,7 @@ impl<'a> Sharing<'a> {
             Kept::Local
         } else if bytes > cap {
             stays = Some(format!(
-                "{} KiB is over the pipeline's `split: artifacts` of {} KiB",
+                "{} KiB is over the {} KiB a job may send to another runner",
                 bytes.div_ceil(1024),
                 cap.div_ceil(1024)
             ));
@@ -966,6 +1020,36 @@ impl<'a> Sharing<'a> {
     }
 }
 
+/// How long the primary of a pipeline with machine jobs leaves a job a
+/// helper could run to the helpers, from when the job is ready.
+pub(super) const PREFER_HELPERS: Duration = Duration::from_secs(3);
+
+/// Whether the primary leaves a queued job to the helpers for now. In a
+/// pipeline with machine jobs the runner that has the run is the one with
+/// machines, and its slots are best kept for what only it can run: for
+/// [`PREFER_HELPERS`] after a job a helper could run is ready, while a
+/// helper is alive, the primary does not start it, and a helper that has
+/// room claims it. After that, or with no helper, the primary runs it as
+/// before. A job taken back from a helper is never left again.
+pub(super) fn leave_to_helpers(
+    sharing: &Sharing<'_>,
+    template: &JobTemplate,
+    job: &PlannedJob,
+    lookup: &Lookup,
+    finished: &HashMap<String, Finished>,
+    options: &Options,
+) -> bool {
+    !sharing.helper
+        && sharing.mixed
+        && sharing.helpers_live.load(Ordering::SeqCst) > 0
+        && lookup.sandbox.is_none()
+        && !lookup.local
+        && lookup
+            .queued
+            .is_some_and(|at| at.elapsed() < PREFER_HELPERS)
+        && runs_here(sharing, template, job, finished, options)
+}
+
 /// Whether a helper may run `job` of `template` at all: one any runner
 /// may run, that fits this runner, whose artifacts would cross, and whose
 /// needs all left their artifacts here.
@@ -976,13 +1060,13 @@ pub(super) fn runs_here(
     finished: &HashMap<String, Finished>,
     options: &Options,
 ) -> bool {
-    shareable(job)
+    sharing.may_share(job)
         && options
             .memory
             .as_ref()
             .is_none_or(|b| job.memory_bytes <= b.total())
         && (job.artifacts.is_empty()
-            || sharing.spec.artifact_bytes > 0
+            || sharing.artifact_bytes > 0
             || (job.task_cache.is_some() && options.caches.is_some()))
         && template
             .needs
@@ -1131,6 +1215,7 @@ pub(super) fn watch<'p>(
     };
     let mut asked = false;
     let mut ended = false;
+    let mut sealed_for: HashSet<String> = HashSet::new();
     loop {
         {
             let s = state.lock().unwrap();
@@ -1170,6 +1255,28 @@ pub(super) fn watch<'p>(
             continue;
         }
         let seen = split.seen().ok();
+        if !sharing.helper {
+            // A helper that has joined wants the run's secrets, sealed to
+            // the key it published.
+            for (runner, key) in seen.iter().flat_map(|s| &s.keys) {
+                if sealed_for.contains(runner) {
+                    continue;
+                }
+                let secrets = serde_json::to_vec(&options.secrets).expect("serialisable");
+                if let Ok(bytes) = crate::sealed::seal(key, &secrets)
+                    && split.seal_for(runner, &bytes).is_ok()
+                {
+                    sealed_for.insert(runner.clone());
+                }
+            }
+            let now = Instant::now();
+            let live = seen
+                .iter()
+                .flat_map(|s| &s.helpers)
+                .filter(|(name, beat)| silent(name, Some(Some(**beat)), now) < timing.lease)
+                .count();
+            sharing.helpers_live.store(live, Ordering::SeqCst);
+        }
         for (runner, layers) in seen.iter().flat_map(|s| &s.scratch) {
             // A layer not readable yet is looked for again next time.
             let _ = shared.scratch.catch_up(split, runner, *layers);
@@ -1301,13 +1408,16 @@ pub(super) fn watch<'p>(
                     || sharing.running.load(Ordering::SeqCst) > 0;
             }
             if !sharing.helper {
+                // A pipeline with machine jobs asks as soon as a helper
+                // could take something; any other once a job has waited.
                 ask = !asked
                     && s.queue.iter().any(|(_, (_, job, lookup))| {
-                        shareable(job)
+                        sharing.may_share(job)
                             && lookup.sandbox.is_none()
-                            && lookup
-                                .queued
-                                .is_some_and(|at| at.elapsed() >= timing.ask_after)
+                            && (sharing.mixed
+                                || lookup
+                                    .queued
+                                    .is_some_and(|at| at.elapsed() >= timing.ask_after))
                     });
             }
         }

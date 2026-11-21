@@ -21,11 +21,13 @@
 //!   waits for much else.
 //! - **What may not leave stays.** A file a job that reads secrets (or was
 //!   handed what one left) wrote, one that holds a secret's value, and one
-//!   past what the run may send are listed as *withheld*: they show, and
-//!   opening one fails. A helper whose job does that gives the job back to
-//!   the primary, which has the file, so a run never fails because it was
-//!   split. A helper never withholds: it has no secrets, and a job whose
-//!   files would take it past what it may send is handed back instead.
+//!   past what the run may send are listed as *withheld* by the primary:
+//!   they show, and opening one fails. A helper whose job does that gives
+//!   the job back to the primary, which has the file, so a run never fails
+//!   because it was split. A helper never withholds: a job of its own that
+//!   reads a secret and writes here is handed back and what it wrote is
+//!   not sent, and one whose files would take the helper past what it may
+//!   send (or hold a secret's value) is handed back instead.
 //! - **A newer local write wins.** A path written here and not sent yet,
 //!   or open for writing, is left as it is when another runner's layer
 //!   names it. Two jobs that write one file at the same time on two
@@ -230,6 +232,7 @@ impl Scratch {
         ScratchView(Arc::new(ViewFs {
             scratch: self.clone(),
             tainted,
+            wrote: AtomicBool::new(false),
             withheld: Mutex::default(),
             cancel,
             deadline,
@@ -426,8 +429,14 @@ impl Scratch {
                     Entry::File { path, data } => {
                         let size = data.len() as u64;
                         let over = sent + bytes + size > cap;
+                        if helper && *tainted {
+                            // Never sent: the job that wrote it read a
+                            // secret, and is handed back for it
+                            // ([`ScratchView::kept_back`]).
+                            continue;
+                        }
                         let secret = *tainted || mask.finds(&data);
-                        if helper && over {
+                        if helper && (over || secret) {
                             too_much = true;
                         }
                         if helper || !(over || secret) {
@@ -452,6 +461,10 @@ impl Scratch {
                 *entry |= tainted;
             }
             return Published::TooMuch;
+        }
+        if entries.is_empty() && files.is_empty() {
+            // All of it was a helper's that may not leave.
+            return Published::Nothing;
         }
         // Objects: a large file alone, smaller ones together.
         let mut objects: Vec<Vec<Entry>> = Vec::new();
@@ -772,6 +785,8 @@ pub struct ScratchView(Arc<ViewFs>);
 struct ViewFs {
     scratch: Scratch,
     tainted: bool,
+    /// The job wrote, created, renamed or removed something.
+    wrote: AtomicBool,
     /// The first withheld file the job tried to read, and why it could
     /// not.
     withheld: Mutex<Option<String>>,
@@ -814,8 +829,14 @@ impl ScratchView {
     pub fn wrote<'p>(&self, paths: impl IntoIterator<Item = &'p Path>) {
         for path in paths {
             self.0.scratch.drop_pending(path);
-            self.0.scratch.touched(path, self.0.tainted);
+            self.0.touched(path);
         }
+    }
+
+    /// Whether what the job wrote here may not leave this runner and it
+    /// wrote something: on a helper, the job is handed back.
+    pub fn kept_back(&self) -> bool {
+        self.0.tainted && self.0.wrote.load(Ordering::SeqCst)
     }
 
     /// Why the job could not read a file another runner kept, if it tried.
@@ -849,6 +870,7 @@ impl ViewFs {
     }
 
     fn touched(&self, path: &Path) {
+        self.wrote.store(true, Ordering::SeqCst);
         self.scratch.touched(path, self.tainted);
     }
 }
@@ -991,6 +1013,7 @@ impl FileOpener for ViewFs {
         if !writes || !self.scratch.0.split {
             return Ok(file);
         }
+        self.wrote.store(true, Ordering::SeqCst);
         {
             let mut s = self.scratch.lock();
             *s.writers.entry(path.to_path_buf()).or_insert(0) += 1;

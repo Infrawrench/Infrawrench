@@ -23,44 +23,12 @@ pub struct Pipeline {
     /// dispatches runs (the app) enforces it.
     #[serde(default)]
     pub concurrency: Option<Concurrency>,
-    /// Lets other runners take jobs of a run when the one that has it is
-    /// short of slots or memory: `true`, or `{ artifacts }`.
+    /// Retired: runs are shared between runners whenever that helps,
+    /// with nothing for a pipeline to say. Any value is accepted and
+    /// ignored, so a pipeline written for an older runner still parses.
     #[serde(default)]
-    pub split: Option<Split>,
+    pub split: Option<serde_yaml_ng::Value>,
     pub jobs: IndexMap<String, Job>,
-}
-
-/// `split: true` or `split: { artifacts: 8MiB }`. Deserialised by hand,
-/// like [`Concurrency`], so an unknown key in the map form is reported as
-/// such.
-#[derive(Debug, Clone)]
-pub enum Split {
-    On(bool),
-    Full(SplitMap),
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct SplitMap {
-    /// The most one job's artifacts may be for another runner to be sent
-    /// them when the task cache does not hold them, such as `8MiB`.
-    #[serde(default)]
-    pub artifacts: Option<String>,
-}
-
-impl<'de> Deserialize<'de> for Split {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
-        match value {
-            serde_yaml_ng::Value::Bool(on) => Ok(Split::On(on)),
-            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
-                .map(Split::Full)
-                .map_err(serde::de::Error::custom),
-            _ => Err(serde::de::Error::custom(
-                "`split` is `true`, `false` or `{ artifacts }`",
-            )),
-        }
-    }
 }
 
 /// `concurrency: <group>` or `concurrency: { group, cancel-in-progress }`.

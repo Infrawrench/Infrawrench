@@ -19,7 +19,7 @@
 //! the ordering, skipping, output and change-policy rules are tested on
 //! their own.
 //!
-//! A run may be shared with other runners (`split:`): see [`Split`] and
+//! A run may be shared with other runners: see [`Split`] and
 //! the `split` module, which holds everything about it but the few places
 //! below where a job is claimed, deferred or reported.
 //!
@@ -312,7 +312,7 @@ pub enum LogEvent {
         /// Replayed from the task cache rather than run.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         cached: bool,
-        /// The runner that ran it, when another one did (`split:`).
+        /// The runner that ran it, when another one did.
         #[serde(skip_serializing_if = "Option::is_none")]
         remote: Option<String>,
     },
@@ -769,7 +769,7 @@ pub struct Options {
     /// by the shape of the plan alone and reserves every job's `memory:`.
     pub durations: Option<Arc<dyn Durations>>,
     /// What this run shares with other runners, when it is split across
-    /// them; only a pipeline that says `split:` uses it.
+    /// them.
     pub split: Option<Arc<dyn Split>>,
     /// The helper jobs running on this runner, every run's together, so
     /// its own runs can have their slots and memory back.
@@ -1734,7 +1734,7 @@ struct Finished {
     /// What the key's `artifacts:` kept, every matrix entry's together.
     artifacts: Arc<Vec<Entry>>,
     /// Some of what it, or a job it needed, kept is not on this runner
-    /// (`split:`), so nothing that needs it can run here.
+    /// (a split run), so nothing that needs it can run here.
     elsewhere: bool,
     /// It, or a job it needed, read a secret or was lent something: what
     /// it left (artifacts, outputs) may carry that, so a job handed it
@@ -2426,6 +2426,29 @@ pub fn run<T: Tools>(
                             // A helper's slot is taken with its job: it
                             // never waits for one.
                             let mut slot = None;
+                            // On the primary of a pipeline with machine
+                            // jobs, the jobs a helper could run are left to
+                            // the helpers for a moment first
+                            // (`split::leave_to_helpers`). In queue order,
+                            // last first, what may start here now.
+                            let open: Vec<usize> = (0..s.queue.len())
+                                .rev()
+                                .filter(|&pos| {
+                                    let (_, (template, job, lookup)) = &s.queue[pos];
+                                    cancelled
+                                        || helper
+                                        || !sharing.is_some_and(|sh| {
+                                            split::leave_to_helpers(
+                                                sh,
+                                                template,
+                                                job,
+                                                lookup,
+                                                &s.finished,
+                                                options,
+                                            )
+                                        })
+                                })
+                                .collect();
                             let fits = match &options.memory {
                                 _ if cancelled => {
                                     s.queue.len().checked_sub(1).map(|pos| (pos, None))
@@ -2436,16 +2459,19 @@ pub fn run<T: Tools>(
                                 _ if helper => sharing
                                     .and_then(|sh| split::spare(sh, options, &s.queue, &mut slot)),
                                 Some(budget) => {
-                                    let asks = s.queue.iter().rev().map(|(_, (_, j, l))| Ask {
-                                        bytes: l.reserve,
-                                        limit: j
-                                            .memory_bytes
-                                            .saturating_add(l.sandbox.unwrap_or(0)),
-                                        expected: l.expected,
+                                    let asks = open.iter().map(|&pos| {
+                                        let (_, (_, j, l)) = &s.queue[pos];
+                                        Ask {
+                                            bytes: l.reserve,
+                                            limit: j
+                                                .memory_bytes
+                                                .saturating_add(l.sandbox.unwrap_or(0)),
+                                            expected: l.expected,
+                                        }
                                     });
                                     match budget.admit(asks) {
                                         Admission::Start(nth, lease) => {
-                                            Some((s.queue.len() - 1 - nth, Some(lease)))
+                                            Some((open[nth], Some(lease)))
                                         }
                                         Admission::Wait { held_back: held } => {
                                             held_back = held;
@@ -2453,7 +2479,7 @@ pub fn run<T: Tools>(
                                         }
                                     }
                                 }
-                                None => s.queue.len().checked_sub(1).map(|pos| (pos, None)),
+                                None => open.first().map(|&pos| (pos, None)),
                             };
                             if let Some((pos, reserved)) = fits {
                                 let rank = s.queue[pos].0;
@@ -2696,6 +2722,7 @@ pub fn run<T: Tools>(
                         let scratch_back = sharing.helper
                             && (scratch.is_err()
                                 || view.withheld().is_some()
+                                || view.kept_back()
                                 || shared.scratch.spoiled());
                         if sharing.hands_back(&report) || scratch_back {
                             if let Some(marker) = marker {

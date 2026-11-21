@@ -40,6 +40,9 @@ struct SplitStore {
     layers: Mutex<HashMap<String, u64>>,
     /// Reads of scratch objects that fail before one works.
     failing_scratch_reads: AtomicUsize,
+    /// Helpers' public keys, and what was sealed to each.
+    keys: Mutex<Vec<(String, Vec<u8>)>>,
+    sealed: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 impl SplitStore {
@@ -72,6 +75,8 @@ struct MemorySplit {
     runner: &'static str,
     helper: bool,
     timing: Timing,
+    /// A helper has the run's secrets.
+    secrets: bool,
 }
 
 fn primary(store: &Arc<SplitStore>, timing: Timing) -> Arc<dyn Split> {
@@ -80,6 +85,7 @@ fn primary(store: &Arc<SplitStore>, timing: Timing) -> Arc<dyn Split> {
         runner: "ci-1",
         helper: false,
         timing,
+        secrets: false,
     })
 }
 
@@ -89,6 +95,7 @@ fn helper(store: &Arc<SplitStore>, timing: Timing) -> Arc<dyn Split> {
         runner: "ci-2",
         helper: true,
         timing,
+        secrets: false,
     })
 }
 
@@ -191,7 +198,20 @@ impl Split for MemorySplit {
             primary: Some(self.store.primary.load(Ordering::SeqCst)),
             helpers: self.store.helpers.lock().unwrap().clone(),
             scratch: self.store.layers.lock().unwrap().clone(),
+            keys: self.store.keys.lock().unwrap().clone(),
         })
+    }
+    fn has_secrets(&self) -> bool {
+        !self.helper || self.secrets
+    }
+    fn seal_for(&self, runner: &str, sealed: &[u8]) -> Result<(), String> {
+        self.store
+            .sealed
+            .lock()
+            .unwrap()
+            .entry(runner.into())
+            .or_insert_with(|| sealed.to_vec());
+        Ok(())
     }
     fn put_scratch(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
         self.store
@@ -961,18 +981,22 @@ fn helper_jobs_give_way_newest_first_and_only_as_far_as_needed() {
 #[test]
 fn artifacts_over_the_cap_stay_and_so_do_the_jobs_that_need_them() {
     // `big` keeps 20 MiB and `small` a few bytes, neither in the task
-    // cache; the pipeline sends up to 1 MiB.
+    // cache; a run nobody vouches for sends up to 4 MiB.
     let p = plan(
-        "name: x\nsplit: { artifacts: 1MiB }\njobs:\n  big:\n    using: builtin:art-big@1\n    artifacts: [dist]\n  small:\n    using: builtin:art-write@1\n    artifacts: [dist]\n  after-big:\n    using: builtin:art-read@1\n    needs: [big]\n  after-small:\n    using: builtin:art-read@1\n    needs: [small]\n",
+        "name: x\njobs:\n  big:\n    using: builtin:art-big@1\n    artifacts: [dist]\n  small:\n    using: builtin:art-write@1\n    artifacts: [dist]\n  after-big:\n    using: builtin:art-read@1\n    needs: [big]\n  after-small:\n    using: builtin:art-read@1\n    needs: [small]\n",
     );
     let store = Arc::new(SplitStore::default());
     store.give("big", "ci-1");
     store.give("small", "ci-1");
     store.give("after-small", "ci-2");
+    let untrusted = |mut options: Options| {
+        options.access.trusted = false;
+        options
+    };
     let (one, two) = both(
         &p,
-        &options(Some(primary(&store, PATIENT)), 1),
-        &options(Some(helper(&store, PATIENT)), 4),
+        &untrusted(options(Some(primary(&store, PATIENT)), 1)),
+        &untrusted(options(Some(helper(&store, PATIENT)), 4)),
     );
     assert!(one.report.passed(), "{:#?}", one.report.jobs);
     assert!(two.report.passed(), "{:#?}", two.report.jobs);
@@ -1000,7 +1024,7 @@ fn artifacts_over_the_cap_stay_and_so_do_the_jobs_that_need_them() {
     assert_eq!(one.stdout("after-big"), "big.bin");
     assert!(
         one.job("big").notes.iter().any(|n| n
-            == "split: its artifacts stay on `ci-1` (20480 KiB is over the pipeline's `split: artifacts` of 1024 KiB), so the jobs that need them run there"),
+            == "split: its artifacts stay on `ci-1` (20480 KiB is over the 4096 KiB a job may send to another runner), so the jobs that need them run there"),
         "{:?}",
         one.job("big").notes
     );
@@ -1035,28 +1059,26 @@ fn a_helper_only_tries_for_jobs_that_may_run_anywhere() {
 }
 
 #[test]
-fn a_pipeline_without_split_never_claims() {
+fn every_pipeline_is_shared_whatever_it_says() {
+    // No `split:`: the runners share it all the same, and each job runs
+    // once. `b` is the helper's, so `a`'s artifacts cross.
     let p = plan(
         "name: x\njobs:\n  a:\n    using: builtin:art-write@1\n    artifacts: [dist]\n  b:\n    using: builtin:art-read@1\n    needs: [a]\n",
     );
     let store = Arc::new(SplitStore::default());
-    // The run is shared, but the pipeline does not ask to be: each
-    // scheduler runs all of it by itself, as if the other were not there.
+    store.give("a", "ci-1");
+    store.give("b", "ci-2");
     let (one, two) = both(
         &p,
-        &options(Some(primary(&store, FAST)), 2),
-        &options(Some(helper(&store, FAST)), 2),
+        &options(Some(primary(&store, PATIENT)), 2),
+        &options(Some(helper(&store, PATIENT)), 2),
     );
-    for side in [&one, &two] {
-        assert!(side.report.passed());
-        assert_eq!(side.ran, vec!["a".to_string(), "b".to_string()]);
-        assert!(side.report.jobs.iter().all(|j| j.remote.is_none()));
-    }
-    assert!(store.tried.lock().unwrap().is_empty());
-    assert!(store.done.lock().unwrap().is_empty());
-    assert!(store.kept.lock().unwrap().is_empty());
-    assert!(!store.asked.load(Ordering::SeqCst) && !store.ended.load(Ordering::SeqCst));
-    assert_eq!(store.primary.load(Ordering::SeqCst), 0, "nobody looked");
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(two.report.passed(), "{:#?}", two.report.jobs);
+    assert_eq!(one.ran, ["a"]);
+    assert_eq!(two.ran, ["b"]);
+    assert_eq!(one.stdout("b"), "a.txt");
+    assert_eq!(store.done_of("a").unwrap().kept, Kept::Split);
 }
 
 #[test]
@@ -1784,4 +1806,119 @@ fn a_helper_gives_back_a_job_that_wanted_a_file_only_the_primary_may_have() {
         "a job handed back has no record"
     );
     assert!(!report.passed());
+}
+
+#[test]
+fn a_pipeline_with_machine_jobs_asks_at_once_and_leaves_the_rest_to_the_helper() {
+    // The primary has the machines and runs one job at a time; `vm` writes
+    // to /tmp/workflow in its machine, `r` reads it, and the four `w`s
+    // could run anywhere.
+    let p = plan(
+        "name: x\njobs:\n  vm:\n    platform: linux\n    run: share\n  r:\n    using: builtin:scratch-read@1\n    needs: [vm]\n  w:\n    using: builtin:ok@1\n    matrix: [a, b, c, d]\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    let mut first = options(Some(primary(&store, PATIENT)), 1);
+    first.machines = Some(Arc::new(super::machines_tests::FakeMachines::new()));
+    let second = options(Some(helper(&store, PATIENT)), 4);
+    let (one, two) = both(&p, &first, &second);
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(two.report.passed(), "{:#?}", two.report.jobs);
+    assert!(store.asked.load(Ordering::SeqCst), "asked without waiting");
+    assert_eq!(one.job("vm").remote, None);
+    assert!(
+        !store.tried_by("ci-2").contains(&"vm".to_string()),
+        "a machine job is never tried by a helper"
+    );
+    let helped = two.ran.iter().filter(|id| id.starts_with("w[")).count();
+    assert!(
+        helped >= 3,
+        "the helper took the `w`s: {:?} {:?}",
+        one.ran,
+        two.ran
+    );
+    // What the machine wrote to /tmp/workflow reached `r`, wherever it ran.
+    assert_eq!(one.stdout("r"), "from the machine");
+}
+
+fn helper_with_secrets(store: &Arc<SplitStore>, timing: Timing) -> Arc<dyn Split> {
+    Arc::new(MemorySplit {
+        store: store.clone(),
+        runner: "ci-2",
+        helper: true,
+        timing,
+        secrets: true,
+    })
+}
+
+#[test]
+fn a_helper_with_the_runs_secrets_runs_a_job_given_them_and_masks_it() {
+    // `deploy` reads the secret and keeps nothing; `build` reads it and
+    // keeps artifacts, which are never sent, so it stays with the primary.
+    let p = plan(
+        "name: x\njobs:\n  deploy:\n    using: builtin:print@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n  build:\n    using: builtin:art-write@1\n    artifacts: [dist]\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n",
+    );
+    let secrets = BTreeMap::from([("TOKEN".to_string(), "t0k3n-value".to_string())]);
+    let store = Arc::new(SplitStore::default());
+    store.give("deploy", "ci-2");
+    let mut first = options(Some(primary(&store, PATIENT)), 1);
+    first.secrets = secrets.clone();
+    let mut second = options(Some(helper_with_secrets(&store, PATIENT)), 2);
+    second.secrets = secrets;
+    let (one, two) = both(&p, &first, &second);
+    assert!(one.report.passed(), "{:#?}", one.report.jobs);
+    assert!(two.report.passed(), "{:#?}", two.report.jobs);
+    assert_eq!(two.ran, ["deploy"]);
+    assert_eq!(one.job("deploy").remote.as_deref(), Some("ci-2"));
+    assert!(
+        one.stdout("deploy").contains("TOKEN=***"),
+        "{}",
+        one.stdout("deploy")
+    );
+    // Its record was masked where it was written.
+    let done = store.done.lock().unwrap()["deploy"].clone();
+    assert!(!String::from_utf8_lossy(&done).contains("t0k3n-value"));
+    assert!(!store.tried_by("ci-2").contains(&"build".to_string()));
+    assert!(one.ran.contains(&"build".to_string()));
+}
+
+#[test]
+fn the_primary_seals_the_secrets_to_each_helper_that_asks() {
+    let p = plan("name: x\njobs:\n  a:\n    using: builtin:ok@1\n");
+    let store = Arc::new(SplitStore::default());
+    let opener = crate::sealed::Opener::new().unwrap();
+    store
+        .keys
+        .lock()
+        .unwrap()
+        .push(("ci-2".into(), opener.public().to_vec()));
+    let mut first = options(Some(primary(&store, FAST)), 1);
+    first.secrets = BTreeMap::from([("TOKEN".to_string(), "t0k3n".to_string())]);
+    // Long enough for the watch to look once.
+    let exec = SplitExec::napping(Duration::from_millis(50));
+    assert!(go(&p, &exec, &first).passed());
+    let sealed = store.sealed.lock().unwrap()["ci-2"].clone();
+    let opened: BTreeMap<String, String> =
+        serde_json::from_slice(&opener.open(&sealed).unwrap()).unwrap();
+    assert_eq!(opened["TOKEN"], "t0k3n");
+}
+
+#[test]
+fn a_helper_job_that_reads_a_secret_and_writes_the_scratch_is_handed_back() {
+    let p = plan(
+        "name: x\njobs:\n  w:\n    using: builtin:scratch-write@1\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n",
+    );
+    let store = Arc::new(SplitStore::default());
+    store.give("w", "ci-2");
+    let mut second = options(Some(helper_with_secrets(&store, FAST)), 2);
+    second.secrets = BTreeMap::from([("TOKEN".to_string(), "t0k3n".to_string())]);
+    let exec = SplitExec::new();
+    // No primary answers: the helper ends once it has handed `w` back.
+    go(&p, &exec, &second);
+    assert_eq!(exec.ran(), ["w"]);
+    let back = store.back.lock().unwrap().clone();
+    assert!(back.iter().any(|(job, _, _)| job == "w"), "{back:?}");
+    assert!(
+        store.scratch.lock().unwrap().is_empty(),
+        "nothing it wrote was sent"
+    );
 }

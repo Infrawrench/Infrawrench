@@ -99,15 +99,14 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key           | Meaning                                                                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `name`        | Required.                                                                                                                                                                      |
-| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.                                           |
-| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                         |
-| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                               |
-| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                 |
-| `split`       | `true`, or `{ artifacts: 8MiB }`: other runners may take jobs of a run when the runner that has it is short of slots or memory. Off by default. See [Split runs](#split-runs). |
-| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                                                           |
+| Key           | Meaning                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | Required.                                                                                                                                      |
+| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.           |
+| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                         |
+| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                               |
+| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency). |
+| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                           |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
 in UTC: five fields (minute, hour, day of month, month, day of week) taking
@@ -1153,19 +1152,19 @@ of them starts while the host is short of memory.
 
 ### Split runs
 
-A run belongs to one runner. With `split:` at the top of a pipeline, that
-runner (the primary) can have another runner (a helper) take some of the
-pipeline's jobs when its own slots or memory are what the jobs wait for:
+A run belongs to one runner (the primary). Other runners (helpers) can
+take some of its jobs, and nothing in a pipeline says whether they may:
+that is the runners' to decide, from what each job needs and what each
+runner has free. A pipeline that still says `split:` (it once turned this
+on) is read as if it did not.
 
-```yaml
-split: true
-# or, to say how much a job without a task cache entry may send:
-split:
-  artifacts: 8MiB # default 4MiB, at most 256MiB; 0MiB sends none
-```
-
-- **Off by default, for now.** It is to become the runners' own choice,
-  with nothing in the pipeline to say.
+- **When a helper is asked.** The primary asks for help once a job another
+  runner could run has waited two seconds in its queue. A pipeline with
+  machine jobs ([Platforms](#platforms)) asks at once: its run is on a
+  runner that has machines, and for three seconds after a job a helper
+  could run is ready, while a helper is there, the primary leaves it to
+  the helper and keeps its own slots for what only it can run. After
+  that, or with no helper, it runs the job itself.
 - **`/tmp/workflow` is shared across runners.** Every runner keeps its
   own copy, and what a job writes there reaches the others: a file is
   sent once nothing has it open for writing, when the job that wrote it
@@ -1197,13 +1196,14 @@ split:
   whoever claims it runs it. The other keeps the job in its graph and
   completes it from the record the first writes when the job ends, so the
   jobs that need it become ready on both.
-- **The primary asks, the helper decides.** The primary asks for help once
-  a job another runner could run has waited two seconds in its queue. A
-  helper does nothing for a run until then: it does not fetch the commit,
-  holds none of the runs its runner may help (`--helping`), and looks at
-  the store once every five seconds. Once asked, it joins when it has a
-  free slot, none of its own runs' jobs waits for memory, and it helps
-  fewer than `--helping` runs.
+- **The primary asks, the helper decides.** Until it is asked, a helper
+  only fetches the commit (when the request names one, so that a helper
+  asked at the start of a run builds when the primary does), holds none
+  of the runs its runner may help (`--helping`), and looks at the store
+  every half second for the first fifteen seconds of an offer and every
+  five after that. Once asked, it joins when it has a free slot, none of
+  its own runs' jobs waits for memory, and it helps fewer than
+  `--helping` runs.
 - **A helper's own runs come first.** A helper starts a job only with a
   slot that is free and memory that fits at that moment, never waiting for
   either, and never while a job of one of its own runs waits for memory or
@@ -1218,29 +1218,36 @@ split:
   building its workspace (the clone and the dependency installs, which a
   helper does once per run and which hold a slot and the job's memory
   reservation but run no job); it stops when that step is done.
-- **A helper is sent no secrets.** The proxy leaves `secrets` and `lent`
-  out of what it offers, and a runner helping a run uses none even if
-  sent. So a job runs on a helper only if it is given no secret and lent
-  nothing (its services included), has no `changes: commit`, keeps no
-  `downloads:`, is not a cloud job, and needs no job, directly or through
-  others, that reads a secret or is lent something: what such a job hands
-  on (artifacts, outputs) may carry what it read. All of those run on the
-  primary. A job larger than the helper's whole memory budget stays with
-  the primary too.
+- **A helper gets the run's secrets sealed, and nothing lent.** The proxy
+  leaves `secrets` and `lent` out of what it offers, and a runner helping
+  a run uses none it was sent. When a helper joins it makes an X25519 key
+  for that run alone and lists its public half in the store; the primary
+  seals the run's secrets to it (X25519, HKDF-SHA256, ChaCha20-Poly1305)
+  and stores only that, and the helper opens it in memory and masks with
+  the values as the primary does. A helper that does not have them within
+  ten seconds goes on without them. So a job given secrets (its services'
+  included) runs on a helper that has them, as long as it keeps no
+  `artifacts:`, which are never sent from a job that reads a secret; and
+  one of its writes to `/tmp/workflow` is never sent from a helper, which
+  hands the job back instead. A job lent anything, one with
+  `changes: commit`, one that keeps `downloads:`, a cloud job, a machine
+  job, and one that needs a job (directly or through others) that reads a
+  secret or is lent something stay on the primary. A job larger than the
+  helper's whole memory budget stays with the primary too.
 - **How artifacts cross.** A task-cached job's artifacts are in the task
   cache entry it saves, which every runner reads. A job without one that
   passes has its artifacts stored for the run, under the name of the
-  runner that ran it, when they come to at most `split.artifacts` in
-  total (never more than the 4 MiB default in an untrusted run, such as a
-  fork's pull request), the job was handed nothing by a job that reads
+  runner that ran it, when they come to at most 64 MiB in total (4 MiB in
+  an untrusted run, such as a fork's pull request), the job was handed
+  nothing by a job that reads
   secrets, and no file among them holds one of the run's secret values as
   it is written; they are sent byte for byte or not at all. Artifacts that
   do not cross stay where the job ran, the job's report says why, and the
   jobs that need them run there: a helper never takes a job whose needs
   left artifacts it does not have, and the primary runs again a job a
   helper ran whose artifacts it cannot get. So a job that is not
-  task-cached and keeps more than `split.artifacts` is best not left to a
-  helper: make it task-cached, or raise the limit. What a runner takes in
+  task-cached and keeps more than that is best made task-cached, which
+  every runner reads. What a runner takes in
   from another counts toward the run's `scratch:` like any artifact.
 - **What the run looks like.** The app follows the primary and nothing
   else: its report, `progress`, log, checks and bill hold every job. A job
@@ -1248,8 +1255,9 @@ split:
   its real status, `duration_ms` and output, with `"remote": "<runner>"`
   on its report and its `job-finished` event and a note saying where it
   ran. Its output arrives when it ends, not line by line. The primary
-  masks everything in a helper's record with the run's secrets, since the
-  helper had none to mask with. If that changes one of the job's
+  masks everything in a helper's record with the run's secrets too, since
+  a helper may not have had them to mask with. If that changes one of the
+  job's
   `outputs:`, the primary runs the job itself rather than take the
   helper's word for it: a matrix or an `if:` that reads the output is then
   worked out from the masked text, as it is without a helper, and not
@@ -1270,8 +1278,8 @@ split:
   answer is a job the primary runs and a helper leaves alone, so a split
   run never fails because it was split. A helper ends when the pipeline
   does, when the primary cancels it, and when the primary has been silent
-  for 45 s. If the primary dies the run is lost, as it is without
-  `split:`.
+  for 45 s. If the primary dies the run is lost, as it would be with no
+  helper.
 - **A job can run twice, and only then.** A job the primary took back
   runs on the primary whatever the helper does next. If the helper was
   alive after all and finishes it too, both ran: the first record written
@@ -1295,9 +1303,11 @@ split:
   architecture (see [Environment caches](#environment-caches)). The task
   cache has always been shared between runners of different architectures
   in the same way.
-- **Cost.** A split pipeline's primary makes two small writes to the store
-  for each job it starts and one listing a second; a helper that is never
-  asked makes one listing every five seconds. A job that writes to
+- **Cost.** A primary makes two small writes to the store for each job it
+  starts and one listing a second while a pipeline runs; a helper that is
+  never asked makes one listing every half second for fifteen seconds and
+  one every five after that. A helper that joins adds a write for its key
+  and the primary one for the sealed secrets. A job that writes to
   `/tmp/workflow` adds one write for its layer's list and one per object
   of its files (4 MiB of small files to an object), and each runner reads
   each other runner's lists and the objects its jobs open or are sent.
@@ -4964,16 +4974,17 @@ it is masked, and an untrusted run is given none of it:
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
 - **Split runs.** `"split": { "runner": "<name>" }` in a run's request
-  lets its pipelines that say `split:` be shared (see
-  [Split runs](#split-runs)); `runner` is what this runner is called in
+  lets its pipelines be shared (see [Split runs](#split-runs)); `runner`
+  is what this runner is called in
   claims and reports, and one is made up when it is left out. The same
   request with `"split": { "of": "<run id>", "runner": "<name>" }`, sent
   to another runner, is an offer to help the run of that id (its id on the
   runner that has it). It answers `202` with an id of its own, takes no
   slot, and counts in none of `runs_active`, `slots_free`, `memory_used`
   or `memory_waiting`. It needs neither `secrets` nor `lent` and uses
-  neither if sent; it needs no `sha`, since it runs the commit the run it
-  helps resolved. An offer is not one of the runs a runner helps
+  neither if sent (the secrets come sealed from the run's runner once it
+  joins); it needs no `sha`, since it runs the commit the run it helps
+  resolved, though one it is sent is fetched at once. An offer is not one of the runs a runner helps
   (`--helping`, default 2) until the run asks for help and the runner
   joins it, so offers are not refused for one another: only with `429`
   when the runner is draining, helps no runs (`--helping 0`), or holds 32
@@ -5525,6 +5536,8 @@ pipeline's file name and `<job>` the job id in hex:
 | `scratch/<pipeline>/<runner>/<layer>.list`  | One of that runner's `/tmp/workflow` layers: what changed, with each file's size and object, or that it stays on that runner. JSON.                |
 | `scratch/<pipeline>/<runner>/<layer>.<n>`   | Files of that layer: one of 1 MiB or more, or smaller ones together up to 4 MiB. A zstd archive.                                                   |
 | `state/scratch/<pipeline>/<runner>.<layer>` | That runner's layers up to this one are stored. Only the latest is kept.                                                                           |
+| `state/key/<runner>.<key>`                  | That helper has joined and wants the run's secrets sealed to this X25519 public key (hex).                                                         |
+| `secrets/<runner>`                          | The run's secrets sealed to that helper's key. Never in the clear. Written once.                                                                   |
 
 A runner follows the others with one listing of `state/`. The primary
 deletes everything but `state/end` when the run ends; every server sweeps

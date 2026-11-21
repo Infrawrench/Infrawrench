@@ -2898,6 +2898,7 @@ dependencies = [
  "iwci-vm-proto",
  "libc",
  "rayon",
+ "ring",
  "serde",
  "serde_json",
  "sha2",

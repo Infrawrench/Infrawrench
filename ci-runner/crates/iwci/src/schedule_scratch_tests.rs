@@ -83,6 +83,9 @@ impl Split for Side {
         let stored = self.objects.stored.lock().unwrap();
         Ok(stored.get(&(runner.to_string(), name.to_string())).cloned())
     }
+    fn seal_for(&self, _: &str, _: &[u8]) -> Result<(), String> {
+        unreachable!()
+    }
     fn scratch_layer(&self, layer: u64) -> Result<(), String> {
         self.objects
             .layers
