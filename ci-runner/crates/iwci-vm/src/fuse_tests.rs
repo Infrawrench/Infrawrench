@@ -336,6 +336,9 @@ fn a_read_only_server_refuses_every_write_and_lets_the_kernel_cache() {
     body.extend([0u8; 20]);
     assert_eq!(ok(&s, READ, file, &body), b"urce");
     assert_eq!(call(&s, FLUSH, file, &[0u8; 24]).0, -ENOSYS);
+    // A listing is kept by the kernel across opens.
+    let dir = ok(&s, OPENDIR, app, &[0u8; 8]);
+    assert_eq!(u32_at(&dir, 8), FOPEN_KEEP_CACHE | FOPEN_CACHE_DIR);
     // Every way of writing is refused.
     let mut wr = le32(O_RDWR);
     wr.extend(le32(0));

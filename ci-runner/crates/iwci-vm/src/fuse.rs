@@ -50,6 +50,9 @@ const VALID_SECS: u64 = 1;
 const READ_ONLY_VALID_SECS: u64 = 24 * 60 * 60;
 /// `FOPEN_KEEP_CACHE`: the kernel keeps a file's pages across opens.
 const FOPEN_KEEP_CACHE: u32 = 1 << 1;
+/// `FOPEN_CACHE_DIR`: the kernel keeps a directory's listing across
+/// opens, so walking a tree again asks the server nothing.
+const FOPEN_CACHE_DIR: u32 = 1 << 3;
 const ROOT: u64 = 1;
 const IN_HEADER: usize = 40;
 const OUT_HEADER: usize = 16;
@@ -912,7 +915,12 @@ impl Server {
             entries.push((name.to_string(), id, kind));
         }
         let fh = self.add_handle(Handle::Dir(path, entries));
-        Ok(Out::default().u64(fh).u32(0).u32(0).done())
+        let cache = if self.read_only {
+            FOPEN_KEEP_CACHE | FOPEN_CACHE_DIR
+        } else {
+            0
+        };
+        Ok(Out::default().u64(fh).u32(cache).u32(0).done())
     }
 
     /// `READDIR`, or with `plus` `READDIRPLUS`: each entry then comes
