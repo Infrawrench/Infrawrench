@@ -9,10 +9,16 @@
 //! every machine (the image's root, and the workspace's files when the
 //! job has a clone); what the job writes goes to a tmpfs inside it.
 //!
-//! virtio-mmio devices reach the guest in the reverse of the order QEMU is
-//! given them (each new transport bus is put at the head of QEMU's list),
-//! so the root disk comes last to be `vda`, and the agent finds the
-//! workspace disk by its serial (`iwci-ws`) rather than its name.
+//! The root disk has to be `vda` (`root=/dev/vda`). How virtio-mmio
+//! devices are numbered differs by machine: `virt` (aarch64) lists them in
+//! its device tree in the reverse of the order QEMU is given them (each
+//! new transport bus goes at the head of QEMU's list), so there the root
+//! disk comes last; `microvm` (x86_64) plugs them into its transports in
+//! command-line order and names them so on the kernel's command line, so
+//! there it comes first. ci-1's first machine with a workspace disk found
+//! that the hard way: `vda` was the workspace and init was not there. The
+//! agent finds the workspace disk by its serial (`iwci-ws`), never its
+//! name.
 //!
 //! **Windows** is Windows 11 on Arm under the aarch64 `virt` machine with
 //! UEFI, on PCI virtio devices (virtio-win's ARM64 drivers), its disk a
@@ -235,19 +241,28 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
             .into(),
         );
     }
-    // The workspace first and the root last: see the module's note.
+    // The root disk where the machine makes it `vda`: see the module's
+    // note.
+    let root = |args: &mut Vec<OsString>| {
+        args.push("-drive".into());
+        args.push(path_arg(
+            "if=none,id=root,format=raw,readonly=on,file=",
+            m.rootfs,
+        ));
+        push(args, &["-device", "virtio-blk-device,drive=root"]);
+    };
+    if m.arch == Arch::X86_64 {
+        root(&mut args);
+    }
     if let Some(ws) = m.workspace {
         args.push("-drive".into());
         args.push(path_arg("if=none,id=ws,format=raw,readonly=on,file=", ws));
         args.push("-device".into());
         args.push(format!("virtio-blk-device,drive=ws,serial={WORKSPACE_SERIAL}").into());
     }
-    args.push("-drive".into());
-    args.push(path_arg(
-        "if=none,id=root,format=raw,readonly=on,file=",
-        m.rootfs,
-    ));
-    push(&mut args, &["-device", "virtio-blk-device,drive=root"]);
+    if m.arch == Arch::Aarch64 {
+        root(&mut args);
+    }
     args
 }
 
@@ -408,7 +423,6 @@ mod tests {
         ] {
             assert!(text.contains(want), "{want} not in {text}");
         }
-        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
         // Without it, the memory is QEMU's own.
         let plain = strings(&linux_args(&Linux {
             arch: Arch::X86_64,
@@ -452,10 +466,10 @@ mod tests {
         let append = &args[args.iter().position(|a| a == "-append").unwrap() + 1];
         assert!(append.contains("init=/usr/local/sbin/iwci-guest"));
         assert!(append.contains("ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off"));
-        // The root disk is the last device, so the guest names it vda.
-        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
+        // microvm numbers its devices in command-line order: the root
+        // disk comes before the workspace's, so the guest names it vda.
         assert!(
-            text.find("drive=ws").unwrap() < text.find("drive=root").unwrap(),
+            text.find("drive=root").unwrap() < text.find("drive=ws").unwrap(),
             "{text}"
         );
     }
