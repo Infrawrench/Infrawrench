@@ -266,7 +266,37 @@ fn power_off() -> ! {
 }
 
 /// Serves the runner from inside the job's root.
+/// Threads reading the streamed-in files ahead of the job.
+const PREFETCH_THREADS: usize = 4;
+/// Files larger than this are left for the job to read if it wants them.
+const PREFETCH_LARGEST: u64 = 256 << 20;
+
 pub fn agent() -> io::Result<()> {
+    // The job's files streamed in from the runner: start pulling them in
+    // now, in the background, while the runner sets the machine up and
+    // the job starts; the job waits only for a file that has not come yet.
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    if files_tag(&cmdline).is_some() {
+        let budget =
+            crate::prefetch::budget(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default());
+        let _ = std::thread::Builder::new()
+            .name("iwci-prefetch".into())
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                let got = crate::prefetch::prefetch(
+                    std::path::Path::new("/.iwci/ws"),
+                    PREFETCH_THREADS,
+                    budget,
+                    PREFETCH_LARGEST,
+                );
+                eprintln!(
+                    "iwci-guest: read ahead {} files, {} KiB, in {} ms",
+                    got.files,
+                    got.bytes / 1024,
+                    started.elapsed().as_millis()
+                );
+            });
+    }
     let port = open_linux()?;
     let mut tree = Overlay::linux();
     serve_port(port, &LinuxMachine, &mut tree)
