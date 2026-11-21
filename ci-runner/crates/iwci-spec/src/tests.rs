@@ -2959,3 +2959,26 @@ fn a_job_may_run_for_up_to_six_hours() {
         "between 1s and 6h",
     );
 }
+
+#[test]
+fn install_scripts_is_on_for_workspaces_with_a_node_install_only() {
+    let workspaces = |yaml: &str| parse(yaml, &ctx()).unwrap().workspaces;
+    let on = workspaces(
+        "name: x\ninstall-scripts: true\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n  g:\n    using: builtin:t@1\n    deps: [go]\n  m:\n    platform: linux\n    run: make\n",
+    );
+    // The pnpm workspace runs them; Go's and the machine's have nothing.
+    let flags: Vec<bool> = on.iter().map(|w| w.install_scripts).collect();
+    assert_eq!(flags, vec![true, false, false]);
+    let off = workspaces("name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n");
+    assert!(!off[0].install_scripts);
+    // It is part of the workspace's key, which stays as it was without it.
+    assert_ne!(on[0].key, off[0].key);
+    let unset = workspaces(
+        "name: x\ninstall-scripts: false\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n",
+    );
+    assert_eq!(unset[0].key, off[0].key);
+    assert_error(
+        "name: x\ninstall-scripts: yes please\njobs:\n  t:\n    using: builtin:t@1\n",
+        "install-scripts",
+    );
+}

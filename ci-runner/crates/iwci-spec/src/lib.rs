@@ -274,6 +274,7 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         ctx,
         decls: &decls,
         generated: &generated,
+        install_scripts: false,
     };
     let mut plan = v.pipeline(raw);
     plan.triggers.manual = manual;
@@ -507,6 +508,8 @@ struct Validator<'a> {
     decls: &'a HashMap<String, JobDecl>,
     /// The jobs `packages:` jobs became, by key.
     generated: &'a packages::Generated,
+    /// The pipeline's `install-scripts:`.
+    install_scripts: bool,
 }
 
 /// The parts of a job that do not depend on its matrix entry or on other
@@ -597,6 +600,7 @@ pub(crate) fn instantiate(
         ctx: &plan.ctx,
         decls: &plan.decls,
         generated: &generated,
+        install_scripts: false,
     };
     let st = v.job_static(
         &format!("jobs.{}", template.key),
@@ -632,6 +636,7 @@ impl Validator<'_> {
         }
         let triggers = self.triggers(raw.on);
         let concurrency = raw.concurrency.as_ref().and_then(|c| self.concurrency(c));
+        self.install_scripts = raw.install_scripts == Some(true);
         let base_ws = raw.workspace.unwrap_or_default();
         let base_clone = Some(base_ws.clone.unwrap_or_default());
         let base_deps = base_ws.deps.unwrap_or_default();
@@ -1101,14 +1106,28 @@ impl Validator<'_> {
             specs.push(spec);
         }
 
+        // Only where there is an install whose scripts could run.
+        let install_scripts = self.install_scripts
+            && specs.iter().any(|d| {
+                matches!(
+                    d.ecosystem,
+                    Ecosystem::Pnpm | Ecosystem::Npm | Ecosystem::Bun
+                )
+            });
         let key = {
-            let canonical = serde_json::to_vec(&(&clone, &specs)).expect("serialisable");
+            let canonical = if install_scripts {
+                serde_json::to_vec(&(&clone, &specs, "install-scripts"))
+            } else {
+                serde_json::to_vec(&(&clone, &specs))
+            }
+            .expect("serialisable");
             hex::encode(&sha2::Sha256::digest(&canonical)[..12])
         };
         WorkspaceSpec {
             key,
             clone,
             deps: specs,
+            install_scripts,
         }
     }
 

@@ -572,6 +572,12 @@ pub struct WorkspaceSpec {
     pub key: String,
     pub clone: Option<CloneSpec>,
     pub deps: Vec<DepSpec>,
+    /// `install-scripts: true` and a pnpm, npm or Bun install to run them
+    /// for: after its installs the runner runs the install scripts the
+    /// package manager would, in a virtual machine. Left out of the key
+    /// when off, so workspaces without it keep theirs.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub install_scripts: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

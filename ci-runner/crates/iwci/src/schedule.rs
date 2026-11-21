@@ -84,6 +84,7 @@ pub trait Workspaces: Send + Sync {
     fn checkout(&self, spec: &WorkspaceSpec) -> Result<Snapshot, String> {
         self.build(&WorkspaceSpec {
             deps: Vec::new(),
+            install_scripts: false,
             ..spec.clone()
         })
         .map(|w| w.snapshot)
@@ -2995,10 +2996,13 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         ..rank
                     };
                     // A job in a sandbox stays on the runner that has the
-                    // run: a helper may not offer one.
+                    // run: a helper may not offer one. Nor one whose
+                    // workspace runs install scripts, which takes a virtual
+                    // machine the helper may not have.
                     if let Some(sharing) = sharing.as_ref().filter(|_| helper)
                         && (!split::runs_here(sharing, template, &job, &s.finished, options)
-                            || (s.sandbox)(&job).is_some())
+                            || (s.sandbox)(&job).is_some()
+                            || plan.workspaces[job.workspace].install_scripts)
                     {
                         // Only the primary runs it; this run waits to hear
                         // how it went.
