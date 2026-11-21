@@ -697,7 +697,12 @@ jobs:
   is the machine's whole memory, and the runner reserves the emulator's
   own beside it (160 MiB). Jobs run as root. The agent inside
   (`crates/iwci-guest`) talks to the runner over a virtio-serial port
-  (`crates/iwci-vm-proto`).
+  (`crates/iwci-vm-proto`). A machine answers about 0.36 s after QEMU
+  starts (measured on ci-1, from 4.2 s before): its memory is in 2 MiB
+  huge pages where the host lends them (`vm.nr_overcommit_hugepages`,
+  which the install sets), and in ordinary pages otherwise, which boot
+  about 0.5 s slower at 2 GiB and more at larger sizes. `IWCI_BOOT_TIMES=1`
+  prints when each step of a machine's start ended, the agent's included.
 - **Files.** The machine starts from the same files an isolate would: the
   clone, the artifacts of the jobs it needs, lent files and restored
   caches. On an image that can (its `image.json` lists `files-virtiofs`,
