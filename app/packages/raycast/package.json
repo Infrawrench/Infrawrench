@@ -2,12 +2,12 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "@infrawrench/raycast",
   "title": "Infrawrench",
-  "description": "Search your Infrawrench resources and services, see cost and status, check who is on call, and declare incidents.",
+  "description": "Search your Infrawrench resources and services, see cost and status, check who is on call, declare incidents, and check .infraenv environment files.",
   "icon": "icon.png",
   "author": "infrawrench",
   "license": "BUSL-1.1",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "platforms": [
     "macOS",
     "Windows"
@@ -21,7 +21,9 @@
     "cloud",
     "terraform",
     "on-call",
-    "incident"
+    "incident",
+    "dotenv",
+    "environment variables"
   ],
   "commands": [
     {
@@ -51,6 +53,21 @@
       "subtitle": "Infrawrench",
       "description": "Declare an incident, after a confirmation.",
       "mode": "view"
+    },
+    {
+      "name": "check-environment-file",
+      "title": "Check Environment File",
+      "subtitle": "Infrawrench",
+      "description": "Check a local .infraenv: syntax, environments, and what each resource and secret reference points at. Pull a .env beside it.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "path",
+          "placeholder": "Path (or select in Finder)",
+          "type": "text",
+          "required": false
+        }
+      ]
     }
   ],
   "preferences": [

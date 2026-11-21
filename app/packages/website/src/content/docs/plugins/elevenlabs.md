@@ -53,7 +53,7 @@ One model picker covers both. If a Scribe model is selected when you press Synth
 
 Each agent has a **Metrics** tab built from its conversation history: conversations per day, how many were judged successful, average call duration and total talk time. The dashboard card shows the last seven days at a glance, including the success rate and how many conversations are live right now. Charts read up to 2,000 conversations per range, newest first, so a very busy agent over a long range shows its most recent days in full.
 
-<insert [ElevenLabs agent detail page showing the voice and model section, the system prompt and the recent conversations table] here>
+![ElevenLabs agent detail page showing the voice and model section, the system prompt and the recent conversations table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/elevenlabs/agent-detail.png)
 
 ## Voice and model usage
 

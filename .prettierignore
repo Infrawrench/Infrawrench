@@ -51,6 +51,10 @@ app/packages/raycast/raycast-env.d.ts
 # vinext dev/build state (app/packages/instances)
 .vinext
 
+# A `rails new` app the CI runner's Ruby tests run (ci-runner/builtins/test.sh),
+# kept as the generator wrote it, so that it shows what a real app needs.
+ci-runner/builtins/environments/ruby/apps/
+
 # Third-party crates vendored with a patch (ci-runner/vendor/README.md): they
 # must stay byte-for-byte as published apart from the patch file.
 ci-runner/vendor/wasmer-napi/
@@ -62,3 +66,8 @@ ci-runner/vendor/virtual-fs/
 # @tybys/wasm-util's published bundle, vendored unmodified for the runner's
 # `node:wasi` (ci-runner/crates/iwci-runtime/node/README.md).
 ci-runner/crates/iwci-runtime/node/wasm-util.cjs
+
+# The npm package's copy of the infraenv agent skill, generated from the
+# website's skill folder by app/packages/infraenv/scripts/sync-skill.mjs; a
+# test holds it byte for byte to what the script writes.
+app/packages/infraenv/skills/

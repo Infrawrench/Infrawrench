@@ -6,6 +6,7 @@ import type {
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import { showcaseFields } from "@infrawrench/plugin-base";
+import { getDetailChildTypes, isDetailChildRow } from "@infrawrench/client-core";
 import {
   buildChildResourceGroups,
   formatErrorMessage,
@@ -441,17 +442,17 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       setters.setSshDefaultUsername(null);
     }
 
-    const childTypes = plugin.resourceTypes.filter(
-      (t) => t.parentTypeId === enrichedResource.resourceTypeId,
-    );
+    // The account root's detail view is the account page, so it also groups the
+    // plugin's other top-level types (`getDetailChildTypes`).
+    const childTypes = getDetailChildTypes(plugin.resourceTypes, enrichedResource.resourceTypeId);
     if (childTypes.length > 0) {
       const allChildResources: ChildResource[] = [];
       await Promise.allSettled(
         childTypes.map(async (childType) => {
           try {
-            const resources = await client.listResources(childType.id, accountId);
+            const resources = await client.listResources(childType.typeDef.id, accountId);
             for (const r of resources) {
-              if (r.parentResourceId !== enrichedResource.id) continue;
+              if (!isDetailChildRow(r, childType, enrichedResource.id)) continue;
               const sidebar = client.renderSidebarItem(r);
               allChildResources.push({
                 id: r.id,
@@ -471,7 +472,11 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       if (!isCancelled()) {
         setters.setChildResourceGroups(
           buildChildResourceGroups(
-            childTypes.map((t) => ({ ...t, showcase: showcaseFields(t) })),
+            childTypes.map(({ typeDef, topLevel }) => ({
+              ...typeDef,
+              showcase: showcaseFields(typeDef),
+              ...(topLevel ? { topLevel } : {}),
+            })),
             allChildResources,
           ) as ChildResourceGroup[],
         );

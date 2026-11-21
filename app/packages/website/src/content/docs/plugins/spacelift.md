@@ -30,7 +30,7 @@ You can export stacks, spaces, contexts, context environment variables, policies
 1. In Spacelift, open **Organization settings**, then **API keys**, and **Create API key** with type **Secret**. Give it the spaces it should manage. Admin on the `root` space manages the whole account. Spacelift downloads a file with the key ID and secret.
 2. In Infrawrench, enter your **Account** (`acme` for `acme.app.spacelift.io`, or the hostname for the US region or a self-hosted install), then the **API Key ID** and **API Key Secret** from that file.
 
-<insert [Spacelift Add-account form with the account name, API key ID and API key secret filled in] here>
+![Spacelift Add-account form with the account name, API key ID and API key secret filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/spacelift/add-account.png)
 
 Spacelift bills API keys like users: a key used during a billing period counts as a seat.
 

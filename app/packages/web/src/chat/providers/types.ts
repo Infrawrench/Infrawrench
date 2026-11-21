@@ -11,7 +11,7 @@
  * to and from it at their boundary, so conversation history in the database has
  * one shape and the UI renderers don't branch on model.
  */
-import type { ChatContentBlock } from "@infrawrench/ui";
+import type { StoredChatBlock } from "../server-blocks";
 
 /**
  * A tool as handed to a provider: name, description, and a JSON Schema object
@@ -25,6 +25,12 @@ export interface ProviderTool {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /**
+   * Leave the schema out of the model's context until it searches for the
+   * tool. A provider without tool search offers every tool up front and
+   * ignores this.
+   */
+  deferLoading?: boolean;
 }
 
 /** Token counts for one turn, normalized across providers. */
@@ -40,7 +46,7 @@ export interface TurnRequest {
   system: string;
   tools: ProviderTool[];
   /** Conversation history, oldest first. */
-  messages: Array<{ role: "user" | "assistant"; content: ChatContentBlock[] }>;
+  messages: Array<{ role: "user" | "assistant"; content: StoredChatBlock[] }>;
   maxTokens: number;
 }
 
@@ -54,7 +60,7 @@ export type ProviderEvent =
   | { type: "tool_use_input"; toolUseId: string; partialJson: string }
   | {
       type: "done";
-      blocks: ChatContentBlock[];
+      blocks: StoredChatBlock[];
       stopReason: string | null;
       usage: ProviderUsage;
     };

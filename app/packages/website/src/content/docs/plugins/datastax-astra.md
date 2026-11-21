@@ -25,7 +25,7 @@ Connect DataStax Astra with one application token to manage your Astra DB databa
 - **Users**: invite with roles, change roles, remove.
 - **Application tokens**: generate with roles (the token is shown once, in the new resource's outputs), revoke.
 
-<insert [DataStax Astra database detail page showing the Capacity and Connectivity sections and the Resume and Secure connect bundle buttons] here>
+![DataStax Astra database detail page showing the Capacity and Connectivity sections and the Resume and Secure connect bundle buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datastax-astra/database-detail.png)
 
 ## Connect your organization
 
@@ -35,7 +35,7 @@ In the Astra Portal, go to **Settings > Tokens > Generate token** and copy the `
 - **Database Administrator** is enough for databases, regions, keyspaces, collections and access lists.
 - Metrics need a paid plan and a role with the **Manage Metrics** permission.
 
-<insert [DataStax Astra Add-account form with the Application Token field] here>
+![DataStax Astra Add-account form with the Application Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datastax-astra/add-account.png)
 
 ## Metrics
 

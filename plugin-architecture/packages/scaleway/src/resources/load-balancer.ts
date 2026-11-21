@@ -5,10 +5,17 @@ export const LoadBalancerResourceType = rt({
   id: "load-balancer",
   name: "Load Balancer",
   description: "A Scaleway Load Balancer (lb/v1)",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: SCW_ZONES, editable: false }),
+    f("zone", "Zone", {
+      showcase: true,
+      kind: "enum",
+      enumValues: SCW_ZONES,
+      editable: false,
+      sizing: "region",
+    }),
     f("type", "Type", { description: "Offer, e.g. LB-S, LB-GP-M", editable: false }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("ipAddresses", "IP Addresses", { required: false, editable: false }),

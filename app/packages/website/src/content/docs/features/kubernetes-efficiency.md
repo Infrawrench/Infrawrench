@@ -18,7 +18,7 @@ Each report shows, per row and in total:
 
 Each figure is split by cost category: CPU, memory, GPU, storage, network (load balancers) and control plane.
 
-<insert [Kubernetes efficiency report page: summary tiles for total, efficiency, used, requested unused, idle, overhead and unmeasured, above a weekly stacked bar chart by usage state with the efficiency line, then the table grouped by namespace] here>
+![Kubernetes efficiency report page: summary tiles for total, efficiency, used, requested unused, idle, overhead and unmeasured, above a weekly stacked bar chart by usage state with the efficiency line, then the table grouped by namespace](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-efficiency/report-page.png)
 
 ## Where the numbers come from
 
@@ -62,7 +62,7 @@ Totals are the same either way. When grouping by cluster, node pool or cost cate
 
 Open **Kubernetes efficiency** from the sidebar and choose **New report**. Every picker lists the values your clusters actually report, so there's nothing to look up.
 
-<insert [New efficiency report editor: name, folder, date range, granularity, group by set to Label with the pod label picker open, the cost category checkboxes, idle handling and efficiency basis radios, and a namespace filter row] here>
+![New efficiency report editor: name, folder, date range, granularity, group by set to Label with the pod label team chosen, the CPU, Memory and GPU cost category checkboxes ticked, idle handling and efficiency basis radios, and a namespace filter row](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-efficiency/new-report-editor.png)
 
 - **Date range and granularity:** a rolling window (last 30 days, month to date and so on) or fixed dates, up to 366 days, by day, week or month. Weeks start on Monday.
 - **Group by:** cluster, namespace, workload, node pool, cost category or a label. A label can be a pod, node or volume label, or a node attribute such as `capacity_type`.

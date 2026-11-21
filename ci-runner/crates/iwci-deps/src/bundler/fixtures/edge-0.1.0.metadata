@@ -1,0 +1,97 @@
+--- !ruby/object:Gem::Specification
+name: edge
+version: !ruby/object:Gem::Version
+  version: 0.1.0
+platform: ruby
+authors:
+- "Zoë Ångström"
+- "Emoji 😀 Person"
+bindir: bin/
+cert_chain: []
+date: 2024-03-05 00:00:00.000000000 Z
+dependencies:
+- !ruby/object:Gem::Dependency
+  name: rack
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '2.0'
+    - - "<"
+      - !ruby/object:Gem::Version
+        version: '4'
+  type: :runtime
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '2.0'
+    - - "<"
+      - !ruby/object:Gem::Version
+        version: '4'
+- !ruby/object:Gem::Dependency
+  name: minitest
+  requirement: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '0'
+  type: :development
+  prerelease: false
+  version_requirements: !ruby/object:Gem::Requirement
+    requirements:
+    - - ">="
+      - !ruby/object:Gem::Version
+        version: '0'
+description: "Tabs\there, a quote \" and a backslash \\, #{not} interpolated, #$x #@y #z,\n\
+  a bell \a, escape \e, DEL \x7F and a control \x01."
+email:
+- a@example.com
+- b@example.com
+executables:
+- edge
+- edge-helper
+extensions:
+- ext/edge/extconf.rb
+extra_rdoc_files:
+- README.md
+- LICENSE
+files:
+- lib/edge.rb
+homepage: https://example.com/edge
+licenses:
+- MIT
+- Apache-2.0
+metadata:
+  source_code_uri: https://example.com/edge
+  changelog_uri: https://example.com/edge/CHANGELOG.md
+  allowed_push_host: https://rubygems.org
+post_install_message: "Thanks!\nSee the README."
+rdoc_options:
+- "--main"
+- README.md
+require_paths:
+- lib
+- ext
+required_ruby_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: '3.1'
+  - - "<"
+    - !ruby/object:Gem::Version
+      version: '5'
+required_rubygems_version: !ruby/object:Gem::Requirement
+  requirements:
+  - - ">="
+    - !ruby/object:Gem::Version
+      version: 1.3.1
+requirements:
+- libedge 1.2 or later
+rubygems_version: 3.6.2
+signing_key:
+specification_version: 4
+summary: "Ünïcödé summary"
+test_files:
+- test/edge_test.rb

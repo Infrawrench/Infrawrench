@@ -71,7 +71,7 @@ Cloud Run jobs run containers to completion instead of serving requests. Each jo
 
 The service account needs `run.jobs.list` to list jobs, `roles/run.developer` to create, edit or delete them, and `run.jobs.run` (in `roles/run.invoker`) to execute them.
 
-<insert [Cloud Run job detail page with the Execute header action and the Executions tab listing recent runs] here>
+![Cloud Run job detail page with the Execute header action and the Executions tab listing recent runs](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gcp/cloud-run-job-executions.png)
 
 ## Manage Memorystore for Valkey
 

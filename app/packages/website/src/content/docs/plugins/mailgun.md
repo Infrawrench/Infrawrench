@@ -20,14 +20,14 @@ Connect a Mailgun account to manage how you send and receive mail, in both of Ma
 - **Tags**: edit descriptions and delete tags.
 - **Subaccounts**: enable or disable them, set their monthly limit, create and delete them.
 
-<insert [Mailgun domain detail page showing the DNS records table with valid and unknown records, and the Last 30 days section] here>
+![Mailgun domain detail page showing the DNS records table with valid and unknown records, and the Last 30 days section](https://agent-assets.infrawrench.com/docs-screenshots/plugins/mailgun/domain-detail.png)
 
 ## Connect your account
 
 1. In Mailgun, go to **Account settings > API keys > Create key** and create an account API key. A domain sending key won't work, because it can only send mail. The **Admin** role manages everything. **Developer** manages everything except API keys.
 2. Pick which regions to read. The same key works in both, so leave it on **US and EU** unless you only use one.
 
-<insert [Mailgun Add-account form with the API Key filled in and Regions set to US and EU] here>
+![Mailgun Add-account form with the API Key filled in and Regions set to both US and EU (api.mailgun.net and api.eu.mailgun.net)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/mailgun/add-account.png)
 
 ## Watch your sending limit
 

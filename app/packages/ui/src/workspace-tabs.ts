@@ -165,6 +165,11 @@ export function environmentsTabTarget(): WorkspaceTabTarget {
   return { kind: "environments" };
 }
 
+/** Environment files: a repository's `.infraenv`, edited, resolved and committed. */
+export function envFilesTabTarget(): WorkspaceTabTarget {
+  return { kind: "env-files" };
+}
+
 export function sshFanoutTabTarget(): WorkspaceTabTarget {
   return { kind: "ssh-fanout" };
 }
@@ -175,6 +180,11 @@ export function metricAlertsTabTarget(): WorkspaceTabTarget {
 
 export function probesTabTarget(): WorkspaceTabTarget {
   return { kind: "probes" };
+}
+
+/** Heartbeat monitors for scheduled jobs. */
+export function heartbeatsTabTarget(): WorkspaceTabTarget {
+  return { kind: "heartbeats" };
 }
 
 /** Public status-page configuration. Kept separate from probe operations. */
@@ -188,6 +198,11 @@ export function quotasTabTarget(): WorkspaceTabTarget {
 
 export function priceCatalogTabTarget(): WorkspaceTabTarget {
   return { kind: "price-catalog" };
+}
+
+/** Migration estimates. One tab, optionally remembering which estimate is open. */
+export function migrationEstimatesTabTarget(estimateId?: string): WorkspaceTabTarget {
+  return { kind: "migration-estimates", ...(estimateId ? { estimateId } : {}) };
 }
 
 /**

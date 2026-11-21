@@ -17,7 +17,7 @@ The two answer different questions and are never merged into one number:
 
 When you apply a scenario, the chart draws **both** lines. The trend stays where it was, and the adjusted line sits beside it under the model's name. Every place that shows a scenario says which model is applied and what it added.
 
-<insert [A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title] here>
+![A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/cost-graph-scenario.png)
 
 ## What goes in a model
 
@@ -88,6 +88,8 @@ When you pick a model in a budget:
 You can't delete a model a budget is using (see below), so a budget never quietly switches back to the trend.
 
 ![Budget editor showing the Scenario dropdown with "Q4 plan" selected and the warning text explaining that forecast thresholds will be judged against the adjusted figure](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/budget-scenario-picker.png)
+
+A [migration estimate](./migration-estimates.md) can write its change straight into a model: **Create scenario** on the estimate makes one recurring monthly amount from the migration date.
 
 ## Create and edit models
 

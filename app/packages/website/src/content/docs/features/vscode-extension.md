@@ -55,6 +55,19 @@ settings.
 
 <insert [The Markdown preview of a working-tree estimate: title "+$214.00/month, 3 resources touched", a table of changed blocks with before/after monthly cost, and the blast radius line] here>
 
+## Environment files
+
+The extension understands [`.infraenv` files](./env-files.md), so you can check a change before you commit it:
+
+- **Highlighting** for sections, variables, `resource(...)` and `secret(...)` references and `${...}` substitutions.
+- **Problems as you type.** Syntax errors show straight away, without signing in. Signed in, each reference is also checked against your organization when you open or save the file and shortly after you stop typing: a resource that matches nothing or several, an output its type doesn't have, a secret that doesn't exist or has no value, a substitution with no value. The status bar says when only syntax is being checked.
+- **Hover a reference** to see the resource, type, account and output it points at, or why it points at nothing. A reference with a `${...}` substitution shows one line per environment.
+- **Infrawrench: Insert Resource Reference** searches your resources, lets you pick an output and a variable name, and inserts the reference with a comment naming the resource. It's also in the editor's context menu.
+- **Infrawrench: Pull .env** resolves the file (pick Shared or an environment) and writes the `.env` beside it, readable only by you. It never shows the values, and it asks before replacing a `.env` that Infrawrench didn't generate.
+- **Infrawrench: Check .infraenv** runs the check now and opens the Problems view.
+
+The checks use the organization you're signed in to. An `org` setting in the file is ignored here.
+
 ## Search
 
 **Infrawrench: Search Resources, Services and Saved Objects** searches every connected account's

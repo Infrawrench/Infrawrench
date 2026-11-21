@@ -260,7 +260,10 @@ export function MetricCsvImportModal({
             />
             {fileName && (
               <p className="text-[11px] text-on-surface-faint mt-1">
-                {gt("{file}: {rows} rows", { file: fileName, rows: rows?.length ?? 0 })}
+                {gt("{file}: {rows, plural, one {# row} other {# rows}}", {
+                  file: fileName,
+                  rows: rows?.length ?? 0,
+                })}
               </p>
             )}
           </div>
@@ -377,15 +380,21 @@ export function MetricCsvImportModal({
               {result && (
                 <div className="rounded-lg border border-border">
                   <p className="px-3 py-2 text-xs text-on-surface-secondary border-b border-border">
-                    {gt("{values} values across {days} days will be written.", {
-                      values: result.values.length,
-                      days,
-                    })}
+                    {gt(
+                      "{values, plural, one {# value} other {# values}} across {days, plural, one {# day} other {# days}} will be written.",
+                      {
+                        values: result.values.length,
+                        days,
+                      },
+                    )}
                     {result.errors.length > 0
                       ? " " +
-                        gt("{count} rows cannot be read and will be skipped.", {
-                          count: result.errors.length,
-                        })
+                        gt(
+                          "{count, plural, one {# row cannot be read and will be skipped.} other {# rows cannot be read and will be skipped.}}",
+                          {
+                            count: result.errors.length,
+                          },
+                        )
                       : ""}
                   </p>
                   {result.errors.slice(0, 5).map((e) => (

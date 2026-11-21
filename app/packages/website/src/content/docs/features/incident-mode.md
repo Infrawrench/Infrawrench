@@ -65,7 +65,7 @@ You can set a note's time separately from when you wrote it, so a note written a
 
 If one of these sources is unavailable, or you don't have permission to see it, a small chip says so and the rest of the timeline still shows.
 
-<insert [An incident detail view showing the merged timeline with a note, a workflow run, a probe going down and a failed Slack artefact] here>
+![An incident detail view showing the merged timeline with a probe going down, a failed Slack artefact, a failed workflow run and a note](https://agent-assets.infrawrench.com/docs-screenshots/features/incident-mode/incident-timeline.png)
 
 ## Resolve and write the postmortem
 

@@ -8,7 +8,7 @@ For many providers, you don't need to create a token in the provider's console a
 
 You end up with an ordinary account. It lists the same resources, runs the same actions, and sits in the sidebar next to accounts you added with a token. The only difference is where the token came from, and that Infrawrench keeps it fresh for you.
 
-<insert [Add-account modal with a provider selected, showing the Connect with button at the top, the "or enter credentials manually" divider, and the manual token form below it] here>
+![Add-account modal with a provider selected, showing the Connect with button at the top, the "or enter credentials manually" divider, and the manual token form below it](https://agent-assets.infrawrench.com/docs-screenshots/features/connect-with-oauth/add-account-connect-button.png)
 
 ## Connect an account
 
@@ -22,7 +22,7 @@ On the web and in the desktop app's cloud mode, you have 30 minutes between appr
 
 On the web, the sign-in window is a popup. If your browser blocks it, allow pop-ups for the Infrawrench site and click the button again. Closing the window, or clicking **Cancel** on the form, abandons the attempt without saving anything.
 
-<insert [Add-account form after a successful connection: the token field replaced by a "Connected to" chip, the display name prefilled, and a team picker already set] here>
+![Add-account form after a successful connection: the token field replaced by a "Connected to Railway" chip, the display name prefilled, and the Workspace picker already set](https://agent-assets.infrawrench.com/docs-screenshots/features/connect-with-oauth/add-account-connected.png)
 
 ### What you're granting
 
@@ -61,7 +61,7 @@ Sometimes a connection stops working for good. You revoked Infrawrench's access 
 
 To fix it, click **Reconnect** on the badge or the banner, sign in to the provider again, and approve. The account picks up the new connection right away. Its resources, pins, dashboards and history stay as they were. You can also open **Update credentials** on the account page, where the token field shows **Connected via OAuth** with a **Reconnect** button.
 
-<insert [Account page for a connected account in the Reconnect needed state, showing the warning banner with the Reconnect and Update credentials buttons, and the sidebar badge next to the account name] here>
+![Account page for a connected account in the Reconnect needed state, showing the warning banner with its Reconnect button, Update credentials in the page header, and the Reconnect badge next to the account name in the sidebar](https://agent-assets.infrawrench.com/docs-screenshots/features/connect-with-oauth/account-reconnect-needed.png)
 
 Reconnect signs in as whoever clicks it. If you reconnect an account someone else connected, the account now uses your access at the provider.
 
@@ -74,7 +74,7 @@ For every provider that offers a connection, you can use either a connection or 
 
 Editing other fields of a connected account (a team picker, a region) keeps the connection. Only replacing the token ends it. Accounts you added with a token before this feature existed are untouched.
 
-<insert [Update credentials modal for a connected account, showing the Connected via OAuth chip with the Reconnect and Use a token instead buttons above the remaining fields] here>
+![Update credentials modal for a connected account, showing the Connected via OAuth chip with the Reconnect and Use a token instead buttons above the remaining fields](https://agent-assets.infrawrench.com/docs-screenshots/features/connect-with-oauth/update-credentials-connected.png)
 
 ## Supported providers
 

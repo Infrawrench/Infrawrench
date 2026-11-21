@@ -5,9 +5,10 @@ export const GcsBucketResourceType = rt({
   id: "gcs-bucket",
   iconKey: "bucket",
   description: "A Google Cloud Storage bucket",
+  equivalence: "object-storage",
   fields: [
     f("name", "Name"),
-    f("location", "Location", { showcase: true, required: false }),
+    f("location", "Location", { showcase: true, required: false, sizing: "region" }),
     f("storageClass", "Storage Class", {
       showcase: true,
       kind: "enum",

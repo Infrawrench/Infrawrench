@@ -311,7 +311,13 @@ impl Slot {
         let files: u64 = job
             .inputs
             .iter()
-            .map(|(_, e)| e.iter().filter(|e| matches!(e, Entry::File { .. })).count() as u64)
+            .map(|(_, e)| {
+                e.iter()
+                    .filter(|e| {
+                        matches!(e, Entry::File { path, .. } if path != std::path::Path::new(crate::schedule::ARTIFACT_MODES))
+                    })
+                    .count() as u64
+            })
             .sum();
         let bytes: u64 = job
             .inputs
@@ -576,6 +582,15 @@ impl ExternalJobs {
         let mut tar = tar::Builder::new(Vec::new());
         let fail = |e: std::io::Error| refusal(500, format!("archive: {e}"), None);
         for (_, entries) in &slot.job.inputs {
+            // The modes the producing job's files had (an executable it
+            // built), which the list records beside them.
+            let (entries, modes) = crate::schedule::artifact_modes(entries);
+            let mode_of = |path: &std::path::Path, default: u32| {
+                modes
+                    .iter()
+                    .find(|(p, _)| p == path)
+                    .map_or(default, |(_, mode)| *mode)
+            };
             for entry in entries.iter() {
                 let mut header = tar::Header::new_gnu();
                 match entry {
@@ -588,7 +603,7 @@ impl ExternalJobs {
                     }
                     Entry::File { path, data } => {
                         header.set_entry_type(tar::EntryType::Regular);
-                        header.set_mode(0o644);
+                        header.set_mode(mode_of(path, 0o644));
                         header.set_size(data.len() as u64);
                         tar.append_data(&mut header, relative(path), &data[..])
                             .map_err(fail)?;

@@ -46,6 +46,10 @@ class FakeRunner {
   helps: Array<Record<string, unknown>> = [];
   /** Answers an offer to help with 429, as a runner helping enough does. */
   refusesHelp = false;
+  /** The platforms it lists in its capacity; `null` for a runner from before the field. */
+  platforms: unknown = null;
+  /** The prepare requests it took. */
+  prepares: Array<Record<string, unknown>> = [];
 
   constructor(
     readonly url: string,
@@ -72,6 +76,7 @@ class FakeRunner {
         slots_free: this.slotsFree,
         runs_active: this.runs.length,
         ...(this.split ? { split: true, runs_helping: this.helps.length } : {}),
+        ...(this.platforms === null ? {} : { platforms: this.platforms }),
       });
     }
     const cancel = /^\/v1\/runs\/([0-9a-f]{32})\/cancel$/.exec(path);
@@ -106,6 +111,11 @@ class FakeRunner {
     if (path === "/v1/concurrency" && init.method === "POST") {
       this.resolved.push(JSON.parse(String(init.body)) as Record<string, unknown>);
       return json(200, { commit: "c0ffee", pipelines: [] });
+    }
+    if (path === "/v1/prepare" && init.method === "POST") {
+      if (this.slotsFree === 0) return json(429, { error: "full" });
+      this.prepares.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return json(202, { state: "preparing" });
     }
     if (path.startsWith("/v1/runs") && init.method === "POST") {
       const sent = JSON.parse(String(init.body)) as { split?: { of?: string } };
@@ -917,5 +927,135 @@ describe("split runs", () => {
       of: primary.runs[0]?.id,
       runner: helper === a ? "0" : "1",
     });
+  });
+});
+
+describe("platforms", () => {
+  const request = { repo: "https://github.com/acme/web", branch: "main" };
+  // `a` has the fewer free slots, so a run that needs nothing goes to `b`.
+  const pair = () => ({
+    a: new FakeRunner("http://a.test", 8, 2),
+    b: new FakeRunner("http://b.test", 8, 6),
+  });
+
+  it("passes each runner's platforms on in /v1/capacity, `wasm` alone from an older one", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux", 7, "windows", "linux"];
+    const { call } = await setup([a, b]);
+    const body = (await (await call("GET", "/v1/capacity")).json()) as {
+      runners: Array<{ name: string; platforms: string[] }>;
+    };
+    expect(body.runners.map((r) => [r.name, r.platforms])).toEqual([
+      ["0", ["wasm", "linux", "windows"]],
+      ["1", ["wasm"]],
+    ]);
+  });
+
+  it("places a run on a runner with every platform it needs over a better placed one, and sends no runner `platforms`", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux"];
+    a.split = true;
+    b.split = true;
+    const { call } = await setup([a, b]);
+    const res = await call("POST", "/v1/runs", { ...request, platforms: ["linux"] });
+    expect(res.status).toBe(202);
+    expect(b.runs).toEqual([]);
+    expect(a.runs.length).toBe(1);
+    expect(a.runs[0]?.body).toEqual({ ...request, split: { runner: "0" } });
+    // The other runner is still offered it as a helper, without the field.
+    expect(b.helps).toEqual([{ ...request, split: { of: a.runs[0]?.id, runner: "1" } }]);
+  });
+
+  it("needs every platform named, not one of them", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux"];
+    b.platforms = ["wasm", "linux", "windows"];
+    a.slotsFree = 8;
+    const { call } = await setup([a, b]);
+    expect(
+      (await call("POST", "/v1/runs", { ...request, platforms: ["windows", "linux"] })).status,
+    ).toBe(202);
+    expect(a.runs).toEqual([]);
+    expect(b.runs.map((r) => r.body)).toEqual([request]);
+  });
+
+  it("places as usual when no runner that is up and not draining has them", async () => {
+    for (const absent of ["none", "draining", "down"] as const) {
+      const { a, b } = pair();
+      if (absent !== "none") a.platforms = ["wasm", "windows"];
+      if (absent === "draining") a.draining = true;
+      if (absent === "down") a.down = true;
+      const { call } = await setup([a, b]);
+      const res = await call("POST", "/v1/runs", { ...request, platforms: ["windows"] });
+      expect(res.status).toBe(202);
+      expect(a.runs).toEqual([]);
+      // The runner fails the VM jobs itself; the rest of the run goes on.
+      expect(b.runs.map((r) => r.body)).toEqual([request]);
+    }
+  });
+
+  it("waits for a full runner that has them rather than place the run where its VM jobs would fail", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux"];
+    a.slotsFree = 0;
+    const { call } = await setup([a, b]);
+    expect((await call("POST", "/v1/runs", { ...request, platforms: ["linux"] })).status).toBe(429);
+    expect(b.runs).toEqual([]);
+  });
+
+  it("places a registered schedule on a runner with the platforms its pipeline needs", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux"];
+    const read = b.schedules as { pipelines: Array<Record<string, unknown>> };
+    read.pipelines[0] = { ...read.pipelines[0], platforms: ["linux", 4, "wasm", "linux"] };
+    a.schedules = b.schedules;
+    const { call, deps } = await setup([a, b]);
+    expect((await call("PUT", "/v1/schedules", request)).status).toBe(201);
+    const result = await tick(deps, Date.UTC(2026, 10, 9, 3, 0) / 1000);
+    expect(result.started.length).toBe(1);
+    expect(b.runs).toEqual([]);
+    expect(a.runs.length).toBe(1);
+    expect(a.runs[0]?.body).not.toHaveProperty("platforms");
+  });
+
+  it("places a prepare the same way, without the field", async () => {
+    const { a, b } = pair();
+    a.platforms = ["wasm", "linux"];
+    const { call } = await setup([a, b]);
+    const res = await call("POST", "/v1/prepare", { ...request, platforms: ["linux"] });
+    expect(res.status).toBe(202);
+    expect(a.prepares).toEqual([request]);
+    expect(b.prepares).toEqual([]);
+  });
+
+  it("keeps the field from a runner's concurrency request too", async () => {
+    const { a } = pair();
+    const { call } = await setup([a]);
+    await call("POST", "/v1/concurrency", { ...request, platforms: ["linux"] });
+    expect(a.resolved).toEqual([request]);
+  });
+
+  it("refuses anything but a short list of short names", async () => {
+    const { a } = pair();
+    const { call } = await setup([a]);
+    for (const platforms of [
+      "linux",
+      { linux: true },
+      [3],
+      [""],
+      ["x".repeat(33)],
+      Array.from({ length: 9 }, (_, i) => `p${i}`),
+    ]) {
+      for (const path of ["/v1/runs", "/v1/prepare"]) {
+        const res = await call("POST", path, { ...request, platforms });
+        expect(res.status).toBe(400);
+        expect(((await res.json()) as { error: string }).error).toContain("`platforms`");
+      }
+    }
+    expect(a.runs).toEqual([]);
+    // An empty list, or one of a platform no runner has heard of, is fine.
+    expect((await call("POST", "/v1/runs", { ...request, platforms: [] })).status).toBe(202);
+    expect((await call("POST", "/v1/runs", { ...request, platforms: ["plan9"] })).status).toBe(202);
+    expect(a.runs.map((r) => r.body)).toEqual([request, request]);
   });
 });

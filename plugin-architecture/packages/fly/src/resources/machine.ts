@@ -8,6 +8,7 @@ export const MachineResourceType = rt({
     vcpus: { from: "field", fieldKey: "cpus" },
   },
   description: "A Fly Machine: a fast-launching microVM",
+  equivalence: "vm",
   parentTypeId: "app",
   fields: [
     f("name", "Name", { required: false }),
@@ -28,6 +29,7 @@ export const MachineResourceType = rt({
     f("region", "Region", {
       showcase: true,
       description: "Fly.io region code (e.g. iad, cdg, nrt)",
+      sizing: "region",
     }),
     f("image", "Image", { required: false, description: "Container image used by this machine" }),
     f("appName", "App", { description: "Name of the parent app" }),
@@ -36,8 +38,13 @@ export const MachineResourceType = rt({
       description: "Current instance version identifier",
     }),
     f("cpuKind", "CPU Kind", { required: false, description: "shared or performance" }),
-    f("cpus", "vCPUs", { showcase: true, kind: "number", required: false }),
-    f("memoryMb", "Memory (MB)", { showcase: true, kind: "number", required: false }),
+    f("cpus", "vCPUs", { showcase: true, kind: "number", required: false, sizing: "vcpus" }),
+    f("memoryMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "memory-mb",
+    }),
     f("cordoned", "Cordoned", {
       kind: "boolean",
       required: false,

@@ -5,9 +5,15 @@ export const SpacesResourceType = rt({
   name: "Spaces Bucket",
   id: "spaces-bucket",
   description: "A DigitalOcean Spaces object storage bucket",
+  equivalence: "object-storage",
   fields: [
     f("name", "Bucket Name"),
-    f("region", "Region", { showcase: true, kind: "enum", enumValues: SPACES_REGIONS }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: SPACES_REGIONS,
+      sizing: "region",
+    }),
     f("accessControl", "Access Control", { kind: "enum", enumValues: ["private", "public-read"] }),
   ],
   outputs: [

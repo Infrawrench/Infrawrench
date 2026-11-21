@@ -188,6 +188,7 @@ fn invocation(job: &JobFs) -> Invocation {
         limits: Limits {
             timeout: Duration::from_secs(120),
             memory_bytes: 1 << 30,
+            cpus: None,
         },
         log: None,
         scratch: None,
@@ -273,6 +274,45 @@ fn a_script_runs_bun_and_bun_runs_the_environments_commands() {
         "done",
     ] {
         assert!(stdout.lines().any(|l| l == line), "{line:?} in {stdout}");
+    }
+}
+
+/// Every count a sandboxed job's programs read agrees on what the job is
+/// told it has: its `cpus:`, or 1 without, though the sandbox itself has
+/// all of the runner's CPUs to run on. WASIX's (`nproc`, Node's
+/// `availableParallelism`, `/proc/cpuinfo` as WASIX lists it) and a native
+/// program's (its affinity: Bun's `navigator.hardwareConcurrency` and
+/// `availableParallelism`).
+#[test]
+#[ignore = "needs gVisor, Bun, the bash-node environment and the runner; see the module docs"]
+fn a_sandboxed_job_is_told_the_cpus_it_holds_or_one() {
+    let Some(fx) = fixture() else { return };
+    let have = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
+    let script = r#"
+        echo "nproc $(nproc)"
+        echo "cpuinfo $(grep -c ^processor /proc/cpuinfo)"
+        node -e 'console.log("node", require("os").availableParallelism())'
+        bun -e 'console.log("bun", navigator.hardwareConcurrency, require("os").availableParallelism())'
+    "#;
+    for cpus in [None, Some(2)] {
+        let job = job(&[]);
+        let mut inv = invocation(&job);
+        inv.limits.cpus = cpus;
+        let told = cpus.unwrap_or(1).min(have);
+        let out = fx.run(inv, script);
+        assert_eq!(out.exit_code, 0, "{}", text(&out.stderr));
+        let stdout = text(&out.stdout);
+        for line in [
+            format!("nproc {told}"),
+            format!("cpuinfo {told}"),
+            format!("node {told}"),
+            format!("bun {told} {told}"),
+        ] {
+            assert!(
+                stdout.lines().any(|l| l == line),
+                "{cpus:?}: {line:?} in {stdout}"
+            );
+        }
     }
 }
 

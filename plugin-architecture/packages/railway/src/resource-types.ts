@@ -142,6 +142,7 @@ export const ServiceResourceType = rt({
   description: "A Railway service as deployed in one environment",
   parentTypeId: "environment",
   showInSidebar: true,
+  equivalence: "container-app",
   fields: [
     f("name", "Name", { description: "Renames the service in every environment." }),
     f("status", "Deployment Status", { ...ro, showcase: true }),
@@ -151,11 +152,13 @@ export const ServiceResourceType = rt({
       kind: "enum",
       enumValues: REGIONS.map((r) => r.id),
       required: false,
+      sizing: "region",
       description: "Moving regions redeploys the service; attached volumes migrate.",
     }),
     f("numReplicas", "Replicas", {
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "Instances to run in the region (1 to the plan's replica limit).",
     }),
     f("vcpuLimit", "vCPU Limit", {
@@ -198,6 +201,7 @@ export const ServiceResourceType = rt({
     f("healthcheckTimeout", "Healthcheck Timeout (s)", { kind: "number", required: false }),
     f("cronSchedule", "Cron Schedule", {
       required: false,
+      schedule: "cron",
       description: "Run as a cron job on this UTC schedule instead of staying up.",
     }),
     f("nextCronRunAt", "Next Cron Run", ro),
@@ -343,13 +347,14 @@ export const VolumeResourceType = rt({
   name: "Volume",
   id: "volume",
   description: "A persistent Railway volume mounted into a service",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("mountPath", "Mount Path", { description: "Absolute path inside the service, e.g. /data." }),
-    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", ...ro }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", ...ro, sizing: "disk-gb" }),
     f("usedGb", "Used (GB)", { kind: "number", ...ro }),
     f("state", "State", { ...ro, showcase: true }),
-    f("region", "Region", { ...ro, showcase: true }),
+    f("region", "Region", { ...ro, showcase: true, sizing: "region" }),
     f("serviceId", "Attached Service", ro),
     f("serviceName", "Attached Service Name", ro),
     f("environmentId", "Environment", ro),

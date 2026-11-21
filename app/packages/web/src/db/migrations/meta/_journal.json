@@ -1331,6 +1331,34 @@
       "when": 1794898800595,
       "tag": "0189_chat_models_claude",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1794906727167,
+      "tag": "0190_cost_on_demand_amount",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1794907844966,
+      "tag": "0191_commitment_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1794973879963,
+      "tag": "0192_heartbeats",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1795184464737,
+      "tag": "0193_migration_estimates",
+      "breakpoints": true
     }
   ]
 }

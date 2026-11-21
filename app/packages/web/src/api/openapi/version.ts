@@ -540,4 +540,43 @@
 // and `claude-haiku-4-5` are gone, and every stored conversation was moved to
 // `claude-sonnet-5-5`. Removals ship as a minor by the owner's decision, as in
 // 1.113.0.
-export const API_VERSION = "1.116.0";
+// 1.117.0: saved commitment reports under `/api/org/:orgId/commitments`:
+// `GET /report-options`, `POST /report-query`, `GET`/`POST /reports`,
+// `GET`/`PUT`/`DELETE /reports/:id` and `POST /reports/:id/run`, with their
+// `CommitmentReport*` schemas; `commitment_report` joins the
+// `ShareableObjectType` enum. Additive.
+// 1.118.0: the account root's resource detail also lists the plugin's other
+// top-level types and their resources in `childTypes` and `childResources`,
+// marked by the new optional `ChildTypeRef.topLevel`, so the account page
+// keeps every type and its Create button. Additive.
+// 1.119.0: `GET /api/org/:orgId/associations/candidates` lists the resources
+// whose outputs can fill a secret field (the Reroll dialog's "From resource"
+// list), with the `AssociationCandidate` schema. `POST /associations/literal`
+// now applies the value upstream first when the resource's plugin can, and
+// answers 502 when the provider refuses it. Additive.
+// 1.120.0: `POST /associations` reads the provider's plugin, type and account
+// from its stored row; `providerPluginId`, `providerResourceTypeId` and
+// `providerAccountId` in `AssociationRequest` are now optional, deprecated and
+// ignored. Relaxes a request; existing clients are unaffected.
+// 1.121.0: heartbeat monitors. `/api/org/:orgId/heartbeats` (list,
+// suggestions, create, update, rotate-token, delete, pings) with the
+// `Heartbeat*` schemas, and the unauthenticated ping URL `GET|POST
+// /api/ping/:token[/start|/fail]`; `heartbeats` joins the `TabTarget` enum,
+// `heartbeatAlerts` the alert trigger enum, and `ResourceDetail` gains an
+// optional `hasSchedule`. Additive.
+// 1.122.0: live updates. `POST /api/org/:orgId/live/tickets` with the
+// `LiveTicketRequest`, `LiveTicket` and `LiveSealedQuery` schemas: a poll
+// ticket, or a sealed Neon Realtime change-signal query for one topic.
+// Additive.
+// 1.123.0: migration estimates under `/api/org/:orgId/migration-estimates`:
+// `GET /targets`, `POST /preview`, `GET`/`POST /`, `GET`/`PUT`/`DELETE /:id`,
+// `GET /:id/result`, `GET /:id/terraform` and `POST /:id/scenario`, with their
+// `Migration*` schemas; `migration-estimates` joins the workspace `TabTarget`
+// enum. Additive.
+// 1.124.0: environment files under `/api/org/:orgId/env-files`: `POST
+// /describe`, `POST /resolve`, `GET /sources`, `GET /repos`, `GET /repo-file`
+// and `POST /commit`, with their `Infraenv*` schemas (describe and resolve
+// take optional `vars`; a resource description names a by-name reference's
+// `match` and `matches`); `env-files` joins the workspace `TabTarget` enum.
+// Additive.
+export const API_VERSION = "1.124.0";

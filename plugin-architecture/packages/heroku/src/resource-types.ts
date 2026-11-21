@@ -110,15 +110,20 @@ export const FormationResourceType = rt({
   id: "formation",
   description: "A process type in an app's formation (web, worker, …) with its dyno size and count",
   parentTypeId: "app",
+  // The formation, not the app or its dynos, is what bills: one size times a
+  // count. Marking the app or each dyno too would count the same compute twice.
+  equivalence: "container-app",
   fields: [
     f("type", "Process Type", { showcase: true, editable: false }),
     f("quantity", "Dynos", {
       kind: "number",
+      sizing: "node-count",
       description: "How many dynos to run. 0 stops the process type.",
     }),
     f("size", "Dyno Size", {
       showcase: true,
       required: false,
+      sizing: "instance-type",
       description: "Eco, Basic, Standard-1X, Standard-2X, Performance-M, Performance-L, …",
     }),
     f("command", "Command", ro),

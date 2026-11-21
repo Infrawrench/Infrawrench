@@ -34,10 +34,13 @@ pub trait WriteBudget: Send + Sync + fmt::Debug {
 /// What one file was given without being charged: the bytes it had from
 /// the snapshot when the job's copy of it was made. The file's size past
 /// that is what it has been charged. Shared by every open handle of the
-/// file, and moved with it when it is renamed.
+/// file, and moved with it when it is renamed. Each name of a file with
+/// hard links has an account of its own ([`Account::linked`]) for its
+/// entry, sharing the file's bytes, so the bytes are charged once
+/// whatever the names, and given back with the last one.
 #[derive(Debug, Default)]
 pub(crate) struct Account {
-    free: Mutex<u64>,
+    free: Arc<Mutex<u64>>,
     /// What the file's entry was charged when the job made it (the runner
     /// keeps a node and an account for it), given back when it goes.
     entry: u64,
@@ -46,7 +49,7 @@ pub(crate) struct Account {
 impl Account {
     pub(crate) fn new(free: u64) -> Arc<Self> {
         Arc::new(Self {
-            free: Mutex::new(free),
+            free: Arc::new(Mutex::new(free)),
             entry: 0,
         })
     }
@@ -54,7 +57,16 @@ impl Account {
     /// A new file's account, its entry charged `entry` bytes.
     pub(crate) fn made(entry: u64) -> Arc<Self> {
         Arc::new(Self {
-            free: Mutex::new(0),
+            free: Arc::new(Mutex::new(0)),
+            entry,
+        })
+    }
+
+    /// The account of another name of this file, a hard link whose entry
+    /// was charged `entry` bytes: the file's bytes are this account's.
+    pub(crate) fn linked(&self, entry: u64) -> Arc<Self> {
+        Arc::new(Self {
+            free: self.free.clone(),
             entry,
         })
     }

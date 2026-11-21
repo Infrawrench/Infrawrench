@@ -1,6 +1,6 @@
 {
   "name": "@infrawrench/desktop",
-  "version": "2.1.0",
+  "version": "2.5.0",
   "license": "BUSL-1.1",
   "private": true,
   "description": "A tool for managing infrastructure.",
@@ -17,7 +17,9 @@
     "build": "node scripts/ensure-env.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "node scripts/ensure-env.mjs && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "node scripts/ensure-env.mjs && node scripts/ensure-iwappd.mjs && electron-vite build && bash build/dist.sh"
+    "dist": "node scripts/ensure-env.mjs && node scripts/ensure-iwappd.mjs && electron-vite build && bash build/dist.sh",
+    "build:cli": "node scripts/build-cli.mjs",
+    "package:cli": "node scripts/build-cli.mjs && node scripts/package-cli.mjs"
   },
   "build": {
     "appId": "com.infrawrench.desktop",
@@ -35,6 +37,7 @@
     ],
     "files": [
       "out/**/*",
+      "!out/cli/**",
       "package.json",
       "!**/node_modules/**/{.turbo,.cache,test,tests,__tests__,example,examples,docs,doc,.github,.vscode,.idea,benchmark,benchmarks,fixture,fixtures}/**",
       "!**/node_modules/**/*.{md,markdown,ts,map,log,tsbuildinfo,flow,h,c,cc,cpp,gyp,gypi,d.ts}",
@@ -42,7 +45,8 @@
       "!**/node_modules/**/.{editorconfig,eslintrc,prettierrc,npmignore,gitignore,gitattributes,nycrc,babelrc,travis.yml,circleci}{,*}",
       "!**/node_modules/**/{tsconfig,jsconfig,rollup.config,webpack.config,karma.conf,jest.config,vitest.config}{,.*}.*",
       "!**/{.turbo,.cache}/**",
-      "!**/node_modules/@infrawrench/**"
+      "!**/node_modules/@infrawrench/**",
+      "!**/node_modules/sql.js/dist/{sql-asm*,sql-wasm-debug*,sql-wasm-browser*,worker.*}"
     ],
     "electronFuses": {
       "runAsNode": false,
@@ -51,9 +55,6 @@
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true
     },
-    "asarUnpack": [
-      "**/node_modules/@jitl/quickjs-*/dist/*.wasm"
-    ],
     "extraResources": [
       "iwappd.tar.xz"
     ],
@@ -69,6 +70,7 @@
       "entitlements": "build/info.plist",
       "entitlementsInherit": "build/info.plist",
       "extendInfo": {
+        "LSUIElement": true,
         "NSMicrophoneUsageDescription": "Infrawrench uses the microphone so you can record a clip in the Speech tab and transcribe it against your own speech provider."
       },
       "artifactName": "${productName}-${arch}.${ext}",
@@ -92,14 +94,8 @@
     }
   },
   "dependencies": {
-    "@infrawrench/api-contract": "workspace:*",
-    "@infrawrench/appstream-core": "workspace:*",
-    "@infrawrench/appstream-host": "workspace:*",
-    "@infrawrench/workflow-runtime": "workspace:*",
-    "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
     "dockerode": "^5.0.1",
-    "effect": "catalog:",
     "electron-updater": "^6.8.9",
     "ioredis": "^5.11.1",
     "kill-emudhra": "^0.1.1",
@@ -115,6 +111,12 @@
     "xz-decompress": "^0.2.3"
   },
   "devDependencies": {
+    "@infrawrench/api-contract": "workspace:*",
+    "@infrawrench/appstream-core": "workspace:*",
+    "@infrawrench/appstream-host": "workspace:*",
+    "@infrawrench/workflow-runtime": "workspace:*",
+    "@kubernetes/client-node": "^1.4.0",
+    "effect": "catalog:",
     "@dnd-kit/core": "^6.3.1",
     "@generaltranslation/compiler": "^1.3.37",
     "@infrawrench/client-core": "workspace:*",

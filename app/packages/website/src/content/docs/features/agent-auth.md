@@ -17,8 +17,6 @@ Registering creates a real organization, with real cloud accounts, syncing and d
 
 Everything else works just like a paid plan: connecting AWS, browsing resources, building dashboards, running workflows. Inviting teammates needs a person, so claim the workspace first, then invite people from **Settings > Team**.
 
-<insert The trial countdown banner across the top of an org page, showing roughly 6 hours remaining and the "Claim this workspace" button here>
-
 ## Claim a workspace
 
 1. The agent gives you a code and a link.
@@ -29,7 +27,7 @@ The agent shares the code with you directly, wherever you're already talking to 
 
 Codes look like `K7MP-2Q9X` and last 15 minutes. If yours expires, ask the agent for a new one.
 
-<insert The claim page with a code entered, showing the workspace name, the time remaining, and the two radio options here>
+![The claim page after a code is looked up, showing the workspace name, the time remaining, and the two radio options](https://agent-assets.infrawrench.com/docs-screenshots/features/agent-auth/claim-page.png)
 
 ### Keep it, or move it into an organization you already have
 
@@ -70,7 +68,7 @@ These are things a person should do. An agent that tries gets a 403 that names w
 
 Revoked agents stay in the list, so audit entries that name them stay readable and you can check what they did before you cut them off.
 
-<insert The Agent Credentials settings page listing two agents, one claimed and one revoked here>
+![The Agent Credentials settings page listing two agents, one claimed and one revoked](https://agent-assets.infrawrench.com/docs-screenshots/features/agent-auth/agent-credentials.png)
 
 Agents created by a connected platform such as Nibblets are listed separately on the same page under **Connected platforms**. See [agent links](./agent-links.md).
 

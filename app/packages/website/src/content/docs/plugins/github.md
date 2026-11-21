@@ -32,7 +32,7 @@ Each account covers one **organization** or one **enterprise**, and opens on its
 
 - **Cost centres** (enterprise accounts): each cost centre with its users, organizations, repositories and enterprise teams, and this month's spend. Create, rename and delete them, and edit the member lists to move members in or out.
 
-<insert [GitHub billing account page showing this month's net, gross and discount totals, the product and SKU table, and the premium requests by model table] here>
+![GitHub billing account page showing this month's net, gross and discount totals, the product and SKU table, and the premium requests by model table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/github/billing-account.png)
 
 ## Connect with GitHub
 
@@ -50,7 +50,7 @@ The connection renews itself. If it's revoked, or unused for six months, the acc
 
 Connect with GitHub is available in the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop, GHE.com data residency hosts and GitHub Enterprise Server use a token instead, as described below.
 
-<insert [GitHub add-account form showing the Connect with GitHub button above the manual credential fields] here>
+![GitHub add-account form showing the Connect with GitHub button above the manual credential fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/github/add-account-connect.png)
 
 ## Connect with a token
 
@@ -62,7 +62,7 @@ To paste a token instead, fill in three fields:
 
 A token works the same on web, desktop and local mode.
 
-<insert [GitHub add-account form with a token entered and the Organization or enterprise picker open, listing an enterprise and two organizations] here>
+![GitHub add-account form with a token entered and the Organization or Enterprise picker set to an enterprise (the picker is a native dropdown, shown closed)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/github/add-account-owner.png)
 
 ### Which token to use
 
@@ -108,7 +108,7 @@ GitHub accounts feed [cost graphs & budgets](../features/cloud-costs.md):
 - **History.** Up to a year is loaded when you first connect. Months before your organization moved to the enhanced billing platform are skipped.
 - Amounts are in US dollars, the currency GitHub bills in.
 
-<insert [Cost graph grouped by service for a GitHub account, showing Actions, Copilot and Codespaces stacked by day] here>
+![Cost graph grouped by service for a GitHub account, showing Actions, Copilot and Codespaces stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/github/cost-by-service.png)
 
 ## Leaked secrets
 

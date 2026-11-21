@@ -28,12 +28,15 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    costs no network at all.
 3. **Install** (`iwci-deps`). Read the lockfiles from the snapshot and fetch
    exactly what they pin, verified against the lockfile's hashes and cached
-   by content: pnpm (laid out like pnpm's isolated `node_modules`), Bun
+   by content: pnpm (laid out like pnpm's isolated `node_modules`), npm
+   (the tree `npm ci` makes from `package-lock.json`), Bun
    (its hoisted or isolated `node_modules`, whichever Bun would use), Go
    modules (a `GOMODCACHE`), Cargo crates (a `vendor/` directory), Python
    wheels (the interpreter's user site) and Composer packages (`vendor/`
    and its autoloader). No package manager runs and no install script
-   executes. Both its results are cached: see [Caching](#caching).
+   executes; Rollup and esbuild are installed as their WebAssembly builds
+   (see [Tools and environments](#tools-and-environments)). Both its
+   results are cached: see [Caching](#caching).
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
    and content-addressed blobs in R2, verified by sha256.
 5. **Run** (`iwci-runtime`). Jobs run in parallel as soon as their `needs`
@@ -43,6 +46,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    more jobs are ready than may run, the one with the longest chain of
    work still ahead of it starts first (see [Job order](#job-order)).
 6. **Changes.** What a job wrote is read back from its overlay layer.
+   Only what git would see counts: a new file the repository's
+   `.gitignore` ignores is not a change.
    `changes: fail` fails the job if it changed anything; `changes: commit`
    turns the changes into a commit on top of the run's commit (written to
    the git cache; pushing it is left to the integration).
@@ -126,12 +131,21 @@ the same caches as a push to that branch. See [Manual runs](#manual-runs).
 `workspace.clone`: `depth` (`1` by default, more commits, or `full`), `into`
 (default `/app`), `submodules` (default `false`).
 
-`workspace.deps`: a list of `pnpm`, `bun`, `go`, `cargo`, `pip` or
-`composer`, or `- go: { dir: tools }` to read a lockfile below the root. pnpm also takes
-`only: [app/packages/web]` to install just those importers' closure, and pip
+`workspace.deps`: a list of `pnpm`, `npm`, `bun`, `go`, `cargo`, `pip`,
+`composer` or `bundler`, or `- go: { dir: tools }` to read a lockfile below the root.
+pnpm and npm fetch from the registries the project's `.npmrc` names
+(`registry`, `@scope:registry`; a value with `${...}` in it is ignored,
+since nothing expands it before the jobs, and a registry that needs a
+token is not reachable), and from the public registry otherwise. pnpm also takes
+`only: [app/packages/web]` to install just those importers' closure, pip
 `file: requirements/ci.txt` to read another lock than `pylock.toml` or
-`requirements.txt`. [Bun](#bun), [Python](#python) and [PHP](#php) say what
-the Bun, pip and Composer installers read and check.
+`requirements.txt`, and bundler `ruby: "3.4"` to name the Ruby gems are
+installed for and `without-extensions: [redcarpet]` for gems whose C
+extension the jobs never load. pnpm and bun take `native: true` to install
+the runner's own Linux builds of packages as well (see
+[Native binaries from npm](#native-binaries-from-npm)). [Bun](#bun), [Python](#python), [PHP](#php) and
+[Ruby gems](#ruby-gems) say what the Bun, pip, Composer and Bundler
+installers read and check, and [npm](#npm) the npm one.
 
 ### Filters
 
@@ -161,7 +175,9 @@ everything through.
 
 | Key            | Meaning                                                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`        | Required, unless the job has `cloud:`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                                                   |
+| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                |
+| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                         |
+| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                    |
 | `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
 | `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
 | `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
@@ -171,13 +187,14 @@ everything through.
 | `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
 | `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
 | `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`.                                                                                                                                                          |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                      |
 | `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
 | `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
 | `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
 | `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
 | `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`.                                                                                                                                                     |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                         |
+| `cpus`         | Whole vCPUs the job holds and is told it has, from `1` to `64`, instead of its share of one, with which it is told 1. See [Limits](#limits).                                                                       |
 | `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
 | `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
 | `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
@@ -191,6 +208,7 @@ everything through.
 | `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
 | `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
 | `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
+| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                    |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -390,8 +408,8 @@ in a plan or a report.
   it starts, with the app's reason ("staging is not lent to CI for
   acme/web on feature/x"), and so does an output it did not grant. A job of
   an untrusted run (a pull request from a fork) that names anything fails
-  the same way: "connections, SSH keys and resources are never lent to an
-  untrusted run".
+  the same way: "connections, SSH keys, resources, GitHub tokens and
+  environment files are never lent to an untrusted run".
 - **Only the job that names it.** Files are written into that job's own file
   system (mode `0600` unless the app says otherwise; a directory made for
   them, such as `~/.ssh`, is `0700`), never into the clone, the shared
@@ -476,6 +494,80 @@ is an error when the file is parsed.
 - `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
   request's `github-token`, below).
 
+### Environment files
+
+A job can take its variables from a `.infraenv` file in the repository,
+the committed map of a project's environment that `infrawrench env pull`
+turns into a `.env` (literals, `resource(...)` references to resource
+outputs and `secret(...)` references, with `[env.<name>]` sections and
+`[vars]` substitutions):
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env-file: .infraenv
+    run: pnpm test
+  e2e:
+    using: env:bash-node@24
+    env-file: { path: apps/web/.infraenv, environment: staging, vars: { stage: ci } }
+    env:
+      LOG_LEVEL: debug # the job's own `env:` wins over the file
+    run: pnpm e2e
+```
+
+| Key           | Meaning                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| `path`        | Relative to the repository's root, without `.` or `..`, up to 256 characters. The string form is this. |
+| `environment` | The file's `[env.<name>]` section laid over its `[env]`, and its `[vars.<name>]` over `[vars]`.        |
+| `vars`        | Up to 16 substitutions for `${name}` in the file's references, laid over the file's own, literal text. |
+
+The file is anyone's who can push a branch, so it decides nothing about
+what a job may have: the app does, at dispatch, with the opt-ins every
+other lend uses.
+
+- **Read at the run's commit, by the app.** When it sends the run, the app
+  reads the file through the GitHub App installation at the commit the run
+  checks out, and resolves the job's environment of it. The runner only
+  lists the job's `env-file:` as written (`POST /v1/concurrency`, each
+  job's `env-file`); the file's text is never in a request, a plan or a
+  report.
+- **Literals** become variables as written.
+- **`resource(...)`**, by id or by name (after substitution), is read only
+  when an admin granted that resource to CI for this repository and branch
+  and ticked that output, as for `${{ resources.<name>.<output> }}` (see
+  [Connections, SSH keys and resources](#connections-ssh-keys-and-resources)).
+  The file names the resource, not the grant, so any grant of it that
+  covers the run will do. Anything else fails the job before it starts,
+  naming the variable and what to grant ("`DATABASE_URL` in .infraenv
+  reads connectionString of storefront / dev (neon/neon-branch), which is
+  not granted to CI; grant storefront / dev to CI with the output
+  connectionString for acme/web"); it never runs with an empty value.
+- **`secret("<NAME>")` reads the repository's CI secrets** (see
+  [Secrets and variables](#secrets-and-variables), the same store as
+  `${{ secrets.<NAME> }}`), not the organisation's secrets the app and
+  `infrawrench env pull` resolve it from: those are not CI's. The app sends
+  only the name; the runner fills it in from the run's secrets when the job
+  starts. A secret the run does not have fails the job, unlike
+  `${{ secrets.<NAME> }}`, which reads as empty.
+- **Under the job's own `env:`.** The file's variables come after a
+  connection's, a key's, a GitHub token's and `env-from:`'s, and the job's
+  own `env:` wins. Services do not get them.
+- **Masked.** Resource values and CI secrets are masked like every lent
+  value; literals are not.
+- **Whole or not at all.** One variable that cannot be lent fails every job
+  that uses the file, with that variable's reason. A file that does not
+  parse, is not at the commit, lacks the `environment`, or pins another
+  organisation (`org` under `[infrawrench]`) fails them the same way.
+- **Never for a fork.** A pull request from a fork is sent nothing, and a
+  job of it with `env-file:` fails as with any other lent name.
+- Literal, like every lent name: `${{ }}` is not read in `env-file:`, since
+  the app resolves it before the run starts.
+- A job with `env-file:` cannot be task-cached, and is not shared with
+  another runner in a [split run](#split-runs).
+- `iwci run` reads it from `IWCI_LENT_FILE` like the rest of `lent` (the
+  request's `env-files`, below), with `secret(...)` from `IWCI_SECRET_<NAME>`.
+
 ### Cloud jobs
 
 `cloud:` runs a job on one of the organisation's connected cloud accounts
@@ -554,7 +646,7 @@ web-1` works as written. A job that is not root and cannot write the
   the machine's own network does not reach the host. A lent host is still
   written with its `ProxyJump` when its connection has one.
 - **Not yet**, each an error naming the key: `using`, `args`, `deps`,
-  `tools`, `cache`, `memory`, `network: false`, `services`, `packages`,
+  `tools`, `cache`, `memory`, `cpus`, `network: false`, `services`, `packages`,
   `task-cache`, `env-cache`, `downloads`, `changes: commit`, and `clone`
   other than `{ depth }`. A workspace's `deps` and `services` are not a
   cloud job's.
@@ -572,6 +664,59 @@ web-1` works as written. A job that is not root and cannot write the
 - **The machine gets no cloud credentials** of the account it runs on, only
   the job's own `env:` and what it is lent.
 - `iwci run` has no executor: a cloud job there is an error.
+
+### Platforms
+
+A job runs in a Wasmer isolate on the runner unless its `platform:` says
+otherwise. `platform: linux` runs its `run:` script in a virtual machine
+the runner starts for that job alone, close to GitHub's hosted Ubuntu
+runner without its largest SDKs ([`images/README.md`](images/README.md)
+lists what is in it). `platform: windows` is refused for now: the Windows
+machine is written but turned off until it has run on a real host.
+
+```yaml
+jobs:
+  test:
+    platform: linux # Ubuntu 24.04 in a micro VM; or { os: linux, image: ubuntu-24.04 }
+    run: |
+      npm ci
+      npm test
+    artifacts: [dist]
+```
+
+- **Where.** Only a runner started with `--machines <dir>` (or
+  `IWCI_MACHINES`) runs them: it needs KVM and the image
+  `images/linux/build.sh` builds into that directory. Each machine gets
+  the vCPUs its job holds with `cpus:`, or `--machine-cpus` (default 2)
+  without one. `/v1/capacity` lists what a runner
+  runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
+  log, whatever the host lacks, and the proxy places a run whose pipelines
+  need a machine on a runner that has it. A runner without one fails just
+  those jobs, saying so.
+- **The machine.** QEMU with KVM: on x86_64 the `microvm` machine type
+  with the kernel booted directly, on aarch64 `virt`. The job's `memory:`
+  is the machine's whole memory, and the runner reserves the emulator's
+  own beside it (160 MiB). Jobs run as root. The agent inside
+  (`crates/iwci-guest`) talks to the runner over a virtio-serial port
+  (`crates/iwci-vm-proto`).
+- **Files.** The machine starts from the same files an isolate would: the
+  clone, the artifacts of the jobs it needs, lent files and restored
+  caches. The clone is a read-only erofs image made once per commit and
+  shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
+  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, the run's
+  `/tmp/workflow` (shared with isolate jobs), and, for `changes:`, the
+  clone without what its `.gitignore` ignores. A job's `npm ci` stays in
+  the machine, and artifacts in ignored directories (`dist`) still come
+  back. All of it is at most twice the job's `memory:`.
+- **Network.** The machine's traffic goes through the runner's own gateway
+  under the same policy as an isolate's ([Networking](#networking)):
+  public addresses only, never the host. `network: false` cuts it off.
+- **What it cannot have.** Keys that only mean something in an isolate are
+  errors: `using`, `args`, `deps`, `tools`, `services`, `env-cache` and
+  `task-cache` (the script installs and starts what it needs, and `cache:`
+  keeps it between runs). A machine job stays on
+  the runner that has its run; helpers never take one
+  ([Split runs](#split-runs)).
 
 ### The run's scratch directory
 
@@ -614,6 +759,11 @@ jobs:
 - Handed-on files are not the receiving job's changes, so `changes: fail`
   and `changes: commit` ignore them. They count toward the receiving job's
   `memory:`.
+- Handed-on files keep the modes they had (a program the job built stays
+  executable), in the job that needs them, a cloud job's checkout and a
+  task cache hit alike: the list carries a record of them,
+  `/iwci/artifact-modes`, which is applied after the files and is not a
+  file of the job.
 - Everything kept lives in memory until the run ends and counts toward the
   run's `scratch:` limit; a job whose artifacts would pass it fails.
 
@@ -942,8 +1092,9 @@ jobs:
   `needs.<job>.result` is `success`, `failure` or `skipped`.
 
 Every tool is pinned. `@7.1` takes the newest `7.1.x`, `@7` the newest `7.x`,
-`@7.1.3` exactly that; a bare name is an error, so a new release can never
-change what an old commit runs.
+`@7.1.3` exactly that release or its newest rebuild (below), and four
+numbers (`@7.1.3.2`) one rebuild; a bare name is an error, so a new
+release can never change what an old commit runs.
 
 ### Job order
 
@@ -1154,38 +1305,52 @@ split:
 | `repo`    | `repo:licence-check@2`   | A wasm tool uploaded for one repository. Found in R2 under that repository's prefix only.                                    |
 | `env`     | `env:bash-node@24`       | A set of Wasmer packages a `run:` script executes in. bash spawns the other commands as WASIX processes in the same isolate. |
 
+Versions are `MAJOR.MINOR.PATCH`, with a prerelease (`7.1.0-beta.2`) that
+only a request naming it exactly picks. A published version never changes,
+so a builtin whose version is its upstream release's (`bun@1.4.4`) and
+whose build changes gets a fourth number, the rebuild, counted from 1:
+`1.4.4.1` sorts after `1.4.4` and before `1.4.5`, `@1`, `@1.4` and `@1.4.4`
+all take the newest rebuild, and `@1.4.4.1` pins it. A rebuild is never a
+prerelease. A runner from before rebuilds does not parse such a version and
+skips it, so it keeps running the release it knew. An environment counts
+its own builds in its patch number instead (`bash@5.1.20`).
+
 Builtins:
 
-| Builtin            | ABI        | Built from                                                                                                                                   |
-| ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `typescript@7.1`   | `tsc-host` | [tsc-rs] v0.8.0 (TypeScript 7.1) for `wasm32-wasip1`. Reads files through two host imports the runner serves from the in-memory file system. |
-| `gofmt@1.27`       | `wasi`     | Go 1.27.3's `cmd/gofmt`, `GOOS=wasip1`.                                                                                                      |
-| `oxfmt@0.69`       | `wasix`    | Oxc `apps_v1.84.0`'s pure-Rust CLI for WASIX (it needs threads).                                                                             |
-| `kubectl@1.37`     | `wasix`    | kubectl 1.37.2, built with `env:go`'s toolchain for WASIX, so it reaches a cluster over the job's network. See [kubectl](#kubectl).          |
-| `ssh@10.6`         | `wasix`    | OpenSSH 10.6p2's `ssh`, built for WASIX with OpenSSL 3.5.9. See [OpenSSH](#openssh).                                                         |
-| `scp@10.6`         | `wasix`    | OpenSSH 10.6p2's `scp`, which runs `ssh`: list both.                                                                                         |
-| `sftp@10.6`        | `wasix`    | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                        |
-| `ssh-keygen@10.6`  | `wasix`    | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                               |
-| `ssh-keyscan@10.6` | `wasix`    | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                              |
-| `vercel@65`        | `node`     | The Vercel CLI 65.17.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                       |
-| `wrangler@4`       | `node`     | Wrangler 4.163.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                       |
-| `cf@1.0.0-rc.0`    | `node`     | Cloudflare's CLI, `cf` 1.0.0-rc.0 (a release candidate: name the exact version). See [Deployment CLIs](#deployment-clis).                    |
-| `neon@9`           | `node`     | The Neon CLI 9.5.1 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                         |
+| Builtin            | ABI             | Built from                                                                                                                                                                               |
+| ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `typescript@7.1`   | `tsc-host`      | [tsc-rs] v0.8.0 (TypeScript 7.1) for `wasm32-wasip1`. Reads files through two host imports the runner serves from the in-memory file system.                                             |
+| `gofmt@1.27`       | `wasi`          | Go 1.27.3's `cmd/gofmt`, `GOOS=wasip1`.                                                                                                                                                  |
+| `oxfmt@0.69`       | `wasix`         | Oxc `apps_v1.84.0`'s pure-Rust CLI for WASIX (it needs threads).                                                                                                                         |
+| `kubectl@1.37`     | `wasix`         | kubectl 1.37.2, built with `env:go`'s toolchain for WASIX, so it reaches a cluster over the job's network. See [kubectl](#kubectl).                                                      |
+| `ssh@10.6`         | `wasix`         | OpenSSH 10.6p2's `ssh`, built for WASIX with OpenSSL 3.5.9. See [OpenSSH](#openssh).                                                                                                     |
+| `scp@10.6`         | `wasix`         | OpenSSH 10.6p2's `scp`, which runs `ssh`: list both.                                                                                                                                     |
+| `sftp@10.6`        | `wasix`         | OpenSSH 10.6p2's `sftp`, which runs `ssh`: list both.                                                                                                                                    |
+| `ssh-keygen@10.6`  | `wasix`         | OpenSSH 10.6p2's `ssh-keygen`.                                                                                                                                                           |
+| `ssh-keyscan@10.6` | `wasix`         | OpenSSH 10.6p2's `ssh-keyscan`.                                                                                                                                                          |
+| `vercel@65`        | `node`          | The Vercel CLI 65.17.0 from npm, on the environment's `node`. See [Deployment CLIs](#deployment-clis).                                                                                   |
+| `wrangler@4`       | `node`          | Wrangler 4.163.0, bundling with esbuild-wasm. See [Deployment CLIs](#deployment-clis).                                                                                                   |
+| `cf@1.0.0-rc.0`    | `node`          | Cloudflare's CLI, `cf` 1.0.0-rc.0 (a release candidate: name the exact version). See [Deployment CLIs](#deployment-clis).                                                                |
+| `neon@9`           | `node`          | The Neon CLI 9.5.1 (`neonctl`'s successor). See [Deployment CLIs](#deployment-clis).                                                                                                     |
+| `bun@1.4`          | `native-gvisor` | Bun 1.4.4, the official release, run natively in a gVisor sandbox (`tools:` only). See [Bun](#bun).                                                                                      |
+| `rust@1.100`       | `native-gvisor` | Rust 1.100.0 (rustc, cargo, rust-std, rustfmt, clippy) with GCC 13 and binutils, the official releases, run natively in a gVisor sandbox (`tools:` only). See [Rust](#rust).             |
+| `glibc@2.39`       | `native-gvisor` | Ubuntu 24.04's C library and C++ runtime, files alone: runs a job in the gVisor sandbox, where the Linux programs it has run. See [Native binaries from npm](#native-binaries-from-npm). |
 
 Environments:
 
-| Environment            | Packages                                                                                                                                                                                                                               |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)) |
-| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible; `node`, `npm`, `pnpm`, and the runner's `npx`)                                                                                                 |
-| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                            |
-| `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                      |
-| `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                          |
-| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                               |
-| `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                            |
-| `aws@1.46`             | `python@3.13`'s packages plus our `iwci/aws-cli` (the AWS CLI 1.46.3; see [Cloud CLIs](#cloud-clis))                                                                                                                                   |
-| `az@2.92`              | `python@3.13`'s packages plus our `iwci/azure-cli` and `iwci/azure-cli-mgmt` (the Azure CLI 2.92.0; see [Cloud CLIs](#cloud-clis))                                                                                                     |
-| `gcloud@593`           | `python@3.13`'s packages plus our `iwci/gcloud` and `iwci/gcloud-apis` (the Google Cloud CLI 593.0.0, `gcloud` and `bq`; see [Cloud CLIs](#cloud-clis))                                                                                |
+| Environment            | Packages                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash@5`               | `wasmer/bash` 1.0.25 (GNU bash 5.1, patched), `wasmer/coreutils` 1.0.27, `wasmer/sed` 4.9.0 (GNU sed, patched), `wasmer/grep` 3.12.0, `wasmer/findutils` 0.10.1 and our `iwci/git` (Git 2.56.1, built for WASIX here; see [Git](#git)), and, from 5.1.21, `wasmer/gzip` 1.14.0 and our `iwci/tar` and `iwci/openssl` (GNU tar 1.35 and OpenSSL 3.5.9, built for WASIX here; see [tar and OpenSSL](#tar-and-openssl)) |
+| `bash-node@24`         | the above plus `wasmer/edgejs` 0.2.5, rebuilt on a fixed C library (Node 24 compatible, TypeScript type stripping included; `node`, `pnpm`, and the runner's `npm` and `npx`); tar, gzip and openssl from 24.0.22                                                                                                                                                                                                    |
+| `python@3.13`          | `bash@5`'s packages plus `python/python` 3.13.20 (CPython 3.13.15 with pip, patched; see [Python](#python))                                                                                                                                                                                                                                                                                                          |
+| `php@8.1` to `php@8.5` | `bash@5`'s packages plus `phpix/phpix-8X-64bit` 0.3.1, `sendmail/sendmail` 0.1.10, `wasmer/icu-data` 78.3.0 and our `iwci/php-cli` (a php-cli compatible `php`, Composer 2.11.2; see [PHP](#php))                                                                                                                                                                                                                    |
+| `go@1.23` to `go@1.27` | `bash@5`'s packages plus Go 1.23.12, 1.24.13, 1.25.14, 1.26.11 or 1.27.4, built for WASIX here (`go`, `gofmt`; see [Go](#go))                                                                                                                                                                                                                                                                                        |
+| `ruby@3.4`, `ruby@4.0` | `bash@5`'s packages plus our `iwci/ruby` (CRuby 3.4.12 or 4.0.9, built for WASIX here, with RubyGems and Bundler; see [Ruby](#ruby))                                                                                                                                                                                                                                                                                 |
+| `postgres@18.4`        | `bash@5`'s packages plus `wasmer/pglite` 0.2.0 (PostgreSQL 18.4, in memory) and our `iwci/pglite-server` (many connections, `pgcrypto`), for `services:` (see [PostgreSQL](#postgresql))                                                                                                                                                                                                                             |
+| `clickhouse@26.11`     | `bash-node@24`'s packages plus our `iwci/clickhouse` (ClickHouse 26.11, CloudHouse built for one-thread WebAssembly, in memory, behind its HTTP interface), for `services:` (see [ClickHouse](#clickhouse))                                                                                                                                                                                                          |
+| `aws@1.46`             | `python@3.13`'s packages plus our `iwci/aws-cli` (the AWS CLI 1.46.3; see [Cloud CLIs](#cloud-clis))                                                                                                                                                                                                                                                                                                                 |
+| `az@2.92`              | `python@3.13`'s packages plus our `iwci/azure-cli` and `iwci/azure-cli-mgmt` (the Azure CLI 2.92.0; see [Cloud CLIs](#cloud-clis))                                                                                                                                                                                                                                                                                   |
+| `gcloud@593`           | `python@3.13`'s packages plus our `iwci/gcloud` and `iwci/gcloud-apis` (the Google Cloud CLI 593.0.0, `gcloud` and `bq`; see [Cloud CLIs](#cloud-clis))                                                                                                                                                                                                                                                              |
 
 An environment's major and minor version follow the runtime it carries
 (Node 24, CPython 3.13, PHP 8.4), so `env:python@3.13` always means a
@@ -1198,6 +1363,10 @@ names the runtime release inside.
 
 Scripts run with `set -euo pipefail`, but see the known limitations: under
 WASIX a pipeline currently reports only its last command's status.
+
+`tar`, `gzip` (`gunzip`, `zcat`) and `openssl` are in `bash` and
+`bash-node` only, not the other environments built on `bash@5`'s packages;
+see [tar and OpenSSL](#tar-and-openssl).
 
 A file that starts with `#!` runs its interpreter, from bash or from
 Node's `child_process` alike (`#!/bin/bash`, `#!/usr/bin/env node`), and a
@@ -1305,10 +1474,65 @@ packages whose native addon falls back to a `wasm32-wasi` build need:
 rolldown, and with it Vite 8, Vitest and tsdown; oxc; the Astro compiler.
 The pnpm installer installs those `wasm32` builds: it treats a job as a
 platform with cpu `wasm32` and no operating system, so they are the
-optional dependencies it keeps and native ones the ones it leaves out. A
+optional dependencies it keeps and native ones the ones it leaves out
+(unless `native: true` asks for the runner's own as well, see
+[Native binaries from npm](#native-binaries-from-npm)). A
 package that leaves its WASI build out of its own optional dependencies, as
 rolldown does, needs it listed in the repository: an `optionalDependencies`
 entry pnpm records in the lockfile but installs on no real machine.
+
+Three packages publish their WebAssembly build as a package of its own
+rather than as an optional dependency: Rollup 4, which throws `Your current
+platform "wasi" and architecture "wasm32" combination is not yet supported
+by the native Rollup build` as it is imported, esbuild, whose API starts a
+native executable, and Lightning CSS, which looks for its addon as it is
+imported. Vite 5 to 7 (and Vitest on them) load the first two before
+anything else, and Tailwind CSS 4 (`@tailwindcss/node`, under its Vite and
+PostCSS plugins) the third. The pnpm and Bun installers install them as
+`@rollup/wasm-node`, `esbuild-wasm` and `lightningcss-wasm` at the version
+the lockfile pins, in the native package's own directory, which is what
+the projects suggest (`"overrides": { "rollup": "npm:@rollup/wasm-node" }`)
+without the repository having to say so: `import "rollup"` loads Rollup's
+parser as WebAssembly, esbuild's API runs its compiler with `node`, as
+[Wrangler's](#deployment-clis) does, and `lightningcss-wasm`'s
+`package.json` sends Node's `require` and `import` to an entry that loads
+its module as it is imported and exports what `lightningcss` does
+(`napi-wasm`, which it needs, is bundled in its tarball). The lockfile pins
+the native package, not the build, so the build is checked against the
+SHA-512 integrity its registry publishes for that version (the version's
+manifest, read over HTTPS), the check a package manager makes when it adds
+a package; the download is then cached by that hash like any other. Only
+registry packages are replaced (a tarball by URL stays as it is), Rollup 3
+and older are plain JavaScript and stay, and a version the registry has no
+build of is installed native, as before. The table is `WASM_BUILDS` in
+`crates/iwci-deps/src/wasm_builds.rs`; it is part of every install's cache
+key and every npm job's task cache key. `@tailwindcss/oxide` is not in it:
+its `wasm32-wasi` build is one of its optional dependencies, which the
+installers already keep. With both, Tailwind CSS 4 compiles in a job (a
+Vite 7 build with `@tailwindcss/vite` writes its CSS and exits, from
+`bash-node` 24.0.22).
+
+The installers write `node_modules/.bin`, so a package script runs the
+commands it names: `pnpm run lint` with `"lint": "eslint ."` finds
+`node_modules/.bin/eslint`, as do `bun run`, `npm run` and a script that
+calls `node_modules/.bin/vitest`. pnpm's rules decide what goes there: a
+project's `.bin` has the commands of everything in its `node_modules`
+(its own dependencies, workspace projects it links to, and at the root
+anything publicly hoisted), and each package's own `.bin` in the virtual
+store those of its dependencies the lockfile marks `hasBin`; Bun's
+installer gives every `node_modules` directory one for the packages placed
+in it, and the npm installer does what `npm ci` does (see [npm](#npm)).
+A command comes from `bin` (a string names it after the package,
+without its scope; a map names each) or, without one, from the files under
+`directories.bin`; when two packages offer one name, a project's own
+dependency beats a hoisted one, then the package named after the command,
+then the name that sorts last, then the higher version. Each command is a
+symbolic link to its file, as Bun writes them and as pnpm does with
+`prefer-symlinked-executables`, rather than pnpm's default shell script,
+which would start `readlink`, `sed` and `uname` on every run: the job's
+`bash` runs the file by its `#!` line, and Node resolves its imports from
+where the file really is. File modes are not set, since nothing in a job
+checks one before running a file ([File modes](#file-modes)).
 
 Every `node` pays for what the preload does, so it loads no built-in that
 Edge.js's bootstrap has not already loaded: the patch that looks a child's
@@ -1574,6 +1798,49 @@ in Node. The same Edge.js build is in `env:clickhouse` 26.11.3.
 24.0.19 changes no package: it sets `PNPM_HOME` and puts it on `PATH`, so
 `npm i -g` and `pnpm add -g` work (see [Global installs](#global-installs)).
 
+24.0.22 adds `edgejs-typescript.patch`: TypeScript runs as in Node 24, by
+Node's own type stripping. `node script.ts`, `require` and `import` of
+`.ts`, `.mts` and `.cts` files (so `eslint.config.ts` with
+`--flag unstable_native_nodejs_ts_config`, or a Vite or Prettier config
+in TypeScript), `--input-type=module-typescript` and
+`module.stripTypeScriptTypes()` work, and `process.features.typescript`
+is `"strip"`. `--no-experimental-strip-types` turns it off and
+`--experimental-transform-types` turns on transforms (`enum`,
+`namespace`, parameter properties; `process.features.typescript` is then
+`"transform"`), on the command line or in `NODE_OPTIONS`. As in Node, only
+erasable syntax is stripped without that flag (anything else is
+`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, with where), nothing under
+`node_modules` is stripped (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`),
+nothing is type checked, and with `NODE_COMPILE_CACHE` the stripped source
+is cached too. Edge.js already carried all of it, Node 24.13's loaders and
+amaro 1.1.5 (SWC's stripper, as WebAssembly the engine compiles when the
+first TypeScript file loads) among its built-ins, but said it had none:
+`process.config` said `node_use_amaro: false`, `process.versions` had no
+`amaro` and `--strip-types` was off, so `process.features.typescript` was
+`false` and a `.ts` file was an unknown extension. The patch changes those
+three and nothing else.
+
+24.0.22 also lists a variable the environment names twice once, where it
+first appears, as Node does (`edgejs-env-keys.patch`): `Object.keys(process.env)`
+threw "'ownKeys' on proxy: trap returned duplicate entries" instead. That is
+what killed every pnpm command in a project whose `packageManager` names
+another pnpm version: pnpm switches by starting another pnpm, which got the
+pnpm command's own `npm_config_*` twice, from its parent and from the
+command. The runner now applies a command's environment as defaults, so
+that environment has each name once (`vendor/README.md`, wasmer-wasix; it
+comes with the runner release after this change, and the Edge.js patch
+keeps it working on runners before it). And `process.versions.undici` is
+undici's version, 7.18.2, where it was `0.0.0` (`edgejs-undici-version.patch`).
+A Worker's native handle has writable methods, as Node's has
+(`edgejs-handle-methods.patch`): the WebAssembly loader napi-rs
+generates replaces `worker[kHandle].ref` with a no-op so its thread pool
+never holds the process open, and the assignment did nothing, so a `node`
+that had run `@tailwindcss/oxide`'s scanner (a Vite build with Tailwind CSS 4) printed its output and then ran into the job's timeout. The
+same patch makes `fs.watchFile`'s and `fs.watch`'s handles' methods
+writable too. 24.0.22 also has GNU tar, gzip and `openssl`, as `bash`
+5.1.21 has (see [tar and OpenSSL](#tar-and-openssl)).
+The same Edge.js build is in `env:clickhouse` 26.11.6.
+
 The build is reproducible, and without the patches it gives back Wasmer's
 module bit for bit (`EDGEJS_VERIFY=1`), so the patches are the whole
 difference. Drop each patch when the sysroot Edge.js builds on, or Edge.js,
@@ -1603,7 +1870,8 @@ it through files the runner serves at `/proc/iwci`:
 
 - `chmod` (octal and symbolic modes, `-R`, `-f`, `-v`, `-c`, `--reference`),
 - `stat` (`-c`/`--printf` formats, `-L`, `-t`, and GNU's default output;
-  inode and device numbers read 0, and the job's user has no name),
+  inode numbers and link counts are what `stat(2)` reports, device numbers
+  read 0, and the job's user has no name),
 - `mktemp` (GNU's options), whose file is `0600` and directory `0700`.
 
 `stat -c %a "$(mktemp)"` therefore prints `600`. Node (`env:bash-node`
@@ -1615,6 +1883,42 @@ it through files the runner serves at `/proc/iwci`:
 or one that already has a mode recorded (the checkout's executables,
 anything `chmod`ed), and leaves any other as it was. Other programs see no
 modes (see the known limitations).
+
+### Hard links
+
+A file in the job's file system can have more than one name, as on Linux
+([#1052](https://github.com/Infrawrench/Infrawrench/issues/1052)): `ln f g`,
+`link(2)`, Node's `fs.linkSync`, Python's `os.link` and a native program's
+`link()` give it a second name, and the names are one file.
+
+- **One file.** A write through one name is read through the other, a
+  truncation or a `chmod` through one is the other's, and an open file
+  keeps working whichever name goes. Removing a name leaves the others;
+  the file goes with its last name.
+- **One inode number and a count of names**, as `stat(2)`, `fstat(2)`
+  and the `stat` command (`%i`, `%h`) report them (coreutils' `ls` shows
+  neither, as it shows no modes): every name reports the number the first name had when the
+  link was made (inode numbers are hashes of paths here), and `st_nlink`
+  counts the names, so lock files made by linking a file to the lock's
+  name and checking for a count of two work. A rename onto another name of
+  the same file does nothing, as `rename(2)` does nothing then.
+- **A checked-out file** is copied into the job's own layer to be linked,
+  as a write to it would be, and is not charged for that.
+- **The job's `memory:`** pays a file's bytes once whatever its names, and
+  each name's entry as a new file's; the bytes come back with the last
+  name.
+- **Only within the job's own file system.** A link between it and another
+  mount (the run's scratch directory, `/usr/local/bin`, a Node tool's
+  directory) fails with `EXDEV` ("Cross-device link"), as across two Linux
+  file systems, and programs that link fall back to copying on that. A
+  directory is refused with `EPERM`, as on Linux.
+- **What leaves the job is files.** Git has no hard links, so
+  `changes:` reports each name as a file with the content, and caches,
+  artifacts, downloads and the task cache keep each name as a file of its
+  own: restored, they are separate files, each with the file's mode.
+- **A Unix socket's path** is a file here (see [Networking](#networking));
+  a link to it is another path that connects to the same socket, as on
+  Linux.
 
 ### Global installs
 
@@ -1638,13 +1942,22 @@ deploy:
   deployment CLIs we publish, which are built from a lockfile and verified
   like any other builtin. A package's install scripts do not run (pnpm's
   default for dependencies it has not been told to build).
-- **Edge.js's `npm` is pnpm**, so `npm i -g` and `pnpm add -g` are the same
-  install: into `PNPM_HOME` (`/root/.local/share/pnpm`, which the
+- **A global install is pnpm's**, so `npm i -g` and `pnpm add -g` are the
+  same install: into `PNPM_HOME` (`/root/.local/share/pnpm`, which the
   environment sets and puts on `PATH` after the system's directories),
   with the package under `$PNPM_HOME/global/5`. `pnpm remove -g` takes it
-  away. `npx` is npm's own (`/npm/bin/npx-cli.js`, which the runner puts on
+  away. The runner's `npm` is npm itself (below), and hands any command
+  with `-g` or `--global` to Edge.js's own `npm` command, which is pnpm.
+  `npx` is npm's own (`/npm/bin/npx-cli.js`, which the runner puts on
   `PATH`): it runs a project's installed command first and fetches the
   package otherwise, into `~/.npm/_npx`; `pnpm dlx` always fetches.
+- **`npm` is npm** (11.8.0, Edge.js's copy, `/npm/bin/npm-cli.js`), which
+  the runner puts first on `PATH` as it does `npx`: Edge.js's own `npm`
+  command is pnpm, which refuses a project whose `packageManager` names
+  npm. `npm run`, `npm test`, `npm exec` and `-w <workspace>` work as on
+  any machine. `npm ci` does not: npm refuses a package whose `os` list
+  leaves out the job's platform (`wasi`), which is what
+  [`deps: [npm]`](#npm) is for.
 - **Only for that job.** It is installed into the job's own file system,
   as anything else it writes, so the next job starts without it. To keep it
   between runs, cache the directory with a [job cache](#job-caches), which
@@ -1663,7 +1976,9 @@ deploy:
   Linux (an optional dependency per platform) finds none: a job is
   `wasm32` with no operating system to the package managers, so they leave
   native packages out and keep `wasm32` ones (see
-  [Tools and environments](#tools-and-environments)).
+  [Tools and environments](#tools-and-environments)); in the native
+  sandbox such a program can run (see
+  [Native binaries from npm](#native-binaries-from-npm)).
 - Four fixes made it work (#1200): `HOME` exists in every environment job
   (it was only a variable, so `pnpm dlx` failed with "lstat '/root'"); a
   command runs through the symbolic link npm and pnpm install it as (#1199,
@@ -1671,6 +1986,54 @@ deploy:
   (`crates/iwci-runtime/node/pnpm-global.cjs`); and a `node` child's
   command is looked up on the `PATH` it is given, as `pnpm dlx` and execa's
   `preferLocal` expect (#1201, `crates/iwci-runtime/node/spawn-path.cjs`).
+
+### Installing in a script
+
+`deps:` is the way to install a workspace's dependencies: natively, once
+per run, verified against the lockfile and shared by every job. A job can
+still run the package manager itself (`deps: false` and `pnpm install`,
+`npm ci`, `pnpm add`), and gets a working install:
+
+```yaml
+install:
+  using: env:bash-node@24
+  deps: false
+  run: pnpm install --frozen-lockfile
+```
+
+- **Three to four and a half times native.** create-t3-turbo (1,502 packages, 84,000
+  files) installs with a cold store in about 54 s on ci-1 with 4 vCPUs,
+  against 17 s for pnpm on the same host natively and 23 s natively with
+  the settings Edge.js gives its pnpm (below); with the host's other work
+  at a load of 28 to 41 on its 8 cores, 60 to 84 s against 19 s. The job
+  uses more CPU than native pnpm (about 1.6 cores against 1.3), so it
+  loses more to a busy host. Most of the difference is the
+  runner's file system serving each of several hundred thousand `stat`,
+  `open` and `write` calls: compiled code, Edge.js's WebAssembly and the
+  JavaScript V8 runs, is about a tenth of the CPU time.
+  Until November 2026 the same install did not finish in an hour: every
+  `stat` walked the runner's record of file modes and every few inodes it
+  swept its whole inode table, both quadratic in the number of files
+  (`vendor/README.md`, wasmer-wasix, and `iwci-vfs`'s `modes.rs`).
+- **The store and `node_modules` are both in memory**, and with Edge.js's
+  default `npm_config_package_import_method=copy` (below) the package files
+  are copied out of the store. `hardlink` (or `auto`) in a job's `env:`
+  links them instead ([Hard links](#hard-links)), which pays for each
+  file's bytes once. create-t3-turbo's install passed in the default
+  `memory: 2GiB` every time it was tried; a larger tree needs more.
+- **Edge.js's pnpm has its own defaults**, which a job's `env:` can
+  override: `npm_config_node_linker=hoisted` (a flat `node_modules`, as
+  npm makes, not pnpm's linked one; `isolated` works and was faster here,
+  41 s against 54 s), `npm_config_package_import_method=copy`,
+  `npm_config_network_concurrency=4` (16 was 48 s against 54 s) and
+  `npm_config_store_dir=/tmp/.pnpm-store`.
+- **A project's `packageManager` is honoured**: pnpm installs the version
+  it names and runs it, as on any machine. That failed until November 2026
+  (a child given an environment key twice, a link under a renamed
+  directory, and inode numbers Node read as one number; `vendor/README.md`).
+- **Install scripts that fetch a native binary fail**, as any native
+  package does (esbuild's `postinstall` cannot find a build for `wasm32`).
+  `--ignore-scripts` skips them.
 
 ### Tools in a script
 
@@ -1829,7 +2192,17 @@ dev`, a Node tool in `env:bash`, and one run as a job of its own. The
 ### Native tools in a sandbox
 
 A tool whose manifest says `abi: native-gvisor` is a native Linux program,
-not a module (`builtin:bun`, see [Bun](#bun)). A job that names one in
+not a module (`builtin:bun`, see [Bun](#bun)), or a set of them
+(`builtin:rust`, see [Rust](#rust)). Bun's manifest names a program per
+target, which runs as the tool's name and its `aliases` (`bunx`); a
+toolchain's names `commands` instead, each the path of one of its files
+(`cargo` is `/opt/rust/bin/cargo`), which a job finds on `PATH` as a link
+in `/usr/local/bin` to that file, so a program that looks beside itself
+for its libraries finds them (a runner older than `commands` refuses such
+a manifest). `builtin:glibc` names neither, only files: the C library, so
+a job runs in the sandbox and the Linux programs it has run there. Each
+target is held to the 1 GiB a tool's files may add up
+to on its own, since a job fetches only its own. A job that names one in
 `tools:` runs whole in a gVisor sandbox of its own, the runner's own
 binary first, which runs the script and the services exactly as a WASIX
 job runs them, beside the native program:
@@ -1880,10 +2253,16 @@ job runs them, beside the native program:
   sandbox, not what the runner inside reports.
 - **CPU.** The runner's sandboxes together may use its `--cpus` worth of
   CPU time (`cpu.max` on their common cgroup), gVisor's kernel's
-  included, shared by equal weight; each is told it has that many CPUs,
-  as a WASIX job's threads share the runner's.
+  included, shared by equal weight; each has that many CPUs, as a WASIX
+  job's threads share the runner's, or its job's `cpus:`. Its programs are
+  told [the job's count](#limits): WASIX's says it, and each native
+  program starts with an affinity of that many CPUs.
 - **Billing.** The job is charged its wall time as any job, and the memory
   it reserved: its `memory:` and the sandbox's 384 MiB.
+- **Several native tools.** A job may name more than one
+  (`builtin:bun` and `builtin:rust`): a file both ship at the same path
+  with the same content (the C library) is mounted once, and the same path
+  with other content, or a command both name, fails the job, saying so.
 - **Node tools.** A [Node tool](#deployment-clis) (`builtin:vercel` and
   the like) runs beside a native one: its directory is mounted read only
   in the sandbox at the same path as in any job, and its command is on
@@ -1903,7 +2282,13 @@ job runs them, beside the native program:
   into it, always as `boot --setup-root`, as the system user
   `iwci-sandbox` and straight into the job's cgroup, and kills it when the
   runner asks or goes away (`infra/ci-runners` installs it). A service of
-  another protocol leaves native jobs off, saying why. `/v1/capacity` says `native_sandbox` and
+  another protocol leaves native jobs off, saying why. Each of a
+  sandbox's mounts is a lisafs connection whose channels hold a few of the
+  runner's descriptors (about 170 for a job with `builtin:rust`), so a
+  runner with the sandbox raises its soft limit of open files to its hard
+  one; started from a shell with the usual 1024 it ran out with half a
+  dozen such jobs at once, and gVisor failed the next mount with
+  "cannot allocate memory". `/v1/capacity` says `native_sandbox` and
   `sandbox_overhead`. In a split run the job stays on the runner that has
   the run. The task cache keys it like any job: the native tool's manifest
   is pinned by digest.
@@ -1940,6 +2325,95 @@ timeout, a stall and a cancel end it. What still differs:
   suite).
 - **Bun is real**, so it can do more than a WASIX program: JIT, `bun:ffi`,
   native addons and `bun build --compile` all work inside the sandbox.
+- **A native program the job has** (what `cargo build` or
+  `bun build --compile` made, or one an npm package ships) runs when a
+  WASIX process executes it, as on Linux: `./target/debug/app` from the
+  script, by its path or found on `PATH`, or `child_process.spawn` from
+  `node`. The runtime sees the file is an ELF for this machine and starts
+  it natively with the caller's arguments (`argv[0]` too), environment,
+  directory and standard streams, and the caller gets its exit status, as
+  for a tool's command (`vendor/README.md`, "A native program is the
+  runtime's to run"). Outside the sandbox the same exec fails with 126 and
+  says the job needs a native tool on a runner with the sandbox; an ELF
+  for another architecture, or one that is not a program, says that
+  instead.
+
+### Native binaries from npm
+
+Some npm packages ship their program as a per-platform optional
+dependency and a JavaScript wrapper that starts the right one: turbo
+(`turbo-linux-64`), sherif (`sherif-linux-x64`), esbuild's binary and
+others. A job is `wasm32` to the installers, so they leave those out, and
+Edge.js says its platform is `wasi`, so the wrapper finds nothing. A job
+that runs in the native sandbox can start them:
+
+```yaml
+workspace:
+  deps: [{ pnpm: { native: true } }] # or `npm:` or `bun:`
+
+jobs:
+  lint:
+    using: env:bash-node@24
+    tools: [builtin:glibc@2.39] # the C library, so the job runs in the sandbox
+    run: pnpm lint # turbo run lint
+```
+
+- **`native: true`** installs the optional dependencies built for the
+  runner's own Linux (`linux`, `x64` or `arm64`, `glibc`) beside the
+  `wasm32` ones it installs anyway, and keeps the executable bit their
+  tarballs give (pnpm, npm and Bun install every package's that way now,
+  and make each `node_modules/.bin` target executable as pnpm and npm do;
+  the dependency layers carry the modes). It also sets
+  `IWCI_NODE_PLATFORM` (`linux-x64`) for the workspace's jobs, so their
+  `node` reports that platform and architecture rather than `wasi` and
+  `wasm32` (`crates/iwci-runtime/node/host-platform.cjs`), and the
+  wrapper picks the package that was installed. The workspace also
+  writes it to `/etc/iwci/node-platform`, which `node` reads when it was
+  started without the variable: turbo runs its tasks with only the
+  variables they name (strict mode, its default), so a `node` under
+  `turbo run` saw `wasi` before. A job cannot set it itself (`IWCI_`
+  variables are the runner's).
+- **`builtin:glibc@2.39`** is Ubuntu 24.04's C library and C++ runtime and
+  nothing else: a native tool of files alone (no program, no commands),
+  the same files as `builtin:bun` and `builtin:rust` carry, so a job with
+  several mounts them once. Any native tool puts a job in the sandbox;
+  this is the smallest.
+- **The program runs natively** when the wrapper starts it (see above),
+  and what it starts in turn (turbo's `pnpm run lint` in each package) is
+  the environment's own command again. A native addon (`.node`) still
+  cannot load into Edge.js; napi-rs packages fall back to their
+  `wasm32-wasi` build when it fails, as they do now. Rollup, which has no
+  such fallback, keeps its WebAssembly build: `native: true` adds
+  packages and never takes one the isolate would have had away.
+- **Without the sandbox** the wrapper's exec fails with 126 and says the
+  job needs a native tool.
+
+What each shape needs:
+
+| A package that...                                                                          | Example                                             | Runs                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| has a JavaScript wrapper that starts its platform package's program                        | turbo, sherif, TypeScript 7's `tsc` (tsgo), esbuild | `native: true` and any native tool                                                                                                                                                                   |
+| has a program as its `bin` (`node_modules/.bin/x` links to an ELF)                         | a platform package's own binary                     | the same: bash or `node` executes it natively                                                                                                                                                        |
+| loads a Node-API addon (`.node`) in-process and has no `wasm32-wasi` build                 | oxlint 1.9x (`@oxlint/binding-linux-x64-gnu`)       | not under the environment's `node` (Edge.js cannot `dlopen`); under native Bun, `tools: [builtin:bun@1.4]` and `bun --bun run lint` (or `bunx --bun oxlint`), so Bun and not `node` runs its bin     |
+| is pnpm 12 (`@pnpm/exe`), which pnpm 10 switches to for `packageManager` or `engines.pnpm` | tRPC, vercel/ai                                     | `native: true` and any native tool; pnpm 10 links the platform binary into place ([Hard links](#hard-links)), and `deps: [pnpm]` keeps pnpm 12 from installing again before a script ([pnpm](#pnpm)) |
+
+The Bun case needs builtin:glibc beside builtin:bun because Bun's builtin
+carries only the libraries Bun links, and an addon may want more
+(`librt.so.1`).
+
+Measured with `iwci run` on ci-1 on create-t3-turbo at 8f945b7: sherif
+1.13.0 (`lint:ws`) ran natively and found no issues in 2.6 s, and turbo
+2.5.8 (`lint`) ran natively, planned its 12 tasks and ran each through
+the environment's pnpm, its 3 builds passing. Its eslint tasks need
+Node's built-in TypeScript stripping for `eslint.config.ts`, which Edge.js
+does not have, as in a job without the sandbox; and `pnpm lint` itself
+needs `node_modules/.bin`, which the pnpm installer does not write yet.
+With a build that also links `node_modules/.bin`: TypeScript 7.1.0-beta's
+`tsc --noEmit` on tRPC's `packages/client` (e57a644) ran natively and
+passed in 36 s, oxlint 1.92.0 under Bun found nothing in its 50 files in
+1.2 s, and vercel/ai's `pnpm test` (700089c) ran turbo natively and each
+package's vitest through pnpm, with `managePackageManagerVersions: false`
+so pnpm 10 did not switch to the pnpm 12 it pins.
 
 ### kubectl
 
@@ -2166,8 +2640,9 @@ describe` in `/app` fails; clone what a job needs to inspect.
   ([#1053](https://github.com/Infrawrench/Infrawrench/issues/1053)), so a
   fatal error (128) is 79 in `$?`; it is still a failure, and a job whose
   last command is Git ends with Git's own status.
-- **No hard links** (see the known limitations), so Git renames object
-  files into place and a clone from a path copies.
+- **Git makes no hard links**: it was built before the job's file system
+  had them (`git-no-hard-links.patch`), so it renames object files into
+  place and a clone from a path copies.
 - **Not built**: the Perl and Python commands (`send-email`, `svn`, `p4`,
   `cvsimport`, ...), `git daemon`, `git http-backend`, `git imap-send`,
   `git shell`, the dumb HTTP protocol, the `ssh://` transport (there is
@@ -2179,6 +2654,85 @@ on (Edge.js's, with exception handling) has no `fork()`, so one patch
 starts them with `posix_spawn()` instead; `build.sh` lists the three
 patches and why. The package is 9 MB: Git's module is 3.6 MB and
 `git-remote-https`'s, with OpenSSL, 4 MB.
+
+### tar and OpenSSL
+
+`env:bash@5` and `env:bash-node@24` have GNU tar 1.35, GNU gzip 1.14
+(`gzip`, `gunzip`, `zcat`) and OpenSSL 3.5.9's `openssl`. tar and openssl
+are built for WASIX here, with the toolchain Git is built with
+(`builtins/environments/{tar,openssl}/build.sh`, sharing
+`wasix-toolchain.sh`); gzip is Wasmer's build.
+
+```yaml
+package:
+  using: env:bash@5
+  run: |
+    tar -czf /tmp/site.tgz -C dist .
+    tar -xzOf /tmp/site.tgz ./index.html | head
+    openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=localhost \
+      -keyout /tmp/key.pem -out /tmp/cert.pem
+```
+
+- **tar starts its compressor**: `-z`, `-j`, `-J`, `--use-compress-program`
+  and recognising a compressed archive without one. tar forks for that, and
+  the C library has no `fork()`, so one patch starts it with
+  `posix_spawn()`, as Git's does; only gzip is in the environments, so
+  `-j` and `-J` need `bzip2` or `xz` on `PATH` from somewhere else.
+  What else tar forks for still fails: a remote archive (`host:file`),
+  `--to-command`, `--info-script`, `--checkpoint-action=exec` and
+  `--interactive`'s shell.
+- **No owners restored**: a job's `TAR_OPTIONS` defaults to
+  `--no-same-owner`, since extracting as root otherwise ended in "Cannot
+  change ownership" for every entry, which WASIX cannot set.
+- **openssl reads `/etc/ssl`**: `openssl.cnf` (OpenSSL's default
+  configuration; `OPENSSL_CONF` points at it, which a job can change) and
+  `cert.pem`, Mozilla's CA certificates, which `s_client` and `verify`
+  check against by default. `s_client` reaches hosts over the job's
+  [network](#networking), so not with `network: false`; a host name is
+  looked up without `AI_ADDRCONFIG`, which needs a socket a job cannot
+  open (`openssl-addrconfig.patch`).
+- **openssl is built without** assembly (slower bulk crypto), engines and
+  loadable modules, DTLS, AF_ALG, the console UI (no passphrase prompt:
+  `-passin`, `-passout` and `-pass`), and fork() (no `ocsp -port` or
+  `cmp -port` server and no `speed -multi`).
+
+### pnpm
+
+`deps: [pnpm]` installs a pnpm workspace's `node_modules` from
+`pnpm-lock.yaml` in pnpm's isolated layout (`node_modules/.pnpm`, its
+hoisting settings, `node_modules/.bin`), without running pnpm. It reads
+lockfile formats 9 (pnpm 9 to 12) and 6 (pnpm 8), including:
+
+- the two documents pnpm 11 and later write when a project pins pnpm
+  (`devEngines.packageManager`, or `packageManager` naming pnpm 12) or has
+  config dependencies: the project's lockfile is the last document, and the
+  first (pnpm itself and the config dependencies) installs nothing;
+- pnpm 12's registry revisions (`revision: N` in a resolution), fetched
+  from `<registry>/<name>@<version>+r<N>` and checked against the hash of
+  their uncompressed tar, and `settings.integrityTarget: tar`, under which
+  every registry package and tarball (a git host's archive aside) is checked
+  that way too, whether the registry serves a `.tgz` or a tar;
+- directory dependencies (`file:` directories and injected workspace
+  packages, `dependenciesMeta.injected` or `injectWorkspacePackages`), copied
+  out of the repository as pnpm copies them: the files `files` names (minus
+  its `!` entries) plus `package.json`, the `README`, the licence and the
+  `main` file, or everything when there is no `files`, never `node_modules`
+  or `.git`. `.npmignore` is not read, so such a package can get more files
+  than pnpm gives it, never fewer. A file added to the directory reinstalls;
+- patches (`patchedDependencies`), npm aliases, peers, `link:` workspace
+  dependencies, tarballs by URL and `file:` tarballs.
+
+Refused, saying so: git dependencies, tarballs without an integrity, and
+`nodeLinker: hoisted` or `pnp`.
+
+Jobs get `pnpm_config_verify_deps_before_run=false`, which a job's `env:`
+can override. pnpm 11 and later check before `pnpm run` and `pnpm exec`
+that `node_modules` is up to date, against the state their own install
+records, and with none to read they installed everything again from the
+registry, running the install scripts this install leaves out (tRPC's
+pnpm 12 failed on tree-sitter's `node-gyp`). The install here is the
+lockfile's, so there is nothing for the check to find; pnpm sets the same
+variable for the scripts it starts.
 
 ### Bun
 
@@ -2203,11 +2757,13 @@ started with `--native-sandbox`:
 ```yaml
 jobs:
   test:
-    using: env:bash-node@24
-    tools: [builtin:bun@1.4]
+    using: env:bash@5
+    tools: [builtin:bun@1]
+    memory: 8GiB
     run: |
       bun install --frozen-lockfile
-      bun test
+      bun run lint
+      bunx turbo run build test
 ```
 
 `bun` and `bunx` are on the script's `PATH`; from Bun, the environment's
@@ -2216,8 +2772,59 @@ package script, `Bun.spawn(["node", ...])` and `#!/usr/bin/env node` files
 run them. Bun's JIT, `bun:sqlite`, `bun:ffi`, native addons and
 `bun build --compile` work as they do anywhere, since the program is real.
 The builtin is Bun 1.4.4 for `x86_64-linux` and `aarch64-linux` and
-Ubuntu 24.04's C library and C++ runtime, every file pinned by SHA-256
-(`builtins/bun/build.sh`).
+Ubuntu 24.04's C library (`libc`, `libm`, `libpthread`, `libdl`, `librt`,
+`libutil`, `libresolv`, `libanl`, `libmvec`) and C++ runtime, every file
+pinned by SHA-256 (`builtins/bun/build.sh`), published as `1.4.4.1`: the
+first build, `1.4.4`, had only the libraries Bun itself links.
+`builtin:bun@1`, `@1.4` and `@1.4.4` all take the newest rebuild, and
+`@1.4.4.1` pins it; another version fails before the job starts, listing
+the ones there are. A `packageManager: bun@...` in `package.json` does not
+choose it.
+
+What to know when a job runs Bun:
+
+- **Install in the job, with Bun.** `bun install --frozen-lockfile` in the
+  script installs what Bun installs on Linux: the native builds of packages
+  that have them (turbo, oxlint, rolldown, esbuild, Next's SWC, each run
+  natively in the sandbox), `node_modules/.bin`, and the install scripts Bun
+  runs (the workspace's own, `trustedDependencies` and the packages Bun
+  trusts by default). It fetches from the registry on every run unless a
+  [job cache](#job-caches) keeps Bun's own cache,
+  `cache: { key: "bun-${{ hashFiles('bun.lock') }}", paths: [/root/.bun/install/cache] }`.
+  `deps: [{ bun: { native: true } }]` (below) is the other way: installed
+  once per lockfile before the jobs, checked against its hashes and cached,
+  with every package's `.bin` and, with `native: true`, the Linux builds
+  beside the `wasm32` ones, so `bunx turbo`, `bun run lint` (oxlint) and
+  `bun run build` work over it from `env:bash@5`. It runs no install
+  scripts, and esbuild, Rollup and Lightning CSS are their WebAssembly
+  builds there (esbuild-wasm under Bun: 131 ms for a bundle `bun install`'s
+  native esbuild made in 15 ms). Use it when no install script matters;
+  install in the job when one does or those three are hot. Without
+  `native: true` it has none of the native packages (`bunx turbo`: "is
+  not executable").
+- **`env:bash@5` is the environment for a Bun project.** With no `node` in
+  the environment, Bun stands in for it, as it does on a machine without
+  Node: package scripts, `#!/usr/bin/env node` bins and install scripts run
+  on Bun, against the Linux packages it installed. In `env:bash-node`,
+  `node` is the environment's WASIX Node, whose `process.platform` is
+  `wasi`, and Bun hands it every install script whatever `--bun` or
+  `[run] bun = true` say: a `postinstall` that loads a native package fails
+  (esbuild: "Unsupported platform: wasi wasm32 LE"; with a `native: true`
+  dependency in the workspace, `node` reports the runner's `linux` and `x64`
+  instead), and so does a `bun run`
+  of a bin that does, unless it is `bun --bun run` or the project's
+  `bunfig.toml` says `[run] bun = true` (a `~/.bunfig.toml` is not read for
+  that). Bun makes its stand-in only for what it runs as a package script: a
+  file it runs (`bun run ./scripts/build.mts`) that spawns `node` finds
+  none, so give it one,
+  `mkdir -p /tmp/bin && ln -s "$(command -v bun)" /tmp/bin/node` with
+  `/tmp/bin` first on `PATH`. `env:bash@5` has no `npm` either, so a script
+  that runs `npm pack` needs it some other way (`bunx npm@11 pack`).
+- **The checkout has no `.git`** (see [Git](#git)): a script that runs
+  `git ls-files` wants a `git init -q` first.
+- **Next.js** runs its dev server under Bun with Turbopack and its native
+  SWC: `bun --bun next dev --turbopack &` compiles and answers the requests
+  the rest of the script makes.
 
 Without it, there is no `bun` in a job: `deps: [bun]` is for projects that
 install with Bun and whose scripts run under Node. What a job gets is the
@@ -2247,7 +2854,9 @@ repository, and GitHub dependencies (the archive Bun hashed, from
 applied in the lockfile, and `patchedDependencies` patches are applied to
 the packages they name. Optional dependencies are matched against the
 job's platform as for pnpm (cpu `wasm32`, no operating system), so native
-builds are left out and `wasm32` ones installed.
+builds are left out and `wasm32` ones installed, and Rollup and esbuild
+are installed as their WebAssembly builds, as for pnpm (see
+[Tools and environments](#tools-and-environments)).
 
 What it refuses, saying so:
 
@@ -2260,10 +2869,84 @@ What it refuses, saying so:
 | a dependency with no entry in `bun.lock`  | The lockfile is behind `package.json`. Run `bun install` and commit it.                                                   |
 | a `lockfileVersion` above 3               | Written by a Bun newer than this runner knows.                                                                            |
 
-Not done, as for pnpm: `node_modules/.bin` is not written, and no install
-script runs. A package in `trustedDependencies` that has one is named in a
+As for pnpm, each `node_modules` gets a `.bin` with the commands of the
+packages in it (see [Tools and environments](#tools-and-environments)), and
+no install script runs. A package in `trustedDependencies` that has one is named in a
 warning on the run; Bun's built-in list of packages it trusts by default
 is not consulted.
+
+### npm
+
+`deps: [npm]` installs an npm project's `node_modules` from
+`package-lock.json` (or `npm-shrinkwrap.json`, which npm prefers), without
+running npm:
+
+```yaml
+workspace:
+  deps: [npm] # package-lock.json at the root; `- npm: { dir: web }` for another
+
+jobs:
+  test:
+    using: env:bash-node@24
+    run: npm test
+```
+
+What a job gets is the tree `npm ci` makes, `node_modules/.bin` included,
+so `npm run lint` with `"lint": "eslint ."` finds `eslint`. A lockfile from npm 7 or later
+records that tree itself, every package under the path it is installed at,
+so each is unpacked where its entry says: a version that conflicts with
+the hoisted one nested under the package that needs it
+(`node_modules/a/node_modules/b`, or `packages/web/node_modules/b` for a
+workspace's own copy), workspaces and `file:` directories as symlinks
+(`node_modules/@acme/web -> ../../packages/web`), an `npm:` alias under the
+alias's name, and a package another one bundles (`inBundle`) from that
+package's own tarball. Dev dependencies are installed, as `npm ci` installs
+them. Entries npm would prune (`extraneous`) are left out.
+
+What it installs, each checked against the lockfile's `integrity`
+(`sha512-`, or `sha1-` for packages old enough to have no other hash):
+registry packages, tarballs by URL and tarballs in the repository
+(`file:vendor/x.tgz`). `registry`, `@scope:registry` and
+`replace-registry-host` are read from the project's `.npmrc`, so a
+`resolved` URL on `registry.npmjs.org` comes from the configured registry,
+as npm does it (a registry that needs a token is not reachable).
+
+Optional dependencies are matched against the job's platform as for pnpm
+(cpu `wasm32`, no operating system): an optional package whose `os`,
+`cpu` or `libc` rule it out is skipped together with what npm calls its
+optional set, the packages that need it without being optional about it
+and what only they depend on. A package that is not optional is installed
+whatever its platform fields say, as inert files: real npm stops there
+with `EBADPLATFORM` (`systeminformation`, for one, lists every operating
+system but `wasi`), which is why `npm ci` in a job fails and `deps: [npm]`
+does not. Rollup 4, esbuild and Lightning CSS from the registry are
+installed as their WebAssembly builds, as for pnpm (see
+[Tools and environments](#tools-and-environments)).
+
+Each `node_modules` gets the `.bin` npm links into it: the commands of
+every package in it (nested and bundled packages in theirs, a workspace's
+own dependencies in the workspace's), and, beside a workspace's or a
+`file:` directory's link, that project's commands through the link
+(`node_modules/.bin/tool -> ../@acme/tool/cli.js`). The project's own
+`bin` is not linked. When two packages in one `node_modules` name the same
+command, the first to link it keeps it, as with npm: packages before
+workspaces, each in npm's path order. A command whose file the package
+does not have is left out.
+
+What it refuses, saying so:
+
+| In the repository                                 | Why, and what to do                                                                                    |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| a `lockfileVersion` 1 lockfile (npm 5 and 6)      | It does not record the tree. Run `npm install --lockfile-version 3` with npm 7 or later and commit it. |
+| a `lockfileVersion` above 3                       | Written by an npm newer than this runner knows.                                                        |
+| a `package.json` dependency the lockfile lacks    | The lockfile is behind, which `npm ci` refuses too. Run `npm install` and commit it.                   |
+| a git dependency                                  | The lockfile pins a commit but no hash of what npm builds from it. Publish it, or depend on a tarball. |
+| a directory installed as a copy (`install-links`) | Drop `install-links`, so npm links it, or make it a workspace.                                         |
+| a remote tarball with no `integrity`              | Nothing to verify it against. Run `npm install` and commit the lockfile.                               |
+
+Not done: npm's hidden lockfile (`node_modules/.package-lock.json`), and
+no install script runs; a warning on the run names the packages `npm ci`
+would have run one for. `engines` is not checked.
 
 ### Python
 
@@ -2313,8 +2996,9 @@ job's own copy. To keep a set apart:
 - **A directory**: `pip install --target <dir> <package>`, then
   `PYTHONPATH=<dir>`.
 - **A virtual environment of copies**: `python -m venv --copies .venv`
-  works, and its `activate` script; venv does not install pip into it here,
-  so run `.venv/bin/python -m ensurepip --default-pip` after it. Without
+  works, with pip in it, and its `activate` script (#1310; before, venv's
+  ensurepip ran as the base interpreter, which kept pip out of the venv,
+  so it had to be followed by `.venv/bin/python -m ensurepip`). Without
   `--copies` it fails: venv links the interpreter, and a command run
   through a symbolic link fails here (#1199). virtualenv works as well
   (`pip install virtualenv`, then `virtualenv .venv`).
@@ -2414,7 +3098,12 @@ A lock without a WASIX build for such a package fails the install, naming
 the wheels it found.
 
 `python -c` (multi-line included), `python - <<EOF` and a script piped to
-`python` work.
+`python` work, and so does pytest-xdist (`pytest -n auto`), whose workers
+import compiled modules while a thread of theirs waits on a pipe; that
+import used to wait for the thread for good (vendor/README.md). `-n auto`
+starts as many workers as the job has CPUs (`cpus:`, or one without; see
+[Limits](#limits)), with psutil installed or not: psutil reads the cores
+from the job's `/proc/cpuinfo`.
 
 ### Cloud CLIs
 
@@ -2619,6 +3308,270 @@ curl built into it report development versions (OpenSSL 3.2.0-dev, curl
 pin, but what is inside them can only be checked by running it. Composer's
 phar is pinned by the SHA-256 getcomposer.org publishes.
 
+### Ruby gems
+
+`bundle install` downloads from rubygems.org when the job runs, over the
+job's [network](#networking), and compiles native extensions with a
+compiler a job does not have. `deps: [bundler]` installs `Gemfile.lock`
+before the job instead, the way the pip and Composer installers do:
+
+```yaml
+workspace:
+  deps:
+    - bundler # Gemfile.lock at the root
+    - bundler: { dir: api, ruby: "3.4", without-extensions: [redcarpet] }
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false # nothing to download
+    run: bundle exec rspec
+```
+
+What the lock must say, and what is checked:
+
+- **Checksums.** Every gem from a gem server is checked against the
+  SHA-256 in the lock's `CHECKSUMS` section before anything is unpacked.
+  Bundler 2.6 and later write that section for a new lock; an older lock
+  gets it with `bundle lock --add-checksums`. A gem without one refuses the
+  install, naming it. Only https gem servers are fetched, without
+  credentials.
+- **The `ruby` platform.** No gem publishes a build for the WebAssembly
+  Ruby a job runs, so each gem's `ruby` build (its source) is installed,
+  and the lock must list `ruby` under `PLATFORMS` with a `ruby` build of
+  every gem. The lock `rails new` writes lists only machine platforms
+  (`x86_64-linux`, `arm64-darwin`, ...) and, for nokogiri, sqlite3, ffi
+  and prism, only their builds for those.
+  `bundle lock --add-platform ruby` adds the platform and each gem's
+  source build, with its checksum. Bundler in the job refuses a lock
+  without its platform too. Run it on its own: Bundler 4.0.3 given
+  `--add-checksums --add-platform ruby` in one command adds the platform
+  without the builds, which the install refuses, naming the gems;
+  `bundle lock --remove-platform ruby` and then `--add-platform ruby`
+  mends such a lock.
+- **`GIT` sources** are fetched by the commit the lock's `revision` names
+  (https only, without credentials) into the runner's git cache, as
+  Composer packages are, so git's object ids tie every byte to the commit,
+  and checked out where Bundler looks (`bundler/gems/<repo>-<rev>/`).
+  `submodules: true` is refused. Bundler evaluates such a gem's gemspec
+  when the bundle loads, as it does after `bundle install`; one that shells
+  out to `git ls-files` needs `git` in the job.
+- **`PATH` sources** are directories of the repository and need nothing
+  installed.
+- **Missing dependencies** a gem declares and the lock does not install
+  are reported as warnings.
+
+Each gem is installed where `bundle install` puts it with
+`BUNDLE_PATH=vendor/bundle`, without running Ruby: its files under
+`vendor/bundle/ruby/<version>/gems/`, its specification (the Ruby
+RubyGems writes, from the gem's metadata) under `specifications/`, and RubyGems' wrapper for each executable under
+`bin/`, which `bundle exec` puts on `PATH`. Nothing in a gem runs at
+install time. The job gets `BUNDLE_PATH=vendor/bundle`, which Bundler reads
+relative to the Gemfile's directory, so one value serves every Gemfile,
+and `BUNDLE_FROZEN=true`, so it never resolves or reaches a gem server.
+Nothing writes `.bundle/config`; a committed one that sets another
+`BUNDLE_PATH` wins over the job's, and the install warns. The install is
+cached like the others (see [Caching](#caching)).
+
+**Which Ruby.** Gems are installed for Ruby 3.4 or 4.0, which decides the
+directory (`ruby/3.4.0`, `ruby/4.0.0`) and the extension directory below.
+The Ruby is `ruby:` when the pipeline names one, else the lock's
+`RUBY VERSION` (written when the Gemfile has a `ruby` line), else
+`.ruby-version`, else 4.0. A `ruby:` that disagrees with the lock's
+`RUBY VERSION` is refused, since Bundler in the job would refuse it.
+
+**Native extensions.** A gem with a C extension (`extensions:` in its
+gemspec) cannot be compiled before a job (the installer runs no gem's
+code), and a job has no compiler. Its extension comes from the runner's
+builds instead: `builtins/environments/ruby/gems/` builds the extensions of
+the gem versions [Rails](#rails) lists for each Ruby, as WASIX side modules
+the way [Ruby](#ruby) says to build one, into one archive per Ruby that
+the runner pins by SHA-256 (`crates/iwci/src/gem_builds.rs`) and reads from
+its store. The installer puts a gem's build in its extension directory
+(`extensions/wasm32-wasi/<api>/<gem>-<version>/`), where RubyGems looks for
+it, with the `gem.build_complete` marker that makes Bundler count the gem
+as installed, and the install is cached with the archive's digest in its
+key.
+
+A gem with an extension and no build of that version for the job's Ruby
+stops the install before the job, naming the gem and the versions there
+are builds of:
+
+```text
+bundler in /app: nokogiri-1.19.6: has a native extension (ext/nokogiri/extconf.rb), which a job cannot compile, and there are builds for Ruby 4.0 of nokogiri 1.19.7; lock one of those (`gem "nokogiri", "1.19.7"` in the Gemfile, then `bundle lock`). If the job never loads it, list nokogiri in this install's `without-extensions` to install it without (README.md, "Ruby gems")
+```
+
+Failing there, rather than installing the gem without its compiled part,
+keeps the failure where it is caused: otherwise the bundle would load and
+the first test to require the gem would fail with a `LoadError`, possibly
+far into the run. A gem the jobs never load is listed in
+`without-extensions`, and is installed with its Ruby files and the marker
+only, so requiring its compiled part raises a `LoadError`: a Markdown
+renderer that only a release script uses, say. A name there that has a
+build gets the build, and a name the lock does not install, or one without
+an extension, is a warning.
+
+**The job's environment.** Besides `BUNDLE_PATH` and `BUNDLE_FROZEN`, a
+lock that installs Rails (`activesupport`) gets `PARALLEL_WORKERS=1`; see
+[Rails](#rails).
+
+### Rails
+
+A Rails app's tests run with `deps: [bundler]` and `bin/rails test`, with
+no network in the job:
+
+```yaml
+workspace:
+  deps: [bundler]
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false
+    run: bin/rails test
+```
+
+`builtins/test.sh`'s `ruby@*/rails-passes` runs the tests of a `rails new`
+app (Rails 8.1, SQLite, minitest; `builtins/environments/ruby/apps/rails`)
+that way, and `rails-fails` the same app with a test that must fail. The
+app is `rails new`'s with two lines changed in its Gemfile, both below:
+selenium-webdriver is `require: false`, and tzinfo-data is on every
+platform (then `bundle lock`, which adds it).
+
+What works:
+
+- **The default stack's native gems**, each with its extension built for
+  the job's Ruby (the table below): SQLite through `sqlite3`, HTML and
+  `assert_select` through `nokogiri`, bootsnap's cache, and the rest of a
+  `rails new` lock, which the Rails job loads one by one and checks each
+  came from the runner's build.
+- **Models, fixtures, controller and integration tests** against the
+  app's SQLite database in `storage/`, which `bin/rails test` prepares from
+  `db/schema.rb`.
+- **PostgreSQL through `pg`**, against `env:postgres@18` as a
+  [service](#background-services) (`builtins/test.sh`'s `databases-passes`
+  queries one, and `databases-fails` gets PostgreSQL's error for a missing
+  table). pglite serves one connection at a time, so a test suite holds
+  one; `pglite-server` serves more.
+- **mysql2 and trilogy over TLS** to a server that asks for it: trilogy
+  with OpenSSL, mysql2 with MariaDB Connector/C, which checks the server's
+  certificate and name against `sslca:` (`databases-tls-passes`, against a
+  stand-in that speaks only the handshake and ping).
+- **Tests run in one process.** Rails runs a suite of more than 50 tests in
+  forked workers, one per processor (the `parallelize` line in
+  `test_helper.rb`), and a job's Ruby has no `fork`. The installer sets `PARALLEL_WORKERS=1` in the jobs' environment
+  when the lock installs Rails (`activesupport`), which turns the workers
+  off; a job's own `env:` wins over it, so a suite that wants workers can
+  run them as threads, `parallelize(workers: 4, with: :threads)` with
+  `PARALLEL_WORKERS: 4`.
+- **bootsnap** caches compiled Ruby under `tmp/cache`, which is the job's
+  and goes when it ends. Spring, which `rails new` stopped adding in 7.1,
+  forks its server and does not run; `DISABLE_SPRING=1` in an older app.
+
+What does not:
+
+- **System tests** (`test/system`, Capybara with Selenium) drive a browser,
+  which a job does not have. Run `bin/rails test:system` as a
+  [cloud job](#cloud-jobs).
+- **No zoneinfo.** A job has no `/usr/share/zoneinfo`, so Active Support's
+  time zones need the tzinfo-data gem, as on Windows: `rails new` adds it
+  for `platforms: %i[ windows jruby ]` only, and Rails fails at boot with
+  "tzinfo-data is not present". Drop the `platforms:` and lock again
+  (`bundle lock`).
+- **selenium-webdriver raises when it is loaded** ("unknown os: wasix": it
+  knows Windows, macOS, Linux and the BSDs by `RbConfig::CONFIG["host_os"]`),
+  and `rails new` puts it in the Gemfile's `test` group, which
+  `Bundler.require` loads before any test runs. Give it `require: false`,
+  which changes nothing for system tests on a developer's machine
+  (Capybara requires it when a system test drives a browser).
+- **puma and nio4r load, and a server is not tested.** puma's cluster mode
+  forks and cannot run; single mode starts threads, but stopping it with a
+  signal while its main thread waits on its socket ends the process at once
+  rather than gracefully ([Ruby](#ruby), signals). puma is built without
+  TLS.
+- **ffi has no libraries to call but the C library.** Active Storage loads
+  ffi at boot (through ruby-vips), and `ffi_lib` failing to find libvips is
+  the `LoadError` it expects, so the app boots. `attach_function` works,
+  with callbacks into Ruby (`builtins/test.sh` sorts with the C library's
+  `qsort` and a Ruby comparison), but a job has no libvips, ImageMagick or
+  other shared library for it to load, and ffi has no `types.conf` for
+  this platform, so typedefs such as `:size_t` do not resolve.
+- **nokogiri reads no gzipped documents**: its libxml2 is built without
+  zlib, which the interpreter has but does not offer to extensions.
+- **No MySQL to test against.** `mysql2` and `trilogy` are built and
+  load, and connect over the job's network to a MySQL or MariaDB server
+  elsewhere (a [lent connection](#connections-ssh-keys-and-resources), say), but no environment
+  runs one as a service: there is no MySQL or MariaDB for WASIX
+  ([Background services](#background-services)). `builtins/test.sh` checks that each loads and
+  that a refused connection is its own error, not that it talks to a
+  server.
+
+**The builds.** `builtins/environments/ruby/gems/gems.txt` lists them,
+one line per gem version, with the SHA-256 of its `.gem`:
+
+| Gem              | Version | Notes                                                                                |
+| ---------------- | ------- | ------------------------------------------------------------------------------------ |
+| bcrypt           | 3.1.22  | `has_secure_password`; commented out in `rails new`'s Gemfile                        |
+| bcrypt_pbkdf     | 1.1.2   | kamal, through net-ssh                                                               |
+| bigdecimal       | 4.1.3   | the lock's, in place of the interpreter's own                                        |
+| bindex           | 0.8.1   | web-console                                                                          |
+| bootsnap         | 1.26.1  |                                                                                      |
+| date             | 3.6.0   |                                                                                      |
+| debug            | 1.11.1  |                                                                                      |
+| ed25519          | 1.4.0   | kamal, through net-ssh                                                               |
+| erb              | 6.0.7   |                                                                                      |
+| ffi              | 1.17.4  | libffi from wasix-org's port, its closures from libffi (`--enable-libffi-alloc`)     |
+| io-console       | 0.9.5   | its extconf.rb skips any platform matching `wasi`; built as the interpreter's own is |
+| json             | 3.1.0   |                                                                                      |
+| msgpack          | 1.8.7   | bootsnap                                                                             |
+| mysql2           | 0.5.7   | MariaDB Connector/C 3.4.11, with OpenSSL 3.5.9 and its authentication plugins        |
+| nio4r            | 2.7.5   | Action Cable, puma                                                                   |
+| nokogiri         | 1.19.7  | libxml2 2.13.9 and libxslt 1.1.43 from the gem's own archives, with its patches      |
+| pg               | 1.7.0   | libpq from PostgreSQL 18.7, with OpenSSL 3.5.9                                       |
+| prism            | 2.1.0   |                                                                                      |
+| puma             | 8.1.2   | without TLS                                                                          |
+| racc             | 1.8.1   |                                                                                      |
+| rbs              | 4.2.0   |                                                                                      |
+| sqlite3          | 2.10.2  | SQLite 3.54.1 from the gem's own archive, with its packaged build's options          |
+| trilogy          | 2.13.3  | with OpenSSL 3.5.9                                                                   |
+| websocket-driver | 0.9.0   | Action Cable                                                                         |
+
+These are the versions Rails 8.1.4.1's `rails new` locks
+(`crates/iwci-deps/src/bundler/fixtures/rails-8.1.lock`), bcrypt, and the
+newest releases of the drivers of the databases `rails new --database`
+offers besides SQLite (pg, mysql2, trilogy). A lock with
+another version of one of them fails the install, naming the versions in
+the table, until that version is added.
+
+**Adding a gem or a version** is one line in `gems.txt` (name, version,
+and the SHA-256 rubygems.org serves for its `ruby`-platform `.gem`, which
+is the lock's `CHECKSUMS` entry), and a case in `gems/build.sh`'s
+`prepare` if its extension needs a library or an `extconf.rb` flag. Then,
+on x86_64 or aarch64 Linux, for each Ruby:
+
+```sh
+bash builtins/environments/ruby/gems/build.sh 4.0
+bash builtins/environments/ruby/gems/build.sh 3.4
+```
+
+Each prints the archive's SHA-256 and size; those go in `GEM_BUILDS`
+(`crates/iwci/src/gem_builds.rs`), which is what runners read. The build
+is reproducible (source paths mapped away, the archive sorted and dated),
+so the build cache and the other architecture check the same digest, and a
+changed build of the same gems is a new `GEMS_BUILD` number in the script.
+`builtins/publish.sh` uploads the archive as a blob beside env:ruby
+(`dist/blobs/ruby-gems/`), and a runner whose store lacks it fails an
+install that needs it, naming the archive.
+
+How each is built, and why the installer places them rather than
+env:ruby carrying them: the extensions are built against the environment's
+own package (unpacked from the webc environments/build.sh pins) the way
+[Ruby](#ruby) says to build one, with the libraries a gem links compiled
+into its module from the source the gem ships. Keeping them out of the
+environment lets the install fail early, naming what is missing, before a
+job starts; puts each gem's build where RubyGems already looks, with no
+hook in the interpreter; ties the install's cache key to the builds; and
+lets a new build of the gems ship without a new version of the
+environment, since every `env:ruby@4.0.x` has the same extension ABI.
+
 ### Go
 
 `env:go@1.23` to `env:go@1.27` are the five newest Go minor releases
@@ -2732,14 +3685,252 @@ What to know:
   `os/exec` (or Node `child_process`) failed with "Operation not
   permitted" ([#1082](https://github.com/Infrawrench/Infrawrench/issues/1082)).
 
+### Ruby
+
+`env:ruby@3.4` and `env:ruby@4.0` are CRuby 3.4.12 and 4.0.9, built from
+the release tarballs for WASIX here (`builtins/environments/ruby/build.sh`),
+beside the tools of `env:bash@5` and [Git](#git). `ruby` is a command, and
+RubyGems, Bundler, `gem`, `bundle`, `rake`, `irb`, `erb`, `rdoc`, `ri`
+and `racc` are on `PATH`, with the default and bundled gems of the release
+(minitest, test-unit, rake, power_assert, rexml, rss, net-ftp, ...):
+
+```yaml
+test:
+  using: env:ruby@4.0
+  run: |
+    bundle install
+    bundle exec rake test
+```
+
+What works, each in `builtins/test.sh`'s `ruby@*` jobs:
+
+- **Threads are native threads.** `Thread`, `Mutex`, `Queue`,
+  `ConditionVariable`, `Timeout`, Fibers and Enumerators, with the
+  collector running while several threads hold objects.
+- **Sockets.** `TCPServer` and `TCPSocket` on the job's loopback,
+  `Net::HTTP`, and TLS through `openssl` (OpenSSL 3.5.9, Mozilla's CA
+  certificates at `/opt/ruby/ssl/cert.pem`), out to the internet as well.
+- **Child processes with real exit statuses.** `system`, backticks,
+  `spawn`, `Process.wait`, `IO.popen` and `Open3`, with redirections,
+  environments and `chdir:`; a failing command fails, a missing one
+  returns `nil` from `system` and raises `Errno::ENOENT` from `spawn`, and
+  `exec` replaces the process, passing the environment as `ENV` has it
+  (so `bundle exec ruby script.rb` runs the script with the bundle).
+  `fork` and `IO.popen("-")` raise `NotImplementedError`
+  (`Process.respond_to?(:fork)` is false), as on Windows: WASIX has no
+  fork.
+- **The standard library's extensions**, each loaded by `require`:
+  `etc`, `fcntl`, `zlib`, `psych` (libyaml 0.2.5), `json`, `bigdecimal`,
+  `date`, `ripper`, `prism`, `racc`, `strscan`, `digest`, `openssl`,
+  `io/console`, `io/wait`, `socket`, `stringio`, `objspace` and
+  `coverage`. Not built: `fiddle` (no libffi), `pty` (no pseudo-terminals)
+  and `readline` (`irb` uses Reline).
+- **`gem install` and `bundle install`** from rubygems.org, into the
+  job's `GEM_HOME`, with installed commands on `PATH`. A gem with a C
+  extension does not install: a job has no C compiler. `deps: [bundler]`
+  installs one with a build made ahead of time ([Ruby gems](#ruby-gems),
+  [Rails](#rails)).
+
+What does not, or differs:
+
+- **A thread waiting on a descriptor looks for interrupts every 100 ms.**
+  WASIX cannot end a blocking call with a signal to a thread, which is how
+  Ruby wakes one on Linux, so a thread in `IO.select`, a read or an
+  `accept` waits in slices instead, and `Thread#kill`, `Thread#raise`,
+  `Timeout` and the program's exit reach it within 100 ms. A thread in
+  `Process.wait` cannot be interrupted.
+- **Signals, as far as WASIX has them.** `trap` handlers run, in a child
+  process too (`Process.kill(:TERM, pid)` reaches a child's handler), but
+  a signal that arrives while the main thread waits on a descriptor takes
+  its default action, and a child ended by a signal reports an exit status
+  rather than `termsig`. WASIX cannot wait for exceptional conditions
+  (out-of-band data), so none is ever reported: `IO#wait_priority` waits
+  until its timeout, `IO.select`'s error set comes back empty, and a wait
+  for `IO::READABLE | IO::PRIORITY` (as the pg gem's) is a wait for
+  readable.
+- **No JIT** (YJIT and ZJIT generate native code), and each process has at
+  most 4 GiB of memory (wasm32).
+- `spawn`'s `rlimit_*:`, `uid:` and `gid:` raise `Errno::ENOTSUP`.
+
+The environment sets these, which a job's `env:` can override:
+
+| Variable   | Value                                                              | Why                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEM_HOME` | `/root/.local/share/gem/ruby/<ruby_version>` (`4.0.0`, `3.4.0`)    | `gem install` and `bundle install` install here rather than into the interpreter's own directory, as RubyGems' `--user-install` would (`Gem.user_dir`). |
+| `PATH`     | `$GEM_HOME/bin`, `/usr/local/bin`, `/opt/ruby/bin`, then the usual | The commands gems install come first, then the interpreter's own (`gem`, `bundle`, `rake`, `irb`, ...). `ruby` itself is `/usr/bin/ruby`.               |
+
+No `BUNDLE_*` variable is set, so Bundler behaves as it does elsewhere:
+`bundle install` installs into `GEM_HOME`, and a repository's own
+`.bundle/config` (`BUNDLE_PATH: vendor/bundle`) is honoured.
+
+**C extensions.** The interpreter is a WASIX dynamic main module and every
+extension, the standard library's included, is a side module it opens
+with `dlopen()` when it is required, as on Linux: `.so` files under
+`/opt/ruby/lib/ruby/<ruby_version>/wasm32-wasix`, and a gem's in its own
+directories. Keeping them out of the interpreter, rather than linking them
+in as `--with-static-linked-ext` would, is what lets a gem's newer
+version of a default gem with an extension (`bigdecimal`, `json`, `date`)
+load its own `.so`, as Bundler expects, and a gem's extension built
+elsewhere load with a plain `require`. A job cannot compile one (no C
+compiler), so one is built outside and brought in, the way
+`builtins/environments/ruby/build.sh` builds its check extension
+(`check-ext/`, loaded by `ruby@*/extension-passes`):
+
+| `RbConfig::CONFIG` / RubyGems | 4.0                             | 3.4                   |
+| ----------------------------- | ------------------------------- | --------------------- |
+| `arch`                        | `wasm32-wasix`                  | `wasm32-wasix`        |
+| `ruby_version`                | `4.0.0`                         | `3.4.0`               |
+| `DLEXT`                       | `so`                            | `so`                  |
+| `ENABLE_SHARED`               | `no` (there is no `libruby.so`) | `no`                  |
+| `Gem::Platform.local`         | `wasm32-wasi`                   | `wasm32-wasi`         |
+| `Gem.extension_api_version`   | `4.0.0-static`                  | `3.4.0-static`        |
+| RubyGems                      | 4.0.20 (Bundler 4.0.20)         | 3.6.9 (Bundler 2.6.9) |
+
+1. On x86_64 or aarch64 Linux, unpack the toolchain `build.sh` pins
+   (wasixcc 0.4.3, wasix-org's LLVM 21.1.206, Binaryen 133 and the
+   wasix-libc `sysroot-ehpic` of v2026-07-30.1; Edge.js's C library
+   patches are only needed by the interpreter) and set wasixcc's
+   environment as `build.sh` step 1 does:
+   `WASIXCC_SYSROOT_PREFIX`, `WASIXCC_LLVM_LOCATION`,
+   `WASIXCC_BINARYEN_LOCATION`, `WASIXCC_WASM_EXCEPTIONS=legacy`,
+   `WASIXCC_PIC=yes`, `WASIXCC_RUN_WASM_OPT=no`, with wasixcc's
+   executables and Binaryen's `bin` on `PATH`.
+2. Take `/opt/ruby` out of the environment's `iwci/ruby` package:
+   `wasmer package unpack ruby.webc --out-dir pkg` puts it in `pkg/ruby`
+   (a job can also `tar` it into a download). Its
+   `include/ruby-<ruby_version>` has the headers and
+   `lib/ruby/<ruby_version>/wasm32-wasix/rbconfig.rb` the build settings:
+   `CC` `wasixcc`, `CCDLFLAGS` `-fPIC`, `LDSHARED` `$(CC) -shared`,
+   `DLDFLAGS` `ruby-wasix-stack-anchor.o` from that directory (a
+   constructor that makes the module import `__stack_pointer`), no
+   `DLDLIBS` (the interpreter has the whole C library), and `POSTLINK`
+   `wasm-opt --flatten --coalesce-locals --spill-pointers -O2 --emit-exnref -g --strip-dwarf --strip-producers -o $@ $@`.
+   The `POSTLINK` pass is not optional: Ruby's collector finds the objects
+   a C function holds only on the stack, and `--spill-pointers` is what
+   puts them there; without it an extension's objects can be collected
+   while it uses them.
+3. Run `extconf.rb` with a native Ruby of the same release, pointed at
+   that `rbconfig.rb`, which finds the headers and libraries beside it:
+   `ruby --disable-gems -I pkg/ruby/lib/ruby/<ruby_version>/wasm32-wasix -r rbconfig extconf.rb && make`.
+   `mkmf`'s `have_func` and `have_library` checks link against the
+   package's `lib/libruby-static.a` and work; checks that run a program
+   (`try_run`) do not, as in any cross build. An `extconf.rb` that loads
+   RubyGems (nio4r's) would then load the package's `monitor.so`, which is
+   WebAssembly, into the native Ruby: give `-I` a directory holding only a
+   copy of `rbconfig.rb` with its `TOPDIR` set to `pkg/ruby`'s absolute
+   path, as `gems/build.sh` does. Built this way from the
+   unpacked package, `check-ext` comes out byte for byte as `build.sh`
+   makes it.
+4. Put the `.so` where `require` finds it: on `$LOAD_PATH` (`-I`,
+   `RUBYLIB`), or, for a gem, in its `lib/` or under
+   `extensions/wasm32-wasi/<extension_api_version>/<gem>-<version>/`
+   in the gem home (`GEM_HOME`), where RubyGems looks for an installed
+   gem's compiled extension.
+
+A side module links no C library of its own: the interpreter exports all
+of it, and the module's undefined functions are resolved against the
+interpreter when it is loaded. A library it needs (libxml2, SQLite) is
+compiled into it as position-independent objects with the same
+toolchain.
+
 ### Rust
 
-Rust is supported the way every language without an environment is here:
-the Cargo installer makes a commit's crates available offline, and any
-tool compiled to `wasm32-wasip1` or WASIX runs as a builtin or a `repo:`
-tool. `cargo test` needs rustc, which has no WebAssembly build that can
-host itself, so jobs that must compile Rust belong on a conventional
-runner.
+`tools: [builtin:rust@1.100]` is the official stable toolchain, run
+natively in a gVisor sandbox beside the job's environment (see
+[Native tools in a sandbox](#native-tools-in-a-sandbox)), on a runner
+started with `--native-sandbox`; elsewhere the job fails, saying so.
+rustc cannot host itself in WebAssembly, so this is how a job compiles
+Rust. With `deps: [cargo]`, a commit's crates come from the vendor
+directory the Cargo installer writes, checked against `Cargo.lock`, and
+nothing is downloaded:
+
+```yaml
+workspace:
+  deps: [cargo] # Cargo.lock at the root; `- cargo: { dir: rust }` for another
+
+jobs:
+  test:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 8GiB
+    timeout: 30m
+    run: cargo test --locked --workspace
+  lint:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 4GiB
+    run: |
+      cargo fmt --all --check
+      cargo clippy --locked --workspace --all-targets -- -D warnings
+```
+
+- **What it is.** Rust 1.100.0's minimal profile (rustc, cargo, rust-std)
+  with rustfmt and clippy, for `x86_64-linux` and `aarch64-linux`, at
+  `/opt/rust` (rustc's sysroot), and Ubuntu 24.04's GCC 13 with binutils,
+  glibc's and Linux's headers and crt objects. `cargo`, `rustc`,
+  `rustdoc`, `rustfmt`, `cargo-fmt`, `cargo-clippy`, `clippy-driver`,
+  `cc`, `gcc`, `cpp`, `as`, `ld`, `ar`, `ranlib`, `nm`, `objcopy`,
+  `objdump`, `strip` and `readelf` are on the script's `PATH`. Every file
+  is pinned by SHA-256 (`builtins/rust/build.sh`, whose header says why it
+  is laid out as it is): the Rust components against the release's signed
+  channel manifest, Ubuntu's packages against the signed archive index.
+- **Linking and C.** rustc links by running `cc`, which on x86_64 hands
+  the link to rustc's own rust-lld (Rust's default there since 1.90) and
+  on aarch64 to `ld`. A build script that compiles C, with the `cc` crate
+  or by running `cc` and `ar` itself, works as on Ubuntu, so `*-sys`
+  crates that build their bundled C (ring, zstd-sys, pcre2-sys,
+  libsqlite3-sys's `bundled`) do. C++ (`g++`, which the `cc` crate's
+  `cpp(true)` runs) is not there, nor `pkg-config` or system libraries
+  beyond the C library: a `*-sys` crate that links a system library
+  (OpenSSL without `vendored`, libpq) fails to build.
+- **Offline.** The Cargo installer sets `CARGO_NET_OFFLINE=true` and
+  points `.cargo/config.toml` at the vendor directory, so `cargo` never
+  reaches the network for crates; git dependencies and other registries
+  are not vendored (see [Known limitations](#known-limitations)). Without
+  `deps: [cargo]`, cargo fetches from crates.io while the job runs, which
+  needs the job's network.
+- **Files.** `CARGO_HOME` is `/root/.cargo` and the target directory is
+  the workspace's `target/`, both in the job's own file system: they are
+  the job's changes (so `changes: fail` on a job that builds fails; give
+  a formatter's job its own), they can be kept between runs with
+  `cache:`, and what the build writes counts against the job's
+  `memory:`, beside what its processes hold (a debug build of ripgrep's
+  workspace and its tests writes about 730 MiB). `CARGO_INCREMENTAL=0` is
+  set (a job's own `env:` wins): a CI build starts from nothing, and
+  incremental compilation's extra files only cost memory.
+- **Memory.** Size `memory:` for both halves: the processes (rustc maps
+  about 370 MiB of its own libraries, and each test binary is its own)
+  and the target directory. Rust jobs here sit well inside the 2 GiB
+  default (ripgrep's whole workspace came to 1.9 GiB, its docs to 0.8),
+  so give a build and test job 4 to 8 GiB and read `peak_memory_mib`
+  from its report to size it. Threads and processes are real: cargo runs
+  a rustc per CPU the job is told it has (one without `cpus:`, so give a
+  build `cpus:`), each with its codegen threads, test binaries run their
+  tests on as many threads, and a sandbox may hold 4096
+  tasks.
+- **Toolchain files.** `rust-toolchain.toml` is not read, and there is no
+  `rustup`: the builtin's version is the toolchain, with its one target
+  (the runner's own architecture's).
+- **Programs it builds** run as on Linux: from the script
+  (`./target/debug/rg --version`), from cargo (`cargo run`, a test that
+  spawns `env!("CARGO_BIN_EXE_<name>")`, as ripgrep's do), and in a later
+  job that is handed them (`artifacts:`) with only `builtin:glibc` (see
+  [Native binaries from npm](#native-binaries-from-npm)), which gets it
+  with its executable bit (see [Artifacts](#artifacts)).
+
+Measured with `iwci run` on ci-1 (x86_64, 8 vCPUs, other work keeping its
+load near 25; the job was told all 8, as `cpus: 8` tells it now) on
+ripgrep at 178cc02, running what ripgrep's own CI does
+(`cargo build` and `cargo test --workspace --features pcre2`, which builds
+PCRE2's C with the `cc` crate): 23 test binaries, 1,243 tests,
+passed in 73 s with a peak of 1,878 MiB, against 39 s for the same
+commands with the same toolchain natively on the host at the same time.
+`cargo fmt --all --check` took 3 s and `cargo doc --no-deps
+--document-private-items --workspace` with `RUSTDOCFLAGS=-D warnings`
+37 s.
+
+Any tool compiled to `wasm32-wasip1` or WASIX still runs as a builtin or
+a `repo:` tool without the sandbox.
 
 ## Job caches
 
@@ -2770,6 +3961,9 @@ jobs:
   belong to the cache, not the repository: they never count as changes for
   `changes: fail` or `changes: commit`.
 - Restored files count against the job's `memory:` like any other write.
+- Files and directories keep their modes, so a program saved executable
+  comes back executable. A cache saved by a runner from before modes were
+  kept is a miss, and the next pass saves over it.
 - **Scoped by branch, so a pull request cannot poison the default
   branch.** A push saves into its branch's scope and reads that, then the
   default branch's (`--default-branch`, default `main`). A pull request
@@ -2853,8 +4047,18 @@ listener, a closed listener's port can be listened on again (a server
 stopped and restarted, or one per test), and two jobs never see each
 other's ports. A listener on `::`,
 which is where Node listens when it is given no host, takes connections to
-`127.0.0.1` as well as `::1`, as a dual-stack socket does. Nothing a job
-listens on appears on the host.
+`127.0.0.1` as well as `::1`, as a dual-stack socket does. A connection to
+the unspecified address (`::` or `0.0.0.0`) reaches the loopback, as on
+Linux, where tests often connect to the address a server listening with no
+host reports. Nothing a job listens on appears on the host.
+
+Unix domain sockets on a path work between a job's processes too: a Node
+server listening on `/tmp/app.sock` (tsx's IPC, test runners' workers) and
+a client in another process. A socket on a path is a connection on the
+job's loopback under that name, and its path a file in the job's file
+system, so it reaches nothing outside the job; binding a path that exists
+fails with `EADDRINUSE` and connecting to one nobody bound with `ENOENT`,
+as on Linux. Abstract names and datagram Unix sockets are not supported.
 
 Jobs also reach the **public internet** by default: names resolve through
 the host and connections to public addresses go out over host sockets, so a
@@ -3120,7 +4324,8 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
-IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2]
+IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
+         [--machines <dir>] [--machine-cpus 2]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -3138,7 +4343,8 @@ objects) live under `--cache`, `$IWCI_CACHE_DIR` or `~/.cache/iwci`.
 
 Jobs see `CI=true`, `HOME=/root` and `GIT_TERMINAL_PROMPT=0` (unless they
 set their own), `IWCI_COMMIT`, `IWCI_BRANCH`, `IWCI_REPO_ID`, `IWCI_JOB` and
-`IWCI_OUTPUT`, plus `PWD` set
+`IWCI_OUTPUT`, `IWCI_CPUS` when the job has `cpus:` (the vCPUs it holds),
+plus `PWD` set
 to their `cwd`. That is the only way a plain WASI tool learns its working
 directory: Go's `wasip1` port reads it, and a wasi-libc tool must (see
 [Known limitations](#known-limitations)). A `run:` script and what it starts
@@ -3159,16 +4365,16 @@ commit) runs in about 0.35 s.
 Everything a run builds is cached under `--cache`, so the second run of a
 commit, and of most commits after it, does almost nothing:
 
-| What             | Kept under  | Keyed by                                                                                                                                                                                       |
-| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| git objects      | `git/`      | One repository per remote (the run's, and Composer packages fetched by commit). A commit already there costs no network.                                                                       |
-| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`. Re-verified on every read. |
-| installs         | `installs/` | What the install read. See below.                                                                                                                                                              |
-| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                         |
-| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                        |
+| What             | Kept under  | Keyed by                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| git objects      | `git/`      | One repository per remote (the run's, and Composer packages and Bundler `GIT` sources fetched by commit). A commit already there costs no network.                                                                                                                                                                                       |
+| downloads        | `deps/`     | The lockfile's hash: npm `integrity`, Cargo `checksum`, Go's `h1:` from `go.sum` (checked over the zip's files), a pip lock's `sha256`, a Composer dist's `shasum`, a `Gemfile.lock`'s `CHECKSUMS`; for a WebAssembly build installed in place of a native npm package, the integrity its registry publishes. Re-verified on every read. |
+| installs         | `installs/` | What the install read. See below.                                                                                                                                                                                                                                                                                                        |
+| compiled modules | `modules/`  | The module's sha256 and the Wasmer version, compiler and CPU features.                                                                                                                                                                                                                                                                   |
+| tools from R2    | `objects/`  | sha256.                                                                                                                                                                                                                                                                                                                                  |
 
 **Installs** (`node_modules`, the `GOMODCACHE`, `vendor/`, a Python user
-site) are cached whole. An install runs in a layer over the checkout that records every read
+site, `vendor/bundle`) are cached whole. An install runs in a layer over the checkout that records every read
 reaching the checkout, including files it looked for and did not find, and
 keeps every write to itself. Both are stored, and a later run reuses the
 result only when every recorded read still sees the same thing. So a bumped
@@ -3188,8 +4394,14 @@ the next use unpacks it again, 1.2 s more, and keeps both until it goes
 unused again. `iwci serve` packs in the background at start and every ten
 minutes, `iwci run` after its run. Each file's modification time is the
 install's last use, so the window survives a restart. A damaged file of
-either kind, or one an older runner wrote, is a miss. Disk use is bounded
-per install (ecosystem, directory and options): the four most recently used
+either kind, or one an older runner wrote, is a miss. An install's key
+names its installer and that installer's version
+(`iwci_deps::cache::Installer::version`), which is bumped in the same
+change as anything that alters what the installer writes for the same
+files, so a runner never replays an install an older build of the
+installer made. Those, and installs a runner cached before keys recorded
+themselves, are removed by the next packing pass. Disk use is bounded
+per install (installer, directory and options): the four most recently used
 states of its inputs are kept, each unpacked at its full size while in use
 (plus its packed copy, if it has been packed before) and packed after, so a
 runner holds about the raw size of the installs it ran in the last day. In
@@ -3211,6 +4423,54 @@ whole pipeline.
   threads. A WASIX program's own threads and subprocesses (bash running
   `sed`) are not capped, because a script waiting on its child would
   deadlock. Default: the machine's cores.
+- **`cpus:`** gives a job whole vCPUs instead of a share of one: it holds
+  `cpus × jobs-per-cpu` slots, every slot of that many vCPUs (all of the
+  runner's when it asks for more than there are; `iwci run` has a slot per
+  vCPU). While it waits for them no job takes a slot, so jobs of one slot
+  coming and going cannot keep it waiting; one such job gathers at a time,
+  and the others wait behind it. A helper of a split run starts one only
+  when all its slots are free. The job is told the number it holds:
+  `IWCI_CPUS`, and the CPU count below. A sandboxed job's sandbox has that
+  many CPUs (gVisor's `--cpu-num`), with its cgroup's `cpu.weight` that of
+  as many one-slot jobs as it holds slots; gVisor runs its kernel's threads
+  on that many, which caps such a job at about that much CPU time (four
+  busy threads of Bun took 2.8 times as long as one at `cpus: 2` on a
+  runner with four free). A WASIX job is not capped: CPU time no other
+  job wants is still its to use, as for any job.
+- **The CPU count** a job is told is its `cpus:`, or 1 without: a slot is
+  `1 / jobs-per-cpu` of a vCPU, which rounds up to one, whatever
+  `--jobs-per-cpu` is. Told the cores of the runner's machine (48 on a
+  production runner), a job of a quarter of a vCPU had `pytest -n auto`,
+  vitest, Jest, cargo and every tool that sizes a pool from the count start
+  a worker per core, each with its own memory. Every way a program asks
+  says the same: the count WASIX reports (`thread_parallelism`, which
+  `nproc`, Python's `os.cpu_count()`, `os.process_cpu_count()` and
+  `multiprocessing.cpu_count()`, Node's `os.availableParallelism()` and
+  `navigator.hardwareConcurrency` read), `/proc/cpuinfo` (below, and so
+  psutil), and in a sandbox a native program's affinity (Bun's
+  `navigator.hardwareConcurrency` and `availableParallelism()`, `nproc`,
+  Rust's `available_parallelism`, Go's `runtime.NumCPU`). Only the count
+  changes: a job without `cpus:` still uses whatever CPU time no other job
+  wants, and its sandbox keeps the runner's CPUs (gVisor does not pin a
+  thread to its affinity, so four busy threads of Bun told one CPU took
+  1.6 times as long as one, as before). Three counts do not follow:
+  Node's `os.cpus()` lists one CPU whatever the job holds (Edge.js has no
+  CPU list); Go's WebAssembly port counts one CPU (`runtime.NumCPU`,
+  `GOMAXPROCS`), its programs running on one thread; and in a sandbox
+  without `cpus:`, what gVisor itself lists, `/proc/cpuinfo`,
+  `/sys/devices/system/cpu` and so Bun's `os.cpus()` and the C library's
+  `sysconf(_SC_NPROCESSORS_ONLN)`, is the sandbox's CPUs (the runner's
+  `--cpus`). A [Linux machine](#linux-machines) is told its own vCPUs,
+  which are real ones it is held to.
+- **`/proc/cpuinfo`** is the one file the runner puts in a job's `/proc`
+  (WASIX has no procfs): a `processor` section per CPU the job is told, all
+  cores of one package (`physical id`, `siblings`, `core id`,
+  `cpu cores`), which is what psutil's `cpu_count(logical=False)` reads,
+  and so pytest-xdist's `-n auto` when psutil is installed. There is no
+  `/proc/stat`, `/proc/self` or `/sys`. Node's `os.cpus()` reads none of
+  them: Edge.js builds libuv for WASI without its CPU list and answers
+  with one CPU. Under it, `/proc/iwci` is the runner's own (modes, ports,
+  native programs).
 - **`--memory`** is a budget across running jobs. A job reserves its
   `memory:` before it starts and waits until that fits, also when other
   runs hold the memory (any run giving memory back wakes the rest); a job
@@ -3518,7 +4778,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
-| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), and V8's out-of-memory losses (below).                              |
+| `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), V8's out-of-memory losses (below), and the `platforms` it runs.     |
 | `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
@@ -3534,7 +4794,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | `GET /v1/storage/{owner}[?quota=]`      | The owner's storage (caches and downloads), total and per repository, against its quota.                                                                                |
 | `DELETE /v1/storage/{owner}/{repo-id}`  | Deletes one repository's caches, never its downloads (below), and answers what went.                                                                                    |
 | `GET /v1/usage/{owner}[?month=YYYY-MM]` | The owner's billed usage for a month, total and per repository.                                                                                                         |
-| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch (file, name, crons and the file's text), and its `manual` ones (file, name and inputs).                                  |
+| `POST /v1/schedules/read`               | A repository's scheduled pipelines on a branch (file, name, crons, the file's text and its `platforms`), and its `manual` ones (file, name and inputs).                 |
 | `POST /v1/drain`                        | Stops taking runs; running ones finish. `/v1/capacity` shows `draining`.                                                                                                |
 
 A request body (for `runs` and `prepare`):
@@ -3600,6 +4860,18 @@ it is masked, and an untrusted run is given none of it:
     "r2-assets": { "env": { "AWS_ACCESS_KEY_ID": "<value>", "AWS_SECRET_ACCESS_KEY": "<value>" } },
     "stripe-key": { "refused": "stripe-key is not granted to CI for acme/web" }
   },
+  "env-files": {
+    "{\"path\":\".infraenv\",\"environment\":\"staging\"}": {
+      "env": {
+        "NODE_ENV": [{ "text": "staging" }],
+        "DATABASE_URL": "<a granted resource's output>"
+      },
+      "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" }
+    },
+    "{\"path\":\".infraenv\"}": {
+      "refused": "`CACHE_URL` in .infraenv reads restUrl of cache (upstash/redis), which is not granted to CI; grant cache to CI with the output restUrl for acme/web"
+    }
+  },
   "github-token": {
     "contents=write,pull-requests=write": {
       "env": {
@@ -3641,7 +4913,8 @@ it is masked, and an untrusted run is given none of it:
   joined in the order the job lists them, connections before keys, with
   the stricter mode.
 - **Variables** may not be `IWCI_*`. A connection's and key's come first,
-  then `env-from`'s, then the job's own `env:`, which wins.
+  then `env-from`'s, then `env-files`', then the job's own `env:`, which
+  wins.
 - **Refusals.** `refused` (1 to 1024 characters) instead of the material,
   or `refused-outputs` per output, is what a job that names it fails with.
   A name the job uses that `lent` does not have fails it as "connection
@@ -3649,6 +4922,15 @@ it is masked, and an untrusted run is given none of it:
 - **GitHub tokens** are keyed by the permissions jobs ask for, in order,
   `name=level` joined by commas (`contents=write,pull-requests=write`);
   a job is given the entry for exactly its own `github-token:`.
+- **Environment files** are keyed by the job's `env-file:` as compact JSON:
+  `path`, then `environment` and `vars` (sorted by name) when set, such as
+  `{"path":".infraenv","environment":"staging"}`; a job is given the entry
+  for exactly its own. `env` is the variables the app resolved; `secrets`
+  names, per variable, a secret of the request's `secrets` (the
+  repository's CI secrets), filled in when the job starts and masked. A
+  secret the request does not have fails the job. Up to 2,000 variables per
+  file. A runner before 0.3.45 refuses a request with `env-files`, and a
+  pipeline with `env-file:`, rather than run without them.
 - **Expiry.** `expires-at` (seconds since the Unix epoch), on any
   connection, key or token entry: a job that names it and starts less than
   a minute before then fails with that reason, and one whose timeout ends
@@ -3744,15 +5026,17 @@ it is masked, and an untrusted run is given none of it:
   keeps idle connections open through proxies.
 - **Billing.** Each run writes a record to
   `usage/<owner>/<yyyy>/<mm>/<started>-<id>.json`: the run, its jobs, and
-  its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU
-  (`vcpu_seconds`) and the memory it reserved over that time
+  its usage. A job is charged its wall time at `1 / jobs-per-cpu` of a vCPU,
+  or at the whole vCPUs of its `cpus:` that it held, which its line in
+  `jobs` gives as `"cpus"` (`vcpu_seconds`), and the memory it reserved
+  over that time
   (`memory_gib_seconds`). A cloud job ran on the customer's own account: it
   is in none of those, but in `external_jobs` and `external_seconds` (from
   its claim to its end), and its line in `jobs` is `"external": true` with
   that time as `duration_ms`. Failed and errored runs are recorded too,
-  with no usage. The record's `schema` is 4: 2 added a job `status` of
+  with no usage. The record's `schema` is 5: 2 added a job `status` of
   `cancelled` (1 had only `passed`, `failed`, `skipped` and `error`), 3 the
-  external fields, 4 split runs. The runner that has a split run writes its
+  external fields, 4 split runs, 5 a job's `cpus`. The runner that has a split run writes its
   one record, for every job: a job another runner ran is `"remote": true`
   and is in `usage` like the rest, at its time there and the memory it
   reserved. A helper writes none, so summing an owner's records is still
@@ -3783,11 +5067,15 @@ it is masked, and an untrusted run is given none of it:
   the same body as a run and resolves it as a run would (the commit, the
   pipeline files or `pipeline`, `base` for `paths:`), without a job slot,
   answering only the pipelines the event triggers:
-  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
-  with `"concurrency": null` for a pipeline without one. `jobs` lists each
+  `{ "commit", "pipelines": [{ "file", "name", "concurrency": { "group", "cancel-in-progress" }, "platforms": [...], "jobs": [...] }], "invalid": [{ "file", "errors" }] }`,
+  with `"concurrency": null` for a pipeline without one. `platforms` lists
+  the virtual machines its jobs run in (`linux`; sorted, empty
+  when every job is `wasm`), which the app sends the proxy so it can place
+  the run ([Platforms](#platforms)); a run request itself never carries
+  it. `jobs` lists each
   job key that runs on a cloud account or is lent anything, which is what
   the app resolves before it dispatches the run:
-  `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...] }`
+  `{ "key", "cloud"?: { "provider", "kind", "connection"?, "machine"?, "image"?, "region"?, "gpu"? }, "connections"?: [{ "name", "namespace"? }], "ssh-keys"?: [...], "resources"?: { "<name>": ["<output>", ...] }, "env-from"?: [...], "github-token"?: { "<permission>": "read" | "write" }, "env-file"?: { "path", "environment"?, "vars"?: { "<name>": "<value>" } } }`
   (a key is left out when empty; `cloud` holds the block as written, its
   `machine`, `image`, `region` and `gpu` possibly with `${{ matrix }}`
   still in them; `resources` includes what the job's services read). One
@@ -3798,8 +5086,8 @@ it is masked, and an untrusted run is given none of it:
   means a run would run nothing, which the app takes as reason not to send
   one (an older runner leaves `invalid` out, which says nothing). `400` for a bad
   request, `422` when the commit cannot be fetched. `POST
-/v1/schedules/read` carries each scheduled pipeline's `concurrency` the
-  same way.
+/v1/schedules/read` carries each scheduled pipeline's `concurrency` and
+  `platforms` the same way.
 - **Manual runs.** `"event": "manual"` with `pipeline-file` (or `pipeline`)
   runs that one file, as the commit has it, with `inputs`; anything but a
   manual run sending `inputs` or `pipeline-file` is a `400`, and so is an
@@ -3988,6 +5276,12 @@ the routes; the short version:
 
 ## Known limitations
 
+- **Virtual machines are new.** `platform: linux` is tested against the
+  real agent over pipes and with a fake machine in the scheduler, but the
+  image (`images/linux`) has not yet been built and booted on a KVM host,
+  so expect the first real runs to find problems. No machine job can use
+  the task cache. `platform: windows` is turned off: the parser refuses it
+  and no runner offers it (`VmOs::enabled`).
 - **File locks need a C library that asks for them.** The runner keeps
   `flock` locks (an open file's, released with its last descriptor) and
   `fcntl` record locks (a process's, released when it closes the file or
@@ -4050,12 +5344,50 @@ the routes; the short version:
   coreutils' `ls -l` shows every file as `rwxrwxrwx`, other WASIX programs
   read no permission bits, and nothing enforces a mode. A `changes: commit` keeps each file's original
   mode (a new file is `100644`).
-- **No hard links.** `link()` fails with `EPERM` ("Operation not
-  permitted"), as on a file system without them, and leaves nothing
-  behind: `ln f g` fails, and a program that falls back when it cannot
-  link copies or renames instead, as Git does
-  ([#1052](https://github.com/Infrawrench/Infrawrench/issues/1052)).
-  Symbolic links work.
+- **Hard links stay within the job's own file system** (see
+  [Hard links](#hard-links)): one to or from another mount fails with
+  `EXDEV`, and caches, artifacts, downloads and `changes:` keep each name
+  as a file of its own.
+- **pnpm 12 needs the native sandbox.** It is a native program
+  (`@pnpm/exe`), and `env:bash-node`'s `pnpm` is 10.34.5, which switches
+  to the 12 a project asks for (`engines.pnpm`, `packageManager`) and
+  links its platform binary into place, so a job needs a native tool
+  (`tools: [builtin:glibc@2.39]`) and `native: true` on its pnpm dep.
+  tRPC's `pnpm typecheck-packages` passed that way on ci-1 in 48 s with
+  nothing cached (November 2026).
+- **rolldown 1.2 leaves its WASI build out of its optional dependencies**
+  (1.2.2 to 1.2.18; 1.3 lists it again), so tsdown on it (vercel/ai's
+  builds) fails with "Failed to load native binding for wasi-wasm32" unless
+  the repository lists `@rolldown/binding-wasm32-wasi` at rolldown's
+  version (see [Tools and environments](#tools-and-environments)). Unlike the [WebAssembly builds](#tools-and-environments) installed
+  in place of a native package, that build has dependencies of its own
+  (`@napi-rs/wasm-runtime`, `@emnapi/*`), which only a lockfile can pin.
+- **bash stops its PATH search at a directory named like the command.**
+  With a directory `node` earlier on PATH (a checkout's `node/` and
+  `PATH="$PWD:$PATH"`), `node` in a script is "command not found", and a
+  non-executable file by that name is run as a script, since Wasmer's
+  bash sees every file as executable ([File modes](#file-modes)). This is
+  in Wasmer's bash. `env node`, a `#!/usr/bin/env node` script and Node's
+  `child_process` go through the runtime's search, which passes over a
+  directory as Linux's `execvp` does.
+- **tsdown's declarations (`dts`) do not build.** rolldown-plugin-dts
+  parses them with yuku, a Node-API addon with no `wasm32-wasi` build
+  (`yuku-codegen` 0.10 in rolldown-plugin-dts 0.28.6, `yuku-core` in 0.28.8;
+  `@yuku-core/wasm` is not a drop-in), so a tsdown build with `dts` on
+  fails with "Failed to load native binding", natively installed or not.
+  The JavaScript output builds (`tsdown --no-dts`). It once hung instead,
+  after "Build start", when `native: true` made yuku's `isMusl` read
+  `process.report.getReport()` while rolldown's WebAssembly threads waited;
+  a report now reaches a worker blocked in `Atomics.wait`
+  (`vendor/README.md`, wasmer-napi).
+- **A package manager run in a job is three to four and a half times slower than
+  natively** (`pnpm install` of create-t3-turbo: 54 to 84 s against 17 to
+  19 s, as busy as the host was), and holds its store and a copy of every package in memory, since
+  it cannot link one to the other. The time is the runner's file system
+  answering each call, spread over path resolution, the overlay's layers
+  and the in-memory directories' linear lookups, with no single cost left
+  to remove. `deps:` installs natively instead (see
+  [Installing in a script](#installing-in-a-script)).
 - **Submodules** are skipped with a warning, and Cargo `git` dependencies
   are reported rather than vendored.
 - **Pushing** the commit a `changes: commit` job makes is left to the
@@ -4209,15 +5541,18 @@ job output, and none of it counts against an owner's storage quota.
 
 ## Crates
 
-| Crate          | Does                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------ |
-| `iwci-spec`    | The pipeline file: parse, validate, expand, interpolate.                             |
-| `iwci-vfs`     | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                           |
-| `iwci-git`     | Shallow fetch with a persistent cache, checkout into a snapshot, commits.            |
-| `iwci-deps`    | pnpm, Bun, Go, Cargo, pip and Composer installers over a verifying, caching fetcher. |
-| `iwci-store`   | R2 and local object stores, manifests, tool resolution.                              |
-| `iwci-runtime` | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.  |
-| `iwci`         | The scheduler and the `iwci` command.                                                |
+| Crate           | Does                                                                                               |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `iwci-spec`     | The pipeline file: parse, validate, expand, interpolate.                                           |
+| `iwci-vfs`      | Snapshots and per-job overlays over Wasmer's `virtual-fs`.                                         |
+| `iwci-git`      | Shallow fetch with a persistent cache, checkout into a snapshot, commits.                          |
+| `iwci-deps`     | pnpm, npm, Bun, Go, Cargo, pip, Composer and Bundler installers over a verifying, caching fetcher. |
+| `iwci-store`    | R2 and local object stores, manifests, tool resolution.                                            |
+| `iwci-runtime`  | Wasmer: compiled-module cache, WASI/WASIX commands, the tsc-host ABI, environments.                |
+| `iwci`          | The scheduler and the `iwci` command.                                                              |
+| `iwci-vm`       | `platform: linux` jobs: QEMU, workspace images, the agent's link.                                  |
+| `iwci-vm-proto` | The wire between the runner and the agent in a machine, and the `.gitignore` rules both use.       |
+| `iwci-guest`    | The agent inside each machine (Linux init; a dormant Windows scheduled task).                      |
 
 ## Development
 
@@ -4252,6 +5587,9 @@ bash builtins/test.sh bash kubectl           # needs Go's archive and modules
 bash builtins/test.sh bash openssh           # needs ssh-keygen here, and the internet
 bash builtins/v8/archive.sh fetch          # V8 for the bridge; needs the bucket
 cargo build -p iwci --features node && bash builtins/test.sh bash-node
+eval "$(bash crates/iwci-sandbox/tests/fixtures.sh /tmp/sandbox)"  # gVisor
+sudo systemd-run --scope -p Delegate=yes env IWCI_NATIVE_SANDBOX="$IWCI_TEST_GVISOR" \
+  bash builtins/test.sh rust                 # native, as root in a cgroup of its own
 ```
 
 A job whose key ends in `-passes` must pass and one ending in `-fails` must
@@ -4266,7 +5604,8 @@ builds from source (two or three minutes); a build already in
 In CI, `ci-runner.yml` builds and tests gofmt and bash on every change.
 `ci-runner-builtins.yml` builds and tests typescript, oxfmt and bash-node,
 which each need a large toolchain, python and php, whose tests install
-from the internet, each Go minor and OpenSSH, on x86_64 and on ARM64, on changes to
+from the internet, each Go minor, OpenSSH, and builtin:rust, whose jobs
+run in the native sandbox as root, on x86_64 and on ARM64, on changes to
 the builtins, the runtime or the store, and
 nightly, because those builds resolve crates and a WASIX toolchain that
 this repository does not pin byte for byte. The Node job

@@ -25,7 +25,7 @@ Connect Koyeb to deploy and scale services, manage databases, secrets, domains a
 
 In the Koyeb control panel, go to **Settings > API > Create API access token**. The token belongs to that organization and has full access to it. Koyeb shows it only once.
 
-<insert [Koyeb Add-account form with the API Access Token field filled in] here>
+![Koyeb Add-account form with the API Access Token field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/koyeb/add-account.png)
 
 ## Day-to-day tasks
 
@@ -36,9 +36,9 @@ In the Koyeb control panel, go to **Settings > API > Create API access token**. 
 - **Track costs**: the lines of your open invoice for the current month (plan fee, each instance type, database compute and storage), with discounts as a credit. Koyeb doesn't share past invoices, so history starts from the day you connect the account.
 - **Check quotas**: apps, services, memory, domains, TCP proxy ports, instances per type, volume storage per region and instance snapshots, each against your plan's limit.
 
-<insert [Koyeb service detail view showing the Redeploy, Set Instances and Pause header actions and the Details section with instance type and scaling] here>
+![Koyeb service detail view showing the Redeploy, Set Instances and Pause header actions and the Details section with instance type and scaling](https://agent-assets.infrawrench.com/docs-screenshots/plugins/koyeb/service-detail.png)
 
-<insert [Koyeb organization detail view showing the Quotas table and the Current Invoice table] here>
+![Koyeb organization detail view showing the Quotas table and the Current Invoice table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/koyeb/organization-detail.png)
 
 ## Status, savings and Terraform
 

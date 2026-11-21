@@ -3,6 +3,13 @@ import "kill-emudhra";
 import * as vscode from "vscode";
 import { estimateWorkingTree } from "./diff-estimate";
 import { IacIndexService } from "./iac-index";
+import { INFRAENV_SELECTOR, InfraenvChecker } from "./infraenv";
+import {
+  checkInfraenvCommand,
+  disposeInfraenvOutput,
+  insertInfraenvReferenceCommand,
+  pullDotenvCommand,
+} from "./infraenv-commands";
 import { openResource, openService, openVulnerabilities, type OpenResourceArgs } from "./open";
 import { clearSearchCache, runSearch } from "./search";
 import { ServicesTreeProvider } from "./services-tree";
@@ -21,6 +28,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const caches = createSectionCaches();
   const codeLens = new TerraformCodeLensProvider(session, iac, caches);
   const services = new ServicesTreeProvider(session);
+  const infraenv = new InfraenvChecker(session);
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
   status.command = "infrawrench.selectOrg";
@@ -72,12 +80,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       new TerraformHoverProvider(session, iac, caches),
     ),
     vscode.languages.registerCodeLensProvider(TERRAFORM_SELECTOR, codeLens),
+    infraenv,
+    vscode.languages.registerHoverProvider(INFRAENV_SELECTOR, infraenv),
+    { dispose: disposeInfraenvOutput },
     vscode.window.registerTreeDataProvider("infrawrench.services", services),
     command("infrawrench.signIn", () => session.signIn()),
     command("infrawrench.signOut", () => session.signOut()),
     command("infrawrench.selectOrg", () => session.selectOrg()),
     command("infrawrench.search", () => runSearch(session)),
     command("infrawrench.estimateDiff", () => estimateWorkingTree(session)),
+    command("infrawrench.checkInfraenv", () => checkInfraenvCommand(session, infraenv)),
+    command("infrawrench.pullDotenv", () => pullDotenvCommand(session)),
+    command("infrawrench.insertInfraenvReference", () => insertInfraenvReferenceCommand(session)),
     command("infrawrench.refresh", () => {
       resetCaches();
       services.refresh();

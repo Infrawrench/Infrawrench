@@ -87,6 +87,7 @@ import {
   STATS_KEY,
   SUMMARY_KEY,
   TAGS_KEY,
+  formatUsd,
   renderModalDetail,
   renderModalSidebar,
 } from "./render.js";
@@ -110,9 +111,7 @@ function monthStartMs(now = new Date()): number {
 }
 
 function usd(n: unknown): string {
-  return typeof n === "number"
-    ? `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "—";
+  return typeof n === "number" ? formatUsd(n) : "—";
 }
 
 async function mapLimited<T, R>(

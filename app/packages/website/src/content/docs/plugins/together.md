@@ -50,7 +50,7 @@ The report covers the whole Together organization the key belongs to, not just i
 
 Together's billing data is in beta and turned on per organization. Until it's on, Costs shows a setup notice with a link to request access from Together support. Nothing else needs to change once it's turned on.
 
-<insert [The Costs page filtered to a Together AI account, broken down by service] here>
+![The Costs page drilled into a Together AI account, broken down by service](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/costs-by-service.png)
 
 ## Managed endpoint metrics and events
 
@@ -58,11 +58,11 @@ A managed endpoint's detail page sums up the last 24 hours: requests, error rate
 
 The **Metrics** tab charts the same measurements over any time range, in one-minute buckets for ranges up to six hours, hourly up to two weeks, and daily beyond that.
 
-<insert [The Metrics tab of a Together managed endpoint showing latency percentiles and GPU utilization] here>
+![The Metrics tab of a Together managed endpoint showing latency percentiles and GPU utilization](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/endpoint-metrics.png)
 
 The **Logs** tab shows the endpoint's events: endpoint changes plus provisioning, scaling, readiness and rollout events from every deployment under it, oldest first. Each line has its time, severity, event type and source. Scaling events show the replica change (`replicas=1->2`). When a replica crashes, runs out of memory or fails to pull its image, Together's short diagnostic appears indented under the event. These are lifecycle events, not the model server's own output, which Together doesn't provide for managed endpoints.
 
-<insert [The Logs tab of a Together managed endpoint showing deployment scaling and readiness events] here>
+![The Logs tab of a Together managed endpoint showing deployment scaling and readiness events](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/endpoint-logs.png)
 
 ## Create a GPU cluster
 
@@ -78,7 +78,7 @@ Afterwards you can edit the GPU count, the cluster type, the requested preemptib
 
 Kubernetes clusters have a **Kubernetes** tab.
 
-<insert [A Together GPU cluster detail page showing capacity, GPU worker nodes and the Kubernetes tab] here>
+![A Together GPU cluster detail page showing capacity, GPU worker nodes and the Kubernetes tab in the tab bar](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/gpu-cluster-detail.png)
 
 ## Things you can do
 

@@ -39,7 +39,7 @@ You can set the window from 0 to 90 days. **0 turns re-exporting off entirely.**
 
 Go to **Settings > Cost Exports** and click **New export**.
 
-<insert [The New cost export dialog, showing the name, format, cadence, hour and timezone fields with the restatement window explanation visible below them] here>
+![The New cost export dialog, showing the name, format, cadence, hour and timezone fields with the restatement window explanation visible below them](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-exports/new-export-dialog.png)
 
 ### Name, format and schedule
 
@@ -254,7 +254,7 @@ infrawrench exports setup "Finance warehouse"   # the GRANT statements it needs
 
 `exports run` exits non-zero when the run fails, so a CI step can depend on it.
 
-<insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed" and its full error printed below the table] here>
+![Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed" and its full error printed below the table](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/exports-failed.png)
 
 ## Permissions
 

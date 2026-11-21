@@ -147,7 +147,11 @@ export * from "./domains/paging-providers";
 export * from "./domains/posture";
 export * from "./domains/pr-checks";
 export * from "./domains/price-catalog";
+export * from "./domains/migration-estimates";
 export * from "./domains/probes";
+export * from "./domains/heartbeats";
+export * from "./domains/env-files";
+export * from "./domains/live";
 export * from "./domains/profile";
 export * from "./domains/provider-oauth";
 export * from "./domains/push";
@@ -305,7 +309,11 @@ import { PagingProvidersApi } from "./domains/paging-providers";
 import { PostureApi } from "./domains/posture";
 import { PrChecksApi } from "./domains/pr-checks";
 import { PriceCatalogApi } from "./domains/price-catalog";
+import { MigrationEstimatesApi } from "./domains/migration-estimates";
 import { ProbesApi } from "./domains/probes";
+import { HeartbeatsApi } from "./domains/heartbeats";
+import { EnvFilesApi } from "./domains/env-files";
+import { LiveApi } from "./domains/live";
 import { ProfileApi } from "./domains/profile";
 import { ProviderOAuthApi } from "./domains/provider-oauth";
 import { PushApi } from "./domains/push";
@@ -431,12 +439,14 @@ export const API_DEFINITIONS = {
   dns: DnsApi,
   dora: DoraApi,
   "environment-diff": EnvironmentDiffApi,
+  "env-files": EnvFilesApi,
   environments: EnvironmentsApi,
   "event-subscriptions": EventSubscriptionsApi,
   expiring: ExpiringApi,
   "extended-support": ExtendedSupportApi,
   github: GithubApi,
   "github-issues": GithubIssuesApi,
+  heartbeats: HeartbeatsApi,
   iac: IacApi,
   "idle-findings": IdleFindingsApi,
   incidents: IncidentsApi,
@@ -453,6 +463,7 @@ export const API_DEFINITIONS = {
   leases: LeasesApi,
   linear: LinearApi,
   "linux-apps": LinuxAppsApi,
+  live: LiveApi,
   "log-workspaces": LogWorkspacesApi,
   "metric-alerts": MetricAlertsApi,
   moment: MomentApi,
@@ -468,6 +479,7 @@ export const API_DEFINITIONS = {
   posture: PostureApi,
   "pr-checks": PrChecksApi,
   "price-catalog": PriceCatalogApi,
+  "migration-estimates": MigrationEstimatesApi,
   probes: ProbesApi,
   profile: ProfileApi,
   "provider-oauth": ProviderOAuthApi,

@@ -281,6 +281,7 @@ fn options(split: Option<Arc<dyn Split>>, parallelism: usize) -> Options {
         split,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -496,12 +497,23 @@ fn the_runners_of_a_split_run_never_wait_for_each_others_task_cache_markers() {
     assert_eq!((one_in.waits(), two_in.waits()), (0, 0));
     assert!(one.report.jobs.iter().all(|j| j.waited_for.is_none()));
     drop((first, second, one_in, two_in));
-    let left: Vec<String> = markers
-        .list("inflight/")
-        .unwrap()
-        .into_iter()
-        .filter(|k| k.contains("/keys/"))
-        .collect();
+    // Every marker goes, each deleted in the background once its job
+    // ends (`adapters::inflight`): the last job's delete can still be on
+    // its way when the run returns, so the store is read until it is done.
+    let keys = || -> Vec<String> {
+        markers
+            .list("inflight/")
+            .unwrap()
+            .into_iter()
+            .filter(|k| k.contains("/keys/"))
+            .collect()
+    };
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut left = keys();
+    while !left.is_empty() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(5));
+        left = keys();
+    }
     assert!(left.is_empty(), "{left:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -624,6 +636,7 @@ fn the_primary_runs_again_a_job_whose_artifacts_it_cannot_get() {
         duration_ms: 5,
         peak_memory_mib: 0,
         held_memory_mib: 0,
+        cpus: None,
         queued_ms: 0,
         kept: Kept::TaskCache {
             key: "task/a/0123456789abcdef".into(),
@@ -878,7 +891,7 @@ fn helper_jobs_give_way_newest_first_and_only_as_far_as_needed() {
     let helping = Arc::new(Helping::default());
     let jobs: Vec<_> = [1u64 << 30, 2 << 30, 4 << 30]
         .iter()
-        .map(|bytes| helping.start(*bytes, None))
+        .map(|bytes| helping.start(*bytes, 1, None))
         .collect();
     let stopped = |jobs: &[super::super::split::Helped]| -> Vec<bool> {
         jobs.iter().map(|j| j.cancel.is_cancelled()).collect()
@@ -899,17 +912,17 @@ fn helper_jobs_give_way_newest_first_and_only_as_far_as_needed() {
 
     // Two workers waiting for a slot are covered by the two giving way; a
     // third takes the last job.
-    let (a, b) = (helping.want_slot(), helping.want_slot());
+    let (a, b) = (helping.want_slot(1), helping.want_slot(1));
     assert_eq!(stopped(&jobs), [false, true, true]);
     assert!(helping.wanted());
-    let c = helping.want_slot();
+    let c = helping.want_slot(1);
     assert_eq!(stopped(&jobs), [true, true, true]);
     drop((a, b, c));
     assert!(!helping.wanted());
 
     // The run's own cancel stops a helper's job too.
     let run = iwci_runtime::Cancel::new();
-    let job = helping.start(1 << 20, Some(&run));
+    let job = helping.start(1 << 20, 1, Some(&run));
     run.cancel();
     assert!(job.cancel.is_cancelled());
     drop(jobs);
@@ -1206,6 +1219,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
             service_failure: Some("db".into()),
             cancelled: false,
             sandbox: None,
+            machine: None,
         }),
         changes: vec![("src/a.ts".into(), "modified".into())],
         commit: None,
@@ -1216,6 +1230,7 @@ fn a_record_of_a_job_reads_back_as_it_was_written() {
         duration_ms: 1234,
         peak_memory_mib: 77,
         held_memory_mib: 41,
+        cpus: None,
         queued_ms: 5,
         kept: Kept::TaskCache {
             key: "task/a/abc".into(),
@@ -1441,6 +1456,7 @@ fn everything_in_another_runners_record_is_masked_where_it_is_read() {
         duration_ms: 5,
         peak_memory_mib: 0,
         held_memory_mib: 0,
+        cpus: None,
         queued_ms: 0,
         kept: Kept::None,
     };
@@ -1590,6 +1606,7 @@ fn a_job_whose_outputs_a_helper_could_not_mask_is_run_by_the_primary() {
         duration_ms: 5,
         peak_memory_mib: 0,
         held_memory_mib: 0,
+        cpus: None,
         queued_ms: 0,
         kept: Kept::None,
     };

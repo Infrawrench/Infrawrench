@@ -10,7 +10,7 @@ This uses the same **GitHub App** your organization already connected for [git-t
 
 GitHub works alongside [Jira](./jira.md) and [Linear](./linear.md). If you connect more than one, the link reads **File an issue** and you pick the tracker for each finding.
 
-<insert [The Savings page Potential savings table with "Open PR" and "File in GitHub" links on one row and a filed "#42" link on another] here>
+![The Savings page Potential savings table with "Open PR" and "File in GitHub" links on one row and a filed "#42" link on another](https://agent-assets.infrawrench.com/docs-screenshots/features/github-issues/savings-file-in-github.png)
 
 ## What you can file
 
@@ -35,7 +35,7 @@ Open **Settings > GitHub Issues** on the web, or the Settings tab of the desktop
 3. **When a finding goes away.** Choose to close the issue with a comment, comment and leave it open, or do nothing.
 4. Choose **Save changes**.
 
-<insert [Settings → GitHub Issues, showing one installation with all permissions granted, the default repository picker, labels and assignees, and the "When a finding goes away" choice] here>
+![Settings → GitHub Issues, showing one installation with all permissions granted, the default repository picker, labels and assignees, and the "When a finding goes away" choice](https://agent-assets.infrawrench.com/docs-screenshots/features/github-issues/settings-github-issues.png)
 
 ### Approve the new permissions
 
@@ -70,7 +70,7 @@ When a finding goes away, Infrawrench acts on its issue the way you chose in set
 
 Each filed issue number is followed by the issue's state on GitHub: **Open**, **Closed** or **Closed as not planned**. Hover it to see the first assignee and the last change. You'll see this on rows, in the settings page's filed list, in the mobile app and in `infrawrench issues`.
 
-<insert [A Savings row showing a filed "#42" link followed by a green dot and "Closed", next to the File in GitHub link offering to file again] here>
+![A Savings row showing a filed "#42" link followed by a green dot and "closed", next to the File in GitHub link offering to file again](https://agent-assets.infrawrench.com/docs-screenshots/features/github-issues/savings-issue-closed.png)
 
 Statuses update in two ways:
 
@@ -104,7 +104,7 @@ For example, "file every new finding above $200 a month" is a rule with the trig
 
 The first scan only records what already exists, without raising anything. That backlog stays on the Savings page for you to file by hand. After that, each scan raises at most 25 new findings per organization, most expensive first, and the rest follow on the next scan.
 
-<insert [The alert routing rule editor with trigger "Savings findings", amount at least $200, and the "GitHub issues (one per finding)" destination ticked] here>
+![The alert routing rule editor with trigger "Savings findings", amount at least $200, and the "GitHub issues (one per finding)" destination ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/github-issues/alert-rule-github-issues.png)
 
 ## Terraform pull requests
 
@@ -122,7 +122,7 @@ To turn it on, go to **Settings > GitHub Issues > Terraform pull requests**:
 
 Rows on the Savings page then show **Open PR**. It shows you the one-file diff first, or explains why this resource can't be changed mechanically. **Open pull request** creates a branch, commits the change and opens the pull request with the evidence in its description. Pull requests are never merged automatically, and the description reminds the reviewer to run `terraform plan`. If the finding has an open issue, the pull request is linked from it.
 
-<insert [The Open PR window showing the diff that changes instance_type from "m5.xlarge" to "m5.large" in infra/prod/main.tf, with the Open pull request button] here>
+![The Open PR window showing the diff that changes instance_type from "m5.xlarge" to "m5.large" in infra/prod/main.tf, with the Open pull request button](https://agent-assets.infrawrench.com/docs-screenshots/features/github-issues/open-pr-window.png)
 
 [Pull request checks](./pr-checks.md) use the same repository mapping to match the Terraform in a pull request to the resources it manages, so those pull requests (and anyone else's) get a cost and blast-radius check too.
 

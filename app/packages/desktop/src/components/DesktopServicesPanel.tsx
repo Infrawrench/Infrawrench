@@ -11,6 +11,7 @@ import {
 } from "@infrawrench/ui";
 import { ServicesPanel } from "@infrawrench/ui/services";
 import { createDesktopServicesClient } from "@/lib/services-client";
+import { useStartMigrationEstimate } from "./useStartMigrationEstimate";
 import {
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
@@ -35,6 +36,7 @@ export function DesktopServicesPanel({
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopServicesClient(), []);
+  const migration = useStartMigrationEstimate();
   // The org grade's pillar cards lead to the page each one reads. Ownership
   // is recorded per resource and has no org-level page; service standards
   // reads the matrix on the same view.
@@ -58,7 +60,7 @@ export function DesktopServicesPanel({
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="w-full p-6 max-w-5xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <ServicesPanel
         key={activeCloudOrgId}
@@ -78,7 +80,14 @@ export function DesktopServicesPanel({
             ),
           )
         }
+        onEstimateMigration={(service) =>
+          migration.start({
+            source: { kind: "service", serviceId: service.id },
+            label: service.name,
+          })
+        }
       />
+      {migration.dialog}
     </div>
   );
 }

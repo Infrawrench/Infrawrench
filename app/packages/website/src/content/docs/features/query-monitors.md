@@ -15,7 +15,7 @@ Each of those is one query. **Query monitors** run that query on a schedule and 
 
 Open it from the sidebar.
 
-<insert [The Query monitors workspace tab showing three monitors with OK / Breaching / Not known pills, each with its SQL below, and the editor open with a "Try it" result] here>
+![The Query monitors workspace tab showing three monitors with OK / Breaching / Not known pills, each with its SQL below, and the editor open with a "Try it" result](https://agent-assets.infrawrench.com/docs-screenshots/features/query-monitors/monitors-and-editor.png)
 
 ## Create a monitor
 

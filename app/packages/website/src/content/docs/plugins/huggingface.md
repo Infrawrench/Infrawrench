@@ -31,7 +31,7 @@ Signing in this way doesn't cover usage reports, organization service accounts o
 
 Connect with Hugging Face works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
 
-<insert [Hugging Face add-account form showing the Connect with Hugging Face button above the Access Token field] here>
+![Hugging Face add-account form showing the Connect with Hugging Face button above the Access Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/huggingface/add-account-connect.png)
 
 ## Connect with an access token
 
@@ -47,7 +47,7 @@ Connect with Hugging Face works in the web app, in the desktop app's cloud mode,
 
 Add one account per namespace you want to manage. Organization-only features (service accounts, member tokens, billed Inference Providers usage) need an organization admin's token and a Team or Enterprise plan.
 
-<insert [Hugging Face Add-account form with the access token filled in and the Namespace picker open, listing the user and two organizations] here>
+![Hugging Face Add-account form with the access token filled in and an organization chosen in the Namespace picker (a native dropdown, shown closed)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/huggingface/add-account-namespace.png)
 
 ## Create an Inference Endpoint
 
@@ -56,7 +56,7 @@ Choose a **Configuration**:
 - **From the Inference Catalog** lists the models Hugging Face has tested, each with an engine (vLLM, TGI, llama.cpp and others) and hardware already chosen. Pick one and name the endpoint.
 - **Custom** lets you choose the model (your own repositories, trending models, or any model id), the task, the **Cloud and Region** (AWS, Google Cloud and Azure regions available to your namespace), and the **Hardware** for that region with its price per replica-hour. Set min and max replicas. A minimum of 0 scales the endpoint to zero after the idle timeout, so it costs nothing until the next request.
 
-<insert [Create Inference Endpoint form in Custom mode, with the AWS us-east-1 region selected and the hardware picker showing GPU sizes and monthly prices] here>
+![Create Inference Endpoint form in Custom mode, with AWS us-east-1 selected and the Hardware picker showing GPU sizes and monthly prices](https://agent-assets.infrawrench.com/docs-screenshots/plugins/huggingface/create-endpoint.png)
 
 The endpoint page shows the hourly price and current burn (price times running replicas), the replicas and their stages, and **Change hardware**, which offers every size available in the endpoint's region.
 
@@ -73,7 +73,7 @@ The **Playground** calls the endpoint's OpenAI-compatible `/v1/chat/completions`
 - `:preferred` follows your provider order
 - `:<provider>` pins one provider
 
-<insert [Inference Provider model detail page showing the providers table with prices and latency, and the Playground tab with the provider picker open] here>
+![Inference Provider model detail page showing the providers table with prices and latency, with the Playground tab beside Overview](https://agent-assets.infrawrench.com/docs-screenshots/plugins/huggingface/provider-model.png)
 
 ## Costs and quotas
 

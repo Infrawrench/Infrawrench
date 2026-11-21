@@ -61,7 +61,7 @@ impl<T> Node<T> {
 }
 
 /// The names along `path`, root and `.` left out.
-fn names(path: &Path) -> impl Iterator<Item = &OsStr> {
+pub(crate) fn names(path: &Path) -> impl Iterator<Item = &OsStr> {
     path.components().filter_map(|c| match c {
         Component::Normal(n) => Some(n),
         Component::ParentDir => Some(OsStr::new("..")),

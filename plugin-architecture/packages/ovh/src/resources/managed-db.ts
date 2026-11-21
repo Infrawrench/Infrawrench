@@ -24,6 +24,30 @@ export const ManagedDbResourceType = rt({
   id: "managed-db",
   name: "Managed Database",
   description: "An OVHcloud Public Cloud managed database service",
+  // Valkey replaced Redis, so a new Redis-compatible service is ordered as
+  // `valkey`; services synced before the switch still read `redis`.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["postgresql"] },
+      createFields: { engine: "postgresql" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["mysql"] },
+      createFields: { engine: "mysql" },
+    },
+    {
+      category: "managed-redis",
+      when: { fieldKey: "engine", oneOf: ["valkey", "redis"] },
+      createFields: { engine: "valkey" },
+    },
+    {
+      category: "managed-mongodb",
+      when: { fieldKey: "engine", oneOf: ["mongodb"] },
+      createFields: { engine: "mongodb" },
+    },
+  ],
   fields: [
     f("description", "Name"),
     f("engine", "Engine", { kind: "enum", enumValues: ENGINES, editable: false }),
@@ -35,13 +59,24 @@ export const ManagedDbResourceType = rt({
       description:
         "Service plan, e.g. discovery, production, advanced. Changing it migrates the service",
     }),
-    f("region", "Region", { showcase: true, editable: false }),
+    f("region", "Region", { showcase: true, editable: false, sizing: "region" }),
     f("flavor", "Flavor", {
       description: "Node flavor, e.g. b3-8. Changing it resizes every node",
+      sizing: "instance-type",
     }),
-    f("nodeCount", "Node Count", { showcase: true, kind: "number", editable: false }),
+    f("nodeCount", "Node Count", {
+      showcase: true,
+      kind: "number",
+      editable: false,
+      sizing: "node-count",
+    }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
-    f("storageSizeGb", "Storage (GB)", { kind: "number", required: false, editable: false }),
+    f("storageSizeGb", "Storage (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     f("deletionProtection", "Deletion Protection", { kind: "boolean", required: false }),
     f("backupTime", "Backup Time", {
       required: false,

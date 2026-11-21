@@ -48,6 +48,19 @@ impl Plan {
         &self.ctx
     }
 
+    /// The kinds of virtual machine the pipeline's jobs run in, sorted,
+    /// each once: what a runner must have to run all of it.
+    pub fn vm_platforms(&self) -> Vec<VmOs> {
+        let mut out: Vec<VmOs> = self
+            .jobs
+            .iter()
+            .filter_map(|t| t.vm.as_ref().map(|v| v.os))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     pub fn template(&self, key: &str) -> Option<&JobTemplate> {
         self.jobs.iter().find(|t| t.key == key)
     }
@@ -148,6 +161,10 @@ pub struct JobTemplate {
     /// fields may still hold `${{ matrix }}`, which each entry substitutes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudSpec>,
+    /// `platform:`, for a job that runs in a virtual machine. Literal, so
+    /// whoever dispatches the run can place it on a runner that has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vm: Option<VmSpec>,
     /// The connections, SSH keys and resources the job is lent, by name,
     /// for whoever dispatches the run to resolve before it starts.
     #[serde(skip_serializing_if = "JobAccess::is_empty")]
@@ -173,6 +190,90 @@ pub struct CloudSpec {
     pub region: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu: Option<String>,
+}
+
+/// Where a `platform: linux` job runs: a virtual machine the runner
+/// starts for it from one of its images.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VmSpec {
+    pub os: VmOs,
+    /// One of [`VmOs::images`].
+    pub image: String,
+    /// The `run:` script's interpreter, one of [`VmOs::shells`].
+    pub shell: String,
+}
+
+/// The operating system of a job's virtual machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VmOs {
+    Linux,
+    Windows,
+}
+
+impl VmOs {
+    pub fn parse(text: &str) -> Option<VmOs> {
+        match text {
+            "linux" => Some(VmOs::Linux),
+            "windows" => Some(VmOs::Windows),
+            _ => None,
+        }
+    }
+
+    /// Whether a pipeline may ask for it. Windows machines are written
+    /// (`iwci-guest`, `images/windows`) but turned off until one has run on
+    /// a real host; the parser refuses `platform: windows` and the runner
+    /// never offers it. Turning them on is this line, the runner opening
+    /// its Windows image again (`iwci_vm::Host::new`) and the docs.
+    pub fn enabled(self) -> bool {
+        matches!(self, VmOs::Linux)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            VmOs::Linux => "linux",
+            VmOs::Windows => "windows",
+        }
+    }
+
+    /// The images a runner may offer, the default first.
+    pub fn images(self) -> &'static [&'static str] {
+        match self {
+            VmOs::Linux => &["ubuntu-24.04"],
+            VmOs::Windows => &["windows-11-arm"],
+        }
+    }
+
+    /// The shells a `run:` script may name, the default first.
+    pub fn shells(self) -> &'static [&'static str] {
+        match self {
+            VmOs::Linux => &["bash", "sh", "pwsh"],
+            VmOs::Windows => &["pwsh", "powershell", "cmd", "bash"],
+        }
+    }
+
+    /// The least `memory:` a machine of this kind is given: Windows 11
+    /// does not start in less than 4 GiB.
+    pub fn min_memory(self) -> u64 {
+        match self {
+            VmOs::Linux => 256 << 20,
+            VmOs::Windows => 4 << 30,
+        }
+    }
+
+    /// `memory:` when the job gives none.
+    pub fn default_memory(self) -> u64 {
+        match self {
+            VmOs::Linux => 2 << 30,
+            VmOs::Windows => 4 << 30,
+        }
+    }
+}
+
+impl std::fmt::Display for VmOs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
 }
 
 /// The kinds of machine a cloud job may ask for.
@@ -204,6 +305,36 @@ pub struct JobAccess {
     /// `pull-requests`) and its level, `read` or `write`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub github_token: BTreeMap<String, String>,
+    /// `env-file:`: the repository file whose variables the app resolves
+    /// for the job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_file: Option<EnvFileUse>,
+}
+
+/// A job's `env-file:`, checked: a path in the repository, the
+/// environment chosen and the substitutions given. The app reads the file
+/// at the run's commit and resolves it when it sends the run.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct EnvFileUse {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
+}
+
+impl EnvFileUse {
+    /// The key a run request's `lent.env-files` has this file's variables
+    /// under: the use as compact JSON, `path`, then `environment` and
+    /// `vars` (sorted) when set, such as
+    /// `{"path":".infraenv","environment":"staging","vars":{"stage":"ci"}}`.
+    /// Jobs that read the same file the same way share an entry. Nothing in
+    /// it has a control character, so the app's `JSON.stringify` writes the
+    /// same text.
+    pub fn key(&self) -> String {
+        serde_json::to_string(self).expect("strings and maps of strings serialise")
+    }
 }
 
 impl JobAccess {
@@ -213,6 +344,7 @@ impl JobAccess {
             && self.resources.is_empty()
             && self.env_from.is_empty()
             && self.github_token.is_empty()
+            && self.env_file.is_none()
     }
 
     /// The key a run request's `lent.github-token` has the token for this
@@ -479,28 +611,44 @@ pub struct DepSpec {
     /// when unset, so workspaces that do not name one keep their keys.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
+    /// bundler: the Ruby (`major.minor`) gems are installed for, when the
+    /// pipeline names it. Left out of the serialised form when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ruby: Option<String>,
+    /// bundler: gems installed without their native extension when there
+    /// is no build of it. Left out of the serialised form when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub without_extensions: Option<Vec<String>>,
+    /// pnpm, npm and bun: the runner's own Linux packages are installed too.
+    /// Left out of the serialised form when off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub native: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Ecosystem {
     Pnpm,
+    Npm,
     Bun,
     Go,
     Cargo,
     Pip,
     Composer,
+    Bundler,
 }
 
 impl Ecosystem {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
             "pnpm" => Some(Ecosystem::Pnpm),
+            "npm" => Some(Ecosystem::Npm),
             "bun" => Some(Ecosystem::Bun),
             "go" => Some(Ecosystem::Go),
             "cargo" => Some(Ecosystem::Cargo),
             "pip" => Some(Ecosystem::Pip),
             "composer" => Some(Ecosystem::Composer),
+            "bundler" => Some(Ecosystem::Bundler),
             _ => None,
         }
     }
@@ -508,11 +656,13 @@ impl Ecosystem {
     pub fn name(self) -> &'static str {
         match self {
             Ecosystem::Pnpm => "pnpm",
+            Ecosystem::Npm => "npm",
             Ecosystem::Bun => "bun",
             Ecosystem::Go => "go",
             Ecosystem::Cargo => "cargo",
             Ecosystem::Pip => "pip",
             Ecosystem::Composer => "composer",
+            Ecosystem::Bundler => "bundler",
         }
     }
 }
@@ -543,6 +693,10 @@ pub struct PlannedJob {
     #[serde(with = "duration_secs")]
     pub timeout: Duration,
     pub memory_bytes: u64,
+    /// `cpus:`: whole vCPUs the job holds. `None` holds one slot, the
+    /// runner's share of a vCPU (`--jobs-per-cpu`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub caches: Vec<CacheSpec>,
     /// Which of its environment's own caches the job keeps (`env-cache:`).
@@ -571,6 +725,10 @@ pub struct PlannedJob {
     /// hands it to the app instead of running it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudSpec>,
+    /// Set for a `platform: linux` or `platform: windows` job: the runner
+    /// runs it in a virtual machine instead of an isolate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vm: Option<VmSpec>,
     /// `connections:`, `ssh-keys:`, `env-from:` and the resources its
     /// `env:` values (and its services') read.
     #[serde(skip_serializing_if = "JobAccess::is_empty")]
@@ -771,6 +929,12 @@ pub enum ToolRef {
         #[serde(rename = "cloud-kind")]
         kind: String,
     },
+    /// A `platform: linux` or `platform: windows` job: the runner's machine
+    /// image is its environment. Never resolved.
+    Vm {
+        os: VmOs,
+        image: String,
+    },
 }
 
 impl ToolRef {
@@ -782,12 +946,17 @@ impl ToolRef {
         matches!(self, ToolRef::Cloud { .. })
     }
 
+    pub fn is_vm(&self) -> bool {
+        matches!(self, ToolRef::Vm { .. })
+    }
+
     pub fn name(&self) -> &str {
         match self {
             ToolRef::Builtin { name, .. }
             | ToolRef::Repo { name, .. }
             | ToolRef::Env { name, .. } => name,
             ToolRef::Cloud { provider, .. } => provider,
+            ToolRef::Vm { image, .. } => image,
         }
     }
 }
@@ -799,6 +968,7 @@ impl std::fmt::Display for ToolRef {
             ToolRef::Repo { name, version } => write!(f, "repo:{name}@{version}"),
             ToolRef::Env { name, version } => write!(f, "env:{name}@{version}"),
             ToolRef::Cloud { provider, kind } => write!(f, "cloud:{provider}/{kind}"),
+            ToolRef::Vm { os, image } => write!(f, "vm:{os}/{image}"),
         }
     }
 }

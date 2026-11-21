@@ -33,7 +33,7 @@ The first time you open the app, a welcome screen explains what signing in to In
 - **Sign in to Infrawrench Cloud:** opens your browser to sign in. When you're back, pick the organization to start in, or **Use locally for now**. If you're not in an organization yet, the app sends you to the web to create one and picks it up when you return.
 - **Continue without an account:** go straight to a fully local workspace. Nothing is uploaded, and you can sign in later from the sidebar.
 
-<insert [First-run welcome screen listing the cloud perks with Sign in and Continue without an account buttons] here>
+![First-run welcome screen listing the cloud perks with Sign in and Continue without an account buttons](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/welcome-screen.png)
 
 Either way, next you click **Manage accounts**, then **Add account**, to connect your first cloud or service. See [Add your first account](./add-first-account.md).
 
@@ -51,7 +51,11 @@ The app checks for updates when it starts and every four hours, and downloads th
 
 The prompt can show up a little while after the download finishes. If an update can't be prepared (most often because the disk is full), Infrawrench tells you what went wrong and tries again at its next check.
 
-<insert [Update-ready dialog showing the version number with Later and Restart now buttons] here>
+![Update-ready dialog showing the version number with Later and Restart now buttons](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/update-ready-dialog.png)
+
+### Command line
+
+The desktop app can put an `infrawrench` command on your `PATH`. To use the CLI without the app, on a server or in CI, install it from npm, APT or a single executable instead. See [Command-line interface](../features/cli.md#install-without-the-desktop-app).
 
 ## Web app
 

@@ -13,7 +13,7 @@ example) over a rolling window, and Infrawrench keeps score. You see the current
 fast, you get paged through your [alert routing](./alert-routing.md) rules. When it runs out,
 Infrawrench can suggest a [change freeze](../team-and-billing/change-freeze.md).
 
-<insert [The SLOs tab listing several SLOs worst first: one with "Budget exhausted" in red and a warning triangle, one "Slow burn" in amber, the rest "Within budget", each row showing SLI against target, a budget bar and the time left] here>
+![The SLOs tab listing several SLOs worst first: one with "Budget exhausted" in red and a warning triangle, one "Slow burn" in amber, the rest "Within budget", each row showing SLI against target, a budget bar and the time left](https://agent-assets.infrawrench.com/docs-screenshots/features/slos/slo-list.png)
 
 ## Where to find it
 
@@ -38,7 +38,7 @@ series it reported. You pick from those; there are no ids to type.
 Set the **target** anywhere from 50% to 99.999%, and the **window** to a rolling 7, 28 or 30
 days.
 
-<insert [The New SLO editor with "Probe latency" selected: the probe picker open listing probe names with their URLs, the latency threshold field, the target field at 99.9 with the budget hint underneath ("Error budget: 43m 12s of bad minutes per 30 days") and the alert and freeze-suggestion checkboxes] here>
+![The New SLO editor with "Probe latency" selected: the probe picker set to Search API with its URL, the latency threshold field, the target field at 99.9 with the budget hint underneath ("Error budget: 43m 12s of bad minutes per 30 days") and the alert and freeze-suggestion checkboxes](https://agent-assets.infrawrench.com/docs-screenshots/features/slos/new-slo-editor.png)
 
 ### How minutes are counted
 
@@ -51,7 +51,7 @@ up either. An SLO with no data in its window shows _No data_, never _Within budg
 
 ## Read the numbers
 
-<insert [One SLO's detail page: the stat tiles (Status, Current SLI with its target, Budget remaining as a percentage with the time left, Budget total), the row of burn rates for 5m, 30m, 1h, 6h and 3d with the page and ticket policy lines underneath, and the "SLI per day" chart with a flat target line] here>
+![One SLO's detail page: the stat tiles (Status, Current SLI with its target, Budget remaining as a percentage with the time left, Budget total), the row of burn rates for 5m, 30m, 1h, 6h and 3d with the page and ticket policy lines underneath, and the "SLI per day" chart with a flat target line](https://agent-assets.infrawrench.com/docs-screenshots/features/slos/slo-detail.png)
 
 - **Current SLI**: good minutes divided by all counted minutes over the window.
 - **Error budget**: what the target leaves over. 99.9% over 30 days allows 0.1% of the window
@@ -62,7 +62,7 @@ up either. An SLO with no data in its window shows _No data_, never _Within budg
 - **Error budget burndown**: a chart of the budget left after each hour of the window, so you can
   see which day spent it.
 
-<insert [The "Error budget burndown" chart on an SLO's detail page, starting near 100% and stepping down sharply on one day where an incident happened] here>
+![The "Error budget burndown" chart on an SLO's detail page, starting near 100% and stepping down sharply on one day where an incident happened](https://agent-assets.infrawrench.com/docs-screenshots/features/slos/budget-burndown.png)
 
 ## Get burn-rate alerts
 
@@ -101,7 +101,7 @@ window. The usual response is to stop spending more: hold risky deploys and chan
 reliability recovers. With **Suggest a change freeze** on, the exhausted alert says so, and the
 SLO's page offers **Start a change freeze**.
 
-<insert [An exhausted SLO's detail page showing the red banner "The error budget is spent. Consider a change freeze…" with the Start a change freeze button, and the freeze dialog open with the duration picker (24 hours, 3 days, 7 days, Until ended) and an optional reason] here>
+![An exhausted SLO's detail page showing the banner "The error budget is spent. Consider a change freeze…" with the Start a change freeze button above the Budget exhausted status and an overspent budget](https://agent-assets.infrawrench.com/docs-screenshots/features/slos/exhausted-banner.png)
 
 It is only a suggestion. Nothing is frozen until somebody starts the freeze. The freeze it
 creates is an ordinary one: it blocks destructive changes across the organization, shows on the

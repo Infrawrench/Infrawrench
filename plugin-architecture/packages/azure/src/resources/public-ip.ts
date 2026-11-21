@@ -5,10 +5,11 @@ export const PublicIPResourceType = rt({
   plural: "Public IP Addresses",
   id: "azure-public-ip",
   description: "An Azure Public IP Address",
+  equivalence: "static-ip",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("sku", "SKU", { showcase: true }),
     f("allocationMethod", "Allocation Method"),
     f("provisioningState", "Provisioning State", { showcase: true }),

@@ -295,6 +295,24 @@ impl TryInto<Metadata> for std::fs::Metadata {
             }
         };
 
+        // iwci patch: the file's count of names, and its inode number when
+        // it is not a directory and has more than one (so that every name
+        // reports one number; one with a single name is numbered by its
+        // path, as the caller numbers every file), cut to 53 bits as
+        // `Inode::from_path` cuts its.
+        #[cfg(unix)]
+        let (ino, nlink) = {
+            use std::os::unix::fs::MetadataExt;
+            let nlink = self.nlink();
+            let ino = if nlink > 1 && !filetype.is_dir() {
+                self.ino() & ((1 << 53) - 1)
+            } else {
+                0
+            };
+            (ino, nlink)
+        };
+        #[cfg(not(unix))]
+        let (ino, nlink) = (0, 0);
         Ok(Metadata {
             ft: FileType {
                 dir: filetype.is_dir(),
@@ -318,6 +336,8 @@ impl TryInto<Metadata> for std::fs::Metadata {
                 .and_then(|time| time.duration_since(UNIX_EPOCH).map_err(io::Error::other))
                 .map_or(0, |time| time.as_nanos() as u64),
             len: self.len(),
+            ino,
+            nlink,
         })
     }
 }

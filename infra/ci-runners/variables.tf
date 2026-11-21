@@ -30,6 +30,14 @@ variable "hosts" {
       architecture differs from the default's; `arch` (x86_64 by default)
       picks its pin from ci-runner/crates/iwci-sandbox-spawn/sha256, and
       sandbox_service_sha256 overrides that.
+    - machines: prepare the host for `platform: linux` jobs, which run in
+      a QEMU/KVM virtual machine per job: QEMU and erofs-utils, the
+      runner's user in group `kvm`, and the
+      runner pointed at /var/lib/iwci/machines. The images themselves are
+      built on the host into that directory (ci-runner/images/README.md),
+      not uploaded from here. It needs KVM: on x86_64 VT-x or AMD-V, on
+      Graviton a `.metal` instance. The runner lists in /v1/capacity what it can run, and leaves out, with a
+      line in its log, whatever the host lacks. Off by default.
     - tunnel_token: optional Cloudflare Tunnel token; when set, cloudflared
       is installed as a service and the tunnel's public hostname should
       point at http://<listen>.
@@ -58,6 +66,8 @@ variable "hosts" {
     # x86_64 or aarch64: which of the sandbox service's pinned builds this
     # host takes. x86_64 when unset.
     arch = optional(string)
+    # Virtual machines for `platform: linux` jobs (see above).
+    machines = optional(bool)
   }))
   default = []
 

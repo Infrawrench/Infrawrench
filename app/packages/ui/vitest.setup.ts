@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { initializeGTSPA } from "gt-react";
 
 // gt-react hooks (useGT, <T>) read a singleton that the app entrypoints
@@ -65,3 +65,14 @@ if (typeof globalThis !== "undefined" && !globalThis.localStorage) {
 afterEach(() => {
   cleanup();
 });
+
+// Testing Library gives `waitFor` and the `findBy*` queries one second before
+// they fail. That is a wall-clock budget for work no timer paces: mocked
+// fetches resolving, React committing, a whole panel rendering in jsdom. Under
+// a saturated `turbo test` it overruns (the CI panel's first render in
+// ci-panel.test.tsx took over a second with the machine busy, and some 50 ms
+// alone), so a test failed on load rather than on what it checks. The test's
+// own limit (`testTimeout` in vitest.config.ts) already allows for that; give
+// the queries the same room. A condition that holds is still seen as soon as it
+// does, and one that never holds still fails, only later.
+configure({ asyncUtilTimeout: 15_000 });

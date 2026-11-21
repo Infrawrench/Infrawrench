@@ -109,14 +109,26 @@ pub enum Error {
         /// Why it was refused.
         reason: String,
     },
-    /// No version of the name is published at all.
-    #[error("{reference}: nothing is published under this name")]
+    /// No version of the name is published at all. The message leaves the
+    /// reference out, as the others do: whoever reports it names it
+    /// (`tools: builtin:bun@1.3: no version matches 1.3; ...`).
+    #[error("nothing is published under this name")]
     NotFound {
         /// The reference, as `kind:name@req`.
         reference: String,
     },
+    /// The version picked has no build for this runner's target.
+    #[error("{version} has no build for {target}")]
+    NoTarget {
+        /// The reference, as `kind:name@req`.
+        reference: String,
+        /// The version picked.
+        version: String,
+        /// This runner's target (`x86_64-linux`).
+        target: String,
+    },
     /// Versions exist, none matches.
-    #[error("{reference}: no version matches {requirement}; available: {}", if available.is_empty() { "none".to_owned() } else { available.join(", ") })]
+    #[error("no version matches {requirement}; available: {}", if available.is_empty() { "none".to_owned() } else { available.join(", ") })]
     NoMatchingVersion {
         /// The reference, as `kind:name@req`.
         reference: String,

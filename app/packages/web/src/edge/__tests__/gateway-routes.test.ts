@@ -131,6 +131,7 @@ describe("routeRequest", () => {
       "/api/org/org_1/event-subscriptions",
       "/api/org/org_1/leaked-secrets/scan",
       "/api/org/org_1/leaked-secrets/ls_1/rotate",
+      "/api/org/org_1/associations/literal",
       "/api/org/org_1/scorecards/sc_1/evaluate",
     ]) {
       expect(routeRequest("POST", path, null), path).toMatchObject({
@@ -138,6 +139,13 @@ describe("routeRequest", () => {
         tier: "node",
       });
     }
+  });
+
+  it("keeps output-reference rerolls and their candidates at the edge", () => {
+    // Neither calls plugin code: a reference is two Postgres writes, and the
+    // candidates are stored rows filtered by manifest data.
+    expect(routeRequest("POST", "/api/org/org_1/associations", null).target).toBe("edge");
+    expect(routeRequest("GET", "/api/org/org_1/associations/candidates", null).target).toBe("edge");
   });
 
   it("does not mistake a prefix for a gateway route", () => {

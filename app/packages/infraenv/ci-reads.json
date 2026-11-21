@@ -1,0 +1,9 @@
+{
+  "reads": [
+    {
+      "files": ["app/packages/website/src/data/skills/infraenv/**"],
+      "from": ["src/__tests__/skill.test.ts", "scripts/sync-skill.mjs"],
+      "why": "Asserts the published skills/infraenv/ is what sync-skill.mjs generates from the website's skill folder."
+    }
+  ]
+}

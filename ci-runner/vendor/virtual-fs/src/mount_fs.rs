@@ -212,6 +212,8 @@ impl MountFileSystem {
             created: ts,
             modified: ts,
             len: 0,
+            ino: 0,
+            nlink: 0,
         }
     }
 

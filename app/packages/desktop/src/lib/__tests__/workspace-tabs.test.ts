@@ -4,10 +4,13 @@ import {
   accountTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
+  migrationEstimatesTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
+  envFilesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
@@ -78,6 +81,16 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.to).toBe("/probes");
   });
 
+  it("returns env-files route args", () => {
+    const args = getWorkspaceNavigateArgs(envFilesTabTarget());
+    expect(args.to).toBe("/env-files");
+  });
+
+  it("returns heartbeats route args", () => {
+    const args = getWorkspaceNavigateArgs(heartbeatsTabTarget());
+    expect(args.to).toBe("/heartbeats");
+  });
+
   it("returns status-pages route args", () => {
     const args = getWorkspaceNavigateArgs(statusPagesTabTarget());
     expect(args.to).toBe("/status-pages");
@@ -113,6 +126,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(resourceReportsTabTarget("r1"));
     expect(detail.to).toBe("/resource-reports");
     expect(detail.search).toEqual({ report: "r1" });
+  });
+
+  it("returns migration-estimates route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(migrationEstimatesTabTarget());
+    expect(list.to).toBe("/migration-estimates");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(migrationEstimatesTabTarget("e1"));
+    expect(detail.to).toBe("/migration-estimates");
+    expect(detail.search).toEqual({ estimate: "e1" });
   });
 
   it("returns slos route args, clearing the param for the list view", () => {
@@ -510,6 +533,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
   });
 
+  it("parses the env-files path", () => {
+    expect(syncWorkspaceRouteFromPath("/env-files")).toEqual({ kind: "env-files" });
+  });
+
+  it("parses the heartbeats path", () => {
+    expect(syncWorkspaceRouteFromPath("/heartbeats")).toEqual({ kind: "heartbeats" });
+  });
+
   it("parses the status-pages path", () => {
     expect(syncWorkspaceRouteFromPath("/status-pages")).toEqual({ kind: "status-pages" });
   });
@@ -535,6 +566,16 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/resource-reports", undefined, "?report=r1")).toEqual({
       kind: "resource-reports",
       reportId: "r1",
+    });
+  });
+
+  it("parses the migration-estimates path, with and without an estimate", () => {
+    expect(syncWorkspaceRouteFromPath("/migration-estimates")).toEqual({
+      kind: "migration-estimates",
+    });
+    expect(syncWorkspaceRouteFromPath("/migration-estimates", undefined, "?estimate=e1")).toEqual({
+      kind: "migration-estimates",
+      estimateId: "e1",
     });
   });
 

@@ -36,7 +36,7 @@ If you share one workspace, the **Workspace** picker and the account name are fi
 
 Billing data (usage, credits and usage limits) is only visible to workspace admins.
 
-<insert [Railway Add-account form with the API Token field filled in and the Workspace picker open, listing two workspaces] here>
+![Railway Add-account form with the API Token field filled in and a workspace chosen in the Workspace picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/railway/add-account.png)
 
 ## Things you can do
 
@@ -47,9 +47,9 @@ Billing data (usage, credits and usage limits) is only visible to workspace admi
 - **Costs**: daily cost by service, environment and project, priced from your metered CPU, memory, egress, volume and backup usage at Railway's published rates. Rows are marked as estimates.
 - **Credits and limits**: your credit balance feeds credit burndown, and a hard usage limit shows on the quotas page as spend against the limit.
 
-<insert [Railway service detail view showing the Deploy Latest Commit, Redeploy and Scale header actions, the Details section and the Endpoints section] here>
+![Railway service detail view showing the Deploy Latest Commit, Redeploy and Scale header actions, the Details section and the Endpoints section](https://agent-assets.infrawrench.com/docs-screenshots/plugins/railway/service-detail.png)
 
-<insert [Railway workspace detail view showing usage this period, projected usage, credit balance and the Members table] here>
+![Railway workspace detail view showing usage this period, projected usage, credit balance and the Members table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/railway/workspace-detail.png)
 
 ## Status and posture
 

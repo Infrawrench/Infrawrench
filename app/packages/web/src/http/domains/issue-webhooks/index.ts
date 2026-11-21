@@ -21,7 +21,8 @@ import { Effect, Layer, Predicate } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { findJiraWebhookByToken, touchJiraWebhookDelivery } from "@infrawrench/server-core/jira";
-import { parseCiEvent } from "@infrawrench/server-core/ci/events";
+import { parseCheckRerequest, parseCiEvent } from "@infrawrench/server-core/ci/events";
+import { acceptCheckRerequest, followUpCheckRerun } from "@infrawrench/server-core/ci/rerun";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import {
   acceptCiEvent,
@@ -51,6 +52,7 @@ import {
   PingAcknowledged,
   Unauthorized,
 } from "@infrawrench/api-contract";
+import { logAudit } from "../../../services/audit";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { json } from "../../middleware";
@@ -166,6 +168,45 @@ const GithubHandlers = HttpApiBuilder.group(IssueWebhooksApi, "githubIssueWebhoo
           yield* fireAndForget(() => keepAlive(dispatchRun(accepted.id)));
         } else if (accepted?.status === "awaiting_approval") {
           yield* fireAndForget(() => keepAlive(announceAwaitingApproval(accepted.id)));
+        }
+        return HttpServerResponse.empty({ status: 202 });
+      }
+      // "Re-run" on one of the app's checks, or "Re-run all checks" on a
+      // commit: a retry of the run behind it (`ci/rerun.ts` has the rules).
+      // Recorded now, dispatched after the answer, like a push. Every other
+      // action of these events (`created`, `completed`, `requested`,
+      // `requested_action`) starts nothing.
+      if (event === "check_run" || event === "check_suite") {
+        const rerequest = parseCheckRerequest(event, parseJson(body));
+        if (!rerequest) return HttpServerResponse.empty({ status: 202 });
+        const rerun = yield* legacyTry(
+          () => acceptCheckRerequest(rerequest),
+          (err) => {
+            console.error("[ci] re-run webhook failed:", err);
+            return new InternalServerError({ error: "Webhook processing failed" });
+          },
+        );
+        if (rerun) {
+          yield* fireAndForget(() => keepAlive(followUpCheckRerun(rerun)));
+          for (const run of rerun.retried) {
+            // No Infrawrench user asked: the audit names the GitHub login.
+            yield* fireAndForget(() =>
+              logAudit({
+                organizationId: rerun.organizationId,
+                action: "ci.run.retry",
+                entityType: "ci_run",
+                entityId: run.id,
+                metadata: {
+                  retryOf: run.retryOfRunId,
+                  repo: run.repoFullName,
+                  noTaskCache: false,
+                  source: "github",
+                  githubLogin: rerequest.senderLogin,
+                  rerequested: rerequest.kind,
+                },
+              }),
+            );
+          }
         }
         return HttpServerResponse.empty({ status: 202 });
       }

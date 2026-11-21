@@ -24,7 +24,7 @@ Connect GitLab.com or your own GitLab instance to run and watch pipelines, manag
 - **Project and group members**: role, custom role and access expiry. **Add** someone by username, change their role or expiry, or remove them.
 - **Runners**: group and project runners with status, tags, version, platform and last contact, and their recent jobs. **Create** a runner (its authentication token is kept as a sensitive output), **Pause** or **Resume** it, edit its tags and settings, use **Get credentials** to reset its token, or delete it. The Metrics tab charts jobs, failures, job duration and queue time per day.
 
-<insert [GitLab project detail page showing the Recent pipelines table and the Metrics tab with pipeline success rate and queue time charts] here>
+![GitLab project Metrics tab with pipelines, failed pipelines, pipeline success rate, jobs, job duration and queue time p50 and p95 charts (the Recent pipelines table is on the Overview tab)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gitlab/project-metrics.png)
 
 ## Connect your account
 
@@ -34,7 +34,7 @@ Connect GitLab.com or your own GitLab instance to run and watch pipelines, manag
 2. Give it the **api** scope to make changes, or **read_api** to only look. Add **create_runner** if you want to register runners from Infrawrench.
 3. In Infrawrench, enter your **GitLab URL** (leave `https://gitlab.com` for GitLab.com), paste the token, and optionally pick a **Group** to limit the account to that group and its subgroups. With no group, you see every project you are a member of.
 
-<insert [GitLab Add-account form with the URL, token and the Group picker open on the list of groups] here>
+![GitLab Add-account form with the URL, token and a group chosen in the Group picker (a native dropdown, shown closed)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gitlab/add-account-group.png)
 
 Your GitLab role decides what you see. CI/CD variables, webhooks, deploy keys and deploy tokens need **Maintainer** on the project. Group runners, group variables and group settings need **Owner**. Projects where you have less are still listed, just without those parts. **Check credentials** on the account shows which of the token's scopes are present.
 

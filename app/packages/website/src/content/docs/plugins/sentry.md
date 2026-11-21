@@ -27,7 +27,7 @@ The connection renews itself. If you revoke Infrawrench under **User Settings > 
 
 Connect with Sentry works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). Self-hosted Sentry uses a token, as below.
 
-<insert [Sentry add-account form showing the Connect with Sentry button above the Region and Auth Token fields] here>
+![Sentry add-account form showing the Connect with Sentry button above the Region and Auth Token fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sentry/add-account-connect.png)
 
 ## Use a token instead
 
@@ -35,7 +35,7 @@ Connect with Sentry works in the web app, in the desktop app's cloud mode, and f
 2. In Infrawrench, pick the **Region** your organization stores its data in: **US** or **DE** on sentry.io (Organization Settings shows the data storage location), or **Self-hosted**. For self-hosted, also enter the **Self-hosted URL** you open Sentry at.
 3. Paste the token. The **Organization** picker lists every organization the token can see in that region. Pick one.
 
-<insert [Sentry Add-account form with the region picker on US, the auth token filled in and the Organization picker open on the list of organizations] here>
+![Sentry Add-account form with the region picker on US, the auth token filled in and an organization chosen in the Organization picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/sentry/add-account-organization.png)
 
 **Check credentials** tests each capability and lists the scopes any missing one needs. The template generator writes the exact scope list for the capabilities you keep.
 

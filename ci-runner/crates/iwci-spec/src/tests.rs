@@ -92,7 +92,10 @@ fn the_example_pipeline_expands() {
             ecosystem: Ecosystem::Go,
             dir: "/app/terraform-provider-infrawrench".into(),
             only: None,
-            file: None
+            file: None,
+            ruby: None,
+            without_extensions: None,
+            native: false,
         }]
     );
 
@@ -150,6 +153,11 @@ fn tool_references_must_be_pinned_and_well_formed() {
     assert_error(&job("builtin:typescript@7.x"), "not a version");
     assert_error(&job("builtin:typescript@7-beta"), "not a version");
     assert!(parse(&job("builtin:typescript@7.1.0-beta.2"), &ctx()).is_ok());
+    // A rebuild of an upstream release, from 1, never a prerelease.
+    assert!(parse(&job("builtin:bun@1.4.4.1"), &ctx()).is_ok());
+    assert_error(&job("builtin:bun@1.4.4.0"), "not a version");
+    assert_error(&job("builtin:bun@1.4.4.1.2"), "not a version");
+    assert_error(&job("builtin:bun@1.4.4.1-rc.1"), "not a version");
     assert!(parse(&job("repo:licence-check@2"), &ctx()).is_ok());
 }
 
@@ -321,8 +329,8 @@ fn paths_and_workspaces() {
         "inside the clone",
     );
     assert_error(
-        "name: x\nworkspace:\n  deps: [npm]\njobs:\n  t:\n    using: builtin:t@1\n",
-        "unknown ecosystem `npm`",
+        "name: x\nworkspace:\n  deps: [yarn]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "unknown ecosystem `yarn`",
     );
     assert_error(
         "name: x\nworkspace:\n  deps: [{ go: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
@@ -335,6 +343,14 @@ fn paths_and_workspaces() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ pip: { file: ../../etc/passwd } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "inside the clone",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ pip: { ruby: '3.4' } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "ruby applies only to bundler",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ bundler: { ruby: latest } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "is not a Ruby version",
     );
     assert_error(
         "name: x\njobs:\n  t:\n    using: builtin:t@1\n    clone: false\n    deps: [pnpm]\n",
@@ -429,6 +445,36 @@ fn needs_limits_and_policies() {
     .unwrap();
     assert_eq!(first(&plan).timeout.as_secs(), 3600);
     assert_eq!(first(&plan).memory_bytes, 512 << 20);
+    assert_eq!(first(&plan).cpus, None);
+}
+
+#[test]
+fn cpus_gives_a_job_whole_vcpus() {
+    let plan = parse(
+        "name: x
+jobs:
+  a:
+    using: builtin:t@1
+    cpus: 4
+",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(first(&plan).cpus, Some(4));
+    for bad in ["0", "65"] {
+        assert_error(
+            &format!("name: x\njobs:\n  a:\n    using: builtin:t@1\n    cpus: {bad}\n"),
+            "jobs.a.cpus: must be a whole number of vCPUs from 1 to 64",
+        );
+    }
+    // Not a whole number: the YAML itself does not fit.
+    assert!(
+        parse(
+            "name: x\njobs:\n  a:\n    using: builtin:t@1\n    cpus: 1.5\n",
+            &ctx()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -2023,6 +2069,7 @@ fn a_cloud_job_refuses_what_only_means_something_on_the_runner() {
             "    memory: 4GiB\n",
             "jobs.a.memory: sizes a job on the runner",
         ),
+        ("    cpus: 2\n", "jobs.a.cpus: sizes a job on the runner"),
         (
             "    network: false\n",
             "jobs.a.network: keeps a job off the internet",
@@ -2066,7 +2113,7 @@ fn a_cloud_job_refuses_what_only_means_something_on_the_runner() {
     );
     assert_error(
         "name: x\njobs:\n  a:\n    run: x\n",
-        "needs `using:` (a tool or environment), or `cloud:`",
+        "needs `using:` (a tool or environment), `platform: linux` to run a script in a virtual machine, or `cloud:`",
     );
     assert_error(
         "name: x\njobs:\n  a: { cloud: aws, run: x }\n",
@@ -2238,6 +2285,108 @@ fn lent_names_are_checked_where_they_are_written() {
 }
 
 #[test]
+fn an_env_file_is_listed_for_the_app_with_a_key_both_sides_compute() {
+    let plan = parse(
+        r#"
+name: x
+jobs:
+  plain:
+    using: env:bash@5
+    env-file: .infraenv
+    run: x
+  staging:
+    using: env:bash@5
+    env-file:
+      path: apps/web/.infraenv
+      environment: staging
+      vars: { stage: ci, region: "eu \"west\"" }
+    run: x
+"#,
+        &ctx(),
+    )
+    .unwrap();
+    let plain = &plan.template("plain").unwrap().access;
+    assert_eq!(
+        plain.env_file,
+        Some(EnvFileUse {
+            path: ".infraenv".into(),
+            ..Default::default()
+        })
+    );
+    assert!(!plain.is_empty());
+    assert_eq!(
+        plain.env_file.as_ref().unwrap().key(),
+        r#"{"path":".infraenv"}"#
+    );
+    let staging = plan
+        .template("staging")
+        .unwrap()
+        .access
+        .env_file
+        .clone()
+        .unwrap();
+    // Sorted vars, in the order and escaping the app's `JSON.stringify` uses.
+    assert_eq!(
+        staging.key(),
+        r#"{"path":"apps/web/.infraenv","environment":"staging","vars":{"region":"eu \"west\"","stage":"ci"}}"#
+    );
+    // As the concurrency answer lists it.
+    let json = serde_json::to_value(&plan.template("staging").unwrap().access).unwrap();
+    assert_eq!(
+        json["env-file"],
+        serde_json::json!({
+            "path": "apps/web/.infraenv",
+            "environment": "staging",
+            "vars": { "region": "eu \"west\"", "stage": "ci" }
+        })
+    );
+}
+
+#[test]
+fn an_env_file_is_checked_where_it_is_written() {
+    for (yaml, needle) in [
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: /etc/env }\n",
+            "relative to the repository's root",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: a/../.infraenv }\n",
+            "without `.` or `..`",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: \"${{ vars.F }}\" }\n",
+            "the path is literal",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, environment: \"prod env\" } }\n",
+            "is not an environment name",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, vars: { 1x: a } } }\n",
+            "is not a substitution name",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, vars: { s: \"${{ commit.branch }}\" } } }\n",
+            "literal text",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: { path: .infraenv, zzz: 1 } }\n",
+            "unknown field `zzz`",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: [a] }\n",
+            "is a path, or",
+        ),
+        (
+            "name: x\njobs:\n  a: { using: env:bash@5, run: x, env-file: .infraenv, task-cache: true }\n",
+            "a job with `env-file:` cannot be task-cached",
+        ),
+    ] {
+        assert_error(yaml, needle);
+    }
+}
+
+#[test]
 fn a_github_token_is_asked_for_by_permission() {
     let plan = parse(
         r#"
@@ -2336,6 +2485,9 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
         dir: dir.into(),
         only: None,
         file: None,
+        ruby: None,
+        without_extensions: None,
+        native: false,
     };
     assert_eq!(
         plan.workspaces[first(&plan).workspace].deps,
@@ -2345,6 +2497,117 @@ fn bun_is_an_ecosystem_that_takes_a_directory() {
     assert_error(
         "name: x\nworkspace:\n  deps: [{ bun: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
         "only applies to pnpm",
+    );
+}
+
+#[test]
+fn npm_is_an_ecosystem_that_takes_a_directory() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [npm, { npm: { dir: site } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = |dir: &str| DepSpec {
+        ecosystem: Ecosystem::Npm,
+        dir: dir.into(),
+        only: None,
+        file: None,
+        ruby: None,
+        without_extensions: None,
+        native: false,
+    };
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps,
+        vec![dep("/app"), dep("/app/site")]
+    );
+    assert_eq!(Ecosystem::parse("npm").map(Ecosystem::name), Some("npm"));
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ npm: { only: [a] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "only applies to pnpm",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [yarn]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "expected `pnpm`, `npm`, `bun`",
+    );
+}
+
+#[test]
+fn bundler_takes_a_directory_and_a_ruby() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [bundler, { bundler: { dir: api, ruby: 4.0 } }, { bundler: { dir: old, ruby: '3.4' } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = |dir: &str, ruby: Option<&str>| DepSpec {
+        ecosystem: Ecosystem::Bundler,
+        dir: dir.into(),
+        only: None,
+        file: None,
+        ruby: ruby.map(str::to_string),
+        without_extensions: None,
+        native: false,
+    };
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps,
+        vec![
+            dep("/app", None),
+            dep("/app/api", Some("4.0")),
+            dep("/app/old", Some("3.4"))
+        ]
+    );
+    assert_eq!(
+        Ecosystem::parse("bundler").map(Ecosystem::name),
+        Some("bundler")
+    );
+    // A workspace that names no Ruby keeps the key it had.
+    let no_ruby = serde_json::to_value(dep("/app", None)).unwrap();
+    assert!(no_ruby.get("ruby").is_none());
+    assert!(no_ruby.get("without_extensions").is_none());
+}
+
+/// `native: true` asks pnpm and bun for the runner's own Linux packages
+/// too; off, a workspace keeps the key it had.
+#[test]
+fn js_installers_take_native() {
+    for ecosystem in ["pnpm", "npm", "bun"] {
+        let plan = parse(
+            &format!("name: x\nworkspace:\n  deps: [{{ {ecosystem}: {{ native: true }} }}]\njobs:\n  t:\n    using: builtin:t@1\n"),
+            &ctx(),
+        )
+        .unwrap();
+        assert!(plan.workspaces[first(&plan).workspace].deps[0].native);
+    }
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ cargo: { native: true } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "native applies only to pnpm, npm and bun",
+    );
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    let dep = serde_json::to_value(&plan.workspaces[first(&plan).workspace].deps[0]).unwrap();
+    assert!(dep.get("native").is_none());
+}
+
+#[test]
+fn bundler_takes_gems_to_install_without_extensions() {
+    let plan = parse(
+        "name: x\nworkspace:\n  deps: [{ bundler: { without-extensions: [ffi, ed25519, ffi] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.workspaces[first(&plan).workspace].deps[0].without_extensions,
+        Some(vec!["ed25519".to_string(), "ffi".to_string()])
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ pip: { without-extensions: [ffi] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "without-extensions applies only to bundler",
+    );
+    assert_error(
+        "name: x\nworkspace:\n  deps: [{ bundler: { without-extensions: [\"../x\"] } }]\njobs:\n  t:\n    using: builtin:t@1\n",
+        "is not a gem name",
     );
 }
 

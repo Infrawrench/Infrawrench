@@ -22,6 +22,7 @@ import { OrgAuth, SessionAuth } from "@infrawrench/api-contract";
 import {
   AccountsApi,
   AgentsApi,
+  AssociationsApi,
   ChatApi,
   ComplianceApi,
   ConnectionsApi,
@@ -30,6 +31,9 @@ import {
   KubernetesEfficiencyReportsApi,
   PagingProvidersApi,
   ProbesApi,
+  HeartbeatsApi,
+  EnvFilesApi,
+  LiveApi,
   ResourceReportsApi,
   SlosApi,
 } from "@infrawrench/api-contract";
@@ -47,6 +51,7 @@ import {
   OwnershipApi,
   PostureApi,
   PriceCatalogApi,
+  MigrationEstimatesApi,
   QuotasApi,
   ResourcesApi,
   RightsizingApi,
@@ -257,6 +262,9 @@ function desktopCloudApi<Id extends string, Groups extends HttpApiGroup.Constrai
 
 export const DESKTOP_CLOUD_APIS = {
   probes: desktopCloudApi(ProbesApi),
+  heartbeats: desktopCloudApi(HeartbeatsApi),
+  envFiles: desktopCloudApi(EnvFilesApi),
+  live: desktopCloudApi(LiveApi),
   slos: desktopCloudApi(SlosApi),
   accessReview: desktopCloudApi(AccessReviewApi),
   calendar: desktopCloudApi(CalendarApi),
@@ -271,6 +279,7 @@ export const DESKTOP_CLOUD_APIS = {
   ownership: desktopCloudApi(OwnershipApi),
   posture: desktopCloudApi(PostureApi),
   priceCatalog: desktopCloudApi(PriceCatalogApi),
+  migrationEstimates: desktopCloudApi(MigrationEstimatesApi),
   quotas: desktopCloudApi(QuotasApi),
   resources: desktopCloudApi(ResourcesApi),
   rightsizing: desktopCloudApi(RightsizingApi),
@@ -285,6 +294,7 @@ export const DESKTOP_CLOUD_APIS = {
   incidents: desktopCloudApi(IncidentsApi),
   pagingProviders: desktopCloudApi(PagingProvidersApi),
   accounts: desktopCloudApi(AccountsApi),
+  associations: desktopCloudApi(AssociationsApi),
   agents: desktopCloudApi(AgentsApi),
   chat: desktopCloudApi(ChatApi),
   compliance: desktopCloudApi(ComplianceApi),

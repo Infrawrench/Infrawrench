@@ -18,6 +18,7 @@ import type {
   WorkflowSecretSummary,
   WorkflowSummary,
 } from "./types.js";
+import { useLiveRefresh } from "../live/index.js";
 import { messageOf } from "./errors.js";
 import { overlayMetricTypings, overlaySecretTypings } from "./workflow-typings.js";
 import { SecretsEditor } from "./SecretsEditor.js";
@@ -289,12 +290,13 @@ export function WorkflowsPanel({
   useEffect(() => {
     if (!selectedId || !client.listPendingApprovals) return;
     void refreshApprovals(selectedId);
-    const interval = setInterval(
-      () => void refreshApprovals(selectedId),
-      session.running ? 4000 : 15000,
-    );
-    return () => clearInterval(interval);
-  }, [client, refreshApprovals, selectedId, session.running]);
+  }, [client, refreshApprovals, selectedId]);
+  useLiveRefresh(
+    "workflow-approvals",
+    selectedId && client.listPendingApprovals ? { workflowId: selectedId } : null,
+    () => (selectedId ? refreshApprovals(selectedId) : undefined),
+    { fallbackMs: session.running ? 4000 : 15000 },
+  );
 
   const decideApproval = useCallback(
     async (approvalId: string, decision: "approve" | "deny") => {

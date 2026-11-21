@@ -25,7 +25,6 @@ import type {
 import type { PostureCategory } from "@infrawrench/plugin-base";
 import type { ServiceResourceOption } from "@infrawrench/ui/services";
 import { Schema } from "effect";
-import { searchCloudResourceIndex } from "./cloud-costs";
 import { cloudClient } from "./cloud-client";
 import { definedFields } from "./cloud-payload";
 import { runRpc } from "./rpc/client";
@@ -237,12 +236,17 @@ export function evaluateCloudScorecard(
 }
 
 /**
- * The spotlight resource index, through the call the savings log already
- * makes (`GET /search`, workflows left out: only resources can be members).
+ * The palette's resource index (`GET /search?kinds=resource`): fuzzy over
+ * name, type, account and provider, best first, and resources only.
  */
 export function searchCloudServiceResources(
   orgId: string,
   query: string,
 ): Promise<ServiceResourceOption[]> {
-  return runRpc(searchCloudResourceIndex(orgId, query));
+  return runRpc(
+    cloudClient("search").search.search({
+      params: { orgId },
+      query: { q: query, kinds: "resource" },
+    }),
+  );
 }

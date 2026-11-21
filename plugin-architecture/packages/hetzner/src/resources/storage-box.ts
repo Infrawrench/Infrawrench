@@ -5,6 +5,7 @@ export const StorageBoxResourceType = rt({
   id: "storage-box",
   description:
     "A Hetzner Storage Box: network storage reachable over SFTP, SCP, rsync, Samba and WebDAV",
+  equivalence: "file-storage",
   fields: [
     f("name", "Name"),
     f("status", "Status", {
@@ -18,12 +19,18 @@ export const StorageBoxResourceType = rt({
       description:
         "Storage Box type, e.g. bx11, bx21. Changing it resizes the box (Hetzner change_type)",
     }),
-    f("location", "Location", { showcase: true, required: false, editable: false }),
+    f("location", "Location", {
+      showcase: true,
+      required: false,
+      editable: false,
+      sizing: "region",
+    }),
     f("username", "Username", { required: false, editable: false }),
     f("server", "Server", { required: false, editable: false }),
     f("sizeGb", "Capacity (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       required: false,
       editable: false,
     }),

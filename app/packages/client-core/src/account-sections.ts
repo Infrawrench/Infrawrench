@@ -41,6 +41,57 @@ export function getAccountRootType<T extends RootTypeDef>(resourceTypes: T[]): T
   return resourceTypes.find((typeDef) => typeDef.accountRoot && !typeDef.parentTypeId) ?? null;
 }
 
+/** A type grouped on a resource's detail view, and how its rows relate to that resource. */
+export interface DetailChildType<T extends RootTypeDef> {
+  typeDef: T;
+  /**
+   * True for a top-level type shown on the account root's detail view: its
+   * rows have no parent, so they are matched by having none, and create,
+   * edit and delete send no `parentResourceId`.
+   */
+  topLevel: boolean;
+}
+
+/**
+ * The types a resource's detail view groups under it: those declaring it as
+ * their parent and, when the resource is the plugin's account root, every
+ * other top-level type too.
+ *
+ * The root *is* the account (`ResourceTypeDefinition.accountRoot`), so its
+ * detail view replaces the account's inventory page, and a plugin is free to
+ * keep its other types top-level rather than parenting them to the root. The
+ * sidebar already lists those beside the root's children
+ * (`getListableResourceTypes`); without them here, the only page that listed
+ * them, with their Create buttons, would be gone. Shared by web's detail
+ * endpoint and desktop's local loader so both group the same types.
+ */
+export function getDetailChildTypes<T extends RootTypeDef>(
+  resourceTypes: T[],
+  resourceTypeId: string,
+): DetailChildType<T>[] {
+  const isRoot = getAccountRootType(resourceTypes)?.id === resourceTypeId;
+  return resourceTypes.flatMap((typeDef): DetailChildType<T>[] => {
+    if (typeDef.parentTypeId === resourceTypeId) return [{ typeDef, topLevel: false }];
+    if (isRoot && !typeDef.parentTypeId && typeDef.id !== resourceTypeId) {
+      return [{ typeDef, topLevel: true }];
+    }
+    return [];
+  });
+}
+
+/**
+ * Whether a listed row belongs on the detail view of `resourceId` as a member
+ * of `child`: a child type's rows must name it as their parent, a top-level
+ * type's rows must have no parent at all.
+ */
+export function isDetailChildRow(
+  row: { parentResourceId?: string | null | undefined },
+  child: { topLevel: boolean },
+  resourceId: string,
+): boolean {
+  return child.topLevel ? !row.parentResourceId : row.parentResourceId === resourceId;
+}
+
 /** Minimal resource shape needed for search filtering. */
 export interface SectionResource {
   id: string;

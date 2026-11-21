@@ -5,6 +5,7 @@ export const ServerlessContainerResourceType = rt({
   id: "serverless-container",
   name: "Serverless Container",
   description: "A Scaleway Serverless Container (containers/v1)",
+  equivalence: "container-app",
   fields: [
     f("name", "Name", { editable: false }),
     f("region", "Region", {
@@ -12,6 +13,7 @@ export const ServerlessContainerResourceType = rt({
       kind: "enum",
       enumValues: SCW_REGIONS,
       editable: false,
+      sizing: "region",
     }),
     f("status", "Status", {
       showcase: true,
@@ -36,8 +38,13 @@ export const ServerlessContainerResourceType = rt({
     }),
     f("minScale", "Min Scale", { kind: "number", required: false }),
     f("maxScale", "Max Scale", { kind: "number", required: false }),
-    f("memoryMb", "Memory (MB)", { showcase: true, kind: "number", required: false }),
-    f("vcpu", "vCPU", { kind: "number", required: false }),
+    f("memoryMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "memory-mb",
+    }),
+    f("vcpu", "vCPU", { kind: "number", required: false, sizing: "vcpus" }),
     f("port", "Port", { kind: "number", required: false }),
     f("privacy", "Privacy", {
       kind: "enum",

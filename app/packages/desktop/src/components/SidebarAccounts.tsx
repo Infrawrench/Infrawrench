@@ -13,6 +13,7 @@ import {
   useDataString,
   dispatchResourcesChanged,
   isProviderOAuthCancelled,
+  useLiveRefreshEach,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
@@ -425,17 +426,31 @@ export function SidebarAccounts({ refreshKey, onGroupsChange }: SidebarAccountsP
     setDeleteTarget(null);
   }
 
+  // Keep expanded accounts current. A cloud-managed account's rows are the
+  // cloud's, so it follows the cloud's live channel; an account the desktop
+  // reads from the provider itself keeps the 30s interval.
+  const accountsById = new Map(groups.flatMap((g) => g.accounts.map((a) => [a.id, a] as const)));
+  const expandedAccounts = [...expanded].flatMap((id) => {
+    const account = accountsById.get(id);
+    return account ? [account] : [];
+  });
+  useLiveRefreshEach(
+    "account-resources",
+    expandedAccounts.filter((a) => a.cloudManaged).map((a) => ({ accountId: a.id })),
+    ({ accountId }) => {
+      const account = accountId ? accountsById.get(accountId) : undefined;
+      return account ? loadAccountResources(account, true) : undefined;
+    },
+    { fallbackMs: 30_000, enabled: Boolean(activeCloudOrgId) },
+  );
   useEffect(() => {
+    const local = expandedAccounts.filter((a) => !a.cloudManaged);
+    if (local.length === 0) return;
     const id = setInterval(() => {
-      const accountsById = new Map(
-        groups.flatMap((g) => g.accounts.map((a) => [a.id, a] as const)),
-      );
-      for (const accountId of expanded) {
-        const account = accountsById.get(accountId);
-        if (account) void loadAccountResources(account, true);
-      }
+      for (const account of local) void loadAccountResources(account, true);
     }, 30_000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, expanded]);
 
   useEffect(() => {

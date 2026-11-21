@@ -24,8 +24,11 @@ import { c, colorIsEnabled, printErr, println } from "../output";
 import { CloudApi } from "./cloud-api";
 import type { CliCommandError } from "./errors";
 import { CliPlatform } from "./platform";
-import { HELP } from "../help";
-import { ROOT_NAME, root } from "./root";
+import { rootHelp } from "../help";
+import { desktopOnlyCommand } from "../edition";
+import { markPhase } from "../../startup-timing";
+import { isDesktopOnlyHere, loadCommands } from "./commands";
+import { ROOT_NAME, makeRoot } from "./root";
 import { CliHost } from "./session";
 
 export interface EffectCliOptions {
@@ -50,7 +53,7 @@ const presenter: CliOutput.Presenter = {
       const formatter = CliOutput.defaultFormatter({ colors: colorIsEnabled() });
       switch (event._tag) {
         case "Help":
-          println(isRoot(event.commandPath) ? HELP : formatter.formatHelpDoc(event.helpDoc));
+          println(isRoot(event.commandPath) ? rootHelp() : formatter.formatHelpDoc(event.helpDoc));
           return;
         case "InvalidInvocation": {
           if (!isRoot(event.commandPath)) {
@@ -59,6 +62,10 @@ const presenter: CliOutput.Presenter = {
             return;
           }
           const typo = unknownCommand(event.errors);
+          if (typo !== undefined && isDesktopOnlyHere(typo)) {
+            printErr(desktopOnlyCommand(typo));
+            return;
+          }
           if (typo !== undefined) {
             printErr(`Unknown command "${typo}". Run \`infrawrench help\`.`);
             return;
@@ -124,11 +131,16 @@ const reportDefect = (defect: unknown): Effect.Effect<number> =>
     return 1;
   });
 
-/** Run `argv` (everything after `--cli`) against {@link root}; resolves with the exit code. */
+/**
+ * Run `argv` (everything after `--cli`) against the root over the commands
+ * it names (`commands.ts`); resolves with the exit code.
+ */
 export async function runEffectCli(
   argv: ReadonlyArray<string>,
   options: EffectCliOptions,
 ): Promise<number> {
+  const root = makeRoot(await loadCommands(argv));
+  markPhase("commands loaded");
   const program = Command.runWith(root, { version: options.version })(argv).pipe(
     Effect.as(0),
     Effect.catch(reportFailure),

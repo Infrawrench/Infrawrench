@@ -10,7 +10,7 @@ export const ServerResourceType = rt({
   id: "prometheus-server",
   accountRoot: true,
   description:
-    "The Prometheus-compatible server this connection queries (Prometheus, Thanos Query, Mimir, Cortex or VictoriaMetrics): version, retention, head series, target health, rules and firing alerts. Run PromQL in the Query tab, read the loaded configuration, reload it, and use the TSDB admin tools. The Metrics tab charts ingestion, series and target health.",
+    "The Prometheus-compatible server this connection queries (Prometheus, Thanos Query, Mimir, Cortex or VictoriaMetrics): version, retention, head series, target health, rules and firing alerts. Run PromQL in the PromQL Editor tab, read the loaded configuration, reload it, and use the TSDB admin tools. The Metrics tab charts ingestion, series and target health.",
   fields: [
     f("url", "URL", ro),
     f("version", "Version", { ...ro, showcase: true }),

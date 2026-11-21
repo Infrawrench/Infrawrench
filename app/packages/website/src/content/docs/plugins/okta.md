@@ -36,7 +36,7 @@ Enter your **Okta Org URL** (`https://acme.okta.com`), then use one of these two
 
 DPoP, which Okta turns on by default for new service apps, works without any extra setup.
 
-<insert [Okta add-account form showing the Org URL field with the API token and service app fields] here>
+![Okta add-account form showing the Org URL field with the API token and service app fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/okta/add-account.png)
 
 ## Day-to-day tasks
 
@@ -49,7 +49,7 @@ DPoP, which Okta turns on by default for new service apps, works without any ext
 - **Track rate limits**: Okta's per-minute rate limits for users, groups, apps, System Log and authorization servers show on the Quotas page.
 - **Export to Terraform**: users, Okta-mastered groups, authorization servers, IP network zones, event hooks and custom domains, for the official `okta/okta` provider.
 
-<insert [Okta user detail view for a locked-out user showing the Unlock, Reset password and Sign out everywhere actions and the Groups table] here>
+![Okta user detail view for a locked-out user showing the Unlock, Reset password and Sign out everywhere actions and the Groups table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/okta/user-locked-out.png)
 
 ## Seats
 

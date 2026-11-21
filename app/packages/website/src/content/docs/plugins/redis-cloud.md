@@ -27,7 +27,7 @@ Use this plugin to manage your Redis Cloud account. It's separate from the [Redi
 - **Cloud accounts** registered for deploying Pro subscriptions into your own AWS account.
 - **Account**: API key owner, payment methods, team members and their roles, and the most recent tasks.
 
-<insert [Redis Cloud database detail page showing the Capacity section, the Right-sizing hint, and the Resize memory, Alerts and Back up now buttons] here>
+![Redis Cloud database detail page showing the Capacity section, the Right-sizing hint, and the Resize memory, Alerts and Back up now buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/redis-cloud/database-detail.png)
 
 ## Connect your account
 
@@ -36,7 +36,7 @@ You need two keys, both from **Access Management > API Keys** in the Redis Cloud
 - **Account key**: identifies your Redis Cloud account.
 - **User key**: belongs to one team member and carries their role. Cost data needs **Owner**, **Viewer** or **Billing admin**. Making changes needs **Owner**. If the key has a CIDR allow list, add the address Infrawrench connects from (or your bastion's).
 
-<insert [Redis Cloud Add-account form with the Account Key and User Key fields] here>
+![Redis Cloud Add-account form with the Account Key and User Key fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/redis-cloud/add-account.png)
 
 ## Cost graphs
 

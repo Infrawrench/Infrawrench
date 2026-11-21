@@ -4,6 +4,7 @@ export const ServerResourceType = rt({
   name: "Server",
   id: "server",
   description: "A Hetzner Cloud virtual machine",
+  equivalence: "vm",
   fields: [
     f("name", "Name"),
     f("status", "Status", {
@@ -24,11 +25,13 @@ export const ServerResourceType = rt({
     }),
     f("serverType", "Server Type", {
       showcase: true,
+      sizing: "instance-type",
       description:
         "Server type slug, e.g. cx23, cpx22, cax11. Changing it resizes the server (Hetzner change_type; requires the server to be powered off)",
     }),
     f("location", "Location", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,
@@ -59,6 +62,7 @@ export const ServerResourceType = rt({
       description:
         "Actual root disk size. A type change keeps it (upgrade_disk=false), and the target type's included disk must be at least this big",
       editable: false,
+      sizing: "disk-gb",
     }),
     f("backupWindow", "Backup Window", {
       required: false,

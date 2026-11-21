@@ -9,7 +9,7 @@
      pin::Pin,
      sync::{Arc, RwLock},
  };
-@@ -101,41 +101,89 @@
+@@ -101,41 +101,99 @@
          self.get_executable(name, fs)
              .await
              .and_then(|executable| match executable {
@@ -75,6 +75,16 @@
 +
 +                match executable {
 +                    Executable::Wasm(bytes) => {
++                        // A native program (ELF) runs as the runtime says,
++                        // if it says.
++                        let head = &bytes.as_slice()[..bytes.len().min(64)];
++                        let bytes = match head.starts_with(b"\x7fELF") {
++                            true => self
++                                .runtime
++                                .native_executable(name.as_str(), head)
++                                .unwrap_or(bytes),
++                            false => bytes,
++                        };
 +                        let data = HashedModuleData::new(bytes.clone());
 +                        commit_script_args(&env, rewritten_args);
 +                        return spawn_exec_wasm(data, name.as_str(), env, &self.runtime).await;
@@ -119,7 +129,7 @@
          })
      }
  
-@@ -164,13 +212,24 @@
+@@ -164,13 +222,24 @@
          name: &str,
          fs: Option<&dyn FileSystem>,
      ) -> Option<Executable> {
@@ -145,7 +155,7 @@
              }
          }
  
-@@ -178,21 +237,25 @@
+@@ -178,21 +247,25 @@
  
          // Check the cache again to avoid a race condition where the cache was populated inbetween the fast path and here
          if let Some(data) = cache.get(&name) {
@@ -174,7 +184,7 @@
                  Err(e) => {
                      tracing::warn!(
                          path = name,
-@@ -203,17 +266,182 @@
+@@ -203,17 +276,182 @@
              }
          }
  
@@ -360,7 +370,7 @@
  async fn load_executable_from_filesystem(
      fs: &dyn FileSystem,
      path: &Path,
-@@ -239,7 +467,7 @@
+@@ -239,7 +477,7 @@
              }
          }
  
@@ -369,7 +379,7 @@
      } else {
          let mut data = Vec::with_capacity(f.size() as usize);
          f.read_to_end(&mut data).await.context("Read failed")?;
-@@ -253,7 +481,8 @@
+@@ -253,7 +491,8 @@
  
              Ok(Executable::BinaryPackage(Arc::new(pkg)))
          } else {
@@ -711,7 +721,64 @@
  pub(crate) use self::fd_list::FdList;
  pub(crate) use self::inode_guard::{
      InodeValFilePollGuard, InodeValFilePollGuardJoin, InodeValFilePollGuardMode,
-@@ -575,6 +578,14 @@
+@@ -164,7 +167,14 @@
+     }
+ 
+     pub fn from_path(str: &str) -> Self {
+-        Inode(xxhash_rust::xxh64::xxh64(str.as_bytes(), 0))
++        // iwci patch: 53 bits, so a number reaches JavaScript exactly. Node
++        // reads `st_ino` as a double, or as a BigInt that Edge.js makes
++        // from one, and every hash of 2^63 or more became 2^63 - 1 there:
++        // half of all files shared one inode number. `fs.realpathSync`
++        // keys the links it has read by device and inode, so a second
++        // symbolic link took the first one's target (a `bin/` link in a
++        // directory reached through another link).
++        Inode(xxhash_rust::xxh64::xxh64(str.as_bytes(), 0) & ((1 << 53) - 1))
+     }
+ }
+ 
+@@ -313,6 +323,10 @@
+ #[derive(Debug)]
+ struct WasiInodesProtected {
+     lookup: HashMap<Inode, Weak<InodeVal>>,
++    /// Inodes added since dead entries were last cleared out.
++    added_since_sweep: usize,
++    /// How many entries were left by that clear-out.
++    left_by_sweep: usize,
+ }
+ 
+ #[derive(Clone, Debug)]
+@@ -325,6 +339,8 @@
+         Self {
+             protected: Arc::new(RwLock::new(WasiInodesProtected {
+                 lookup: Default::default(),
++                added_since_sweep: 0,
++                left_by_sweep: 0,
+             })),
+         }
+     }
+@@ -341,9 +357,18 @@
+         let ino = Inode(st_ino);
+         guard.lookup.insert(ino, Arc::downgrade(&val));
+ 
+-        // every 100 calls we clear out dead weaks
+-        if guard.lookup.len() % 100 == 1 {
++        // Dead weaks are cleared out once as many inodes have been added
++        // as the clear-out before left (and at least 100), so each add pays
++        // for a constant share of a sweep. Sweeping whenever the length was
++        // 1 modulo 100 swept the whole map on every add while the length
++        // stayed there (an add that replaced an entry, a sweep that found
++        // nothing dead), which made an install's hundreds of thousands of
++        // files quadratic.
++        guard.added_since_sweep += 1;
++        if guard.added_since_sweep >= guard.left_by_sweep.max(100) {
+             guard.lookup.retain(|_, v| Weak::strong_count(v) > 0);
++            guard.added_since_sweep = 0;
++            guard.left_by_sweep = guard.lookup.len();
+         }
+ 
+         let open_handles = Arc::new(AtomicI32::new(0));
+@@ -575,6 +600,14 @@
      pub root_inode: InodeGuard,
      pub has_unioned: Mutex<HashSet<PackageId>>,
      ephemeral_symlinks: Arc<RwLock<HashMap<PathBuf, EphemeralSymlinkEntry>>>,
@@ -726,7 +793,7 @@
  
      // TODO: remove
      // using an atomic is a hack to enable customization after construction,
-@@ -709,6 +720,8 @@
+@@ -709,6 +742,8 @@
              root_inode: self.root_inode.clone(),
              has_unioned: Mutex::new(self.has_unioned.lock().unwrap().clone()),
              ephemeral_symlinks: self.ephemeral_symlinks.clone(),
@@ -735,7 +802,7 @@
              init_preopens: self.init_preopens.clone(),
              init_vfs_preopens: self.init_vfs_preopens.clone(),
          }
-@@ -735,6 +748,9 @@
+@@ -735,6 +770,9 @@
              let mut flush_targets = Vec::new();
              for fd in to_close {
                  let outcome = Self::close_fd_locked(&mut fd_map, fd);
@@ -745,7 +812,7 @@
                  if let Some(target) = outcome.flush_target {
                      flush_targets.push(target);
                  }
-@@ -869,6 +885,8 @@
+@@ -869,6 +907,8 @@
              root_inode,
              has_unioned: Mutex::new(HashSet::new()),
              ephemeral_symlinks: Arc::new(RwLock::new(HashMap::new())),
@@ -754,7 +821,7 @@
              init_preopens: Default::default(),
              init_vfs_preopens: Default::default(),
          };
-@@ -1096,7 +1114,7 @@
+@@ -1096,7 +1136,7 @@
  
      /// refresh size from filesystem
      pub fn filestat_resync_size(&self, fd: WasiFd) -> Result<Filesize, Errno> {
@@ -763,7 +830,76 @@
          let mut guard = inode.write();
          match guard.deref_mut() {
              Kind::File { handle, .. } => {
-@@ -1758,7 +1776,13 @@
+@@ -1539,7 +1579,27 @@
+                 // The cur_inode is definitely a directory (Kind::Dir) at this
+                 // stage, and we need to create an inode (new_inode) and cache
+                 // as an entry in current directory (entry_name => cur_inode).
+-                let (entry_name, new_inode, should_insert, should_return) =
++                // iwci patch (#1294): what the entry is cached for, a file
++                // or a directory at a path, which is checked again below.
++                let cached_path = match &component_resolution {
++                    ComponentResolution::Create {
++                        kind: Kind::File { path, .. },
++                        is_ephemeral: false,
++                        ..
++                    } => Some((path.clone(), false)),
++                    ComponentResolution::Create {
++                        kind: Kind::Dir { path, .. },
++                        is_ephemeral: false,
++                        ..
++                    } => Some((path.clone(), true)),
++                    #[cfg(unix)]
++                    ComponentResolution::Special {
++                        kind: Kind::File { path, .. },
++                        ..
++                    } => Some((path.clone(), false)),
++                    _ => None,
++                };
++                let (entry_name, mut new_inode, should_insert, should_return) =
+                     match component_resolution {
+                         ComponentResolution::Create {
+                             kind,
+@@ -1588,8 +1648,38 @@
+                         unreachable!("Attempted to insert special device into non-directory");
+                     };
+ 
++                    // iwci patch (#1294): the entry is cached only if the
++                    // name is still uncached and the file system still has
++                    // it, both checked under the write lock it is cached
++                    // under. The file system was read before, under the
++                    // read lock, and an unlink that took the name's entry
++                    // out and removed the file in between left this lookup
++                    // caching a file that was gone: the directory listed the
++                    // name (its listing adds the cached entries), `stat` and
++                    // `unlink` said it was not there, and an exclusive
++                    // create of it failed with `EEXIST`. An unlink holds
++                    // this lock from taking the entry out to removing the
++                    // file, so the file system is checked wholly before or
++                    // after it. An entry another lookup or a creation cached
++                    // meanwhile is kept, not replaced.
+                     if should_insert {
+-                        entries.insert(entry_name, new_inode.clone());
++                        if let Some(entry) = entries.get(&entry_name) {
++                            new_inode = entry.clone();
++                        } else if let Some((path, is_dir)) = &cached_path {
++                            match self.root_fs.symlink_metadata(path) {
++                                Ok(md)
++                                    if md.file_type().is_dir() == *is_dir
++                                        && !md.file_type().is_symlink() =>
++                                {
++                                    entries.insert(entry_name, new_inode.clone());
++                                }
++                                // Something else is there now: look again.
++                                Ok(_) => continue 'component_lookup,
++                                Err(_) => return Err(Errno::Noent),
++                            }
++                        } else {
++                            entries.insert(entry_name, new_inode.clone());
++                        }
+                     }
+ 
+                     if should_return {
+@@ -1758,7 +1848,13 @@
          path: &str,
          follow_symlinks: bool,
      ) -> Result<InodeGuard, Errno> {
@@ -778,7 +914,7 @@
          let mut symlink_count = 0;
          self.get_inode_at_path_inner(
              inodes,
-@@ -1797,7 +1821,7 @@
+@@ -1797,7 +1893,7 @@
      ) -> Result<(InodeGuard, String), Errno> {
          let (parent_dir, new_entity_name) = PosixPath::from_path(path).parent_path_and_name()?;
          if parent_dir.as_str().is_empty() {
@@ -787,7 +923,7 @@
          }
          self.get_inode_at_path(inodes, base, parent_dir.as_str(), follow_symlinks)
              .map(|v| (v, new_entity_name))
-@@ -1816,9 +1840,51 @@
+@@ -1816,9 +1912,51 @@
              Ok(Self::virtual_root_fd(self.root_inode.clone()))
          } else {
              ret
@@ -839,7 +975,7 @@
      pub fn get_fd_inode(&self, fd: WasiFd) -> Result<InodeGuard, Errno> {
          // see `VIRTUAL_ROOT_FD` for details as to why this exists
          if fd == VIRTUAL_ROOT_FD {
-@@ -1833,68 +1899,100 @@
+@@ -1833,68 +1971,100 @@
      }
  
      pub fn filestat_fd(&self, fd: WasiFd) -> Result<Filestat, Errno> {
@@ -980,7 +1116,7 @@
                  },
                  _ => Filetype::Unknown,
              },
-@@ -1905,10 +2003,21 @@
+@@ -1905,10 +2075,21 @@
      }
  
      pub fn prestat_fd(&self, fd: WasiFd) -> Result<Prestat, Errno> {
@@ -1003,7 +1139,22 @@
              Ok(self.prestat_fd_inner(inode.deref()))
          } else {
              Err(Errno::Badf)
-@@ -2026,6 +2135,7 @@
+@@ -1995,8 +2176,12 @@
+             _ => Cow::Borrowed(name.as_ref()),
+         };
+ 
+-        let st_ino = Inode::from_path(&inode_key);
+-        stat.st_ino = st_ino.as_u64();
++        // iwci patch: a number the file system gave (a file with hard
++        // links, `get_stat_for_kind`) is kept; anything else is numbered
++        // by its path.
++        if stat.st_ino == 0 {
++            stat.st_ino = Inode::from_path(&inode_key).as_u64();
++        }
+ 
+         inodes.add_inode_val(InodeVal {
+             stat: RwLock::new(stat),
+@@ -2026,6 +2211,7 @@
                  flags: fs_flags,
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags,
@@ -1011,7 +1162,7 @@
              },
              open_flags,
              inode,
-@@ -2094,6 +2204,7 @@
+@@ -2094,6 +2280,7 @@
                      rights_inheriting: fd.inner.rights_inheriting,
                      flags: fd.inner.flags,
                      offset: fd.inner.offset.clone(),
@@ -1019,7 +1170,7 @@
                      fd_flags: match cloexec {
                          None => fd.inner.fd_flags,
                          Some(cloexec) => {
-@@ -2132,6 +2243,7 @@
+@@ -2132,6 +2319,7 @@
                  flags: Fdflags::empty(),
                  offset: Arc::new(AtomicU64::new(0)),
                  fd_flags: Fdflagsext::empty(),
@@ -1027,7 +1178,7 @@
              },
              open_flags: 0,
              inode: root_inode,
-@@ -2171,18 +2283,29 @@
+@@ -2171,18 +2359,29 @@
                  return Ok(None);
              }
  
@@ -1060,7 +1211,7 @@
                      fd_flags: {
                          let mut f = fd_entry.inner.fd_flags;
                          f.set(Fdflagsext::CLOEXEC, false);
-@@ -2599,6 +2722,7 @@
+@@ -2599,6 +2798,7 @@
                      flags: fd_flags,
                      offset: Arc::new(AtomicU64::new(0)),
                      fd_flags: Fdflagsext::empty(),
@@ -1068,7 +1219,72 @@
                  },
                  // since we're not calling open on this, we don't need open flags
                  open_flags: 0,
-@@ -2674,9 +2798,26 @@
+@@ -2608,14 +2808,24 @@
+         );
+     }
+ 
++    /// iwci patch: `st_ino` is the number the file system gives the file
++    /// (one with hard links, so that every name reports one number), and 0
++    /// when it gives none: the caller numbers by path (`create_inode_with_stat`)
++    /// or keeps the number the inode has (`path_filestat_get`). `st_nlink`
++    /// is the file system's count of the file's names.
+     pub fn get_stat_for_kind(&self, kind: &Kind) -> Result<Filestat, Errno> {
+         let md = match kind {
+             Kind::File { handle, path, .. } => match handle {
+                 Some(wf) => {
+                     let wf = wf.read().unwrap();
++                    let (st_ino, st_nlink) = self
++                        .root_fs
++                        .metadata(path)
++                        .map_or((0, 1), |md| (md.ino, md.nlink.max(1)));
+                     return Ok(Filestat {
+                         st_filetype: Filetype::RegularFile,
+-                        st_ino: Inode::from_path(path.to_string_lossy().as_ref()).as_u64(),
++                        st_ino,
++                        st_nlink,
+                         st_size: wf.size(),
+                         st_atim: wf.last_accessed(),
+                         st_mtim: wf.last_modified(),
+@@ -2660,6 +2870,8 @@
+         };
+         Ok(Filestat {
+             st_filetype: virtual_file_type_to_wasi_file_type(md.file_type()),
++            st_ino: md.ino,
++            st_nlink: md.nlink.max(1),
+             st_size: md.len(),
+             st_atim: md.accessed(),
+             st_mtim: md.modified(),
+@@ -2668,13 +2880,54 @@
+         })
+     }
+ 
++    /// iwci patch: `stat`'s `st_ino` and `st_nlink` brought up to date from
++    /// the file system for the file `kind` names, when it still names the
++    /// file `stat` describes (the same number, or the number of its path):
++    /// a hard link made or removed since the inode was cached, by this
++    /// process or another, changes both.
++    pub(crate) fn refresh_links(&self, kind: &Kind, stat: &mut Filestat) {
++        let Kind::File { path, .. } = kind else {
++            return;
++        };
++        if path.as_os_str().is_empty() {
++            return;
++        }
++        let Ok(md) = self.root_fs.metadata(path) else {
++            return;
++        };
++        let by_path = Inode::from_path(path.to_string_lossy().as_ref()).as_u64();
++        if (md.ino != 0 && stat.st_ino == md.ino) || stat.st_ino == by_path {
++            if md.ino != 0 {
++                stat.st_ino = md.ino;
++            }
++            stat.st_nlink = md.nlink.max(1);
++        }
++    }
++
+     /// Closes an open FD under `fd_map.write()`, capturing a file handle for
+     /// post-close flush while the map lock is held.
+     ///
      /// Lock order: `fd_map` write, then inode read (never the reverse).
      pub(crate) fn close_fd_and_capture_flush(&self, fd: WasiFd) -> CloseFdOutcome {
          let mut fd_map = self.fd_map.write().unwrap();
@@ -1078,8 +1294,8 @@
 +            self.restore_displaced_preopen_locked(&mut fd_map, fd);
 +        }
 +        outcome
-     }
- 
++    }
++
 +    /// Puts back the preopen `dup2_at` kept for `fd`, now that what was put
 +    /// over it is closed (#1019). A preopen cannot be closed (see
 +    /// `close_fd_locked`), so it comes back as it was: `exec 4>&-` after
@@ -1091,11 +1307,9 @@
 +        {
 +            panic!("Internal error: expected FD {fd} to be free after closing it");
 +        }
-+    }
-+
+     }
+ 
      /// Closes an open FD in an already write-locked fd map.
-     fn close_fd_locked(fd_map: &mut FdList, fd: WasiFd) -> CloseFdOutcome {
-         let Some(fd_ref) = fd_map.get(fd) else {
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -118,7 +118,9 @@
@@ -1196,9 +1410,52 @@
  /// Combines a state generating function with the import list for legacy WASI
  fn generate_import_object_snapshot0(
      store: &mut impl AsStoreMut,
+--- a/src/net/mod.rs
++++ b/src/net/mod.rs
+@@ -17,6 +17,8 @@
+ };
+ 
+ pub mod socket;
++// iwci patch: AF_UNIX stream sockets on a path (unix.rs).
++pub(crate) mod unix;
+ 
+ pub use virtual_net::MAX_SOCKET_PAYLOAD;
+ 
 --- a/src/net/socket.rs
 +++ b/src/net/socket.rs
-@@ -509,11 +509,10 @@
+@@ -231,6 +231,9 @@
+ #[derive(Debug)]
+ pub(crate) struct InodeSocketInner {
+     pub protected: RwLock<InodeSocketProtected>,
++    // iwci patch: an AF_UNIX socket's names (net/unix.rs); `None` for
++    // every other socket.
++    pub unix: std::sync::Mutex<Option<crate::net::unix::UnixName>>,
+ }
+ 
+ #[derive(Debug, Clone)]
+@@ -244,10 +247,21 @@
+         Self {
+             inner: Arc::new(InodeSocketInner {
+                 protected: RwLock::new(protected),
++                unix: std::sync::Mutex::new(None),
+             }),
+         }
++    }
++
++    /// iwci patch: this socket's AF_UNIX names, if it is one.
++    pub(crate) fn unix(&self) -> Option<crate::net::unix::UnixName> {
++        self.inner.unix.lock().unwrap().clone()
+     }
+ 
++    /// iwci patch: marks this socket AF_UNIX, with these names.
++    pub(crate) fn set_unix(&self, name: Option<crate::net::unix::UnixName>) {
++        *self.inner.unix.lock().unwrap() = name;
++    }
++
+     pub fn poll_read_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+         let mut inner = self.inner.protected.write().unwrap();
+         inner.poll_read_ready(cx)
+@@ -509,11 +523,10 @@
          net: &dyn VirtualNetworking,
          _backlog: usize,
      ) -> Result<Option<InodeSocket>, Errno> {
@@ -1214,7 +1471,7 @@
  
          let socket = {
              let mut inner = self.inner.protected.write().unwrap();
-@@ -565,7 +564,7 @@
+@@ -565,7 +578,7 @@
                  InodeSocketKind::BoundTcp { socket, .. } => {
                      return Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
                          socket: socket.listen().map_err(net_error_into_wasi_err)?,
@@ -1223,7 +1480,7 @@
                      })));
                  }
                  InodeSocketKind::Icmp(_) => {
-@@ -598,7 +597,7 @@
+@@ -598,7 +611,7 @@
                  let socket = socket.map_err(net_error_into_wasi_err)?;
                  Ok(Some(InodeSocket::new(InodeSocketKind::TcpListener {
                      socket,
@@ -1232,7 +1489,7 @@
                  })))
              },
              _ = tasks.sleep_now(timeout) => Err(Errno::Timedout)
-@@ -895,7 +894,12 @@
+@@ -895,7 +908,12 @@
      pub fn addr_peer(&self) -> Result<SocketAddr, Errno> {
          let inner = self.inner.protected.read().unwrap();
          match &inner.kind {
@@ -1246,7 +1503,7 @@
              InodeSocketKind::PreSocket { props, .. } => Ok(SocketAddr::new(
                  match props.family {
                      Addressfamily::Inet4 => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-@@ -1522,7 +1526,13 @@
+@@ -1522,7 +1540,13 @@
                                  false => Poll::Pending,
                              };
                          }
@@ -1261,7 +1518,7 @@
                              return Poll::Ready(Err(Errno::Notconn));
                          }
                          _ => return Poll::Ready(Err(Errno::Notsup)),
-@@ -1613,7 +1623,13 @@
+@@ -1613,7 +1637,13 @@
                                  false => Poll::Pending,
                              };
                          }
@@ -1276,6 +1533,166 @@
                              return Poll::Ready(Err(Errno::Notconn));
                          }
                          _ => return Poll::Ready(Err(Errno::Notsup)),
+--- /dev/null
++++ b/src/net/unix.rs
+@@ -0,0 +1,157 @@
++//! iwci patch: AF_UNIX stream sockets on a path, between the processes of
++//! one job.
++//!
++//! WASIX has the address (`__wasi_addr_port_t`'s `unix` arm, which
++//! wasix-libc fills from a `sockaddr_un`) but no socket behind it: binding
++//! one failed with EINVAL, so a Node server listening on a path (tsx's IPC,
++//! test runners' workers) could not start. Here such a socket is a TCP
++//! socket on the job's loopback, and its path a file in the job's file
++//! system naming the loopback port, which every process of the job shares:
++//! `bind` creates the file (EADDRINUSE if the path exists, as on Linux),
++//! `connect` reads it (ENOENT without it, ECONNREFUSED for a file that is
++//! not one of these or a listener that has gone, as Linux refuses a path
++//! with no socket listening on it), and `getsockname`, `getpeername` and
++//! `accept` answer with the path. The loopback is the job's own, so nothing
++//! here reaches the host. Abstract names (a path starting with NUL) and
++//! datagram sockets are not supported.
++
++use std::net::{IpAddr, Ipv4Addr, SocketAddr};
++
++use virtual_fs::{AsyncReadExt, AsyncWriteExt, FileSystem, FsError};
++use wasmer::{MemoryView, WasmPtr};
++use wasmer_types::MemorySize;
++use wasmer_wasix_types::wasi::{Addressfamily, Errno};
++
++use wasmer_wasix_types::types::__wasi_addr_port_t;
++
++use crate::{fs::fs_error_into_wasi_err, state::WasiState};
++
++/// What a socket file says, before the port.
++const MARK: &str = "iwci-unix-socket 127.0.0.1:";
++
++/// Room for a path in `__wasi_addr_port_t` (the address starts after the
++/// tag and a padding byte; the C struct is 110 bytes).
++const PATH_MAX: usize = 108;
++
++/// The names of an AF_UNIX socket: the path it was bound to, and the path
++/// it connected to. Either is unnamed (`None`) otherwise, as an accepted
++/// connection's peer is.
++#[derive(Debug, Clone, Default)]
++pub(crate) struct UnixName {
++    pub local: Option<String>,
++    pub peer: Option<String>,
++}
++
++/// An address a guest passed: an IP address and port, or a path.
++pub(crate) enum SockAddr {
++    Ip(SocketAddr),
++    Unix(String),
++}
++
++pub(crate) fn read_sock_addr<M: MemorySize>(
++    memory: &MemoryView,
++    ptr: WasmPtr<__wasi_addr_port_t, M>,
++) -> Result<SockAddr, Errno> {
++    let tag = ptr.deref(memory).read().map_err(crate::mem_error_to_wasi)?.tag;
++    if tag != Addressfamily::Unix {
++        let (ip, port) = crate::net::read_ip_port(memory, ptr)?;
++        return Ok(SockAddr::Ip(SocketAddr::new(ip, port)));
++    }
++    let start: u64 = ptr.offset().into();
++    let mut raw = [0u8; PATH_MAX];
++    memory
++        .read(start + 2, &mut raw)
++        .map_err(crate::mem_error_to_wasi)?;
++    let len = raw.iter().position(|b| *b == 0).unwrap_or(PATH_MAX);
++    if len == 0 {
++        // Unnamed, or an abstract name.
++        return Err(Errno::Inval);
++    }
++    let path = std::str::from_utf8(&raw[..len]).map_err(|_| Errno::Inval)?;
++    Ok(SockAddr::Unix(path.to_string()))
++}
++
++/// Writes `path` (empty for unnamed) as an AF_UNIX address.
++pub(crate) fn write_unix_addr<M: MemorySize>(
++    memory: &MemoryView,
++    ptr: WasmPtr<__wasi_addr_port_t, M>,
++    path: &str,
++) -> Result<(), Errno> {
++    let mut raw = [0u8; 2 + PATH_MAX];
++    raw[0] = Addressfamily::Unix as u8;
++    let bytes = path.as_bytes();
++    let len = bytes.len().min(PATH_MAX - 1);
++    raw[2..2 + len].copy_from_slice(&bytes[..len]);
++    let start: u64 = ptr.offset().into();
++    memory.write(start, &raw).map_err(crate::mem_error_to_wasi)
++}
++
++/// Where a socket on `path` listens on the loopback.
++pub(crate) fn loopback(port: u16) -> SocketAddr {
++    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
++}
++
++/// Creates the file for a socket about to be bound on `path`: it must not
++/// exist yet. Returns a handle to write the port to once the socket has one.
++pub(crate) fn create(
++    state: &WasiState,
++    path: &str,
++) -> Result<Box<dyn virtual_fs::VirtualFile + Send + Sync>, Errno> {
++    let absolute = state.fs.relative_path_to_absolute(path.to_string());
++    let absolute = std::path::Path::new(&absolute);
++    if state.fs.root_fs.symlink_metadata(absolute).is_ok() {
++        return Err(Errno::Addrinuse);
++    }
++    state
++        .fs
++        .root_fs
++        .new_open_options()
++        .write(true)
++        .create_new(true)
++        .open(absolute)
++        .map_err(|err| match err {
++            FsError::AlreadyExists => Errno::Addrinuse,
++            err => fs_error_into_wasi_err(err),
++        })
++}
++
++/// Records `port` in a socket file `create` made.
++pub(crate) fn publish(
++    mut file: Box<dyn virtual_fs::VirtualFile + Send + Sync>,
++    port: u16,
++) -> Result<(), Errno> {
++    let content = format!("{MARK}{port}\n");
++    virtual_mio::block_on(async move {
++        file.write_all(content.as_bytes()).await?;
++        file.flush().await
++    })
++    .map_err(|_| Errno::Io)
++}
++
++/// Removes a socket file whose bind failed after `create`.
++pub(crate) fn remove(state: &WasiState, path: &str) {
++    let absolute = state.fs.relative_path_to_absolute(path.to_string());
++    let _ = state.fs.root_fs.remove_file(std::path::Path::new(&absolute));
++}
++
++/// The loopback port the socket on `path` listens on.
++pub(crate) fn find(state: &WasiState, path: &str) -> Result<u16, Errno> {
++    let absolute = state.fs.relative_path_to_absolute(path.to_string());
++    let mut file = state
++        .fs
++        .root_fs
++        .new_open_options()
++        .read(true)
++        .open(std::path::Path::new(&absolute))
++        .map_err(|err| match err {
++            FsError::EntryNotFound => Errno::Noent,
++            FsError::BaseNotDirectory => Errno::Notdir,
++            _ => Errno::Connrefused,
++        })?;
++    let mut content = String::new();
++    virtual_mio::block_on(file.read_to_string(&mut content)).map_err(|_| Errno::Connrefused)?;
++    content
++        .strip_prefix(MARK)
++        .and_then(|rest| rest.trim_end().parse::<u16>().ok())
++        .ok_or(Errno::Connrefused)
++}
 --- a/src/os/task/control_plane.rs
 +++ b/src/os/task/control_plane.rs
 @@ -75,6 +75,9 @@
@@ -1499,6 +1916,54 @@
      }
  
      /// Terminate the process and all its threads
+--- a/src/runners/wasi_common.rs
++++ b/src/runners/wasi_common.rs
+@@ -946,6 +946,8 @@
+                         .and_then(unix_timestamp_nanos)
+                         .unwrap_or(0),
+                     len: contents.len() as u64,
++                    ino: 0,
++                    nlink: 0,
+                 })
+             }]
+         );
+--- a/src/runtime/mod.rs
++++ b/src/runtime/mod.rs
+@@ -17,6 +17,7 @@
+ 
+ use anyhow::Context as _;
+ use futures::future::BoxFuture;
++use shared_buffer::OwnedBuffer;
+ use virtual_mio::block_on;
+ use virtual_net::{DynVirtualNetworking, VirtualNetworking};
+ use wasmer::{Engine, Module, RuntimeError};
+@@ -442,6 +443,15 @@
+ 
+     /// Get access to the TTY used by the environment.
+     fn tty(&self) -> Option<&(dyn TtyBridge + Send + Sync)> {
++        None
++    }
++
++    /// What runs in place of a native program: a file that starts with
++    /// the ELF magic, which a process asked to run as `path`, judged by
++    /// its first bytes (`head`). A WebAssembly module that runs it some
++    /// other way, or says why it cannot; `None` (the default) hands the
++    /// file to the compiler, which refuses it (`ENOEXEC`).
++    fn native_executable(&self, _path: &str, _head: &[u8]) -> Option<OwnedBuffer> {
+         None
+     }
+ 
+@@ -1251,6 +1261,10 @@
+         } else {
+             self.inner.tty()
+         }
++    }
++
++    fn native_executable(&self, path: &str, head: &[u8]) -> Option<OwnedBuffer> {
++        self.inner.native_executable(path, head)
+     }
+ 
+     #[cfg(feature = "journal")]
 --- a/src/runtime/task_manager/tokio.rs
 +++ b/src/runtime/task_manager/tokio.rs
 @@ -1,5 +1,5 @@
@@ -1826,7 +2291,50 @@
      os::task::{
          control_plane::ControlPlaneError,
          process::{WasiProcess, WasiProcessId},
-@@ -254,7 +254,10 @@
+@@ -18,7 +18,7 @@
+ use futures::future::BoxFuture;
+ use rand::RngExt;
+ use std::{
+-    collections::HashMap,
++    collections::{HashMap, HashSet},
+     ops::Deref,
+     path::{Path, PathBuf},
+     str,
+@@ -42,8 +42,32 @@
+ use webc::metadata::annotations::Wasi;
+ 
+ pub use super::handles::*;
+-use super::{Linker, WasiState, context_switching::ContextSwitchingEnvironment, conv_env_vars};
++use super::{Linker, WasiState, context_switching::ContextSwitchingEnvironment};
+ 
++/// A command's `wasi.env` entries are defaults: one whose name the
++/// environment already has is left out, so a spawned command never sees a
++/// name twice (0.705 appended them). Backported from Wasmer's main branch.
++fn add_command_env_defaults(environment: &mut Vec<Vec<u8>>, defaults: Vec<String>) {
++    let mut names = environment
++        .iter()
++        .filter_map(|entry| {
++            entry
++                .iter()
++                .position(|byte| *byte == b'=')
++                .map(|separator| entry[..separator].to_vec())
++        })
++        .collect::<HashSet<_>>();
++
++    for default in defaults {
++        let Some((key, value)) = default.split_once('=') else {
++            continue;
++        };
++        if names.insert(key.as_bytes().to_vec()) {
++            environment.push([key.as_bytes(), b"=", value.as_bytes()].concat());
++        }
++    }
++}
++
+ async fn write_readonly_buffer_to_fs(
+     fs: &WasiFsRoot,
+     path: &Path,
+@@ -254,7 +278,10 @@
  
      /// Forking the WasiState is used when either fork or vfork is called
      pub fn fork(&self) -> Result<(Self, WasiThreadHandle), ControlPlaneError> {
@@ -1838,7 +2346,7 @@
          let handle = process.new_thread(self.layout.clone(), ThreadStartType::MainThread)?;
  
          let thread = handle.as_thread();
-@@ -317,6 +320,7 @@
+@@ -317,6 +344,7 @@
                  map.clear();
              }
              self.state.fs.preopen_fds.write().unwrap().clear();
@@ -1846,7 +2354,7 @@
              *self.state.fs.current_dir.lock().unwrap() = "/".to_string();
  
              // We need to rebuild the basic file descriptors
-@@ -334,11 +338,14 @@
+@@ -334,11 +362,14 @@
          }
  
          // The process and thread state need to be reset
@@ -1861,7 +2369,7 @@
          self.thread = WasiThread::new(
              self.thread.pid(),
              self.thread.tid(),
-@@ -538,7 +545,7 @@
+@@ -538,7 +569,7 @@
  
          // Let's instantiate the module with the imports.
          let mut import_object =
@@ -1870,7 +2378,7 @@
          if let Some(memory) = memory.clone() {
              import_object.define("env", "memory", memory);
          }
-@@ -1319,7 +1326,9 @@
+@@ -1319,7 +1350,9 @@
                      // Otherwise a pending Sigquit can win the status race and
                      // make waiters observe a successful exit.
                      process.terminate(process_exit_code);
@@ -1881,20 +2389,108 @@
                  }
              })
          } else {
+@@ -1336,22 +1369,7 @@
+         })) = cmd.metadata().wasi()
+         {
+             if let Some(env_vars) = env_vars {
+-                let env_vars = env_vars
+-                    .into_iter()
+-                    .map(|env_var| {
+-                        let (k, v) = env_var.split_once('=').unwrap();
+-
+-                        (k.to_string(), v.as_bytes().to_vec())
+-                    })
+-                    .collect::<Vec<_>>();
+-
+-                let env_vars = conv_env_vars(env_vars);
+-
+-                self.state
+-                    .envs
+-                    .lock()
+-                    .unwrap()
+-                    .extend_from_slice(env_vars.as_slice());
++                add_command_env_defaults(&mut self.state.envs.lock().unwrap(), env_vars);
+             }
+ 
+             if let Some(main_args) = main_args {
+@@ -1367,3 +1385,31 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod command_env_tests {
++    use super::*;
++
++    #[test]
++    fn spawned_command_environment_is_default_only() {
++        let mut environment = vec![b"HOME=/workspace".to_vec(), b"PATH=/bin".to_vec()];
++
++        add_command_env_defaults(
++            &mut environment,
++            vec![
++                "HOME=/package".to_owned(),
++                "PREFIX=/".to_owned(),
++                "PREFIX=/duplicate".to_owned(),
++            ],
++        );
++
++        assert_eq!(
++            environment,
++            vec![
++                b"HOME=/workspace".to_vec(),
++                b"PATH=/bin".to_vec(),
++                b"PREFIX=/".to_vec(),
++            ]
++        );
++    }
++}
+--- a/src/state/linker/mod.rs
++++ b/src/state/linker/mod.rs
+@@ -649,6 +649,12 @@
+         })
+     }
+ 
++    /// Whether another instance group's link operation waits for this one
++    /// to take part (`do_pending_link_operations`).
++    pub(crate) fn link_operation_pending(&self) -> bool {
++        self.shared.dl_operation_pending_load(Ordering::SeqCst)
++    }
++
+     pub(crate) fn do_pending_link_operations(
+         &self,
+         ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+@@ -717,8 +723,12 @@
+         trace!(stack_low, stack_high, "Memory layout");
+ 
+         // WASIX threads initialize their own stack pointer global in wasi_thread_start,
+-        // so no need to initialize it to a value here.
+-        let stack_pointer = create_main_stack_pointer_global(store, &main_module, 0)?;
++        // but side modules' `__wasix_init_tls` (and the main module's allocator it
++        // calls) run before that, below. Start the thread at the top of its own stack,
++        // where wasi_thread_start puts it too, so code there that uses the stack (a
++        // module put through Binaryen's --spill-pointers, env:ruby) does not write
++        // below address 0.
++        let stack_pointer = create_main_stack_pointer_global(store, &main_module, stack_high)?;
+ 
+         let c_longjmp = Tag::new(store, vec![Type::I32]);
+         let cpp_exception = Tag::new(store, vec![Type::I32]);
 --- a/src/syscalls/mod.rs
 +++ b/src/syscalls/mod.rs
-@@ -684,7 +684,88 @@
+@@ -684,9 +684,112 @@
              block_on(work)
          }
          _ => Err(Errno::Notsock),
 +    }
 +}
 +
-+/// Waits for `work`, a socket accept or receive. Like Linux, these block
-+/// with no time limit unless the program set one (`SO_RCVTIMEO`), so this
-+/// ends the wait with `Errno::Intr` as soon as a signal is queued for the
-+/// thread or the thread or its process is made to finish: that is what
-+/// still stops a program blocked there. The syscall then asks
++/// Waits for `work`, a socket accept or receive or a blocking read of a
++/// pipe or socket pair. Like Linux, these block with no time limit unless
++/// the program set one (`SO_RCVTIMEO`), so this ends the wait with
++/// `Errno::Intr` as soon as a signal is queued for the thread or the thread
++/// or its process is made to finish: that is what still stops a program
++/// blocked there, and what lets the thread take part in another thread's
++/// `dlopen` (the linker's `Sigwakeup`). The syscall then asks
 +/// `__sock_wait_restarts` whether to start the call over.
 +pub(crate) async fn __sock_wait<T>(
 +    env: &WasiEnv,
@@ -1903,25 +2499,26 @@
 +    tokio::select! {
 +        biased;
 +        res = work => res,
-+        _ = SignalQueued { thread: &env.thread, waker: None } => Err(Errno::Intr),
++        _ = SignalQueued { env, waker: None } => Err(Errno::Intr),
 +        _ = env.thread.join() => Err(Errno::Intr),
 +        _ = env.process.finished.await_termination() => Err(Errno::Intr),
-+    }
-+}
-+
-+/// Ready once a signal is queued for the thread, which it leaves queued.
-+/// Unlike `WasiThread::wait_for_signal` it takes its waker back when it is
+     }
+ }
+ 
++/// Ready once a signal is queued for the thread, which it leaves queued, or
++/// once another thread's link operation waits for this one. Unlike
++/// `WasiThread::wait_for_signal` it takes its waker back when it is
 +/// dropped: every blocking call brings a new one, and the thread would
 +/// otherwise keep them all until its next signal.
 +struct SignalQueued<'a> {
-+    thread: &'a WasiThread,
++    env: &'a WasiEnv,
 +    waker: Option<Waker>,
 +}
 +
 +impl Future for SignalQueued<'_> {
 +    type Output = ();
 +    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-+        let thread = self.thread;
++        let thread = &self.env.thread;
 +        let mut signals = thread.signals().lock().unwrap();
 +        if !signals.0.is_empty() {
 +            return Poll::Ready(());
@@ -1931,6 +2528,19 @@
 +        }
 +        drop(signals);
 +        self.waker = Some(cx.waker().clone());
++        // A link operation raises its flag and then sends `Sigwakeup`, which
++        // this thread's own signal handling (a syscall's
++        // `do_pending_operations`, `__sock_wait_restarts`) can take off the
++        // queue after it last looked at the flag. Read once the waker is
++        // registered, the flag cannot be missed: an operation that raises it
++        // later wakes this wait with its `Sigwakeup`.
++        if self.env.try_inner().is_some_and(|inner| {
++            inner
++                .linker()
++                .is_some_and(|linker| linker.link_operation_pending())
++        }) {
++            return Poll::Ready(());
++        }
 +        Poll::Pending
 +    }
 +}
@@ -1938,13 +2548,13 @@
 +impl Drop for SignalQueued<'_> {
 +    fn drop(&mut self) {
 +        if let Some(waker) = self.waker.take() {
-+            let mut signals = self.thread.signals().lock().unwrap();
++            let mut signals = self.env.thread.signals().lock().unwrap();
 +            signals.1.retain(|w| !w.will_wake(&waker));
 +        }
-     }
++    }
 +}
 +
-+/// After `__sock_wait` ended a socket call with `Errno::Intr`: does the
++/// After `__sock_wait` ended a socket or pipe call with `Errno::Intr`: does the
 +/// dynamic-linking work another thread is waiting on, runs the signal
 +/// handlers (or exits, for a fatal signal or a thread made to finish), and
 +/// says whether to start the call over. The program sees `EINTR` only for a
@@ -1965,14 +2575,78 @@
 +    };
 +    WasiEnv::do_pending_link_operations(ctx, false)?;
 +    let _ = WasiEnv::process_signals_and_exit(ctx)?;
-+    // A signal still queued is one nothing here takes, and would end the
-+    // next wait as soon as it started.
-+    let stuck = !ctx.data().thread.signals().lock().unwrap().0.is_empty();
++    // A `Sigwakeup` queued since is the linker's next operation, which has
++    // raised its flag already, and the next wait (`SignalQueued`) sees that
++    // flag. Any other signal still queued is one nothing here takes, and
++    // would end the next wait as soon as it started.
++    let stuck = {
++        let mut signals = ctx.data().thread.signals().lock().unwrap();
++        signals.0.retain(|sig| *sig != Signal::Sigwakeup);
++        !signals.0.is_empty()
++    };
 +    Ok(!(delivered && handled_here) && !stuck)
- }
- 
++}
++
  /// Performs an immutable operation on the socket while running in an asynchronous runtime
-@@ -1606,7 +1687,14 @@
+ /// This has built in signal support
+ pub(crate) fn __sock_actor<T, F>(
+@@ -806,6 +909,9 @@
+                     match guard.deref_mut() {
+                         Kind::Socket { socket, .. } => {
+                             std::mem::swap(socket, &mut new_socket);
++                            // iwci patch: a bound, listening or connected
++                            // AF_UNIX socket stays one.
++                            socket.set_unix(new_socket.unix());
+                         }
+                         _ => {
+                             tracing::warn!(
+@@ -1562,36 +1668,16 @@
+         *wasi_env.state.args.lock().unwrap() = args;
+     }
+ 
+-    // Update the env vars
++    // iwci patch (#1310): the environment passed is the whole of the new
++    // one, as execve's and posix_spawn's are, so a variable the caller left
++    // out is not set. Laying it over the inherited one kept every variable
++    // the caller had removed. No environment passed (`None`) inherits.
+     if let Some(envs) = envs {
+-        let mut guard = wasi_env.state.envs.lock().unwrap();
+-
+-        let mut existing_envs = guard
+-            .iter()
+-            .map(|b| {
+-                let string = String::from_utf8_lossy(b);
+-                let (key, val) = string.split_once('=').expect("env var is malformed");
+-
+-                (key.to_string(), val.to_string().as_bytes().to_vec())
+-            })
+-            .collect::<Vec<_>>();
+-
+-        for (key, val) in envs {
+-            let val = val.as_bytes().to_vec();
+-            match existing_envs
+-                .iter_mut()
+-                .find(|(existing_key, _)| existing_key == &key)
+-            {
+-                Some((_, existing_val)) => *existing_val = val,
+-                None => existing_envs.push((key, val)),
+-            }
+-        }
+-
+-        let envs = conv_env_vars(existing_envs);
+-
+-        *guard = envs;
+-
+-        drop(guard)
++        let envs = envs
++            .into_iter()
++            .map(|(key, val)| (key, val.into_bytes()))
++            .collect();
++        *wasi_env.state.envs.lock().unwrap() = conv_env_vars(envs);
+     }
+ 
+     if let Some(signals) = signals {
+@@ -1606,7 +1692,14 @@
  pub(crate) fn conv_spawn_err_to_errno(err: &SpawnError) -> Errno {
      match err {
          SpawnError::AccessDenied => Errno::Access,
@@ -2070,13 +2744,18 @@
  
 --- a/src/syscalls/wasi/fd_filestat_get.rs
 +++ b/src/syscalls/wasi/fd_filestat_get.rs
-@@ -55,8 +55,21 @@
+@@ -55,8 +55,36 @@
          return Err(Errno::Access);
      }
  
 -    let guard = fd_entry.inode.stat.read().unwrap();
 -    Ok(*guard.deref())
 +    let mut stat = *fd_entry.inode.stat.read().unwrap();
++    // iwci patch: the file's number and count of names as the file system
++    // has them now: another name made or removed since it was opened.
++    state
++        .fs
++        .refresh_links(fd_entry.inode.read().deref(), &mut stat);
 +    // WASI has no file type for a pipe, so the C library's `fstat` gives one
 +    // no type at all, and a program that asks what its standard streams are
 +    // (libuv's `uv_guess_handle`, and so Node) takes a pipe for something it
@@ -2090,18 +2769,28 @@
 +    {
 +        stat.st_filetype = Filetype::CharacterDevice;
 +    }
++    // A socket's inode has no file type either, so `fstat` gave it none
++    // (no `S_IFSOCK`), and a program that checks a descriptor it was handed
++    // is a socket refused it: Ruby's `BasicSocket.for_fd`, and so pg's
++    // connection to PostgreSQL, which wraps the socket libpq opened. Its
++    // type is the one `fd_fdstat_get` gives (`SO_TYPE`).
++    let socket = stat.st_filetype == Filetype::Unknown
++        && matches!(*fd_entry.inode.read(), Kind::Socket { .. });
++    if socket && let Ok(fdstat) = state.fs.fdstat(fd, None) {
++        stat.st_filetype = fdstat.fs_filetype;
++    }
 +    Ok(stat)
  }
  
  /// ### `fd_filestat_get_old()`
 --- a/src/syscalls/wasi/fd_read.rs
 +++ b/src/syscalls/wasi/fd_read.rs
-@@ -49,7 +49,25 @@
+@@ -49,7 +49,28 @@
          ctx = wasi_try_ok!(maybe_snapshot_once::<M>(ctx, SnapshotTrigger::FirstStdin)?);
      }
  
 -    let res = fd_read_internal::<M>(&mut ctx, fd, fd_entry, iovs, iovs_len, offset, nread, true)?;
-+    let is_socket = matches!(fd_entry.inode.read().deref(), Kind::Socket { .. });
++    let waits_for_signals = waits_for_signals(&fd_entry);
 +    let res = loop {
 +        let res = fd_read_internal::<M>(
 +            &mut ctx,
@@ -2113,9 +2802,12 @@
 +            nread,
 +            true,
 +        )?;
-+        // A blocking read of a socket that a signal the program does not
-+        // see interrupted starts over (`__sock_wait_restarts`).
-+        if is_socket && matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
++        // A blocking read of a socket or a pipe that a signal the program
++        // does not see interrupted starts over (`__sock_wait_restarts`).
++        if waits_for_signals
++            && matches!(res, Err(Errno::Intr))
++            && __sock_wait_restarts(&mut ctx)?
++        {
 +            continue;
 +        }
 +        break res;
@@ -2123,7 +2815,57 @@
      fd_read_internal_handler(ctx, res, nread)
  }
  
-@@ -236,11 +254,8 @@
+@@ -90,19 +111,39 @@
+         let state = env.state.clone();
+         wasi_try_ok!(state.fs.get_fd(fd))
+     };
+-    let res = fd_read_internal::<M>(
+-        &mut ctx,
+-        fd,
+-        fd_entry,
+-        iovs,
+-        iovs_len,
+-        offset as usize,
+-        nread,
+-        false,
+-    )?;
++    let waits_for_signals = waits_for_signals(&fd_entry);
++    let res = loop {
++        let res = fd_read_internal::<M>(
++            &mut ctx,
++            fd,
++            fd_entry.clone(),
++            iovs,
++            iovs_len,
++            offset as usize,
++            nread,
++            false,
++        )?;
++        if waits_for_signals
++            && matches!(res, Err(Errno::Intr))
++            && __sock_wait_restarts(&mut ctx)?
++        {
++            continue;
++        }
++        break res;
++    };
+     fd_read_internal_handler::<M>(ctx, res, nread)
+ }
+ 
++/// Whether a blocking read of `fd_entry` waits in `__sock_wait`, which ends
++/// it with `Errno::Intr` for a signal: a socket, a pipe's read end or a
++/// socket pair.
++fn waits_for_signals(fd_entry: &Fd) -> bool {
++    matches!(
++        fd_entry.inode.read().deref(),
++        Kind::Socket { .. } | Kind::PipeRx { .. } | Kind::DuplexPipe { .. }
++    )
++}
++
+ pub(crate) fn fd_read_internal_handler<M: MemorySize>(
+     mut ctx: FunctionEnvMut<'_, WasiEnv>,
+     res: Result<usize, Errno>,
+@@ -236,11 +277,8 @@
                      drop(guard);
  
                      let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
@@ -2137,7 +2879,7 @@
  
                      let tasks = env.tasks().clone();
                      let res = __asyncify_light(
-@@ -250,7 +265,7 @@
+@@ -250,7 +288,7 @@
                          } else {
                              None
                          },
@@ -2146,7 +2888,7 @@
                              let mut total_read = 0usize;
  
                              let iovs_arr =
-@@ -263,22 +278,29 @@
+@@ -263,22 +301,29 @@
                                      .access()
                                      .map_err(mem_error_to_wasi)?;
  
@@ -2181,6 +2923,88 @@
                      );
                      let res = res?.map_err(|err| match err {
                          Errno::Timedout => Errno::Again,
+@@ -299,6 +344,11 @@
+ 
+                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
+ 
++                    // A blocking read waits in `__sock_wait`, which ends it
++                    // with `Errno::Intr` for a queued signal (the dynamic
++                    // linker's `Sigwakeup` included) and `fd_read` starts it
++                    // over: a thread that waited here without that held up
++                    // every other thread's `dlopen` for good.
+                     let res = __asyncify_light(
+                         env,
+                         if fd_flags.contains(Fdflags::NONBLOCK) {
+@@ -306,7 +356,7 @@
+                         } else {
+                             None
+                         },
+-                        async move {
++                        __sock_wait(env, async move {
+                             let mut total_read = 0usize;
+ 
+                             let iovs_arr =
+@@ -319,9 +369,12 @@
+                                     .access()
+                                     .map_err(mem_error_to_wasi)?;
+ 
+-                                let local_read = match nonblocking {
++                                // Only the first buffer waits: once there is
++                                // data, the rest take what has already arrived.
++                                let local_read = match nonblocking || total_read > 0 {
+                                     true => match rx.try_read(buf.as_mut()) {
+                                         Some(amt) => amt,
++                                        None if total_read > 0 => break,
+                                         None => {
+                                             return Err(Errno::Again);
+                                         }
+@@ -337,7 +390,7 @@
+                                 }
+                             }
+                             Ok(total_read)
+-                        },
++                        }),
+                     );
+ 
+                     let bytes_read = wasi_try_ok_ok!(res?.map_err(|err| match err {
+@@ -353,6 +406,7 @@
+ 
+                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
+ 
++                    // As a pipe's read end, above: a socket pair is one.
+                     let res = __asyncify_light(
+                         env,
+                         if fd_flags.contains(Fdflags::NONBLOCK) {
+@@ -360,7 +414,7 @@
+                         } else {
+                             None
+                         },
+-                        async move {
++                        __sock_wait(env, async move {
+                             let mut total_read = 0usize;
+ 
+                             let iovs_arr =
+@@ -373,9 +427,10 @@
+                                     .access()
+                                     .map_err(mem_error_to_wasi)?;
+ 
+-                                let local_read = match nonblocking {
++                                let local_read = match nonblocking || total_read > 0 {
+                                     true => match pipe.try_read(buf.as_mut()) {
+                                         Some(amt) => amt,
++                                        None if total_read > 0 => break,
+                                         None => {
+                                             return Err(Errno::Again);
+                                         }
+@@ -391,7 +446,7 @@
+                                 }
+                             }
+                             Ok(total_read)
+-                        },
++                        }),
+                     );
+ 
+                     let bytes_read = wasi_try_ok_ok!(res?.map_err(|err| match err {
 --- a/src/syscalls/wasi/fd_readdir.rs
 +++ b/src/syscalls/wasi/fd_readdir.rs
 @@ -37,9 +37,19 @@
@@ -2218,6 +3042,180 @@
      };
  
      for (cur_cookie, (entry_path_str, wasi_file_type, ino)) in
+--- a/src/syscalls/wasi/fd_write.rs
++++ b/src/syscalls/wasi/fd_write.rs
+@@ -167,6 +167,30 @@
+     }
+ }
+ 
++/// Writes the whole of one `fd_write` to a pipe with one send, as Linux's
++/// `pipe_write` takes every segment of a `writev` under a single check for a
++/// reader. Sending segment by segment left a gap between them: a reader that
++/// took the first segment and closed its end made the next one fail with
++/// `EPIPE`, and raise `SIGPIPE`, though the bytes had arrived, and musl's
++/// `fflush` always ends its `writev` with an empty segment. A write of
++/// nothing returns 0 without looking for a reader, also as Linux does.
++/// `Errno::Pipe` means the reader was gone and nothing was written.
++fn write_to_pipe<M: MemorySize>(
++    pipe: &mut impl std::io::Write,
++    memory: &MemoryView,
++    data: &FdWriteSource<'_, M>,
++) -> Result<usize, Errno> {
++    let data = data.coalesce(memory, usize::MAX)?;
++    if data.is_empty() {
++        return Ok(0);
++    }
++    match std::io::Write::write_all(pipe, &data) {
++        Ok(()) => Ok(data.len()),
++        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Err(Errno::Pipe),
++        Err(e) => Err(map_io_err(e)),
++    }
++}
++
+ #[allow(clippy::await_holding_lock)]
+ pub(crate) fn fd_write_internal<M: MemorySize>(
+     mut ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+@@ -338,124 +362,24 @@
+                 Kind::PipeRx { .. } => {
+                     return Ok(Err(Errno::Badf));
+                 }
+-                Kind::PipeTx { tx } => {
+-                    let mut written = 0usize;
+-
+-                    match &data {
+-                        FdWriteSource::Iovs { iovs, iovs_len } => {
+-                            let mut raise_sigpipe = false;
+-                            let iovs_arr = wasi_try_ok_ok!(
+-                                iovs.slice(&memory, *iovs_len).map_err(mem_error_to_wasi)
+-                            );
+-                            let iovs_arr =
+-                                wasi_try_ok_ok!(iovs_arr.access().map_err(mem_error_to_wasi));
+-                            for iovs in iovs_arr.iter() {
+-                                let buf = wasi_try_ok_ok!(
+-                                    WasmPtr::<u8, M>::new(iovs.buf)
+-                                        .slice(&memory, iovs.buf_len)
+-                                        .map_err(mem_error_to_wasi)
+-                                );
+-                                let buf = wasi_try_ok_ok!(buf.access().map_err(mem_error_to_wasi));
+-                                let write_result = std::io::Write::write(tx, buf.as_ref());
+-                                let local_written = match write_result {
+-                                    Ok(w) => w,
+-                                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+-                                        // Need to do this to avoid double borrow on ctx with iovs_arr
+-                                        raise_sigpipe = true;
+-                                        break;
+-                                    }
+-                                    Err(e) => return Ok(Err(map_io_err(e))),
+-                                };
+-
+-                                written += local_written;
+-                                if local_written != buf.len() {
+-                                    break;
+-                                }
+-                            }
+-
+-                            drop(iovs_arr);
+-
+-                            if raise_sigpipe {
+-                                env.process.signal_process(Signal::Sigpipe);
+-                                wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+-                                return Ok(Err(Errno::Pipe));
+-                            }
+-                        }
+-                        FdWriteSource::Buffer(data) => {
+-                            match std::io::Write::write_all(tx, data) {
+-                                Ok(()) => (),
+-                                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+-                                    env.process.signal_process(Signal::Sigpipe);
+-                                    wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+-                                    return Ok(Err(Errno::Pipe));
+-                                }
+-                                Err(e) => return Ok(Err(map_io_err(e))),
+-                            };
+-                            written += data.len();
+-                        }
++                Kind::PipeTx { tx } => match write_to_pipe(tx, &memory, &data) {
++                    Ok(written) => (written, false, true),
++                    Err(Errno::Pipe) => {
++                        env.process.signal_process(Signal::Sigpipe);
++                        wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
++                        return Ok(Err(Errno::Pipe));
+                     }
+-
+-                    (written, false, true)
+-                }
+-                Kind::DuplexPipe { pipe } => {
+-                    let mut written = 0usize;
+-
+-                    match &data {
+-                        FdWriteSource::Iovs { iovs, iovs_len } => {
+-                            let mut raise_sigpipe = false;
+-                            let iovs_arr = wasi_try_ok_ok!(
+-                                iovs.slice(&memory, *iovs_len).map_err(mem_error_to_wasi)
+-                            );
+-                            let iovs_arr =
+-                                wasi_try_ok_ok!(iovs_arr.access().map_err(mem_error_to_wasi));
+-                            for iovs in iovs_arr.iter() {
+-                                let buf = wasi_try_ok_ok!(
+-                                    WasmPtr::<u8, M>::new(iovs.buf)
+-                                        .slice(&memory, iovs.buf_len)
+-                                        .map_err(mem_error_to_wasi)
+-                                );
+-                                let buf = wasi_try_ok_ok!(buf.access().map_err(mem_error_to_wasi));
+-                                let write_result = std::io::Write::write(pipe, buf.as_ref());
+-                                let local_written = match write_result {
+-                                    Ok(w) => w,
+-                                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+-                                        // Need to do this to avoid double borrow on ctx with iovs_arr
+-                                        raise_sigpipe = true;
+-                                        break;
+-                                    }
+-                                    Err(e) => return Ok(Err(map_io_err(e))),
+-                                };
+-
+-                                written += local_written;
+-                                if local_written != buf.len() {
+-                                    break;
+-                                }
+-                            }
+-
+-                            drop(iovs_arr);
+-
+-                            if raise_sigpipe {
+-                                env.process.signal_process(Signal::Sigpipe);
+-                                wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+-                                return Ok(Err(Errno::Pipe));
+-                            }
+-                        }
+-                        FdWriteSource::Buffer(data) => {
+-                            match std::io::Write::write_all(pipe, data) {
+-                                Ok(()) => (),
+-                                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+-                                    env.process.signal_process(Signal::Sigpipe);
+-                                    wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
+-                                    return Ok(Err(Errno::Pipe));
+-                                }
+-                                Err(e) => return Ok(Err(map_io_err(e))),
+-                            };
+-                            written += data.len();
+-                        }
++                    Err(err) => return Ok(Err(err)),
++                },
++                Kind::DuplexPipe { pipe } => match write_to_pipe(pipe, &memory, &data) {
++                    Ok(written) => (written, false, true),
++                    Err(Errno::Pipe) => {
++                        env.process.signal_process(Signal::Sigpipe);
++                        wasi_try_ok_ok!(WasiEnv::process_signals_and_exit(ctx)?);
++                        return Ok(Err(Errno::Pipe));
+                     }
+-
+-                    (written, false, true)
+-                }
++                    Err(err) => return Ok(Err(err)),
++                },
+                 Kind::Dir { .. } | Kind::Root { .. } => {
+                     // TODO: verify
+                     return Ok(Err(Errno::Isdir));
 --- a/src/syscalls/wasi/path_create_directory.rs
 +++ b/src/syscalls/wasi/path_create_directory.rs
 @@ -55,7 +55,7 @@
@@ -2229,6 +3227,44 @@
  
      if !working_dir
          .inner
+@@ -98,6 +98,20 @@
+                 return Err(Errno::Exist);
+             }
+ 
++            // iwci patch (#1294): the directory is made and cached under
++            // the parent's write lock, as `rmdir` removes it and takes its
++            // entry out under that lock. Made with the lock let go, an
++            // `rmdir` of the new directory could run between the two, and
++            // its entry was cached after it was gone: listed, but not
++            // there to `stat` or remove, and `mkdir` of it said `EEXIST`.
++            let mut guard = parent_inode.write();
++            let Kind::Dir { entries, .. } = guard.deref_mut() else {
++                unreachable!();
++            };
++            if entries.contains_key(&dir_name) {
++                return Err(Errno::Exist);
++            }
++
+             state.fs_create_dir(&new_dir_path)?;
+ 
+             let kind = Kind::Dir {
+@@ -109,15 +123,7 @@
+                 .fs
+                 .create_inode(inodes, kind, false, dir_name.clone())?;
+ 
+-            // reborrow to insert
+-            {
+-                let mut guard = parent_inode.write();
+-                let Kind::Dir { entries, .. } = guard.deref_mut() else {
+-                    unreachable!();
+-                };
+-
+-                entries.insert(dir_name, new_inode.clone());
+-            }
++            entries.insert(dir_name, new_inode.clone());
+         }
+         Kind::Root { .. } => {
+             trace!("the root node can only contain pre-opened directories");
 --- a/src/syscalls/wasi/path_filestat_get.rs
 +++ b/src/syscalls/wasi/path_filestat_get.rs
 @@ -67,7 +67,7 @@
@@ -2240,17 +3276,34 @@
  
      if !root_dir.inner.rights.contains(Rights::PATH_FILESTAT_GET) {
          return Err(Errno::Access);
-@@ -79,7 +79,9 @@
+@@ -79,14 +79,25 @@
          flags & __WASI_LOOKUP_SYMLINK_FOLLOW != 0,
      )?;
  
 -    let st_ino = file_inode.ino().as_u64();
 +    // The number the inode reports, which a rename moves to the new path's
-+    // (`path_rename`'s `renumber`); `fstat` reports the same one.
++    // (`path_rename`'s `renumber`); `fstat` reports the same one. iwci
++    // patch: unless the file system numbers the file itself (one with hard
++    // links), whose number every name reports, and which the inode then
++    // keeps for `fstat` too, with the count of names.
 +    let st_ino = file_inode.stat.read().unwrap().st_ino;
      let mut stat = if file_inode.is_preopened {
          *file_inode.stat.read().unwrap().deref()
      } else {
+         let guard = file_inode.read();
+         state.fs.get_stat_for_kind(guard.deref())?
+     };
+-    stat.st_ino = st_ino;
++    if stat.st_ino == 0 || file_inode.is_preopened {
++        stat.st_ino = st_ino;
++    } else {
++        let mut cached = file_inode.stat.write().unwrap();
++        cached.st_ino = stat.st_ino;
++        cached.st_nlink = stat.st_nlink;
++    }
+     Ok(stat)
+ }
+ 
 --- a/src/syscalls/wasi/path_filestat_set_times.rs
 +++ b/src/syscalls/wasi/path_filestat_set_times.rs
 @@ -79,7 +79,7 @@
@@ -2327,7 +3380,7 @@
          match state.fs.root_fs.symlink_metadata(&target_path) {
              Ok(_) => return Err(Errno::Exist),
              Err(virtual_fs::FsError::EntryNotFound) => {}
-@@ -182,16 +200,15 @@
+@@ -182,16 +200,18 @@
                      }
                  }
              }
@@ -2337,13 +3390,16 @@
 -                // by linking the target directory entry to the same inode.
 -                source_inode.clone()
 -            }
-+            // A file system that cannot make the link has no hard links:
-+            // `link()` fails with EPERM, as Linux's does on one, and the
-+            // program falls back to copying or renaming. Pointing a second
-+            // cached entry at the same inode instead gave a name that
-+            // existed only in this cache, and removing the first name then
-+            // removed nothing (only the last link removes the file).
-+            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Perm),
++            // A file system that cannot make the link (two mounts, or one
++            // with no hard links) fails it with EXDEV, the answer for two
++            // names a link cannot join, and the program falls back to
++            // copying or renaming. Pointing a second cached entry at the
++            // same inode instead gave a name that existed only in this
++            // cache, and removing the first name then removed nothing
++            // (#1052). Not EPERM: pnpm's package importer falls back to
++            // copying on EXDEV once, and on EPERM tries a link before every
++            // copy (Git and cargo fall back on either).
++            Err(virtual_fs::FsError::Unsupported) => return Err(Errno::Xdev),
              Err(err) => return Err(fs_error_into_wasi_err(err)),
          }
 -    } else {
@@ -2351,6 +3407,43 @@
      };
  
      {
+@@ -215,12 +235,30 @@
+             | Kind::Epoll { .. } => return Err(Errno::Notdir),
+         }
+     }
+-    let new_link_count = {
+-        let mut stat = source_inode.stat.write().unwrap();
+-        stat.st_nlink += 1;
+-        stat.st_nlink
+-    };
+-    target_inode.stat.write().unwrap().st_nlink = new_link_count;
++    // iwci patch: the file system numbers a file with two names and counts
++    // them (`Metadata::ino`, `Metadata::nlink`), so both names report the
++    // number the first one had and the count `stat` shows; a cached count
++    // of its own would go stale as soon as another process links or
++    // unlinks it.
++    match state.fs.root_fs.metadata(&target_path) {
++        Ok(md) if md.nlink > 0 => {
++            for inode in [&source_inode, &target_inode] {
++                let mut stat = inode.stat.write().unwrap();
++                if md.ino != 0 {
++                    stat.st_ino = md.ino;
++                }
++                stat.st_nlink = md.nlink;
++            }
++        }
++        _ => {
++            let new_link_count = {
++                let mut stat = source_inode.stat.write().unwrap();
++                stat.st_nlink += 1;
++                stat.st_nlink
++            };
++            target_inode.stat.write().unwrap().st_nlink = new_link_count;
++        }
++    }
+ 
+     Ok(())
+ }
 --- a/src/syscalls/wasi/path_readlink.rs
 +++ b/src/syscalls/wasi/path_readlink.rs
 @@ -32,11 +32,11 @@
@@ -2455,9 +3548,22 @@
                  crate::fs::PosixPath::from_path(path)
                      .join(&crate::fs::PosixPath::new(&target_entry_name))
                      .into_path_buf()
-@@ -168,7 +177,16 @@
-         let mut guard = source_parent_inode.write();
-         match guard.deref_mut() {
+@@ -164,11 +173,26 @@
+         return Ok(Errno::Inval);
+     }
+ 
+-    let source_entry = {
+-        let mut guard = source_parent_inode.write();
+-        match guard.deref_mut() {
++    // iwci patch (#1294): the source's parent stays write-locked from taking
++    // the source's entry out until the file system has moved it, as
++    // `path_unlink_file` holds it until the file is removed. A lookup of
++    // the source caches it under that lock after checking the file system
++    // again, so it sees the source either not yet moved, its entry still
++    // there, or moved; in between, it cached a name that had just gone.
++    let mut source_parent_guard = source_parent_inode.write();
++    let source_entry = {
++        match source_parent_guard.deref_mut() {
              Kind::Dir { entries, .. } => {
 -                wasi_try_ok!(entries.remove(&source_entry_name).ok_or(Errno::Noent))
 +                match entries.remove(&source_entry_name) {
@@ -2473,7 +3579,17 @@
              }
              Kind::Root { .. } => return Ok(Errno::Notcapable),
              Kind::Socket { .. }
-@@ -210,12 +228,13 @@
+@@ -201,8 +225,7 @@
+                 };
+                 // if the above operation failed we have to revert the previous change and then fail
+                 if let Err(e) = result {
+-                    let mut guard = source_parent_inode.write();
+-                    if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                    if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
+                         entries.insert(source_entry_name, source_entry);
+                         return Ok(e);
+                     }
+@@ -210,12 +233,13 @@
                      let mut guard = source_entry.write();
                      if let Kind::File { path, .. } = guard.deref_mut() {
                          *path = target_guest_path.clone();
@@ -2488,7 +3604,7 @@
                  let cloned_path = path.clone();
                  let res = {
                      let state = state;
-@@ -227,6 +246,12 @@
+@@ -227,6 +251,12 @@
                  if let Err(e) = res {
                      return Ok(e);
                  }
@@ -2501,9 +3617,21 @@
                  {
                      let source_dir_path = path.clone();
                      drop(guard);
-@@ -284,27 +309,20 @@
+@@ -251,8 +281,7 @@
+                 match (res, is_ephemeral) {
+                     (Ok(()), _) | (Err(Errno::Noent), true) => {}
+                     (Err(e), _) => {
+-                        let mut guard = source_parent_inode.write();
+-                        if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                        if let Kind::Dir { entries, .. } = source_parent_guard.deref_mut() {
+                             entries.insert(source_entry_name, source_entry.clone());
+                             return Ok(e);
+                         }
+@@ -283,28 +312,22 @@
+             Kind::Root { .. } => unreachable!("The root can not be moved"),
          }
      }
++    drop(source_parent_guard);
  
 -    let source_size = source_entry.stat.read().unwrap().st_size;
 -
@@ -2538,7 +3666,7 @@
      // If the rename replaced an existing destination entry, clear any stale
      // ephemeral symlink mapping for that path.
      if !moved_ephemeral_symlink {
-@@ -323,10 +341,12 @@
+@@ -323,12 +346,37 @@
      match guard.deref_mut() {
          Kind::File { path, .. } => {
              *path = adjust_path(path, source_dir_path, target_dir_path);
@@ -2550,8 +3678,33 @@
 +            renumber(inode, path);
              children = entries.values().cloned().collect::<Vec<_>>();
          }
++        // iwci patch: a symbolic link cached under a moved directory is
++        // resolved from where it now is. It kept its old location, so a
++        // lookup through it, or an `lstat` of it, at its new path read the
++        // old one (ENOENT once the directory had moved): pnpm installing the
++        // version a project's `packageManager` names renames a staging
++        // directory with `bin/pnpm` in it into place and then runs it.
++        Kind::Symlink {
++            path_to_symlink, ..
++        } => {
++            let old = Path::new("/").join(&*path_to_symlink);
++            let source = crate::fs::PosixPath::from_path(source_dir_path);
++            if crate::fs::PosixPath::from_path(&old)
++                .strip_prefix(&source)
++                .is_some()
++            {
++                let new = adjust_path(&old, source_dir_path, target_dir_path);
++                *path_to_symlink = crate::fs::PosixPath::from_path(&new)
++                    .strip_root_prefix()
++                    .into_path_buf();
++                renumber(inode, &new);
++            }
++            return;
++        }
          _ => return,
-@@ -338,6 +358,18 @@
+     }
+     drop(guard);
+@@ -338,6 +386,18 @@
      }
  }
  
@@ -2621,7 +3774,7 @@
      let inode = wasi_try_ok!(state.fs.get_inode_at_path(inodes, fd, path, false));
      let (parent_inode, child_name) = wasi_try_ok!(state.fs.get_parent_inode_at_path(
          inodes,
-@@ -73,10 +90,28 @@
+@@ -73,17 +90,44 @@
          }
      };
  
@@ -2634,10 +3787,21 @@
 +        return Ok(Errno::Isdir);
 +    }
 +
++    // iwci patch (#1294): the parent's write lock is held from taking the
++    // name's entry out until the file is removed. A lookup of the name
++    // caches it under that lock, after checking the file system again
++    // there, so it finds the name either still there with its file or gone
++    // with it. The lock used to be let go between the two, and a lookup
++    // that had found the file before it was removed cached it once it was
++    // gone: the directory went on listing a name that `stat` and `unlink`
++    // said was not there, and an exclusive create of it failed with
++    // `EEXIST`.
++    let mut parent_guard = parent_inode.write();
      let removed_inode = {
-         let mut guard = parent_inode.write();
-         let entry = match guard.deref_mut() {
+-        let mut guard = parent_inode.write();
+-        let entry = match guard.deref_mut() {
 -            Kind::Dir { entries, .. } => entries.remove(&child_name),
++        let entry = match parent_guard.deref_mut() {
 +            Kind::Dir { entries, .. } => {
 +                // iwci patch (#1139): what the name holds now is what goes,
 +                // as on Linux; a directory stays where it is (see above).
@@ -2651,7 +3815,15 @@
              Kind::Root { .. } => return Ok(Errno::Access),
              _ => unreachable!(
                  "Internal logic error in wasi::path_unlink_file, parent is not a directory"
-@@ -96,16 +131,19 @@
+             ),
+         };
+         let Some(removed_inode) = entry else {
+-            drop(guard);
++            drop(parent_guard);
+ 
+             let inode_is_symlink = matches!(inode.read().deref(), Kind::Symlink { .. });
+             if !inode_is_symlink {
+@@ -96,16 +140,38 @@
              }
              return Ok(state.fs.remove_symlink_file(host_adjusted_path.as_path()));
          };
@@ -2661,21 +3833,255 @@
          removed_inode
      };
  
++    // iwci patch: a name of a file that has others goes by its path, and
++    // the file stays: the file system counts the names (`Metadata::nlink`),
++    // which this cache's count would not know of when another process made
++    // them, and an open handle's `unlink` cannot say which name it means.
++    // The last name goes as any file's does, below.
++    if matches!(removed_inode.read().deref(), Kind::File { .. })
++        && let Ok(md) = state.fs.root_fs.symlink_metadata(&host_adjusted_path)
++        && md.nlink > 1
++    {
++        wasi_try_ok!(state.fs_remove_file(&host_adjusted_path));
++        let mut stat = removed_inode.stat.write().unwrap();
++        stat.st_nlink = md.nlink - 1;
++        drop(stat);
++        drop(parent_guard);
++        return Ok(Errno::Success);
++    }
++
 +    // iwci patch (#1139): a count already at 0 is an entry some earlier
 +    // unlink left behind, not a link to remove; never take it below 0 (a
 +    // `u64` would wrap and the file's handle would never be released).
++    // A count above 1 that the file system does not share (above) is one
++    // this cache kept of names since removed: this is the last.
      let st_nlink = {
          let mut guard = removed_inode.stat.write().unwrap();
 -        guard.st_nlink -= 1;
 -        guard.st_nlink
-+        let Some(st_nlink) = guard.st_nlink.checked_sub(1) else {
++        if guard.st_nlink == 0 {
 +            return Ok(Errno::Noent);
-+        };
-+        guard.st_nlink = st_nlink;
-+        st_nlink
++        }
++        guard.st_nlink = 0;
++        0
      };
      if st_nlink == 0 {
          {
+@@ -136,6 +202,7 @@
+             }
+         }
+     }
++    drop(parent_guard);
+ 
+     Ok(Errno::Success)
+ }
+--- a/src/syscalls/wasix/call_dynamic.rs
++++ b/src/syscalls/wasix/call_dynamic.rs
+@@ -6,7 +6,10 @@
+ macro_rules! write_value {
+     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $value:expr) => {{
+         let bytes = $value.to_le_bytes();
+-        if $offset + bytes.len() as u64 <= $max {
++        if $offset
++            .checked_add(bytes.len() as u64)
++            .is_some_and(|end| end <= $max)
++        {
+             $memory.write($offset, &bytes)?;
+             $offset += bytes.len() as u64;
+             Ok(true)
+@@ -36,7 +39,7 @@
+ 
+ macro_rules! read_value {
+     ($memory:expr, $offset:expr, $max:expr, $strict:expr, $ty:ident, $val:ident, $len:expr) => {{
+-        if $offset + $len > $max {
++        if $offset.checked_add($len).is_none_or(|end| end > $max) {
+             Ok(if $strict {
+                 None
+             } else {
+@@ -125,9 +128,33 @@
+ 
+     let function_type = function.ty(&store);
+ 
++    // iwci patch (#1304): what the guest asks for is checked before the call.
++    // A function whose parameters or results are references (which a side
++    // module can put in the table) has no byte form, and reading or writing
++    // one panicked; and a buffer that ends past the address space overflowed
++    // the arithmetic below. Both are the guest's error.
++    let is_number = |ty: &Type| {
++        matches!(
++            ty,
++            Type::I32 | Type::I64 | Type::F32 | Type::F64 | Type::V128
++        )
++    };
++    if !function_type.params().iter().all(is_number)
++        || !function_type.results().iter().all(is_number)
++    {
++        return Ok(Errno::Inval);
++    }
++    let values_start: u64 = values.offset().into();
++    let results_start: u64 = results.offset().into();
++    let (Some(max_values_offset), Some(max_results_offset)) = (
++        values_start.checked_add(values_len.into()),
++        results_start.checked_add(results_len.into()),
++    ) else {
++        return Ok(Errno::Inval);
++    };
++
+     let memory = unsafe { env.memory_view(&store) };
+-    let mut current_values_offset: u64 = values.offset().into();
+-    let max_values_offset = current_values_offset + values_len.into();
++    let mut current_values_offset = values_start;
+     let mut values_buffer = vec![];
+     for ty in function_type.params() {
+         let Some(value) = wasi_try_mem_ok!(read_value(
+@@ -152,8 +179,7 @@
+         .map_err(crate::flatten_runtime_error)?;
+ 
+     let memory = unsafe { env.memory_view(&store) };
+-    let mut current_results_offset: u64 = results.offset().into();
+-    let max_results_offset = current_results_offset + results_len.into();
++    let mut current_results_offset = results_start;
+     for result_value in result_values {
+         wasi_try_mem_ok!(write_value(
+             &memory,
+--- a/src/syscalls/wasix/closure_allocate.rs
++++ b/src/syscalls/wasix/closure_allocate.rs
+@@ -29,6 +29,12 @@
+ 
+     let (env, mut store) = ctx.data_and_store_mut();
+     let memory = unsafe { env.memory_view(&store) };
+-    closure.write(&memory, function_id);
++    // iwci patch (#1304): a pointer the index cannot be written to is the
++    // guest's error, and the slot goes back rather than staying allocated
++    // with nobody knowing its index.
++    if let Err(e) = closure.write(&memory, function_id) {
++        _ = linker.free_closure_index(&mut ctx, function_id);
++        return Ok(mem_error_to_wasi(e));
++    }
+     return Ok(Errno::Success);
+ }
+--- a/src/syscalls/wasix/closure_free.rs
++++ b/src/syscalls/wasix/closure_free.rs
+@@ -17,10 +17,11 @@
+         return Ok(Errno::Notsup);
+     };
+ 
+-    let free_result = linker.free_closure_index(&mut ctx, closure);
+-    if let Err(e) = free_result {
+-        // Should never happen
+-        panic!("Failed to free closure index: {e}");
++    // iwci patch (#1304): a failure here is reported to the guest, as
++    // `closure_allocate`'s is, not a panic.
++    if let Err(e) = linker.free_closure_index(&mut ctx, closure) {
++        error!("Failed to free closure index {closure}: {e}");
++        return Ok(Errno::Fault);
+     }
+ 
+     return Ok(Errno::Success);
+--- a/src/syscalls/wasix/closure_prepare.rs
++++ b/src/syscalls/wasix/closure_prepare.rs
+@@ -325,14 +325,38 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
+-    let (env, mut store) = ctx.data_and_store_mut();
+-    let memory = unsafe { env.memory_view(&store) };
++    let env = ctx.data();
+ 
+     let Some(linker) = env.inner().linker().cloned() else {
+         error!("Closures only work for dynamic modules.");
+         return Ok(Errno::Notsup);
+     };
+ 
++    // iwci patch (#1304): the guest's input is checked before anything is
++    // built from it. `closure` must be one of the slots `closure_allocate`
++    // hands out: the module built below stores the trampoline there from its
++    // constructor, and any other index (libffi given the address of a
++    // trampoline page of its caller's own, say) made that constructor trap
++    // with "out of bounds table access", which the load below reported and
++    // this call turned into a panic, ending the guest's process with 134.
++    // Those slots are in every instance group's table. And a function
++    // has at most 1000 parameters and 1000 results, which is all the
++    // compiler accepts.
++    const MAX_CLOSURE_TYPES: u32 = 1000;
++    if argument_types_length > MAX_CLOSURE_TYPES || result_types_length > MAX_CLOSURE_TYPES {
++        return Ok(Errno::Inval);
++    }
++    match linker.is_closure(closure, &mut ctx) {
++        Ok(true) => {}
++        Ok(false) => return Ok(Errno::Inval),
++        Err(e) => {
++            error!("Failed to look up closure index {closure}: {e}");
++            return Ok(Errno::Fault);
++        }
++    }
++    let (env, mut store) = ctx.data_and_store_mut();
++    let memory = unsafe { env.memory_view(&store) };
++
+     let argument_types = {
+         let arg_offset = argument_types_ptr.offset().into();
+         let arguments_slice = wasi_try_mem_ok!(
+@@ -380,13 +404,12 @@
+         module_name: &module_name,
+         bytes: &wasm_bytes,
+     };
+-    let module_handle = match linker.load_module(wasm_loader, &mut ctx) {
+-        Ok(m) => m,
+-        Err(e) => {
+-            // Should never happen
+-            panic!("Failed to load newly built in-memory module: {e}");
+-        }
+-    };
++    // iwci patch (#1304): a module that fails to load (out of table or
++    // memory) is the guest's error, as it is for `dlopen`, not a panic.
++    if let Err(e) = linker.load_module(wasm_loader, &mut ctx) {
++        error!("Failed to load the module for closure {closure}: {e}");
++        return Ok(Errno::Fault);
++    }
+ 
+     return Ok(Errno::Success);
+ }
+--- a/src/syscalls/wasix/getcwd.rs
++++ b/src/syscalls/wasix/getcwd.rs
+@@ -21,22 +21,29 @@
+     Span::current().record("path", cur_dir.as_str());
+ 
+     let cur_dir_len = cur_dir.len();
+-    wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
+-    if cur_dir_len as u64 > max_path_len64 {
++    // iwci patch: the path needs room for its terminating NUL, as POSIX's
++    // `getcwd` does (ERANGE unless `size` exceeds the length), and a buffer
++    // too small is told the size that holds both. wasix-libc's
++    // `getcwd(NULL, 0)` asks for the size and allocates exactly what it is
++    // told; told the length, it got a buffer the path filled to its last
++    // byte, written without a NUL, so the string ran on into the
++    // allocator's padding. A path whose length is 12 mod 16 met the next
++    // chunk's header there: bash, whose `$PWD` comes from it, said
++    // `/app/packages/provider-utils3`, and a command it ran by a relative
++    // path was not found (`pnpm -r exec` in vercel/ai).
++    if cur_dir_len as u64 >= max_path_len64 {
++        wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len + 1))));
+         return Errno::Range;
+     }
++    wasi_try_mem!(path_len.write(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
+ 
+-    if path.is_null() || max_path_len64 == 0 {
++    if path.is_null() {
+         return Errno::Inval;
+     }
+ 
+     let path_slice = wasi_try_mem!(path.slice(&memory, wasi_try!(to_offset::<M>(cur_dir_len))));
+     wasi_try_mem!(path_slice.write_slice(cur_dir.as_bytes()));
+-    // null-terminate the path if it's shorter than max_path_len64
+-    if (cur_dir_len as u64) < max_path_len64 {
+-        let path_nul = wasi_try_mem!(path.add_offset(wasi_try!(to_offset::<M>(cur_dir_len))));
+-        // null-terminate the path
+-        wasi_try_mem!(path_nul.write(&memory, 0));
+-    }
++    let path_nul = wasi_try_mem!(path.add_offset(wasi_try!(to_offset::<M>(cur_dir_len))));
++    wasi_try_mem!(path_nul.write(&memory, 0));
+     Errno::Success
+ }
 --- /dev/null
 +++ b/src/syscalls/wasix/iwci_fd_lock.rs
 @@ -0,0 +1,205 @@
@@ -2933,6 +4339,51 @@
          Ok(fd) => fd,
          Err(err) => return Ok(Err(err)),
      };
+@@ -694,14 +707,15 @@
+                 )
+             };
+ 
+-            {
+-                let mut guard = parent_inode.write();
+-                if let Kind::Dir { entries, .. } = guard.deref_mut() {
+-                    entries.insert(new_entity_name, new_inode.clone());
+-                }
+-            }
+-
+-            Ok(Ok(wasi_try_ok_ok!(insert_fd_locked(
++            // iwci patch (#1294): the descriptor is counted on the new inode
++            // before the inode is cached where others find it. The fd map
++            // lock held here keeps out this process's threads, not other
++            // processes, which share the inode tree: one could open the
++            // cached inode, share its handle and close again before the
++            // descriptor here was counted, and its close, the last one it
++            // saw, dropped the handle, so the creator's first write failed
++            // with `EINVAL`.
++            let out_fd = wasi_try_ok_ok!(insert_fd_locked(
+                 &mut fd_map,
+                 state,
+                 adjusted_rights,
+@@ -709,9 +723,18 @@
+                 fs_flags,
+                 fd_flags,
+                 open_flags,
+-                new_inode,
++                new_inode.clone(),
+                 with_fd,
+-            ))))
++            ));
++
++            {
++                let mut guard = parent_inode.write();
++                if let Kind::Dir { entries, .. } = guard.deref_mut() {
++                    entries.insert(new_entity_name, new_inode);
++                }
++            }
++
++            Ok(Ok(out_fd))
+         } else {
+             Ok(Err(maybe_inode.unwrap_err()))
+         }
 --- a/src/syscalls/wasix/proc_exec4.rs
 +++ b/src/syscalls/wasix/proc_exec4.rs
 @@ -83,6 +83,12 @@
@@ -2986,6 +4437,21 @@
              }
          }
      }
+@@ -346,6 +353,14 @@
+     for p in path {
+         let full_path = format!("{}/{}", p.trim_end_matches('/'), file_name);
+         match fs.get_inode_at_path(inodes, VIRTUAL_ROOT_FD, &full_path, true) {
++            // iwci patch: a directory by the command's name is passed over,
++            // as `execvp` does (its `execve` fails with EACCES, which is
++            // what the search answers if nothing else is found). It ended
++            // the search: with a checkout's `node/` on PATH (`PATH="$PWD:$PATH"`),
++            // `node` was "command not found".
++            Ok(inode) if matches!(*inode.read(), Kind::Dir { .. } | Kind::Root { .. }) => {
++                encountered_eaccess = true
++            }
+             Ok(_) => return FindExecutableResult::Found(full_path),
+             Err(Errno::Access) => encountered_eaccess = true,
+             Err(_) => (),
 --- a/src/syscalls/wasix/proc_join.rs
 +++ b/src/syscalls/wasix/proc_join.rs
 @@ -47,6 +47,7 @@
@@ -3185,7 +4651,7 @@
      wasi_try_mem_ok!(ro_fd.write(&memory, fd));
  
      Ok(Errno::Success)
-@@ -67,19 +66,18 @@
+@@ -67,19 +66,22 @@
  ) -> Result<Errno, WasiError> {
      WasiEnv::do_pending_operations(&mut ctx)?;
  
@@ -3204,6 +4670,10 @@
 -        None
 +        nonblocking
      )?);
++    // iwci patch: a connection to an AF_UNIX socket has an unnamed peer.
++    let unix = wasi_try_ok!(__sock_actor(&mut ctx, fd, Rights::empty(), |socket, _| Ok(
++        socket.unix()
++    )));
  
 +    let env = ctx.data();
 +    let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
@@ -3211,7 +4681,18 @@
      #[cfg(feature = "journal")]
      if ctx.data().enable_journal {
          JournalEffector::save_sock_accepted(
-@@ -110,6 +108,22 @@
+@@ -100,6 +102,10 @@
+     let env = ctx.data();
+     let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+     wasi_try_mem_ok!(ro_fd.write(&memory, fd));
++    if unix.is_some() {
++        wasi_try_ok!(crate::net::unix::write_unix_addr(&memory, ro_addr, ""));
++        return Ok(Errno::Success);
++    }
+     wasi_try_ok!(crate::net::write_ip_port(
+         &memory,
+         ro_addr,
+@@ -110,6 +116,22 @@
      Ok(Errno::Success)
  }
  
@@ -3234,7 +4715,16 @@
  pub(crate) fn sock_accept_internal(
      env: &WasiEnv,
      sock: WasiFd,
-@@ -130,14 +144,11 @@
+@@ -121,7 +143,7 @@
+     let inodes = &state.inodes;
+ 
+     let tasks = env.tasks().clone();
+-    let (child, local_addr, peer_addr, fd_flags) = wasi_try_ok_ok!(__sock_asyncify(
++    let (child, local_addr, peer_addr, fd_flags, unix) = wasi_try_ok_ok!(__sock_asyncify(
+         env,
+         sock,
+         Rights::SOCK_ACCEPT,
+@@ -130,26 +152,30 @@
                  fd_flags.set(Fdflags::NONBLOCK, true);
                  nonblocking = true;
              }
@@ -3249,10 +4739,219 @@
              let local_addr = socket.addr_local()?;
 -            socket
 -                .accept(tasks.deref(), nonblocking, Some(timeout))
++            let unix = socket.unix();
 +            __sock_wait(env, socket.accept(tasks.deref(), nonblocking, timeout))
                  .await
-                 .map(|a| (a.0, local_addr, a.1, fd_flags))
+-                .map(|a| (a.0, local_addr, a.1, fd_flags))
++                .map(|a| (a.0, local_addr, a.1, fd_flags, unix))
          },
+     ));
++    let (child, local_addr, peer_addr, fd_flags, unix) = (child, local_addr, peer_addr, fd_flags, unix);
+ 
+-    let kind = Kind::Socket {
+-        socket: InodeSocket::new(InodeSocketKind::TcpStream {
+-            socket: child,
+-            write_timeout: None,
+-            read_timeout: None,
+-        }),
+-    };
++    let socket = InodeSocket::new(InodeSocketKind::TcpStream {
++        socket: child,
++        write_timeout: None,
++        read_timeout: None,
++    });
++    // iwci patch: a connection accepted on an AF_UNIX socket is one, named
++    // by the listener's path, with an unnamed peer.
++    socket.set_unix(unix.map(|listener| crate::net::unix::UnixName {
++        local: listener.local,
++        peer: None,
++    }));
++    let kind = Kind::Socket { socket };
+     let inode = state
+         .fs
+         .create_inode_with_default_stat(inodes, kind, false, "socket".into());
+--- a/src/syscalls/wasix/sock_addr_local.rs
++++ b/src/syscalls/wasix/sock_addr_local.rs
+@@ -18,6 +18,16 @@
+     sock: WasiFd,
+     ret_addr: WasmPtr<__wasi_addr_port_t, M>,
+ ) -> Errno {
++    // iwci patch: an AF_UNIX socket answers with its path (net/unix.rs).
++    let unix = wasi_try!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
++        socket.unix()
++    )));
++    if let Some(name) = unix {
++        let memory = unsafe { ctx.data().memory_view(&ctx) };
++        let path = name.local.unwrap_or_default();
++        wasi_try!(crate::net::unix::write_unix_addr(&memory, ret_addr, &path));
++        return Errno::Success;
++    }
+     let addr = wasi_try!(__sock_actor(
+         &mut ctx,
+         sock,
+--- a/src/syscalls/wasix/sock_addr_peer.rs
++++ b/src/syscalls/wasix/sock_addr_peer.rs
+@@ -18,12 +18,23 @@
+     sock: WasiFd,
+     ro_addr: WasmPtr<__wasi_addr_port_t, M>,
+ ) -> Errno {
++    // iwci patch: an AF_UNIX socket answers with the path it connected to,
++    // or unnamed (net/unix.rs); unconnected, it fails as any socket does.
++    let unix = wasi_try!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
++        socket.unix()
++    )));
+     let addr = wasi_try!(__sock_actor(
+         &mut ctx,
+         sock,
+         Rights::empty(),
+         |socket, _| socket.addr_peer()
+     ));
++    if let Some(name) = unix {
++        let memory = unsafe { ctx.data().memory_view(&ctx) };
++        let path = name.peer.unwrap_or_default();
++        wasi_try!(crate::net::unix::write_unix_addr(&memory, ro_addr, &path));
++        return Errno::Success;
++    }
+     Span::current().record("addr", format!("{addr:?}"));
+ 
+     let env = ctx.data();
+--- a/src/syscalls/wasix/sock_bind.rs
++++ b/src/syscalls/wasix/sock_bind.rs
+@@ -17,11 +17,24 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
++    // iwci patch: whether this is an AF_UNIX socket (net/unix.rs).
++    let unix = wasi_try_ok!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
++        socket.unix()
++    )));
++
+     let env = ctx.data();
+     let memory = unsafe { env.memory_view(&ctx) };
+ 
+-    let addr = wasi_try_ok!(crate::net::read_ip_port(&memory, addr));
+-    let addr = SocketAddr::new(addr.0, addr.1);
++    // iwci patch: a path, for an AF_UNIX socket (net/unix.rs).
++    let addr = match wasi_try_ok!(crate::net::unix::read_sock_addr(&memory, addr)) {
++        crate::net::unix::SockAddr::Ip(_) if unix.is_some() => return Ok(Errno::Inval),
++        crate::net::unix::SockAddr::Ip(addr) => addr,
++        crate::net::unix::SockAddr::Unix(_) if unix.is_none() => return Ok(Errno::Inval),
++        crate::net::unix::SockAddr::Unix(path) => {
++            Span::current().record("addr", path.as_str());
++            return sock_bind_unix(&mut ctx, sock, path);
++        }
++    };
+     Span::current().record("addr", format!("{addr:?}"));
+ 
+     wasi_try_ok!(sock_bind_internal(&mut ctx, sock, addr)?);
+@@ -51,6 +64,35 @@
+     Ok(Errno::Success)
+ }
+ 
++/// iwci patch: binds an AF_UNIX socket to `path`: its file first (which
++/// must not exist), then a port on the job's loopback, which the file names.
++fn sock_bind_unix(
++    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
++    sock: WasiFd,
++    path: String,
++) -> Result<Errno, WasiError> {
++    let file = {
++        let state = ctx.data().state.clone();
++        wasi_try_ok!(crate::net::unix::create(&state, &path))
++    };
++    let bound = sock_bind_internal(ctx, sock, crate::net::unix::loopback(0))?.and_then(|()| {
++        __sock_actor(ctx, sock, Rights::empty(), |socket, _| {
++            let port = socket.addr_local()?.port();
++            socket.set_unix(Some(crate::net::unix::UnixName {
++                local: Some(path.clone()),
++                peer: None,
++            }));
++            Ok(port)
++        })
++    });
++    let published = bound.and_then(|port| crate::net::unix::publish(file, port));
++    if let Err(err) = published {
++        crate::net::unix::remove(&ctx.data().state, &path);
++        return Ok(err);
++    }
++    Ok(Errno::Success)
++}
++
+ pub(crate) fn sock_bind_internal(
+     ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+     sock: WasiFd,
+--- a/src/syscalls/wasix/sock_connect.rs
++++ b/src/syscalls/wasix/sock_connect.rs
+@@ -21,13 +21,37 @@
+ ) -> Result<Errno, WasiError> {
+     WasiEnv::do_pending_operations(&mut ctx)?;
+ 
++    // iwci patch: whether this is an AF_UNIX socket (net/unix.rs).
++    let unix = wasi_try_ok!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
++        socket.unix()
++    )));
++
+     let env = ctx.data();
+     let memory = unsafe { env.memory_view(&ctx) };
+-    let addr = wasi_try_ok!(crate::net::read_ip_port(&memory, addr));
+-    let peer_addr = SocketAddr::new(addr.0, addr.1);
++    // iwci patch: a path, for an AF_UNIX socket: the loopback port its file
++    // names (net/unix.rs).
++    let (peer_addr, peer_path) = match wasi_try_ok!(crate::net::unix::read_sock_addr(&memory, addr))
++    {
++        crate::net::unix::SockAddr::Ip(_) if unix.is_some() => return Ok(Errno::Inval),
++        crate::net::unix::SockAddr::Ip(addr) => (addr, None),
++        crate::net::unix::SockAddr::Unix(_) if unix.is_none() => return Ok(Errno::Inval),
++        crate::net::unix::SockAddr::Unix(path) => {
++            let port = wasi_try_ok!(crate::net::unix::find(&ctx.data().state, &path));
++            (crate::net::unix::loopback(port), Some(path))
++        }
++    };
+     Span::current().record("addr", format!("{peer_addr:?}"));
+ 
+-    wasi_try_ok!(sock_connect_internal(&mut ctx, sock, peer_addr)?);
++    let connected = sock_connect_internal(&mut ctx, sock, peer_addr)?;
++    if let (Some(mut name), Some(path)) = (unix, peer_path) {
++        // Named whether the connect finished or is in progress.
++        name.peer = Some(path);
++        let _ = __sock_actor(&mut ctx, sock, Rights::empty(), move |socket, _| {
++            socket.set_unix(Some(name));
++            Ok(())
++        });
++    }
++    wasi_try_ok!(connected);
+ 
+     #[cfg(feature = "journal")]
+     if ctx.data().enable_journal {
+--- a/src/syscalls/wasix/sock_open.rs
++++ b/src/syscalls/wasix/sock_open.rs
+@@ -68,11 +68,15 @@
+     let env = ctx.data();
+     let (memory, state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
+ 
++    // iwci patch: an AF_UNIX stream socket is a TCP socket on the job's
++    // loopback under the names it is given (net/unix.rs).
++    let unix = af == Addressfamily::Unix && ty == Socktype::Stream;
++    let family = if unix { Addressfamily::Inet4 } else { af };
+     let kind = match ty {
+         Socktype::Stream | Socktype::Dgram => Kind::Socket {
+             socket: InodeSocket::new(InodeSocketKind::PreSocket {
+                 props: SocketProperties {
+-                    family: af,
++                    family,
+                     ty,
+                     pt,
+                     only_v6: false,
+@@ -94,6 +98,9 @@
+         },
+         _ => return Ok(Err(Errno::Notsup)),
+     };
++    if unix && let Kind::Socket { socket } = &kind {
++        socket.set_unix(Some(Default::default()));
++    }
+ 
+     let inode =
+         state
 --- a/src/syscalls/wasix/sock_recv.rs
 +++ b/src/syscalls/wasix/sock_recv.rs
 @@ -40,15 +40,21 @@

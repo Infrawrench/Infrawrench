@@ -56,7 +56,7 @@ infrawrench changes --limit 200 --json     # stable JSON for scripting
 
 Each line shows when the event was seen, a `+`, `~` or `-` for appeared, changed or disappeared, the resource, its type, its account and a summary of the changed fields. Add `--resource` to also see each field's before and after values for one resource. `--json` includes every diff, plus the `total` matching your filter.
 
-<insert [Terminal showing `infrawrench changes` output: the event table with colored +/~/- glyphs, resource names, plugin/type column, account column, and a changed-fields summary] here>
+![Terminal showing `infrawrench changes` output: the event table with colored +/~/- glyphs, resource names, plugin/type column, account column, and a changed-fields summary](https://agent-assets.infrawrench.com/docs-screenshots/features/change-timeline/cli-changes.png)
 
 The command needs you to be signed in to the cloud. In local-only mode it tells you so and exits.
 

@@ -27,9 +27,10 @@ export const MemorystoreValkeyResourceType = rt({
   iconKey: "cache",
   description:
     "A Google Cloud Memorystore for Valkey instance, in cluster mode or cluster-mode-disabled",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { showcase: true, editable: false }),
+    f("region", "Region", { showcase: true, editable: false, sizing: "region" }),
     f("mode", "Mode", {
       kind: "enum",
       required: false,
@@ -40,6 +41,7 @@ export const MemorystoreValkeyResourceType = rt({
       kind: "enum",
       required: false,
       enumValues: [...VALKEY_NODE_TYPES],
+      sizing: "instance-type",
       description: "Machine size of every node. Scaling the node type is an online operation",
     }),
     f("engineVersion", "Engine Version", {
@@ -52,6 +54,7 @@ export const MemorystoreValkeyResourceType = rt({
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "node-count",
       description: "Number of shards. Cluster-mode-disabled instances always have one",
     }),
     f("replicaCount", "Replicas Per Shard", {

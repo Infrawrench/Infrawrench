@@ -70,13 +70,12 @@ export function createWebServicesClient(
     listVirtualTags: async () =>
       permissions.canReadCosts ? apiGet<VirtualTag[]>(`${org}/virtual-tags`) : [],
     listAccounts: () => apiGet<ServiceAccountOption[]>(`${org}/accounts`),
-    searchResources: async (query) => {
-      const rows = await apiGet<ServiceResourceOption[]>(
-        `${org}/search?q=${encodeURIComponent(query)}`,
-      );
-      // The spotlight index also returns workflows; only resources can be members.
-      return rows.filter((r) => r.pluginId !== "__workflows__");
-    },
+    // The palette's resource index: fuzzy over name, type, account and
+    // provider, best first, so "aws prod db" finds what it should.
+    searchResources: (query) =>
+      apiGet<ServiceResourceOption[]>(
+        `${org}/search?kinds=resource&q=${encodeURIComponent(query)}`,
+      ),
   };
   if (!permissions.canWrite) return read;
   return {

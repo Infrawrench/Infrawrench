@@ -274,6 +274,7 @@ export function EditCredentialsModal({
         ) : f.regions && f.regions.length > 0 ? (
           <RegionPicker
             regions={f.regions}
+            fieldLabel={gtData(f.label)}
             value={fieldValues[f.key] ?? ""}
             onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
           />

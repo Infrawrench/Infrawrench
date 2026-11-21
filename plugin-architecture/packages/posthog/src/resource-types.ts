@@ -53,7 +53,7 @@ export const ProjectResourceType = rt({
   name: "Project",
   id: "project",
   description:
-    "A PostHog project. Its project API key is an output for SDKs; the Metrics tab charts events per hour, and the Query tab runs HogQL.",
+    "A PostHog project. Its project API key is an output for SDKs; the Metrics tab charts events per hour, and the SQL Editor tab runs HogQL.",
   fields: [
     f("name", "Name", { editable: false }),
     f("timezone", "Time Zone", { required: false, editable: false }),

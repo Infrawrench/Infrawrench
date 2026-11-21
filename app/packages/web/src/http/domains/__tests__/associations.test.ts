@@ -26,6 +26,13 @@ vi.mock("@infrawrench/server-core/encryption", mockEncryption);
 
 vi.mock("uuid", () => ({ v4: () => "assoc-uuid-1" }));
 
+const { mockLoadPlugins, mockGetClient } = vi.hoisted(() => ({
+  mockLoadPlugins: vi.fn(),
+  mockGetClient: vi.fn().mockResolvedValue(null),
+}));
+vi.mock("@/plugins/loader", () => ({ loadPlugins: mockLoadPlugins }));
+vi.mock("@/services/plugin-clients", () => ({ getClientForAccount: mockGetClient }));
+
 const { associationsDomain } = await import("@/http/domains/associations/index");
 const buildApp = () =>
   buildTestApi(associationsDomain, { basePath: "/api/org/org-1/associations" });
@@ -43,6 +50,21 @@ function resourceExists(rows: unknown[], providerRows: unknown[] = rows) {
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });
     return { from };
+  });
+}
+
+/**
+ * Answer each `select` in turn, whether the query ends in `.limit()` or is
+ * awaited straight off `.where()`.
+ */
+function selects(...results: unknown[][]) {
+  const queue = [...results];
+  mockSelect.mockImplementation(() => {
+    const result = queue.shift() ?? [];
+    const where = vi.fn(() =>
+      Object.assign(Promise.resolve(result), { limit: vi.fn().mockResolvedValue(result) }),
+    );
+    return { from: vi.fn().mockReturnValue({ where }) };
   });
 }
 
@@ -142,6 +164,146 @@ describe("Association routes", () => {
       // associations + secretFieldStates upserts
       expect(mockInsert).toHaveBeenCalledTimes(2);
     });
+
+    it("points the field at the provider's stored plugin, type and account, not the body's", async () => {
+      // The reconciler resolves the output with these, and leaked-secret
+      // matches name the account: a body that disagreed with the row would
+      // point both at the wrong place.
+      resourceExists(
+        [{ id: "r1" }],
+        [{ id: "p1", pluginId: "neon", resourceTypeId: "neon-branch", accountId: "acc-real" }],
+      );
+      const values = setupUpsert();
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "p1",
+          providerOutputKey: "uri",
+          providerPluginId: "pg",
+          providerResourceTypeId: "db",
+          providerAccountId: "acc-wrong",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          resourceId: "r1",
+          fieldKey: "DB_URL",
+          resolutionKind: "output-ref",
+          sourcePluginId: "neon",
+          sourceResourceTypeId: "neon-branch",
+          sourceResourceId: "p1",
+          sourceAccountId: "acc-real",
+          sourceOutputKey: "uri",
+        }),
+      );
+    });
+
+    it("accepts a request without the deprecated provider fields", async () => {
+      resourceExists(
+        [{ id: "r1" }],
+        [{ id: "p1", pluginId: "neon", resourceTypeId: "neon-branch", accountId: "acc-real" }],
+      );
+      const values = setupUpsert();
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consumerResourceId: "r1",
+          consumerFieldKey: "DB_URL",
+          providerResourceId: "p1",
+          providerOutputKey: "uri",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(values).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sourcePluginId: "neon", sourceAccountId: "acc-real" }),
+      );
+    });
+  });
+
+  describe("GET /candidates", () => {
+    const pgTab = {
+      pluginId: "postgres",
+      tabLabel: "PostgreSQL",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      showWhen: { fieldKey: "engine", equals: "pg" },
+    };
+    const plugins = [
+      {
+        plugin: {
+          manifest: { id: "digitalocean", logoSvg: "<svg>do</svg>" },
+          resourceTypes: [{ id: "managed-database", peerIntegrations: [pgTab] }],
+        },
+      },
+      { plugin: { manifest: { id: "postgres", logoSvg: "<svg>pg</svg>" }, resourceTypes: [] } },
+    ];
+    const consumer = {
+      id: "acct-pg:database:main",
+      pluginId: "postgres",
+      resourceTypeId: "database",
+      accountId: "acct-pg",
+    };
+
+    it("lists stored resources whose outputs feed the field, with their plugin's logo", async () => {
+      mockLoadPlugins.mockResolvedValue(plugins);
+      selects(
+        [consumer],
+        [
+          {
+            id: "acct-do:managed-database:1",
+            pluginId: "digitalocean",
+            resourceTypeId: "managed-database",
+            accountId: "acct-do",
+            displayName: "orders",
+            fields: { engine: "pg" },
+          },
+          {
+            id: "acct-do:managed-database:2",
+            pluginId: "digitalocean",
+            resourceTypeId: "managed-database",
+            accountId: "acct-do",
+            displayName: "cache",
+            fields: { engine: "redis" },
+          },
+        ],
+      );
+      const res = await buildApp().request(
+        `/candidates?resourceId=${encodeURIComponent(consumer.id)}&fieldKey=connectionString`,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual([
+        {
+          resourceId: "acct-do:managed-database:1",
+          pluginId: "digitalocean",
+          resourceTypeId: "managed-database",
+          accountId: "acct-do",
+          displayName: "orders",
+          outputKey: "connectionString",
+          pluginLogoSvg: "<svg>do</svg>",
+        },
+      ]);
+    });
+
+    it("answers an empty list without a query when no plugin feeds the field", async () => {
+      mockLoadPlugins.mockResolvedValue(plugins);
+      selects([consumer]);
+      const res = await buildApp().request(
+        `/candidates?resourceId=${encodeURIComponent(consumer.id)}&fieldKey=rootPassword`,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual([]);
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 404 when the resource is not in the org", async () => {
+      selects([]);
+      const res = await buildApp().request("/candidates?resourceId=r1&fieldKey=connectionString");
+      expect(res.status).toBe(404);
+    });
   });
 
   describe("POST /literal", () => {
@@ -169,6 +331,64 @@ describe("Association routes", () => {
       expect(res.status).toBe(200);
       expect(mockInsert).toHaveBeenCalledTimes(1);
       expect(mockDelete).toHaveBeenCalledTimes(1);
+    });
+
+    const cloudSql = {
+      id: "acct-gcp:cloudsql-instance:db1",
+      pluginId: "gcp",
+      resourceTypeId: "cloudsql-instance",
+      accountId: "acct-gcp",
+    };
+
+    it("applies the value upstream before storing it", async () => {
+      selects([cloudSql]);
+      setupUpsert();
+      mockDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      const applySecretReroll = vi.fn().mockResolvedValue(undefined);
+      mockGetClient.mockResolvedValueOnce({
+        plugin: { manifest: { id: "gcp" } },
+        client: { applySecretReroll },
+      });
+      const res = await buildApp().request("/literal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resourceId: cloudSql.id,
+          fieldKey: "rootPassword",
+          plaintextValue: "n3w",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(applySecretReroll).toHaveBeenCalledWith(
+        "cloudsql-instance",
+        cloudSql.id,
+        "acct-gcp",
+        "rootPassword",
+        "n3w",
+      );
+      expect(mockInsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers 502 and stores nothing when the provider refuses the value", async () => {
+      selects([cloudSql]);
+      setupUpsert();
+      mockGetClient.mockResolvedValueOnce({
+        plugin: { manifest: { id: "gcp" } },
+        client: { applySecretReroll: vi.fn().mockRejectedValue(new Error("password too short")) },
+      });
+      const res = await buildApp().request("/literal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resourceId: cloudSql.id,
+          fieldKey: "rootPassword",
+          plaintextValue: "x",
+        }),
+      });
+      expect(res.status).toBe(502);
+      expect(JSON.stringify(await res.json())).toContain("password too short");
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockDelete).not.toHaveBeenCalled();
     });
   });
 });

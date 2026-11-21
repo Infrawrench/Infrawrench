@@ -14,6 +14,12 @@ export interface ScheduledPipeline {
    * null (absent from runners before it).
    */
   concurrency?: { group: string; "cancel-in-progress": boolean } | null;
+  /**
+   * The virtual machines its jobs run in (`linux` today), as the
+   * runner read them; absent from runners and rows from before. Untrusted
+   * shape: read it through `schedulePlatforms`.
+   */
+  platforms?: unknown;
 }
 
 /** A scheduled run the proxy started. */

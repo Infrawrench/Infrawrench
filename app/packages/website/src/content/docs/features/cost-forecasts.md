@@ -26,7 +26,7 @@ A period total (like a budget's month-end figure) gets its own range, which is n
 
 **Treat the range as a guide.** Real cloud spend has weekday and weekend patterns and sudden step changes, so the band tells you how well a straight line explains your recent spend. It isn't a guaranteed probability.
 
-<insert [A daily cost graph with a dashed blue trend forecast and a light blue shaded band around it that starts at zero width on the last observed day and widens to the right; tooltip open on a projected day showing "Forecast range (80%)" with a low and high value] here>
+![A daily cost graph with a dashed blue trend forecast and a light blue shaded band around it that starts at zero width on the last observed day and widens to the right; tooltip open on a projected day showing "Forecast range (80%)" with a low and high value](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-forecasts/forecast-band.png)
 
 On weekly, monthly and quarterly charts, each bar's band adds up its days' ranges, so it looks less certain rather than more.
 
@@ -48,7 +48,7 @@ How planned values behave:
 
 The chart on the tab shows reported actuals as a solid line and the forecast as a dashed one.
 
-<insert [The Values dialog for a business metric on the Forecast tab: a small chart with a solid line of reported daily values continuing into a dashed line of planned values, and below it the list of forecasted days with Delete links] here>
+![The Values dialog for a business metric on the Forecast tab: a small chart with a solid line of reported daily values continuing into a dashed line of planned values, and below it the list of forecasted days with Delete links](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-forecasts/metric-forecast-values.png)
 
 ## Create a named forecast
 
@@ -74,7 +74,7 @@ You need at least 7 days on which the report had spend and the metric had a posi
 
 The Forecasts view draws every forecast as a line on one chart, with the selected one's band shaded. Below it, a table compares each forecast's total for the window: the expected figure, the range, and how far it is from the automatic forecast. Use **Horizon** (30, 90, 180 or 365 days) and **Range** (80%, 90% or 95%) to change the window and the band.
 
-<insert [A cost report's Forecasts section: a chart with the dashed automatic forecast and two coloured named forecast lines, the selected one with a shaded band, and below it a comparison table with Expected, 80% range and vs automatic columns, one row marked Default] here>
+![A cost report's Forecasts section: a chart with the dashed automatic forecast and two coloured named forecast lines, the selected one with a shaded band, and below it a comparison table with Expected, 80% range and vs automatic columns, one row marked Default](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-forecasts/report-forecasts.png)
 
 ### Who can see and edit forecasts
 

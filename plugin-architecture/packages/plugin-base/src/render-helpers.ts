@@ -23,6 +23,10 @@ export function camelToTitle(key: string): string {
 /**
  * Build labeled KVItems for a resource's fields using labels from the type definition.
  * Falls back to camelToTitle for keys not found in the definition.
+ *
+ * A boolean reads "Yes" or "No", as a showcase flag on a tile does. A field the
+ * type declares `kind: "boolean"` does too when the plugin stored it as the
+ * string "true" or "false".
  */
 export function labeledFieldItems(
   fields: Record<string, string | number | boolean>,
@@ -31,12 +35,21 @@ export function labeledFieldItems(
 ): KVItem[] {
   const typeDef = resourceTypes.find((rt) => rt.id === resourceTypeId);
   const labelMap = new Map(typeDef?.fields.map((f) => [f.key, f.label]) ?? []);
+  const booleanKeys = new Set(
+    typeDef?.fields.filter((f) => f.kind === "boolean").map((f) => f.key) ?? [],
+  );
   return Object.entries(fields)
     .filter(([, v]) => v !== "" && v !== undefined)
     .map(([key, value]) => ({
       key: labelMap.get(key) ?? camelToTitle(key),
-      value: String(value),
+      value: fieldValueText(value, booleanKeys.has(key)),
     }));
+}
+
+function fieldValueText(value: string | number | boolean, declaredBoolean: boolean): string {
+  if (value === true || (declaredBoolean && value === "true")) return "Yes";
+  if (value === false || (declaredBoolean && value === "false")) return "No";
+  return String(value);
 }
 
 /**

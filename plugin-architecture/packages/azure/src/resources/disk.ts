@@ -4,11 +4,12 @@ export const DiskResourceType = rt({
   name: "Managed Disk",
   id: "azure-disk",
   description: "An Azure Managed Disk",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location", { showcase: true }),
-    f("diskSizeGb", "Size (GB)", { showcase: true, kind: "number" }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
+    f("diskSizeGb", "Size (GB)", { showcase: true, kind: "number", sizing: "disk-gb" }),
     f("diskState", "Disk State", {
       kind: "enum",
       enumValues: [

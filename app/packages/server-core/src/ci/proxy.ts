@@ -75,7 +75,13 @@ export async function proxyJson<T>(path: string, init: RequestInit = {}): Promis
 /** What the runner reports for a run (the parts CI reads). */
 export interface ProxyRun {
   id: string;
-  state: "running" | "finished" | "failed";
+  /**
+   * `error` is a run the runner could not start or finish (a clone it was
+   * refused, a pipeline it could not read), with `error` saying why. Read
+   * any state but `running` and `finished` as that, so a state a newer
+   * runner adds is never mistaken for a run that passed or ran nothing.
+   */
+  state: "running" | "finished" | "error" | (string & {});
   error?: string;
   /** While it runs (runner 0.3.1 and later): each pipeline's jobs and their states so far. */
   progress?: ProxyProgress;

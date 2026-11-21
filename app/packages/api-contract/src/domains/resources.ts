@@ -137,6 +137,12 @@ const ChildTypeRef = Schema.Struct({
   supportsCreate: Schema.Boolean,
   /** Field schema, shipped only for child types that support update. */
   fields: Schema.optionalKey(Schema.Array(JsonObject)),
+  topLevel: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "A top-level type shown on the account root's detail view beside its children. Its resources have no parent: send no `parentResourceId` when creating, editing or deleting one.",
+    }),
+  ),
 }).annotate({ identifier: "ChildTypeRef" });
 
 const ChildResourceRef = Schema.Struct({
@@ -243,6 +249,12 @@ export const ResourceDetail = Schema.Struct({
     description:
       "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule.",
   }),
+  hasSchedule: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The type flags a field as the schedule it runs on, so a heartbeat can watch it.",
+    }),
+  ),
 }).annotate({ identifier: "ResourceDetail" });
 
 export const Manifest = Schema.Struct({ manifest: Schema.String }).annotate({

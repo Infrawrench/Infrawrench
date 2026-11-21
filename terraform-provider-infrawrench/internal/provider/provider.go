@@ -202,6 +202,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 
 		// Monitoring.
 		NewProbeResource,
+		NewHeartbeatResource,
 		NewSloResource,
 		NewStatusPageResource,
 		NewMetricAlertResource,
@@ -230,6 +231,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewNetworkFlowSettingsResource,
 		NewKubernetesNetworkSettingsResource,
 		NewNetworkFlowReportResource,
+		NewCommitmentReportResource,
 
 		// Accounts and access.
 		NewAccountResource,

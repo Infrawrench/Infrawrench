@@ -18,7 +18,7 @@ In the **desktop app**, each resource tile on an account's detail page also gets
 
 A pinned card shows the resource's status and key facts from its last sync, and any live values in its footer replace the matching fact.
 
-<insert [The dashboard "+" tile menu open on Pin a resource, with the Spotlight picker searching for a resource] here>
+![The Pin a resource picker opened from the dashboard "+" tile menu, searching for "checkout" with results grouped by account](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/pin-resource-picker.png)
 
 ## Arrange cards
 
@@ -31,7 +31,7 @@ All cards can be dragged and share one order, so a cost graph or budget can sit 
 
 The grid fits as many columns as the window allows, each at least 220 pixels wide, so a wider window shows more cards per row. A card wider than the columns on screen fills the row instead. Cards always grow to fit their content, so making a chart taller gives it more room and never cuts anything off.
 
-<insert [Dashboard with a KPI card being resized from its corner handle, the dashed outline snapping to two columns, and the copy button beside the handle] here>
+![Dashboard with a KPI card being resized from its corner handle, the dashed outline snapping to two columns, and the copy button beside the handle](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/kpi-resize.png)
 
 ![Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/pinned-resource-cards.png)
 
@@ -49,7 +49,7 @@ Only **pinned** resources build up history. Unpin a resource and its history sto
 
 Unpinned resources still get a chart: when there's no saved history, the Metrics tab fetches the data live from the provider. The tab only appears for resource types that report metrics, and if a resource has none yet it says "No metric data yet."
 
-<insert [Resource Metrics tab showing CPU and memory series, each chart captioned with its "Last N min" window and no range selector anywhere on the tab] here>
+![Resource Metrics tab showing CPU and memory series, each chart captioned with its "Last 60 min" window and no range selector anywhere on the tab](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/metrics-tab.png)
 
 ## Cost graphs and budgets
 
@@ -89,7 +89,7 @@ Coverage is shown as its lower bound (all usage), with the upper bound (commitme
 
 The editor shows a preview of the card as you build it.
 
-<insert [KPI card editor with Saved report selected, the Measure dropdown on Spend, Daily average chosen, and the live preview card showing a figure with a red "+12.4%" badge] here>
+![KPI card editor with Saved report selected, the Measure dropdown on Spend, the Aggregation on Daily average, and the live preview card showing a figure with a red "+12.4%" badge](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/kpi-editor.png)
 
 ## Text cards
 
@@ -97,7 +97,7 @@ A **Text** card holds notes in markdown: headings, **bold**, lists, links, quote
 
 Raw HTML isn't rendered, links open in a new window, and images show as a link to their address instead of loading, so a text card never fetches anything by itself. A card holds up to 20,000 characters and grows to fit its text.
 
-<insert [Dashboard with a two-column text card titled "Read me first" with a heading, a bullet list and a runbook link, beside two KPI cards] here>
+![Dashboard with a two-column text card titled "Read me first" with a heading, a bullet list and a runbook link, beside two KPI cards](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/text-card.png)
 
 ## Export and schedule
 
@@ -117,11 +117,11 @@ Your default dashboard (the one the **Dashboards** card on [Home](./home.md) ope
 
 The **Default** menu tells you which layer put you on the dashboard you're looking at, so you always know why it is your default. A star on the button marks your default dashboard.
 
-<insert [A dashboard header with the Default menu open, showing "This is your default dashboard: it is the default for your role, Finance." above the Set as my default entry] here>
+![A dashboard header with the Default menu open, showing "This is your default dashboard: it is the default for your role, Finance." above the Set as my default entry](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/default-menu.png)
 
 A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings won't accept anything else and tells you why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: they skip that layer and get the next one, and the **Default** menu tells you if your own pick was skipped. Deleting a dashboard removes it as anyone's default.
 
-<insert [Settings → Roles with the Finance role's card showing a Default dashboard picker set to "Spend overview", and the Member card set to "Organization default (Home)"] here>
+![Settings → Roles with the Finance role's card showing a Default dashboard picker set to "Spend overview", and the Member card set to "Organization default (Home)"](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/role-default-dashboards.png)
 
 You can also set role defaults in [config as code](./config-as-code.md) (a dashboard's `defaultForRoles`) and in Terraform with [`infrawrench_role_default_dashboard`](./terraform-provider.md). In the CLI, `infrawrench dashboards` marks the one you land on and says why (`--json` includes the full details).
 

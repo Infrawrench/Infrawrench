@@ -68,11 +68,15 @@ pub(crate) fn sock_open_internal(
     let env = ctx.data();
     let (memory, state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
+    // iwci patch: an AF_UNIX stream socket is a TCP socket on the job's
+    // loopback under the names it is given (net/unix.rs).
+    let unix = af == Addressfamily::Unix && ty == Socktype::Stream;
+    let family = if unix { Addressfamily::Inet4 } else { af };
     let kind = match ty {
         Socktype::Stream | Socktype::Dgram => Kind::Socket {
             socket: InodeSocket::new(InodeSocketKind::PreSocket {
                 props: SocketProperties {
-                    family: af,
+                    family,
                     ty,
                     pt,
                     only_v6: false,
@@ -94,6 +98,9 @@ pub(crate) fn sock_open_internal(
         },
         _ => return Ok(Err(Errno::Notsup)),
     };
+    if unix && let Kind::Socket { socket } = &kind {
+        socket.set_unix(Some(Default::default()));
+    }
 
     let inode =
         state

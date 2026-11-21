@@ -5,9 +5,12 @@ export const ForwardingRuleResourceType = rt({
   id: "forwarding-rule",
   iconKey: "route",
   description: "A Google Cloud Load Balancing forwarding rule",
+  // The forwarding rule is what Cloud Load Balancing bills per hour, so it
+  // stands for the load balancer.
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false, sizing: "region" }),
     f("IPAddress", "IP Address", { required: false }),
     f("IPProtocol", "Protocol", { required: false }),
     f("portRange", "Port Range", { required: false }),

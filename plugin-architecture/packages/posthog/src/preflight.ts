@@ -104,7 +104,7 @@ const PROBES: Probe[] = [
       id: "query",
       product: "observability",
       label: "HogQL and metrics",
-      description: "Run HogQL from the Query tab and chart events and flag evaluations.",
+      description: "Run HogQL from the SQL Editor tab and chart events and flag evaluations.",
       requiredPermissions: [perm("query:read")],
     },
   },

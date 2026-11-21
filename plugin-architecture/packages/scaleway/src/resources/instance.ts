@@ -10,10 +10,18 @@ export const InstanceResourceType = rt({
   name: "Instance",
   plural: "Instances",
   description: "A Scaleway virtual machine",
+  equivalence: "vm",
   fields: [
     f("name", "Name"),
-    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: ZONES, editable: false }),
+    f("zone", "Zone", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ZONES,
+      editable: false,
+      sizing: "region",
+    }),
     f("commercialType", "Commercial Type", {
+      sizing: "instance-type",
       description:
         "Instance type, e.g. DEV1-S, POP2-2C-8G, PRO2-S. Changing it requires the instance to be stopped",
     }),

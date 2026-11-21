@@ -87,6 +87,24 @@ describe("a tile's showcase", () => {
     expect(screen.getByText("nyc3")).toBeTruthy();
   });
 
+  it("names the label as well as the value when a row is hovered", () => {
+    render(
+      <TileFrame
+        name="billing"
+        showcase={{
+          status: { key: "status", value: "Over budget this cycle", tone: "warning" },
+          stats: [{ key: "cost", label: "Cost This Month", value: "$1,284.10" }],
+        }}
+      />,
+    );
+    expect(screen.getByText("Cost This Month").parentElement?.getAttribute("title")).toBe(
+      "Cost This Month: $1,284.10",
+    );
+    expect(screen.getByText("Over budget this cycle").getAttribute("title")).toBe(
+      "Over budget this cycle",
+    );
+  });
+
   it("colours the status dot from the word", () => {
     const { container } = render(
       <TileFrame name="db" showcase={buildResourceShowcase({ status: "failed" }, FIELDS)} />,

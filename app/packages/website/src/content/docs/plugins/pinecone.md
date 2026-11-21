@@ -32,7 +32,7 @@ Each index offers its name, host URL and the project API key as outputs. The **P
 - **Service account client ID and secret** (optional): add these to manage projects, API keys and service accounts. In the console, open **Organization settings**, **Access**, **Service accounts**, and create one with the **Organization Owner** or **Organization Manager** role. Copy the client ID and the secret (shown once).
 - **Project** (optional): the project the API key belongs to. With a service account you pick it from a list. Otherwise, copy the id from the console URL after `/projects/`. Setting it turns on the extra metrics and the pod quota below.
 
-<insert [Pinecone Add-account form showing the API key, service account and project fields] here>
+![Pinecone Add-account form showing the API key, service account and project fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/pinecone/add-account.png)
 
 ## Metrics
 

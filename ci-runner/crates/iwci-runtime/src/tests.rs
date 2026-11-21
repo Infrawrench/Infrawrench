@@ -72,6 +72,7 @@ fn invocation(fs: DynFs, args: &[&str]) -> Invocation {
         limits: Limits {
             timeout: Duration::from_secs(30),
             memory_bytes: 64 << 20,
+            cpus: None,
         },
         log: None,
         scratch: None,
@@ -431,14 +432,23 @@ fn removing_a_directory_nothing_looked_up_says_what_it_is() {
     assert_eq!(job.changes("/"), Vec::new());
 }
 
-/// Links files and a directory, exiting with a code naming the first call
-/// that did not give the errno it should: EPERM (63) for a link, EEXIST (20)
-/// onto a name that is there, ENOENT (44) for a name that is not.
+/// Hard links through WASIX, exiting with a code from 10 up naming the
+/// first call that did not do what it should, and writing the `st_ino` and
+/// `st_nlink` of six stats to stdout as 8 raw bytes each: both names after
+/// a link, an open file's after a third name, a name left after the first
+/// went, the open file's after the third went, and a name renamed onto
+/// another name of itself. A link of a directory is EPERM (63), onto a
+/// name that is there EEXIST (20), of a name that is not ENOENT (44).
 const LINKS: &str = r#"
 (module
   (import "wasi_snapshot_preview1" "path_link" (func $link (param i32 i32 i32 i32 i32 i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_filestat_get" (func $fstat (param i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_rename" (func $rename (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
   (memory (export "memory") 1)
   (data (i32.const 100) "/work/file")
@@ -447,34 +457,80 @@ const LINKS: &str = r#"
   (data (i32.const 160) "/work/dirlink")
   (data (i32.const 180) "/work/gone")
   (data (i32.const 200) "/work/keep")
+  (data (i32.const 220) "/work/third")
+  (data (i32.const 240) "new!")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
   (func $expect (param $got i32) (param $want i32) (param $code i32)
     (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  ;; writes the 8 bytes at $at to stdout
+  (func $out (param $at i32)
+    (i32.store (i32.const 0) (local.get $at))
+    (i32.store (i32.const 4) (i32.const 8))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8))))
+  ;; the filestat at 400: st_ino at +8, st_nlink at +24
+  (func $stat_out (param $path i32) (param $len i32) (param $code i32)
+    (call $check (call $stat (i32.const 3) (i32.const 0) (local.get $path) (local.get $len) (i32.const 400))
+      (local.get $code))
+    (call $out (i32.const 408))
+    (call $out (i32.const 424)))
+  (func $fstat_out (param $fd i32) (param $code i32)
+    (call $check (call $fstat (local.get $fd) (i32.const 400)) (local.get $code))
+    (call $out (i32.const 408))
+    (call $out (i32.const 424)))
   (func (export "_start")
-    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
-      (i32.const 3) (i32.const 120) (i32.const 12)) (i32.const 63) (i32.const 10))
-    (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 12) (i32.const 400))
-      (i32.const 44) (i32.const 11))
+    (local $fd i32)
+    ;; file, second: one file
+    (call $check (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
+      (i32.const 3) (i32.const 120) (i32.const 12)) (i32.const 10))
+    (call $stat_out (i32.const 100) (i32.const 10) (i32.const 11))
+    (call $stat_out (i32.const 120) (i32.const 12) (i32.const 12))
     (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 140) (i32.const 10)
-      (i32.const 3) (i32.const 160) (i32.const 13)) (i32.const 63) (i32.const 12))
+      (i32.const 3) (i32.const 160) (i32.const 13)) (i32.const 63) (i32.const 13))
     (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
-      (i32.const 3) (i32.const 200) (i32.const 10)) (i32.const 20) (i32.const 13))
-    (call $expect (call $unlink (i32.const 3) (i32.const 100) (i32.const 10)) (i32.const 0) (i32.const 14))
+      (i32.const 3) (i32.const 200) (i32.const 10)) (i32.const 20) (i32.const 14))
+    ;; written through second
+    (call $check (call $path_open (i32.const 3) (i32.const 0) (i32.const 120) (i32.const 12)
+      (i32.const 0) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)) (i32.const 15))
+    (local.set $fd (i32.load (i32.const 24)))
+    (i32.store (i32.const 0) (i32.const 240))
+    (i32.store (i32.const 4) (i32.const 4))
+    (call $check (call $fd_write (local.get $fd) (i32.const 0) (i32.const 1) (i32.const 8)) (i32.const 16))
+    ;; a third name made while it is open: its fstat counts it
+    (call $check (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
+      (i32.const 3) (i32.const 220) (i32.const 11)) (i32.const 17))
+    (call $fstat_out (local.get $fd) (i32.const 18))
+    ;; the first name goes; the others keep the file and its number
+    (call $check (call $unlink (i32.const 3) (i32.const 100) (i32.const 10)) (i32.const 19))
     (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10) (i32.const 400))
-      (i32.const 44) (i32.const 15))
-    ;; a link onto a deleted snapshot file fails and leaves it deleted
-    (call $expect (call $unlink (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 0) (i32.const 16))
-    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 200) (i32.const 10)
-      (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 63) (i32.const 17))
+      (i32.const 44) (i32.const 20))
+    (call $stat_out (i32.const 120) (i32.const 12) (i32.const 21))
+    (call $check (call $unlink (i32.const 3) (i32.const 220) (i32.const 11)) (i32.const 22))
+    (call $fstat_out (local.get $fd) (i32.const 23))
+    (call $check (call $fd_close (local.get $fd)) (i32.const 24))
+    ;; renamed onto another name of itself: both stay
+    (call $check (call $link (i32.const 3) (i32.const 0) (i32.const 200) (i32.const 10)
+      (i32.const 3) (i32.const 220) (i32.const 11)) (i32.const 25))
+    (call $check (call $rename (i32.const 3) (i32.const 200) (i32.const 10)
+      (i32.const 3) (i32.const 220) (i32.const 11)) (i32.const 26))
+    (call $stat_out (i32.const 200) (i32.const 10) (i32.const 27))
+    ;; a link of a name that is not there, onto a deleted snapshot file,
+    ;; fails and leaves it deleted
+    (call $check (call $unlink (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 28))
+    (call $expect (call $link (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 10)
+      (i32.const 3) (i32.const 180) (i32.const 10)) (i32.const 44) (i32.const 29))
     (call $expect (call $stat (i32.const 3) (i32.const 0) (i32.const 180) (i32.const 10) (i32.const 400))
-      (i32.const 44) (i32.const 18))))
+      (i32.const 44) (i32.const 30))))
 "#;
 
-/// A job's file system has no hard links, so `link()` fails with EPERM, as
-/// on a file system without them (#1052). It used to succeed with a second
-/// name only WASIX's cache knew, after which removing the first name
-/// removed nothing.
+/// A file can have two names (#1052): `link()` makes the second, both
+/// report one inode number (the first name's) and the count of names, a
+/// write through one is read through the other, and removing a name leaves
+/// the rest. Before, `link()` succeeded with a second name only WASIX's
+/// cache knew, after which removing the first name removed nothing, and
+/// then it was refused.
 #[test]
-fn a_hard_link_is_refused_and_leaves_one_name() {
+fn a_hard_link_is_a_second_name_of_one_file() {
     let rt = runtime();
     let builder = SnapshotBuilder::new();
     builder.write("/work/full/child/file", b"child").unwrap();
@@ -486,7 +542,33 @@ fn a_hard_link_is_refused_and_leaves_one_name() {
         .run_command(&wat_module("links", LINKS), invocation(job.as_dyn(), &[]))
         .unwrap();
     assert!(outcome.success(), "{outcome:?}");
+    let got: Vec<u64> = outcome
+        .stdout
+        .chunks(8)
+        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let ino = |path: &str| iwci_vfs::modes::ino_of(Path::new(path));
+    let file = ino("/work/file");
+    assert_eq!(
+        got,
+        vec![
+            file,
+            2,
+            file,
+            2,
+            file,
+            3,
+            file,
+            2,
+            file,
+            1,
+            ino("/work/keep"),
+            2
+        ]
+    );
+    assert_eq!(job.read("/work/second").unwrap(), b"new!");
     assert_eq!(job.read("/work/keep").unwrap(), b"keep");
+    assert_eq!(job.read("/work/third").unwrap(), b"keep");
     assert_eq!(
         job.changes("/"),
         vec![
@@ -495,6 +577,14 @@ fn a_hard_link_is_refused_and_leaves_one_name() {
             },
             Change::Deleted {
                 path: "/work/gone".into()
+            },
+            Change::Added {
+                path: "/work/second".into(),
+                bytes: b"new!".to_vec()
+            },
+            Change::Added {
+                path: "/work/third".into(),
+                bytes: b"keep".to_vec()
             },
         ]
     );
@@ -577,7 +667,7 @@ fn a_renamed_file_has_the_inode_number_of_its_new_path() {
         .chunks(8)
         .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
         .collect();
-    let ino = |path: &str| crate::modes::ino_of(Path::new(path));
+    let ino = |path: &str| iwci_vfs::modes::ino_of(Path::new(path));
     assert_eq!(
         got,
         vec![
@@ -1060,6 +1150,133 @@ fn no_descriptor_is_a_terminal() {
     // 4 is a regular file, 2 a character device, 0 unknown (what a pipe is
     // to `fd_fdstat_get`) and 6 a stream socket.
     assert_eq!(String::from_utf8_lossy(&outcome.stdout), "4442062");
+}
+
+/// Writes `ab`, nothing and `cd` to a pipe in one `fd_write` and reads it
+/// back with one read, then closes the read end and writes one empty
+/// segment and no segments at all. Exits with the step that went wrong.
+const PIPE_WRITES: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (import "wasix_32v1" "fd_pipe" (func $pipe (param i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 300) "abcd")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    ;; a pipe: read end at 16, write end at 20
+    (call $expect (call $pipe (i32.const 16) (i32.const 20)) (i32.const 0) (i32.const 10))
+    ;; three segments at 32: "ab", "" and "cd"
+    (i32.store (i32.const 32) (i32.const 300)) (i32.store (i32.const 36) (i32.const 2))
+    (i32.store (i32.const 40) (i32.const 310)) (i32.store (i32.const 44) (i32.const 0))
+    (i32.store (i32.const 48) (i32.const 302)) (i32.store (i32.const 52) (i32.const 2))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 32) (i32.const 3) (i32.const 8))
+      (i32.const 0) (i32.const 11))
+    (call $expect (i32.load (i32.const 8)) (i32.const 4) (i32.const 12))
+    ;; one read of up to 16 bytes into 400 gets all four
+    (i32.store (i32.const 64) (i32.const 400)) (i32.store (i32.const 68) (i32.const 16))
+    (call $expect (call $fd_read (i32.load (i32.const 16)) (i32.const 64) (i32.const 1) (i32.const 12))
+      (i32.const 0) (i32.const 13))
+    (call $expect (i32.load (i32.const 12)) (i32.const 4) (i32.const 14))
+    ;; with the reader gone, writing nothing is not a broken pipe
+    (call $expect (call $fd_close (i32.load (i32.const 16))) (i32.const 0) (i32.const 15))
+    (i32.store (i32.const 8) (i32.const 99))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 40) (i32.const 1) (i32.const 8))
+      (i32.const 0) (i32.const 16))
+    (call $expect (i32.load (i32.const 8)) (i32.const 0) (i32.const 17))
+    (call $expect (call $fd_write (i32.load (i32.const 20)) (i32.const 40) (i32.const 0) (i32.const 8))
+      (i32.const 0) (i32.const 18))))
+"#;
+
+/// One `fd_write` to a pipe is one send, and a write of nothing never looks
+/// for a reader, as on Linux (vendor/README.md). Segment by segment, a
+/// reader that took the first segment and closed its end in between made
+/// the next one raise SIGPIPE, though the bytes had arrived; musl's `fflush`
+/// always ends with an empty segment, so `git-remote-https` died that way
+/// after reporting a push, and the push failed.
+#[test]
+fn a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &wat_module("pipe-writes", PIPE_WRITES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert!(outcome.success(), "{outcome:?}");
+}
+
+/// A module of `padding` small functions followed by `run`, which calls a
+/// function that throws and catches what it throws. Those two come last,
+/// so the throw crosses the top of the module's code.
+fn throw_through_module(padding: u32, seed: u32) -> Vec<u8> {
+    let mut text = String::from("(module (tag $t (param i32))");
+    for f in 0..padding {
+        text.push_str(&format!(
+            "(func $p{f} (result i32) i32.const {seed} {})",
+            "i32.const 1 i32.add ".repeat(8 + (f % 16) as usize)
+        ));
+    }
+    text.push_str(
+        r#"(func $throw (param i32) (throw $t (local.get 0)))
+           (func (export "run") (result i32)
+             (block $caught (result i32)
+               (try_table (catch $t $caught) (call $throw (i32.const 7)))
+               (i32.const -1))))"#,
+    );
+    wat::parse_str(&text).unwrap()
+}
+
+/// Code loaded where code was freed still catches its exceptions (#1314).
+/// The system unwinder finds a wasm exception's handler through the unwind
+/// information engines register, and libgcc 13 and 14 lose a lookup in a
+/// range registered over one that was deregistered (GCC PR 119151), so on
+/// a host with one (Ubuntu 24.04) an exception thrown through such code was
+/// reported uncaught, which is how env:ruby's longjmp through a C extension
+/// died now and then. Modules here come and go in engines of their own, as
+/// a job's and the module LRU's do, and every live one throws after each
+/// step; wasmer-vm now never maps code where code was (vendor/README.md).
+#[test]
+fn an_exception_is_caught_in_code_loaded_where_code_was_freed() {
+    use wasmer::{Engine, Instance, Module, Store, imports};
+
+    // Without the fix, the same sequence of modules lost an exception at
+    // step 1144 on Ubuntu 24.04.
+    const STEPS: u32 = 1500;
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut live: Vec<(Engine, Module)> = Vec::new();
+    for step in 0..STEPS {
+        if !live.is_empty() && next() % 2 == 0 {
+            let i = (next() % live.len() as u64) as usize;
+            live.remove(i);
+        }
+        if live.len() < 40 {
+            let engine = crate::cache::build_engine();
+            let padding = 1 + (next() % 300) as u32;
+            let module = Module::new(&engine, throw_through_module(padding, step)).unwrap();
+            live.push((engine, module));
+        }
+        for (engine, module) in &live {
+            let mut store = Store::new(engine.clone());
+            let instance = Instance::new(&mut store, module, &imports! {}).unwrap();
+            let run = instance
+                .exports
+                .get_typed_function::<(), i32>(&store, "run")
+                .unwrap();
+            let caught = run.call(&mut store);
+            assert!(matches!(caught, Ok(7)), "step {step}: {caught:?}");
+        }
+    }
 }
 
 #[test]
@@ -1846,6 +2063,38 @@ echo unreachable
         compiled,
         "{:?}",
         rt.cache_stats()
+    );
+}
+
+/// A child gets the environment its parent passes, not that laid over the
+/// one the parent inherited (#1310): a variable removed with `unset`,
+/// `env -u` or `env -i` used to reach the child with the job's value.
+#[test]
+fn a_variable_removed_from_the_environment_is_not_set_in_a_child() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    rt.prepare_environment(&packages).unwrap();
+    let job = snapshot(&[]).fork();
+    // `invocation` gives the job GREETING=hi.
+    let script = r#"
+echo "inherited $(bash -c 'echo "${GREETING-unset}"')"
+echo "changed $(GREETING=changed bash -c 'echo "${GREETING-unset}"')"
+echo "env-u $(env -u GREETING bash -c 'echo "${GREETING-unset}"')"
+echo "env-i $(env -i /bin/bash -c 'echo "${GREETING-unset}"')"
+unset GREETING
+echo "unset $(bash -c 'echo "${GREETING-unset}"')"
+"#;
+    let outcome = rt
+        .run_script(&packages, "bash", script, invocation(job.as_dyn(), &[]))
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&outcome.stdout);
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "{stdout:?} {stderr:?} {outcome:?}");
+    assert_eq!(
+        stdout, "inherited hi\nchanged changed\nenv-u unset\nenv-i unset\nunset unset\n",
+        "{stderr:?}"
     );
 }
 
@@ -3201,6 +3450,217 @@ fn racing_unlinks_renames_and_creations_of_one_name_all_succeed() {
     }
 }
 
+/// A WASIX command that `rounds` times removes `/work/rr/<name>` and makes
+/// it again with `O_CREAT | O_EXCL`, writing one byte, as a compile cache
+/// wrote its entries (#1294). It is the only writer of its name, so the
+/// exclusive create can only fail if the name is somehow still taken:
+/// that exits 30. Any other failure exits from 20 up.
+fn recreator(name: &str, rounds: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("recreator-{name}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_unlink_file" (func $unlink (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (data (i32.const 200) "x")
+  (func $check (param $errno i32) (param $code i32)
+    (if (local.get $errno) (then (call $proc_exit (local.get $code)))))
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (i32.store (i32.const 32) (i32.const 200))
+    (i32.store (i32.const 36) (i32.const 1))
+    (loop $again
+      (local.set $errno (call $unlink (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; ENOENT the first time round
+      (if (i32.ne (local.get $errno) (i32.const 44))
+        (then (call $check (local.get $errno) (i32.const 20))))
+      ;; O_CREAT | O_EXCL
+      (local.set $errno (call $path_open (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len})
+        (i32.const 5) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24)))
+      ;; EEXIST
+      (if (i32.eq (local.get $errno) (i32.const 20))
+        (then (call $proc_exit (i32.const 30))))
+      (call $check (local.get $errno) (i32.const 21))
+      (call $check (call $fd_write (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40)) (i32.const 22))
+      (call $check (call $fd_close (i32.load (i32.const 24))) (i32.const 23))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {rounds}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `opens` times opens `/work/rr/<name>` to read and
+/// closes it again, taking `ENOENT` as finding it between a removal and a
+/// creation, and exiting 31 or 32 on any other failure.
+fn reopener(name: &str, id: u32, opens: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("reopener-{name}-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_close" (func $fd_close (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      ;; read only: FD_READ
+      (local.set $errno (call $path_open (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len})
+        (i32.const 0) (i64.const 2) (i64.const 0) (i32.const 0) (i32.const 24)))
+      (if (i32.eqz (local.get $errno))
+        (then
+          (if (call $fd_close (i32.load (i32.const 24)))
+            (then (call $proc_exit (i32.const 31)))))
+        (else
+          ;; ENOENT
+          (if (i32.ne (local.get $errno) (i32.const 44))
+            (then (call $proc_exit (i32.const 32))))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {opens}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `rounds` times removes the directory
+/// `/work/rr/<name>` and makes it again. It is the only one making or
+/// removing it, so `mkdir` can only fail if the name is somehow still
+/// taken: that exits 33. Any other failure exits 24 or 25.
+fn remaker(name: &str, rounds: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("remaker-{name}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_create_directory" (func $mkdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_remove_directory" (func $rmdir (param i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      (local.set $errno (call $rmdir (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; ENOENT the first time round
+      (if (i32.and (i32.ne (local.get $errno) (i32.const 0)) (i32.ne (local.get $errno) (i32.const 44)))
+        (then (call $proc_exit (i32.const 24))))
+      (local.set $errno (call $mkdir (i32.const 3) (i32.const 140) (i32.const {len})))
+      ;; EEXIST
+      (if (i32.eq (local.get $errno) (i32.const 20))
+        (then (call $proc_exit (i32.const 33))))
+      (if (local.get $errno) (then (call $proc_exit (i32.const 25))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {rounds}))))))
+"#
+        ),
+    )
+}
+
+/// A WASIX command that `stats` times looks `/work/rr/<name>` up with
+/// `stat`, taking `ENOENT` as finding it between a removal and a creation,
+/// and exiting 34 on any other failure.
+fn restater(name: &str, id: u32, stats: u32) -> WasmModule {
+    let len = "/work/rr/".len() + name.len();
+    wat_module(
+        &format!("restater-{name}-{id}"),
+        &format!(
+            r#"
+(module
+  (import "wasi_snapshot_preview1" "path_filestat_get" (func $stat (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 140) "/work/rr/{name}")
+  (func (export "_start")
+    (local $i i32)
+    (local $errno i32)
+    (loop $again
+      (local.set $errno (call $stat (i32.const 3) (i32.const 0) (i32.const 140) (i32.const {len}) (i32.const 512)))
+      (if (i32.and (i32.ne (local.get $errno) (i32.const 0)) (i32.ne (local.get $errno) (i32.const 44)))
+        (then (call $proc_exit (i32.const 34))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $again (i32.lt_u (local.get $i) (i32.const {stats}))))))
+"#
+        ),
+    )
+}
+
+/// Opens racing removals and exclusive creations of one name (#1294), as a
+/// compile cache's workers read and rewrite one entry. A lookup that found
+/// the name uncached checked the file system, and only then put the name
+/// in its directory's cached entries; an unlink that ran in between took
+/// the entry out and removed the file first, so the lookup cached a file
+/// that was gone. The directory then listed the name, which `stat` and
+/// `unlink` said was not there, and an exclusive create of it failed with
+/// `EEXIST`, so the cache entry its writer had just removed was lost. A
+/// directory's `rmdir` and a `stat` of it raced the same way. Each name has
+/// one writer, whose exclusive creates and `mkdir`s all succeed, and what
+/// is left is listed, there and removable.
+#[test]
+fn a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there() {
+    let Some(packages) = webc_packages() else {
+        return;
+    };
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let mut inv = invocation(job.as_dyn(), &[]);
+    inv.limits.timeout = Duration::from_secs(600);
+    let mut commands = Vec::new();
+    for name in ["a", "b"] {
+        commands.push(PathCommand {
+            name: format!("recreator-{name}"),
+            module: recreator(name, 20_000),
+        });
+        for id in 0..2 {
+            commands.push(PathCommand {
+                name: format!("reopener-{name}-{id}"),
+                module: reopener(name, id, 60_000),
+            });
+        }
+    }
+    commands.push(PathCommand {
+        name: "remaker-d".into(),
+        module: remaker("d", 20_000),
+    });
+    for id in 0..2 {
+        commands.push(PathCommand {
+            name: format!("restater-d-{id}"),
+            module: restater("d", id, 60_000),
+        });
+    }
+    let started: Vec<String> = commands.iter().map(|c| c.name.clone()).collect();
+    inv.commands = commands;
+    let script = format!(
+        "mkdir rr\npids=\n\
+         for c in {}; do $c & pids=\"$pids $!\"; done\n\
+         for pid in $pids; do wait $pid || exit $?; done\n\
+         for f in rr/*; do test -e \"$f\" || {{ echo \"$f is listed but not there\" >&2; exit 40; }}; done\n\
+         rm -r rr/* || exit 41\n\
+         rmdir rr || exit 42\n\
+         echo done\n",
+        started.join(" ")
+    );
+    let outcome = rt.run_script(&packages, "bash", &script, inv).unwrap();
+    let stderr = String::from_utf8_lossy(&outcome.stderr);
+    assert_eq!(outcome.exit_code, 0, "stderr {stderr:?} {outcome:?}");
+    assert_eq!(String::from_utf8_lossy(&outcome.stdout), "done\n");
+    assert!(job.as_dyn().metadata(Path::new("/work/rr")).is_err());
+}
+
 // Services (`background.rs`). The first tests use hand-written WASIX
 // modules, so they need nothing built; the bash and Node ones read an
 // environment like the tests above.
@@ -4356,6 +4816,319 @@ fn record_locks_belong_to_a_process_while_it_runs() {
     locks
         .set_record(file, &c, 0, u64::MAX, RecordType::Write)
         .unwrap();
+}
+
+/// A WASIX dynamic main module, which closures need, calling the closure
+/// calls with input they must refuse and then with input they must take
+/// (#1304). Its `dylink.0` section (added by `dynamic_module`) gives it
+/// 4 KiB of data at 1024 and two table slots at `__table_base`, which hold
+/// `$backing`, a closure's body, and `$takes_ref`. The exit code is the
+/// check that failed plus what it got; 28 is `EINVAL`.
+const CLOSURES: &str = r#"
+(module
+  (type $closure (func (param i32) (result i32)))
+  (import "env" "memory" (memory 1 65536 shared))
+  (import "env" "__indirect_function_table" (table 1 funcref))
+  (import "env" "__stack_pointer" (global $sp (mut i32)))
+  (import "env" "__table_base" (global $tb i32))
+  (import "wasix_32v1" "closure_allocate" (func $allocate (param i32) (result i32)))
+  (import "wasix_32v1" "closure_prepare" (func $prepare (param i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "closure_free" (func $free (param i32) (result i32)))
+  (import "wasix_32v1" "call_dynamic" (func $call (param i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (elem (global.get $tb) func $backing $takes_ref)
+  ;; results[0] = values[0] * 2 + environment
+  (func $backing (param $values i32) (param $results i32) (param $env i32)
+    (i32.store (local.get $results)
+      (i32.add (i32.mul (i32.load (local.get $values)) (i32.const 2)) (local.get $env))))
+  (func $takes_ref (param externref))
+  (func $expect (param $check i32) (param $got i32) (param $want i32)
+    (if (i32.ne (local.get $got) (local.get $want))
+      (then (call $exit (i32.add (local.get $check) (local.get $got))))))
+  ;; closure_prepare(backing, closure, one i32 argument, one i32 result,
+  ;; environment 2); WasmValueType I32 is 0, at 1024 and 1028
+  (func $prepare_at (param $closure i32) (param $arguments i32) (result i32)
+    (call $prepare (global.get $tb) (local.get $closure)
+      (i32.const 1024) (local.get $arguments) (i32.const 1028) (i32.const 1) (i32.const 2)))
+  (func (export "_start")
+    (local $closure i32)
+    ;; an index past the table (what libffi was given, the address of a
+    ;; trampoline page), one in it that is no closure's ($backing's), and
+    ;; more arguments than a function can have
+    (call $expect (i32.const 10) (call $prepare_at (i32.const 0x7fffff00) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 20) (call $prepare_at (global.get $tb) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 30) (call $prepare_at (i32.const 0x7fffff00) (i32.const 1001)) (i32.const 28))
+    ;; freeing an index that is no closure's does nothing
+    (call $expect (i32.const 40) (call $free (i32.const 0x7fffff00)) (i32.const 0))
+    ;; calling past the table, and a function with a reference parameter
+    (call $expect (i32.const 50) (call $call (i32.const 0x7fffff00) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 1)) (i32.const 28))
+    (call $expect (i32.const 60)
+      (call $call (i32.add (global.get $tb) (i32.const 1)) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0))
+      (i32.const 28))
+    ;; a closure's index written past memory (EMEMVIOLATION, 78)
+    (call $expect (i32.const 70) (call $allocate (i32.const 0xfffffffc)) (i32.const 78))
+    ;; and a closure made, called directly and through call_dynamic, freed
+    (call $expect (i32.const 80) (call $allocate (i32.const 1040)) (i32.const 0))
+    (local.set $closure (i32.load (i32.const 1040)))
+    (call $expect (i32.const 90) (call $prepare_at (local.get $closure) (i32.const 1)) (i32.const 0))
+    (call $expect (i32.const 100) (call_indirect (type $closure) (i32.const 20) (local.get $closure)) (i32.const 42))
+    (i32.store (i32.const 1032) (i32.const 20))
+    (call $expect (i32.const 110) (call $call (local.get $closure) (i32.const 1032) (i32.const 4) (i32.const 1036) (i32.const 4) (i32.const 1)) (i32.const 0))
+    (call $expect (i32.const 120) (i32.load (i32.const 1036)) (i32.const 42))
+    (call $expect (i32.const 130) (call $free (local.get $closure)) (i32.const 0))
+    (call $exit (i32.const 0))))
+"#;
+
+/// `wat` as a dynamically linked main module: a `dylink.0` section first,
+/// whose memory info asks for 4 KiB of data aligned to 1 KiB and two table
+/// slots.
+fn dynamic_module(name: &str, wat: &str) -> WasmModule {
+    let module = wat::parse_str(wat).unwrap();
+    let mut name_and_info = vec![8];
+    name_and_info.extend_from_slice(b"dylink.0");
+    // WASM_DYLINK_MEM_INFO: memory size 4096, alignment 2^10, table size
+    // 2, table alignment 2^0, in LEB128
+    name_and_info.extend_from_slice(&[1, 5, 0x80, 0x20, 10, 2, 0]);
+    let mut bytes = module[..8].to_vec();
+    bytes.push(0);
+    bytes.push(name_and_info.len() as u8);
+    bytes.extend_from_slice(&name_and_info);
+    bytes.extend_from_slice(&module[8..]);
+    WasmModule::new(name, bytes)
+}
+
+/// A host call given an index, a pointer or a type it cannot use answers
+/// an errno and the program goes on (#1304). `closure_prepare` given an
+/// index that was no closure's panicked, ending the process with 134,
+/// which Ruby's ffi met in `attach_function`; `call_dynamic` panicked on a
+/// function with reference parameters the same way.
+#[test]
+fn closure_calls_refuse_bad_input_with_an_errno() {
+    let rt = runtime();
+    let job = snapshot(&[]).fork();
+    let outcome = rt
+        .run_command(
+            &dynamic_module("closures", CLOSURES),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+}
+
+/// A WASIX dynamic main module whose second thread blocks reading an empty
+/// pipe (or socket pair, with argument 1) while the main thread `dlopen`s
+/// `/work/side.so` and looks up its function, then lets the reader go. Each
+/// of the two stops every thread of the process at a barrier, which a
+/// thread blocked in a host call joins only when that call ends for the
+/// linker's `Sigwakeup`. The exit code is the step that went wrong: 10 to 12
+/// setting up, 20 the reader never started, 30 `dlopen` failed, 31 `dlsym`,
+/// 40 the write, 50 the reader never finished and 60 plus the errno its
+/// read got.
+const DLOPEN_WHILE_READING: &str = r#"
+(module
+  (import "env" "memory" (memory 1 65536 shared))
+  (import "env" "__indirect_function_table" (table 1 funcref))
+  (import "env" "__stack_pointer" (global $sp (mut i32)))
+  (import "wasi_snapshot_preview1" "args_sizes_get" (func $args_sizes (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (import "wasix_32v1" "fd_pipe" (func $pipe (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_pair" (func $sock_pair (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "thread_spawn_v2" (func $spawn (param i32 i32) (result i32)))
+  (import "wasix_32v1" "thread_sleep" (func $sleep (param i64) (result i32)))
+  (import "wasix_32v1" "dlopen" (func $dlopen (param i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "dlsym" (func $dlsym (param i32 i32 i32 i32 i32 i32) (result i32)))
+  ;; 1024: read end, 1028: write end, 1100: the reader's state (1 reading,
+  ;; 2 done, 3 failed), 1104: its errno, 1120: its iovec into 1150,
+  ;; 1140: the module's handle, 1144: its function's, 1200: "/work/side.so",
+  ;; 1216: "side", 1300: the error text, 2048: ThreadStart
+  (data (i32.const 1200) "/work/side.so")
+  (data (i32.const 1216) "side")
+  (data (i32.const 1180) "x")
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $exit (local.get $code)))))
+  ;; Waits up to 10 s for the reader's state to be `want`.
+  (func $await (param $want i32) (param $code i32)
+    (local $tries i32)
+    (block $done
+      (loop $poll
+        (br_if $done (i32.eq (i32.atomic.load (i32.const 1100)) (local.get $want)))
+        (if (i32.eq (i32.atomic.load (i32.const 1100)) (i32.const 3))
+          (then (call $exit (i32.add (i32.const 60) (i32.load (i32.const 1104))))))
+        (local.set $tries (i32.add (local.get $tries) (i32.const 1)))
+        (if (i32.gt_u (local.get $tries) (i32.const 1000)) (then (call $exit (local.get $code))))
+        (drop (call $sleep (i64.const 10000000)))
+        (br $poll))))
+  (func (export "wasi_thread_start") (param $tid i32) (param $start i32)
+    (local $errno i32)
+    (i32.store (i32.const 1120) (i32.const 1150))
+    (i32.store (i32.const 1124) (i32.const 1))
+    (i32.atomic.store (i32.const 1100) (i32.const 1))
+    (local.set $errno
+      (call $fd_read (i32.load (i32.const 1024)) (i32.const 1120) (i32.const 1) (i32.const 1128)))
+    (i32.store (i32.const 1104) (local.get $errno))
+    (if (i32.or (local.get $errno) (i32.ne (i32.load (i32.const 1128)) (i32.const 1)))
+      (then (i32.atomic.store (i32.const 1100) (i32.const 3)))
+      (else (i32.atomic.store (i32.const 1100) (i32.const 2)))))
+  (func (export "_start")
+    ;; argc 2 (`... 1`) asks for a socket pair, else a pipe
+    (call $expect (call $args_sizes (i32.const 16) (i32.const 20)) (i32.const 0) (i32.const 10))
+    (if (i32.eq (i32.load (i32.const 16)) (i32.const 2))
+      (then (call $expect
+        ;; AF_UNIX, SOCK_STREAM
+        (call $sock_pair (i32.const 3) (i32.const 1) (i32.const 0) (i32.const 1024) (i32.const 1028))
+        (i32.const 0) (i32.const 11)))
+      (else (call $expect (call $pipe (i32.const 1024) (i32.const 1028)) (i32.const 0) (i32.const 11))))
+    ;; the thread: stack 52 KiB to 60 KiB, TLS at 48 KiB
+    (i32.store (i32.const 2048) (i32.const 61440))
+    (i32.store (i32.const 2052) (i32.const 49152))
+    (i32.store (i32.const 2104) (i32.const 8192))
+    (call $expect (call $spawn (i32.const 2048) (i32.const 2112)) (i32.const 0) (i32.const 12))
+    (call $await (i32.const 1) (i32.const 20))
+    ;; long enough for the reader to be waiting in the host
+    (drop (call $sleep (i64.const 300000000)))
+    (call $expect
+      (call $dlopen (i32.const 1200) (i32.const 13) (i32.const 2)
+        (i32.const 1300) (i32.const 200) (i32.const 0) (i32.const 0) (i32.const 1140))
+      (i32.const 0) (i32.const 30))
+    ;; and at once a second operation, as an `import` does: the reader can
+    ;; take this one's `Sigwakeup` off its queue while it finishes the first
+    (call $expect
+      (call $dlsym (i32.load (i32.const 1140)) (i32.const 1216) (i32.const 4)
+        (i32.const 1300) (i32.const 200) (i32.const 1144))
+      (i32.const 0) (i32.const 31))
+    (i32.store (i32.const 1160) (i32.const 1180))
+    (i32.store (i32.const 1164) (i32.const 1))
+    (call $expect (call $fd_write (i32.load (i32.const 1028)) (i32.const 1160) (i32.const 1) (i32.const 1168))
+      (i32.const 0) (i32.const 40))
+    (call $await (i32.const 2) (i32.const 50))
+    (call $exit (i32.const 0))))
+"#;
+
+/// A side module with nothing but a function, for `DLOPEN_WHILE_READING`.
+const SIDE_MODULE: &str = r#"(module (func (export "side") (result i32) (i32.const 7)))"#;
+
+/// `wat` as a side module: a `dylink.0` section first, asking for no
+/// memory and no table slots.
+fn side_module(wat: &str) -> Vec<u8> {
+    let module = wat::parse_str(wat).unwrap();
+    let mut name_and_info = vec![8];
+    name_and_info.extend_from_slice(b"dylink.0");
+    // WASM_DYLINK_MEM_INFO: everything 0
+    name_and_info.extend_from_slice(&[1, 4, 0, 0, 0, 0]);
+    let mut bytes = module[..8].to_vec();
+    bytes.push(0);
+    bytes.push(name_and_info.len() as u8);
+    bytes.extend_from_slice(&name_and_info);
+    bytes.extend_from_slice(&module[8..]);
+    bytes
+}
+
+/// A thread blocked reading an empty pipe or socket pair lets another
+/// thread `dlopen` (pytest-xdist). The read waited in the host with no ear
+/// for the dynamic linker's `Sigwakeup`, so the `dlopen`, which waits for
+/// every thread of the process, waited for it forever, and with it every
+/// other thread: an xdist worker reads the controller's commands from a
+/// pipe in a thread while its main thread imports the project's compiled
+/// modules, and no test ever ran (vendor/README.md).
+#[test]
+fn a_thread_blocked_reading_a_pipe_lets_another_thread_dlopen() {
+    let rt = runtime();
+    let builder = SnapshotBuilder::new();
+    builder.mkdir_all("/work").unwrap();
+    builder
+        .write("/work/side.so", &side_module(SIDE_MODULE))
+        .unwrap();
+    let base = builder.freeze();
+    let main = dynamic_module("dlopen-while-reading", DLOPEN_WHILE_READING);
+    // Whether the second operation's `Sigwakeup` lands while the reader
+    // finishes the first is a race, which a few rounds each meet.
+    for args in [&[][..], &["1"][..]].repeat(3) {
+        let job = base.fork();
+        let mut inv = invocation(job.as_dyn(), args);
+        inv.limits.timeout = Duration::from_secs(20);
+        let outcome = rt.run_command(&main, inv).unwrap();
+        assert_eq!(outcome.exit_code, 0, "{args:?}: {outcome:?}");
+    }
+}
+
+/// Writes the CPU count WASIX reports (`thread_parallelism`) as four bytes,
+/// little-endian, then `/proc/cpuinfo`, on stdout. Exits 10 if the count
+/// fails, 11 if the file does not open, 12 if a read fails.
+const CPU_COUNT: &str = r#"
+(module
+  (import "wasix_32v1" "thread_parallelism" (func $parallelism (param i32) (result i32)))
+  (import "wasi_snapshot_preview1" "path_open" (func $path_open (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 2)
+  (data (i32.const 100) "proc/cpuinfo")
+  (func $write (param $ptr i32) (param $len i32)
+    (i32.store (i32.const 0) (local.get $ptr))
+    (i32.store (i32.const 4) (local.get $len))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8))))
+  (func (export "_start")
+    (if (call $parallelism (i32.const 200)) (then (call $exit (i32.const 10))))
+    (call $write (i32.const 200) (i32.const 4))
+    ;; open /proc/cpuinfo through preopen fd 3 (`/`), to read
+    (if (call $path_open (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 12)
+              (i32.const 0) (i64.const -1) (i64.const -1) (i32.const 0) (i32.const 24))
+      (then (call $exit (i32.const 11))))
+    (block $done
+      (loop $more
+        (i32.store (i32.const 32) (i32.const 1024))
+        (i32.store (i32.const 36) (i32.const 4096))
+        (if (call $fd_read (i32.load (i32.const 24)) (i32.const 32) (i32.const 1) (i32.const 40))
+          (then (call $exit (i32.const 12))))
+        (br_if $done (i32.eqz (i32.load (i32.const 40))))
+        (call $write (i32.const 1024) (i32.load (i32.const 40)))
+        (br $more)))
+    (call $exit (i32.const 0))))
+"#;
+
+/// Every job has a `/proc/cpuinfo` that lists the CPUs WASIX says it has:
+/// the vCPUs of its `cpus:`, or 1 for a job of one slot, however many cores
+/// the runner has (`Limits::told_cpus`): told the runner's, `pytest -n
+/// auto`, vitest, cargo and the rest started a worker per core of the
+/// machine from a quarter of a vCPU. psutil reads the physical cores from
+/// it (`cpu_count(logical=False)`), which is what pytest-xdist's `-n auto`
+/// asks, and raised `FileNotFoundError` for want of it.
+#[test]
+fn proc_cpuinfo_lists_the_cpus_the_job_is_told_it_has() {
+    let rt = runtime();
+    let module = wat_module("cpu-count", CPU_COUNT);
+    for cpus in [Some(3), None] {
+        let job = snapshot(&[]).fork();
+        let mut inv = invocation(job.as_dyn(), &[]);
+        inv.limits.cpus = cpus;
+        let outcome = rt.run_command(&module, inv).unwrap();
+        assert_eq!(outcome.exit_code, 0, "{cpus:?}: {outcome:?}");
+        let (count, text) = outcome.stdout.split_at(4);
+        let count = u32::from_le_bytes(count.try_into().unwrap()) as usize;
+        let text = String::from_utf8_lossy(text);
+        match cpus {
+            Some(cpus) => assert_eq!(count, cpus as usize),
+            None => assert_eq!(count, 1),
+        }
+        let processors: Vec<&str> = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("processor\t: "))
+            .collect();
+        let expected: Vec<String> = (0..count).map(|n| n.to_string()).collect();
+        assert_eq!(processors, expected, "{text}");
+        // What psutil's `cpu_count(logical=False)` sums: `cpu cores` per
+        // `physical id`.
+        assert!(text.contains("physical id\t: 0\n"), "{text}");
+        assert_eq!(
+            text.lines()
+                .filter(|line| *line == format!("cpu cores\t: {count}"))
+                .count(),
+            count,
+            "{text}"
+        );
+    }
 }
 
 #[test]

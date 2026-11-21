@@ -215,7 +215,11 @@ pub(super) fn open_runner(
         .with_internet()
         .with_stall_after(limits.stall_after)
         .with_module_limits(limits.modules);
-    let slots = limits.cpus * limits.jobs_per_cpu;
+    // The server shares each vCPU among `--jobs-per-cpu` jobs; `iwci run`
+    // runs a job per vCPU, as many at once as `--cpus`. Either way a job
+    // with `cpus:` holds that many vCPUs' slots.
+    let per_cpu = if shared_slots { limits.jobs_per_cpu } else { 1 };
+    let machines = machines(args, &cache, limits.stall_after, &runtime)?;
     Ok(Runner {
         runtime: Arc::new(runtime),
         store,
@@ -227,7 +231,7 @@ pub(super) fn open_runner(
         ),
         cpus: limits.cpus,
         jobs_per_cpu: limits.jobs_per_cpu,
-        slots: shared_slots.then(|| Arc::new(schedule::Slots::new(slots))),
+        slots: Some(Arc::new(schedule::Slots::for_cpus(limits.cpus, per_cpu))),
         memory: limits.memory.map(|m| {
             let budget = schedule::MemoryBudget::new(m);
             Arc::new(if limits.admit_by_estimate {
@@ -242,8 +246,43 @@ pub(super) fn open_runner(
         external: None,
         helping: None,
         #[cfg(target_os = "linux")]
-        sandbox: native_sandbox(args, &cache, limits.cpus)?,
+        sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
+        machines,
     })
+}
+
+/// `--machines <dir>` (or `IWCI_MACHINES`): the virtual machine images
+/// `platform: linux` jobs run in, as
+/// `ci-runner/images/` builds them. `--machine-cpus <n>` (default 2) is
+/// what each machine gets. Off by default: such jobs then fail, saying so.
+fn machines(
+    args: &mut Args,
+    cache: &std::path::Path,
+    stall_after: Option<Duration>,
+    runtime: &iwci_runtime::Runtime,
+) -> Result<Option<Arc<dyn crate::machines::Machines>>, String> {
+    let cpus = match args.value("--machine-cpus")? {
+        None => 2,
+        Some(text) => text
+            .parse::<u32>()
+            .ok()
+            .filter(|n| (1..=64).contains(n))
+            .ok_or_else(|| format!("--machine-cpus takes 1 to 64, not `{text}`"))?,
+    };
+    let dir = match args.value("--machines")? {
+        Some(dir) => dir,
+        None => match std::env::var("IWCI_MACHINES") {
+            Ok(dir) if !dir.is_empty() => dir,
+            _ => return Ok(None),
+        },
+    };
+    Ok(crate::adapters::machines::open(
+        dir.into(),
+        cache.join("machines"),
+        cpus,
+        stall_after,
+        runtime,
+    ))
 }
 
 /// `--native-sandbox <dir>` (or `IWCI_NATIVE_SANDBOX`): gVisor's release,
@@ -262,6 +301,7 @@ fn native_sandbox(
     args: &mut Args,
     cache: &std::path::Path,
     cpus: usize,
+    jobs_per_cpu: usize,
 ) -> Result<Option<Arc<iwci_runtime::sandbox::SandboxHost>>, String> {
     let service = match args.value("--sandbox-service")? {
         Some(path) => Some(path),
@@ -285,7 +325,8 @@ fn native_sandbox(
     )
     .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
     .with_cpus(u32::try_from(cpus).unwrap_or(u32::MAX))
-    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?;
+    .map_err(|e| format!("--native-sandbox {dir}: {e}"))?
+    .with_jobs_per_cpu(u32::try_from(jobs_per_cpu).unwrap_or(u32::MAX));
     let host = match service {
         None => host,
         Some(socket) => {
@@ -305,7 +346,31 @@ fn native_sandbox(
             }
         }
     };
+    raise_open_files();
     Ok(Some(Arc::new(host)))
+}
+
+/// Each mount of a sandbox is a lisafs connection whose channels hold a
+/// few descriptors each in the runner, about 170 for a job with
+/// `builtin:rust`'s fourteen mounts, so a runner started from a shell with
+/// the usual soft limit of 1024 ran out with half a dozen such jobs at once
+/// and gVisor failed the next mount with ENOMEM. The soft limit goes up to
+/// the hard one, as Go programs do for themselves; the service's unit sets
+/// both (`LimitNOFILE`).
+#[cfg(target_os = "linux")]
+fn raise_open_files() {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: plain syscalls on a struct we own.
+    unsafe {
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) == 0 && limit.rlim_cur < limit.rlim_max
+        {
+            limit.rlim_cur = limit.rlim_max;
+            libc::setrlimit(libc::RLIMIT_NOFILE, &limit);
+        }
+    }
 }
 
 /// What `downloads:` may keep on this runner.

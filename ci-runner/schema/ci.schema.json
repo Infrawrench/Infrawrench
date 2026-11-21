@@ -144,6 +144,20 @@
         }
       }
     },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os"],
+      "properties": {
+        "os": {
+          "enum": ["wasm", "linux"]
+        },
+        "image": {
+          "enum": ["ubuntu-24.04"],
+          "description": "The machine image: `ubuntu-24.04` for Linux (the default)."
+        }
+      }
+    },
     "cloud": {
       "type": "object",
       "additionalProperties": false,
@@ -202,6 +216,33 @@
         }
       }
     },
+    "envFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "#/$defs/envFilePath" },
+        "environment": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+          "description": "The file's `[env.<name>]` section, laid over its `[env]`."
+        },
+        "vars": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$" },
+          "additionalProperties": { "type": "string", "maxLength": 256 },
+          "description": "Substitutions for `${name}` in the file's references, laid over its `[vars]`. Literal text."
+        }
+      }
+    },
+    "envFilePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!/)(?!.*(^|/)\\.{1,2}(/|$))[^\\\\]+$",
+      "description": "Relative to the repository's root, such as `.infraenv` or `apps/web/.infraenv`."
+    },
     "triggerFilter": {
       "type": "object",
       "additionalProperties": false,
@@ -251,7 +292,7 @@
       }
     },
     "ecosystem": {
-      "enum": ["pnpm", "bun", "go", "cargo", "pip", "composer"]
+      "enum": ["pnpm", "npm", "bun", "go", "cargo", "pip", "composer", "bundler"]
     },
     "deps": {
       "type": "array",
@@ -286,6 +327,24 @@
                 "file": {
                   "type": "string",
                   "description": "pip only: the lock to read, relative to `dir`, instead of `pylock.toml` or `requirements.txt`."
+                },
+                "ruby": {
+                  "type": ["string", "number"],
+                  "pattern": "^[0-9]+\\.[0-9]+$",
+                  "examples": ["3.4", "4.0"],
+                  "description": "bundler only: the Ruby to install gems for (`major.minor`), instead of the lock's RUBY VERSION or `.ruby-version`."
+                },
+                "without-extensions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                  },
+                  "description": "bundler only: gems whose native extension the jobs never load, installed without it when the runner has no build of it instead of failing the install."
+                },
+                "native": {
+                  "type": "boolean",
+                  "description": "pnpm, npm and bun only: also install the optional dependencies built for the runner's own Linux (turbo's and sherif's binaries), which only a job in the native sandbox can start."
                 }
               }
             }
@@ -305,6 +364,9 @@
         },
         {
           "required": ["cloud"]
+        },
+        {
+          "required": ["platform"]
         }
       ],
       "properties": {
@@ -361,8 +423,23 @@
         },
         "using": {
           "type": "string",
-          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
-          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x. Required unless the job has `cloud:`."
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+|\\.[0-9]+)?$",
+          "description": "builtin:<name>@<version> (published tools), repo:<name>@<version> (tools uploaded for this repository) or env:<name>@<version> (a shell environment for `run:`). The version is a prefix: 7.1 takes the newest 7.1.x, and 7.1.3 the newest rebuild of 7.1.3 (7.1.3.2, a builtin rebuilt from the same upstream release); four numbers pin one rebuild. Required unless the job has `cloud:` or runs in a virtual machine (`platform: linux`)."
+        },
+        "platform": {
+          "description": "What the job runs on: `wasm` (the default: an isolate on the runner, with `using:`), `linux` (an Ubuntu micro VM), or `{ os, image }`. A job on a virtual machine runs its `run:` script with `shell:` in the runner's image, starts from the clone, and keeps `artifacts`, `downloads`, `cache`, `changes`, `outputs` and `/tmp/workflow` working as on the runner. Not with `using`, `args`, `deps`, `tools`, `services`, `env-cache` or `task-cache`. Only a runner with that kind of machine runs it. Literal: not an expression.",
+          "oneOf": [
+            {
+              "enum": ["wasm", "linux"]
+            },
+            {
+              "$ref": "#/$defs/platform"
+            }
+          ]
+        },
+        "shell": {
+          "enum": ["bash", "sh", "pwsh"],
+          "description": "The `run:` script's interpreter on a virtual machine: `bash` (default), `sh` or `pwsh`. bash runs with `-euo pipefail`, sh with `-eu`, PowerShell with `$ErrorActionPreference = 'Stop'`."
         },
         "cloud": {
           "description": "Runs the job on one of the organisation's connected cloud accounts that an admin opted in, instead of on the runner: `<provider>/<kind>` (`gcp/build`) or a map. The job keeps its place in the graph (needs, if, outputs, artifacts, matrix); its `run:` script runs with bash on the machine, which is torn down after it. Not with `using:`, `deps`, `tools`, `cache`, `memory`, `network: false`, `services`, `packages`, `task-cache`, `env-cache`, `downloads`, `changes: commit` or a `clone` other than `{ depth }`. Never for a pull request from a fork.",
@@ -429,6 +506,10 @@
             "statuses": { "$ref": "#/$defs/githubTokenLevel" }
           },
           "description": "A GitHub token for the run's own repository with these permissions (GitHub Actions' names), minted for the run from the Infrawrench GitHub App's installation: `GH_TOKEN` and `GITHUB_TOKEN` for gh and the API, `GH_REPO`, and Git credentials so `git push` to the repository works. Lasts an hour from when the run starts. Masked like secrets. Never for a pull request from a fork."
+        },
+        "env-file": {
+          "description": "A `.infraenv` file of the repository whose variables the job gets, resolved by the app when it sends the run from the file at the run's commit: literals as written, `resource()` references only when that resource and output are granted to CI for this repository and branch, and `secret()` from the repository's CI secrets (not the organisation's secrets). The job's own `env:` wins. Masked like secrets. Never for a pull request from a fork.",
+          "oneOf": [{ "$ref": "#/$defs/envFilePath" }, { "$ref": "#/$defs/envFile" }]
         },
         "args": {
           "description": "Arguments for a tool: a list, or one line split like a shell splits words (no expansion).",
@@ -546,6 +627,12 @@
           "pattern": "^[0-9]+(KiB|MiB|GiB|K|M|G)$",
           "default": "2GiB",
           "description": "16MiB to 16GiB."
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Whole vCPUs the job holds, is told it has and is billed for, instead of its default share of one, which is told it has 1 CPU. A runner with fewer gives the job all of its own."
         },
         "cache": {
           "description": "Files kept between runs: restored before the job, saved after it passes unless key was an exact hit. Pushes read and write their branch's caches and fall back on the default branch's; pull requests never write where the default branch reads. Saves count against the owner's storage quota.",
@@ -797,7 +884,7 @@
       "properties": {
         "using": {
           "type": "string",
-          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?$",
+          "pattern": "^(builtin|repo|env):[a-z0-9][a-z0-9_-]{0,63}@[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+|\\.[0-9]+)?$",
           "description": "env:<name>@<version> with a `run:` script that starts the service (env:postgres@18 is PostgreSQL), or a builtin: or repo: tool with `args:`."
         },
         "run": {

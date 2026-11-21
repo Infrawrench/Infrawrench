@@ -13,7 +13,7 @@ Connect an Alibaba Cloud account on the international site (alibabacloud.com) wi
 3. Pick a **default region**. New resources default to it, and the region list and quotas are read from it.
 4. Optionally pick **regions to scan**. The list loads from your account once you enter the key. Leave it empty to scan every region open to the account.
 
-<insert [Alibaba Cloud add-account form with the AccessKey ID, AccessKey secret, default region and the regions-to-scan picker filled in] here>
+![Alibaba Cloud add-account form with the AccessKey ID, AccessKey secret, default region and the regions-to-scan picker filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/alibaba-cloud/add-account.png)
 
 ### Permissions
 

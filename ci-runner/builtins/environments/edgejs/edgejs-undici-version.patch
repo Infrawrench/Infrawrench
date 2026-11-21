@@ -1,0 +1,45 @@
+diff --git a/src/edge_process.cc b/src/edge_process.cc
+index 671d7544..33d6c067 100644
+--- a/src/edge_process.cc
++++ b/src/edge_process.cc
+@@ -57,6 +57,7 @@
+ #include "acorn_version.h"
+ #include "amaro_version.h"
+ #include "cjs_module_lexer_version.h"
++#include "undici_version.h"
+ #include "node_version.h"
+ #include "edge_version.h"
+ #include "unofficial_napi.h"
+@@ -411,16 +412,11 @@ std::string ReadPackageVersionFromCandidates(const std::vector<std::filesystem::
+ }
+ 
+ std::string GetUndiciVersion() {
+-  namespace fs = std::filesystem;
+-  const fs::path source_root = fs::absolute(fs::path(__FILE__).parent_path() / "..").lexically_normal();
+-  static const std::string version = [source_root]() {
+-    std::vector<fs::path> candidates = {
+-        source_root / "deps" / "undici" / "src" / "package.json",
+-    };
+-    AppendCwdCandidates(fs::path("deps") / "undici" / "src" / "package.json", &candidates);
+-    return ReadPackageVersionFromCandidates(candidates);
+-  }();
+-  return version;
++  // Compiled in, as in Node: it was read at run time from
++  // deps/undici/src/package.json beside the source or the working
++  // directory, which a built module run anywhere else does not have, so
++  // process.versions.undici was "0.0.0".
++  return UNDICI_VERSION;
+ }
+ 
+ std::string GetAmaroVersion() {
+diff --git a/src/undici_version.h b/src/undici_version.h
+new file mode 100644
+index 00000000..172c2bca
+--- /dev/null
++++ b/src/undici_version.h
+@@ -0,0 +1,5 @@
++// The undici in deps/undici, which Node's src/undici_version.h names too.
++#ifndef SRC_UNDICI_VERSION_H_
++#define SRC_UNDICI_VERSION_H_
++#define UNDICI_VERSION "7.18.2"
++#endif  // SRC_UNDICI_VERSION_H_

@@ -231,6 +231,9 @@ pub(crate) struct InodeSocketProtected {
 #[derive(Debug)]
 pub(crate) struct InodeSocketInner {
     pub protected: RwLock<InodeSocketProtected>,
+    // iwci patch: an AF_UNIX socket's names (net/unix.rs); `None` for
+    // every other socket.
+    pub unix: std::sync::Mutex<Option<crate::net::unix::UnixName>>,
 }
 
 #[derive(Debug, Clone)]
@@ -244,8 +247,19 @@ impl InodeSocket {
         Self {
             inner: Arc::new(InodeSocketInner {
                 protected: RwLock::new(protected),
+                unix: std::sync::Mutex::new(None),
             }),
         }
+    }
+
+    /// iwci patch: this socket's AF_UNIX names, if it is one.
+    pub(crate) fn unix(&self) -> Option<crate::net::unix::UnixName> {
+        self.inner.unix.lock().unwrap().clone()
+    }
+
+    /// iwci patch: marks this socket AF_UNIX, with these names.
+    pub(crate) fn set_unix(&self, name: Option<crate::net::unix::UnixName>) {
+        *self.inner.unix.lock().unwrap() = name;
     }
 
     pub fn poll_read_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {

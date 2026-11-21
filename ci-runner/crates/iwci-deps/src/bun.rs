@@ -27,7 +27,11 @@
 //! workspaces, hoisted for everything else. The isolated layout honours
 //! `hoist`, `hoistPattern` and `publicHoistPattern` from the same file.
 //!
-//! Left out, as for pnpm: `node_modules/.bin` and Bun's own bookkeeping
+//! Every `node_modules` directory gets a `.bin` with the commands of the
+//! packages in it ([`crate::node_bins`]), as symbolic links, as Bun makes
+//! them.
+//!
+//! Left out, as for pnpm: Bun's own bookkeeping
 //! files. Packages that want a build step are installed as their published
 //! files; `trustedDependencies` only decides which of them get a warning
 //! saying so.
@@ -70,7 +74,9 @@ use iwci_vfs::virtual_fs::mem_fs;
 use shared_buffer::OwnedBuffer;
 
 use crate::fetch::{self, FetchError, Fetcher, Integrity};
+use crate::node_bins;
 use crate::pnpm::{self, Patch, Platform};
+use crate::wasm_builds::{self, Substitution, WasmBuild};
 
 pub use key::KeyIndex;
 pub use lockfile::{
@@ -110,6 +116,13 @@ pub struct BunOptions {
     /// The platform optional dependencies are matched against; `None` is
     /// the WebAssembly isolate.
     pub platform: Option<Platform>,
+    /// A second platform an optional dependency may be for, as for pnpm
+    /// ([`pnpm::PnpmOptions::native`]).
+    pub native: Option<Platform>,
+    /// Native packages installed as their WebAssembly build for the
+    /// isolate (`platform: None`); see [`wasm_builds`]. An option, so a
+    /// cache keyed on the options changes when the table does.
+    pub wasm_builds: &'static [WasmBuild],
     /// Tarballs fetched and unpacked at once.
     pub parallelism: usize,
     /// The most one package may unpack to.
@@ -122,6 +135,8 @@ impl Default for BunOptions {
             registry: DEFAULT_REGISTRY.to_string(),
             include_dev: true,
             platform: None,
+            native: None,
+            wasm_builds: wasm_builds::WASM_BUILDS,
             parallelism: fetch::DEFAULT_PARALLELISM,
             max_unpacked_bytes: pnpm::DEFAULT_MAX_UNPACKED_BYTES,
         }
@@ -151,6 +166,11 @@ pub struct InstallReport {
     pub skipped_optional: Vec<String>,
     /// Packages a patch was applied to, sorted.
     pub patched: Vec<String>,
+    /// Packages installed as their WebAssembly build
+    /// (`rollup@4.52.0 as @rollup/wasm-node@4.52.0`), sorted.
+    pub wasm_builds: Vec<String>,
+    /// Commands linked into `node_modules/.bin` directories.
+    pub bins: usize,
     /// What a real install would have done and this one did not.
     pub warnings: Vec<String>,
     pub elapsed: Duration,
@@ -319,13 +339,16 @@ fn accepts(options: &BunOptions, package: &Package) -> bool {
             .cloned()
             .collect()
     };
-    pnpm::platform_accepts_fields(
-        options.platform.as_ref(),
-        &package.name,
-        &known(&package.os),
-        &known(&package.cpu),
-        &known(&package.libc),
-    )
+    let on = |platform: Option<&Platform>| {
+        pnpm::platform_accepts_fields(
+            platform,
+            &package.name,
+            &known(&package.os),
+            &known(&package.cpu),
+            &known(&package.libc),
+        )
+    };
+    on(options.platform.as_ref()) || options.native.as_ref().is_some_and(|n| on(Some(n)))
 }
 
 /// The key of the package a dependency on `name` resolves to from the
@@ -527,6 +550,15 @@ enum Source {
     },
 }
 
+/// The registry `name` is fetched from when `bun.lock` names no URL.
+fn registry_of<'a>(name: &str, settings: &'a Settings, options: &'a BunOptions) -> &'a str {
+    name.split_once('/')
+        .filter(|(scope, _)| scope.starts_with('@'))
+        .and_then(|(scope, _)| settings.scoped_registries.get(scope))
+        .or(settings.registry.as_ref())
+        .unwrap_or(&options.registry)
+}
+
 fn source_of(
     root: &Path,
     package: &Package,
@@ -553,13 +585,7 @@ fn source_of(
             let url = match url {
                 Some(url) => url.clone(),
                 None => {
-                    let registry = package
-                        .name
-                        .split_once('/')
-                        .filter(|(scope, _)| scope.starts_with('@'))
-                        .and_then(|(scope, _)| settings.scoped_registries.get(scope))
-                        .or(settings.registry.as_ref())
-                        .unwrap_or(&options.registry);
+                    let registry = registry_of(&package.name, settings, options);
                     let registry = registry.trim_end_matches('/');
                     let name = &package.name;
                     let basename = name.rsplit('/').next().unwrap_or(name);
@@ -611,12 +637,95 @@ fn source_of(
     }
 }
 
+/// The `node_modules` directory a package placed at `location` is in.
+fn modules_of(location: &Path) -> Option<&Path> {
+    location
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.file_name().is_some_and(|name| name == "node_modules"))
+}
+
+/// The commands to link into each `node_modules/.bin`, as Bun links them:
+/// every `node_modules` directory gets the commands of the packages placed
+/// in it, which is each project's dependencies (and, at the root, what is
+/// publicly hoisted there) and, with the hoisted linker, each nested
+/// package's, and with the isolated linker each store entry's
+/// dependencies. A project's own dependencies win a shared name over
+/// hoisted ones. The isolated store's hidden hoisting directory
+/// (`node_modules/.bun/node_modules`) gets none, as with Bun.
+fn bin_links(
+    builder: &SnapshotBuilder,
+    lock: &Lockfile,
+    root: &Path,
+    linker: Linker,
+    layout: &Layout<'_>,
+) -> Result<Vec<(PathBuf, PathBuf)>> {
+    // Each project's `node_modules`, and the names it declares.
+    let mut declared: BTreeMap<PathBuf, BTreeSet<&str>> = BTreeMap::new();
+    for (path, workspace) in &lock.workspaces {
+        let dir = if path.is_empty() {
+            root.to_path_buf()
+        } else {
+            iwci_vfs::join_under(root, path)?
+        };
+        let deps = &workspace.deps;
+        let names = deps
+            .dependencies
+            .iter()
+            .chain(&deps.dev_dependencies)
+            .chain(&deps.optional_dependencies)
+            .chain(&deps.peer_dependencies)
+            .map(String::as_str)
+            .collect();
+        declared.insert(dir.join("node_modules"), names);
+    }
+    let hidden = root.join("node_modules/.bun/node_modules");
+    let mut by_dir: BTreeMap<PathBuf, Vec<node_bins::BinSource>> = BTreeMap::new();
+    let mut place = |location: &Path, dir: PathBuf, hoisted: bool| {
+        let Some(modules) = modules_of(location) else {
+            return;
+        };
+        if modules == hidden {
+            return;
+        }
+        let alias = location
+            .strip_prefix(modules)
+            .map(|alias| alias.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        let direct = !hoisted
+            && declared
+                .get(modules)
+                .is_some_and(|names| names.contains(alias.as_str()));
+        by_dir
+            .entry(modules.to_path_buf())
+            .or_default()
+            .push(node_bins::BinSource { dir, direct });
+    };
+    for (link, target) in &layout.links {
+        place(link, target.clone(), layout.hoisted_links.contains(link));
+    }
+    // With the isolated linker a tree is a store entry's own package,
+    // which its `.bin` does not list.
+    if linker == Linker::Hoisted {
+        for (location, _) in &layout.trees {
+            place(location, location.clone(), false);
+        }
+    }
+    let mut out = Vec::new();
+    for (modules, sources) in by_dir {
+        out.extend(node_bins::plan(builder, &modules.join(".bin"), &sources));
+    }
+    Ok(out)
+}
+
 /// One tarball and every directory it is unpacked into.
 struct Job<'a> {
     package: &'a Package,
     source: Source,
     patch: Option<(&'a str, Arc<Patch>)>,
     targets: Vec<&'a Path>,
+    /// The WebAssembly build to install instead, and its registry.
+    wasm: Option<(Substitution, &'a str)>,
 }
 
 #[derive(Default)]
@@ -625,6 +734,8 @@ struct JobStats {
     packages: usize,
     files: usize,
     bytes: u64,
+    /// The substitution made, described.
+    wasm_build: Option<String>,
 }
 
 fn run_job(
@@ -638,8 +749,21 @@ fn run_job(
         package: job.package.ident.clone(),
         source,
     };
+    let mut wasm_build = None;
     let bytes: Arc<[u8]> = match &job.source {
-        Source::Remote { url, integrity } => fetcher.fetch(url, integrity).map_err(fetch_error)?,
+        Source::Remote { url, integrity } => {
+            let wasm = match &job.wasm {
+                Some((substitution, registry)) => substitution
+                    .fetch(fetcher, registry)
+                    .map_err(fetch_error)?
+                    .inspect(|_| wasm_build = Some(substitution.describe())),
+                None => None,
+            };
+            match wasm {
+                Some(bytes) => bytes,
+                None => fetcher.fetch(url, integrity).map_err(fetch_error)?,
+            }
+        }
         Source::Local { path, integrity } => {
             let bytes = builder.read(path)?;
             if let Some(integrity) = integrity {
@@ -649,15 +773,16 @@ fn run_job(
             bytes.into()
         }
     };
-    let mut files =
-        pnpm::tarball::extract(&bytes, options.max_unpacked_bytes).map_err(|message| {
-            BunError::Tarball {
+    let (mut files, executables) =
+        pnpm::tarball::extract_with_executables(&bytes, options.max_unpacked_bytes).map_err(
+            |message| BunError::Tarball {
                 package: job.package.ident.clone(),
                 message,
-            }
-        })?;
+            },
+        )?;
     let mut stats = JobStats {
         tarball_bytes: bytes.len() as u64,
+        wasm_build,
         ..JobStats::default()
     };
     drop(bytes);
@@ -668,12 +793,13 @@ fn run_job(
             message,
         })?;
     }
-    let files: BTreeMap<String, OwnedBuffer> = files
+    let tree: BTreeMap<String, OwnedBuffer> = files
         .into_iter()
         .map(|(path, bytes)| (path, OwnedBuffer::from(bytes)))
         .collect();
     for target in &job.targets {
-        let (files, bytes) = pnpm::write_tree(fs, target, &files)?;
+        let (files, bytes) = pnpm::write_tree(fs, target, &tree)?;
+        pnpm::mark_executables(builder, target, &executables, &tree)?;
         stats.packages += 1;
         stats.files += files;
         stats.bytes += bytes;
@@ -757,11 +883,25 @@ pub fn install(
                 "{ident} is in trustedDependencies, but its install scripts were not run: nothing here runs them"
             ));
         }
+        // Only for the isolate, and only for what a registry serves: a
+        // tarball by URL may be anything.
+        let wasm = match (&options.platform, &package.resolution) {
+            (None, Resolution::Npm { version, .. }) => {
+                wasm_builds::substitution(options.wasm_builds, &package.name, version).map(
+                    |found| {
+                        let registry = registry_of(found.build.wasm, &settings, options);
+                        (found, registry)
+                    },
+                )
+            }
+            _ => None,
+        };
         jobs.push(Job {
             package,
             source: source_of(&root, package, &settings, options)?,
             patch,
             targets,
+            wasm,
         });
     }
 
@@ -788,6 +928,8 @@ pub fn install(
         hoisted: layout.hoisted,
         skipped_optional: layout.skipped.iter().cloned().collect(),
         patched,
+        wasm_builds: Vec::new(),
+        bins: 0,
         warnings,
         elapsed: Duration::ZERO,
     };
@@ -798,18 +940,26 @@ pub fn install(
             report.packages += stats.packages;
             report.files += stats.files;
             report.bytes += stats.bytes;
+            report.wasm_builds.extend(stats.wasm_build);
         }
     }
+    report.wasm_builds.sort();
 
     let mut made = HashSet::new();
     for (link, target) in &layout.links {
-        if !made.insert(link) {
+        if !made.insert(link.clone()) {
             continue;
         }
         let parent = link.parent().unwrap_or(Path::new("/"));
         iwci_vfs::symlink(fs, link, pnpm::relative(parent, target))?;
     }
     report.links = made.len();
+    for (link, target) in bin_links(builder, &lock, &root, linker, &layout)? {
+        if made.insert(link.clone()) {
+            iwci_vfs::symlink(fs, &link, target)?;
+            report.bins += 1;
+        }
+    }
     report.elapsed = started.elapsed();
     Ok(report)
 }

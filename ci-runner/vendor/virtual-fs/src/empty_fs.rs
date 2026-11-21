@@ -50,6 +50,8 @@ impl FileSystem for EmptyFileSystem {
                 created: 0,
                 modified: 0,
                 len: 0,
+                ino: 0,
+                nlink: 0,
             })
         } else {
             Err(FsError::EntryNotFound)

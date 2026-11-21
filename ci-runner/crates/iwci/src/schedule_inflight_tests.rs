@@ -209,6 +209,7 @@ fn options_for(
         split: None,
         helping: None,
         inflight: Some(inflight.clone()),
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),

@@ -22,7 +22,7 @@ Connect Vultr with an API key. You can list, create, edit and act on everything 
 - **Object Storage**: create a subscription by picking a location and tier, regenerate its S3 keys, and create and delete buckets. Bucket pages have a file browser (upload, create folders, delete) that uses the subscription's own keys, so you don't paste any.
 - **SSH keys**, **startup scripts** (create, rename, edit the script), the **billing account** (balance, month-to-date charges with every line item, bandwidth pool and projected overage) and **invoices** with their line items.
 
-<insert [Vultr account page showing the resource sections: Instances, Block Storage, Kubernetes Clusters, Managed Databases, Load Balancers, Object Storage] here>
+![Vultr account page showing the Instances section, with section tabs for Block Storage Volumes, Kubernetes Clusters, Managed Databases, Load Balancers and Object Storage Subscriptions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vultr/account-page.png)
 
 ## Connect your account
 
@@ -33,7 +33,7 @@ In the Vultr customer portal, open **Account**, then **API** (under Other), and 
 
 Click **Check credentials** after adding the account to see which areas the key can reach.
 
-<insert [Add account dialog for Vultr with the API Key field and the credential check results] here>
+![Add account dialog for Vultr with the API Key field and the credential check results](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vultr/add-account-check.png)
 
 ## Costs and credit
 

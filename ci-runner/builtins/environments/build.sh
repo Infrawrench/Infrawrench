@@ -89,12 +89,21 @@ COREUTILS_PKG="wasmer/coreutils 1.0.27 35028c4e6b9fa8cccdffdcab2007d1df3af31b3f2
 SED_PKG="wasmer/sed 4.9.0 c7f3db6a65e504328156b688195eff14456412974f0a75d05fb8e5155d545539 4.9.0-iwci.1"
 GREP_PKG="wasmer/grep 3.12.0 42a2dd5452990c94a51036cfb5eb9574899beccb5ce8f83f75995f7ac5e0e1ca"
 FINDUTILS_PKG="wasmer/findutils 0.10.1 4d775bd4d37f26e043a2c54e220c554a67bbe349000930f87c6bc81e4a91c1fb"
+# GNU tar 1.35, built by tar/build.sh (it starts gzip and the other
+# compressors with posix_spawn, where Wasmer's `wasmer/tar` forks and so
+# could not), Wasmer's GNU gzip 1.14 (gzip, gunzip, zcat), and OpenSSL
+# 3.5.9's `openssl` with its openssl.cnf and Mozilla's CA certificates,
+# built by openssl/build.sh. The hashes of ours are their output's.
+TAR_PKG="iwci/tar 1.35.0-iwci.1 c3f530464d701decc20d3a3c17c13fc81e14a7af2c278349a3df67fac9bb8ecd"
+GZIP_PKG="wasmer/gzip 1.14.0 ebf0160b02f9ef7f586f6c06fc6d36824c9da6467d3e2fa29dbc84df7bbaf5d5"
+OPENSSL_PKG="iwci/openssl 3.5.9-iwci.1 d374fe5ed6c85e4c32a12467e14d99f14bef348da6013f94f49e1e99cdc784e4"
 # Git, built by git/build.sh from its release for WASIX; the hash is its
 # output's, as with Edge.js. Every environment has it (README.md, "Git").
 GIT_PKG="iwci/git 2.56.1-iwci.2 841a8d6b293c94ff2879186dae83989e7b1893c41768532d15cb09c8f415d876"
-# Built by python/build.sh as 3.13.20-iwci.1, keeping Wasmer's version the
-# same way: Wasmer's CPython with file locks (#1216).
-PYTHON_PKG="python/python 3.13.20 d6cd79a53cd7d49798955b1bbc1d9e7c7d4d4e9b10af0acf40d2bc0ff590a9e4 3.13.20-iwci.1"
+# Built by python/build.sh as 3.13.20-iwci.2, keeping Wasmer's version the
+# same way: Wasmer's CPython with file locks (#1216), which does not pass its
+# own PYTHONEXECUTABLE on to the programs it starts (#1310).
+PYTHON_PKG="python/python 3.13.20 b2fa55739ac03c1b23cbe6ffc298bdcc981e5094949944b51c5e83313cc692da 3.13.20-iwci.2"
 PHP81_PKG="phpix/phpix-81-64bit 0.3.1 48312c144634ffa5ea1eaef13b48f9b626a947bab6179685ec5196528f81362f"
 PHP82_PKG="phpix/phpix-82-64bit 0.3.1 3e05a9e6546757ffee72bc1d19c26b1a62a92dcaadda2a42c36f1fdc2a7a3754"
 PHP83_PKG="phpix/phpix-83-64bit 0.3.1 d2ff745903b5c6130662a198d330456daf8cb953438a0d8b8246130a3fb25043"
@@ -174,8 +183,15 @@ PHP_ENV='"PATH": "/usr/local/bin:/opt/php-cli/bin:/usr/bin:/bin",
 #     without it. It is pnpm's own default on Linux.
 #   PATH  the default plus that directory, after the system's, so a
 #     global install cannot shadow a command the environment ships.
+# GNU tar extracting as root (a job's user) restores each entry's owner,
+# which WASIX cannot set, so every extraction ended "Cannot change
+# ownership to uid 0, gid 0" and status 2; and OpenSSL's configuration, at
+# the OPENSSLDIR it is built with. A job's own values win.
+ARCHIVE_SSL_ENV='"TAR_OPTIONS": "--no-same-owner",
+    "OPENSSL_CONF": "/etc/ssl/openssl.cnf"'
 BASH_NODE_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/.local/share/pnpm",
-    "PNPM_HOME": "/root/.local/share/pnpm"'
+    "PNPM_HOME": "/root/.local/share/pnpm",
+    '"$ARCHIVE_SSL_ENV"
 # The cloud CLIs, built by cloud-clis/build.sh on env:python's CPython;
 # each hash is its output's, as with Edge.js. The Azure CLI and gcloud are
 # two packages each (the store's 256 MiB per file).
@@ -226,7 +242,7 @@ GCLOUD_ENV="$(cloud_env /opt/google-cloud-sdk/bin)"',
     "CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK": "true",
     "CLOUDSDK_PYTHON": "/usr/bin/python3"'
 # Built by edgejs/build.sh, which names the version; the hash is its output's.
-EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.16 117f4e175cd715177f666d0991d9e82bdcfe6c20ba30d657bdc1fa5c03589707"
+EDGEJS_PKG="wasmer/edgejs 0.2.5-iwci.17 7c589a3e74d46d5c88759f68a4fda15f2103bdde122be06bf3a299d40d58e52d"
 # Go, built by go/build.sh <minor> as two packages: the toolchain, and the
 # standard library's build cache (together over the store's per-file limit).
 # Each line is the environment's version, then the packages'. The
@@ -265,6 +281,33 @@ GO_ENV='"PATH": "/usr/local/bin:/usr/bin:/bin:/root/go/bin",
 # library's entries are dated 2100 and so is its trim.txt, so Go never trims
 # here: past the limit the runner keeps only what the last run wrote.
 GO_CACHES='{ "name": "go-build", "path": "/root/.cache/go-build", "max-bytes": 1073741824 }'
+# CRuby, built by ruby/build.sh <minor> for WASIX (README.md, "Ruby"). Each
+# line is the environment's version, the package's, its hash, and the
+# directory gems install into (Gem.user_dir for /root, named after the
+# minor's ruby_version). The environment's version starts as Ruby's own and
+# its patch number is the environment's revision after that, as with Go.
+# Ruby's release plus one: `exec` passes the environment as ENV has it, so
+# `bundle exec ruby` runs with the bundle (#1303).
+ruby_pkgs() {
+  case "$1" in
+    3.4) echo "3.4.13 3.4.12-iwci.4 dea9e54310da58c5bd1b45c60fdee8d1d24847a4cb5e364e5af9658b7cb34141 3.4.0" ;;
+    4.0) echo "4.0.10 4.0.9-iwci.4 f20fb3b5a96fe6464363e0a8665cb452fc39fffe3ad3d8eec9f4df3a6437828a 4.0.0" ;;
+    *) return 1 ;;
+  esac
+}
+RUBY_MINORS=(3.4 4.0)
+# What Ruby jobs need here (README.md, "Ruby"):
+#   GEM_HOME  where `gem install` and `bundle install` put gems: the user
+#     directory RubyGems would pick for root (Gem.user_dir), since the
+#     interpreter's own is part of the package. BUNDLE_* is left to the job
+#     and to `deps: [bundler]`, which sets them per job.
+#   PATH  that directory's bin/ first, as env:python puts the user site's,
+#     then the default with /opt/ruby/bin (gem, bundle, rake, irb, ...)
+#     ahead of /usr/bin, which has `ruby` itself.
+ruby_env() {
+  printf '"PATH": "/root/.local/share/gem/ruby/%s/bin:/usr/local/bin:/opt/ruby/bin:/usr/bin:/bin",
+    "GEM_HOME": "/root/.local/share/gem/ruby/%s"' "$1" "$1"
+}
 
 fetch() {
   local dir="$1" name="$2" version="$3" sha="$4" build="${5:-$3}"
@@ -278,6 +321,8 @@ fetch() {
     iwci/php-cli) ours="php-cli" ;;
     iwci/pglite-server) ours="pglite-server" ;;
     iwci/git) ours=git ;;
+    iwci/tar) ours=tar ;;
+    iwci/openssl) ours=openssl ;;
     iwci/clickhouse) ours=clickhouse ;;
   esac
   local cli=""
@@ -300,6 +345,11 @@ fetch() {
     # Ours too: go/build.sh <minor> makes both of a minor's packages.
     local built="$dist/package/go/$version/${name#iwci/}.webc"
     [[ -f "$built" ]] || bash "$here/environments/go/build.sh" "$(cut -d. -f1-2 <<<"$version")" >&2
+    cp "$built" "$file"
+  elif [[ "$name" == iwci/ruby ]]; then
+    # Ours too: ruby/build.sh <minor>.
+    local built="$dist/package/ruby/$version/ruby.webc"
+    [[ -f "$built" ]] || bash "$here/environments/ruby/build.sh" "$(cut -d. -f1-2 <<<"$version")" >&2
     cp "$built" "$file"
   else
     # Once per run: environments share most of their packages.
@@ -357,7 +407,7 @@ JSON
 
 TOOLS=("$BASH_PKG" "$COREUTILS_PKG" "$SED_PKG" "$GREP_PKG" "$FINDUTILS_PKG" "$GIT_PKG")
 if [[ $# -eq 0 ]]; then
-  set -- bash bash-node python php go postgres aws az gcloud
+  set -- bash bash-node python php go ruby postgres aws az gcloud
 fi
 for env in "$@"; do
   case "$env" in
@@ -367,7 +417,9 @@ for env in "$@"; do
       # 5.1.18: and so does a command sed's `e` runs (#1022).
       # 5.1.19: and Git.
       # 5.1.20: and Git's prompts read /dev/tty, so they end at once (#1264).
-      build_env bash 5.1.20 "GNU bash 5.1 with coreutils, sed, grep, findutils and Git" "" "${TOOLS[@]}"
+      # 5.1.21: and tar, gzip and openssl.
+      build_env bash 5.1.21 "GNU bash 5.1 with coreutils, sed, grep, findutils, tar, gzip, OpenSSL and Git" "$ARCHIVE_SSL_ENV" \
+        "${TOOLS[@]}" "$TAR_PKG" "$GZIP_PKG" "$OPENSSL_PKG"
       ;;
     bash-node)
       # 24.0.1: Edge.js rebuilt on a C library without the #937 race.
@@ -409,8 +461,12 @@ for env in "$@"; do
       # 24.0.20: and Git's prompts read /dev/tty, so they end at once (#1264).
       # 24.0.21: and Workers writing one compile cache entry at once leave
       #          one of theirs, never none (#1249).
-      build_env bash-node 24.0.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
-        "${TOOLS[@]}" "$EDGEJS_PKG"
+      # 24.0.22: and TypeScript runs, by Node's own type stripping; a name the
+      #          environment repeats is listed once, so pnpm can switch to a
+      #          project's packageManager version; and process.versions.undici
+      #          is undici's; and tar, gzip and openssl.
+      build_env bash-node 24.0.22 "GNU bash 5.1, coreutils, sed, grep, findutils, tar, gzip, OpenSSL, Git and Edge.js (Node 24 compatible, npm and pnpm)" "$BASH_NODE_ENV" \
+        "${TOOLS[@]}" "$TAR_PKG" "$GZIP_PKG" "$OPENSSL_PKG" "$EDGEJS_PKG"
       ;;
     go | go@*)
       minors=("${GO_MINORS[@]}")
@@ -435,7 +491,8 @@ for env in "$@"; do
       # 3.13.19: and `pip install --user`, its commands on PATH.
       # 3.13.20: and Git's prompts read /dev/tty, so they end at once (#1264).
       # 3.13.21: and `fcntl.flock` and `fcntl.lockf` lock (#1216).
-      build_env python 3.13.21 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
+      # 3.13.22: and `python -m venv` installs pip into the venv (#1310).
+      build_env python 3.13.22 "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CPython 3.13.15 with pip" \
         "$PYTHON_ENV" "${TOOLS[@]}" "$PYTHON_PKG"
       ;;
     aws)
@@ -443,13 +500,15 @@ for env in "$@"; do
       # CPython's; its patch number is the environment's own.
       # 1.46.1: Git's prompts read /dev/tty (#1264).
       # 1.46.2: and file locks (#1216).
-      build_env aws 1.46.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
+      # 1.46.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env aws 1.46.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the AWS CLI 1.46.3" \
         "$AWS_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AWS_CLI_PKG"
       ;;
     az)
       # 2.92.1: Git's prompts read /dev/tty (#1264).
       # 2.92.2: and file locks (#1216), so `az` takes its token cache's.
-      build_env az 2.92.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
+      # 2.92.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env az 2.92.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Azure CLI 2.92.0" \
         "$AZ_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$AZURE_CLI_PKG" "$AZURE_CLI_MGMT_PKG"
       ;;
     gcloud)
@@ -457,7 +516,8 @@ for env in "$@"; do
       # number is its own revision.
       # 593.0.1: Git's prompts read /dev/tty (#1264).
       # 593.0.2: and file locks (#1216).
-      build_env gcloud 593.0.2 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
+      # 593.0.3: and `python -m venv` installs pip into the venv (#1310).
+      build_env gcloud 593.0.3 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, CPython 3.13.15 with pip, and the Google Cloud CLI 593.0.0 (gcloud, bq)" \
         "$GCLOUD_ENV" "${TOOLS[@]}" "$PYTHON_PKG" "$GCLOUD_PKG" "$GCLOUD_APIS_PKG"
       ;;
     php)
@@ -492,11 +552,25 @@ for env in "$@"; do
       # 26.11.3: bash-node 24.0.18's Edge.js (#1151).
       # 26.11.4: and Git's prompts read /dev/tty (#1264).
       # 26.11.5: bash-node 24.0.21's Edge.js (#1249).
-      build_env clickhouse 26.11.5 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
+      # 26.11.6: bash-node 24.0.22's Edge.js (TypeScript).
+      build_env clickhouse 26.11.6 "GNU bash 5.1, coreutils, sed, grep, findutils, Git, Edge.js and ClickHouse 26.11 (CloudHouse for one-thread WebAssembly) as clickhouse-server, for services:" \
         "$CLICKHOUSE_ENV" "${TOOLS[@]}" "$EDGEJS_PKG" "$CLICKHOUSE_PKG"
       ;;
+    ruby | ruby@*)
+      minors=("${RUBY_MINORS[@]}")
+      [[ "$env" == ruby ]] || minors=("${env#ruby@}")
+      for minor in "${minors[@]}"; do
+        if ! pkgs="$(ruby_pkgs "$minor")"; then
+          echo "error: no Ruby $minor; know ${RUBY_MINORS[*]}" >&2
+          exit 2
+        fi
+        read -r env_version version ruby_sha api <<<"$pkgs"
+        build_env ruby "$env_version" "GNU bash 5.1, coreutils, sed, grep, findutils, Git and CRuby ${version%-iwci.*} (ruby, gem, bundle, rake, irb), built for WASIX" \
+          "$(ruby_env "$api")" "${TOOLS[@]}" "iwci/ruby $version $ruby_sha"
+      done
+      ;;
     *)
-      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
+      echo "error: no environment \`$env\`; know bash, bash-node, python, php, go (or go@<minor>), ruby (or ruby@<minor>), postgres, clickhouse, aws, az and gcloud" >&2
       exit 2
       ;;
   esac

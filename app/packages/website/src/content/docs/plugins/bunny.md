@@ -18,13 +18,13 @@ Connect a bunny.net account to run its CDN, storage, DNS and edge compute from I
 - **Magic Containers apps**: status, endpoint, images, instances and regions. Change autoscaling, and **Restart**, **Deploy** or **Undeploy** an app. You can put apps on a sleep schedule.
 - **Account**: prepaid balance, this month's charges by product, and a **Purge a URL** action that works for any pull zone.
 
-<insert [bunny.net pull zone detail page showing the Caching and security section and the Purge URL, Purge by tag and Purge everything actions] here>
+![bunny.net pull zone detail page showing the Caching and security section and the Purge URL, Purge by tag and Purge everything actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/bunny/pull-zone-detail.png)
 
 ## Connect your account
 
 In the bunny.net dashboard, open **Account settings > API key** and copy the account API key. bunny.net has no scoped keys, so this one key manages everything. Storage zones and Stream libraries have their own passwords and keys, and Infrawrench fetches those for you with the account key.
 
-<insert [bunny.net Add-account form with the Account API Key field filled in] here>
+![bunny.net Add-account form with the Account API Key field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/bunny/add-account.png)
 
 ## Metrics
 

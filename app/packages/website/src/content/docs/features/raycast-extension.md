@@ -32,6 +32,16 @@ Actions you can take:
 - **Open Vulnerabilities** (your organization's Vulnerabilities tab)
 - **Declare Incident Affecting This**. For a service, this fills in every resource the service contains.
 
+### Check Environment File
+
+Checks an [`.infraenv`](./env-files.md) on your Mac. Select it (or its folder) in Finder and run the command, or type its path. It lists:
+
+- each environment, with how many variables it has and the worst status among them
+- each reference, with what it found: the resource and account, a lock for a sensitive output, or why it found nothing
+- every problem, with its line
+
+Actions: **Open File**, **Show in Finder**, **Copy File Path**, **Check Again**, **Open Resource** and **Copy Resource ID** on a reference that found one, and **Pull .env** per environment. Pull writes the `.env` beside the file, readable only by you, never shows the values, and asks before replacing a `.env` that Infrawrench didn't generate.
+
 ### Who Is On Call
 
 Shows every [on-call](./on-call.md) rotation with who's on call now, when they hand off, whether it's a cover, and who's next. You can copy or email the person on call.

@@ -7,9 +7,16 @@ export const ArtifactRegistryRepoResourceType = rt({
   id: "artifact-registry-repo",
   iconKey: "container-registry",
   description: "A Google Artifact Registry repository",
+  equivalence: [
+    {
+      category: "container-registry",
+      when: { fieldKey: "format", oneOf: ["DOCKER"] },
+      createFields: { format: "DOCKER" },
+    },
+  ],
   fields: [
     f("name", "Name"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("format", "Format", {
       showcase: true,
       kind: "enum",

@@ -13,7 +13,13 @@ export const CronJobResourceType = rt({
       required: false,
       description: "namespace/name, as referenced by the Jobs it spawns",
     }),
-    f("schedule", "Schedule", { showcase: true, required: false }),
+    f("schedule", "Schedule", { showcase: true, required: false, schedule: "cron" }),
+    f("timeZone", "Time Zone", {
+      required: false,
+      schedule: "timezone",
+      description:
+        "IANA zone the schedule is read in (spec.timeZone). Empty means the controller manager's local zone, usually UTC.",
+    }),
     f("suspended", "Suspended", { required: false }),
     f("lastSchedule", "Last Schedule", { required: false }),
   ],

@@ -49,7 +49,8 @@ const CATALOGUE_TTL_MS = 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 2000;
 const configCache = new Map<string, { at: number; value: Promise<CreateResourceConfig | null> }>();
 
-function cachedCreateConfig(
+/** A type's create config for an account, through the shared hour-long cache. */
+export function cachedCreateConfig(
   organizationId: string,
   accountId: string,
   typeId: string,

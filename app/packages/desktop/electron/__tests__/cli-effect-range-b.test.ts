@@ -317,30 +317,48 @@ describe("metrics", () => {
       (_, i) => !(lines[i - 1]?.includes("└") || lines[i - 1]?.includes("(no data points)")),
     );
     expect(withoutAxis.join("\n")).toMatchInlineSnapshot(`
-      "CPU % min 10.0 %  max 55.0 %  now 30.0 %
-      55.0 % ┤ █ 
-             ┤ █ 
-             ┤ █ 
-      27.5 % ┤ █▇
-             ┤ ██
-             ┤▂██
-      0.00 % ┤███
-             └──────────────────────────────────────────────────────────────────
+      "CPU % min 10%  max 55%  now 30%
+        55% ┤ █ 
+            ┤ █ 
+            ┤ █ 
+      27.5% ┤ █▇
+            ┤ ██
+            ┤▂██
+         0% ┤███
+            └──────────────────────────────────────────────────────────────────
 
-      Network in min 2048 B/s  max 2048 B/s  now 2048 B/s
-      2048 B/s ┤█
-               ┤█
-               ┤█
-      1024 B/s ┤█
-               ┤█
-               ┤█
-      0.00 B/s ┤█
-               └──────────────────────────────────────────────────────────────────
+      Network in min 2K B/s  max 2K B/s  now 2K B/s
+      2K B/s ┤█
+             ┤█
+             ┤█
+      1K B/s ┤█
+             ┤█
+             ┤█
+       0 B/s ┤█
+             └──────────────────────────────────────────────────────────────────
 
       Empty
       (no data points)
       "
     `);
+  });
+
+  it("scales a byte series the way the app does (#1354)", async () => {
+    const memory = {
+      label: "Memory",
+      unit: "bytes",
+      points: [
+        { timestamp: 1, value: 1_073_741_824 },
+        { timestamp: 2, value: 2_303_368_539 },
+      ],
+    };
+    serveRoutes(out, { "GET /accounts": ACCOUNTS, [path]: { series: [memory] } });
+    expect(await run("metrics", ID, "--last", "6h")).toBe(0);
+    const lines = out.stdout.split("\n");
+    expect(lines[0]).toBe("Memory min 1.00 GiB  max 2.15 GiB  now 2.15 GiB");
+    expect(lines[1]).toMatch(/^2\.15 GiB ┤/);
+    expect(lines[7]).toMatch(/^0\.00 GiB ┤/);
+    expect(out.stdout).not.toMatch(/\d{7,}/);
   });
 
   it("filters by --series and prints JSON", async () => {

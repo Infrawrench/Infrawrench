@@ -95,7 +95,7 @@ export interface NfJob {
   createdAt?: string;
   billing?: { deploymentPlan?: string; buildPlan?: string };
   settings?: {
-    cron?: { schedule?: string; concurrencyPolicy?: string };
+    cron?: { schedule?: string; timeZone?: string; concurrencyPolicy?: string };
     backoffLimit?: number;
     activeDeadlineSeconds?: number;
   };

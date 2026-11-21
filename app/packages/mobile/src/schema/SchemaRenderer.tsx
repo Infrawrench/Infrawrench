@@ -295,12 +295,10 @@ function MetricChartView({ node }: { node: MetricChartNode }) {
 }
 
 function formatValue(v: number, unit?: string): string {
-  // Byte-valued series ("bytes", "bytes/s") get humanized to KiB/MiB/GiB:
-  // see MetricChart.tsx (the DOM counterpart) for why the raw number is
-  // unreadable. Everything else keeps mobile's existing rounding.
-  if (unit === "bytes" || unit === "bytes/s") return createMetricValueFormatter(unit, v)(v);
-  const rounded = v >= 100 ? Math.round(v).toString() : v.toPrecision(3);
-  return unit ? `${rounded} ${unit}` : rounded;
+  // The same formatter as MetricChart.tsx (the DOM counterpart): bytes
+  // humanized to KiB/MiB/GiB, large values compact ("10M tokens"), and a
+  // space before word units but not before "%".
+  return createMetricValueFormatter(unit ?? "", v)(v);
 }
 
 function TableView({ node }: { node: TableNode }) {

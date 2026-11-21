@@ -5,7 +5,7 @@ description: Set threshold rules on collected metrics, like "CPU above 90% for 1
 
 Metric alerts turn the metrics on your dashboards into notifications. Write a rule like **"CPU % > 90 for 15 minutes"** and it watches every resource it covers. Once the condition has held for the whole window, you get a push notification, a Slack message or a Teams card (whichever you've set up). When the metric drops back, every alert you were told about is followed by a **resolved** notification, so your alert channel shows both halves of the story. (Alerts held back by the rule's cooldown also recover quietly. See below.)
 
-<insert [The Metric alerts page showing a list of rules: one firing (warning triangle, "firing on 2 resources"), one healthy, one disabled, above the Recent firings table] here>
+![The Metric alerts page showing a list of rules: one firing (warning triangle, "firing on 2 resources"), one healthy, one disabled, above the Recent firings table](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/rules-list.png)
 
 Find it under **Alerts** in the sidebar, next to Costs, in the web and desktop apps. The `infrawrench` [CLI](./cli.md) shows the same rules and their history with `infrawrench alerts` and `infrawrench alerts events`.
 

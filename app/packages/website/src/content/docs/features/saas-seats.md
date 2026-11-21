@@ -20,7 +20,7 @@ Each finding shows its monthly saving, the commands to fix it from a terminal an
 
 Open **Costs** in the sidebar, go to the **Savings** tab, and find **Seats**. A line at the top totals what the findings would save and what all your seats cost. Each row shows who holds the seat, the product and tier, the account, why it was flagged, when the seat was last used and how that was worked out, and the monthly saving. **Show all seats** lists every seat Infrawrench found, flagged or not.
 
-<insert [Costs page Savings tab showing the Seats section: the "To save $327/mo · Seats cost $2,140/mo" line, an inactive Copilot Business row "No use in 30+ days" with $19/mo list price and Remediate / Remove seat buttons, a duplicate Cursor row "Also has GitHub Copilot on acme-org, used more recently", and the "Flag seats unused for 30 days" control] here>
+![Costs page Savings tab showing the Seats section: the "To save $78/mo · Seats cost $2,140/mo" line, two inactive Copilot Business rows "No use in 30+ days" with $19/mo list price and Remediate / Remove seat buttons, a duplicate Cursor row "Also has GitHub Copilot on northwind-labs, used more recently", and the "Flag seats unused for 30 days" control](https://agent-assets.infrawrench.com/docs-screenshots/features/saas-seats/seats-section.png)
 
 You can also see the list:
 

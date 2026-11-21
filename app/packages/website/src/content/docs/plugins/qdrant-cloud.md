@@ -29,7 +29,7 @@ Collections need a database API key, not the management key. Run **Connect Infra
 - **Cloud Management Key**: in the Qdrant Cloud console, open **Access Management**, then **Cloud Management Keys**, and create a key. Its role needs read and write access to clusters, backups, database API keys and hybrid cloud environments. Add `read:payment_information` for costs and credits. A database API key won't work here.
 - **Account**: pick it from the accounts the key can see.
 
-<insert [Qdrant Cloud Add-account form with the management key entered and the account picker open] here>
+![Qdrant Cloud Add-account form with the management key entered and an account chosen in the Account picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/qdrant-cloud/add-account.png)
 
 ## Costs, credits and quotas
 
@@ -37,7 +37,7 @@ You see the same spend as Qdrant's billing page: one row per cluster and billabl
 
 Prepaid credit contracts appear on the [credit burndown](../features/credit-burndown.md) page with what's left. The account's cluster limit, the per-cluster node limit and the per-cluster database key limit appear on the [quota radar](../features/quota-radar.md).
 
-<insert [Cost explorer filtered to a Qdrant Cloud account, grouped by service] here>
+![Cost explorer filtered to a Qdrant Cloud account, grouped by service](https://agent-assets.infrawrench.com/docs-screenshots/plugins/qdrant-cloud/cost-by-service.png)
 
 ## Metrics, logs and status
 
@@ -47,7 +47,7 @@ Qdrant Cloud's [status page](https://status.qdrant.io) feeds [provider status](.
 
 You can put clusters on a [sleep schedule](../features/sleep-schedules.md): stopping suspends them, starting resumes them.
 
-<insert [Qdrant Cloud cluster detail page showing nodes, firing alerts and the Resize action] here>
+![Qdrant Cloud cluster detail page showing nodes, firing alerts and the Resize action](https://agent-assets.infrawrench.com/docs-screenshots/plugins/qdrant-cloud/cluster-detail.png)
 
 ## Terraform
 

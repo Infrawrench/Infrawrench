@@ -1,5 +1,6 @@
-import { useMemo, type ReactNode } from "react";
-import { IssueFilingProvider, PaletteHostProvider } from "@infrawrench/ui";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { createLiveWatcher } from "@infrawrench/client-core";
+import { IssueFilingProvider, LiveUpdatesProvider, PaletteHostProvider } from "@infrawrench/ui";
 import { PermissionsProvider, usePermissions } from "@/auth/permissions-context";
 import { apiGet, apiPost } from "@/lib/api";
 import { createWebPaletteClient } from "@/lib/palette-client";
@@ -36,11 +37,32 @@ export function OrgProviders({ orgId, children }: { orgId: string | null; childr
 
   return (
     <PermissionsProvider orgId={orgId}>
-      <PaletteHost orgId={orgId}>
-        <IssueFiling orgId={orgId}>{children}</IssueFiling>
-      </PaletteHost>
+      <LiveUpdates orgId={orgId}>
+        <PaletteHost orgId={orgId}>
+          <IssueFiling orgId={orgId}>{children}</IssueFiling>
+        </PaletteHost>
+      </LiveUpdates>
     </PermissionsProvider>
   );
+}
+
+/**
+ * One live-update watcher for the org (client-core `live.ts`): every panel's
+ * `useLiveRefresh` shares it, and with it one Neon Realtime connection.
+ */
+function LiveUpdates({ orgId, children }: { orgId: string; children: ReactNode }) {
+  const watcher = useMemo(
+    () =>
+      createLiveWatcher((topic, params) =>
+        apiPost<unknown>(`/api/org/${encodeURIComponent(orgId)}/live/tickets`, {
+          topic,
+          ...params,
+        }),
+      ),
+    [orgId],
+  );
+  useEffect(() => () => watcher.close(), [watcher]);
+  return <LiveUpdatesProvider watcher={watcher}>{children}</LiveUpdatesProvider>;
 }
 
 /**

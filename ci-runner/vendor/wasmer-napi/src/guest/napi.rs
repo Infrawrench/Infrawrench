@@ -638,6 +638,32 @@ fn guest_unofficial_napi_request_interrupt(
     let env_handle = snapi_env(&env, napi_env);
     let callback_id = if callback > 0 { callback as u32 } else { 0 };
     let data_val = if data > 0 { data as u32 } else { 0 };
+    // iwci patch: an env another thread's store owns, as for termination
+    // above. A parent asks each of its workers for its part of
+    // `process.report.getReport()` this way (and for heap statistics, CPU
+    // use and profiles), and the request was refused, so a worker blocked in
+    // `Atomics.wait` (rolldown's WebAssembly threads, mid-build) never
+    // answered and the parent waited for good. V8's `RequestInterrupt` is
+    // thread-safe and wakes a futex wait to run the callback; the callback
+    // re-enters the target's own guest on the target's thread, through the
+    // callback context that thread has lent (`WasmInterruptCallback`). The
+    // registry lock keeps the target alive for the call.
+    if env_handle.is_null() {
+        if napi_env <= 0 || callback_id == 0 {
+            return Ok(1);
+        }
+        return Ok(env
+            .data()
+            .with_control_env(napi_env as u32, |target| unsafe {
+                snapi_bridge_unofficial_request_interrupt(
+                    target,
+                    napi_env as u32,
+                    callback_id,
+                    data_val,
+                )
+            })
+            .unwrap_or(1));
+    }
     with_cb_context(&mut env, napi_env, || unsafe {
         snapi_bridge_unofficial_request_interrupt(
             env_handle,

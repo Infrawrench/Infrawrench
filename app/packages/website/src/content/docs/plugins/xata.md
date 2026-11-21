@@ -19,7 +19,7 @@ Connect a Xata account to manage its Postgres projects and branches. This is the
 - **API keys**: create organization keys with scopes and an optional project restriction and expiry (the token is shown once), see when each was last used, and delete them.
 - **Members** (switch between Admin and Editor, remove) and **invitations** (invite, resend, cancel).
 
-<insert [Xata branch detail page showing status, instance type and the Hibernate, Rotate credentials and Change instance type actions] here>
+![Xata branch detail page showing status, instance type and the Hibernate, Rotate credentials and Change instance type actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/xata/branch-detail.png)
 
 ## Connect your account
 
@@ -30,7 +30,7 @@ Create an **organization API key** in the Xata console (`console.xata.io`, **API
 - `metrics:read` and `logs:read` for the Metrics and Logs tabs,
 - `keys:read`/`keys:write` and `role:read`/`role:write` to manage API keys and members.
 
-<insert [Xata Add-account form with the API Key field filled in and the permission checklist below it] here>
+![Xata Add-account form with the API Key field filled in and the permission checklist below it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/xata/add-account-checklist.png)
 
 ## SQL and connections
 

@@ -97,3 +97,6 @@ export const DQL_TABLES: SqlTableMeta[] = [
 ].map((name) => ({ name, columns: [] }));
 
 export const DEFAULT_DQL = "fetch logs\n| sort timestamp desc\n| limit 100";
+
+/** What clicking a data object in the editor's sidebar runs; `{table}` is its name. */
+export const DQL_TABLE_QUERY = "fetch {table}\n| limit 100";

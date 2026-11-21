@@ -1,0 +1,87 @@
+diff --git a/src/internal_binding/binding_fs.cc b/src/internal_binding/binding_fs.cc
+index 6f015056..95c134ec 100644
+--- a/src/internal_binding/binding_fs.cc
++++ b/src/internal_binding/binding_fs.cc
+@@ -4848,12 +4848,12 @@ napi_value InitFs(napi_env env) {
+                       "StatWatcher",
+                       StatWatcherCtor,
+                       {
+-                          {"start", nullptr, StatWatcherStart, nullptr, nullptr, nullptr, napi_default, nullptr},
+-                          {"close", nullptr, StatWatcherClose, nullptr, nullptr, nullptr, napi_default, nullptr},
+-                          {"ref", nullptr, StatWatcherRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-                          {"unref", nullptr, StatWatcherUnref, nullptr, nullptr, nullptr, napi_default, nullptr},
+-                          {"hasRef", nullptr, StatWatcherHasRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-                          {"getAsyncId", nullptr, StatWatcherGetAsyncId, nullptr, nullptr, nullptr, napi_default,
++                          {"start", nullptr, StatWatcherStart, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++                          {"close", nullptr, StatWatcherClose, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++                          {"ref", nullptr, StatWatcherRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++                          {"unref", nullptr, StatWatcherUnref, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++                          {"hasRef", nullptr, StatWatcherHasRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++                          {"getAsyncId", nullptr, StatWatcherGetAsyncId, nullptr, nullptr, nullptr, napi_default_method,
+                            nullptr},
+                       },
+                       &state.stat_watcher_ctor_ref);
+diff --git a/src/internal_binding/binding_fs_event_wrap.cc b/src/internal_binding/binding_fs_event_wrap.cc
+index 2123e692..c32a0787 100644
+--- a/src/internal_binding/binding_fs_event_wrap.cc
++++ b/src/internal_binding/binding_fs_event_wrap.cc
+@@ -370,12 +370,12 @@ napi_value InitFsEventWrap(napi_env env) {
+   if (napi_create_object(env, &out) != napi_ok || out == nullptr) return Undefined(env);
+ 
+   napi_property_descriptor methods[] = {
+-      {"start", nullptr, FsEventStart, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"close", nullptr, FsEventClose, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"ref", nullptr, FsEventRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"unref", nullptr, FsEventUnref, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"hasRef", nullptr, FsEventHasRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"getAsyncId", nullptr, FsEventGetAsyncId, nullptr, nullptr, nullptr, napi_default, nullptr},
++      {"start", nullptr, FsEventStart, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"close", nullptr, FsEventClose, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"ref", nullptr, FsEventRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"unref", nullptr, FsEventUnref, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"hasRef", nullptr, FsEventHasRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"getAsyncId", nullptr, FsEventGetAsyncId, nullptr, nullptr, nullptr, napi_default_method, nullptr},
+       {"initialized", nullptr, nullptr, FsEventGetInitialized, nullptr, nullptr, napi_default, nullptr},
+       {"owner",
+        nullptr,
+diff --git a/src/internal_binding/binding_worker.cc b/src/internal_binding/binding_worker.cc
+index fafdb227..e5ce8443 100644
+--- a/src/internal_binding/binding_worker.cc
++++ b/src/internal_binding/binding_worker.cc
+@@ -1862,21 +1862,21 @@ napi_value WorkerImplTakeHeapSnapshot(napi_env env, napi_callback_info info) {
+ 
+ napi_value CreateWorkerCtor(napi_env env) {
+   static constexpr napi_property_descriptor kProps[] = {
+-      {"startThread", nullptr, WorkerImplStartThread, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"stopThread", nullptr, WorkerImplStopThread, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"hasRef", nullptr, WorkerImplHasRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"ref", nullptr, WorkerImplRef, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"unref", nullptr, WorkerImplUnref, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"getResourceLimits", nullptr, WorkerImplGetResourceLimits, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"loopStartTime", nullptr, WorkerImplLoopStartTime, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"loopIdleTime", nullptr, WorkerImplLoopIdleTime, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"takeHeapSnapshot", nullptr, WorkerImplTakeHeapSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"getHeapStatistics", nullptr, WorkerImplGetHeapStatistics, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"cpuUsage", nullptr, WorkerImplCpuUsage, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"startCpuProfile", nullptr, WorkerImplStartCpuProfile, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"stopCpuProfile", nullptr, WorkerImplStopCpuProfile, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"startHeapProfile", nullptr, WorkerImplStartHeapProfile, nullptr, nullptr, nullptr, napi_default, nullptr},
+-      {"stopHeapProfile", nullptr, WorkerImplStopHeapProfile, nullptr, nullptr, nullptr, napi_default, nullptr},
++      {"startThread", nullptr, WorkerImplStartThread, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"stopThread", nullptr, WorkerImplStopThread, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"hasRef", nullptr, WorkerImplHasRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"ref", nullptr, WorkerImplRef, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"unref", nullptr, WorkerImplUnref, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"getResourceLimits", nullptr, WorkerImplGetResourceLimits, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"loopStartTime", nullptr, WorkerImplLoopStartTime, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"loopIdleTime", nullptr, WorkerImplLoopIdleTime, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"takeHeapSnapshot", nullptr, WorkerImplTakeHeapSnapshot, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"getHeapStatistics", nullptr, WorkerImplGetHeapStatistics, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"cpuUsage", nullptr, WorkerImplCpuUsage, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"startCpuProfile", nullptr, WorkerImplStartCpuProfile, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"stopCpuProfile", nullptr, WorkerImplStopCpuProfile, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"startHeapProfile", nullptr, WorkerImplStartHeapProfile, nullptr, nullptr, nullptr, napi_default_method, nullptr},
++      {"stopHeapProfile", nullptr, WorkerImplStopHeapProfile, nullptr, nullptr, nullptr, napi_default_method, nullptr},
+   };
+   napi_value ctor = nullptr;
+   if (napi_define_class(env,

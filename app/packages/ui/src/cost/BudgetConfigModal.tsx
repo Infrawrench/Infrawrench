@@ -28,8 +28,16 @@ import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js"
 import type { BudgetWithStatus, CostApi } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
-const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/**
+ * A text field with no width of its own, for inline rows that size it
+ * (`w-20`, `w-32`). Width utilities do not override each other by their order
+ * in the class string, only by their order in the stylesheet, where `w-full`
+ * comes after them: adding one to `inputClass` does nothing.
+ */
+const fieldClass =
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
+/** A full-width text field. */
+const inputClass = `w-full ${fieldClass}`;
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 // Shared with mobile, which authors the same budgets without this package.
@@ -346,7 +354,7 @@ export function BudgetConfigModal({
                 <div key={i} className="flex items-center gap-2">
                   <select
                     aria-label={gt("Threshold type")}
-                    className={`${inputClass} w-32`}
+                    className={`${fieldClass} w-32`}
                     value={t.type}
                     onChange={(e) =>
                       set({
@@ -367,7 +375,7 @@ export function BudgetConfigModal({
                     type="number"
                     min={1}
                     max={1000}
-                    className={`${inputClass} w-20`}
+                    className={`${fieldClass} w-20`}
                     value={t.percent}
                     onChange={(e) =>
                       set({
@@ -672,7 +680,7 @@ function BudgetPeriodField({
             type="number"
             min={1}
             max={BUDGET_LIMITS.maxInterval}
-            className={`${inputClass} w-20`}
+            className={`${fieldClass} w-20`}
             value={value.interval}
             onChange={(e) =>
               onChange({
@@ -686,7 +694,7 @@ function BudgetPeriodField({
           />
           <select
             aria-label={gt("Period unit")}
-            className={`${inputClass} w-32`}
+            className={`${fieldClass} w-32`}
             value={value.unit}
             onChange={(e) => onChange({ ...value, unit: e.target.value as BudgetPeriodUnit })}
           >
@@ -700,7 +708,7 @@ function BudgetPeriodField({
           <input
             aria-label={gt("Start date")}
             type="date"
-            className={`${inputClass} w-40`}
+            className={`${fieldClass} w-40`}
             value={value.startDate}
             onChange={(e) => onChange({ ...value, startDate: e.target.value })}
           />
@@ -714,7 +722,7 @@ function BudgetPeriodField({
               <input
                 aria-label={gt("Period start")}
                 type="date"
-                className={`${inputClass} w-36`}
+                className={`${fieldClass} w-36`}
                 value={p.start}
                 onChange={(e) =>
                   onChange({
@@ -729,7 +737,7 @@ function BudgetPeriodField({
               <input
                 aria-label={gt("Period end")}
                 type="date"
-                className={`${inputClass} w-36`}
+                className={`${fieldClass} w-36`}
                 value={p.end}
                 onChange={(e) =>
                   onChange({
@@ -745,7 +753,7 @@ function BudgetPeriodField({
                 type="number"
                 min={0}
                 step={usage ? "any" : "0.01"}
-                className={`${inputClass} w-28`}
+                className={`${fieldClass} w-28`}
                 value={
                   usage
                     ? (p.usageAmount ?? "")

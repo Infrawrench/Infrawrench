@@ -96,7 +96,7 @@ infrawrench orphans --org <org-id>  # pick an organization explicitly
 
 `--json` includes `unownedCount` alongside `totalCount`, and an `owner` object on each flagged resource (`null` when nobody owns it), so you can script things like "open a ticket for every unowned orphan". Local scans include `"costBasis": "unavailable"` and `"costWindowDays": 0`, so a script can tell "nothing was spent" apart from "spend is unknown".
 
-<insert [Terminal showing `infrawrench orphans` text output: account headings with flagged resource rows, reasons, and a cost column] here>
+![Terminal showing `infrawrench orphans` text output: account headings with flagged resource rows, reasons, and a cost column](https://agent-assets.infrawrench.com/docs-screenshots/features/orphan-finder/cli-orphans.png)
 
 ## Oversized machines
 

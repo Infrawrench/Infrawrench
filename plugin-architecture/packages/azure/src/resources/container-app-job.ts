@@ -12,7 +12,7 @@ export const ContainerAppJobResourceType = rt({
     f("environment", "Environment", { showcase: true }),
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("triggerType", "Trigger", { kind: "enum", enumValues: ["Manual", "Schedule", "Event"] }),
-    f("cronExpression", "Schedule (cron)", { required: false }),
+    f("cronExpression", "Schedule (cron)", { required: false, schedule: "cron" }),
     f("image", "Image", { showcase: true, required: false }),
     f("cpu", "CPU (cores)", { kind: "number", required: false }),
     f("memory", "Memory", { required: false }),

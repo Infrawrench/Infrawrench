@@ -52,7 +52,7 @@ Fixed-amount rules appear as their own invoice lines rather than being folded in
 
 The **Pricing** section of the customer editor controls how this customer's usage is priced beyond your billing rules. Like every rule, it only applies to invoices and **never changes your collected spend**. Every line still shows what the providers charged next to what the customer is billed.
 
-<insert [The customer editor's Pricing section with "Re-rate usage to the providers' public on-demand list prices" ticked, a 5% fallback uplift and one per-service uplift, discounts set to Retain and credits to Pass through partly at 50%, and the preview's re-rating coverage bar underneath] here>
+![The customer editor's Pricing section with "Re-rate usage to the providers' public on-demand list prices" ticked, a 5% fallback uplift and one per-service uplift, discounts set to Retain and credits to Pass through partly at 50%, and the preview's re-rating coverage bar underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/customer-pricing.png)
 
 ### Re-rating to public pricing
 
@@ -98,7 +98,7 @@ Open **Invoices > Billing profiles > New profile**. A profile has:
 | **Bank details**            | Account name, bank, IBAN, SWIFT/BIC, account and routing number for banks without IBANs, and free-text remittance instructions |
 | **Numbering and layout**    | Number prefix, whether the number includes the year, the first number, a footer, and a logo (PNG or JPEG, up to 100 KB)        |
 
-<insert [The billing profile editor with a legal name, a VAT number, one To address, net 30 terms, a 19% VAT line, an IBAN and a logo filled in, and the "Numbers look like EU-2026-0100" hint under the numbering fields] here>
+![The billing profile editor with a legal name, a VAT number, one To address, net 30 terms, a 19% VAT line, an IBAN and a logo filled in, and the "Numbers look like EU-2026-0100" hint under the numbering fields](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/billing-profile-editor.png)
 
 Assign it to a customer with the **Billing profile** picker in the customer editor.
 
@@ -183,7 +183,7 @@ A customer who can't reconcile an invoice won't pay it, so every line shows the 
 
 **Download PDF** gives you the document a customer files: your logo, the addressee from the billing profile, the lines, the subtotal, each tax line, the total due, issue and due dates, the PO number, and the bank details, with the profile's footer on every page. It shows the price, not the breakdown. The collected versus adjusted split is in the CSV. A draft's PDF says **Draft invoice** across the top.
 
-<insert [A downloaded invoice PDF showing a logo top left, "INVOICE" and its number top right, the Bill to block with a VAT number, the dates and PO number, two lines, a subtotal, a VAT line, the total due, and the payment section with an IBAN] here>
+![A downloaded invoice PDF showing a logo top left, "INVOICE" and its number top right, the Bill to block with a VAT number, the dates and PO number, two lines, a subtotal, a VAT line, the total due, and the payment section with an IBAN](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/invoice-pdf.png)
 
 **Download CSV** gives you the breakdown as a file: every column above, the totals, and the addressee, tax ID, PO number, issue date, due date and payment terms on every row. It uses the same RFC 4180 quoting as [scheduled cost exports](./cost-exports.md), so customers who already import those need nothing new.
 
@@ -232,7 +232,7 @@ Adding a dozen new accounts to an existing customer, or splitting one customer i
 
 The preview prices the move over a period (the last full month by default; change the dates to see another). For each item it shows who bills it now and the spend that moves with it: a cost centre's spend **including everything under it**, and an account's spend **that no cost centre already claims**. Below that, it shows how much leaves each customer, how many draft invoices will change, and warns you if a cost centre sits under another customer's centre (its spend would be billed to both).
 
-<insert [The Assign cost centres and accounts modal with "Contoso" chosen as the target, three accounts ticked (one currently on "Northwind"), and the preview listing each item's spend, "£1,240.00 moves from Northwind to Contoso" and "2 draft invoices will change"] here>
+![The Assign cost centres and accounts modal with "Contoso" chosen as the target, three accounts ticked (one currently on "Fabrikam"), and the preview listing each item's spend, "£1,240.00 moves from Fabrikam to Contoso" and "2 draft invoices will change"](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/bulk-assign-preview.png)
 
 Everything moves at once, and each item is taken off its old customer as it's given to the new one, so the same money never ends up on two customers. Only drafts change. Approved invoices keep their own copy of what they cover, so moving an account can't re-bill a period you've already invoiced.
 
@@ -244,7 +244,7 @@ Rows are worked out the same way as invoices: your allocation rules assign spend
 
 Pick a customer in a row's **Assign to…** box to open the preview with that row selected, or tick several rows and use **Assign selected**. A row reading **Not attributable to a connected account** is spend from an account that's since been removed, or uploaded costs with no account, and can't be assigned to a customer.
 
-<insert [The Unassigned spend view for last month showing "£3,410.00 unassigned, of £48,200.00 in total", a table of four rows (two cloud accounts, a cost centre and one "Not attributable to a connected account" row) with checkboxes and an "Assign to…" picker on each] here>
+![The Unassigned spend view for last month showing "£3,410.00 unassigned, of £48,200.00 in total", a table of four rows (two cloud accounts, a cost centre and one "Not attributable to a connected account" row), with a checkbox and an "Assign to…" picker on each assignable row](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/unassigned-spend.png)
 
 When last month has unassigned spend, a banner above your customers says how much and across how many cost centres and accounts, with a **Review** button.
 

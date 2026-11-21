@@ -69,9 +69,9 @@ These options are in the graph editor on web, desktop and mobile. They are saved
 
 Forecasts, scenarios, billing rules and unit costs only apply to money, so they are switched off for the usage and count measures. A usage or count card says under its title what it measures, so a number with no currency sign is never mistaken for dollars.
 
-<insert [Cost graph editor with Measure set to Usage quantity, the Usage unit list open showing provider units such as Hrs and GB-Mo, Binning set to Quarterly with the disabled Hourly option and its explanation visible] here>
+![Cost graph editor with Measure set to Usage quantity and the Usage unit picker set to Hrs, Binning set to Quarterly, and the "Hourly is unavailable: your providers only report daily spend" explanation under Binning](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-usage-measure.png)
 
-<insert [A dashboard cost card in Table view, quarterly bins, grouped by service with Count as the measure, showing the "Distinct values with nonzero cost per bin" caption under the title] here>
+![A dashboard cost card in Table view, quarterly bins, grouped by service with Count as the measure, showing the "Distinct values with nonzero cost per bin" caption under the title](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/table-count-quarterly.png)
 
 ### Annotations
 
@@ -123,7 +123,7 @@ value     := 'text'            for = and !=
 - In the rows editor, a text operator swaps the value picker for a box you type into (press Enter after each value). Values from your spend are suggested as you type, and the row tells you how many of them your text matches.
 - An empty text value is refused, because it would match everything. So is a `~=` value made only of spaces, underscores and hyphens. Use `IS NOT SET` for "has no value".
 
-<insert [Cost graph filter rows with one row set to tag env "is like" Prod_Env, showing the typed value chip and the "Matches 3 known values" hint underneath] here>
+![Cost graph filter rows with one row set to tag env "is like" Prod_Env, showing the typed value chip and the "Matches 3 known values" hint underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/filter-is-like.png)
 
 ### Examples
 
@@ -332,7 +332,7 @@ You choose between two sources.
 
 The Currency page also shows the latest ECB publication and, if the last daily fetch failed, the error. A failed fetch never removes stored rates. Every converted figure names the date of the rate it used, so a stale rate is easy to spot.
 
-<insert [Settings → Currency page with automatic exchange rates turned on, the end-of-month basis selected, the latest ECB publication date and covered currencies listed, and a stated EUR to USD rate with an end date in the table below] here>
+![Settings → Currency page with automatic exchange rates turned on, the end-of-month basis selected, the latest ECB publication date and covered currencies listed, and a stated EUR to USD rate with an end date in the table below](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-auto-rates.png)
 
 Adding or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Viewing the rates only needs `costs:read`, so anyone who can see a converted total can see how it was calculated.
 
@@ -366,7 +366,7 @@ If any row has an error, nothing is saved unless you tick **Skip the rows with e
 
 **Uploaded rates work exactly like rates you type.** They win over automatic rates for every day they cover. A `billing_period` row (or one with an `effective_to`) only covers its own days. After that, conversion goes back to the next stated rate, or the automatic rate if that's on. That's usually what a month-end close means, and it stops an old close rate carrying forward for months.
 
-<insert [Settings → Currency page with an uploaded CSV previewed under the rate table: a summary line reading 12 new, 2 replace a stored rate, 0 unchanged, 1 with errors, the per-row table with one Error row naming its line, and the Skip the rows with errors checkbox next to the Import button] here>
+![Settings → Currency page with an uploaded CSV previewed under the rate table: a summary line reading 12 new, 2 replace a stored rate, 0 unchanged, 1 with errors, the per-row table with one Error row naming its line, and the Skip the rows with errors checkbox next to the Import button](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-csv-import-preview.png)
 
 From a terminal:
 
@@ -390,7 +390,7 @@ If your data includes a currency with no rate, Infrawrench does **not** leave it
 
 The same goes for a currency with a rate for only part of the range. If any day has no stated or automatic rate, that currency is left unconverted for the whole range rather than half-converted. Add a stated rate covering those days, or turn on automatic rates, to include it.
 
-<insert [Costs panel showing a converted USD total with the neutral "Amounts are converted to USD" notice listing EUR at 1.0850, and below it the amber "Spend in SEK is not included in the USD figure" notice] here>
+![Costs panel showing a converted USD total with the neutral "Amounts are converted to USD" notice listing EUR at 1.085, and below it the amber "Spend in SEK is not included in the USD figure" notice](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-conversion-notices.png)
 
 ### Budgets and currency
 
@@ -440,7 +440,7 @@ Set a budget's **Measure** to **Usage quantity** to limit a quantity instead of 
 
 Usage quantities come from providers that report them (OpenRouter requests, Cloudflare consumed units, Hetzner, ElevenLabs and Cartesia credits, Speechmatics hours, among others) and from [cost rows you push](./server-push.md) with `usageAmount` and `usageUnit`. Usage budgets don't support scenario models or billing rules, since both adjust money.
 
-<insert [The budget editor with Measure set to Usage quantity, the usage unit picker open listing tokens, Requests and GB, and an amount per period filled in] here>
+![The budget editor with Measure set to Usage quantity, the usage unit picker set to tokens, and an amount per period filled in](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-usage-measure.png)
 
 ### Budget periods
 
@@ -462,7 +462,7 @@ Pick a **Parent budget** to nest a budget under another. A parent's actual and f
 
 The Costs panel shows budgets as an expandable tree, each level with its own actual and forecast against its own amount. A parent warns you when its children outgrow it: when their amounts for the same period add up to more than the parent's, when together they've already passed it, or when they're forecast to. Parent thresholds alert on the rolled-up figures like any other budget, and the alert says it's a sum of child budgets. A dashboard card for a parent lists its children, collapsed.
 
-<insert [The Costs panel budget tree with a parent budget expanded to show two child budgets, the parent showing the "Child budgets allocate ..." warning] here>
+![The Costs panel budget tree with a parent budget expanded to show two child budgets, the parent showing the "Child budgets allocate ..." warning](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-tree.png)
 
 ### Explain a budget alert
 
@@ -474,7 +474,7 @@ Whoever reads a budget alert usually knows why it fired within minutes ("the Q3 
 
 **Edit note** rewrites the note and updates the same chart marker. Deleting the marker from a chart keeps the note on the alert. A note doesn't silence the budget: later thresholds still fire. Writing a note needs `costs:write` and is recorded in the [audit log](../team-and-billing/audit-log.md) as `budget_alert.note`.
 
-<insert [Costs panel budget card with two fired thresholds this month, one showing a note with its author and date, the other with an Explain link; the Explain this alert dialog open beside it] here>
+![Costs panel budget card with two fired thresholds this month, one showing a note with its author and date, the other with an Explain link](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-alert-notes.png)
 
 From the terminal:
 
@@ -492,7 +492,7 @@ The issue opens prefilled with everything the reader needs: the budget, the peri
 
 Once filed, the alert shows the issue key and its [live status](./jira.md#live-status), so the next person to look at the budget can see who's working on it. The mobile app shows the same issue and status on the budget card. A [routing rule](./alert-routing.md) with the GitHub issues destination can also file budget alerts automatically, one issue per alert. Private budgets are never filed automatically, since their spend would end up in a repository the whole team can read.
 
-<insert [Costs panel budget card with a fired "Actual 100% on Oct 14" threshold showing a filed Jira key OPS-418 with a blue "In Progress" status, next to the Explain link] here>
+![Costs panel budget card with a fired "Actual 100% on 14 Oct" threshold showing a filed Jira key OPS-418 with its "In Progress" status, next to the Explain link](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-alert-jira.png)
 
 Budgets alert on totals you choose. For spend you didn't see coming (a provider or service suddenly billing far above normal, or one that never billed before), see [cost anomaly alerts](./cost-anomaly-alerts.md). They work with no setup and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if they're too loud or too quiet. Anomalies can text the same on-call recipients as budgets, but [only once you turn that on](./cost-anomaly-alerts.md#paging-by-sms).
 

@@ -20,7 +20,7 @@ Infrawrench treats Stripe as part of your infrastructure, not as a payments dash
 - **Report runs**: start a Reporting API report (balance summary, itemized balance changes, payout reconciliation and the rest) by picking a report type and a date range within the data Stripe has. The 100 most recent runs are listed.
 - **Sigma query runs**: runs of your scheduled Sigma queries, with their SQL, data freshness and result file.
 
-<insert [Stripe account overview showing the Balance, Subscriptions and Failing Webhook Deliveries sections] here>
+![Stripe account overview showing the Balance, Subscriptions and Failing Webhook Deliveries sections](https://agent-assets.infrawrench.com/docs-screenshots/plugins/stripe/account-overview.png)
 
 ## Connect your account
 
@@ -33,7 +33,7 @@ A secret key (`sk_…`) works too, but it can do anything in your account. Publi
 
 After you add the account, the credential check tests each area and lists any permission the key is missing. It can also generate the list of permissions to tick for just the features you want.
 
-<insert [Stripe Add-account form with a restricted key entered and the credential check listing one missing permission] here>
+![Stripe Add-account form with a restricted key entered and the credential check listing one missing permission](https://agent-assets.infrawrench.com/docs-screenshots/plugins/stripe/add-account-check.png)
 
 ## Webhook signing secrets
 

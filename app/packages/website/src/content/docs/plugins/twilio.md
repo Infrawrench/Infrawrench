@@ -28,7 +28,7 @@ Connect the **main** account, not a subaccount. The main account's usage include
 
 Regional API keys (Twilio's IE1 and AU1 regions) aren't supported, since account usage, balance and subaccounts live in US1.
 
-<insert [Twilio Add-account form with the Account SID, API Key SID and API Key Secret fields filled in and the Auth Token field left blank] here>
+![Twilio Add-account form with the Account SID, API Key SID and API Key Secret fields filled in and the Auth Token field left blank](https://agent-assets.infrawrench.com/docs-screenshots/plugins/twilio/add-account.png)
 
 ## Costs
 
@@ -46,7 +46,7 @@ With the auth token, up to 100 subaccounts are broken out individually. Spend fr
 
 History goes back two years. The last week can still change while Twilio finalises recent usage.
 
-<insert [Costs page filtered to a Twilio account, grouped by service, showing SMS, Voice and Phone Numbers bars over a month] here>
+![Costs page drilled into a Twilio account, broken down by service, showing SMS, Voice, Phone Numbers, Verify and Lookup bars for the month to date](https://agent-assets.infrawrench.com/docs-screenshots/plugins/twilio/costs-by-service.png)
 
 ## Balance
 
@@ -65,7 +65,7 @@ A usage trigger makes Twilio call a webhook when a usage category crosses a thre
 
 Afterwards, you can only change a trigger's name and webhook. To change the category, threshold or period, delete it and create a new one.
 
-<insert [Create Usage Trigger form with the usage category picker open, Total spend selected, Measure set to Price and Repeats set to Every month] here>
+![Create Usage Trigger form with the usage category picker showing Total spend (all usage) selected, Measure set to Price and Repeats set to Every month](https://agent-assets.infrawrench.com/docs-screenshots/plugins/twilio/create-usage-trigger.png)
 
 ## Unused phone numbers
 

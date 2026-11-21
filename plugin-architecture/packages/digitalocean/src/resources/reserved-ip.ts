@@ -20,11 +20,13 @@ export const ReservedIpResourceType = rt({
   name: "Reserved IP",
   id: "reserved-ip",
   description: "A DigitalOcean reserved IP address (formerly floating IP)",
+  equivalence: "static-ip",
   fields: [
     f("ip", "IP Address", { showcase: true }),
     f("region", "Region", {
       showcase: true,
       description: "Region slug the address is reserved to, e.g. nyc3.",
+      sizing: "region",
     }),
     f("dropletId", "Assigned Droplet", {
       required: false,

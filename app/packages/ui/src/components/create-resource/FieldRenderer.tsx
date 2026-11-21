@@ -311,6 +311,7 @@ export function FieldRenderer({
       {field.kind === "region-picker" && field.regions && (
         <RegionPicker
           regions={field.regions}
+          fieldLabel={gtData(field.label)}
           value={value}
           onChange={onChange}
           {...(field.filterByFieldKey

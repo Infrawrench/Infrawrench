@@ -143,7 +143,7 @@ The detail page lists the forwarding rules (each with **Remove**) and the health
 
 A regional load balancer with no target Droplets and no tag is flagged by the [orphan finder](../features/orphan-finder.md), because DigitalOcean bills every node whether or not anything sits behind it.
 
-<insert [DigitalOcean load balancer detail page showing the Forwarding Rules table, Health Check section and the Add rule / Add Droplets header actions] here>
+![DigitalOcean load balancer detail page showing the Forwarding Rules table, Health Check section and the Add rule / Add Droplets header actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/load-balancer-detail.png)
 
 ## Cloud Firewalls
 
@@ -173,7 +173,7 @@ Apps are listed under their project with the state of the current deployment, th
 - The **Logs** tab shows run, build, deploy and crashed-instance (`RUN_RESTARTED`) logs. Pick the type from the dropdown.
 - The **Metrics** tab charts CPU, memory and restart count per component, plus the app's outbound bandwidth per UTC day (up to 31 days of the selected range).
 
-<insert [DigitalOcean App Platform app detail page showing the Deployments table and the Deploy / Restart / Roll back header actions] here>
+![DigitalOcean App Platform app detail page showing the Deployments table and the Deploy / Restart / Roll back header actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/app-detail.png)
 
 ## Gradient AI Platform & Inference Engine
 
@@ -269,7 +269,7 @@ Dedicated Inference is the always-on GPU version of serverless inference. Use it
 
 When provisioning finishes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are filled in.
 
-<insert [DigitalOcean Dedicated Inference create form showing the GPU size picker with prices] here>
+![DigitalOcean Dedicated Inference create form showing the GPU size picker with prices](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/create-dedicated-inference.png)
 
 ### Batch Inference
 
@@ -283,7 +283,7 @@ For the rest of the DigitalOcean API (`/v2/...`), keep using the personal access
 
 The detail page shows **Name**, **Created By** and **Created**, with **Refresh** and delete. DigitalOcean doesn't report when a key was last used. There's no secret to reveal; the key only exists in Model Studio. Don't confuse these with **Agent API Keys**, which do show a secret once.
 
-<insert [DigitalOcean Model API Key detail page showing the Name / Created By / Created details and no secret value] here>
+![DigitalOcean Model API Key detail page showing the Name / Created By / Created details and no secret value](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/model-api-key-detail.png)
 
 ### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
 

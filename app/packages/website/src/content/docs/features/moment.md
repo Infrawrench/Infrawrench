@@ -20,7 +20,7 @@ The moment view answers the real question: **"what changed around 03:14?"** Ente
 
 Every event has a severity, and each row links to where it lives: the resource, the workflow or the provider's incident page.
 
-<insert [Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a failed workflow run in red, resource changes, and an incident-started event] here>
+![Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a failed workflow run with a red warning icon, resource changes, and a provider incident-started event](https://agent-assets.infrawrench.com/docs-screenshots/features/moment/web-moment-timeline.png)
 
 ## Spot provider incidents and bursts
 

@@ -13,7 +13,7 @@ sidebar_order: 26
 3. Type a server name. **Link to this organization** is ticked by default. Below it, tick the most this server may ever give its nibblets. A read-only set (accounts, resources, costs, budgets, dashboards, alerts, incidents, deployments) is ticked to start, and you're only offered permissions you hold yourself.
 4. Choose **Create**.
 
-<insert The Agents create form with Interface set to Nibblets, a server name typed, Link to this organization ticked and the read-only permissions selected here>
+![The Agents create form with Interface set to Nibblets, a server name typed, Link to this organization ticked and the read-only permissions selected](https://agent-assets.infrawrench.com/docs-screenshots/features/nibblets/create-form.png)
 
 Setup installs everything Nibblets needs on the VM without asking you anything (Docker or Podman, Node and Nibblets itself), and the server keeps running after you log out. It takes several minutes. The link credential is handed over in a private file that's deleted once the server has picked it up.
 
@@ -31,7 +31,7 @@ If the VM needs a restart before Nibblets can run, the session log says so and *
 
 The link appears in **Settings > Agent Credentials** under **Connected platforms**. **Linked to this organization** on the session takes you there. In Nibblets, switch Infrawrench on for a nibblet and tick its permissions. Each nibblet becomes its own agent with its own credential and its own name in the audit log. See [agent links](./agent-links.md) for what an agent can and can't do.
 
-<insert An agent session row for a Nibblets server showing "Linked to this organization", Open Nibblets and Authorize server here>
+![An agent session row for a Nibblets server showing "Linked to this organization", Open Nibblets and Authorize server](https://agent-assets.infrawrench.com/docs-screenshots/features/nibblets/session-row.png)
 
 ## Delete the server
 

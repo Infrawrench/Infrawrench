@@ -26,7 +26,7 @@ Entities, policies and conditions are listed from every account the key can acce
 2. In Infrawrench, pick the **Region** your organization uses: US, EU or JP. It's the address you sign in at (`one.newrelic.com`, `one.eu.newrelic.com` or `one.jp.newrelic.com`).
 3. Paste the key. The **Usage Account** picker then lists every account the key can see. Pick the parent (or reporting) account, since New Relic records the usage of all its child accounts there.
 
-<insert [New Relic Add-account form with the region picker, the user key filled in and the Usage Account picker open on the list of accounts] here>
+![New Relic Add-account form with the region picker, the user key filled in and the Usage Account picker set to one of the accounts](https://agent-assets.infrawrench.com/docs-screenshots/plugins/newrelic/add-account.png)
 
 The other fields are the prices used to estimate cost (see below). They start at New Relic's list prices, and you can change them any time with **Edit credentials** on the account.
 

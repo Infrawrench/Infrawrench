@@ -10,8 +10,10 @@ export const ClassicELBResourceType = rt({
   name: "Classic Load Balancer",
   id: "classic-elb",
   description: "An AWS Classic Load Balancer (previous generation ELB)",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("scheme", "Scheme", {
       kind: "enum",
       required: false,

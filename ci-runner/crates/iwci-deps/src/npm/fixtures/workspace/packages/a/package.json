@@ -1,0 +1,11 @@
+{
+  "name": "@fixture/a",
+  "version": "1.0.0",
+  "bin": {
+    "fixture-a": "cli.js",
+    "withbundle": "cli.js"
+  },
+  "dependencies": {
+    "ms": "2.1.3"
+  }
+}

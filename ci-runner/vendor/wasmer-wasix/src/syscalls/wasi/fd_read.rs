@@ -49,7 +49,7 @@ pub fn fd_read<M: MemorySize>(
         ctx = wasi_try_ok!(maybe_snapshot_once::<M>(ctx, SnapshotTrigger::FirstStdin)?);
     }
 
-    let is_socket = matches!(fd_entry.inode.read().deref(), Kind::Socket { .. });
+    let waits_for_signals = waits_for_signals(&fd_entry);
     let res = loop {
         let res = fd_read_internal::<M>(
             &mut ctx,
@@ -61,9 +61,12 @@ pub fn fd_read<M: MemorySize>(
             nread,
             true,
         )?;
-        // A blocking read of a socket that a signal the program does not
-        // see interrupted starts over (`__sock_wait_restarts`).
-        if is_socket && matches!(res, Err(Errno::Intr)) && __sock_wait_restarts(&mut ctx)? {
+        // A blocking read of a socket or a pipe that a signal the program
+        // does not see interrupted starts over (`__sock_wait_restarts`).
+        if waits_for_signals
+            && matches!(res, Err(Errno::Intr))
+            && __sock_wait_restarts(&mut ctx)?
+        {
             continue;
         }
         break res;
@@ -108,17 +111,37 @@ pub fn fd_pread<M: MemorySize>(
         let state = env.state.clone();
         wasi_try_ok!(state.fs.get_fd(fd))
     };
-    let res = fd_read_internal::<M>(
-        &mut ctx,
-        fd,
-        fd_entry,
-        iovs,
-        iovs_len,
-        offset as usize,
-        nread,
-        false,
-    )?;
+    let waits_for_signals = waits_for_signals(&fd_entry);
+    let res = loop {
+        let res = fd_read_internal::<M>(
+            &mut ctx,
+            fd,
+            fd_entry.clone(),
+            iovs,
+            iovs_len,
+            offset as usize,
+            nread,
+            false,
+        )?;
+        if waits_for_signals
+            && matches!(res, Err(Errno::Intr))
+            && __sock_wait_restarts(&mut ctx)?
+        {
+            continue;
+        }
+        break res;
+    };
     fd_read_internal_handler::<M>(ctx, res, nread)
+}
+
+/// Whether a blocking read of `fd_entry` waits in `__sock_wait`, which ends
+/// it with `Errno::Intr` for a signal: a socket, a pipe's read end or a
+/// socket pair.
+fn waits_for_signals(fd_entry: &Fd) -> bool {
+    matches!(
+        fd_entry.inode.read().deref(),
+        Kind::Socket { .. } | Kind::PipeRx { .. } | Kind::DuplexPipe { .. }
+    )
 }
 
 pub(crate) fn fd_read_internal_handler<M: MemorySize>(
@@ -321,6 +344,11 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
 
                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
 
+                    // A blocking read waits in `__sock_wait`, which ends it
+                    // with `Errno::Intr` for a queued signal (the dynamic
+                    // linker's `Sigwakeup` included) and `fd_read` starts it
+                    // over: a thread that waited here without that held up
+                    // every other thread's `dlopen` for good.
                     let res = __asyncify_light(
                         env,
                         if fd_flags.contains(Fdflags::NONBLOCK) {
@@ -328,7 +356,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                         } else {
                             None
                         },
-                        async move {
+                        __sock_wait(env, async move {
                             let mut total_read = 0usize;
 
                             let iovs_arr =
@@ -341,9 +369,12 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                                     .access()
                                     .map_err(mem_error_to_wasi)?;
 
-                                let local_read = match nonblocking {
+                                // Only the first buffer waits: once there is
+                                // data, the rest take what has already arrived.
+                                let local_read = match nonblocking || total_read > 0 {
                                     true => match rx.try_read(buf.as_mut()) {
                                         Some(amt) => amt,
+                                        None if total_read > 0 => break,
                                         None => {
                                             return Err(Errno::Again);
                                         }
@@ -359,7 +390,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                                 }
                             }
                             Ok(total_read)
-                        },
+                        }),
                     );
 
                     let bytes_read = wasi_try_ok_ok!(res?.map_err(|err| match err {
@@ -375,6 +406,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
 
                     let nonblocking = fd_flags.contains(Fdflags::NONBLOCK);
 
+                    // As a pipe's read end, above: a socket pair is one.
                     let res = __asyncify_light(
                         env,
                         if fd_flags.contains(Fdflags::NONBLOCK) {
@@ -382,7 +414,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                         } else {
                             None
                         },
-                        async move {
+                        __sock_wait(env, async move {
                             let mut total_read = 0usize;
 
                             let iovs_arr =
@@ -395,9 +427,10 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                                     .access()
                                     .map_err(mem_error_to_wasi)?;
 
-                                let local_read = match nonblocking {
+                                let local_read = match nonblocking || total_read > 0 {
                                     true => match pipe.try_read(buf.as_mut()) {
                                         Some(amt) => amt,
+                                        None if total_read > 0 => break,
                                         None => {
                                             return Err(Errno::Again);
                                         }
@@ -413,7 +446,7 @@ pub(crate) fn fd_read_internal<M: MemorySize>(
                                 }
                             }
                             Ok(total_read)
-                        },
+                        }),
                     );
 
                     let bytes_read = wasi_try_ok_ok!(res?.map_err(|err| match err {

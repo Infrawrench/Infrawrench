@@ -1,0 +1,112 @@
+diff --git a/src/amaro_version.h b/src/amaro_version.h
+new file mode 100644
+index 00000000..7b433867
+--- /dev/null
++++ b/src/amaro_version.h
+@@ -0,0 +1,5 @@
++// The amaro in deps/amaro, which Node's src/amaro_version.h names too.
++#ifndef SRC_AMARO_VERSION_H_
++#define SRC_AMARO_VERSION_H_
++#define AMARO_VERSION "1.1.5"
++#endif  // SRC_AMARO_VERSION_H_
+diff --git a/src/edge_module_loader.cc b/src/edge_module_loader.cc
+index 3fd5dbb5..ed82a8fc 100644
+--- a/src/edge_module_loader.cc
++++ b/src/edge_module_loader.cc
+@@ -462,9 +462,9 @@ std::string LoadBuiltinsConfigJson(bool has_intl) {
+     std::string body = (newline == std::string::npos) ? raw : raw.substr(newline + 1);
+     ReplaceAll(&body, "\"true\"", "true");
+     ReplaceAll(&body, "\"false\"", "false");
+-    // Edge does not yet implement Amaro/type-stripping, so process.config
+-    // must not advertise it or Node's own tests will take unsupported paths.
+-    ReplaceJsonBooleanOrNumber(&body, "node_use_amaro", false);
++    // Type stripping is Node's own, with its amaro built in, so
++    // process.config says so, as Node's does.
++    ReplaceJsonBooleanOrNumber(&body, "node_use_amaro", true);
+     ReplaceJsonBooleanOrNumber(&body, "node_use_node_code_cache", false);
+     // Edge ships its own ICU-backed encoding support and should advertise that
+     // in the serialized config consumed by bootstrap/node.
+@@ -497,7 +497,7 @@ std::string LoadBuiltinsConfigJson(bool has_intl) {
+                  "false,"
+ #endif
+                  +
+-                 "\"node_use_amaro\":false," +
++                 "\"node_use_amaro\":true," +
+                  "\"node_use_node_code_cache\":false," +
+                  "\"node_builtin_shareable_builtins\":[" +
+                  "\"deps/cjs-module-lexer/lexer.js\"," +
+@@ -2215,7 +2215,6 @@ static napi_value OptionsGetCLIOptionsValuesCallback(napi_env env, napi_callback
+       "--preserve-symlinks-main",
+       "--print",
+       "--report-on-signal",
+-      "--strip-types",
+       "--test",
+       "--test-force-exit",
+       "--test-only",
+@@ -2243,6 +2242,7 @@ static napi_value OptionsGetCLIOptionsValuesCallback(napi_env env, napi_callback
+   };
+   const std::vector<const char*> bool_true = {
+       "--async-context-frame",
++      "--strip-types",
+       "--experimental-detect-module",
+       "--experimental-require-module",
+       "--experimental-repl-await",
+diff --git a/src/edge_process.cc b/src/edge_process.cc
+index 1a462548..00e937ec 100644
+--- a/src/edge_process.cc
++++ b/src/edge_process.cc
+@@ -54,6 +54,7 @@
+ #include "nghttp2/lib/includes/nghttp2/nghttp2ver.h"
+ #include "zstd/lib/zstd.h"
+ #include "acorn_version.h"
++#include "amaro_version.h"
+ #include "cjs_module_lexer_version.h"
+ #include "node_version.h"
+ #include "edge_version.h"
+@@ -599,6 +600,7 @@ bool EnsureProcessConfigVariablesForEdge(napi_env env, napi_value config_obj) {
+   }
+ 
+   const int32_t has_intl = RuntimeHasIntl(env) ? 1 : 0;
++  napi_value use_amaro = nullptr;
+   if (!SetProcessConfigVariableInt(env, variables_obj, "v8_enable_i18n_support", has_intl) ||
+       !SetProcessConfigVariableInt(env,
+                                    variables_obj,
+@@ -616,7 +618,8 @@ bool EnsureProcessConfigVariablesForEdge(napi_env env, napi_value config_obj) {
+ #else
+                                    0) ||
+ #endif
+-      !SetProcessConfigVariableInt(env, variables_obj, "node_use_amaro", 0)) {
++      napi_get_boolean(env, true, &use_amaro) != napi_ok ||
++      napi_set_named_property(env, variables_obj, "node_use_amaro", use_amaro) != napi_ok) {
+     return false;
+   }
+ 
+@@ -633,7 +636,6 @@ bool EnsureProcessConfigVariablesForEdge(napi_env env, napi_value config_obj) {
+       for (uint32_t i = 0; i < input_length; ++i) {
+         napi_value entry = nullptr;
+         if (napi_get_element(env, shareable_builtins, i, &entry) != napi_ok || entry == nullptr) continue;
+-        if (NapiValueToUtf8(env, entry) == "deps/amaro/dist/index.js") continue;
+         if (napi_set_element(env, filtered, output_index++, entry) != napi_ok) return false;
+       }
+       if (napi_set_named_property(env, variables_obj, "node_builtin_shareable_builtins", filtered) != napi_ok) {
+@@ -683,9 +685,9 @@ napi_value BuildMinimalProcessConfigObject(napi_env env) {
+     return nullptr;
+   }
+ 
+-  napi_value zero = nullptr;
+-  if (napi_create_int32(env, 0, &zero) != napi_ok || zero == nullptr) return nullptr;
+-  if (napi_set_named_property(env, variables_obj, "node_use_amaro", zero) != napi_ok) {
++  napi_value use_amaro = nullptr;
++  if (napi_get_boolean(env, true, &use_amaro) != napi_ok || use_amaro == nullptr) return nullptr;
++  if (napi_set_named_property(env, variables_obj, "node_use_amaro", use_amaro) != napi_ok) {
+     return nullptr;
+   }
+ 
+@@ -1283,6 +1285,7 @@ std::vector<ProcessVersionEntry> BuildProcessVersionEntries(bool has_intl) {
+   std::vector<ProcessVersionEntry> version_entries = {
+       {"acorn", ACORN_VERSION},
+       {"ada", ADA_VERSION},
++      {"amaro", AMARO_VERSION},
+       {"ares", ARES_VERSION_STR},
+       {"brotli", GetBrotliVersion()},
+       {"cjs_module_lexer", CJS_MODULE_LEXER_VERSION},

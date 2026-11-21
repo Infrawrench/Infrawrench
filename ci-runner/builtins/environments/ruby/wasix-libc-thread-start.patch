@@ -1,0 +1,62 @@
+wasi_thread_start initialises the thread's TLS from C, so that it holds no
+value across a call.
+
+A new thread's WebAssembly instance starts with a __stack_pointer of 0, and
+wasi_thread_start sets it from the start arguments. It then called
+__wasm_init_tls and __wasi_thread_start_C with its two arguments still
+needed after the first call. env:ruby's interpreter is run through
+Binaryen's --spill-pointers, which gives every function that holds an i32
+across a call a frame on the stack to spill it into, allocated where the
+function starts: in wasi_thread_start, before the stack pointer was set, so
+the frame was at 0 - 16 and the new thread trapped on its first store.
+
+wasi_thread_start now only sets the stack pointer and calls
+__wasi_thread_start_C, which initialises TLS before anything else, as the
+assembly did. Nothing is live across the call, so nothing is spilled.
+
+--- a/libc-top-half/musl/src/thread/wasm32/wasi_thread_start.s
++++ b/libc-top-half/musl/src/thread/wasm32/wasi_thread_start.s
+@@ -5,7 +5,6 @@
+ 	.globaltype	__stack_pointer, i32
+ 	.globaltype	__tls_base, i32
+ 	.functype	__wasi_thread_start_C (i32, i32) -> ()
+-	.functype	__wasm_init_tls (i32) -> ()
+
+ 	.hidden	wasi_thread_start
+ 	.globl	wasi_thread_start
+@@ -20,12 +19,8 @@
+ 	i32.load    0  # stack
+ 	global.set  __stack_pointer
+
+-	# Set up the TLS area
+-	local.get   1  # start_arg
+-	i32.load    4  # tls_base
+-	call __wasm_init_tls
+-
+-	# Make the C function do the rest of work.
++	# Make the C function do the rest of work, the TLS area first. Nothing
++	# here may be needed after a call (see __wasi_thread_start_C).
+ 	local.get   0  # tid
+ 	local.get   1  # start_arg
+ 	call __wasi_thread_start_C
+--- a/libc-top-half/musl/src/thread/pthread_create.c
++++ b/libc-top-half/musl/src/thread/pthread_create.c
+@@ -314,10 +314,18 @@
+
+ extern void __set_tp(uintptr_t p);
+
++extern void __wasm_init_tls(void *memory);
++
+ hidden void __wasi_thread_start_C(int tid, void *p)
+ {
+ 	struct start_args *args = p;
+
++	// Set up the TLS area. wasi_thread_start used to, holding its
++	// arguments across the call; a pass that spills such values to the
++	// stack then put them below a stack pointer it had not set yet
++	// (wasix-libc-thread-start.patch, env:ruby).
++	__wasm_init_tls(args->tls_base);
++
+ 	pthread_t self = args->pthread_self_ptr;
+ 	__set_tp((uintptr_t)self);
+

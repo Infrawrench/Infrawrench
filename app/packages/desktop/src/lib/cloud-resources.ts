@@ -16,7 +16,7 @@ import type {
 // from `ui`, and importing it from there pulls the whole component library into
 // every module graph that touches `cloud-api`, including a node-environment
 // test that renders nothing.
-import { CALENDAR_EVENT_KINDS } from "@infrawrench/client-core";
+import { CALENDAR_EVENT_KINDS, rerollRequest, type RerollChoice } from "@infrawrench/client-core";
 import type {
   AccessReviewResponse,
   BlastRadiusReport,
@@ -46,6 +46,7 @@ import type {
   QueryMonitorInput,
   QueryMonitorTargetAccount,
   QueryMonitorTestResult,
+  ProviderResource,
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
@@ -61,6 +62,36 @@ import { runRpc } from "./rpc/client";
 
 /** The contract's `resources` group: detail, create/update/delete, manifests, logs, pickers. */
 const resources = () => cloudClient("resources").resources;
+
+/** The contract's `associations` group: a secret field's Reroll dialog. */
+const associations = () => cloudClient("associations").associations;
+
+/** `GET /associations/candidates`: the resources whose outputs can fill `fieldKey`. */
+export async function fetchCloudRerollCandidates(
+  orgId: string,
+  resourceId: string,
+  fieldKey: string,
+): Promise<ProviderResource[]> {
+  const candidates = await runRpc(
+    associations().candidates({ params: { orgId }, query: { resourceId, fieldKey } }),
+  );
+  return candidates.map((c) => ({ ...c }));
+}
+
+/** Point a secret field at another resource's output, or store a literal (pushed upstream first). */
+export async function rerollCloudField(
+  orgId: string,
+  resourceId: string,
+  fieldKey: string,
+  choice: RerollChoice,
+): Promise<void> {
+  const request = rerollRequest(resourceId, fieldKey, choice);
+  await runRpc(
+    request.endpoint === "literal"
+      ? associations().literal({ params: { orgId }, payload: request.payload })
+      : associations().create({ params: { orgId }, payload: request.payload }),
+  );
+}
 
 /**
  * The org dependency graph. Pass `resourceId` to get only that resource's

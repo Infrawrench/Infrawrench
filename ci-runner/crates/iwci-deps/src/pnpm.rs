@@ -19,12 +19,23 @@
 //! - hoisting follows the workspace's `hoistPattern` (default `*`, into
 //!   `node_modules/.pnpm/node_modules`), `publicHoistPattern` (default
 //!   none, into `node_modules`) and `hoistWorkspacePackages` (default on),
-//!   with pnpm's precedence (see `hoist.rs`).
+//!   with pnpm's precedence (see `hoist.rs`);
+//! - `node_modules/.bin` holds each package's commands ([`node_bins`]): a
+//!   project's for everything in its `node_modules` (what `pnpm run` puts
+//!   on `PATH`), and each snapshot's
+//!   (`.pnpm/<dir>/node_modules/<name>/node_modules/.bin`) for those of its
+//!   dependencies the lockfile marks `hasBin`, as pnpm's `linkAllBins` links
+//!   them. They are symbolic links, not pnpm's shell scripts.
 //!
-//! Left out, because no job here runs a package's code through them:
-//! `node_modules/.bin`, `.modules.yaml` and the virtual store's
-//! `lock.yaml`. Packages that want a build step (`requiresBuild`, native
+//! Left out, because no job here reads them: `.modules.yaml`, the virtual
+//! store's `lock.yaml` and the hoisted store's
+//! `.pnpm/node_modules/.bin`. Packages that want a build step (`requiresBuild`, native
 //! addons, `postinstall`) are installed as their published files.
+//!
+//! Nor is pnpm's `node_modules/.pnpm-workspace-state-v1.json`, which pnpm
+//! 11 and later read before `pnpm run` and `pnpm exec` to decide whether
+//! `node_modules` matches the lockfile; the job is told not to check
+//! instead ([`env`]).
 //!
 //! # Platform
 //!
@@ -44,14 +55,22 @@
 //!
 //! # Lockfile support
 //!
-//! Formats 9.x (pnpm 9 to 11) and 6.x (pnpm 8). Registry packages, tarball
+//! Formats 9.x (pnpm 9 to 12) and 6.x (pnpm 8), including the two-document
+//! file pnpm 11 and later write when a project pins pnpm or has config
+//! dependencies: the project's document is the last one, and the boot
+//! document before it (pnpm itself, config dependencies) installs nothing
+//! into `node_modules` ([`parse_lockfile`]). pnpm 12's registry revisions
+//! (`revision: N`, fetched from `<registry>/<name>@<version>+r<N>`) and
+//! `settings.integrityTarget: tar` are read too: both pin the uncompressed
+//! tar, which [`Integrity::Tar`] checks. Registry packages, tarball
 //! URLs with an integrity, repository-relative `file:` tarballs, npm
-//! aliases, peer suffixes, `link:` workspace dependencies, and
-//! `patchedDependencies` (paths from `pnpm-workspace.yaml`, the root
-//! `package.json`'s `pnpm` field, or the lockfile itself). Refused with a
-//! clear error: directory and git resolutions (`file:` directories,
-//! injected workspace packages, git dependencies), tarballs without an
-//! integrity, and `nodeLinker: hoisted` or `pnp`.
+//! aliases, peer suffixes, `link:` workspace dependencies, directory
+//! resolutions (`file:` directories, injected workspace packages and
+//! `injectWorkspacePackages`), copied out of the repository the way pnpm
+//! copies them ([`package_files`]), and `patchedDependencies` (paths from
+//! `pnpm-workspace.yaml`, the root `package.json`'s `pnpm` field, or the
+//! lockfile itself). Refused with a clear error: git resolutions, tarballs
+//! without an integrity, and `nodeLinker: hoisted` or `pnp`.
 
 mod dep_path;
 pub(crate) mod hoist;
@@ -75,6 +94,8 @@ use sha2::Digest;
 use shared_buffer::OwnedBuffer;
 
 use crate::fetch::{self, FetchError, Fetcher, Integrity};
+use crate::node_bins;
+use crate::wasm_builds::{self, Substitution, WasmBuild};
 
 pub use dep_path::{
     DEFAULT_VIRTUAL_STORE_DIR_MAX_LENGTH, dep_path_to_filename, patch_hash, ref_to_relative,
@@ -89,6 +110,32 @@ pub use tarball::DEFAULT_MAX_UNPACKED_BYTES;
 
 /// The public npm registry.
 pub const DEFAULT_REGISTRY: &str = "https://registry.npmjs.org/";
+
+/// The environment a job with a pnpm install gets:
+/// `pnpm_config_verify_deps_before_run=false`.
+///
+/// pnpm 11 and later check that `node_modules` matches the lockfile before
+/// `pnpm run` and `pnpm exec` (`verifyDepsBeforeRun`, `install` by
+/// default), against the state their own install records
+/// (`node_modules/.pnpm-workspace-state-v1.json`: every setting pnpm
+/// resolved, compared key by key with what that version resolves now, and
+/// the virtual store's `lock.yaml`). This install records none, so pnpm
+/// found it "Cannot check whether dependencies are outdated" and installed
+/// everything again from the registry, running the install scripts this
+/// one leaves out, which fail for native packages (tRPC's
+/// `pnpm typecheck-packages`). Writing that state is not an option: its
+/// settings are whatever the pnpm version a job runs resolves from its
+/// configuration, and a key that differs is drift. The install here is the
+/// lockfile's by construction, so the check has nothing to find; pnpm
+/// gives the scripts it starts the same variable for the same reason.
+/// pnpm 10 and earlier do not check by default and read `npm_config_`
+/// names, so this changes nothing there. A job's own `env:` wins.
+pub fn env() -> Vec<(String, String)> {
+    vec![(
+        "pnpm_config_verify_deps_before_run".to_string(),
+        "false".to_string(),
+    )]
+}
 
 /// A host platform as pnpm matches packages' `os`, `cpu` and `libc` fields
 /// against it (Node's `process.platform` and `process.arch` names).
@@ -119,6 +166,16 @@ pub struct PnpmOptions {
     /// The platform optional dependencies are matched against; `None` is
     /// the WebAssembly isolate (see the module documentation).
     pub platform: Option<Platform>,
+    /// A second platform an optional dependency may be for, as well as
+    /// `platform`: the runner's own Linux, for jobs that run in its native
+    /// sandbox and can start what such a package ships (turbo, sherif;
+    /// `deps: [{ pnpm: { native: true } }]`). Nothing the isolate takes
+    /// is left out for it.
+    pub native: Option<Platform>,
+    /// Native packages installed as their WebAssembly build for the
+    /// isolate (`platform: None`); see [`wasm_builds`]. An option, so a
+    /// cache keyed on the options changes when the table does.
+    pub wasm_builds: &'static [WasmBuild],
     /// Tarballs fetched and unpacked at once.
     pub parallelism: usize,
     /// The most one package may unpack to.
@@ -133,6 +190,8 @@ impl Default for PnpmOptions {
             only_importers: None,
             include_dev: true,
             platform: None,
+            native: None,
+            wasm_builds: wasm_builds::WASM_BUILDS,
             parallelism: fetch::DEFAULT_PARALLELISM,
             max_unpacked_bytes: DEFAULT_MAX_UNPACKED_BYTES,
         }
@@ -158,11 +217,16 @@ pub struct InstallReport {
     pub links: usize,
     /// Of those, links created by hoisting.
     pub hoisted: usize,
+    /// Commands linked into `node_modules/.bin` directories.
+    pub bins: usize,
     /// Optional dependencies skipped for their platform, by dependency
     /// path, sorted.
     pub skipped_optional: Vec<String>,
     /// Snapshots a patch was applied to, by dependency path, sorted.
     pub patched: Vec<String>,
+    /// Packages installed as their WebAssembly build
+    /// (`rollup@4.52.0 as @rollup/wasm-node@4.52.0`), sorted.
+    pub wasm_builds: Vec<String>,
     pub elapsed: Duration,
 }
 
@@ -385,6 +449,22 @@ fn read_npmrc(text: &str, raw: &mut RawWorkspace) {
     if !public_hoist_pattern.is_empty() {
         raw.public_hoist_pattern = Some(Patterns::Many(public_hoist_pattern));
     }
+}
+
+/// The runner's own platform as a package's `os`, `cpu` and `libc` name
+/// it, for [`PnpmOptions::native`]: Linux with glibc on x86_64 or ARM64,
+/// where the native sandbox runs; `None` elsewhere.
+pub fn native_platform() -> Option<Platform> {
+    let cpu = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => "x64",
+        ("linux", "aarch64") => "arm64",
+        _ => return None,
+    };
+    Some(Platform {
+        os: "linux".to_string(),
+        cpu: cpu.to_string(),
+        libc: Some("glibc".to_string()),
+    })
 }
 
 /// Whether the optional dependency `package` installs on `platform`
@@ -621,11 +701,6 @@ impl<'a> Plan<'a> {
         settings: &WorkspaceSettings,
         options: &PnpmOptions,
     ) -> Result<Plan<'a>> {
-        if lockfile.inject_workspace_packages {
-            return Err(lockfile_error(
-                "injectWorkspacePackages is not supported; workspace packages must be links",
-            ));
-        }
         let importers = select_importers(lockfile, options)?;
 
         let mut roots: Vec<String> = Vec::new();
@@ -656,7 +731,13 @@ impl<'a> Plan<'a> {
                     remove_suffix(key)
                 ))
             })?;
-            if snapshot.optional && !platform_accepts(options.platform.as_ref(), package) {
+            if snapshot.optional
+                && !platform_accepts(options.platform.as_ref(), package)
+                && !options
+                    .native
+                    .as_ref()
+                    .is_some_and(|native| platform_accepts(Some(native), package))
+            {
                 skipped.insert(key);
                 continue;
             }
@@ -940,6 +1021,111 @@ enum Source {
         path: PathBuf,
         integrity: Option<Integrity>,
     },
+    /// A directory of the repository (`type: directory`: a `file:`
+    /// directory dependency or an injected workspace package), copied as
+    /// pnpm copies it ([`package_files`]).
+    Directory {
+        dir: PathBuf,
+    },
+}
+
+/// Whether the package-relative `path` matches the `files` entry
+/// `pattern` (already without `./` and a trailing `/`): the path itself, a
+/// file under it when it names a directory, or a glob in which `*` matches
+/// within one path segment and `**` any number of them.
+fn files_entry_matches(pattern: &str, path: &str) -> bool {
+    fn glob(pattern: &[&str], path: &[&str]) -> bool {
+        match (pattern.first(), path.first()) {
+            (None, None) => true,
+            (Some(&"**"), _) => {
+                glob(&pattern[1..], path) || (!path.is_empty() && glob(pattern, &path[1..]))
+            }
+            (Some(segment), Some(name)) => {
+                segment_matches(segment, name) && glob(&pattern[1..], &path[1..])
+            }
+            _ => false,
+        }
+    }
+    fn segment_matches(pattern: &str, name: &str) -> bool {
+        match pattern.split_once('*') {
+            None => pattern == name,
+            Some((prefix, rest)) => {
+                let Some(name) = name.strip_prefix(prefix) else {
+                    return false;
+                };
+                (0..=name.len())
+                    .filter(|at| name.is_char_boundary(*at))
+                    .any(|at| segment_matches(rest, &name[at..]))
+            }
+        }
+    }
+    let pattern: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
+    let path: Vec<&str> = path.split('/').collect();
+    // A pattern names a directory's files as well as the directory.
+    (1..=path.len()).any(|end| glob(&pattern, &path[..end]))
+}
+
+/// What pnpm copies of a directory package by default (its directory
+/// fetcher with `includeOnlyPackageFiles`, npm's packlist): with a `files`
+/// field, the files it names (`!` entries taking files back out) plus
+/// `package.json`, the `README`, `LICENSE` or `LICENCE` and the `main`
+/// file; without one, everything. `node_modules` and `.git` are never
+/// read ([`iwci_vfs::TREE_SKIPPED`]). `.npmignore` and `.gitignore` are
+/// not consulted, so a directory without `files` may get more than `npm
+/// pack` would put in its tarball, never less.
+fn package_files(files: Vec<(PathBuf, Vec<u8>)>) -> BTreeMap<String, Vec<u8>> {
+    let files: BTreeMap<String, Vec<u8>> = files
+        .into_iter()
+        .map(|(path, bytes)| (path.to_string_lossy().replace('\\', "/"), bytes))
+        .collect();
+    let manifest = files
+        .get("package.json")
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok());
+    let Some(entries) = manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("files"))
+        .and_then(|files| files.as_array())
+    else {
+        return files;
+    };
+    let clean = |entry: &str| {
+        entry
+            .trim_start_matches("./")
+            .trim_end_matches('/')
+            .to_string()
+    };
+    let (excluded, included): (Vec<String>, Vec<String>) = entries
+        .iter()
+        .filter_map(|entry| entry.as_str())
+        .map(str::to_string)
+        .partition(|entry| entry.starts_with('!'));
+    let included: Vec<String> = included.iter().map(|e| clean(e)).collect();
+    let excluded: Vec<String> = excluded.iter().map(|e| clean(&e[1..])).collect();
+    let main = manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("main"))
+        .and_then(|main| main.as_str())
+        .map(clean);
+    files
+        .into_iter()
+        .filter(|(path, _)| {
+            let top = !path.contains('/');
+            let lower = path.to_ascii_lowercase();
+            let always = path == "package.json"
+                || (top
+                    && (lower.starts_with("readme")
+                        || lower.starts_with("license")
+                        || lower.starts_with("licence")))
+                || main.as_deref() == Some(path.as_str());
+            always
+                || (included
+                    .iter()
+                    .any(|entry| files_entry_matches(entry, path))
+                    && !excluded
+                        .iter()
+                        .any(|entry| files_entry_matches(entry, path)))
+        })
+        .collect()
 }
 
 /// Snapshot directories that share one patch variant: `(dep path, dir)`.
@@ -953,49 +1139,102 @@ struct Job<'a> {
     source: Source,
     /// One per patch variant (unpatched is `None`).
     variants: Vec<(Option<&'a LoadedPatch>, Targets<'a>)>,
+    /// The WebAssembly build to install instead, and its registry.
+    wasm: Option<(Substitution, &'a str)>,
+}
+
+/// The registry `name` is fetched from.
+fn registry_of<'a>(options: &'a PnpmOptions, name: &str) -> &'a str {
+    name.split_once('/')
+        .filter(|(scope, _)| scope.starts_with('@'))
+        .and_then(|(scope, _)| options.scoped_registries.get(scope))
+        .unwrap_or(&options.registry)
 }
 
 fn registry_url(options: &PnpmOptions, name: &str, version: &str) -> String {
-    let registry = name
-        .split_once('/')
-        .filter(|(scope, _)| scope.starts_with('@'))
-        .and_then(|(scope, _)| options.scoped_registries.get(scope))
-        .unwrap_or(&options.registry);
-    let registry = registry.trim_end_matches('/');
+    let registry = registry_of(options, name).trim_end_matches('/');
     let basename = name.rsplit('/').next().unwrap_or(name);
     format!("{registry}/{name}/-/{basename}-{version}.tgz")
 }
 
-fn source_of(root: &Path, key: &str, package: &Package, options: &PnpmOptions) -> Result<Source> {
+/// The URL of a registry revision (pnpm 12, `docs/registry-revisions.md`):
+/// `<registry>/<name>@<version>+r<revision>`, the scope's slash kept.
+fn revision_url(options: &PnpmOptions, name: &str, version: &str, revision: u64) -> String {
+    let registry = registry_of(options, name).trim_end_matches('/');
+    format!("{registry}/{name}@{version}+r{revision}")
+}
+
+/// Whether a tarball URL is a git host's archive of a commit, which pnpm
+/// always pins by the archive's own hash (its `is_git_hosted_tarball_url`,
+/// by host).
+fn is_git_hosted(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    ["codeload.github.com", "bitbucket.org", "gitlab.com"]
+        .iter()
+        .any(|known| host.eq_ignore_ascii_case(known))
+}
+
+/// Where `package` comes from, and which hash its integrity names: the
+/// download's own, or (for a registry revision, and for everything but a
+/// git host's archive under `integrityTarget: tar`) its uncompressed tar's,
+/// as pnpm's `LockfileResolution::integrity_target` decides.
+fn source_of(
+    root: &Path,
+    key: &str,
+    package: &Package,
+    options: &PnpmOptions,
+    pins_tar: bool,
+) -> Result<Source> {
     let unsupported = |message: String| PnpmError::Unsupported {
         dep_path: key.to_string(),
         message,
     };
+    let pin = |integrity: &String, tar: bool| {
+        if tar {
+            Integrity::Tar(integrity.clone())
+        } else {
+            Integrity::Sri(integrity.clone())
+        }
+    };
     match &package.resolution {
-        Resolution::Registry { integrity } => Ok(Source::Remote {
-            url: registry_url(options, &package.name, &package.version),
-            integrity: Integrity::Sri(integrity.clone()),
+        Resolution::Registry {
+            integrity,
+            revision,
+        } => Ok(Source::Remote {
+            url: match revision {
+                Some(revision) => revision_url(options, &package.name, &package.version, *revision),
+                None => registry_url(options, &package.name, &package.version),
+            },
+            integrity: pin(integrity, pins_tar || revision.is_some()),
         }),
-        Resolution::Tarball { url, integrity } => {
+        Resolution::Tarball {
+            url,
+            integrity,
+            revision,
+        } => {
+            let tar = revision.is_some() || (pins_tar && !is_git_hosted(url));
             if let Some(path) = url.strip_prefix("file:") {
                 return Ok(Source::Local {
                     path: iwci_vfs::join_under(root, path)?,
-                    integrity: integrity.clone().map(Integrity::Sri),
+                    integrity: integrity.as_ref().map(|integrity| pin(integrity, tar)),
                 });
             }
             match integrity {
                 Some(integrity) => Ok(Source::Remote {
                     url: url.clone(),
-                    integrity: Integrity::Sri(integrity.clone()),
+                    integrity: pin(integrity, tar),
                 }),
                 None => Err(unsupported(format!(
                     "tarball {url} has no integrity in the lockfile, so it cannot be verified"
                 ))),
             }
         }
-        Resolution::Directory { path } => Err(unsupported(format!(
-            "directory dependencies (file:{path}) are not supported"
-        ))),
+        Resolution::Directory { path } => Ok(Source::Directory {
+            dir: iwci_vfs::join_under(root, path)?,
+        }),
         Resolution::Git { repo, .. } => Err(unsupported(format!(
             "git dependencies ({repo}) are not supported"
         ))),
@@ -1047,32 +1286,76 @@ pub(crate) fn write_tree(
     Ok((files.len(), bytes))
 }
 
+/// Gives the files a package's tarball marks executable (and that are
+/// still in `tree`, after any patch) mode 0755 under `base`, as npm, pnpm
+/// and Bun keep the bit; the rest keep the snapshot's default.
+pub(crate) fn mark_executables(
+    builder: &SnapshotBuilder,
+    base: &Path,
+    executables: &std::collections::BTreeSet<String>,
+    tree: &BTreeMap<String, OwnedBuffer>,
+) -> iwci_vfs::Result<()> {
+    for path in executables.iter().filter(|path| tree.contains_key(*path)) {
+        builder.set_mode(base.join(path), 0o755)?;
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 struct JobStats {
     tarball_bytes: u64,
     packages: usize,
     files: usize,
     bytes: u64,
+    /// The substitution made, described.
+    wasm_build: Option<String>,
 }
 
 fn run_job(
-    fs: &mem_fs::FileSystem,
+    builder: &SnapshotBuilder,
     store: &Path,
     fetcher: &dyn Fetcher,
     job: &Job<'_>,
     options: &PnpmOptions,
 ) -> Result<JobStats> {
+    let fetch_error = |source| PnpmError::Fetch {
+        dep_path: job.key.to_string(),
+        source,
+    };
+    let mut wasm_build = None;
     let bytes: Arc<[u8]> = match &job.source {
-        Source::Remote { url, integrity } => {
-            fetcher
-                .fetch(url, integrity)
-                .map_err(|source| PnpmError::Fetch {
+        Source::Directory { dir } => {
+            let files =
+                package_files(builder.read_tree(dir).map_err(|_| PnpmError::Unsupported {
                     dep_path: job.key.to_string(),
-                    source,
-                })?
+                    message: format!("{} is not a directory of the repository", dir.display()),
+                })?);
+            return write_variants(
+                builder,
+                store,
+                job,
+                files,
+                &Default::default(),
+                JobStats::default(),
+            );
+        }
+        Source::Remote { url, integrity } => {
+            let wasm = match &job.wasm {
+                Some((substitution, registry)) => substitution
+                    .fetch(fetcher, registry)
+                    .map_err(fetch_error)?
+                    .inspect(|_| wasm_build = Some(substitution.describe())),
+                None => None,
+            };
+            match wasm {
+                Some(bytes) => bytes,
+                None => fetcher.fetch(url, integrity).map_err(fetch_error)?,
+            }
         }
         Source::Local { path, integrity } => {
-            let bytes = iwci_vfs::read_file(fs, path)?;
+            // Through the builder: on a cached install's layer the
+            // repository is underneath, and the read is recorded.
+            let bytes = builder.read(path)?;
             if let Some(integrity) = integrity {
                 fetch::verify(&path.display().to_string(), &bytes, integrity).map_err(
                     |source| PnpmError::Fetch {
@@ -1084,17 +1367,33 @@ fn run_job(
             bytes.into()
         }
     };
-    let files = tarball::extract(&bytes, options.max_unpacked_bytes).map_err(|message| {
-        PnpmError::Tarball {
-            dep_path: job.key.to_string(),
-            message,
-        }
-    })?;
-    let mut stats = JobStats {
+    let (files, executables) =
+        tarball::extract_with_executables(&bytes, options.max_unpacked_bytes).map_err(
+            |message| PnpmError::Tarball {
+                dep_path: job.key.to_string(),
+                message,
+            },
+        )?;
+    let stats = JobStats {
         tarball_bytes: bytes.len() as u64,
+        wasm_build,
         ..JobStats::default()
     };
     drop(bytes);
+    write_variants(builder, store, job, files, &executables, stats)
+}
+
+/// Writes a package's files into every directory of `job`, once per patch
+/// variant.
+fn write_variants(
+    builder: &SnapshotBuilder,
+    store: &Path,
+    job: &Job<'_>,
+    files: BTreeMap<String, Vec<u8>>,
+    executables: &std::collections::BTreeSet<String>,
+    mut stats: JobStats,
+) -> Result<JobStats> {
+    let fs = builder.fs();
     let shared = |files: BTreeMap<String, Vec<u8>>| -> BTreeMap<String, OwnedBuffer> {
         files
             .into_iter()
@@ -1127,6 +1426,7 @@ fn run_job(
             let base =
                 iwci_vfs::join_under(store, format!("{dir}/node_modules/{}", job.package.name))?;
             let (files, bytes) = write_tree(fs, &base, tree)?;
+            mark_executables(builder, &base, executables, tree)?;
             stats.packages += 1;
             stats.files += files;
             stats.bytes += bytes;
@@ -1228,7 +1528,20 @@ pub fn install(
     let mut patched = Vec::new();
     for (key, variants) in grouped {
         let package = &lockfile.packages[key];
-        let source = source_of(&root, key, package, options)?;
+        let source = source_of(&root, key, package, options, lockfile.integrity_pins_tar)?;
+        // Only for the isolate, and only for what a registry serves: a
+        // tarball by URL may be anything.
+        let wasm = match (&options.platform, &package.resolution) {
+            (None, Resolution::Registry { .. }) => {
+                wasm_builds::substitution(options.wasm_builds, &package.name, &package.version).map(
+                    |found| {
+                        let registry = registry_of(options, found.build.wasm);
+                        (found, registry)
+                    },
+                )
+            }
+            _ => None,
+        };
         let mut job_variants = Vec::with_capacity(variants.len());
         for (hash, targets) in variants {
             let patch = hash.map(|hash| &patches[hash]);
@@ -1242,6 +1555,7 @@ pub fn install(
             package,
             source,
             variants: job_variants,
+            wasm,
         });
     }
 
@@ -1251,7 +1565,7 @@ pub fn install(
         if abort.load(Ordering::Relaxed) {
             return Ok(None);
         }
-        let result = run_job(fs, &store, fetcher, job, options);
+        let result = run_job(builder, &store, fetcher, job, options);
         if result.is_err() {
             abort.store(true, Ordering::Relaxed);
         }
@@ -1265,8 +1579,10 @@ pub fn install(
             report.packages += stats.packages;
             report.files += stats.files;
             report.bytes += stats.bytes;
+            report.wasm_builds.extend(stats.wasm_build);
         }
     }
+    report.wasm_builds.sort();
 
     let package_dir = |entry: &Entry<'_>| -> Result<PathBuf> {
         Ok(iwci_vfs::join_under(
@@ -1290,6 +1606,8 @@ pub fn install(
         }
     }
     let mut project_names = BTreeMap::new();
+    // Each importer's `node_modules/.bin`, and what goes into it.
+    let mut importer_bins: BTreeMap<PathBuf, Vec<node_bins::BinSource>> = BTreeMap::new();
     for id in &plan.importers {
         let dir = importer_dir(&root, id)?;
         if let Ok(bytes) = builder.read(dir.join("package.json"))
@@ -1303,14 +1621,27 @@ pub fn install(
             match DepRef::parse(alias, reference) {
                 DepRef::Snapshot(dep_path) => {
                     if let Some(entry) = plan.installed.get(dep_path.as_str()) {
-                        links.push((iwci_vfs::join_under(&modules, alias)?, package_dir(entry)?));
+                        let target = package_dir(entry)?;
+                        links.push((iwci_vfs::join_under(&modules, alias)?, target.clone()));
+                        importer_bins.entry(modules.join(".bin")).or_default().push(
+                            node_bins::BinSource {
+                                dir: target,
+                                direct: true,
+                            },
+                        );
                     }
                 }
                 DepRef::Link(path) => {
                     let target = lexical_join(&dir, &path).ok_or_else(|| {
                         lockfile_error(format!("{id}: link:{path} leaves the file system"))
                     })?;
-                    links.push((iwci_vfs::join_under(&modules, alias)?, target));
+                    links.push((iwci_vfs::join_under(&modules, alias)?, target.clone()));
+                    importer_bins.entry(modules.join(".bin")).or_default().push(
+                        node_bins::BinSource {
+                            dir: target,
+                            direct: true,
+                        },
+                    );
                 }
             }
         }
@@ -1330,7 +1661,45 @@ pub fn install(
             }
             hoist::HoistTarget::Project(id) => importer_dir(&root, id)?,
         };
+        // pnpm links the commands of everything in a project's
+        // `node_modules`, publicly hoisted packages included.
+        if hoisted.kind == hoist::HoistKind::Public {
+            importer_bins
+                .entry(public_modules.join(".bin"))
+                .or_default()
+                .push(node_bins::BinSource {
+                    dir: target.clone(),
+                    direct: false,
+                });
+        }
         links.push((iwci_vfs::join_under(modules, &hoisted.alias)?, target));
+    }
+
+    // `node_modules/.bin`: each project's for what is in its
+    // `node_modules`, and each package's own for its dependencies that
+    // have commands (pnpm's `linkAllBins`), the `PATH` its install scripts
+    // would have had.
+    let mut bin_links: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for (bins_dir, sources) in &importer_bins {
+        bin_links.extend(node_bins::plan(builder, bins_dir, sources));
+    }
+    for entry in plan.installed.values() {
+        let mut sources = Vec::new();
+        for (alias, reference) in snapshot_deps(entry.snapshot) {
+            if let DepRef::Snapshot(child) = DepRef::parse(alias, reference)
+                && let Some(child) = plan.installed.get(child.as_str())
+                && child.package.has_bin
+            {
+                sources.push(node_bins::BinSource {
+                    dir: package_dir(child)?,
+                    direct: false,
+                });
+            }
+        }
+        if !sources.is_empty() {
+            let bins_dir = package_dir(entry)?.join("node_modules/.bin");
+            bin_links.extend(node_bins::plan(builder, &bins_dir, &sources));
+        }
     }
 
     let mut made = HashSet::new();
@@ -1342,6 +1711,12 @@ pub fn install(
         iwci_vfs::symlink(fs, &link, relative(parent, &target))?;
     }
     report.links = made.len();
+    for (link, target) in &bin_links {
+        if made.insert(link.clone()) {
+            iwci_vfs::symlink(fs, link, target)?;
+            report.bins += 1;
+        }
+    }
     report.importers = plan.importers.iter().map(|id| id.to_string()).collect();
     report.skipped_optional = plan
         .skipped

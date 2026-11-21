@@ -6,7 +6,7 @@ use super::*;
 use crate::{DirEntry, FileType, FsError, Metadata, OpenOptions, ReadDir, Result};
 use futures::future::{BoxFuture, Either};
 use slab::Slab;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::convert::identity;
 use std::ffi::OsString;
 use std::fmt;
@@ -49,6 +49,71 @@ impl FileSystem {
     pub fn canonicalize_unchecked(&self, path: &Path) -> Result<PathBuf> {
         let lock = self.inner.read().map_err(|_| FsError::Lock)?;
         lock.canonicalize_without_inode(path)
+    }
+
+    /// iwci patch: gives the file at `source` the second name `target`
+    /// (`link(2)`), and the inode number `ino` if it has none yet, which
+    /// every name of it then reports in its metadata. A directory is
+    /// refused with `PermissionDenied`, as Linux refuses one with `EPERM`,
+    /// and so is a symbolic link, which this file system cannot give two
+    /// names. A name in another file system mounted in this one is
+    /// `Unsupported`, the cross-device case.
+    pub fn hard_link_numbered(&self, source: &Path, target: &Path, ino: u64) -> Result<()> {
+        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+        let source = fs.canonicalize_without_inode(source)?;
+        let target = fs.canonicalize_without_inode(target)?;
+        let body = match fs.inode_of(&source)? {
+            InodeResolution::Found(inode) => inode,
+            InodeResolution::Redirect(..) => return Err(FsError::Unsupported),
+        };
+        let lifecycle = match fs.storage.get(body) {
+            Some(node) => match node.file_lifecycle() {
+                Some(lifecycle) => lifecycle.clone(),
+                None => return Err(FsError::PermissionDenied),
+            },
+            None => return Err(FsError::EntryNotFound),
+        };
+        let parent_path = target.parent().ok_or(FsError::AlreadyExists)?;
+        let name = target
+            .file_name()
+            .ok_or(FsError::InvalidInput)?
+            .to_os_string();
+        let parent = match fs.inode_of_parent(parent_path)? {
+            InodeResolution::Found(inode) => inode,
+            InodeResolution::Redirect(..) => return Err(FsError::Unsupported),
+        };
+        if fs.child_named(parent, &name).is_some() {
+            return Err(FsError::AlreadyExists);
+        }
+        let metadata = fs
+            .storage
+            .get(body)
+            .map(|node| node.metadata().clone())
+            .unwrap_or_default();
+        let link = fs.storage.vacant_entry().key();
+        fs.storage.insert(Node::HardLink(HardLinkNode {
+            inode: link,
+            name,
+            target: body,
+            parent,
+            metadata,
+        }));
+        fs.add_child_to_node(parent, link)?;
+        fs.links.entry(body).or_default().push(link);
+        lifecycle.number(ino);
+        Ok(())
+    }
+
+    /// iwci patch: whether `a` and `b` are names of one file (or the same
+    /// name).
+    pub fn same_file(&self, a: &Path, b: &Path) -> bool {
+        let Ok(fs) = self.inner.read() else {
+            return false;
+        };
+        match (fs.inode_of(a), fs.inode_of(b)) {
+            (Ok(InodeResolution::Found(a)), Ok(InodeResolution::Found(b))) => a == b,
+            _ => false,
+        }
     }
 
     /// Merge all items from a given source path (directory) of a different file
@@ -239,6 +304,8 @@ impl FileSystem {
                         created: time,
                         modified: time,
                         len: 0,
+                        ino: 0,
+                        nlink: 0,
                     }
                 },
             }));
@@ -256,20 +323,24 @@ impl FileSystem {
     }
 
     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
+        // iwci patch (#1294): the parent is looked up under the write lock
+        // the link is added under, as `create_dir` and `open` do. Looked up
+        // under a read lock first, a parent removed in between (and its
+        // slot reused by another node) took the link into the wrong place.
+        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
         let (inode_of_parent, name_of_symlink) = {
-            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
-            let path = guard.canonicalize_without_inode(target)?;
+            let path = fs.canonicalize_without_inode(target)?;
             let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
             let name_of_symlink = path
                 .file_name()
                 .ok_or(FsError::InvalidInput)?
                 .to_os_string();
-            let inode_of_parent = match guard.inode_of_parent(parent_of_path)? {
+            let inode_of_parent = match fs.inode_of_parent(parent_of_path)? {
                 InodeResolution::Found(a) => a,
-                InodeResolution::Redirect(fs, mut redirected_path) => {
+                InodeResolution::Redirect(redirect_fs, mut redirected_path) => {
                     redirected_path.push(&name_of_symlink);
-                    drop(guard);
-                    let fs_ref: &dyn crate::FileSystem = fs.as_ref();
+                    drop(fs);
+                    let fs_ref: &dyn crate::FileSystem = redirect_fs.as_ref();
                     if let Some(mem_fs) = fs_ref.downcast_ref::<Self>() {
                         return mem_fs.create_symlink(source, redirected_path.as_path());
                     }
@@ -279,7 +350,6 @@ impl FileSystem {
             (inode_of_parent, name_of_symlink)
         };
 
-        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
         if fs.canonicalize(target).is_ok() {
             return Err(FsError::AlreadyExists);
         }
@@ -300,6 +370,8 @@ impl FileSystem {
                     created: time,
                     modified: time,
                     len: source.as_os_str().len() as u64,
+                    ino: 0,
+                    nlink: 0,
                 }
             },
         }));
@@ -365,7 +437,9 @@ impl crate::FileSystem for FileSystem {
 
                         entry_path
                     },
-                    metadata: Ok(node.metadata().clone()),
+                    metadata: guard
+                        .reported_metadata(node.inode())
+                        .ok_or(FsError::UnknownError),
                 })
                 .collect(),
 
@@ -449,6 +523,8 @@ impl crate::FileSystem for FileSystem {
                         created: time,
                         modified: time,
                         len: 0,
+                        ino: 0,
+                        nlink: 0,
                     }
                 },
             }));
@@ -467,6 +543,14 @@ impl crate::FileSystem for FileSystem {
 
     fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
         self.create_symlink(source, target)
+    }
+
+    /// iwci patch: a hard link, numbered from a counter of this crate's
+    /// when nobody gives it a number (`hard_link_numbered`).
+    fn hard_link(&self, source: &Path, target: &Path) -> Result<()> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1 << 52);
+        let ino = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.hard_link_numbered(source, target, ino)
     }
 
     fn remove_dir(&self, path: &Path) -> Result<()> {
@@ -592,12 +676,9 @@ impl crate::FileSystem for FileSystem {
         // Read lock.
         let guard = self.inner.read().map_err(|_| FsError::Lock)?;
         match guard.inode_of(path)? {
-            InodeResolution::Found(inode) => Ok(guard
-                .storage
-                .get(inode)
-                .ok_or(FsError::UnknownError)?
-                .metadata()
-                .clone()),
+            InodeResolution::Found(inode) => {
+                guard.reported_metadata(inode).ok_or(FsError::UnknownError)
+            }
             InodeResolution::Redirect(fs, path) => {
                 drop(guard);
                 fs.metadata(path.as_path())
@@ -609,12 +690,9 @@ impl crate::FileSystem for FileSystem {
         // Read lock.
         let guard = self.inner.read().map_err(|_| FsError::Lock)?;
         match guard.inode_of(path)? {
-            InodeResolution::Found(inode) => Ok(guard
-                .storage
-                .get(inode)
-                .ok_or(FsError::UnknownError)?
-                .metadata()
-                .clone()),
+            InodeResolution::Found(inode) => {
+                guard.reported_metadata(inode).ok_or(FsError::UnknownError)
+            }
             InodeResolution::Redirect(fs, path) => {
                 drop(guard);
                 fs.symlink_metadata(path.as_path())
@@ -683,6 +761,9 @@ impl fmt::Debug for FileSystem {
 /// indexed by their respective `Inode` in a slab.
 pub(super) struct FileSystemInner {
     pub(super) storage: Slab<Node>,
+    /// iwci patch: the hard links of each file that has any, by the file's
+    /// node (see `HardLinkNode`).
+    pub(super) links: HashMap<Inode, Vec<Inode>>,
     pub(super) backing_offload: Option<OffloadBackingStore>,
     pub(super) limiter: Option<crate::limiter::DynFsMemoryLimiter>,
 }
@@ -712,6 +793,34 @@ impl FileSystemInner {
         position: usize,
         inode_of_file: Inode,
     ) -> Result<()> {
+        // iwci patch: one name of a file with others goes, and the file
+        // stays. A second name is a node of its own; the file's own name
+        // hands the file to the place of one of the others, so the file is
+        // listed under a name for as long as it has one, which is what an
+        // open handle's `unlink` finds it by.
+        if let Some(Node::HardLink(link)) = self.storage.get(inode_of_file) {
+            let body = link.target;
+            self.storage.remove(inode_of_file);
+            self.forget_link(body, inode_of_file);
+            return self.remove_child_from_node(inode_of_parent, position);
+        }
+        if let Some(&link) = self.links.get(&inode_of_file).and_then(|l| l.last()) {
+            self.forget_link(inode_of_file, link);
+            self.remove_child_from_node(inode_of_parent, position)?;
+            let Node::HardLink(link) = self.storage.remove(link) else {
+                return Err(FsError::UnknownError);
+            };
+            if let Some(Node::Directory(DirectoryNode { children, .. })) =
+                self.storage.get_mut(link.parent)
+                && let Some(entry) = children.iter_mut().find(|c| **c == link.inode)
+            {
+                *entry = inode_of_file;
+            }
+            if let Some(node) = self.storage.get_mut(inode_of_file) {
+                node.set_name(link.name);
+            }
+            return Ok(());
+        }
         let remove_storage = match self.storage.get(inode_of_file) {
             Some(node) => {
                 if let Some(lifecycle) = node.file_lifecycle() {
@@ -761,8 +870,11 @@ impl FileSystemInner {
             // Unlink the replaced file, keeping its storage alive
             // while handles to it are still open.
             match inode_of_file {
-                // Renaming a file onto itself does nothing.
-                InodeResolution::Found(inode_of_file) if inode_of_file == inode => {
+                // Renaming a file onto itself, or (iwci patch) onto another
+                // of its names, does nothing, as `rename(2)` does nothing.
+                InodeResolution::Found(inode_of_file)
+                    if self.body_of(inode_of_file) == self.body_of(inode) =>
+                {
                     return Ok(());
                 }
                 InodeResolution::Found(inode_of_file) => {
@@ -786,6 +898,9 @@ impl FileSystemInner {
             // Add the file to its new parent, and update the modified
             // time.
             self.add_child_to_node(inode_of_to_parent, inode)?;
+            if let Some(Node::HardLink(link)) = self.storage.get_mut(inode) {
+                link.parent = inode_of_to_parent;
+            }
         }
         // Otherwise, we need to at least update the modified time of the parent.
         else {
@@ -817,6 +932,7 @@ impl FileSystemInner {
                     .iter()
                     .filter_map(|inode| self.storage.get(*inode))
                     .find(|node| node.name() == component.as_os_str())
+                    .map(|node| self.follow(node))
                     .ok_or(FsError::EntryNotFound)?,
                 Node::ArcDirectory(ArcDirectoryNode {
                     fs, path: fs_path, ..
@@ -922,6 +1038,7 @@ impl FileSystemInner {
                     | Node::CustomFile(CustomFileNode { inode, name, .. })
                     | Node::ArcFile(ArcFileNode { inode, name, .. })
                     | Node::Symlink(SymlinkNode { inode, name, .. })
+                    | Node::HardLink(HardLinkNode { inode, name, .. })
                         if name.as_os_str() == name_of_file =>
                     {
                         Some(Some((nth, InodeResolution::Found(*inode))))
@@ -963,6 +1080,7 @@ impl FileSystemInner {
                     | Node::ReadOnlyFile(ReadOnlyFileNode { inode, name, .. })
                     | Node::CustomFile(CustomFileNode { inode, name, .. })
                     | Node::ArcFile(ArcFileNode { inode, name, .. })
+                    | Node::HardLink(HardLinkNode { inode, name, .. })
                         if name.as_os_str() == name_of =>
                     {
                         Some(Some((nth, InodeResolution::Found(*inode))))
@@ -982,6 +1100,60 @@ impl FileSystemInner {
 
             _ => Err(FsError::BaseNotDirectory),
         }
+    }
+
+    /// iwci patch: the node a name stands for: the file a hard link
+    /// names, any other node itself.
+    fn follow<'a>(&'a self, node: &'a Node) -> &'a Node {
+        match node {
+            Node::HardLink(HardLinkNode { target, .. }) => {
+                self.storage.get(*target).unwrap_or(node)
+            }
+            node => node,
+        }
+    }
+
+    /// iwci patch: the file the entry `inode` names.
+    pub(super) fn body_of(&self, inode: Inode) -> Inode {
+        match self.storage.get(inode) {
+            Some(Node::HardLink(HardLinkNode { target, .. })) => *target,
+            _ => inode,
+        }
+    }
+
+    /// iwci patch: the entry named `name` in the directory `parent`, of
+    /// whatever kind.
+    fn child_named(&self, parent: Inode, name: &OsString) -> Option<Inode> {
+        match self.storage.get(parent) {
+            Some(Node::Directory(DirectoryNode { children, .. })) => children
+                .iter()
+                .copied()
+                .find(|c| self.storage.get(*c).is_some_and(|n| n.name() == name)),
+            _ => None,
+        }
+    }
+
+    /// iwci patch: the hard link `link` of the file `body` is gone.
+    fn forget_link(&mut self, body: Inode, link: Inode) {
+        if let Some(links) = self.links.get_mut(&body) {
+            links.retain(|l| *l != link);
+            if links.is_empty() {
+                self.links.remove(&body);
+            }
+        }
+    }
+
+    /// iwci patch: the metadata a name reports: its file's (a hard link
+    /// reports the file it names), with the file's inode number, if it has
+    /// one of its own, and its count of names.
+    pub(super) fn reported_metadata(&self, inode: Inode) -> Option<Metadata> {
+        let node = self.follow(self.storage.get(inode)?);
+        let mut metadata = node.metadata().clone();
+        if let Some(lifecycle) = node.file_lifecycle() {
+            metadata.ino = lifecycle.ino();
+            metadata.nlink = 1 + self.links.get(&node.inode()).map_or(0, Vec::len) as u64;
+        }
+        Some(metadata)
     }
 
     /// Set a new name for the node represented by `inode`.
@@ -1129,6 +1301,7 @@ impl fmt::Debug for FileSystemInner {
                         Node::Symlink { .. } => "symlink",
                         Node::Directory { .. } => "dir",
                         Node::ArcDirectory { .. } => "arc-dir",
+                        Node::HardLink { .. } => "hard-link",
                     },
                     name = node.name().to_string_lossy(),
                     indentation_symbol = " ",
@@ -1178,11 +1351,14 @@ impl Default for FileSystemInner {
                 created: time,
                 modified: time,
                 len: 0,
+                ino: 0,
+                nlink: 0,
             },
         }));
 
         Self {
             storage: slab,
+            links: HashMap::new(),
             backing_offload: None,
             limiter: None,
         }
@@ -1714,6 +1890,8 @@ mod test_filesystem {
                 created,
                 modified,
                 len: 0
+                ino: 0,
+                nlink: 0,
             }) if accessed == created && created == modified && modified > 0
         ));
 
@@ -1731,6 +1909,8 @@ mod test_filesystem {
                 created,
                 modified,
                 len: 0
+                ino: 0,
+                nlink: 0,
             } if accessed == created && created == modified && modified > 0
         ));
 
@@ -1747,6 +1927,8 @@ mod test_filesystem {
                     created,
                     modified,
                     len: 0
+                    ino: 0,
+                    nlink: 0,
                 }) if
                     accessed == foo_metadata.accessed &&
                     created == foo_metadata.created &&
@@ -1763,6 +1945,8 @@ mod test_filesystem {
                     created,
                     modified,
                     len: 0
+                    ino: 0,
+                    nlink: 0,
                 }) if
                     accessed <= foo_metadata.accessed &&
                     created <= foo_metadata.created &&

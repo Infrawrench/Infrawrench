@@ -47,6 +47,7 @@ import { executePendingAction, rejectPendingAction, runAgentTurn } from "../../.
 import { getMonthlySpend } from "../../../chat/billing";
 import { noteChatToolApprovalDecided } from "../../../chat/slack-approvals";
 import { storeWorkflowSecretFromChat } from "../../../chat/workflow-secret-store";
+import { withoutServerToolBlocks } from "../../../chat/server-blocks";
 import { db } from "../../../db/client";
 import {
   chatConversations,
@@ -274,7 +275,8 @@ const ChatHandlers = HttpApiBuilder.group(ChatApi, "chat", (handlers) =>
           if (!conversation) return yield* notFound();
           return yield* respond(ChatConversationDetail)({
             conversation,
-            messages,
+            // Tool search blocks are replayed to the model, never shown.
+            messages: messages.map((m) => ({ ...m, content: withoutServerToolBlocks(m.content) })),
             pendingActions: pending,
             pendingSecretRequests,
           });

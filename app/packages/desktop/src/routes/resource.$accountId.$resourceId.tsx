@@ -40,11 +40,14 @@ import {
   useUIStore,
   useTabId,
   useStableGT,
+  useLiveWatcher,
+  watchLive,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { mirrorEditedResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
+import { loadLocalRerollCandidates, rerollLocalFieldToOutput } from "../lib/local-reroll";
 import { createPluginClient } from "../lib/plugin-client";
 import { makeResourceCarbonEstimator, makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
@@ -199,6 +202,7 @@ export function ResourcePanel({
   const clientRef = useRef<HostPluginClient | null>(null);
   const cloudCtxRef = useRef<CloudCtx | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const live = useLiveWatcher();
   const [hasStorageToken, setHasStorageToken] = useState(false);
   const [sshConfig, setSshConfig] = useState<SshConfig | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
@@ -526,7 +530,8 @@ export function ResourcePanel({
     peerPanesRef.current = peerPanes;
   }, [peerPanes]);
 
-  // Background refresh: auto every 30 s and on manual "Refresh" action
+  // Background refresh: when the cloud syncs this resource (every 30 s without
+  // a push channel, and always in local mode) and on the manual "Refresh" action
   useEffect(() => {
     function bgRefresh() {
       if (loadingRef.current) return; // skip if a navigation is already in flight
@@ -538,13 +543,15 @@ export function ResourcePanel({
         handlePeerPaneOpenRef.current();
       }
     }
-    const id = setInterval(bgRefresh, 30_000);
+    const stopLive = watchLive(live, "resource", { resourceId: decodedResourceId }, bgRefresh, {
+      fallbackMs: 30_000,
+    });
     window.addEventListener(REFRESH_RESOURCE_EVENT, bgRefresh);
     return () => {
-      clearInterval(id);
+      stopLive();
       window.removeEventListener(REFRESH_RESOURCE_EVENT, bgRefresh);
     };
-  }, []);
+  }, [live, decodedResourceId]);
 
   // Listen for schema-emitted navigate-to-resource actions. The target account
   // is the first colon-segment of the resource ID (see ListerContext.id).
@@ -928,34 +935,59 @@ export function ResourcePanel({
     handlePeerPaneOpenRef.current = handlePeerPaneOpen;
   }, [handlePeerPaneOpen]);
 
+  // The reroll picker's "From resource" list: the org's candidates from the
+  // cloud, or this machine's own resources in local mode.
+  const rerollPluginId = resource?.pluginId ?? null;
+  const rerollTypeId = resource?.resourceTypeId ?? null;
+  const loadRerollCandidates = useCallback(
+    async (fieldKey: string) => {
+      const cloud = cloudCtxRef.current;
+      if (cloud) {
+        const { fetchCloudRerollCandidates } = await import("../lib/cloud-api");
+        return fetchCloudRerollCandidates(cloud.orgId, decodedResourceId, fieldKey);
+      }
+      if (!rerollPluginId || !rerollTypeId) return [];
+      return loadLocalRerollCandidates(
+        { id: decodedResourceId, pluginId: rerollPluginId, resourceTypeId: rerollTypeId },
+        fieldKey,
+      );
+    },
+    [decodedResourceId, rerollPluginId, rerollTypeId],
+  );
+
   async function handleReroll(
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) {
     if (!resource) return;
-    if (selection.kind !== "literal") {
-      toast.error(gt("This field only accepts a literal value."));
-      return;
-    }
-    const client = clientRef.current;
-    if (!client) {
-      toast.error(gt("Plugin client not ready."));
-      return;
-    }
     try {
-      // Push to the upstream provider first so the local store never holds a
-      // value the provider hasn't accepted. Plugins that don't implement
-      // applySecretReroll skip the upstream call (literal-only persist).
-      if (client.applySecretReroll) {
-        await client.applySecretReroll(
-          resource.resourceTypeId,
-          resource.id,
-          accountId,
-          fieldKey,
-          selection.value,
-        );
+      const cloud = cloudCtxRef.current;
+      if (cloud) {
+        // The server pushes a literal upstream before it stores it.
+        const { rerollCloudField } = await import("../lib/cloud-api");
+        await rerollCloudField(cloud.orgId, decodedResourceId, fieldKey, selection);
+      } else if (selection.kind === "output-ref") {
+        await rerollLocalFieldToOutput(resource.id, fieldKey, selection);
+      } else {
+        const client = clientRef.current;
+        if (!client) {
+          toast.error(gt("Plugin client not ready."));
+          return;
+        }
+        // Push to the upstream provider first so the local store never holds a
+        // value the provider hasn't accepted. Plugins that don't implement
+        // applySecretReroll skip the upstream call (literal-only persist).
+        if (client.applySecretReroll) {
+          await client.applySecretReroll(
+            resource.resourceTypeId,
+            resource.id,
+            accountId,
+            fieldKey,
+            selection.value,
+          );
+        }
+        await persistPlaintextSecret(resource.id, fieldKey, selection.value);
       }
-      await persistPlaintextSecret(resource.id, fieldKey, selection.value);
       toast.success(gt("{field} updated.", { field: fieldKey }));
       dispatchRefreshResource();
     } catch (err) {
@@ -1093,7 +1125,10 @@ export function ResourcePanel({
         resourceTypeId: child.resourceTypeId,
         resourceId: child.id,
         fields: changedFields,
-        parentResourceId: decodedResourceId,
+        // A top-level type on the account root's page has no parent.
+        ...(childResourceGroups.find((g) => g.typeId === child.resourceTypeId)?.topLevel
+          ? {}
+          : { parentResourceId: decodedResourceId }),
       });
     } else {
       const client = await createPluginClient(child.accountId || accountId, child.pluginId);
@@ -1253,6 +1288,7 @@ export function ResourcePanel({
               onChildDelete={handleChildDelete}
               onChildEdit={handleChildEdit}
               onReroll={handleReroll}
+              loadProviderResources={loadRerollCandidates}
               {...(hasStorageBrowser && account
                 ? {
                     renderStorageBrowser: () => (

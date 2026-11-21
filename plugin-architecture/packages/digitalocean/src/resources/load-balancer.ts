@@ -15,9 +15,10 @@ export const LoadBalancerResourceType = rt({
   name: "Load Balancer",
   id: "load-balancer",
   description: "A DigitalOcean load balancer: regional HTTP, regional network (TCP/UDP) or global.",
+  equivalence: "load-balancer",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false, sizing: "region" }),
     f("lbType", "Type", {
       kind: "enum",
       required: false,
@@ -34,6 +35,7 @@ export const LoadBalancerResourceType = rt({
     }),
     f("sizeUnit", "Nodes", {
       kind: "number",
+      sizing: "node-count",
       required: false,
       description:
         "Number of load balancer nodes (1-100). Each node adds connection capacity and is billed separately. DO allows one resize per hour.",

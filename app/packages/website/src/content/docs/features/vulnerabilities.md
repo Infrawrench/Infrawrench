@@ -49,7 +49,7 @@ Open **Vulnerabilities** from the sidebar or from Posture, on web, desktop or mo
 - filters for severity, running or not, fix available, known exploited, account and [service](./services.md);
 - one row per finding: advisory, severity, CVSS, the package and the version that fixes it, the image, which resources run it, and the services those resources belong to. Expand a row to see each resource and open it. Click a service to open it in the Services tab.
 
-<insert [Web Vulnerabilities screen: severity buckets with running counts, the Running filter on, and a critical finding expanded to show the three pods and one Lambda function running the image] here>
+![Web Vulnerabilities screen: severity buckets with running counts, the Running filter on, and a critical finding expanded to show the three pods and one Lambda function running the image](https://agent-assets.infrawrench.com/docs-screenshots/features/vulnerabilities/running-expanded.png)
 
 **Unscored** findings are ones the scanner hasn't rated yet. They are never counted as low. "Fix available" follows the scanner: if it doesn't say, the screen shows unknown rather than no.
 
@@ -59,7 +59,7 @@ When the resources running a vulnerable artifact belong to a [service](./service
 
 The **Service** column and filter appear once at least one finding runs inside a service, and the filter only offers services that have findings. On mobile, services show on each row and as filter chips.
 
-<insert [Web Vulnerabilities screen with the Service column showing Checkout and Payments chips on a critical finding, and the service filter open] here>
+![Web Vulnerabilities screen with the Service column showing Checkout and Payments chips on a critical finding, and the service filter (focused, closed) beside the other filters](https://agent-assets.infrawrench.com/docs-screenshots/features/vulnerabilities/service-column.png)
 
 ### Known exploited
 

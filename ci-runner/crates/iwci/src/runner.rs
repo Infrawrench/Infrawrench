@@ -38,8 +38,9 @@ pub struct Runner {
     /// vCPUs, and how many jobs share each one.
     pub cpus: usize,
     pub jobs_per_cpu: usize,
-    /// Shared by every run in the process (the server); `None` for a
-    /// single `iwci run`, which is limited by `cpus` alone.
+    /// Shared by every run in the process: `cpus × jobs_per_cpu` for the
+    /// server, `cpus` (a job each) for `iwci run`. `None` is limited by
+    /// `cpus` alone, and a job's `cpus:` holds nothing more.
     pub slots: Option<Arc<Slots>>,
     pub memory: Option<Arc<MemoryBudget>>,
     pub author: Identity,
@@ -57,6 +58,23 @@ pub struct Runner {
     /// refuses them.
     #[cfg(target_os = "linux")]
     pub sandbox: Option<Arc<iwci_runtime::sandbox::SandboxHost>>,
+    /// The virtual machines `platform: linux` jobs run in (`--machines`);
+    /// `None` fails such jobs, saying so.
+    pub machines: Option<Arc<dyn crate::machines::Machines>>,
+}
+
+impl Runner {
+    /// What jobs can run on: `wasm` always, and each kind of virtual
+    /// machine this runner has.
+    pub fn platforms(&self) -> Vec<&'static str> {
+        let mut out = vec!["wasm"];
+        if let Some(machines) = &self.machines {
+            let mut vms: Vec<iwci_spec::VmOs> = machines.platforms();
+            vms.sort();
+            out.extend(vms.into_iter().map(iwci_spec::VmOs::name));
+        }
+        out
+    }
 }
 
 /// One run: a repository at a commit or a branch.
@@ -424,8 +442,9 @@ impl RunControl {
 }
 
 /// What a run used, for billing. A job is charged for its wall time at
-/// `1 / jobs_per_cpu` of a vCPU (the share of a core its slot is), and for
-/// the memory it reserved over that time.
+/// `1 / jobs_per_cpu` of a vCPU (the share of a core its slot is), or at
+/// the whole vCPUs of its `cpus:` that it held, and for the memory it
+/// reserved over that time.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Usage {
     pub jobs: u64,
@@ -571,6 +590,10 @@ pub struct PipelineConcurrency {
     pub concurrency: Option<iwci_spec::Concurrency>,
     /// Each job key that runs on a cloud account or is lent anything.
     pub jobs: Vec<JobNeeds>,
+    /// The virtual machines its jobs run in (`linux`), sorted:
+    /// the app asks the proxy for a runner that has them. Empty when every
+    /// job runs on `wasm`.
+    pub platforms: Vec<&'static str>,
 }
 
 /// A job key's cloud block and what it is lent, by name: what the app
@@ -665,6 +688,11 @@ impl Runner {
             pipelines.push(PipelineConcurrency {
                 file: file.clone(),
                 jobs: JobNeeds::of(&plan),
+                platforms: plan
+                    .vm_platforms()
+                    .into_iter()
+                    .map(iwci_spec::VmOs::name)
+                    .collect(),
                 name: plan.name,
                 concurrency: plan.concurrency,
             });
@@ -769,6 +797,7 @@ impl Runner {
             layers: self.layers.clone(),
             threads: self.cpus,
             git: Some(self.git.clone()),
+            prebuilt: Arc::new(crate::gem_builds::from_store(self.store.clone())),
         };
         let mut author = self.author.clone();
         author.time = now_secs() as i64;
@@ -973,6 +1002,7 @@ impl Runner {
                 trusted: req.trusted(),
                 external: None,
             },
+            machines: self.machines.clone(),
         };
         let run_info = crate::external::RunInfo {
             run_id: run.as_str().to_string(),
@@ -1146,7 +1176,10 @@ pub fn usage_of(report: &RunReport, jobs_per_cpu: usize) -> Usage {
         let secs = Duration::from_millis(job.duration_ms).as_secs_f64();
         usage.jobs += 1;
         usage.wall_seconds += secs;
-        usage.vcpu_seconds += secs / share;
+        usage.vcpu_seconds += match job.cpus {
+            Some(cpus) => secs * f64::from(cpus),
+            None => secs / share,
+        };
         // A job in a sandbox holds what it reserved for the sandbox too.
         let reserved = job.memory_mib
             + job
@@ -1282,9 +1315,14 @@ impl Runner {
     /// store's disk cache by the time it resolves.
     pub fn warm(&self, resolved: &Resolved) -> Result<(), String> {
         match resolved {
-            // A Node tool is files for the environment's `node`, with
-            // nothing to compile.
-            Resolved::Tool { manifest, .. } if manifest.abi == iwci_store::Abi::Node => Ok(()),
+            // A Node tool is files for the environment's `node`, and a
+            // native one (Bun) a program gVisor runs as it is: nothing to
+            // compile, and resolving them fetched their files already.
+            Resolved::Tool { manifest, .. }
+                if manifest.abi == iwci_store::Abi::Node || manifest.abi.is_native() =>
+            {
+                Ok(())
+            }
             Resolved::Tool {
                 manifest, module, ..
             } => {

@@ -56,7 +56,13 @@ import {
 import { planAccess } from "../entitlements.js";
 import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
-import { admitRun, resendCancels, resolveConcurrency, sendCancel } from "./concurrency.js";
+import {
+  admitRun,
+  resendCancels,
+  resolveConcurrency,
+  runPlatforms,
+  sendCancel,
+} from "./concurrency.js";
 import {
   abandonJobChecks,
   groupsFromJobs,
@@ -68,11 +74,11 @@ import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
 import { pluginCodeAvailable } from "../plugin-loader.js";
-import type { CiJobAccess } from "../db/schema.js";
+import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
 
-type CiRunRow = typeof ciRuns.$inferSelect;
+export type CiRunRow = typeof ciRuns.$inferSelect;
 
 /** How long a claim on a queued run lasts before another dispatcher may retry it. */
 const CLAIM_MS = 2 * 60_000;
@@ -143,7 +149,7 @@ export class CiInputError extends Error {
 }
 
 /** The organization that connected `installationId` and runs CI for it, if any. */
-async function ciOrganization(installationId: number): Promise<string | null> {
+export async function ciOrganization(installationId: number): Promise<string | null> {
   const [row] = await db
     .select({ organizationId: ciAccounts.organizationId })
     .from(ciAccounts)
@@ -351,6 +357,22 @@ export function dispatchBody(
   return body;
 }
 
+/**
+ * Adds to a run's `POST /v1/runs` body the platforms other than `wasm` its
+ * pipelines run jobs on, which the proxy places it by and takes out before
+ * a runner sees it. Left out when there are none, so a proxy from before
+ * platforms is sent nothing new. Never on the `/v1/concurrency` body, which
+ * is read before the pipelines are known and goes on to a runner.
+ */
+export function withPlatforms(
+  body: Record<string, unknown>,
+  concurrency: readonly CiConcurrencyEntry[],
+): Record<string, unknown> {
+  const platforms = runPlatforms(concurrency);
+  if (platforms.length > 0) body["platforms"] = platforms;
+  return body;
+}
+
 export async function dispatchRun(id: string): Promise<void> {
   const now = new Date();
   const [row] = await db
@@ -394,7 +416,8 @@ export async function dispatchRun(id: string): Promise<void> {
   // Its pipelines' concurrency groups, and what its jobs name to be lent,
   // read once, before it first goes.
   let access = row.access;
-  if (row.concurrency === null) {
+  let concurrency = row.concurrency;
+  if (concurrency === null) {
     const resolved = await resolveConcurrency(body);
     if ("retry" in resolved) {
       await retryLater(row, resolved.retry);
@@ -408,6 +431,7 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     access = resolved.access;
+    concurrency = entries;
     await db.update(ciRuns).set({ access }).where(eq(ciRuns.id, row.id));
     if (entries.some((e) => e.group !== null)) {
       if (!(await admitRun(row, entries))) return;
@@ -415,10 +439,14 @@ export async function dispatchRun(id: string): Promise<void> {
       await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
     }
   }
+  // The platforms its pipelines need, for the proxy to place it by; counted
+  // before anything is lent, so the body's size includes them.
+  withPlatforms(body, concurrency);
 
-  // Connections, SSH keys and resources its jobs name, checked and read now
-  // (never for a fork's run). Reading them calls plugins, which the edge
-  // cannot: there the run waits for the gateway's pass to send it.
+  // Connections, SSH keys, resources and environment files its jobs name,
+  // checked and read now (never for a fork's run). Reading them calls
+  // plugins, which the edge cannot: there the run waits for the gateway's
+  // pass to send it.
   if (!row.fromFork && namesSomethingLent(access)) {
     if (!pluginCodeAvailable()) {
       await deferToGateway(row);
@@ -428,6 +456,14 @@ export async function dispatchRun(id: string): Promise<void> {
     const { auditLends, buildLent, fitLent } = await import("./lend.js");
     const built = await buildLent(row, access);
     if (built) {
+      // `env-file:`: the file read at the run's commit, each reference
+      // checked against the grants like the rest.
+      const { lendEnvFiles } = await import("./env-file.js");
+      const files = await lendEnvFiles(row, access);
+      if (files) {
+        built.lent["env-files"] = files.entries;
+        built.records.push(...files.records);
+      }
       // Audited as soon as it is minted or read, whatever happens to the
       // request next (a proxy that times out, a cancel while it is sent).
       await auditLends(row, built.records);
@@ -487,8 +523,24 @@ export async function dispatchRun(id: string): Promise<void> {
   await upsertCheck(row, {
     status: "in_progress",
     title: "Running",
-    summary: row.fromFork ? "Running a fork's pull request, without secrets." : "Running.",
+    summary: runningSummary(row),
   });
+}
+
+/**
+ * What a running run's check says. A retry says that every job runs again:
+ * a check re-run from GitHub (one job's, or "Re-run failed checks") re-runs
+ * its whole run, since a runner runs a commit's pipelines, never a job alone.
+ */
+export function runningSummary(
+  row: Pick<CiRunRow, "fromFork" | "retryOfRunId" | "noTaskCache">,
+): string {
+  const running = row.fromFork ? "Running a fork's pull request, without secrets." : "Running.";
+  if (row.retryOfRunId === null) return running;
+  const cached = row.noTaskCache
+    ? ""
+    : " A `task-cache:` job whose inputs have not changed since it passed is replayed from the cache.";
+  return `${running}\n\nA retry of an earlier run: every job runs again, whichever check was re-run.${cached}`;
 }
 
 /**
@@ -539,14 +591,15 @@ async function deferToGateway(row: CiRunRow): Promise<void> {
     .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")));
 }
 
-/** A job of the run names a connection, SSH key or resource to be lent. */
+/** A job of the run names a connection, SSH key, resource or environment file to be lent. */
 export function namesSomethingLent(access: readonly CiJobAccess[] | null): boolean {
   return (access ?? []).some(
     (j) =>
       (j.connections?.length ?? 0) > 0 ||
       (j.sshKeys?.length ?? 0) > 0 ||
       Object.keys(j.resources ?? {}).length > 0 ||
-      (j.envFrom?.length ?? 0) > 0,
+      (j.envFrom?.length ?? 0) > 0 ||
+      j.envFile !== undefined,
   );
 }
 
@@ -764,7 +817,9 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     }
     return;
   }
-  if (run.state === "failed") {
+  if (run.state !== "finished") {
+    // The runner reports this as `error`. It used to be read as a finished
+    // run with no jobs, so a refused clone showed "No pipeline ran".
     const reason = run.error ?? "The runner could not run this commit.";
     await finish(row, "error", reason);
     await upsertCheck(row, {
@@ -1006,16 +1061,44 @@ export async function retryRun(
   const original = await loadOwned(organizationId, id);
   const refusal = retryRefusal(original);
   if (refusal) throw new CiInputError(refusal, 409);
-  const [{ count } = { count: 0 }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(ciRuns)
-    .where(eq(ciRuns.retryOfRunId, original.id));
+  const row = await insertRetry(original, {
+    approvedByUserId: userId,
+    noTaskCache: opts.noTaskCache,
+    firstOnly: false,
+  });
+  if (!row) throw new CiInputError("This run is already being retried.", 409);
+  return toWire(row);
+}
+
+/**
+ * Inserts a retry of `original` (see `retryRun`), or returns `null` when
+ * another got there first. `approvedByUserId` is the person who asked, who
+ * holds `ci:approve`: a fork's retry counts as approved by them. With
+ * `null` (a re-run asked for from GitHub, by someone Infrawrench cannot
+ * vouch for) a fork's retry waits for approval like a new commit of it.
+ * `firstOnly` makes it the run's first retry or nothing, so a request that
+ * raced any other retry of the same run never starts a second.
+ */
+export async function insertRetry(
+  original: CiRunRow,
+  opts: { approvedByUserId: string | null; noTaskCache: boolean; firstOnly: boolean },
+): Promise<CiRunRow | null> {
+  const userId = opts.approvedByUserId;
+  let count = 0;
+  if (!opts.firstOnly) {
+    const [counted] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(ciRuns)
+      .where(eq(ciRuns.retryOfRunId, original.id));
+    count = counted?.count ?? 0;
+  }
+  const waits = original.fromFork && userId === null;
   const now = new Date();
   const [row] = await db
     .insert(ciRuns)
     .values({
       id: crypto.randomUUID(),
-      organizationId,
+      organizationId: original.organizationId,
       installationId: original.installationId,
       repoFullName: original.repoFullName,
       ownerKey: original.ownerKey,
@@ -1036,15 +1119,14 @@ export async function retryRun(
       actorLogin: original.actorLogin,
       retryOfRunId: original.id,
       noTaskCache: opts.noTaskCache,
-      status: "queued",
+      status: waits ? "awaiting_approval" : "queued",
       // One retry per count: a second click racing the first conflicts.
       dedupeKey: `retry:${original.id}:${count + 1}`,
-      ...(original.fromFork ? { decidedByUserId: userId || null, decidedAt: now } : {}),
+      ...(original.fromFork && !waits ? { decidedByUserId: userId || null, decidedAt: now } : {}),
     })
     .onConflictDoNothing()
     .returning();
-  if (!row) throw new CiInputError("This run is already being retried.", 409);
-  return toWire(row);
+  return row ?? null;
 }
 
 /** A Git branch name a manual run may be started on, or why it is not one. */

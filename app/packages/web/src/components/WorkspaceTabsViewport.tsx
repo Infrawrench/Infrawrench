@@ -23,6 +23,8 @@ import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebCostReportsClient, createWebCostsClient } from "@/lib/cost-client";
 import { createWebNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
+import { createWebCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { createWebInvoicesClient } from "@/lib/invoices-client";
 import { type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -35,6 +37,7 @@ import { createWebCostCanvasesClient } from "@/lib/cost-canvases-client";
 import { type KubernetesEfficiencyClient } from "@infrawrench/ui/k8s-efficiency";
 import { createWebKubernetesEfficiencyClient } from "@/lib/k8s-efficiency-client";
 import {
+  migrationEstimatesTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
   costCanvasesTabTarget,
@@ -142,12 +145,21 @@ const WebMetricAlertsPanel = lazyPanel(() =>
   import("./WebMetricAlertsPanel").then((m) => m.WebMetricAlertsPanel),
 );
 const WebProbesPanel = lazyPanel(() => import("./WebProbesPanel").then((m) => m.WebProbesPanel));
+const WebHeartbeatsPanel = lazyPanel(() =>
+  import("./WebHeartbeatsPanel").then((m) => m.WebHeartbeatsPanel),
+);
+const WebEnvFilesPanel = lazyPanel(() =>
+  import("./WebEnvFilesPanel").then((m) => m.WebEnvFilesPanel),
+);
 const WebStatusPagesPanel = lazyPanel(() =>
   import("./WebStatusPagesPanel").then((m) => m.WebStatusPagesPanel),
 );
 const WebQuotasPanel = lazyPanel(() => import("./WebQuotasPanel").then((m) => m.WebQuotasPanel));
 const WebPriceCatalogPanel = lazyPanel(() =>
   import("./WebPriceCatalogPanel").then((m) => m.WebPriceCatalogPanel),
+);
+const WebMigrationEstimatesPanel = lazyPanel(() =>
+  import("./WebMigrationEstimatesPanel").then((m) => m.WebMigrationEstimatesPanel),
 );
 const WebIncidentsPanel = lazyPanel(() =>
   import("./WebIncidentsPanel").then((m) => m.WebIncidentsPanel),
@@ -262,6 +274,16 @@ function getCostsClient(orgId: string): CostsClient {
   if (!client) {
     client = createWebCostsClient(orgId);
     costsClients.set(orgId, client);
+  }
+  return client;
+}
+
+const commitmentReportsClients = new Map<string, CommitmentReportsClient>();
+function getCommitmentReportsClient(orgId: string): CommitmentReportsClient {
+  let client = commitmentReportsClients.get(orgId);
+  if (!client) {
+    client = createWebCommitmentReportsClient(orgId);
+    commitmentReportsClients.set(orgId, client);
   }
   return client;
 }
@@ -434,6 +456,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           key={orgId}
           client={getCostsClient(orgId)}
           networkFlowReports={getNetworkFlowReportsClient(orgId)}
+          commitmentReports={getCommitmentReportsClient(orgId)}
           onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
@@ -937,12 +960,41 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
     case "probes":
       return <WebProbesPanel key={orgId} orgId={orgId} />;
+    case "heartbeats":
+      return <WebHeartbeatsPanel key={orgId} orgId={orgId} />;
+    case "env-files":
+      return <WebEnvFilesPanel key={orgId} orgId={orgId} />;
     case "status-pages":
       return <WebStatusPagesPanel key={orgId} orgId={orgId} />;
     case "quotas":
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
     case "price-catalog":
       return <WebPriceCatalogPanel key={orgId} orgId={orgId} />;
+    case "migration-estimates":
+      return (
+        <WebMigrationEstimatesPanel
+          key={orgId}
+          orgId={orgId}
+          estimateId={t.estimateId}
+          // The URL owns which estimate is open, the resource reports rule.
+          onSelectEstimate={(estimateId) =>
+            void navigate(
+              getWorkspaceNavigateArgs(migrationEstimatesTabTarget(estimateId ?? undefined)),
+            )
+          }
+          onOpenResource={(ref) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(ref.accountId, ref.resourceId, ref.pluginId, ref.resourceTypeId),
+              ),
+            )
+          }
+          onOpenServices={() => void navigate(getWorkspaceNavigateArgs(servicesTabTarget()))}
+          onOpenResourceReports={() =>
+            void navigate(getWorkspaceNavigateArgs(resourceReportsTabTarget()))
+          }
+        />
+      );
     case "incidents":
       return (
         <WebIncidentsPanel

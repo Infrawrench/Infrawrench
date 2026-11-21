@@ -98,9 +98,9 @@ Every surface shows the same breakdown. A provider that only bills per service (
 
 The breakdown covers your whole organization's spend, like the anomaly itself. That's why members with a [cost visibility scope](../team-and-billing/cost-visibility.md) don't see anomalies at all. The API also applies the scope to the breakdown: spend outside your accounts is combined into one "Other" row per breakdown, with its amount but not its name.
 
-<insert [Costs panel Anomalies list with a spike row showing the "Driven by" line under the service name (resource name as a link, provider id, rise and share) and the Breakdown action next to File an issue] here>
+![Costs panel Anomalies list with a spike row showing the "Driven by" line under the service name (resource name as a link, provider id, rise and share) and the Breakdown action next to File in Jira](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/anomalies-driven-by.png)
 
-<insert [The anomaly breakdown dialog: the daily chart of the driving resource with the anomalous day shaded, the Open resource and Save as cost report buttons, and the table grouped into Resource, Account, Region and Tag rows with average, on-the-day, rise and share columns] here>
+![The anomaly breakdown dialog: the daily chart of the driving resource with the anomalous day shaded, the Open resource and Save as cost report buttons, and the table grouped into Resource, Account, Region and Tag rows with average, on-the-day, rise and share columns](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/anomaly-breakdown.png)
 
 ## Where to see anomalies
 
@@ -162,7 +162,7 @@ Ids can be a unique prefix. All of these accept `--json`.
 
 In `--json` output, every row has a `kind` field (`spike` or `new_source`) so a script can handle the two differently. Rows also include the full `acknowledgement` object where there is one, and the whole `contributors` breakdown.
 
-<insert [Terminal showing `infrawrench costs --anomalies` output: the table of day, what spiked, actual vs baseline spend, the red percentage-change column, and the notified column] here>
+![Terminal showing `infrawrench costs --anomalies` output: the table of day, what spiked, actual vs baseline spend, the red percentage-change column, and the notified column](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/cli-anomalies.png)
 
 ## Alerts
 
@@ -171,7 +171,7 @@ Anomaly alerts use the same channels as budget alerts and sync-failure incidents
 - **[Slack](./slack-alerts.md) and [Microsoft Teams](./teams-alerts.md):** **Alert routing** rules decide which channels get anomalies. Add a rule whose **Trigger** condition names **Anomalies** and pick channels under **Send to**. Until you add any rules, every trigger except Drift goes to every connected channel, so a newly connected workspace already gets anomalies. See [Alert routing](./alert-routing.md).
 - **[Mobile push](./mobile-push-notifications.md):** a per-user, per-org toggle labelled **Anomalies**. Find it in the **Mobile app** pane of the Connections box (under "Your mobile notifications"), or in the mobile app under **Settings > Notifications**. It's on by default.
 
-<insert [Settings > Notifications with an Alert routing rule whose Trigger condition names Anomalies, and the Mobile app pane's "Anomalies" push toggle] here>
+![Settings \> Notifications, Routing tab, with an Alert routing rule whose Trigger condition names Anomalies and sends to Mobile push and a Slack channel (the Mobile app pane's push toggle is on the separate Channels tab and is not shown)](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/routing-anomalies-rule.png)
 
 Slack and Teams messages have a "View in Infrawrench" button that opens the Costs panel, plus **Expected** and **Unexpected** buttons for [feedback](#expected-or-unexpected-feedback):
 
@@ -305,7 +305,7 @@ What each verdict does:
 - **Unexpected** keeps detection as sensitive as it is, and offers to [file a Jira or Linear issue](#filing-an-anomaly-as-an-issue) right in the dialog. If an earlier Expected verdict on the same anomaly created a suppression, it's removed.
 - **Expected** can stop the same pattern alerting again: pick a repeat option and it creates a [suppression](#suppressions). It also counts toward [learning from feedback](#learning-from-feedback).
 
-<insert [The feedback dialog with Expected selected, reason "Seasonal", a note, recurrence "Recurring weekly", the scope picker on the anomaly's own service, the expiry date, and the "Next covered" preview line] here>
+![The feedback dialog with Expected selected, reason "Seasonal", a note, recurrence "Recurring weekly", the scope picker on the anomaly's own service, the expiry date, and the "Next covered" preview line](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/feedback-expected-weekly.png)
 
 ### Suppressions
 
@@ -327,7 +327,7 @@ The **scope** defaults to the anomaly's own provider or service. You can pick an
 
 **Suppressions** in the Anomalies section lists every suppression: what it covers, how it repeats, its dates, the reason and note, who added it, the next days it covers and how many anomalies it has silenced. Edit or delete any of them, or click **Add suppression** to add one by hand for a launch you know is coming. Expired suppressions stay listed, greyed out. Deleting a suppression never deletes the anomalies it silenced. Any from the last three days can still alert on the next pass. Your organization can have at most 100 active suppressions.
 
-<insert [The Suppressions panel listing an active weekly service suppression with its next covered days and "suppressed 3", an account-scoped one-off suppression, and an expired one greyed out] here>
+![The Suppressions panel listing an active weekly service suppression with its next covered days and "suppressed 3", an account-scoped one-off suppression, and an expired one greyed out](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/suppressions-panel.png)
 
 ### Learning from feedback
 
@@ -339,7 +339,7 @@ When the same provider or service keeps getting marked expected, detection gets 
 
 **Precision** in the Anomalies section shows, month by month, how many anomalies were found and suppressed, how many were marked expected and unexpected, and the share of reviewed anomalies that were unexpected. That share is how often an alert was a real problem. It also counts the reasons given. A month with low precision and lots of Expected verdicts is a sign to add a suppression or retune detection.
 
-<insert [The Precision panel showing six months of bars with percentages, the per-month counts, the overall line and the reasons breakdown] here>
+![The Precision panel showing six months of bars with percentages, the per-month counts, the overall line and the reasons breakdown](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/precision-panel.png)
 
 Giving feedback needs `costs:write`, the same as explaining. Reading it needs `costs:read`. Every verdict and suppression change is written to the [audit log](../team-and-billing/audit-log.md).
 

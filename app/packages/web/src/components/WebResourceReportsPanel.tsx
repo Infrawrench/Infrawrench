@@ -1,10 +1,12 @@
 import { useMemo } from "react";
+import { useGT } from "gt-react";
 import {
   ResourceReportsPanel,
   type ResourceReportResourceRef,
 } from "@infrawrench/ui/resource-reports";
 import { usePermissions } from "@/auth/permissions-context";
 import { createWebResourceReportsClient } from "@/lib/resource-reports-client";
+import { useStartMigrationEstimate } from "./useStartMigrationEstimate";
 
 /**
  * Web host for the shared resource reports screen, rendered as the
@@ -29,8 +31,11 @@ export function WebResourceReportsPanel({
     () => createWebResourceReportsClient(orgId, canWrite, canWriteFolders),
     [orgId, canWrite, canWriteFolders],
   );
+  const gt = useGT();
+  const migration = useStartMigrationEstimate(orgId);
+  const startMigration = migration.start;
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
+    <div className="w-full p-6 max-w-[1400px] mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <ResourceReportsPanel
         key={orgId}
@@ -38,7 +43,17 @@ export function WebResourceReportsPanel({
         reportId={reportId}
         onReportChange={onSelectReport}
         onOpenResource={onOpenResource}
+        onEstimateMigration={
+          startMigration && has("costs:read")
+            ? (resourceIds) =>
+                startMigration({
+                  source: { kind: "resources", resourceIds },
+                  label: gt("{count} selected resources", { count: resourceIds.length }),
+                })
+            : undefined
+        }
       />
+      {migration.dialog}
     </div>
   );
 }

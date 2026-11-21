@@ -48,6 +48,8 @@ interface DetailResponse {
     displayName: string;
     accountId: string;
   }>;
+  /** `topLevel` marks a type the account root's page lists whose rows have no parent. */
+  childTypes: Array<{ id: string; topLevel?: boolean }>;
   accountId: string;
   resourceDisplayName: string;
   resourceTypeLabel: string;
@@ -132,6 +134,13 @@ export default function ResourceDetailScreen() {
     return (data?.childResources ?? []).filter((child) => !hidden.has(child.resourceTypeId));
   }, [data]);
 
+  // The account root's page also lists the plugin's top-level types; their
+  // rows have no parent, so opening one sends none.
+  const topLevelChildTypeIds = useMemo(
+    () => new Set((data?.childTypes ?? []).flatMap((ct) => (ct.topLevel ? [ct.id] : []))),
+    [data],
+  );
+
   const handlers = useMemo<ActionHandlers>(
     () => ({
       navigateToResource: (target) =>
@@ -204,6 +213,12 @@ export default function ResourceDetailScreen() {
       extra["sshHost"] = data.sshHost;
       if (data.defaultSshUsername) extra["sshUsername"] = data.defaultSshUsername;
     }
+    // The query console's placeholder follows the editor's language.
+    const sqlEditor = data.detailSchema.sqlEditor;
+    if (kind === "sql" && sqlEditor) {
+      if (sqlEditor.queryLanguage) extra["queryLanguage"] = sqlEditor.queryLanguage;
+      if (sqlEditor.defaultQuery) extra["defaultQuery"] = sqlEditor.defaultQuery;
+    }
     return `/org/${orgId}/terminal/${kind}?${toolParams(extra)}`;
   };
 
@@ -268,7 +283,7 @@ export default function ResourceDetailScreen() {
           {canExec && <Button label="Shell" onPress={() => router.push(execHref())} />}
           {data.hasSqlEditor && (
             <Button
-              label="SQL"
+              label={data.detailSchema.sqlEditor?.queryLanguage ?? "SQL"}
               variant="secondary"
               onPress={() => router.push(terminalHref("sql"))}
             />
@@ -367,7 +382,7 @@ export default function ResourceDetailScreen() {
                   subtitle={child.resourceTypeId}
                   onPress={() =>
                     router.push(
-                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}?accountId=${encodeURIComponent(child.accountId || data.accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
+                      `/org/${orgId}/resources/${encodeURIComponent(child.pluginId)}/${encodeURIComponent(child.resourceTypeId)}/${encodeURIComponent(child.id)}?accountId=${encodeURIComponent(child.accountId || data.accountId)}${topLevelChildTypeIds.has(child.resourceTypeId) ? "" : `&parentResourceId=${encodeURIComponent(resourceId)}`}`,
                     )
                   }
                 />

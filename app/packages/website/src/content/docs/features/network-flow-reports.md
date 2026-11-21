@@ -12,7 +12,7 @@ Reports use the same traffic data as the Network tab, so everything on that page
 
 On the **Costs** page, open the **Network** tab and choose **New report** under **Network flow reports**.
 
-<insert [The New network flow report editor with name, folder, date range "Last 30 days", granularity "Daily", group by "Flow pair", show "Bytes and estimated cost", and the Traffic classes filter set to Cross-zone] here>
+![The New network flow report editor with name, folder, date range "Last 30 days", granularity "Daily", group by "Flow pair", show "Bytes and estimated cost", and the Traffic classes filter set to Cross-zone](https://agent-assets.infrawrench.com/docs-screenshots/features/network-flow-reports/new-report-editor.png)
 
 | Setting     | What it does                                                                                                                                                                                 |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -38,14 +38,14 @@ VPC ids are available for AWS. Older flows, and endpoints a provider doesn't pla
 
 ## Read a report
 
-<insert [An open network flow report: notices, the estimated cost and bytes tiles, a stacked daily bar chart by flow pair with an "Everything else" band, and the totals table below] here>
+![An open network flow report: notices, the estimated cost, bytes and attribution tiles, a stacked daily bar chart by flow pair, and the totals table below](https://agent-assets.infrawrench.com/docs-screenshots/features/network-flow-reports/report-view.png)
 
 - **The tiles** show estimated cost and bytes over the window, and how much traffic is attributed to a named pair. Unattributed bytes (where the other end couldn't be identified) and bytes outside the top pairs are counted in every total and never spread across the named pairs.
 - **The chart** stacks the largest groups over time. Everything else is one grey band, so the stack always adds up to the headline. With **Bytes and estimated cost** selected, you can switch the chart between the two.
 - **The totals table** lists every group up to the row limit, with its bytes, estimated cost, share of the total and the number of distinct pairs behind it.
 - **Top talkers** lists the heaviest flow pairs: source and destination with their zone or region and VPC, the traffic class, bytes, estimated cost, and how many days in the window the pair appeared. A one-day spike and a standing cost need different fixes.
 
-<insert [The Top talkers table of a network flow report, with one row marked "peer not identified"] here>
+![The Top talkers table of a network flow report, with one row marked "peer not identified"](https://agent-assets.infrawrench.com/docs-screenshots/features/network-flow-reports/top-talkers.png)
 
 ### Sampled traffic
 

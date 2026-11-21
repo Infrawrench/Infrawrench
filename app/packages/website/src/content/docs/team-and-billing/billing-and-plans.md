@@ -104,12 +104,12 @@ If your subscription includes a trial period (for example a promotional offer), 
 
 [CI](../features/ci.md) is part of paid plans and is billed by what your pipelines use, on the same invoice as your seats:
 
-| Unit      | Price                                              | What counts                                                                                                 |
-| --------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| vCPU time | $0.00008 per vCPU-second ($0.0048 per vCPU-minute) | Each job's running time, at a quarter of a vCPU (four jobs share one)                                       |
-| Memory    | $0.000008 per GiB-second                           | The memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs                  |
-| Storage   | $0.0002 per GiB-hour (about $0.14 per GiB-month)   | The space your caches and [downloads](../features/ci.md#downloads) take on the runners, measured every hour |
+| Unit      | Price                                              | What counts                                                                                                                                            |
+| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| vCPU time | $0.00008 per vCPU-second ($0.0048 per vCPU-minute) | Each job's running time, at a quarter of a vCPU (four jobs share one), or at the whole vCPUs of its [`cpus:`](../features/ci.md#whole-vcpus-for-a-job) |
+| Memory    | $0.000008 per GiB-second                           | The memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs                                                             |
+| Storage   | $0.0002 per GiB-hour (about $0.14 per GiB-month)   | The space your caches and [downloads](../features/ci.md#downloads) take on the runners, measured every hour                                            |
 
-For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. A job the task cache stands in for does not run, so it costs nothing, and a [cloud job](../features/ci.md#cloud-jobs) is billed by your provider, not here.
+For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. With `cpus: 2` as well it is charged 1,200 vCPU-seconds ($0.096) instead of 150. A job the task cache stands in for does not run, so it costs nothing, and a [cloud job](../features/ci.md#cloud-jobs) is billed by your provider, not here.
 
 The **CI** page shows this month's runs, compute and storage. Complimentary organizations are never billed for CI.

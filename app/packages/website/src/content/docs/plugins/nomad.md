@@ -30,13 +30,13 @@ Connect a Nomad cluster to run and operate jobs and look after the nodes they ru
 3. For federated clusters, set the **Region** under **Advanced options** to manage a region other than the agent's own.
 4. If the agent's certificate is signed by a private CA, paste the CA certificate under **Advanced options**. Nomad's mutual TLS (`verify_https_client`) isn't supported.
 
-<insert [Nomad Add-account form with the address and ACL token filled in] here>
+![Nomad Add-account form with the address and ACL token filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/nomad/add-account.png)
 
 **Check credentials** tests jobs, nodes, variables, ACLs and the agent one by one, and lists the policy each missing capability needs.
 
-<insert [Nomad job detail page with the Scale dialog open over the task group counts] here>
+![The Scale dialog on a Nomad job, listing each task group with its current count](https://agent-assets.infrawrench.com/docs-screenshots/plugins/nomad/job-scale-dialog.png)
 
-<insert [Nomad allocation Logs tab showing a task's stderr] here>
+![Nomad allocation Logs tab showing a task's stderr](https://agent-assets.infrawrench.com/docs-screenshots/plugins/nomad/allocation-logs-stderr.png)
 
 ## CI jobs
 

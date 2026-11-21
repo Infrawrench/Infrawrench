@@ -21,7 +21,7 @@ Connect an Aiven account to manage its projects and managed services (PostgreSQL
 - **Project VPCs** and **VPC peerings**: create a VPC in a cloud, add peering connections to your AWS, Google Cloud, Azure or UpCloud networks, check their state and delete them.
 - **Billing groups**: payment method, balance, invoices and credits, and **Claim credit code**.
 
-<insert [Aiven service detail page for a PostgreSQL service showing the Service, Connection and Maintenance sections with the Change plan and Move cloud actions in the header] here>
+![Aiven service detail page for a PostgreSQL service showing the Service, Connection and Maintenance sections with the Change plan and Move cloud actions in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aiven/service-detail.png)
 
 ## Open a database console
 
@@ -33,7 +33,7 @@ Kafka services open in the Kafka console when **SASL authentication** is enabled
 
 Create a token in the [Aiven console](https://console.aiven.io/profile/auth) under **User profile > Tokens**, or use an application user's token from your organization. The token has that user's permissions, so it sees the projects the user belongs to. Costs, invoices and credits need access to the organization's billing.
 
-<insert [Aiven Add-account form with the API Token field filled in] here>
+![Aiven Add-account form with the API Token field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aiven/add-account.png)
 
 ## Metrics and logs
 

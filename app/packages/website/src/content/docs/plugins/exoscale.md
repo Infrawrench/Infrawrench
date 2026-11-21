@@ -22,7 +22,7 @@ Connect Exoscale with an IAM API key to create, edit and run your resources in e
 - **SSH keys and anti-affinity groups**: register, list and delete.
 - **Organization**: the organization name, currency and live balance.
 
-<insert [Exoscale account page showing Compute Instances, Block Storage, SKS Clusters, DBaaS Services and SOS Buckets across several zones] here>
+![Exoscale account page with the Compute Instances section open, listing instances in ch-gva-2, ch-dk-2, de-fra-1 and at-vie-1, and section tabs for Block Storage Volumes and the other resource types](https://agent-assets.infrawrench.com/docs-screenshots/plugins/exoscale/account.png)
 
 ## Connect your account
 
@@ -30,7 +30,7 @@ Connect Exoscale with an IAM API key to create, edit and run your resources in e
 2. The role decides what Infrawrench can see. Allow the `compute`, `dbaas`, `dns` and `sos` services, plus billing access for costs.
 3. After adding the account, click **Check credentials** to see what the key can reach.
 
-<insert [Add account dialog for Exoscale with the API Key and API Secret fields and the credential check results] here>
+![Add account dialog for Exoscale with the API Key and API Secret fields and the credential check results](https://agent-assets.infrawrench.com/docs-screenshots/plugins/exoscale/add-account-check.png)
 
 ## Costs, quotas and balance
 

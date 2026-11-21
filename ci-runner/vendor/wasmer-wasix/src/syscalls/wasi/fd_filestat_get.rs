@@ -56,6 +56,11 @@ pub(crate) fn fd_filestat_get_internal(
     }
 
     let mut stat = *fd_entry.inode.stat.read().unwrap();
+    // iwci patch: the file's number and count of names as the file system
+    // has them now: another name made or removed since it was opened.
+    state
+        .fs
+        .refresh_links(fd_entry.inode.read().deref(), &mut stat);
     // WASI has no file type for a pipe, so the C library's `fstat` gives one
     // no type at all, and a program that asks what its standard streams are
     // (libuv's `uv_guess_handle`, and so Node) takes a pipe for something it
@@ -68,6 +73,16 @@ pub(crate) fn fd_filestat_get_internal(
         )
     {
         stat.st_filetype = Filetype::CharacterDevice;
+    }
+    // A socket's inode has no file type either, so `fstat` gave it none
+    // (no `S_IFSOCK`), and a program that checks a descriptor it was handed
+    // is a socket refused it: Ruby's `BasicSocket.for_fd`, and so pg's
+    // connection to PostgreSQL, which wraps the socket libpq opened. Its
+    // type is the one `fd_fdstat_get` gives (`SO_TYPE`).
+    let socket = stat.st_filetype == Filetype::Unknown
+        && matches!(*fd_entry.inode.read(), Kind::Socket { .. });
+    if socket && let Ok(fdstat) = state.fs.fdstat(fd, None) {
+        stat.st_filetype = fdstat.fs_filetype;
     }
     Ok(stat)
 }

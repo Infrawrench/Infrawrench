@@ -4,6 +4,7 @@ export const DnsZoneResourceType = rt({
   name: "DNS Zone",
   id: "dns-zone",
   description: "A DNS zone hosted on Hetzner DNS (part of the Cloud API since November 2025)",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Domain", { editable: false }),
     f("mode", "Mode", {

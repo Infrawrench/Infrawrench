@@ -240,6 +240,8 @@ export interface K8sCronJob {
   metadata: K8sMeta;
   spec: {
     schedule: string;
+    /** IANA zone the schedule is read in; unset means kube-controller-manager's local zone. */
+    timeZone?: string;
     suspend?: boolean;
     jobTemplate: {
       spec: { template: { spec: K8sPodSpec } };

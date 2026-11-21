@@ -4,10 +4,12 @@ export const EBSVolumeResourceType = rt({
   name: "EBS Volume",
   id: "ebs-volume",
   description: "An Amazon Elastic Block Store volume",
+  equivalence: "block-volume",
   fields: [
     f("volumeId", "Volume ID"),
+    f("region", "Region", { required: false, editable: false, sizing: "region" }),
     f("availabilityZone", "Availability Zone", { showcase: true }),
-    f("sizeGb", "Size (GB)", { showcase: true, kind: "number" }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", sizing: "disk-gb" }),
     f("volumeType", "Volume Type", {
       kind: "enum",
       enumValues: ["gp3", "gp2", "io1", "io2", "st1", "sc1", "standard"],

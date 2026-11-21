@@ -5,8 +5,13 @@
 //! system, mounted at [`NATIVE_DIR`], to start the program:
 //!
 //! - writing a request (arguments, environment, working directory) to
-//!   `spawn/<name>` and reading the file back starts `<name>` and gives the
-//!   id of its session, or nothing when it could not be started;
+//!   `spawn/<name>@<token>` and reading the file back starts `<name>` and
+//!   gives the id of its session, or nothing when it could not be started.
+//!   The token is the trampoline's own, at random: WASIX shares one open
+//!   handle among every open of the same path, and a second open replaces
+//!   it, so two programs started at once through one path took each
+//!   other's request and answer, and the first was stopped as its handle
+//!   was dropped;
 //! - `<id>/in` is the program's standard input, `<id>/out` and `<id>/err`
 //!   its output, which end when the program's do (or shortly after it
 //!   exits, when something it left behind holds them open), and
@@ -16,7 +21,7 @@
 //! the program's output goes wherever the trampoline's would (a pipe to
 //! another WASIX program, a file, the job's log), and it exits as the
 //! program did. The program runs in a process group of its own; when the
-//! trampoline goes (it was killed, its job ended), its `spawn/<name>` file
+//! trampoline goes (it was killed, its job ended), its `spawn/` file
 //! closes and the group is stopped: `SIGTERM`, then `SIGKILL`.
 
 use std::collections::{HashMap, VecDeque};
@@ -180,12 +185,70 @@ pub(crate) fn trampoline(name: &str) -> Option<Arc<[u8]>> {
         return Some(wasm.clone());
     }
     let spawn = format!("{}/spawn/{name}", &NATIVE_DIR[1..]);
-    let text = include_str!("trampoline.wat")
-        .replace("@SPAWN_LEN@", &spawn.len().to_string())
-        .replace("@SPAWN@", &spawn);
-    let wasm: Arc<[u8]> = wat::parse_str(&text).ok()?.into();
+    let wasm = assemble(spawn.as_bytes(), 1100, DYNAMIC)?;
     map.insert(name.to_string(), wasm.clone());
     Some(wasm)
+}
+
+/// Where a trampoline's argv, environment and working directory go
+/// (`trampoline.wat`).
+const DYNAMIC: usize = 135_168;
+
+/// The longest path a WASIX process may execute natively.
+const MAX_EXEC_PATH: usize = 4096;
+
+/// The trampoline that runs the native program at `path`, which a WASIX
+/// process in the sandbox asked to execute: it opens
+/// `exec/<path>` under [`NATIVE_DIR`], and the program runs with the
+/// caller's arguments (its `argv[0]` included), environment, directory
+/// and standard streams, as a native tool's command does. `None` for a
+/// path that is not absolute and normal, or longer than [`MAX_EXEC_PATH`].
+pub(crate) fn exec_trampoline(path: &str) -> Option<Arc<[u8]>> {
+    let path = exec_path(path)?;
+    let spawn = format!("{}/exec{}", &NATIVE_DIR[1..], path.to_str()?);
+    // The path, and the `@<token>` the trampoline adds to it, go where the
+    // dynamic area would, which moves past them.
+    let dynamic = (DYNAMIC + spawn.len() + 18).next_multiple_of(4096);
+    assemble(spawn.as_bytes(), DYNAMIC, dynamic)
+}
+
+/// `path` as an absolute path with no `.`, `..` or empty parts, as the
+/// native side reads it back (`NativeControl`).
+fn exec_path(path: &str) -> Option<PathBuf> {
+    if !path.starts_with('/') || path.len() > MAX_EXEC_PATH || path.contains('\0') {
+        return None;
+    }
+    let mut out = PathBuf::from("/");
+    for part in Path::new(path).components() {
+        match part {
+            Component::RootDir | Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(name) => out.push(name),
+            Component::Prefix(_) => return None,
+        }
+    }
+    (out != Path::new("/")).then_some(out)
+}
+
+/// The trampoline with its spawn path at `at` and its dynamic area at
+/// `dynamic`.
+fn assemble(spawn: &[u8], at: usize, dynamic: usize) -> Option<Arc<[u8]>> {
+    let mut quoted = String::with_capacity(spawn.len());
+    for &b in spawn {
+        if b.is_ascii_graphic() && b != b'"' && b != b'\\' || b == b' ' {
+            quoted.push(b as char);
+        } else {
+            quoted.push_str(&format!("\\{b:02x}"));
+        }
+    }
+    let text = include_str!("trampoline.wat")
+        .replace("@SPAWN_LEN@", &spawn.len().to_string())
+        .replace("@SPAWN_AT@", &at.to_string())
+        .replace("@DYNAMIC@", &dynamic.to_string())
+        .replace("@SPAWN@", &quoted);
+    Some(wat::parse_str(&text).ok()?.into())
 }
 
 /// One job's native programs and their sessions.
@@ -195,6 +258,9 @@ pub(crate) struct Natives {
     programs: HashMap<String, PathBuf>,
     sessions: Mutex<HashMap<u64, Arc<Session>>>,
     next: AtomicU64,
+    /// The CPUs the job is told it has (`Limits::told_cpus`), as the
+    /// affinity each program starts with; `None` leaves the sandbox's.
+    told_cpus: Option<u32>,
 }
 
 impl Natives {
@@ -203,6 +269,12 @@ impl Natives {
             programs: programs.into_iter().collect(),
             ..Self::default()
         }
+    }
+
+    /// Starts each program on the first `cpus` of the sandbox's CPUs.
+    pub(crate) fn telling_cpus(mut self, cpus: u32) -> Self {
+        self.told_cpus = Some(cpus);
+        self
     }
 
     /// The programs' names.
@@ -214,11 +286,17 @@ impl Natives {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Starts the command `name`, or the program at `name` when it is a
+    /// path (`exec/`, a native program a WASIX process executed).
     fn start(&self, name: &str, request: &Request) -> io::Result<u64> {
-        let program = self
-            .programs
-            .get(name)
-            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+        let program = match name.starts_with('/') {
+            true => Path::new(name),
+            false => self
+                .programs
+                .get(name)
+                .map(PathBuf::as_path)
+                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?,
+        };
         let mut command = Command::new(program);
         command
             .arg0(&request.args[0])
@@ -229,6 +307,24 @@ impl Natives {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .process_group(0);
+        // The job's CPU count, where a native program asks for it: its
+        // affinity, which `nproc`, Go's `runtime.NumCPU`, Rust's
+        // `available_parallelism`, libuv (Node's `availableParallelism`) and
+        // Bun's `navigator.hardwareConcurrency` read. gVisor keeps a mask
+        // for what it reports and does not pin threads to it, so the
+        // program may still use every CPU of the sandbox.
+        if let Some(set) = self.told_cpus.and_then(told_affinity) {
+            // SAFETY: only `sched_setaffinity`, which is async-signal-safe,
+            // on a set made before the fork.
+            unsafe {
+                command.pre_exec(move || {
+                    // Best effort: a program that keeps the sandbox's mask
+                    // still runs.
+                    libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
+                    Ok(())
+                });
+            }
+        }
         for (k, v) in &request.env {
             if k == "NODE_OPTIONS" {
                 let options = without_node_preload(v);
@@ -274,6 +370,34 @@ impl Natives {
             session.stop(false);
         }
     }
+}
+
+/// The first `told` of the CPUs this process may run on, as an affinity
+/// mask; `None` when that is all of them, or they cannot be read.
+fn told_affinity(told: u32) -> Option<libc::cpu_set_t> {
+    let size = std::mem::size_of::<libc::cpu_set_t>();
+    // SAFETY: a `cpu_set_t` is plain bits; zeroed is the empty set.
+    let mut current: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+    // SAFETY: `current` is a whole `cpu_set_t` of `size` bytes.
+    if unsafe { libc::sched_getaffinity(0, size, &mut current) } != 0 {
+        return None;
+    }
+    // SAFETY: as above.
+    let mut set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
+    let mut kept = 0;
+    let mut have = 0;
+    for cpu in 0..libc::CPU_SETSIZE as usize {
+        // SAFETY: `cpu` is under `CPU_SETSIZE`, the bits a set has.
+        if unsafe { libc::CPU_ISSET(cpu, &current) } {
+            have += 1;
+            if kept < told.max(1) {
+                // SAFETY: as above.
+                unsafe { libc::CPU_SET(cpu, &mut set) };
+                kept += 1;
+            }
+        }
+    }
+    (kept < have).then_some(set)
 }
 
 /// One running native program.
@@ -577,10 +701,37 @@ impl NativeControl {
             .collect()
     }
 
+    /// `<name>` of a spawn file's `<name>@<token>`: the token is the
+    /// trampoline's own (1 to 32 hex digits), so that two trampolines of
+    /// one program never open the same path.
+    fn untokened(file: &str) -> Option<&str> {
+        let (name, token) = file.rsplit_once('@')?;
+        ((1..=32).contains(&token.len()) && token.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then_some(name)
+    }
+
     fn target(&self, path: &Path) -> Option<Target> {
         match Self::parts(path).as_slice() {
-            ["spawn", name] if self.natives.programs.contains_key(*name) => {
-                Some(Target::Spawn((*name).to_string()))
+            ["spawn", file] => {
+                let name = Self::untokened(file)?;
+                self.natives
+                    .programs
+                    .contains_key(name)
+                    .then(|| Target::Spawn(name.to_string()))
+            }
+            // A native program a WASIX process executes, by its path in
+            // the sandbox (`exec_trampoline`), with the trampoline's token
+            // after its last part.
+            ["exec", dirs @ .., file] => {
+                let file = Self::untokened(file)?;
+                let path = if dirs.is_empty() {
+                    format!("/{file}")
+                } else {
+                    format!("/{}/{file}", dirs.join("/"))
+                };
+                std::fs::metadata(&path)
+                    .is_ok_and(|m| m.is_file())
+                    .then_some(Target::Spawn(path))
             }
             [id, file] => {
                 let id: u64 = id.parse().ok()?;
@@ -599,7 +750,10 @@ impl NativeControl {
 
     fn is_dir(&self, path: &Path) -> bool {
         match Self::parts(path).as_slice() {
-            [] | ["spawn"] => true,
+            [] | ["spawn"] | ["exec"] => true,
+            ["exec", rest @ ..] => {
+                std::fs::metadata(format!("/{}", rest.join("/"))).is_ok_and(|m| m.is_dir())
+            }
             [id] => id
                 .parse::<u64>()
                 .ok()
@@ -929,6 +1083,83 @@ mod tests {
         assert_eq!(&wasm[..4], b"\0asm");
         assert!(trampoline("../bun").is_none());
         assert!(trampoline("").is_none());
+    }
+
+    #[test]
+    fn a_spawn_path_names_a_program_and_a_token_of_its_trampolines_own() {
+        let control = NativeControl::new(Arc::new(Natives::new([(
+            "bun".to_string(),
+            PathBuf::from("/usr/local/bin/bun"),
+        )])));
+        let spawn = |path: &str| match control.target(Path::new(path)) {
+            Some(Target::Spawn(name)) => Some(name),
+            _ => None,
+        };
+        assert_eq!(spawn("/spawn/bun@0123456789abcdef"), Some("bun".into()));
+        // Without a token, two trampolines would share one handle.
+        assert_eq!(spawn("/spawn/bun"), None);
+        assert_eq!(spawn("/spawn/bun@"), None);
+        assert_eq!(spawn("/spawn/bun@xyz"), None);
+        assert_eq!(spawn("/spawn/node@0123"), None);
+    }
+
+    /// A program a WASIX process executes by its path takes the token after
+    /// its last part, which may itself hold an `@` (a pnpm store path).
+    #[test]
+    fn an_exec_path_names_a_file_and_a_token_of_its_trampolines_own() {
+        let dir = std::env::temp_dir().join(format!("iwci-exec-{}@1.0.0", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let program = dir.join("turbo@2");
+        std::fs::write(&program, b"\x7fELF").unwrap();
+        let control = NativeControl::new(Arc::new(Natives::new([])));
+        let exec = |suffix: &str| match control
+            .target(Path::new(&format!("/exec{}{suffix}", program.display())))
+        {
+            Some(Target::Spawn(path)) => Some(path),
+            _ => None,
+        };
+        let path = program.display().to_string();
+        assert_eq!(exec("@0123456789abcdef"), Some(path));
+        assert_eq!(exec(""), None);
+        assert_eq!(exec("@"), None);
+        assert_eq!(exec("@xyz"), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A native program starts on as many CPUs as the job is told it has,
+    /// so `nproc` (its affinity) agrees with what WASIX tells the job's
+    /// script; a job without `cpus:` is told 1 whatever the sandbox has.
+    #[test]
+    fn a_native_program_starts_on_the_cpus_the_job_is_told_it_has() {
+        let dir = std::env::temp_dir().join(format!("iwci-told-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let have = std::thread::available_parallelism().map_or(1, |n| n.get());
+        for told in [1, 2, 1024] {
+            let out = dir.join(format!("nproc-{told}"));
+            let natives = Natives::new([]).telling_cpus(told);
+            let request = Request {
+                args: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    format!("nproc > {}.part && mv {0}.part {0}", out.display()),
+                ],
+                env: vec![("PATH".into(), "/usr/bin:/bin".into())],
+                cwd: "/".into(),
+            };
+            let id = natives.start("/bin/sh", &request).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !out.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let seen: usize = std::fs::read_to_string(&out)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            assert_eq!(seen, (told as usize).min(have), "told {told}");
+            natives.close(id);
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

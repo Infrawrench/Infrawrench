@@ -492,12 +492,15 @@ export {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
@@ -1256,6 +1259,8 @@ export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
+export { HeartbeatsIcon } from "./components/icons/HeartbeatsIcon.js";
+export { EnvFilesIcon } from "./components/icons/EnvFilesIcon.js";
 export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { SlosIcon } from "./components/icons/SlosIcon.js";
@@ -1322,6 +1327,8 @@ export * from "./cost-canvases/index.js";
 export * from "./k8s-efficiency/index.js";
 // Saved network flow reports, on the Costs page's Network tab.
 export * from "./network-flow-reports/index.js";
+// Saved commitment reports, on the Costs page's Commitments tab.
+export * from "./commitment-reports/index.js";
 // Scheduled delivery and PDF export: the schedule list/editor shared by cost
 // reports and dashboards, and the dashboard header's export actions.
 export * from "./delivery/index.js";
@@ -1337,6 +1344,8 @@ export { RecordingPlayer } from "./session-recordings/RecordingPlayer.js";
 export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordings/terminal.js";
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
+export * from "./heartbeats/index.js";
+export * from "./env-files/index.js";
 export * from "./incidents/index.js";
 export * from "./slos/index.js";
 export * from "./services/index.js";
@@ -1538,8 +1547,6 @@ export {
   type HostSetupTransport,
 } from "./apps/index.js";
 export { useStableGT } from "./i18n/stable-gt.js";
-// Trial workspaces: the countdown an unclaimed agent trial carries until a
-// person claims it. See server-core/trials for the lifecycle behind it.
 export {
   SshInstallModal,
   SshInstallConnectionFields,
@@ -1555,3 +1562,14 @@ export type {
   PriceCatalogPanelProps,
 } from "./price-catalog/PriceCatalogPanel.js";
 export { PriceCatalogIcon } from "./components/icons/PriceCatalogIcon.js";
+export {
+  LiveUpdatesProvider,
+  useLiveRefresh,
+  useLiveRefreshEach,
+  useLiveWatcher,
+  watchLive,
+  type LiveRefreshOptions,
+} from "./live/index.js";
+
+/** Migration estimates: what a service or a set of resources would cost on another provider. */
+export * from "./migration-estimates/index.js";

@@ -51,13 +51,21 @@ export type WorkspaceTabTarget =
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
   | { kind: "environments" }
+  /** Environment files: a repository's `.infraenv`, edited and resolved. Single-instance. */
+  | { kind: "env-files" }
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
+  | { kind: "heartbeats" }
   | { kind: "status-pages" }
   | { kind: "quotas" }
   /** Provider list prices: search, filter, compare. Single-instance. */
   | { kind: "price-catalog" }
+  /**
+   * Migration estimates: what a service or a set of resources would cost on
+   * another provider. Single-instance, remembering the open estimate.
+   */
+  | { kind: "migration-estimates"; estimateId?: string }
   /**
    * Declared incidents (incident mode). Single-instance like Probes; the
    * detail view is addressed inside the panel rather than by tab, so an
@@ -233,18 +241,25 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "environment-diff";
     case "environments":
       return "environments";
+    case "env-files":
+      return "env-files";
     case "ssh-fanout":
       return "ssh-fanout";
     case "metric-alerts":
       return "metric-alerts";
     case "probes":
       return "probes";
+    case "heartbeats":
+      return "heartbeats";
     case "status-pages":
       return "status-pages";
     case "quotas":
       return "quotas";
     case "price-catalog":
       return "price-catalog";
+    case "migration-estimates":
+      // One tab, the open estimate is remembered state, like Resource reports.
+      return "migration-estimates";
     case "incidents":
       return "incidents";
     case "slos":
@@ -341,6 +356,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Env diff";
     case "environments":
       return "Environments";
+    case "env-files":
+      return "Environment files";
     // Titles match the sidebar tiles the pages are opened from.
     case "ssh-fanout":
       return "Fan-out";
@@ -348,12 +365,16 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Alerts";
     case "probes":
       return "Probes";
+    case "heartbeats":
+      return "Heartbeats";
     case "status-pages":
       return "Status pages";
     case "quotas":
       return "Quotas";
     case "price-catalog":
       return "Price catalog";
+    case "migration-estimates":
+      return "Migration estimates";
     case "incidents":
       return "Incidents";
     case "slos":
@@ -409,13 +430,19 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "dns":
     case "iac":
     case "environments":
+    case "env-files":
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":
+    case "heartbeats":
     case "status-pages":
     case "quotas":
     case "price-catalog":
       return true;
+    case "migration-estimates":
+      // The Resource reports trick: compare the estimate so the route sync
+      // records which one the tab is on and reactivation restores it.
+      return a.estimateId === (b as { estimateId?: string }).estimateId;
     case "linux-app":
       return (
         a.sessionId === (b as { sessionId: string }).sessionId &&

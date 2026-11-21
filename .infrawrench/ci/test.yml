@@ -200,12 +200,14 @@ jobs:
   #
   # Vitest starts a `node` per test file, and most of a large suite's time is
   # each of them loading its modules, so how many run at once is what sets a
-  # large suite's time. The script takes it from the runner's cores (`nproc`):
-  # web gets half the cores, server-core, desktop and ui a quarter each, and
-  # every other suite two workers, which a few test files cannot use more
-  # than. Past the limits below a suite gains little and each worker is
-  # another heap: about 450 MiB in web and server-core, 300 MiB in desktop
-  # and ui.
+  # large suite's time. A job is told the CPUs it holds (`nproc`): its
+  # `cpus:`, or 1 without, however many cores the runner has. web and
+  # server-core hold four (`test-large`) and run a worker on each; every
+  # other suite runs two workers, which a few test files cannot use more
+  # than, desktop's and ui's included (they took four on a runner with
+  # sixteen cores free, when a job was told the runner's cores, but finish
+  # well inside web's time at two). Each worker is another heap: about
+  # 450 MiB in web and server-core, 300 MiB in desktop and ui.
   #
   # What each file loads matters as much. web's and server-core's configs
   # have Vitest bundle the packages nearly every file imports (`effect`,
@@ -226,7 +228,7 @@ jobs:
   # `memory:` holds the most workers a suite can get. desktop and ui at four
   # peak at 3.6 GiB and pass at 3 GiB. web at six and server-core at
   # four pass at 5 GiB, so they are a job of their own (`test-large`) one
-  # step above that, with the same script.
+  # step above that, with the same script and `cpus:` for their workers.
   test:
     name: Test ${{ package.name }}
     packages:
@@ -239,8 +241,7 @@ jobs:
     run: &test-run |
       cores="$(nproc)"
       case "${{ package.dir }}" in
-        app/packages/web) workers=$((cores / 2)) most=6 ;;
-        app/packages/server-core | app/packages/desktop | app/packages/ui) workers=$((cores / 4)) most=4 ;;
+        app/packages/web | app/packages/server-core) workers=$cores most=4 ;;
         *) workers=2 most=2 ;;
       esac
       if ((workers < 2)); then workers=2; fi
@@ -253,8 +254,8 @@ jobs:
     timeout: 30m
 
   # web and server-core, which need more memory than the rest at the workers
-  # they get (above). Peak 5.2 GiB (web at six workers), 4.5 GiB (server-core
-  # at four).
+  # they get (above), and hold the four vCPUs those run on. Peak 5.2 GiB
+  # (web at six workers), 4.5 GiB (server-core at four).
   test-large:
     name: Test ${{ package.name }}
     packages:
@@ -265,6 +266,7 @@ jobs:
     env: *test-env
     run: *test-run
     task-cache: *test-cache
+    cpus: 4
     memory: 6GiB
     timeout: 30m
 
@@ -596,8 +598,8 @@ jobs:
   # `test:postgres:shadow`: every statement the mocked suites capture,
   # PREPAREd against the migrated schema and never executed.
   #
-  # Its files run in parallel, on a quarter of the runner's cores (four
-  # workers at most, as server-core's tests). Nearly all of its time is each
+  # Its files run two at a time: the job is told one CPU, and two workers
+  # finish inside the large test jobs' time. Nearly all of its time is each
   # file's `node` loading its modules, not the statements: alone on ci-1, 99 s
   # one file at a time (94 s with the PREPAREs turned off), 54 s at two
   # workers, 35 s at four, 32 s at six, all within this `memory:`. Migrating
@@ -618,10 +620,7 @@ jobs:
       DATABASE_URL: postgres://infrawrench:infrawrench@postgres:5432/infrawrench
     run: |
       (cd ../web && node node_modules/drizzle-kit/bin.cjs migrate)
-      workers=$(($(nproc) / 4))
-      if ((workers < 2)); then workers=2; fi
-      if ((workers > 4)); then workers=4; fi
-      node node_modules/vitest/vitest.mjs run --config vitest.shadow-postgres.config.ts --maxWorkers=$workers
+      node node_modules/vitest/vitest.mjs run --config vitest.shadow-postgres.config.ts --maxWorkers=2
     task-cache: *postgres-cache
     memory: 4GiB
     timeout: 30m

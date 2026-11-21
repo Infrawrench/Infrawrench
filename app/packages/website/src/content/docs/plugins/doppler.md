@@ -30,9 +30,9 @@ Connect a Doppler workplace to manage its secrets and who can reach them.
 2. Or, if you want a connection that doesn't depend on one person, create a service account under **Team > Service Accounts**, give it a workplace role, and generate an **API token** for it (`dp.sa.`).
 3. Paste the token. Config-scoped service tokens (`dp.st.`) can't list projects, so they're refused.
 
-<insert [Doppler Add-account form with the API token filled in] here>
+![Doppler Add-account form with the API token filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/doppler/add-account.png)
 
-<insert [Doppler config detail page with the Keys tab listing secrets] here>
+![Doppler config detail page with the Keys tab listing secrets](https://agent-assets.infrawrench.com/docs-screenshots/plugins/doppler/config-keys-tab.png)
 
 ## Tips and limits
 

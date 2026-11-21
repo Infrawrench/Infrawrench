@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import type { TokenPair } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { getDb, getEncryptionKey, encryptValue, decryptValue } from "./main-utils";
 import { CLIENT_ID, CLOUD_URL, WORKOS_API_URL } from "../env";
+import { markPhase } from "./startup-timing";
 
 let currentTokens: TokenPair | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
@@ -240,21 +241,23 @@ export async function forceRefreshAccessToken(): Promise<string | null> {
 
 export async function getAccessToken(): Promise<string | null> {
   if (!currentTokens) {
-    const encKey = await getEncryptionKey();
     const atCipher = await getSyncState("access_token_encrypted");
     const atIv = await getSyncState("access_token_iv");
     const rtCipher = await getSyncState("refresh_token_encrypted");
     const rtIv = await getSyncState("refresh_token_iv");
     const expiresAt = await getSyncState("token_expires_at");
 
+    // Signed out: nothing to decrypt, so leave the keychain alone.
     if (!atCipher || !atIv || !rtCipher || !rtIv) return null;
 
+    const encKey = await getEncryptionKey();
     currentTokens = {
       accessToken: decryptValue(atCipher, atIv, encKey),
       refreshToken: decryptValue(rtCipher, rtIv, encKey),
       expiresAt: Number(expiresAt ?? 0),
     };
     scheduleProactiveRefresh(currentTokens.expiresAt);
+    markPhase("tokens loaded");
   }
 
   if (currentTokens.expiresAt < Date.now() + 60_000) {

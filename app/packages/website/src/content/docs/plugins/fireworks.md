@@ -56,13 +56,13 @@ A deployment's detail page also shows **Live performance** when you open it: req
 
 These are Fireworks' current one-minute figures, not history, so they are not charted. Fireworks allows six of these requests a minute per account, and the section is left out when a request is throttled or the deployment has had no traffic. To chart them over time, point your own Prometheus or Grafana at Fireworks' metrics endpoint (`/v1/accounts/{account}/metrics`).
 
-<insert [Fireworks deployment detail page showing the Live performance section with request rate, time to first token and KV cache utilization] here>
+![Fireworks deployment detail page showing the Live performance section with request rate, time to first token and KV cache utilization](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fireworks/deployment-live.png)
 
 ## Logs
 
 **Deployments** and **users**: the **Logs** tab shows the account audit log from the last 30 days, filtered to that deployment or to actions taken by that user's email: time, outcome, who, the API method, the resource and the client IP. Audit logs are only available on Enterprise accounts. Elsewhere the tab tells you that.
 
-<insert [Fireworks deployment Logs tab showing audit entries for creating and scaling the deployment] here>
+![Fireworks deployment Logs tab showing audit entries for creating and scaling the deployment](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fireworks/deployment-logs.png)
 
 ## Common tasks
 
@@ -74,7 +74,7 @@ These are Fireworks' current one-minute figures, not history, so they are not ch
 - **Create a secret** from a key name and a value. The value is write-only. The secret id comes from the key name (`WANDB_API_KEY` becomes `wandb-api-key`).
 - **Cap a quota** by editing its enforced limit.
 
-<insert [Fireworks Create Router form with the Deployments multi-select open, two deployments ticked, and the routing strategy picker below] here>
+![Fireworks Create Router form with two deployments ticked in the Deployments list, and the Model and Routing Strategy pickers below](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fireworks/create-router.png)
 
 ## Tips and limits
 

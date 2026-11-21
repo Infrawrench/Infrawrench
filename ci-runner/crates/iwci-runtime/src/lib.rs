@@ -283,6 +283,25 @@ pub struct Limits {
     /// The most any one linear memory of the job may grow to. Each process
     /// a script spawns has its own memory, each under this cap.
     pub memory_bytes: u64,
+    /// The whole vCPUs the job holds (`cpus:`); `None` for a job of one
+    /// slot. What it is told it has is [`Limits::told_cpus`].
+    pub cpus: Option<u32>,
+}
+
+impl Limits {
+    /// The CPUs a job is told it has, by every way a program asks
+    /// (`thread_parallelism`, `/proc/cpuinfo`, a native program's affinity
+    /// in its sandbox): the vCPUs of its `cpus:`, or else its slot's share
+    /// of one, rounded up. A slot is `1 / --jobs-per-cpu` of a vCPU and
+    /// `--jobs-per-cpu` is at least 1, so that share rounds up to 1 however
+    /// the runner shares its vCPUs. Telling a one-slot job the runner's
+    /// cores made every tool that sizes a pool from the count (`pytest -n
+    /// auto`, vitest, cargo, Go) start one worker per core of the machine.
+    /// Only the count told changes: CPU time no other job wants is still
+    /// the job's to use.
+    pub fn told_cpus(&self) -> u32 {
+        self.cpus.unwrap_or(1).max(1)
+    }
 }
 
 impl Default for Limits {
@@ -290,6 +309,7 @@ impl Default for Limits {
         Self {
             timeout: Duration::from_secs(600),
             memory_bytes: 4 << 30,
+            cpus: None,
         }
     }
 }
@@ -601,6 +621,19 @@ impl Runtime {
             network::host_addresses(),
         )));
         self
+    }
+
+    /// Where jobs may connect and how names resolve, as one policy object
+    /// for anything else that gives a job a network: a virtual machine's
+    /// link goes through the same gateway a sandbox's does, so every kind
+    /// of job reaches exactly the same places. `None` until
+    /// [`Runtime::with_internet`].
+    #[cfg(target_os = "linux")]
+    pub fn outside(&self) -> Option<Arc<dyn iwci_sandbox::net::Outside>> {
+        self.wasix
+            .outside
+            .clone()
+            .map(|o| o as Arc<dyn iwci_sandbox::net::Outside>)
     }
 
     /// Runs jobs inside their gVisor sandbox (`inside`): over the sandbox's

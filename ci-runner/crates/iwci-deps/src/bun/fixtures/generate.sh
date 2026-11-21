@@ -11,7 +11,8 @@ trap 'rm -rf "$work"' EXIT
 export BUN_INSTALL_CACHE_DIR="$work/cache"
 
 # Every symlink (L) and every installed package directory (P) under the
-# project, without the `.bin` directories, which the runner leaves out.
+# project, without the `.bin` directories, which the tests check on their
+# own (none of these packages has a command).
 layout() {
   (
     cd "$1"

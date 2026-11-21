@@ -63,7 +63,7 @@ The digest follows your [alert routing](./alert-routing.md) under the **Weekly d
 2. Add a rule whose **Trigger** condition is **Weekly digest**.
 3. Pick the Slack channels or Teams webhooks under **Send to**.
 
-<insert [The Alert routing section with a rule whose Trigger condition is Weekly digest and two Slack channels ticked under Send to] here>
+![The Alert routing section with a rule whose Trigger condition is Weekly digest and two Slack channels ticked under Send to](https://agent-assets.infrawrench.com/docs-screenshots/features/weekly-digest/digest-routing-rule.png)
 
 Until you add rules, every trigger except Drift goes to every connected channel, so a new organization's digest reaches all of them. Nothing sends until you turn the digest on.
 

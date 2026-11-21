@@ -8,24 +8,33 @@
 ;; output ends, and exits as the program did.
 ;;
 ;; `@SPAWN@` is replaced by the length and bytes of the path it opens to
-;; start the program, `proc/iwci/native/spawn/<name>`, relative to the
-;; preopened root.
+;; start the program, relative to the preopened root:
+;; `proc/iwci/native/spawn/<name>` for a native tool's command, or
+;; `proc/iwci/native/exec/<path>` for a native program a WASIX process
+;; executes by its path. `@SPAWN_AT@` is where that path is (1100 for a
+;; name; the start of the dynamic area for a path, which can be long) and
+;; `@DYNAMIC@` where the dynamic area starts after it. It adds `@` and 16
+;; hex digits at random to the path: WASIX shares one handle among the
+;; opens of a path, so two trampolines of one program, started at once,
+;; must not open the same one (natives.rs).
 ;;
 ;; Memory:
 ;;     0  iovecs, counts, small results
 ;;    64  the request header: argc, argv bytes, envc, environ bytes, cwd bytes
+;;    88  the spawn path's random token, 8 bytes
 ;;   128  iovecs of the request
 ;;   256  poll subscriptions (3 x 48)
 ;;   512  poll events (3 x 32)
 ;;  1024  "proc/iwci/native/"
-;;  1100  the spawn path
+;;  1100  the spawn path of a command, then `@` and the token in hex
 ;;  1280  a session file's path, built here
 ;;  1536  the session id the runner gave
 ;;  1600  the exit status the runner gave
 ;;  1700  "iwci: could not start the native program\n"
 ;;  2048  stdin waiting to be written (64 KiB)
 ;; 67584  output read and being written (64 KiB)
-;; 135168 argv, the environment and the working directory, then the end
+;; 135168 the spawn path of an executed file, then (@DYNAMIC@) argv, the
+;;        environment and the working directory, then the end
 (module
   (import "wasi_snapshot_preview1" "args_sizes_get" (func $args_sizes_get (param i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "args_get" (func $args_get (param i32 i32) (result i32)))
@@ -40,6 +49,7 @@
   (import "wasi_snapshot_preview1" "poll_oneoff" (func $poll_oneoff (param i32 i32 i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "proc_raise" (func $proc_raise (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
+  (import "wasi_snapshot_preview1" "random_get" (func $random_get (param i32 i32) (result i32)))
   (import "wasix_32v1" "getcwd" (func $getcwd (param i32 i32) (result i32)))
 
   (memory (export "memory") 4)
@@ -47,13 +57,13 @@
   (global $prefix_len i32 (i32.const 17))
   (data (i32.const 1024) "proc/iwci/native/")
   (global $spawn_len i32 (i32.const @SPAWN_LEN@))
-  (data (i32.const 1100) "@SPAWN@")
+  (data (i32.const @SPAWN_AT@) "@SPAWN@")
   (data (i32.const 1700) "iwci: could not start the native program\0a")
 
   (global $stdin_buf i32 (i32.const 2048))
   (global $io_buf i32 (i32.const 67584))
   (global $buf_size i32 (i32.const 65536))
-  (global $dynamic i32 (i32.const 135168))
+  (global $dynamic i32 (i32.const @DYNAMIC@))
 
   ;; Gives up: says so on stderr and exits 127, as a shell does for a
   ;; command it cannot run.
@@ -63,6 +73,13 @@
     (drop (call $fd_write (i32.const 2) (i32.const 0) (i32.const 1) (i32.const 8)))
     (call $proc_exit (i32.const 127))
     unreachable)
+
+  ;; The hex digit for `d` (0 to 15).
+  (func $hex (param $d i32) (result i32)
+    (select
+      (i32.add (local.get $d) (i32.const 48))
+      (i32.add (local.get $d) (i32.const 87))
+      (i32.lt_u (local.get $d) (i32.const 10))))
 
   ;; Makes sure memory reaches `end`.
   (func $reserve (param $end i32)
@@ -205,7 +222,25 @@
     (i32.store (i32.const 148) (local.get $env_size))
     (i32.store (i32.const 152) (local.get $cwd))
     (i32.store (i32.const 156) (local.get $cwd_len))
-    (local.set $spawn (call $open (local.get $root) (i32.const 1100) (global.get $spawn_len)))
+    ;; `@<token>` after the spawn path, so that this trampoline's is its own.
+    (if (call $random_get (i32.const 88) (i32.const 8)) (then (call $fail)))
+    (local.set $at (i32.add (i32.const @SPAWN_AT@) (global.get $spawn_len)))
+    (i32.store8 (local.get $at) (i32.const 64))
+    (block $hexed
+      (loop $byte
+        (br_if $hexed (i32.ge_u (local.get $i) (i32.const 8)))
+        (local.set $n (i32.load8_u (i32.add (i32.const 88) (local.get $i))))
+        (i32.store8 (i32.add (local.get $at) (i32.add (i32.const 1) (i32.shl (local.get $i) (i32.const 1))))
+          (call $hex (i32.shr_u (local.get $n) (i32.const 4))))
+        (i32.store8 (i32.add (local.get $at) (i32.add (i32.const 2) (i32.shl (local.get $i) (i32.const 1))))
+          (call $hex (i32.and (local.get $n) (i32.const 15))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $byte)))
+    (local.set $i (i32.const 0))
+    (local.set $at (i32.const 0))
+    (local.set $n (i32.const 0))
+    (local.set $spawn (call $open (local.get $root) (i32.const @SPAWN_AT@)
+      (i32.add (global.get $spawn_len) (i32.const 17))))
     (if (call $fd_write (local.get $spawn) (i32.const 128) (i32.const 4) (i32.const 8)) (then (call $fail)))
     (if (i32.ne (i32.load (i32.const 8))
           (i32.add (i32.add (i32.const 20) (local.get $argv_size)) (i32.add (local.get $env_size) (local.get $cwd_len))))

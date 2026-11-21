@@ -21,7 +21,7 @@ Connect fal to see which models you call and what they cost, keep an eye on your
 
 A narrower preset works too, and whatever it can't read stays empty. **READONLY** shows Serverless apps, Compute instances, workflows and credits, but not models, costs or API keys, and changes nothing.
 
-<insert [fal Add-account form with the API Key field and the Create an API key help link] here>
+![fal Add-account form with the API Key field and the Create an API key help link](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fal/add-account.png)
 
 ## Costs and credits
 
@@ -32,7 +32,7 @@ Spend is shown per UTC day, after discounts:
 
 Your **credit balance** is tracked over time so you can see when it will run out.
 
-<insert [Costs page filtered to a fal account, broken down by model endpoint for the last 30 days] here>
+![Cost report filtered to a fal account, broken down by model endpoint for the last 30 days](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fal/cost-by-endpoint.png)
 
 ## Status
 

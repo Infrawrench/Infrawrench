@@ -17,11 +17,11 @@ sidebar_order: 44
 2. Create an API key and paste the `pplx-…` value into **API Key**. Keys have no scopes.
 3. Make sure the project has credits or a payment method. Without them, every call fails with an out-of-credits error.
 
-<insert [Perplexity Add-account form with the API Key field and the Create an API key help link] here>
+![Perplexity Add-account form with the API Key field and the Create an API key help link](https://agent-assets.infrawrench.com/docs-screenshots/plugins/perplexity/add-account.png)
 
 ## Try a model in the Playground
 
-<insert [Perplexity sonar-pro model detail page with the Playground tab showing a streamed, search-grounded answer] here>
+![Perplexity sonar-pro model detail page with the Playground tab showing a search-grounded answer with citations](https://agent-assets.infrawrench.com/docs-screenshots/plugins/perplexity/sonar-pro-playground.png)
 
 Sonar and Router models stream token by token. Agent API replies appear once they're complete.
 

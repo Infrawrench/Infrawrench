@@ -74,6 +74,10 @@ pub fn sock_accept_v2<M: MemorySize>(
         fd_flags,
         nonblocking
     )?);
+    // iwci patch: a connection to an AF_UNIX socket has an unnamed peer.
+    let unix = wasi_try_ok!(__sock_actor(&mut ctx, fd, Rights::empty(), |socket, _| Ok(
+        socket.unix()
+    )));
 
     let env = ctx.data();
     let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
@@ -98,6 +102,10 @@ pub fn sock_accept_v2<M: MemorySize>(
     let env = ctx.data();
     let (memory, state, _) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
     wasi_try_mem_ok!(ro_fd.write(&memory, fd));
+    if unix.is_some() {
+        wasi_try_ok!(crate::net::unix::write_unix_addr(&memory, ro_addr, ""));
+        return Ok(Errno::Success);
+    }
     wasi_try_ok!(crate::net::write_ip_port(
         &memory,
         ro_addr,
@@ -135,7 +143,7 @@ pub(crate) fn sock_accept_internal(
     let inodes = &state.inodes;
 
     let tasks = env.tasks().clone();
-    let (child, local_addr, peer_addr, fd_flags) = wasi_try_ok_ok!(__sock_asyncify(
+    let (child, local_addr, peer_addr, fd_flags, unix) = wasi_try_ok_ok!(__sock_asyncify(
         env,
         sock,
         Rights::SOCK_ACCEPT,
@@ -148,19 +156,26 @@ pub(crate) fn sock_accept_internal(
             // its client, however long that takes.
             let timeout = socket.opt_time(TimeType::AcceptTimeout).ok().flatten();
             let local_addr = socket.addr_local()?;
+            let unix = socket.unix();
             __sock_wait(env, socket.accept(tasks.deref(), nonblocking, timeout))
                 .await
-                .map(|a| (a.0, local_addr, a.1, fd_flags))
+                .map(|a| (a.0, local_addr, a.1, fd_flags, unix))
         },
     ));
+    let (child, local_addr, peer_addr, fd_flags, unix) = (child, local_addr, peer_addr, fd_flags, unix);
 
-    let kind = Kind::Socket {
-        socket: InodeSocket::new(InodeSocketKind::TcpStream {
-            socket: child,
-            write_timeout: None,
-            read_timeout: None,
-        }),
-    };
+    let socket = InodeSocket::new(InodeSocketKind::TcpStream {
+        socket: child,
+        write_timeout: None,
+        read_timeout: None,
+    });
+    // iwci patch: a connection accepted on an AF_UNIX socket is one, named
+    // by the listener's path, with an unnamed peer.
+    socket.set_unix(unix.map(|listener| crate::net::unix::UnixName {
+        local: listener.local,
+        peer: None,
+    }));
+    let kind = Kind::Socket { socket };
     let inode = state
         .fs
         .create_inode_with_default_stat(inodes, kind, false, "socket".into());

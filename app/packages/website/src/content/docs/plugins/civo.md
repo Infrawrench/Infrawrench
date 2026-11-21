@@ -18,7 +18,7 @@ Connect Civo with your account's API key and manage everything you run there. Ci
 - **Networks**, **reserved IPs** (assign, unassign, or drag onto an instance), **DNS domains and records** (records can track another resource's address), **Object Stores** with a file browser (upload, create folders, delete), **Object Store credentials** and **SSH keys**.
 - **Account**: your quota usage and every resource Civo metered this month, in hours.
 
-<insert [Civo account page showing Instances, Kubernetes Clusters, Databases and Object Stores from several regions] here>
+![Civo account page on the Instances section, showing instances in LON1, NYC1 and FRA1, with Databases, Instances and Kubernetes Clusters counted in the section bar](https://agent-assets.infrawrench.com/docs-screenshots/plugins/civo/account-instances.png)
 
 ## Connect your account
 
@@ -32,7 +32,7 @@ The key has full access to the account and works in every region.
 
 You see used and limit pairs for instances, vCPUs, memory, disk, volumes, snapshots, public IPs, networks, firewalls and rules, load balancers, object storage and databases. Infrawrench warns you before you run out. To raise a limit, request an increase from the Civo dashboard.
 
-<insert [Civo quota usage on the Quotas page with the vCPU and instance limits] here>
+![Civo quota usage on the Quotas page with the vCPU and instance limits](https://agent-assets.infrawrench.com/docs-screenshots/plugins/civo/quotas.png)
 
 ## Status
 

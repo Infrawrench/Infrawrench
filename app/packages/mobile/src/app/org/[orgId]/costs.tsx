@@ -21,6 +21,7 @@ import {
 } from "@/components/ui";
 import { CarbonSection } from "@/features/costs/CarbonSection";
 import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
+import { CommitmentReportsSection } from "@/features/costs/CommitmentReportsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
 import { EfficiencyAlertsSection } from "@/features/costs/EfficiencyAlertsSection";
@@ -104,6 +105,8 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-alert-events"] });
         void queryClient.invalidateQueries({ queryKey: ["efficiency-alerts"] });
         void queryClient.invalidateQueries({ queryKey: ["commitments"] });
+        void queryClient.invalidateQueries({ queryKey: ["commitment-reports"] });
+        void queryClient.invalidateQueries({ queryKey: ["commitment-report-run"] });
         void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
         void queryClient.invalidateQueries({ queryKey: ["business-metrics"] });
         void queryClient.invalidateQueries({ queryKey: ["unit-costs"] });
@@ -192,7 +195,12 @@ export default function CostsScreen() {
         </>
       )}
 
-      {tab === "commitments" && <CommitmentsSection />}
+      {tab === "commitments" && (
+        <>
+          <CommitmentsSection />
+          <CommitmentReportsSection />
+        </>
+      )}
 
       {tab === "carbon" && <CarbonSection />}
 

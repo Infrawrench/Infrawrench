@@ -105,6 +105,13 @@ const NODE_ROUTES: readonly RegExp[] = [
   // functions the edge registry only stubs: every attempt there would replay.
   // Its history (`/scorecards/org/history`) is Postgres only and stays.
   new RegExp(`${ORG}/scorecards/org$`),
+  // A migration estimate prices every row through plugin code (price
+  // catalogs, size pickers, estimates, Terraform export), which the edge
+  // registry only stubs. Saving, listing and the targets list stay on the edge.
+  new RegExp(`${ORG}/migration-estimates/(preview|[^/]+/(result|terraform|scenario))$`),
+  // Resolving an .infraenv reads each resource output through its plugin
+  // client. Describing it, the picker and the GitHub routes stay on the edge.
+  new RegExp(`${ORG}/env-files/resolve$`),
   new RegExp(
     `${ORG}/(` +
       [
@@ -145,6 +152,9 @@ const MUTATIONS_ON_GATEWAY: readonly RegExp[] = [
   // Leaked credentials: scanning, rotating and closing a finding upstream all
   // call plugin code (the scanner, the issuer's reroll). Reads stay on the edge.
   new RegExp(`${ORG}/leaked-secrets/(scan|[^/]+/(rotate|mark-rotated|dismiss|reopen))$`),
+  // A literal reroll pushes the new value upstream first (the plugin's
+  // `applySecretReroll`), before it stores anything.
+  new RegExp(`${ORG}/associations/literal$`),
   // A pull request check preview prices Terraform through plugin estimators
   // and reads the pull request from GitHub: the github-watcher's work, on
   // demand.

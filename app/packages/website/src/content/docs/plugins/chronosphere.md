@@ -8,7 +8,7 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 
 ## What you can manage
 
-- **Tenant**: counts of monitors, collections, dashboards and SLOs, plus a **Query** tab that runs PromQL and shows the result as a table.
+- **Tenant**: counts of monitors, collections, dashboards and SLOs, plus a **PromQL Editor** tab that runs PromQL and shows the result as a table.
 - **Monitors**: query, warn and critical conditions, interval, collection or bucket, notification policy, labels and signal grouping. Create PromQL monitors (pick the collection and notification policy from lists), edit the name, description, query and interval, delete them, and chart the query on the Metrics tab.
 - **Notification policies** and **notifiers**: where each severity routes. Rename them, choose whether a notifier sends resolves, or delete them.
 - **Collections**, **buckets** and **teams**: create (pick the team and default notification policy from lists), edit and delete. You edit team members as a list of email addresses.
@@ -20,7 +20,7 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 - **Service accounts**: see which exist and whether they are unrestricted, and delete one to revoke its token. Old ones show on the Expiry radar when they are due for rotation.
 - **Services**: what Chronosphere discovered, with the owning team.
 
-<insert [Chronosphere monitor detail page showing the conditions, the PromQL query and the Metrics tab chart] here>
+![Chronosphere monitor detail page showing the conditions and the PromQL query](https://agent-assets.infrawrench.com/docs-screenshots/plugins/chronosphere/monitor-overview.png)
 
 ## Connect your tenant
 
@@ -29,11 +29,11 @@ Connect a Chronosphere tenant to manage its alerting and metric shaping next to 
 
 A personal access token also works and carries your own permissions. A restricted (telemetry-only) service account can only run PromQL. Click **Check credentials** to see which areas your token can reach.
 
-<insert [Chronosphere Add-account form with the Organization and API Token fields filled in] here>
+![Chronosphere Add-account form with the Organization and API Token fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/chronosphere/add-account.png)
 
 ## Chart metrics and run PromQL
 
-Monitors and recording rules have a **Metrics** tab that charts their PromQL over the selected window, up to 20 series. The tenant's **Query** tab runs an instant query.
+Monitors and recording rules have a **Metrics** tab that charts their PromQL over the selected window, up to 20 series. The tenant's **PromQL Editor** tab runs an instant query.
 
 ## Costs and status
 

@@ -4,18 +4,27 @@ export const DropletResourceType = rt({
   name: "Droplet",
   id: "droplet",
   description: "A DigitalOcean virtual machine",
+  equivalence: "vm",
   fields: [
     f("name", "Name"),
-    f("vcpus", "vCPU", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPU", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
     f("memoryMb", "Memory (MB)", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      sizing: "memory-mb",
     }),
     f("region", "Region", {
       showcase: true,
       editable: false,
+      sizing: "region",
       kind: "enum",
       enumValues: [
         "nyc1",
@@ -36,6 +45,7 @@ export const DropletResourceType = rt({
       ],
     }),
     f("size", "Size", {
+      sizing: "instance-type",
       description:
         "Droplet size slug, e.g. s-1vcpu-1gb. Changing it resizes the Droplet (CPU/RAM-only resize; DO powers it off for the change)",
     }),
@@ -61,6 +71,7 @@ export const DropletResourceType = rt({
       description:
         "Actual disk size. A CPU/RAM-only resize keeps it, and the target size's included disk must be at least this big",
       editable: false,
+      sizing: "disk-gb",
     }),
   ],
   outputs: [

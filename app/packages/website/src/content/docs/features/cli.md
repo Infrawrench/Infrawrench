@@ -1,10 +1,13 @@
 ---
 title: Command-line interface
-description: Run Infrawrench from any terminal with an interactive TUI dashboard, plus scriptable JSON and text output that uses the desktop app's accounts and cloud session.
+description: Run Infrawrench from any terminal with an interactive TUI dashboard, plus scriptable JSON and text output. Use it through the desktop app, or install it on its own from npm, APT or a single executable.
 sidebar_order: 13
 ---
 
-> **Desktop app required.** The `infrawrench` command runs through the desktop app, so it sees the same data: your local accounts, your cloud session, and every organization you belong to.
+The `infrawrench` command comes two ways:
+
+- **Through the desktop app.** The app installs a shell command that runs the CLI inside it, so it sees the same data: your local accounts, your cloud session, and every organization you belong to. See [Install the shell command](#install-the-shell-command).
+- **On its own.** The standalone CLI needs no desktop app. It works with your Infrawrench Cloud organizations, which makes it the one for servers, CI jobs and machines without a desktop. See [Install without the desktop app](#install-without-the-desktop-app).
 
 You can use the CLI in three ways:
 
@@ -30,9 +33,55 @@ infrawrench cli uninstall
 
 After you update the app, `infrawrench cli status` warns you if the launcher points at an older build. Run `infrawrench cli install` again to refresh it.
 
+## Install without the desktop app
+
+The standalone CLI is the same `infrawrench` command, built to run without the desktop app. Pick whichever install suits the machine.
+
+**npm** (any platform with Node.js 22 or newer):
+
+```
+npm install -g @infrawrench/cli
+npx @infrawrench/cli whoami          # or run it once without installing
+```
+
+**Debian and Ubuntu**, from the same APT repository as the desktop app, so `apt upgrade` keeps it current:
+
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.infrawrench.com/infrawrench/key.asc | sudo tee /etc/apt/keyrings/infrawrench.asc > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/infrawrench.asc] https://apt.infrawrench.com/infrawrench desktop stable" | sudo tee /etc/apt/sources.list.d/infrawrench.list > /dev/null
+sudo apt-get update
+sudo apt install infrawrench-cli
+```
+
+If you already added the repository for the desktop app, `sudo apt install infrawrench-cli` is all you need. The two packages install side by side: the app is `Infrawrench`, the CLI is `infrawrench`.
+
+**Install script** (Linux and macOS, x64 and arm64). It downloads a single executable with nothing else to install, checks it against the release's checksums, and puts it in `/usr/local/bin`, or in `~/.local/bin` if that isn't writable:
+
+```
+curl -fsSL https://infrawrench.com/cli/install.sh | sh
+```
+
+Set `INFRAWRENCH_INSTALL_DIR` to choose another directory, or `INFRAWRENCH_VERSION` (for example `2.4.0`) to install a particular release. Run the script again to update. It won't replace the desktop app's shell command if that's already at the same path.
+
+**Download it yourself.** Each [release](https://github.com/Infrawrench/Infrawrench/releases/latest) carries `infrawrench-cli-<os>-<arch>.tar.gz` for Linux and macOS, `.zip` for Windows, and `infrawrench-cli-SHA256SUMS` to check them against. Unpack it and put `infrawrench` on your `PATH`.
+
+### How it differs from the desktop app's CLI
+
+- **It keeps its own sign-in.** Run `infrawrench login` once. The session is stored in `~/.config/infrawrench-cli` (`~/Library/Application Support/infrawrench-cli` on macOS, `%APPDATA%\infrawrench-cli` on Windows); set `INFRAWRENCH_CONFIG_DIR` to keep it somewhere else. The folder is readable only by you, and its key sits beside the session rather than in your OS keychain, the way most CLIs store their tokens.
+- **It works with your cloud organizations only.** Local accounts live in the desktop app, so `--local` and `apps` ask you to use the desktop app's command instead, and listings show no "Local" workspace.
+- **Everything else is the same**, command for command, and it shares the desktop app's version number.
+
+`login` opens your browser and waits for it on `127.0.0.1:43117`. On a server you reach over SSH, forward that port first, then open the printed link in your local browser:
+
+```
+ssh -L 43117:127.0.0.1:43117 my-server
+infrawrench login
+```
+
 ## Sign in and pick an organization
 
-The CLI uses the desktop app's session. If you're already signed in to the app, there's nothing to do: `infrawrench whoami` shows your account. You can also sign in from the CLI:
+The desktop app's CLI uses the app's session. If you're already signed in to the app, there's nothing to do: `infrawrench whoami` shows your account. You can also sign in from the CLI (the [standalone CLI](#install-without-the-desktop-app) always signs in this way):
 
 ```
 infrawrench login     # opens your browser (PKCE), then returns to the terminal
@@ -105,7 +154,7 @@ infrawrench metrics <resource-id> --local        # a local resource, live from t
 
 Cloud resources [pinned to a dashboard](./dashboard.md#historical-metrics) keep history, so you can ask for long ranges. Unpinned ones are fetched live from the provider, so you still get a chart, limited to whatever window the provider offers. Local resources are always fetched live.
 
-<insert [Terminal showing `infrawrench metrics` output with two colored area charts (CPU and memory series) including y-axis labels and a time axis] here>
+![Terminal showing `infrawrench metrics` output with two colored area charts (CPU utilization and available memory) including y-axis labels and a time axis](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/metrics.png)
 
 Cost graphs use the same data as the dashboard cost widgets:
 
@@ -134,7 +183,7 @@ Options you'll use most:
 
 See [display options](./cloud-costs.md#display-options).
 
-<insert [Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart] here>
+![Terminal showing `infrawrench costs` output with the daily sparkline and per-provider horizontal bar chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/costs.png)
 
 If an account's daily cost collection is failing, it's called out above the chart with the provider link that fixes it. `--json` lists these as `collectionFailures`. Accounts that collected fine but have no spend yet are listed the same way, as `awaitingData`. See [when collection fails](./cloud-costs.md#when-collection-fails) and [when there is nothing to collect yet](./cloud-costs.md#when-there-is-nothing-to-collect-yet).
 
@@ -180,7 +229,7 @@ infrawrench reports anomalies "Platform" --json
 
 `--format pdf` downloads the [PDF](./dashboard-pdf.md) instead of drawing a chart. It saves to `--out <path>` (or `--file`), or to a file named after the report in the current directory.
 
-<insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
+![Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/reports.png)
 
 ### Resource reports
 
@@ -234,7 +283,7 @@ infrawrench canvas refresh "AI spend by team" --json
 infrawrench canvas refresh "AI spend by team" --format pdf --out ai-spend.pdf
 ```
 
-<insert [Terminal showing `infrawrench canvas refresh "AI spend by team"` with KPI lines, a monthly table by team, and a chart total with its sparkline] here>
+![Terminal showing `infrawrench canvas refresh "AI spend by team"` with KPI lines, a monthly table by team, and a chart total with its sparkline](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/canvas-refresh.png)
 
 ### Scheduled cost exports
 
@@ -258,7 +307,7 @@ All three take `--json`.
 
 `exports run` starts a run now and lists the objects it wrote. It exits non-zero if the destination rejected it, so a CI step can depend on it.
 
-<insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table] here>
+![Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/exports-failed.png)
 
 ### One-off cost downloads
 
@@ -286,7 +335,7 @@ infrawrench export jobs 3f2a91c0 cancel
 
 All of them take `--json`. A job that fails exits with status 1, with `--json` too, so a script waiting on one notices. Finished files are kept for 24 hours.
 
-## Check schedules, probes, SLOs and services
+## Check schedules, probes, heartbeats, SLOs and services
 
 `schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md): each window, its timezone, the next change, how the last run went (including freeze skips and failures), and the projected monthly saving:
 
@@ -301,6 +350,14 @@ infrawrench schedules --json
 infrawrench probes
 infrawrench probes api-health     # one probe: state, facts, latency sparkline
 infrawrench probes --json
+```
+
+`heartbeats` lists the org's [heartbeat monitors](./heartbeat-monitors.md): each scheduled job's status (up, missed, failed, paused or new), its schedule and grace period, its last ping and how long its last run took. Give it a heartbeat's id or name for its ping URL, a run-duration sparkline and its recent pings. Cloud only and read-only: you create heartbeats from the Heartbeats tab on web or desktop, from a scheduled resource, or with Terraform.
+
+```
+infrawrench heartbeats
+infrawrench heartbeats "nightly backup"   # one heartbeat: ping URL, runs, recent pings
+infrawrench heartbeats --json
 ```
 
 `slos` lists the org's [SLOs](./slos.md), worst first: status, SLI against target, window, error budget left (as a share and as time), 1-hour burn rate and what each one measures. Give it an SLO's id or name for burn rates per window, the page and ticket thresholds, and sparklines of the daily SLI and budget burndown. Cloud only and read-only: you write SLOs from the SLOs tab on web or desktop.
@@ -359,6 +416,26 @@ infrawrench dora changes --failed
 infrawrench dora restores
 ```
 
+## Environment files
+
+`env` works with a repository's [`.infraenv`](./env-files.md), the committed file that names where each environment variable comes from. Cloud only.
+
+```
+infrawrench env init --from .env          # write .infraenv: one secret("KEY") per variable, never a value; gitignore .env; install the hooks
+infrawrench env pull                      # resolve [env] into .env (owner-only permissions)
+infrawrench env pull --env production     # [env.production] laid over [env]
+infrawrench env pull --var stage=qa       # set a substitution (repeatable)
+infrawrench env pull --stdout             # print instead of writing
+infrawrench env check                     # what each reference points at, and any problems
+infrawrench env hooks install             # pull again when a checkout, merge, rebase or commit changes .infraenv
+infrawrench env hooks status
+infrawrench env hooks uninstall
+```
+
+`env pull` looks for `.infraenv` from the current directory up to the repository root (`-f` names one), resolves it in the org `--org` names, else the one its `org` setting names, else your current org, and writes the file its `output` setting names, `.env` by default (`--out` overrides). It refuses to overwrite a file that doesn't start with its own "Auto-generated by Infrawrench" header unless you pass `--force`, and warns when the output isn't gitignored. A variable that doesn't resolve is printed with its line and left out, and the command exits 1. Text mode never prints values; `--json` prints the full response, values included.
+
+`env hooks install` (also run by `env init`, unless you pass `--no-hooks`) adds a marked block to the `post-checkout`, `post-merge`, `post-rewrite` and `post-commit` hooks (honouring `core.hooksPath`) and leaves anything else in them alone. The block pulls only when the commit changed the `.infraenv` or the output is missing, in the background, and prefers the project's own `infraenv` from the npm package over starting the desktop app. It never fails the git command. See [Environment files](./env-files.md#regenerate-on-checkout).
+
 ## Track credits, savings and waste
 
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for providers that report one. It's a good one for a morning check, since a prepaid balance that runs out means an outage, not an invoice. Needs `costs:read`:
@@ -366,6 +443,17 @@ infrawrench dora restores
 ```
 infrawrench credits
 infrawrench credits --json
+```
+
+`commitments` prints the [commitments](./commitments.md) inventory, the coverage range and the savings planner. `commitments reports` lists your saved [commitment reports](./commitment-reports.md) and, given a name or id, runs one: coverage, utilization, effective savings rate, net savings, the on-demand remainder and used and unused commitment cost over time, with a sparkline of the report's chart metric (`--metric` picks another). `--format csv` writes the same CSV the app exports (to stdout, or to a file with `--out`). `commitments report` runs an unsaved report from flags: `--last`/`--from`/`--to` (the last 90 days by default), `--bin day|week|month|quarter` (no hourly, since spend is stored per day), `--group-by provider|commitment_type|commitment|service|account|region`, and the filters `--provider`, `-a`, `--service`, `--region`, `--commitment-type` and `--commitment`, each matched against the values your organization has (repeat a filter for several values). A window too long for its granularity is refused before anything is sent. Cloud only. Needs `costs:read`:
+
+```
+infrawrench commitments
+infrawrench commitments reports
+infrawrench commitments reports "EC2 coverage by account" --metric utilization
+infrawrench commitments reports "EC2 coverage by account" --format csv --out ec2.csv
+infrawrench commitments report --last 180d --bin month --group-by commitment_type --json
+infrawrench commitments report --provider aws --service "Amazon Elastic Compute Cloud" --metric netSavings
 ```
 
 `savings` is [realized savings](./realized-savings.md): what resizes, orphan cleanups, sleep schedules, commitments and logged actions actually saved compared with each resource's spend before the action, next to the projection. It includes a breakdown (`--group-by month|kind|cost-centre|account`) and lists every action. `savings log` records a saving Infrawrench couldn't see happen (needs `costs:write`). Needs `costs:read`:
@@ -426,6 +514,13 @@ infrawrench prices search --min-vcpus 4 --min-memory 16 --area europe
 infrawrench prices search --gpu required --gpu-model H100 --rate spot
 infrawrench prices compare --vcpus 8 --memory 32
 infrawrench prices compare m7i.xlarge --provider aws --json
+```
+
+`migrate-estimate` prices a service, or a list of resources, on another provider beside what it costs today: each resource matched to the target's equivalent and sized at least as large, with the total change and anything that has no equivalent. `--save <name>` keeps it as a [migration estimate](./migration-estimates.md) you can open in the app. Cloud only; takes `--json`:
+
+```
+infrawrench migrate-estimate --service checkout-api --to hetzner
+infrawrench migrate-estimate --resources <id>,<id> --to gcp --region europe-west3 --json
 ```
 
 `estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized. It's the same figure the create form and the resource page show. Cloud only. This is a projection, not a bill: `costs` shows what you were actually charged, while `estimate` shows the run rate the resource's current setup implies. Pass the full resource id, or a display name or external id with `--account`:
@@ -494,7 +589,7 @@ infrawrench ai-spend sources      # request-log sources and their collection sta
 infrawrench ai-spend team --json
 ```
 
-<insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
+![Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/tags.png)
 
 `tag-keys` lists every tag key in your organization's cost data and resources, with the providers that use it, how much, and whether your [tag key settings](./tag-keys.md) hide it from pickers or pin it to the top. Four commands edit those settings. Quote a prefix pattern so your shell leaves the `*` alone:
 
@@ -838,7 +933,7 @@ infrawrench config apply -f infrawrench.json
 
 `infrawrench` (or `infrawrench tui`) opens the interactive dashboard:
 
-<insert [Full-screen TUI showing the org tabs across the top, the accounts list on the left, resources of the selected account on the right, and the key-hint footer] here>
+![Full-screen TUI showing the org tabs across the top, the accounts list on the left, resources of the selected account on the right, and the key-hint footer](https://agent-assets.infrawrench.com/docs-screenshots/features/cli/tui.png)
 
 | Key                | Action                                       |
 | ------------------ | -------------------------------------------- |

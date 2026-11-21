@@ -153,6 +153,9 @@ function body(r: ResourceInstance): DetailViewSchema {
           connectionStringOutputKey: "name",
           defaultQuery: `${aplDataset(name)}\n| sort by _time desc\n| take 100`,
           tables: [{ name: aplDataset(name), columns: [] }],
+          queryLanguage: "APL",
+          // The sidebar lists the dataset already quoted as ['name'].
+          tableQuery: "{table}\n| sort by _time desc\n| take 100",
         },
         logs: { defaultTailLines: 200 },
       };

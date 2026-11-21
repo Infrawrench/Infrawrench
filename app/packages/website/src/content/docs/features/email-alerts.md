@@ -12,9 +12,9 @@ Infrawrench Cloud can send its alerts by email, alongside [Slack](./slack-alerts
 
 **On the alert itself.** Budgets, [cost change alerts](./cost-change-alerts.md), [cost anomaly detection](./cost-anomaly-alerts.md) and the [commitment and unit-cost alert settings](./commitment-and-unit-cost-alerts.md) each have an **Email recipients** field. Everyone listed there is emailed every time that alert fires, **in addition to** whatever your routing rules do. Routing rules and quiet hours don't apply to these recipients, so a rule that mutes budget alerts doesn't silence the budget's own recipient list.
 
-<insert [The budget editor with the Email recipients field filled in: two members picked from the member list and one extra address (finance@acme.com) as chips, under the alert thresholds] here>
+![The budget editor with the Email recipients field filled in under the alert thresholds: two members picked from the member list (Priya Natarajan, Amara Okafor) and one extra address (finance@example.com) as chips](https://agent-assets.infrawrench.com/docs-screenshots/features/email-alerts/budget-email-recipients.png)
 
-**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, metric alerts, incidents and everything else. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule that only sends to email always escalates, the same as Teams and push.
+**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, heartbeats, metric alerts, incidents and everything else. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule that only sends to email always escalates, the same as Teams and push.
 
 If both name the same person, they get one copy.
 
@@ -36,7 +36,7 @@ An admin can change this under **Settings > Notifications > Channels > Email**:
 
 Tightening the policy never edits a recipient list. An address that no longer qualifies just stops getting emails, and starts again if you loosen the policy.
 
-<insert [Settings → Notifications with the Email connection selected: the "Only our own domains" option chosen, one allowed domain chip, and the Unsubscribed list with one address and its Resume email button] here>
+![Settings → Notifications with the Email connection selected: the "Only our own domains" option chosen, one allowed domain chip, and the Unsubscribed list with one address and its Resume email button](https://agent-assets.infrawrench.com/docs-screenshots/features/email-alerts/email-connection-settings.png)
 
 ## What the email looks like
 
@@ -47,7 +47,7 @@ Each recipient gets their own email (never one email with everyone on it), in pl
 - a **View in Infrawrench** button that opens the budget, alert or page the email is about
 - a footer naming the address it went to and why (for example, "you are on the recipient list of the budget "Production""), with a **Manage alert email** link and an **Unsubscribe** link
 
-<insert [An example budget alert email in a mail client: the Warning badge, the title, the alert text, the View in Infrawrench button and the footer with Manage alert email and Unsubscribe links] here>
+![An example budget alert email as the server renders it: the Warning badge, the title, the alert text, the View in Infrawrench button and the footer with Manage alert email and Unsubscribe links](https://agent-assets.infrawrench.com/docs-screenshots/features/email-alerts/budget-alert-email.png)
 
 ## Unsubscribe
 

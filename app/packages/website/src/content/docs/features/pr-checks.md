@@ -29,7 +29,7 @@ Open **Settings > Pull Request Checks** on the web, or the Settings tab of the d
    - **Only these directories.** For a monorepo, the path prefixes to look in, such as `infra/prod`. Leave empty to cover the whole repository.
 4. **Save.**
 
-<insert [Settings > Pull Request Checks with one installation showing all permissions granted, a configured repository with the comment toggle on, a 500 cost threshold set to Failure, and the Recent checks list below] here>
+![Settings \> Pull Request Checks with one installation showing all permissions granted, a configured repository with the comment toggle on, a 500 cost threshold set to Failure, and the Recent checks list below](https://agent-assets.infrawrench.com/docs-screenshots/features/pr-checks/settings-pr-checks.png)
 
 To make the check required, add **Infrawrench: cost and blast radius** to the branch protection rule (or ruleset) for the target branch on GitHub. Pull requests that don't change infrastructure still get a passing check, so a required check never holds up an unrelated pull request.
 

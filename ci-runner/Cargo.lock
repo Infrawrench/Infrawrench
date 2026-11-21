@@ -2883,6 +2883,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "ed25519-dalek",
+ "flate2",
  "getrandom 0.3.4",
  "globset",
  "hex",
@@ -2892,6 +2893,8 @@ dependencies = [
  "iwci-spec",
  "iwci-store",
  "iwci-vfs",
+ "iwci-vm",
+ "iwci-vm-proto",
  "libc",
  "rayon",
  "serde",
@@ -2942,6 +2945,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "iwci-guest"
+version = "0.1.0"
+dependencies = [
+ "iwci-vm-proto",
+ "libc",
+ "tar",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "iwci-runtime"
 version = "0.1.0"
 dependencies = [
@@ -2974,7 +2987,6 @@ dependencies = [
  "wasmer-wasix",
  "wat",
  "webc",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -3037,6 +3049,34 @@ dependencies = [
  "shared-buffer",
  "thiserror",
  "virtual-fs",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "iwci-vm"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "iwci-guest",
+ "iwci-sandbox",
+ "iwci-vfs",
+ "iwci-vm-proto",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+]
+
+[[package]]
+name = "iwci-vm-proto"
+version = "0.1.0"
+dependencies = [
+ "bstr",
+ "gix-glob",
+ "gix-ignore",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

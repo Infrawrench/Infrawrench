@@ -353,6 +353,14 @@ pub(crate) fn find_executable_in_path<'a>(
     for p in path {
         let full_path = format!("{}/{}", p.trim_end_matches('/'), file_name);
         match fs.get_inode_at_path(inodes, VIRTUAL_ROOT_FD, &full_path, true) {
+            // iwci patch: a directory by the command's name is passed over,
+            // as `execvp` does (its `execve` fails with EACCES, which is
+            // what the search answers if nothing else is found). It ended
+            // the search: with a checkout's `node/` on PATH (`PATH="$PWD:$PATH"`),
+            // `node` was "command not found".
+            Ok(inode) if matches!(*inode.read(), Kind::Dir { .. } | Kind::Root { .. }) => {
+                encountered_eaccess = true
+            }
             Ok(_) => return FindExecutableResult::Found(full_path),
             Err(Errno::Access) => encountered_eaccess = true,
             Err(_) => (),

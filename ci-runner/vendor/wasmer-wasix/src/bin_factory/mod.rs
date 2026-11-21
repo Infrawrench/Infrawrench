@@ -144,6 +144,16 @@ impl BinFactory {
 
                 match executable {
                     Executable::Wasm(bytes) => {
+                        // A native program (ELF) runs as the runtime says,
+                        // if it says.
+                        let head = &bytes.as_slice()[..bytes.len().min(64)];
+                        let bytes = match head.starts_with(b"\x7fELF") {
+                            true => self
+                                .runtime
+                                .native_executable(name.as_str(), head)
+                                .unwrap_or(bytes),
+                            false => bytes,
+                        };
                         let data = HashedModuleData::new(bytes.clone());
                         commit_script_args(&env, rewritten_args);
                         return spawn_exec_wasm(data, name.as_str(), env, &self.runtime).await;

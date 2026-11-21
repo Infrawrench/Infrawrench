@@ -204,12 +204,18 @@ export function renderChronoDetail(r: ResourceInstance): DetailViewSchema {
           {
             kind: "text",
             variant: "muted",
-            content: "Run PromQL against the tenant from the Query tab.",
+            content: "Run PromQL against the tenant from the PromQL Editor tab.",
           },
         ]),
       ],
       headerActions: openUrl("Open Chronosphere", str(f["url"])),
-      sqlEditor: { connectionStringOutputKey: "promUrl", defaultQuery: "sum by (job) (up)" },
+      sqlEditor: {
+        connectionStringOutputKey: "promUrl",
+        defaultQuery: "sum by (job) (up)",
+        queryLanguage: "PromQL",
+        // A bare metric name is a PromQL query, should the sidebar list any.
+        tableQuery: "{table}",
+      },
     };
   } else {
     const rows: Array<[string, unknown, boolean?]> = (LABELS[r.resourceTypeId] ?? []).map(

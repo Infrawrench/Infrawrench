@@ -5,10 +5,11 @@ export const NfsShareResourceType = rt({
   id: "nfs-share",
   description:
     "A DigitalOcean Network File Storage share: NFSv4.1, mountable across Droplets and DOKS nodes in a VPC",
+  equivalence: "file-storage",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true }),
-    f("sizeGib", "Size (GiB)", { kind: "number" }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
+    f("sizeGib", "Size (GiB)", { kind: "number", sizing: "disk-gb" }),
     f("performanceTier", "Performance Tier", {
       kind: "enum",
       required: false,

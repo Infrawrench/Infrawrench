@@ -13,6 +13,12 @@ hosts = [
   # or neither; README.md, "Memory"):
   # { name = "ci-3", ssh_host = "203.0.113.12", url = "https://ci-3.example.com",
   #   memory_admission = "estimate", zram = "12GiB" },
+  # A Graviton bare-metal host that also runs `platform: linux` jobs in
+  # virtual machines (README.md, "Virtual machines"; build the image into
+  # /var/lib/iwci/machines on it):
+  # { name = "ci-4", ssh_host = "203.0.113.13", ssh_user = "ubuntu", url = "https://ci-4.example.com",
+  #   arch = "aarch64", iwci_binary_path = "../../ci-runner/target/aarch64-unknown-linux-musl/release/iwci",
+  #   machines = true },
 ]
 
 # Optional. The key Terraform connects with; empty uses the SSH agent.

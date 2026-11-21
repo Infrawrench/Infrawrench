@@ -33,7 +33,7 @@ export function DesktopIncidentsPanel({ incidentId }: { incidentId?: string | un
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="w-full p-6 max-w-4xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <IncidentsPanel
         key={activeCloudOrgId}

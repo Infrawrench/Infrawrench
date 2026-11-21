@@ -20,14 +20,14 @@ Connect a Splunk Observability Cloud organization to manage its alerting and con
 - **SLOs**: target, compliance period and alert rules. Delete them here. Define them in Splunk.
 - **Synthetic tests**: browser, API, HTTP, SSL and port tests with their recent runs. **Run now**, pause, resume, or delete.
 
-<insert [Splunk Observability detector detail page showing the rules, the SignalFlow program and the Metrics tab charting the published signals] here>
+![Splunk Observability detector detail page showing the rules and the SignalFlow program, with the Metrics tab next to Overview](https://agent-assets.infrawrench.com/docs-screenshots/plugins/splunk-observability/detector-detail.png)
 
 ## Connect your organization
 
 1. **Realm**: pick it from the list. It's in your app address (`app.<realm>.observability.splunkcloud.com`).
 2. **API access token**: in Splunk Observability Cloud, open **Settings > Access Tokens > New Token**, choose **API token** and the **power** role. A `read_only` token lists everything but can't edit. Access tokens, members and integrations can only be managed with a token tied to an administrator, so use an admin's **user API access token** from their profile for those. **Check credentials** shows which areas the token can reach.
 
-<insert [Splunk Observability Add-account form with the realm picker and the API Access Token field] here>
+![Splunk Observability Add-account form with the realm picker and the API Access Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/splunk-observability/add-account.png)
 
 ## Metrics
 

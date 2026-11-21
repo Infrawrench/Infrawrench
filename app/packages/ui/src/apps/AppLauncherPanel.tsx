@@ -82,7 +82,7 @@ export function AppLauncherPanel({
 
       {status !== "ready" && (
         <p
-          className={`text-sm ${status === "error" ? "text-danger-on-surface" : "text-on-surface-muted"}`}
+          className={`text-sm ${status === "error" ? "text-danger" : "text-on-surface-muted"}`}
           role={status === "error" ? "alert" : "status"}
         >
           {statusMessage ??
@@ -92,7 +92,7 @@ export function AppLauncherPanel({
 
       {notice && (
         <p
-          className={`text-sm ${notice.kind === "error" ? "text-danger-on-surface" : "text-on-surface-muted"}`}
+          className={`text-sm ${notice.kind === "error" ? "text-danger" : "text-on-surface-muted"}`}
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {dataString(notice.message)}
@@ -164,7 +164,7 @@ export function AppLauncherPanel({
                   <span className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium">{dataString(app.name)}</span>
                     {app.needsTerminal && (
-                      <span className="rounded border border-warning-border px-1 text-[10px] uppercase text-warning-on-surface">
+                      <span className="rounded border border-warning/40 px-1 text-[10px] uppercase text-warning">
                         <T>terminal</T>
                       </span>
                     )}

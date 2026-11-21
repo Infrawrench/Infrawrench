@@ -8,7 +8,7 @@ Infrawrench CI runs the pipelines in a repository's `.infrawrench/ci/` folder on
 
 Moving from GitHub Actions? [Migrate from GitHub Actions](./ci-migrate-from-github-actions.md) has an agent skill that converts your workflows.
 
-<insert [The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons] here>
+![The CI tab: the GitHub accounts card with two accounts (one with "Run CI" ticked), the usage card for this month, and the runs table with a passed push to main, a running pull request, and a pull request from a fork marked "Awaiting approval" with Approve and Reject buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/ci-tab-overview.png)
 
 ## Turn it on for your repositories
 
@@ -59,16 +59,39 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 | `env:python@3.13`              | the same as `env:bash@5`, plus Python 3.13 with `pip`                            |
 | `env:php@8.1` to `env:php@8.5` | the same as `env:bash@5`, plus PHP 8.1, 8.2, 8.3, 8.4 or 8.5 and Composer        |
 | `env:go@1.23` to `env:go@1.27` | the same as `env:bash@5`, plus Go 1.23, 1.24, 1.25, 1.26 or 1.27 (`go`, `gofmt`) |
+| `env:ruby@3.4`, `env:ruby@4.0` | the same as `env:bash@5`, plus Ruby 3.4 or 4.0 (`ruby`, `gem`, `bundle`, `rake`) |
 | `env:postgres@18`              | the same as `env:bash@5`, plus PostgreSQL 18.4, for a job's `services:`          |
 | `env:aws@1.46`                 | the same as `env:python@3.13`, plus the AWS CLI 1.46 (`aws`)                     |
 | `env:az@2.92`                  | the same as `env:python@3.13`, plus the Azure CLI 2.92 (`az`)                    |
 | `env:gcloud@593`               | the same as `env:python@3.13`, plus the Google Cloud CLI 593 (`gcloud`, `bq`)    |
 
+`env:bash@5` and `env:bash-node@24` also have `tar`, `gzip` and `openssl` (OpenSSL 3.5.9, with Mozilla's CA certificates). `tar -z` works, and so does `openssl req -x509` for a test's self-signed certificate. Unix domain sockets on a path work between a job's processes (tsx's IPC, test runners' workers), and connecting to `::` or `0.0.0.0` reaches the job's own loopback, as on Linux.
+
 In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv`, then `.venv/bin/python -m ensurepip --default-pip` for its pip. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
 In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
 
-A project that installs with Bun lists `bun` under `workspace.deps` instead of `pnpm`. Its `node_modules` is installed from `bun.lock` before the jobs start, laid out the way `bun install` lays it out and checked against the lockfile's hashes, and the jobs run its scripts with `node`. There is no `bun` command in a job, so `bun test` and the `Bun` APIs need a [cloud job](#cloud-jobs) on a machine that has Bun. Commit the text lockfile: a repository with only the older binary `bun.lockb` is told to run `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`.
+A Ruby project lists `bundler` under `workspace.deps` (`- bundler: { dir: api }` for a Gemfile below the root). Its gems are installed from `Gemfile.lock` into `vendor/bundle` before the jobs start, each checked against the lock's checksums, and a job runs `bundle exec rspec` (or `rails test`, `rake`) with no network. The lock needs a `CHECKSUMS` section, which Bundler 2.6 and later write (`bundle lock --add-checksums` adds one to an older lock), and the `ruby` platform, which a lock from `rails new` lacks: run `bundle lock --add-platform ruby` on its own and commit the result. Gems from a git repository are fetched by the commit the lock names. A job cannot compile C extensions, so gems that have one come with a build Infrawrench CI makes ahead of time: those of a `rails new` app (nokogiri, sqlite3, puma, bootsnap, msgpack and the rest) at the versions Rails 8.1 locks, and the PostgreSQL and MySQL drivers (pg 1.7.0, mysql2 0.5.7 and trilogy 2.13.3), for Ruby 3.4 and 4.0. pg talks to the [PostgreSQL service](#background-services); mysql2 and trilogy reach a MySQL server over the job's network, such as a [lent connection](#connections), since there is no MySQL service. A gem with a C extension and no build of the locked version stops the install before the jobs start, and the message names the versions that have one. If your jobs never load a gem's compiled part, list it to install it without one: `- bundler: { without-extensions: [redcarpet] }`.
+
+A Rails app's tests run with `bin/rails test`:
+
+```yaml
+workspace:
+  deps: [bundler]
+jobs:
+  test:
+    using: env:ruby@4.0
+    network: false
+    run: bin/rails test
+```
+
+Tests run in one process: there is no `fork`, so Rails' parallel workers are turned off for you (`PARALLEL_WORKERS=1`), and a suite that wants them in threads can use `parallelize(with: :threads)` and set `PARALLEL_WORKERS` in the job's `env:`. Two lines of a `rails new` Gemfile need changing: `gem "tzinfo-data"` on every platform (drop its `platforms:`, then `bundle lock`), since a job has no system time zone files, and `gem "selenium-webdriver", require: false`, since Rails loads it with the other test gems and it refuses to load on a platform it does not know. System tests need a browser, which a job does not have; run them as a [cloud job](#cloud-jobs).
+
+A project that installs with npm lists `npm` under `workspace.deps`. Its `node_modules` is installed from `package-lock.json` (or `npm-shrinkwrap.json`) before the jobs start, in the tree `npm ci` would make, workspaces linked and every package checked against the lockfile's hashes; the registry in your `.npmrc` is used, as npm uses it. Install scripts do not run, and the run's warnings name the packages that have one. A job runs `npm test` and `npm run` with npm itself. Commit a lockfile from npm 7 or later (`lockfileVersion` 2 or 3): an older one is refused with the command that updates it, as is a lockfile that is behind `package.json`. Do not run `npm ci` in a job: npm refuses packages that list the operating systems they run on, since a job's platform is none of them.
+
+A project that installs with Bun lists `bun` under `workspace.deps` instead of `pnpm`. Its `node_modules` is installed from `bun.lock` before the jobs start, laid out the way `bun install` lays it out and checked against the lockfile's hashes, and the jobs run its scripts with `node`. For Bun itself (`bun test`, `bun run`, the `Bun` APIs), list `builtin:bun@1.4` under `tools:`: the official Bun 1.4 release runs natively in a gVisor sandbox beside the job's environment, with `bun` and `bunx` on the script's `PATH` and the environment's commands (`bash`, `node`, `git`) on Bun's. Such a job runs `bun install --frozen-lockfile` itself, which brings the Linux builds of native packages (turbo, oxlint, esbuild) that `workspace.deps` leaves out, and is best on `env:bash@5`: with no `node` there, Bun runs package scripts and install scripts itself, where the `node` of `env:bash-node` is a WebAssembly build that cannot load those packages. Commit the text lockfile: a repository with only the older binary `bun.lockb` is told to run `bun install --save-text-lockfile --frozen-lockfile --lockfile-only`.
+
+With `pnpm`, `npm` or `bun`, each `node_modules` gets a `.bin` with your dependencies' commands, so `pnpm run lint` finds `eslint` and `pnpm test` finds `vitest`, as on your machine. Packages that ship native code use their WebAssembly build where they publish one, since a job cannot start native programs: most come with it as an optional dependency, and Rollup 4, esbuild and Lightning CSS, which publish theirs separately, are installed as `@rollup/wasm-node`, `esbuild-wasm` and `lightningcss-wasm` at the version your lockfile pins (checked against the hash the npm registry publishes for it), so Vite, Vitest and their builds work without any change to your repository. Tailwind CSS 4 builds too, on `env:bash-node@24` from 24.0.22.
 
 ```yaml
 jobs:
@@ -106,6 +129,53 @@ jobs:
       go test ./...
 ```
 
+Rust compiles with `tools: [builtin:rust@1.100]`: the official Rust 1.100 toolchain (`cargo`, `rustc`, `rustdoc`, `rustfmt` and clippy) runs as a real Linux program in a sandbox beside the job's environment, with GCC 13 (`cc`) and binutils so it links, and so build scripts that compile C work (the `cc` crate, `ring`, `pcre2-sys`, bundled SQLite). List `cargo` under `workspace.deps` and your crates are installed from `Cargo.lock` before the job, each checked against the lock's checksum, so `cargo test` needs no network. The build goes to `target/` in the job's own files, which count against its `memory:`, so give build and test jobs 4 to 8 GiB.
+
+```yaml
+workspace:
+  deps: [cargo]
+jobs:
+  test:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 8GiB
+    run: cargo test --locked --workspace
+  lint:
+    using: env:bash@5
+    tools: [builtin:rust@1.100]
+    memory: 4GiB
+    run: |
+      cargo fmt --all --check
+      cargo clippy --locked --workspace --all-targets -- -D warnings
+```
+
+The toolchain is the builtin's: `rust-toolchain.toml` is not read and there is no `rustup`, so pick the builtin version your project needs. It has the runner's own target only, and no C++ compiler or system libraries beyond the C library, so a crate that links a system library (OpenSSL without its `vendored` feature, for example) needs a [cloud job](#cloud-jobs). A program your build produces runs as it would on Linux, from the script (`./target/release/app --version`) or from cargo. Rust jobs run only on runners with the native sandbox turned on; on a runner without it the job fails and says so.
+
+Some npm packages ship their program as a Linux binary in a per-platform package, with a small script that starts it: Turborepo (`turbo`), sherif and others. To run them, add `native: true` to the install and run the job in the sandbox with `builtin:glibc@2.39`, the C library on its own:
+
+```yaml
+workspace:
+  deps: [{ pnpm: { native: true } }]
+jobs:
+  lint:
+    using: env:bash-node@24
+    tools: [builtin:glibc@2.39]
+    run: pnpm lint
+```
+
+`native: true` also installs the runner's Linux builds of your packages and makes the job's `node` report Linux as its platform, so the package's script finds its binary. Without the sandbox, the binary does not start, and the job's log says what it needs.
+
+In `env:ruby`, `bundle install`, `gem install`, `rake` and `ruby` work as on a developer's machine, with the gems that ship with Ruby (minitest, test-unit, rake and the rest) already there. Gems install into the job's own `GEM_HOME`, with their commands on the `PATH`, and download while the job runs, so leave the job's network on. Threads, sockets, TLS and child processes (`system`, backticks, `Open3`) work, with real exit statuses; `fork` raises `NotImplementedError`, and a gem with a C extension that has to be compiled while it installs does not install: install those through `deps: [bundler]`, which brings a build of the common ones.
+
+```yaml
+jobs:
+  test:
+    using: env:ruby@4.0
+    run: |
+      bundle install
+      bundle exec rake test
+```
+
 In `env:bash-node`, a job can install a command-line tool for itself with `npm i -g`, `pnpm add -g`, `npx` or `pnpm dlx`, and run it by name. These fetch from the npm registry while the job runs and, unlike your repository's dependencies, are not checked against a lockfile, so pin an exact version. The tool is gone when the job ends; to keep it between runs, cache `/root/.local/share/pnpm`, where global installs go:
 
 ```yaml
@@ -120,6 +190,8 @@ jobs:
       some-cli deploy
 ```
 
+A job can also run the package manager itself (`deps: false` and `pnpm install`, `npm ci` or `pnpm add`). It installs as on any machine, including switching to the pnpm version your `packageManager` field names, but takes three to four and a half times as long as pnpm natively (under a minute to a minute and a half for a monorepo of 1,500 packages) and keeps both pnpm's store and a copy of every package in the job's memory (with `npm_config_package_import_method: hardlink` in the job's `env:`, pnpm links the packages out of its store instead, and each file's bytes are kept once). Install scripts that fetch a native binary, such as esbuild's, fail; `--ignore-scripts` skips them. `workspace.deps` installs once per run, natively, and is the faster way to install your repository's dependencies.
+
 In `env:bash-node`, Node's module compile cache works: with `NODE_COMPILE_CACHE` set to a directory, each `node` keeps the compiled code of the modules it loads there, and the next one reuses it instead of compiling them again. To keep it between runs, put it inside the repository's directory (jobs start in `/app`, where the repository is checked out) and cache it, which keeps a pull request's copy apart from your branches':
 
 ```yaml
@@ -133,6 +205,8 @@ jobs:
       paths: [.node-compile-cache]
     run: pnpm test
 ```
+
+In `env:bash-node`, `node` runs TypeScript the way Node 24 does, by stripping the types: `node script.ts`, and `require` or `import` of `.ts`, `.mts` and `.cts` files, so an `eslint.config.ts` (with `--flag unstable_native_nodejs_ts_config`) or a Vite or Prettier config written in TypeScript loads as it does on your machine. As in Node, nothing is type checked, syntax that needs more than stripping (`enum`, `namespace`) needs `--experimental-transform-types`, `--no-experimental-strip-types` turns it off, and files under `node_modules` are never stripped. With `NODE_COMPILE_CACHE` set, the stripped source is cached too.
 
 ### Deployment CLIs
 
@@ -222,6 +296,28 @@ jobs:
       npm test
 ```
 
+## Linux machines
+
+A job that needs a whole operating system, such as Docker or a native compiler, can run its script in a Linux virtual machine of its own instead of the WebAssembly sandbox, with `platform: linux`:
+
+```yaml
+jobs:
+  test:
+    platform: linux # Ubuntu 24.04
+    run: |
+      npm ci
+      npm test
+    artifacts: [dist]
+```
+
+`platform:` is `wasm` (the sandbox, the default) or `linux`. The machine is new for each job and is gone when it ends. Its tools are close to GitHub's hosted Ubuntu 24.04 runner, without its largest SDKs (Android, .NET); a job installs anything else in its script, and `cache:` keeps it between runs. The script runs in `bash`; `shell:` picks `sh` or `pwsh` instead.
+
+A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. Its network reaches the same places as any job's, and `network: false` turns it off.
+
+A machine has no `using:`, `deps:`, `tools:`, `services:` or `task-cache:`: its script installs and starts what it needs (`npm ci`, `docker run -d postgres`).
+
+`changes: fail` and `changes: { commit: ... }` count only what git would see: a new file that the repository's `.gitignore` ignores, such as `node_modules` or a build folder, is not a change, in a machine or in the sandbox.
+
 ## Monorepos: a job per package
 
 In a JavaScript workspace (`pnpm-workspace.yaml`, or `workspaces` in the root `package.json`), `packages:` gives a job one copy per package, and `needs: ["^build"]` makes each package wait for the packages it depends on, as Turborepo's `dependsOn` does. `task-cache:` skips a job when nothing it reads has changed since a run of it passed, so a change rechecks only the packages it can affect:
@@ -257,7 +353,7 @@ The runs table lists the latest runs, newest first, with their status, where the
 
 Open a run to see its jobs. The sidebar lists every job, with a matrix's entries and a `packages:` job's packages grouped under the job they were written as. **Summary** draws each pipeline as a graph: a box per job, below the jobs it needs, each with its status and how long it took. Drag to move around it, zoom with the buttons (or Ctrl and the scroll wheel), **Fit** to see all of it and **Expand** to fill the window. Click a job, in the graph or the sidebar, to read its output.
 
-<insert [The CI run page: the sidebar of jobs with a package group expanded, and the Summary graph of a running run with passed, running, failed and waiting jobs] here>
+![The CI run page: the sidebar of jobs with a package group expanded, and the Summary graph of a running run with passed, running, failed and waiting jobs](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-summary-graph-running.png)
 
 While a run is going, the page follows it live: jobs change state as they start and finish, and an open job's output appears as it is printed. Runs from before the graph view show their jobs without the lines between them.
 
@@ -278,9 +374,26 @@ A failed or cancelled run also has a **Retry** button in the runs table. The ret
 
 Retrying takes the `ci:approve` permission, the same as approving a fork's pull request. A run waiting for approval is approved rather than retried, and a rejected one cannot be retried. A retry of a fork's pull request still runs without your secrets.
 
-<insert [A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry] here>
+![A failed CI run's page with the Retry and Retry without cache buttons beside "Open on GitHub", and below the header the "Retried as run 5e6f7a8b" link to its retry](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-failed-retry.png)
 
 A retry joins its pipelines' [concurrency groups](#concurrency-groups) like any other run, as the newest run of each.
+
+### Re-run from GitHub
+
+GitHub's own **Re-run** buttons retry a run too, for anyone GitHub lets use them (people with write access to the repository):
+
+- **Re-run** on one of the checks retries the run behind it. On a job's check (**Test / build (pull request)**) that is still the whole run: a runner runs a commit's pipelines, not one job of them. Jobs with `task-cache:` whose inputs have not changed come back from the task cache, as with **Retry**, so a re-run after a flaky failure reruns little else. The new run's check says it is a retry.
+- **Re-run all checks** on the commit retries the newest run of each push and pull request on that commit. **Re-run failed checks** retries the runs those checks belong to, once each.
+
+A re-run is a retry like one from Infrawrench, with a few differences, because nobody signed in to Infrawrench asked for it:
+
+- It is recorded in the audit log as a retry with the GitHub login of whoever clicked, and no Infrawrench user.
+- A pull request from a fork waits as **Awaiting approval** again, for someone with `ci:approve` to approve it in Infrawrench. A GitHub login does not approve a fork's code.
+- Scheduled and manual runs are only started again from Infrawrench; re-running their checks on GitHub says so on the check.
+- A run that has not finished yet is left as it is, and its check says to re-run it once it has. A run waiting for approval or rejected is left as it is too.
+- Each run is retried once, however many of its checks are re-run: re-running several checks of the same run, or GitHub sending a request twice, starts one run. Re-run again once the retry's own checks are on the commit.
+
+Re-running checks through GitHub's API (`POST .../check-runs/{id}/rerequest` or `.../check-suites/{id}/rerequest`) is only open to the app that made the checks, so a personal token gets an error there: use the buttons, or [retry from Infrawrench](#retry-a-run) or through its API.
 
 ### Cancel a run
 
@@ -288,7 +401,7 @@ A run that has not finished (**Queued**, **Waiting** or **Running**) has a **Can
 
 Cancelling takes the `ci:approve` permission, like retrying, and is recorded in the audit log. A run waiting for approval is rejected rather than cancelled.
 
-<insert [A running CI run's page with the Cancel button beside "Open on GitHub", and below the header the line "Concurrency groups: ci-main"] here>
+![A running CI run's page with the Cancel button beside "Open on GitHub", and below the header the line "Concurrency groups: ci-main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-running-cancel.png)
 
 ## Concurrency groups
 
@@ -338,7 +451,7 @@ When a cron is due, that one pipeline runs on the head of your default branch, a
 
 Schedules are read from the default branch each time you push to it, so the push that adds, changes or removes a schedule is what makes it take effect. A repository that already had scheduled pipelines when you turned CI on for it starts with its next push to the default branch. The **Schedules** card on the CI page lists each repository's scheduled pipelines, their crons and when each runs next, and says when a pipeline file could not be read.
 
-<insert [The CI page's Schedules card: one repository on main with a "Nightly" pipeline (0 3 * * *) and its next run time, and a second repository with a red "The last read failed" line] here>
+![The CI page's Schedules card: one repository on main with a "Nightly" pipeline (0 3 * * *) and its next run time, and a second repository with a red "The last read failed" line](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/schedules-card.png)
 
 A scheduled run starts in the minute it is due. If runs could not be started for a few minutes, the ones missed in the last five start as soon as they can; older ones are skipped rather than run late. A scheduled run can use what [CI access](#ci-access) allows on your default branch, joins its pipeline's [concurrency group](#concurrency-groups) like any other run, and is billed like any other: your plan has to include CI. A repository the GitHub App can no longer read stops running its schedules after a day.
 
@@ -374,7 +487,7 @@ An input is a `string` (the default), a `boolean`, a `choice` among its `options
 
 The **Manual runs** card on the CI page lists each repository's pipelines with `on.manual`, as read from its default branch. **Run** opens a form built from the inputs: pick the branch (your default branch unless you change it), fill in the values and **Start run**. The values are checked against the inputs before the run starts (a missing required input, a number that is not one), and again by the runner against the pipeline file on the branch you chose, so a branch that changes the inputs gets its own checked. The run opens as soon as it is queued.
 
-<insert [The CI page's Manual runs card listing "Purge the CDN cache" with its inputs and a Run button, and the Run dialog open over it with the branch field, a urls text box, a zone dropdown on "www" and a dry-run checkbox] here>
+![The Run dialog for "Purge the CDN cache" open over the CI page's Manual runs card, with the branch field, a urls text box, a zone dropdown on "www" and a dry-run checkbox](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/manual-run-dialog.png)
 
 A run started by hand runs that one pipeline on the head of the branch, the way a push to that branch would: with your secrets, only what [CI access](#ci-access) allows on that branch, and that branch's caches. The runs table shows it as **Started by hand** with the pipeline file, its page lists the inputs it was started with and who started it, and GitHub shows it on the commit as **Infrawrench CI / manual**, a check of its own, so it never stands in for a branch protection rule's required check. It joins its pipeline's [concurrency group](#concurrency-groups) like any other run, can be retried and cancelled, and is billed like any other.
 
@@ -402,7 +515,7 @@ jobs:
       when: always
 ```
 
-<insert [The CI run page on Summary, below the graph: the Downloads list with app.tar.gz from the build job and junit.xml from the e2e job, each with its size, "Kept until" date and a Download button] here>
+![The CI run page on Summary, below the graph: the Downloads list with app.tar.gz from the build job and junit.xml from the e2e job, each with its size, "Kept until" date and a Download button](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/run-downloads.png)
 
 - **What is kept**: the files the job wrote under the paths you list. A directory keeps every file in it, each as its own download; put them in an archive in your script to download them as one.
 - **When**: after the job passes, unless `when:` says `failure` (for a report of what failed) or `always`.
@@ -456,7 +569,7 @@ Under **Secrets and variables**, choose an account and a scope: **Every reposito
 
 Names are letters, digits and `_`, not starting with a digit. Managing them takes `ci:write`.
 
-<insert [The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below] here>
+![The Secrets and variables card with the account picker on "acme", the scope on "Every repository", one secret NPM_TOKEN shown as Hidden and one variable REGION = eu-west-1, and the add form below](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/secrets-and-variables.png)
 
 ## CI access
 
@@ -464,9 +577,9 @@ Jobs can use what your organization has connected to Infrawrench, once someone t
 
 Everyone who can see runs can see the **CI access** card. It lists each connection that runs jobs or lends its credentials on one line, with what it does and for which repositories and branches; choose a line, or **Manage connections**, to open every connection that can do either, with the chosen one's settings beside the list. On a phone the list comes first, and choosing a connection opens its settings with a way back. Changes to a connection take effect when you **Save**; leaving with changes unsaved asks first. While a change could not be saved (running jobs with no kind chosen, say), **Save** stays off and the reason is shown beside it, as is anything the server refuses. Lending a connection, granting a resource and running cloud jobs on a connection take `ci-access:write`, which admins and owners hold; `ci:write` alone can only remove a grant or revoke a lent key. An SSH key is lent by its owner, with `ssh-keys:write`. None of this can be changed with an API key or by an agent: a person decides what CI jobs may use. Every change, and every time a run is lent something, is recorded in the [audit log](../team-and-billing/audit-log.md), with who allowed it.
 
-<insert [The CI access card: a Google Cloud connection "Infrawrench GCP" on one line with the chips "Runs jobs · Compute Engine instance, Cloud Run job" and "All repositories · main, release/*", a Kubernetes connection "Production cluster" with "Lends credentials" and "acme/web · main", the Manage connections button above them, the wide "Search for resources" field, and one granted resource and one lent SSH key as compact rows] here>
+![The CI access card: a Google Cloud connection "Infrawrench GCP" on one line with the chips "Runs jobs · Compute Engine instance, Cloud Run job" and "All repositories · main, release/*", a Kubernetes connection "Production cluster" with "Lends credentials" and "acme/web · main", the Manage connections button above them, the wide "Search for resources" field, and one granted resource and one lent SSH key as compact rows](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/access-card.png)
 
-<insert [The Manage connections dialog: the connection list on the left with a search field and an on dot beside Infrawrench GCP and Production cluster, and Infrawrench GCP's settings on the right with "Run jobs on it" switched on, Compute Engine instance and Cloud Run job ticked and "Ready", 2 jobs at once and 60 minutes per job, the branches "main, release/*", and Cancel and Save at the bottom] here>
+![The Manage connections dialog: the connection list on the left with a search field and an on dot beside Infrawrench GCP and Production cluster, and Infrawrench GCP's settings on the right with "Run jobs on it" switched on, Compute Engine instance and Cloud Run job ticked and "Ready", 2 jobs at once and 60 minutes per job, the branches "main, release/*", and Cancel and Save at the bottom](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/manage-connections.png)
 
 ### Repositories and branches
 
@@ -565,7 +678,7 @@ A job that does not run as root (some images, every Heroku dyno) gets the same: 
 
 An SSH host is not created for the job and is not removed after it: the job runs as the connection's user in a work directory of its own under `~/.infrawrench-ci`, with its clone, `HOME` and anything lent to it inside, and the directory and everything the job started are removed when it ends. Two jobs on one host never share a directory. The host is reached the way the terminal reaches it, through its jump host and only with the host key pinned in Infrawrench. `ssh` reads its configuration from the user's real home directory, which is not the job's, so a job on an SSH host that is lent another SSH connection has its `ssh`, `scp` and `sftp` pointed at the lent configuration: `ssh web-1` works as written. Nothing is installed on the host: a job that is lent an SSH connection needs the host to have `ssh`.
 
-<insert [A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below] here>
+![A cloud job selected on the run page: the "Cloud job" badge reading "Production · vm · t3.large · eu-west-1", the state "Running on its machine", the instance label "aws ec2 i-0abc… (eu-west-1)", and the job's log streaming below](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/cloud-job-running.png)
 
 ### Connections
 
@@ -602,7 +715,7 @@ Two databases lent to one job share the plain variable names (`DATABASE_URL`, `P
 
 Vercel, Cloudflare and Neon lend the connection's own token or key, not a short-lived one, and the databases lend the password their connection string holds; each is masked in the job's log like a secret. A job installs the CLIs itself, or names them as builtins (`builtin:vercel`, `builtin:wrangler`, `builtin:cf`, `builtin:neon`) once those are published.
 
-<insert [A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"] here>
+![A deploy job's page listing what it was lent: Connections "Production cluster, web-1" and SSH keys "deploy"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/deploy-job-lent.png)
 
 #### A cluster or database in a cloud account
 
@@ -637,13 +750,13 @@ A grant holds for the resource it was made for: if the resource is deleted and o
 
 Ticking a job kind checks, through the cluster, that it can run there, and refuses the grant with what is missing when it cannot. Jobs run where the kind was checked (a cluster's own namespace) unless the grant lists other places in **Other places jobs may run**; each one is checked when it is added, and a job that names anywhere else in `cloud.region` is refused.
 
-<insert [The grant form for the GKE cluster "prod-cluster": no outputs ticked, Use it in CI as a connection set to "As a Kubernetes connection", the Credential, Reach and Lifetime lines, Lend it to jobs unticked, Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, Other places jobs may run empty, and the branch pattern "main"] here>
+![The grant form for the GKE cluster "prod-cluster": no outputs ticked, Use it in CI as a connection set to "As a Kubernetes connection", the Credential, Reach and Lifetime lines, Lend it to jobs unticked, Run cloud jobs on it with Kubernetes Job ticked, Jobs at once 2, Minutes per job 60, Other places jobs may run empty, and the branch pattern "main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/grant-gke-cluster.png)
 
 ### SSH keys
 
 `ssh-keys: [deploy]` writes one of your SSH keys to `/root/.ssh/id_deploy`, used for every host. Only a key's owner can lend it: under **Settings**, **SSH keys**, choose **Use in CI jobs** on your key, give it its name in pipelines, and say which repositories and branches may use it. Only keys Infrawrench generated can be lent, since an imported key's private half is not stored. Admins can revoke a lent key from the CI access card.
 
-<insert [The SSH keys settings page with "Use in CI jobs" on the caller's own generated key, and the dialog open with its name in pipelines "deploy" and branches "main"] here>
+![The SSH keys settings page with the "Use in CI jobs" dialog open for the caller's own generated key "deploy", with its name in pipelines "deploy" and branches "main"](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/ssh-key-use-in-ci.png)
 
 ### Resources
 
@@ -660,11 +773,46 @@ jobs:
 
 `${{ resources.<name>.<output> }}` works where `${{ secrets.NAME }}` does, in `env:` values. Values are read fresh for every run, so a rotated secret takes effect on the next one, and they are masked in every log and output.
 
-<insert [The grant form under Resources jobs may read, opened from the "Search for resources" results: the database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive adminPassword unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel] here>
+![The grant form under Resources jobs may read, opened from the "Search for resources" results: the DigitalOcean database "prod-db" with its provider logo and "Choose another", connectionString ticked, the sensitive password unticked, its name in pipelines "prod-db", Every repository, the branch pattern "main", and Grant and Cancel](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/grant-database.png)
+
+### Environment files
+
+A job can take its variables from a [`.infraenv` file](./env-files.md) in the repository, the same file `infrawrench env pull` turns into a `.env`:
+
+```yaml
+jobs:
+  test:
+    using: env:bash-node@24
+    env-file: .infraenv
+    run: pnpm test
+  e2e:
+    using: env:bash-node@24
+    env-file: { path: apps/web/.infraenv, environment: staging, vars: { stage: ci } }
+    env:
+      LOG_LEVEL: debug # the job's own env: wins over the file
+    run: pnpm e2e
+```
+
+`path` is relative to the repository's root. `environment` picks the file's `[env.<name>]` section, laid over `[env]`, and `vars` sets `${name}` substitutions over the file's own `[vars]`. Everything in `env-file:` is written out literally: `${{ }}` is not read there.
+
+Anyone who can push a branch can edit the file, so the file decides nothing about what a job gets. When the run is sent, Infrawrench reads the file at the run's commit and checks each variable with the same permissions as everything else under CI access:
+
+- **Plain values** become variables as written.
+- **`resource(...)`**, by id or by name, is read only when that resource is [granted](#resources) for the repository and branch and the output it reads is ticked on the grant. The file names the resource, not the grant's name in pipelines, so any grant of it that covers the run will do. Otherwise every job that uses the file fails before it starts, naming the variable and what to grant, for example "`DATABASE_URL` in .infraenv reads connectionString of storefront / dev (neon/neon-branch), which is not granted to CI; grant storefront / dev to CI with the output connectionString for acme/web".
+- **`secret("NAME")` reads the repository's CI secrets**, the ones under [Secrets and variables](#secrets-and-variables) that `${{ secrets.NAME }}` reads, not your organization's secrets that the app and `infrawrench env pull` use. Organization secrets are never given to CI jobs, so set the ones your pipelines need as CI secrets under the same name. A secret the run does not have fails the job, where `${{ secrets.NAME }}` would read as empty.
+
+More about how the variables reach a job:
+
+- **The job's own `env:` wins.** The file's variables come after a connection's, an SSH key's, a GitHub token's and `env-from:`'s. Background services do not get them.
+- **Masked.** Resource values and secrets are masked in every log and output; plain values are not.
+- **All or nothing.** If one variable cannot be given, every job using the file fails with that variable's reason, and so does a file that does not parse, is missing at the commit, has no section for the `environment`, or is pinned to another organization.
+- **Never for a fork.** A pull request from a fork gets nothing from the file, and a job of it with `env-file:` fails.
+- **Audited.** Each run that is given a file is recorded in the [audit log](../team-and-billing/audit-log.md) with the variable names and where each came from, never the values, along with a record per granted resource naming who granted it.
+- A job with `env-file:` cannot use `task-cache:`.
 
 ### When a job is refused
 
-A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", or, for a cloud job, which connection to opt in. It never runs with an empty value.
+A job that names something it may not have fails before it starts, saying why: "connection `staging` is not lent to CI for acme/web on feature/x", "resource `gke-prod` is not lent to CI for acme/web on feature/x", "prod-db is not granted to CI", which variable of an [environment file](#environment-files) is not granted, or, for a cloud job, which connection to opt in. It never runs with an empty value.
 
 ## Caches
 
@@ -674,7 +822,7 @@ To start a repository from nothing, for example after a cache that keeps restori
 
 Everyone who can see runs can see the card; clearing a cache takes `ci:write` and is recorded in the [audit log](../team-and-billing/audit-log.md).
 
-<insert [The Caches card listing two repositories of the acme account with their entries and sizes, and the "Clear the cache of acme/web?" dialog open over it saying how many entries and how much space it deletes] here>
+![The "Clear the cache of acme/web?" dialog open over the CI page's Caches card, saying it deletes 214 cache entries (6.00 GiB)](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/caches-clear-dialog.png)
 
 ### Runs shared between runners
 
@@ -687,19 +835,37 @@ split: true
 
 Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they are small (4 MiB in total by default, `split: { artifacts: 16MiB }` to change it). Larger ones stay where the job ran, and so do the jobs that need them.
 
-Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads) or run on a cloud account always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
+Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
 
 A job another runner ran is billed like any other job of the run.
+
+## Whole vCPUs for a job
+
+A job shares a vCPU with other jobs unless it says otherwise. A job that compiles or runs a test suite in parallel can ask for whole vCPUs of its own with `cpus:`:
+
+```yaml
+jobs:
+  test:
+    using: env:go@1.27
+    run: go test -p "$IWCI_CPUS" ./...
+    cpus: 4
+```
+
+- **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
+- **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count its programs read (`nproc`, Python's `os.cpu_count()`, Node's `os.availableParallelism()`, `/proc/cpuinfo`). Without `cpus:`, `$IWCI_CPUS` is not set and that count is 1, so a tool that starts a worker per CPU (`pytest -n auto`, Vitest, Jest, cargo) starts one; give the job `cpus:` to run more. Either way the count is all that changes: a job still uses CPU time no other job wants.
+- **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
+- A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
+- A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
 
 ## Usage and billing
 
 CI is part of paid plans (from $20 per seat per month). The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
 
-- **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs.
+- **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs. A job with [`cpus:`](#whole-vcpus-for-a-job) is charged the whole vCPUs it holds instead.
 - **Memory**, $0.000008 per GiB-second: the memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs.
 - **Storage**, $0.0002 per GiB-hour (about $0.14 per GiB for a 30-day month): the space your caches and [downloads](#downloads) take on the runners, measured every hour. Task cache results count here too, and a download stops counting when it expires.
 
-For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all.
+For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. With `cpus: 2` as well it is charged 1,200 vCPU-seconds ($0.096) instead of 150.
 
 A job the task cache stood in for did not run, so it uses no vCPU time or memory. A [cloud job](#cloud-jobs) runs on your own account, so the provider bills you for the machine and it uses no vCPU time or memory here either.
 
@@ -719,5 +885,6 @@ The in-app chat and any client connected to the [MCP server](./mcp.md) can work 
 - CI runs for GitHub repositories, through the Infrawrench GitHub App.
 - The mobile app does not show CI.
 - Cloud jobs run on the providers in the [table above](#cloud-jobs); more follow.
+- [Linux machines](#linux-machines) run only on runners set up for them. A run is placed on one when one is available; otherwise its machine jobs fail, saying the runner has none, and the rest of the run goes on.
 - A job runs for at most 6 hours (`timeout:`, 10 minutes unless it says). No plan sets a lower limit: a job is billed for the time it runs. Credentials lent to a job are minted for 4 hours from when its run is sent to a runner, or less where the provider caps them, so a job that runs longer should not need them near its end.
 - The pipeline format, the builtin tools and the limits on each job are described in the runner's reference (`ci-runner/README.md` in the Infrawrench repository).

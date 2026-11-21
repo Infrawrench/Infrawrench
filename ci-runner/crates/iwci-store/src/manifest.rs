@@ -18,7 +18,8 @@ pub const SCHEMA: u32 = 1;
 /// Largest single blob (module, data file or webc package).
 pub const MAX_BLOB_SIZE: u64 = 256 * 1024 * 1024;
 /// Largest sum of every blob one manifest references, so a manifest cannot
-/// make a job fetch an unbounded amount through many capped files.
+/// make a job fetch an unbounded amount through many capped files. A native
+/// tool is held to it per target, since a job fetches only its own.
 pub const MAX_TOTAL_SIZE: u64 = 1024 * 1024 * 1024;
 /// Largest manifest document.
 pub const MAX_MANIFEST_SIZE: usize = 1024 * 1024;
@@ -26,6 +27,8 @@ pub const MAX_MANIFEST_SIZE: usize = 1024 * 1024;
 pub const MAX_FILES: usize = 4096;
 /// Most packages an environment may name.
 pub const MAX_PACKAGES: usize = 64;
+/// Most commands a native tool may name.
+pub const MAX_COMMANDS: usize = 64;
 const MAX_ARGS: usize = 256;
 const MAX_ARG_LEN: usize = 4096;
 const MAX_ENV: usize = 256;
@@ -66,10 +69,10 @@ pub enum Abi {
     /// A runner older than this variant refuses such a manifest, so publish
     /// one only once every runner reads it.
     Node,
-    /// A native Linux program (Bun), which a job runs in a gVisor sandbox
-    /// beside its environment's WASIX commands. Its program and the files
-    /// it needs are per target ([`ToolManifest::targets`]); it has no
-    /// `module`.
+    /// A native Linux program (Bun), or a set of them (Rust's toolchain),
+    /// which a job runs in a gVisor sandbox beside its environment's WASIX
+    /// commands. Its program and the files it needs are per target
+    /// ([`ToolManifest::targets`]); it has no `module`.
     NativeGvisor,
 }
 
@@ -84,8 +87,10 @@ impl Abi {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeTarget {
-    /// The program, run as `/usr/local/bin/<name>` and every alias.
-    pub program: BlobRef,
+    /// The program, run as `/usr/local/bin/<name>` and every alias. A tool
+    /// whose programs are all its [`ToolManifest::commands`] has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<BlobRef>,
     /// What it needs beside it (its C library), read only, at these paths.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<ToolFile>,
@@ -142,6 +147,13 @@ pub struct ToolManifest {
     /// Other names a native tool's program runs under (`bunx`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<String>,
+    /// A native tool's programs run by name, for a tool of several (a
+    /// compiler toolchain): each command's name and the path of one of
+    /// every target's `files` (`cargo` and `/opt/rust/bin/cargo`). A runner
+    /// older than the field rejects the manifest (`deny_unknown_fields`),
+    /// so publish one only once every runner reads it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub commands: BTreeMap<String, String>,
 }
 
 /// One webc package of an environment.
@@ -360,25 +372,43 @@ impl ToolManifest {
                     ));
                 }
                 let field = format!("targets.{target}");
-                check_blob(
-                    &format!("{field}.program"),
-                    &t.program.sha256,
-                    t.program.size,
-                    1,
-                )?;
-                total += t.program.size + check_files(&field, &t.files)?;
+                let program = match &t.program {
+                    Some(p) => {
+                        check_blob(&format!("{field}.program"), &p.sha256, p.size, 1)?;
+                        p.size
+                    }
+                    // Only files: a C library a job's own native programs
+                    // run on (`builtin:glibc`), which puts it in the sandbox.
+                    None if self.commands.is_empty() && t.files.is_empty() => {
+                        return Err(invalid(
+                            format!("{field}.program"),
+                            "a native tool needs a program, commands or files",
+                        ));
+                    }
+                    None if !self.aliases.is_empty() => {
+                        return Err(invalid(
+                            format!("{field}.program"),
+                            "aliases are names of a program, and this target has none",
+                        ));
+                    }
+                    None => 0,
+                };
+                // A job fetches only its own target's, so each target is
+                // held to the cap on its own.
+                total = total.max(program + check_files(&field, &t.files)?);
             }
             for (i, alias) in self.aliases.iter().enumerate() {
                 check_name(&format!("aliases[{i}]"), alias)?;
             }
+            check_commands(self)?;
         } else {
             let Some(module) = &self.module else {
                 return Err(invalid("module", "a wasm tool needs its module"));
             };
-            if !self.targets.is_empty() || !self.aliases.is_empty() {
+            if !self.targets.is_empty() || !self.aliases.is_empty() || !self.commands.is_empty() {
                 return Err(invalid(
                     "targets",
-                    "only a native tool has targets or aliases",
+                    "only a native tool has targets, aliases or commands",
                 ));
             }
             check_blob("module", &module.sha256, module.size, 1)?;
@@ -387,7 +417,9 @@ impl ToolManifest {
         if total > MAX_TOTAL_SIZE {
             return Err(invalid(
                 "files",
-                format!("module and files exceed {MAX_TOTAL_SIZE} bytes"),
+                format!(
+                    "module and files (a native tool's for one target) exceed {MAX_TOTAL_SIZE} bytes"
+                ),
             ));
         }
         if self.args.len() > MAX_ARGS {
@@ -422,10 +454,43 @@ impl ToolManifest {
             .map(|m| (m.sha256.as_str(), m.size))
             .chain(self.files.iter().map(|f| (f.sha256.as_str(), f.size)))
             .chain(self.targets.values().flat_map(|t| {
-                std::iter::once((t.program.sha256.as_str(), t.program.size))
+                t.program
+                    .iter()
+                    .map(|p| (p.sha256.as_str(), p.size))
                     .chain(t.files.iter().map(|f| (f.sha256.as_str(), f.size)))
             }))
     }
+}
+
+/// Checks a native tool's commands: each a name of its own, run from a
+/// file every target has.
+fn check_commands(manifest: &ToolManifest) -> Result<(), ManifestError> {
+    if manifest.commands.len() > MAX_COMMANDS {
+        return Err(invalid(
+            "commands",
+            format!("more than {MAX_COMMANDS} commands"),
+        ));
+    }
+    let has_program = manifest.targets.values().any(|t| t.program.is_some());
+    for (name, path) in &manifest.commands {
+        let field = format!("commands.{name}");
+        check_name(&field, name)?;
+        if manifest.aliases.contains(name) || (has_program && *name == manifest.name) {
+            return Err(invalid(field, "is already a name of the program"));
+        }
+        if !is_valid_guest_path(path) {
+            return Err(invalid(field, "must be an absolute, normalised guest path"));
+        }
+        for (target, t) in &manifest.targets {
+            if !t.files.iter().any(|f| f.path == *path) {
+                return Err(invalid(
+                    field,
+                    format!("{path} is not one of {target}'s files"),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Checks a list of data files; their total size.
@@ -702,6 +767,109 @@ mod tests {
         assert!(err(no_targets.into()).contains("at least one"));
         let no_module = r#"{"schema":1,"name":"tsc","version":"7.1.3","abi":"wasi"}"#;
         assert!(err(no_module.into()).contains("needs its module"));
+    }
+
+    fn toolchain_json(commands: &str, aliases: &str) -> String {
+        let target = |size: u64| {
+            format!(
+                r#"{{"files":[{{"path":"/opt/rust/bin/cargo","sha256":"{H}","size":{size}}},
+                             {{"path":"/opt/rust/bin/rustc","sha256":"{H}","size":{size}}}]}}"#
+            )
+        };
+        format!(
+            r#"{{"schema":1,"name":"rust","version":"1.100.0","abi":"native-gvisor",
+               "targets":{{"x86_64-linux":{},"aarch64-linux":{}}},
+               "commands":{commands}{aliases}}}"#,
+            target(5),
+            target(6)
+        )
+    }
+
+    /// A toolchain's programs are its commands, each one of every target's
+    /// files; it needs no program of its own.
+    #[test]
+    fn a_native_tool_may_run_its_files_as_commands() {
+        let ok = toolchain_json(
+            r#"{"cargo":"/opt/rust/bin/cargo","rustc":"/opt/rust/bin/rustc"}"#,
+            "",
+        );
+        let m = ToolManifest::from_json(ok.as_bytes()).unwrap();
+        assert!(m.targets.values().all(|t| t.program.is_none()));
+        assert_eq!(m.commands.len(), 2);
+        assert_eq!(ToolManifest::from_json(&m.to_json()).unwrap(), m);
+        assert_eq!(m.blobs().count(), 4);
+        let err = |json: String| {
+            ToolManifest::from_json(json.as_bytes())
+                .unwrap_err()
+                .to_string()
+        };
+        // Files alone (a C library, `builtin:glibc`) are a native tool too,
+        // but not nothing at all.
+        let files_only = ToolManifest::from_json(toolchain_json("{}", "").as_bytes()).unwrap();
+        assert!(files_only.commands.is_empty());
+        let empty = r#"{"schema":1,"name":"x","version":"1.0.0","abi":"native-gvisor","targets":{"x86_64-linux":{}}}"#;
+        assert!(err(empty.into()).contains("needs a program, commands or files"));
+        // Aliases name a program.
+        assert!(
+            err(toolchain_json(
+                r#"{"cargo":"/opt/rust/bin/cargo"}"#,
+                r#","aliases":["x"]"#
+            ))
+            .contains("aliases are names of a program")
+        );
+        assert!(
+            err(toolchain_json(r#"{"cargo":"/opt/rust/bin/rustdoc"}"#, ""))
+                .contains("is not one of")
+        );
+        assert!(err(toolchain_json(r#"{"cargo":"bin/cargo"}"#, "")).contains("commands.cargo"));
+        assert!(
+            err(toolchain_json(r#"{"Cargo":"/opt/rust/bin/cargo"}"#, ""))
+                .contains("commands.Cargo")
+        );
+        // Bun's own name and alias are its program's.
+        for name in ["bun", "bunx"] {
+            let clash = native_json(&format!(
+                r#","commands":{{"{name}":"/lib64/ld-linux-x86-64.so.2"}}"#
+            ));
+            assert!(
+                err(clash).contains("already a name of the program"),
+                "{name}"
+            );
+        }
+        assert!(err(tool_json(r#","commands":{"x":"/x"}"#)).contains("only a native tool"));
+    }
+
+    /// Each target is held to the size cap alone: a job fetches only its
+    /// own.
+    #[test]
+    fn a_native_tools_size_cap_is_per_target() {
+        let json = toolchain_json(r#"{"cargo":"/opt/rust/bin/cargo"}"#, "");
+        let mut m = ToolManifest::from_json(json.as_bytes()).unwrap();
+        // Three quarters of the cap on each target: more than it together.
+        for t in m.targets.values_mut() {
+            for f in &mut t.files {
+                f.size = MAX_BLOB_SIZE;
+            }
+            t.files.push(ToolFile {
+                path: "/opt/rust/lib/librustc_driver.so".into(),
+                sha256: H.into(),
+                size: MAX_BLOB_SIZE,
+            });
+        }
+        m.validate().unwrap();
+        // Past it on one.
+        let t = m.targets.get_mut("x86_64-linux").unwrap();
+        t.files.push(ToolFile {
+            path: "/opt/rust/lib/libLLVM.so".into(),
+            sha256: H.into(),
+            size: MAX_BLOB_SIZE,
+        });
+        t.files.push(ToolFile {
+            path: "/opt/rust/lib/libstd.so".into(),
+            sha256: H.into(),
+            size: 1,
+        });
+        assert!(m.validate().unwrap_err().to_string().contains("exceed"));
     }
 
     #[test]

@@ -55,12 +55,13 @@ export const PRODUCTS: readonly ProductDef[] = [
       "k8s-efficiency",
       "invoices",
       "price-catalog",
+      "migration-estimates",
     ],
   },
   {
     id: "observability",
     name: PRODUCT_NAMES.observability,
-    tools: ["logs", "metric-alerts", "probes", "slos", "query-monitors", "wallboard"],
+    tools: ["logs", "metric-alerts", "probes", "heartbeats", "slos", "query-monitors", "wallboard"],
   },
   {
     id: "incidents",
@@ -83,7 +84,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "delivery",
     name: PRODUCT_NAMES.delivery,
-    tools: ["ci", "delivery", "environments", "environment-diff"],
+    tools: ["ci", "delivery", "environments", "env-files", "environment-diff"],
   },
   {
     id: "automation",

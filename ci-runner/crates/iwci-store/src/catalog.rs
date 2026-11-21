@@ -109,7 +109,8 @@ pub enum Resolved {
         /// SHA-256 of the manifest document as stored, for logs and lockfiles:
         /// it pins exactly what ran.
         manifest_sha256: String,
-        /// The wasm module.
+        /// The wasm module, or a native tool's program for this runner's
+        /// target: empty for a native tool that has only `commands`.
         module: Blob,
         /// `(guest path, content)` for each data file, in manifest order.
         files: Vec<(String, Blob)>,
@@ -430,19 +431,28 @@ impl Catalog {
                 // A native tool's program and files are this runner's
                 // target's; a wasm tool's are its module and files.
                 let (program, file_refs) = match &manifest.module {
-                    Some(module) => (module.clone(), manifest.files.as_slice()),
+                    Some(module) => (Some(module.clone()), manifest.files.as_slice()),
                     None => {
                         let target = crate::manifest::host_target();
                         let t = manifest
                             .targets
                             .get(&target)
-                            .ok_or_else(|| Error::NotFound {
-                                reference: format!("{reference} for {target}"),
+                            .ok_or_else(|| Error::NoTarget {
+                                reference: reference.to_string(),
+                                version: manifest.version.to_string(),
+                                target: target.to_string(),
                             })?;
                         (t.program.clone(), t.files.as_slice())
                     }
                 };
-                let module = self.blob(&program.sha256, program.size)?;
+                let module = match program {
+                    Some(program) => self.blob(&program.sha256, program.size)?,
+                    // A native tool that runs only its commands.
+                    None => Blob {
+                        sha256: sha256_hex(b""),
+                        bytes: Arc::from(&[][..]),
+                    },
+                };
                 let files = file_refs
                     .iter()
                     .map(|f| Ok((f.path.clone(), self.blob(&f.sha256, f.size)?)))

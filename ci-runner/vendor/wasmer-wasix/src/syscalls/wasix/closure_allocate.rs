@@ -29,6 +29,12 @@ pub fn closure_allocate<M: MemorySize>(
 
     let (env, mut store) = ctx.data_and_store_mut();
     let memory = unsafe { env.memory_view(&store) };
-    closure.write(&memory, function_id);
+    // iwci patch (#1304): a pointer the index cannot be written to is the
+    // guest's error, and the slot goes back rather than staying allocated
+    // with nobody knowing its index.
+    if let Err(e) = closure.write(&memory, function_id) {
+        _ = linker.free_closure_index(&mut ctx, function_id);
+        return Ok(mem_error_to_wasi(e));
+    }
     return Ok(Errno::Success);
 }

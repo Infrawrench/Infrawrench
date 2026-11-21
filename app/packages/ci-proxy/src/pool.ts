@@ -7,6 +7,13 @@
 // ids carry the runner's name (`<name>.<id>`), so status and log requests
 // go straight back to it.
 //
+// A run can need a platform other than `wasm` (`linux`, jobs that run in
+// a VM), which not every runner has: the caller names them in
+// `platforms`, and `place` then tries only the runners whose capacity lists
+// every one, in the same order. When no runner that is up has them all, it
+// places the run as usual: its other jobs still run, and the runner fails
+// the jobs it has no machines for, saying so.
+//
 // A run can be shared: a runner that says `split` in its capacity takes a
 // run request with `split`, and the other such runners are then offered
 // the same request as helpers (`app.ts`, and the README's "Split runs").
@@ -54,6 +61,12 @@ export interface Capacity {
   split: boolean;
   /** The runs of other runners it is helping now. */
   runsHelping: number;
+  /**
+   * The platforms it runs jobs on: always `wasm`, and `linux` when it has
+   * the machines for it. `["wasm"]` from a runner older than
+   * the field; empty for a runner that did not answer.
+   */
+  platforms: string[];
 }
 
 /** A run placed on a runner, and the runners it was not placed on. */
@@ -209,6 +222,17 @@ function bytes(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** The platforms a capacity body lists: its strings, or `["wasm"]` when it lists none. */
+function platformsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return ["wasm"];
+  return [...new Set(value.filter((p): p is string => typeof p === "string"))];
+}
+
+/** Whether a runner has every platform in `needs`. */
+export function hasPlatforms(c: Capacity, needs: readonly string[]): boolean {
+  return needs.every((p) => c.platforms.includes(p));
+}
+
 /** How long a runner gets to answer a capacity probe before it counts as down. */
 const PROBE_TIMEOUT_MS = 2000;
 
@@ -294,6 +318,7 @@ export class Pool {
           v8LostHeap: null,
           split: false,
           runsHelping: 0,
+          platforms: [],
         };
         try {
           const res = await this.call(name, "/v1/capacity", {
@@ -314,6 +339,7 @@ export class Pool {
             version?: string;
             split?: unknown;
             runs_helping?: unknown;
+            platforms?: unknown;
           };
           return {
             name,
@@ -332,6 +358,7 @@ export class Pool {
             v8LostHeap: bytes(body.v8_lost_heap),
             split: body.split === true,
             runsHelping: bytes(body.runs_helping) ?? 0,
+            platforms: platformsOf(body.platforms),
           };
         } catch {
           return down;
@@ -346,13 +373,20 @@ export class Pool {
    * Returns the runner it landed on, or `null` when none would. A body
    * given as a function is made for each runner tried, from it and the
    * other runners that could have taken the request.
+   *
+   * A request that needs `platforms` is tried only on the runners that have
+   * all of them, when any that is up does; otherwise on every runner, as
+   * one that needs none (see the top of this file). Either way `others` is
+   * every other runner that is up and not draining.
    */
   async place(
     path: string,
     body: string | ((runner: Capacity, others: Capacity[]) => string),
+    platforms: readonly string[] = [],
   ): Promise<Placed | null> {
     const order = (await this.capacity()).filter((c) => c.up && !c.draining).sort(byPlacement);
-    for (const runner of order) {
+    const capable = order.filter((c) => hasPlatforms(c, platforms));
+    for (const runner of capable.length > 0 ? capable : order) {
       const others = order.filter((c) => c !== runner);
       let response: Response;
       try {

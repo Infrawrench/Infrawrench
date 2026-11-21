@@ -19,7 +19,8 @@ import {
   type ResourceRow,
 } from "../context";
 import { attempt, CloudApi } from "../effect/cloud-api";
-import { CliFailure } from "../effect/errors";
+import { CliFailure, NotSignedIn } from "../effect/errors";
+import { isStandaloneCli } from "../edition";
 import * as Print from "../effect/print";
 import { CliSession } from "../effect/session";
 import { c, seriesColor } from "../output";
@@ -47,7 +48,10 @@ const collectAccountScopes = Effect.gen(function* () {
     const org = yield* api.resolveOrg(session.org);
     return [{ scope: org.displayName, orgId: org.id, accounts: yield* cloudAccounts(org.id) }];
   }
-  const scopes: AccountScope[] = [{ scope: "local", orgId: null, accounts: yield* localAccounts }];
+  // The standalone CLI has no local workspace (`../edition.ts`).
+  const scopes: AccountScope[] = isStandaloneCli()
+    ? []
+    : [{ scope: "local", orgId: null, accounts: yield* localAccounts }];
   if ((yield* api.authStatus).authenticated) {
     for (const org of yield* api.listOrgs) {
       scopes.push({
@@ -56,6 +60,9 @@ const collectAccountScopes = Effect.gen(function* () {
         accounts: yield* cloudAccounts(org.id),
       });
     }
+  } else if (scopes.length === 0) {
+    // Nothing to list at all: say why rather than print nothing.
+    return yield* new NotSignedIn();
   }
   return scopes;
 });

@@ -9,6 +9,13 @@
 // command run through a shell is left to the shell, which already reads the
 // child's PATH.
 //
+// It also drops a `uid` or `gid` option that names this process's own
+// (root's, 0), which on Linux changes nothing. Edge.js's libuv refuses any
+// with ENOSYS, as WASIX has no users to switch to, and package managers
+// running as root pass them for every lifecycle script (npm-lifecycle,
+// which pnpm uses, unless `unsafe-perm`): esbuild's `postinstall` failed
+// with `spawn ENOSYS`. Another id still fails, as it should.
+//
 // `patch()` wraps the module's functions the first time it is called.
 // preload.cjs calls it when something first asks for `child_process`, not
 // at start: loading it loads `net`, `dgram` and the streams too, 28 built-in
@@ -37,6 +44,19 @@ function resolveOnChildPath(file, options) {
   return null;
 }
 
+/** `options` without a `uid` or `gid` that is this process's own. */
+function withoutOwnIds(options) {
+  if (!options || typeof options !== "object") return options;
+  const own = (key, id) => key in options && typeof id === "function" && options[key] === id();
+  const uid = own("uid", process.getuid);
+  const gid = own("gid", process.getgid);
+  if (!uid && !gid) return options;
+  const out = { ...options };
+  if (uid) delete out.uid;
+  if (gid) delete out.gid;
+  return out;
+}
+
 /** Wraps `child_process`'s spawning functions, once. */
 function patch() {
   if (patched) return;
@@ -47,16 +67,18 @@ function patch() {
     typeof process.getBuiltinModule === "function"
       ? process.getBuiltinModule("node:child_process")
       : require("node:child_process");
-  for (const name of ["spawn", "spawnSync", "execFile", "execFileSync"]) {
+  const pathNames = new Set(["spawn", "spawnSync", "execFile", "execFileSync"]);
+  for (const name of [...pathNames, "exec", "execSync", "fork"]) {
     const original = cp[name];
     if (typeof original !== "function") continue;
     cp[name] = {
       [name](file, ...rest) {
-        const options = rest.find((r) => r !== null && typeof r === "object" && !Array.isArray(r));
-        const resolved = resolveOnChildPath(file, options);
-        if (resolved === null) return original.call(this, file, ...rest);
-        const named = { ...options, argv0: options.argv0 ?? file };
-        return original.call(this, resolved, ...rest.map((r) => (r === options ? named : r)));
+        const given = rest.find((r) => r !== null && typeof r === "object" && !Array.isArray(r));
+        const options = withoutOwnIds(given);
+        const resolved = pathNames.has(name) ? resolveOnChildPath(file, options) : null;
+        if (resolved === null && options === given) return original.call(this, file, ...rest);
+        const named = resolved === null ? options : { ...options, argv0: options.argv0 ?? file };
+        return original.call(this, resolved ?? file, ...rest.map((r) => (r === given ? named : r)));
       },
     }[name];
   }

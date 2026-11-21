@@ -732,6 +732,24 @@ export {
   SHOWCASE_MAX_STATS,
 } from "./showcase.js";
 export type { ResourceShowcase, ShowcaseField, ShowcaseStat, ShowcaseTone } from "./showcase.js";
+export {
+  EQUIVALENCE_CATEGORIES,
+  SIZING_ROLES,
+  buildTargetFields,
+  equivalenceCategories,
+  equivalenceRuleForCategory,
+  equivalenceRules,
+  readResourceSizing,
+  resolveEquivalence,
+  sizingFieldKeys,
+} from "./equivalence.js";
+export type {
+  EquivalenceCategory,
+  EquivalenceDeclaration,
+  EquivalenceRule,
+  ResourceSizing,
+  SizingRole,
+} from "./equivalence.js";
 export { buildMultipartBody } from "./multipart.js";
 export type { MultipartBody, MultipartPart } from "./multipart.js";
 export type {

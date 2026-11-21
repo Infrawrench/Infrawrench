@@ -13,13 +13,26 @@ export const GkeClusterResourceType = rt({
     countFieldKey: "nodeCount",
   },
   description: "A Google Kubernetes Engine cluster",
+  // GKE has no node pool type here: the cluster carries its first node pool's
+  // machine type, disk and count, as the create form does.
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
-    f("location", "Location", { showcase: true }),
+    f("location", "Location", { showcase: true, sizing: "region" }),
     f("version", "Kubernetes Version", { required: false }),
-    f("machineType", "Machine Type", { required: false }),
-    f("diskSizeGb", "Disk Size (GB)", { showcase: true, kind: "number", required: false }),
-    f("nodeCount", "Node Count", { showcase: true, kind: "number", required: false }),
+    f("machineType", "Machine Type", { required: false, sizing: "instance-type" }),
+    f("diskSizeGb", "Disk Size (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "disk-gb",
+    }),
+    f("nodeCount", "Node Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      sizing: "node-count",
+    }),
     f("serviceAccount", "Node Service Account", {
       required: false,
       description:

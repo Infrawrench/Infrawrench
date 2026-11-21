@@ -13,9 +13,16 @@ export const KapsuleClusterResourceType = rt({
   },
   name: "Kapsule Cluster",
   description: "A managed Kubernetes cluster on Scaleway",
+  equivalence: "kubernetes-cluster",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { showcase: true, kind: "enum", enumValues: REGIONS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGIONS,
+      editable: false,
+      sizing: "region",
+    }),
     f("version", "Kubernetes Version", {
       description:
         "e.g. 1.33.4. Changing it upgrades the control plane and every pool, one minor version at a time",
@@ -23,10 +30,12 @@ export const KapsuleClusterResourceType = rt({
     f("nodeType", "Node Type", {
       description: "Node commercial type of the first pool, e.g. DEV1-M, POP2-2C-8G",
       editable: false,
+      sizing: "instance-type",
     }),
     f("nodeCount", "Node Count", {
       showcase: true,
       kind: "number",
+      sizing: "node-count",
       description: "Total nodes. Editing it resizes the first pool",
     }),
     f("upgradeAvailable", "Upgrade Available", {

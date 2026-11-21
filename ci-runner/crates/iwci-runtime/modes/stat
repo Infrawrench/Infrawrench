@@ -2,9 +2,9 @@
 # stat(1) for CI jobs (#959). WASIX has no file modes, so the runner keeps
 # them and describes files through /proc/iwci
 # (ci-runner/crates/iwci-runtime/src/modes.rs); this formats what it says
-# the way GNU stat does. Not supported: -f (file system status). Inode and
-# device numbers are not known and read 0, and owners read as the job's
-# user, which has no name.
+# the way GNU stat does. Not supported: -f (file system status). Device
+# numbers are not known and read 0, and owners read as the job's user,
+# which has no name. Inode numbers and link counts are WASIX's (`%i`, `%h`).
 set -u
 
 me='stat'
@@ -72,7 +72,8 @@ directive() {
     A) symbolic; value=$REPLY ;;
     b) conv=d value=$(((size + 511) / 512)) ;;
     B) conv=d value=512 ;;
-    d | i | W) conv=d value=0 ;;
+    i) conv=d value=$ino ;;
+    d | W) conv=d value=0 ;;
     D | t | T) conv=x value=0 ;;
     f) conv=x value=$mode ;;
     F)
@@ -89,7 +90,7 @@ directive() {
       ;;
     g | u) conv=d value=$UID ;;
     G | U) value=UNKNOWN ;;
-    h) conv=d value=1; [[ $kind == d ]] && value=2 ;;
+    h) conv=d value=$nlink ;;
     m) value=/ ;;
     n) value=$name ;;
     N)
@@ -167,9 +168,9 @@ for name in "${files[@]}"; do
   encoded=${encoded//\//%2F}
   view=lstat
   ((deref)) && view=stat
-  kind='' raw=0 size=0 atime=0 mtime=0 ctime=0 link=''
+  kind='' raw=0 size=0 atime=0 mtime=0 ctime=0 ino=0 nlink=1 link=''
   {
-    read -r kind raw size atime mtime ctime
+    read -r kind raw size atime mtime ctime ino nlink
     IFS= read -r link
   } <"/proc/iwci/$view/$encoded"
   if [[ -z $kind || $kind == missing ]]; then

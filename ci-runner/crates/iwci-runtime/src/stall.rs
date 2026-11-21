@@ -201,7 +201,7 @@ impl CpuMeter {
     }
 
     /// The job the calling thread is working for, if any.
-    #[cfg(any(feature = "node", test))]
+    #[cfg(any(feature = "node", all(test, target_os = "linux")))]
     pub(crate) fn current() -> Option<Arc<Self>> {
         CURRENT.with(|current| current.borrow().clone())
     }
@@ -491,11 +491,19 @@ impl Clock {
 pub(crate) struct JobTasks {
     inner: Arc<dyn VirtualTaskManager>,
     meter: Arc<CpuMeter>,
+    /// The CPUs the job is told it has (`Limits::told_cpus`); `None`, for
+    /// what is not a job (loading packages, compiling them ahead), passes
+    /// on the runner's.
+    cpus: Option<u32>,
 }
 
 impl JobTasks {
-    pub(crate) fn new(inner: Arc<dyn VirtualTaskManager>, meter: Arc<CpuMeter>) -> Self {
-        Self { inner, meter }
+    pub(crate) fn new(
+        inner: Arc<dyn VirtualTaskManager>,
+        meter: Arc<CpuMeter>,
+        cpus: Option<u32>,
+    ) -> Self {
+        Self { inner, meter, cpus }
     }
 }
 
@@ -570,7 +578,10 @@ impl VirtualTaskManager for JobTasks {
     }
 
     fn thread_parallelism(&self) -> Result<usize, WasiThreadError> {
-        self.inner.thread_parallelism()
+        match self.cpus {
+            Some(cpus) => Ok(cpus.max(1) as usize),
+            None => self.inner.thread_parallelism(),
+        }
     }
 
     fn spawn_with_module(

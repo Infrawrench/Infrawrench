@@ -439,8 +439,8 @@ function SloDetail({
       )}
 
       {suggestFreeze && (
-        <div className="rounded-xl border border-danger-border bg-danger-surface px-4 py-3 flex items-center gap-3">
-          <p className="flex-1 text-sm text-danger-on-surface">
+        <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 flex items-center gap-3">
+          <p className="flex-1 text-sm text-danger">
             {gt(
               "The error budget is spent. Consider a change freeze until reliability recovers, so nothing else spends what is not there.",
             )}

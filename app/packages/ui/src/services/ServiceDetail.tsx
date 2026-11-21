@@ -596,6 +596,8 @@ export interface ServiceDetailViewProps {
   onDeleted: () => void;
   onMembershipChanged: (detail: ServiceDetailResponse) => void;
   onOpenResource?: ((ref: ServiceResourceRef) => void) | undefined;
+  /** "What would this cost elsewhere": the host opens the new-estimate dialog. */
+  onEstimateMigration?: ((service: { id: string; name: string }) => void) | undefined;
 }
 
 /** One service: header, summary cards, members and scorecard results. */
@@ -612,6 +614,7 @@ export function ServiceDetailView({
   onDeleted,
   onMembershipChanged,
   onOpenResource,
+  onEstimateMigration,
 }: ServiceDetailViewProps) {
   const gt = useGT();
   const tierLabel = useTierLabel();
@@ -695,18 +698,31 @@ export function ServiceDetailView({
               </ul>
             )}
           </div>
-          {canWrite && (
+          {(canWrite || (onEstimateMigration && members.length > 0)) && (
             <div className="flex items-center gap-1.5 shrink-0">
-              <button type="button" onClick={onEdit} className={smallButtonClass}>
-                {gt("Edit")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void remove()}
-                className={`${smallButtonClass} text-danger`}
-              >
-                {gt("Delete")}
-              </button>
+              {onEstimateMigration && members.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onEstimateMigration({ id: service.id, name: service.name })}
+                  className={smallButtonClass}
+                >
+                  {gt("Estimate migration")}
+                </button>
+              )}
+              {canWrite && (
+                <>
+                  <button type="button" onClick={onEdit} className={smallButtonClass}>
+                    {gt("Edit")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void remove()}
+                    className={`${smallButtonClass} text-danger`}
+                  >
+                    {gt("Delete")}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

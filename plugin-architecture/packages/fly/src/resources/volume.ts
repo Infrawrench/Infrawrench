@@ -4,6 +4,7 @@ export const VolumeResourceType = rt({
   name: "Volume",
   id: "volume",
   description: "A Fly.io persistent storage volume",
+  equivalence: "block-volume",
   parentTypeId: "app",
   fields: [
     f("name", "Name", { editable: false }),
@@ -16,10 +17,16 @@ export const VolumeResourceType = rt({
     f("sizeGb", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description:
         "Volumes can only grow. The attached machine may need a restart to see the new size.",
     }),
-    f("region", "Region", { showcase: true, description: "Fly.io region code", editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      description: "Fly.io region code",
+      editable: false,
+      sizing: "region",
+    }),
     f("zone", "Zone", { required: false, editable: false }),
     f("encrypted", "Encrypted", { kind: "boolean", required: false, editable: false }),
     f("autoBackupEnabled", "Automatic Snapshots", {

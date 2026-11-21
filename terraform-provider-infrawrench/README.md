@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, the service catalog, lifecycle governance, connected
-accounts and access control, and alert delivery. 84 resources and 8 data
+accounts and access control, and alert delivery. 86 resources and 8 data
 sources, each with its own plan, its own drift detection and a real
 `terraform import`.
 
@@ -679,6 +679,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_savings_view`              | by id     | A saved view over the savings findings list          |
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_resource_report`           | by id     | Columns are ids: `core:`, `field:`, `tag:`, `cost:`  |
+| `infrawrench_commitment_report`         | by id     | Files into report folders; `date_preset` or dates    |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_cost_forecast`             | composite | `<report-id>/<forecast-id>`; one default per report  |
@@ -711,6 +712,7 @@ secret store that consumes it rather than into an output.
 | Resource                    | Import    | Notes                                                 |
 | --------------------------- | --------- | ----------------------------------------------------- |
 | `infrawrench_probe`         | by id     | Numeric fields are clamped server-side                |
+| `infrawrench_heartbeat`     | by id     | `ping_url` is a secret; rotate it in the app          |
 | `infrawrench_slo`           | by id     | Out-of-range target or threshold is rejected          |
 | `infrawrench_dora_settings` | by org id | Org singleton; destroy is a no-op                     |
 | `infrawrench_status_page`   | by id     | `slug` is minted with entropy; rotation is not a plan |

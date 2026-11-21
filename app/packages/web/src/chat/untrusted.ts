@@ -14,7 +14,7 @@
  * of the stored history it is also byte-stable across turns, which keeps
  * prompt caching intact.
  */
-import type { ChatContentBlock } from "@infrawrench/ui";
+import type { StoredChatBlock } from "./server-blocks";
 
 /**
  * Wrap `body` in a `<label>` fence. A closing tag inside the body is defanged
@@ -60,7 +60,7 @@ function blockText(content: string | Array<{ type: "text"; text: string }>): str
  * history; a result whose `tool_use` cannot be found is fenced too (failing
  * closed costs a few tokens, failing open costs the fence).
  */
-export function fenceToolResults<M extends { role: string; content: ChatContentBlock[] }>(
+export function fenceToolResults<M extends { role: string; content: StoredChatBlock[] }>(
   messages: readonly M[],
 ): M[] {
   const toolNames = new Map<string, string>();

@@ -649,6 +649,12 @@ impl Linker {
         })
     }
 
+    /// Whether another instance group's link operation waits for this one
+    /// to take part (`do_pending_link_operations`).
+    pub(crate) fn link_operation_pending(&self) -> bool {
+        self.shared.dl_operation_pending_load(Ordering::SeqCst)
+    }
+
     pub(crate) fn do_pending_link_operations(
         &self,
         ctx: &mut FunctionEnvMut<'_, WasiEnv>,
@@ -717,8 +723,12 @@ impl Linker {
         trace!(stack_low, stack_high, "Memory layout");
 
         // WASIX threads initialize their own stack pointer global in wasi_thread_start,
-        // so no need to initialize it to a value here.
-        let stack_pointer = create_main_stack_pointer_global(store, &main_module, 0)?;
+        // but side modules' `__wasix_init_tls` (and the main module's allocator it
+        // calls) run before that, below. Start the thread at the top of its own stack,
+        // where wasi_thread_start puts it too, so code there that uses the stack (a
+        // module put through Binaryen's --spill-pointers, env:ruby) does not write
+        // below address 0.
+        let stack_pointer = create_main_stack_pointer_global(store, &main_module, stack_high)?;
 
         let c_longjmp = Tag::new(store, vec![Type::I32]);
         let cpp_exception = Tag::new(store, vec![Type::I32]);

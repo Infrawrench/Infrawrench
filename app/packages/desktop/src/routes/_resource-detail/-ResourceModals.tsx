@@ -281,7 +281,9 @@ export function ResourceModals({
           accountId={accountId}
           pluginId={account.plugin_id}
           resourceType={createChildTarget}
-          parentResourceId={decodedResourceId}
+          // A top-level type grouped on the account root's page (no
+          // `parentTypeId`) creates a resource with no parent.
+          {...(createChildTarget.parentTypeId ? { parentResourceId: decodedResourceId } : {})}
           onClose={onCloseCreateChild}
           onCreated={(newResource) => {
             const childTypeId = createChildTarget.id;

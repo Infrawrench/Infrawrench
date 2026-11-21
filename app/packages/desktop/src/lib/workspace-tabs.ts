@@ -29,12 +29,15 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -55,6 +58,7 @@ import {
 // Re-export shared target factories
 export {
   homeTabTarget,
+  heartbeatsTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
@@ -82,12 +86,14 @@ export {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -251,18 +257,30 @@ export function getWorkspaceNavigateArgs(
     }
     case "environments":
       return { to: "/environments", ...(replace ? { replace: true } : {}) };
+    case "env-files":
+      return { to: "/env-files", ...(replace ? { replace: true } : {}) };
     case "ssh-fanout":
       return { to: "/ssh-fanout", ...(replace ? { replace: true } : {}) };
     case "metric-alerts":
       return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
     case "probes":
       return { to: "/probes", ...(replace ? { replace: true } : {}) };
+    case "heartbeats":
+      return { to: "/heartbeats", ...(replace ? { replace: true } : {}) };
     case "status-pages":
       return { to: "/status-pages", ...(replace ? { replace: true } : {}) };
     case "quotas":
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
     case "price-catalog":
       return { to: "/price-catalog", ...(replace ? { replace: true } : {}) };
+    // Migration estimates: the Resource reports shape, `?estimate=<id>`
+    // (always pass `search` so going back to the list clears it).
+    case "migration-estimates":
+      return {
+        to: "/migration-estimates",
+        search: target.estimateId ? { estimate: target.estimateId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "incidents":
       // Search passed explicitly, the settings/chat rule: navigating from an
       // incident back to the list must CLEAR ?incident= or the route resolves
@@ -499,6 +517,9 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "environments") {
     return environmentsTabTarget();
   }
+  if (segments[0] === "env-files") {
+    return envFilesTabTarget();
+  }
   if (segments[0] === "ssh-fanout") {
     return sshFanoutTabTarget();
   }
@@ -508,6 +529,9 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "probes") {
     return probesTabTarget();
   }
+  if (segments[0] === "heartbeats") {
+    return heartbeatsTabTarget();
+  }
   if (segments[0] === "status-pages") {
     return statusPagesTabTarget();
   }
@@ -516,6 +540,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "price-catalog") {
     return priceCatalogTabTarget();
+  }
+  if (segments[0] === "migration-estimates") {
+    const params = new URLSearchParams(search ?? "");
+    return migrationEstimatesTabTarget(params.get("estimate") ?? undefined);
   }
   if (segments[0] === "incidents") {
     const params = new URLSearchParams(search ?? "");

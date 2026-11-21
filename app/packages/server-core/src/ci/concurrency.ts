@@ -24,7 +24,12 @@
 import { and, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { ciRuns, type CiConcurrencyEntry, type CiJobAccess } from "../db/schema.js";
+import {
+  ciRuns,
+  type CiConcurrencyEntry,
+  type CiEnvFileUse,
+  type CiJobAccess,
+} from "../db/schema.js";
 import { upsertCheck } from "./checks.js";
 import { proxyFetch } from "./proxy.js";
 
@@ -159,6 +164,11 @@ export interface ResolvedPipelines {
     concurrency?: { group?: unknown; "cancel-in-progress"?: unknown } | null;
     /** Jobs that name something to be lent, or run in the cloud (runners from 0.3.16). */
     jobs?: unknown;
+    /**
+     * The platforms other than `wasm` its jobs run on, sorted; empty or
+     * absent when all run on `wasm`, and from runners before platforms.
+     */
+    platforms?: unknown;
   }>;
   /**
    * Pipeline files that do not parse, which `pipelines` leaves out and the
@@ -183,6 +193,22 @@ export function nothingToRun(answer: ResolvedPipelines): boolean {
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
+
+/** A job's `env-file:` as the runners list it, or null when it has none (or it is malformed). */
+function envFileFrom(raw: unknown): CiEnvFileUse | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { path, environment, vars } = raw as Record<string, unknown>;
+  if (!isString(path) || path === "") return null;
+  const out: CiEnvFileUse = { path };
+  if (isString(environment)) out.environment = environment;
+  if (typeof vars === "object" && vars !== null) {
+    const entries = Object.entries(vars as Record<string, unknown>).filter(
+      (e): e is [string, string] => isString(e[1]),
+    );
+    if (entries.length > 0) out.vars = Object.fromEntries(entries);
+  }
+  return out;
+}
 
 /**
  * What each job names to be lent and its `cloud:` block, as the runners'
@@ -232,6 +258,8 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
         }
         if (Object.keys(permissions).length > 0) entry.githubToken = permissions;
       }
+      const envFile = envFileFrom(job["env-file"]);
+      if (envFile) entry.envFile = envFile;
       if (typeof job["cloud"] === "object" && job["cloud"] !== null) {
         const cloud: Record<string, string> = {};
         for (const [k, v] of Object.entries(job["cloud"] as Record<string, unknown>)) {
@@ -245,19 +273,43 @@ export function accessFrom(answer: ResolvedPipelines): CiJobAccess[] {
   return out;
 }
 
+/**
+ * A platform list as the app keeps and sends it: the names, sorted, once
+ * each, without `wasm` (every runner has it). Anything but a string is left
+ * out; a name the app does not know passes through, for the runners to say
+ * what it is.
+ */
+function platformList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set((value as unknown[]).filter(isString))]
+    .filter((p) => p.length > 0 && p !== "wasm")
+    .sort();
+}
+
 export function entriesFrom(answer: ResolvedPipelines): CiConcurrencyEntry[] {
   const out: CiConcurrencyEntry[] = [];
   for (const p of answer.pipelines ?? []) {
     if (typeof p.file !== "string") continue;
     const group = p.concurrency?.group;
+    const platforms = platformList(p.platforms);
     out.push({
       file: p.file,
       pipeline: typeof p.name === "string" ? p.name : p.file,
       group: typeof group === "string" && group.length > 0 ? group : null,
       cancelInProgress: p.concurrency?.["cancel-in-progress"] === true,
+      ...(platforms.length > 0 ? { platforms } : {}),
     });
   }
   return out;
+}
+
+/**
+ * The platforms a run needs a runner to have (see `CiConcurrencyEntry`):
+ * those of every pipeline it will run, a pipeline a newer run cancelled
+ * left out. The proxy places the run on a runner that has them all.
+ */
+export function runPlatforms(entries: readonly CiConcurrencyEntry[]): string[] {
+  return platformList(entries.flatMap((e) => (e.cancelled ? [] : (e.platforms ?? []))));
 }
 
 /**

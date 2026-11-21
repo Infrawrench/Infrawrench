@@ -16,7 +16,7 @@ Lambda Cloud rents on-demand GPU instances by the hour. Connect it to launch and
 
 Every instance type, region, SSH key, image, filesystem and ruleset in the launch form is a picker filled from your account, so you never type an ID.
 
-<insert [The Lambda Cloud launch instance form with the instance type picker open, showing GPU types with monthly prices and one marked as having no capacity] here>
+![The Lambda Cloud Create Instance form with the instance type picker open on the H100 (80 GB SXM5) group, showing the 1x, 2x and 4x types with monthly prices; the 8x type has no capacity, but its card cuts the label short](https://agent-assets.infrawrench.com/docs-screenshots/plugins/lambda-cloud/create-instance-types.png)
 
 ## Edit firewall rules
 
@@ -32,7 +32,7 @@ icmp - 0.0.0.0/0 ping
 
 Running instances show a ready-to-run `ssh ubuntu@<ip>` command, and the built-in terminal connects as `ubuntu`. The JupyterLab link includes its login token, so Infrawrench doesn't store it. It's fetched from Lambda when you open it.
 
-<insert [A Lambda Cloud instance detail page showing the instance type, GPU, region and price, the Connect section with the SSH command, and the Restart button in the header] here>
+![A Lambda Cloud instance detail page showing the instance type, GPU, region and price, the Connect section with the SSH command, and the Restart button in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/lambda-cloud/instance-detail.png)
 
 ## Connect an account
 
@@ -42,7 +42,7 @@ Running instances show a ready-to-run `ssh ubuntu@<ip>` command, and the built-i
 
 API keys belong to your Lambda team and have full access to it. Lambda has no read-only keys.
 
-<insert [The Add account form for Lambda Cloud with the API Key field] here>
+![The Add account form for Lambda Cloud with the API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/lambda-cloud/add-account.png)
 
 ## Cost
 

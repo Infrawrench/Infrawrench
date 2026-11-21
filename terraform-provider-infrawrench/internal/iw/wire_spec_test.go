@@ -189,6 +189,10 @@ func specChecks() []specCheck {
 		{schema: "SyntheticProbeCreate", value: SyntheticProbeCreate{}},
 		{schema: "SyntheticProbeUpdate", value: SyntheticProbeUpdate{}},
 
+		{schema: "Heartbeat", value: Heartbeat{}},
+		{schema: "HeartbeatCreate", value: HeartbeatCreate{}},
+		{schema: "HeartbeatUpdate", value: HeartbeatUpdate{}},
+
 		{schema: "Slo", value: Slo{}},
 		{schema: "SloCreate", value: SloInput{}},
 		{schema: "SloUpdate", value: SloInput{}},
@@ -415,6 +419,11 @@ func specChecks() []specCheck {
 		{schema: "NetworkFlowReportInput", value: NetworkFlowReportInput{}},
 		{schema: "NetworkFlowReportConfig", value: NetworkFlowReportConfig{}},
 		{schema: "NetworkFlowReportFilters", value: NetworkFlowReportFilters{}},
+
+		{schema: "CommitmentReport", value: CommitmentReport{}},
+		{schema: "CommitmentReportInput", value: CommitmentReportInput{}},
+		{schema: "CommitmentReportConfig", value: CommitmentReportConfig{}},
+		{schema: "CommitmentReportFilters", value: CommitmentReportFilters{}},
 
 		{schema: "JiraIntegration", value: JiraIntegration{}},
 		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},

@@ -10,7 +10,7 @@ Each of those lives on a different page. **Calendar** puts them all in one place
 
 Open it from the sidebar.
 
-<insert [The Calendar workspace tab on the month view, showing a week with a change-freeze bar running across several days, a nightly sleep-window chip repeating, and a red certificate deadline] here>
+![The Calendar workspace tab on the month view, with a change freeze shown on each day it covers, a nightly sleep-window chip repeating, and a certificate deadline marked with a warning icon](https://agent-assets.infrawrench.com/docs-screenshots/features/ops-calendar/month-view.png)
 
 ## What's on the calendar
 
@@ -42,7 +42,7 @@ If one source can't be loaded, the calendar tells you which one and still shows 
 
 The **Subscriptions** tab creates a URL you can paste into Google Calendar, Outlook, Apple Calendar or your phone. It refreshes on its own, roughly every hour.
 
-<insert [The Subscriptions tab with one live subscription listed and the one-time URL panel visible after creating it] here>
+![The Subscriptions tab with one live subscription listed and the one-time URL panel visible after creating it](https://agent-assets.infrawrench.com/docs-screenshots/features/ops-calendar/subscription-created.png)
 
 When you create a feed, choose which kinds of events it includes. Choosing nothing means everything, including kinds added to Infrawrench later. That's usually what you want for a team calendar.
 

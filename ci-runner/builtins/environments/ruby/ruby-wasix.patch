@@ -1,0 +1,754 @@
+CRuby on WASIX as a POSIX platform, starting child processes with
+posix_spawn().
+
+CRuby's only WebAssembly port is ruby.wasm's, for WASI preview 1, which
+every `defined(__wasm__) && !defined(__EMSCRIPTEN__)` selects: setjmp and
+Fibers on Binaryen's Asyncify, the collector reading locals through an
+Asyncify unwind, and main() run inside an Asyncify loop (rb_wasm_rt_start,
+which ruby-<minor>.patch turns off).
+WASIX has threads, processes, signals and sockets, and env:ruby's build
+keeps the collector's view of locals another way (build.sh), so with
+`__wasix__` (wasix-libc's macro, which configure's CPPFLAGS define for
+every file) Ruby builds as it does on Linux: libc's setjmp, which the
+compiler turns into WebAssembly exceptions, Ruby's own machine-stack
+marking, and an ordinary main().
+
+WASIX has no fork(). Ruby without fork() either has spawnv() (Windows),
+which redirects descriptors in the parent around the call, or runs
+system() and returns a pid of 1 without waiting, which is how a failing
+`rake test` passed on ruby.wasm. With RUBY_SPAWN_WITHOUT_FORK (WASIX
+without a working fork), rb_spawn_process starts the child with
+posix_spawn(): the redirections, closes and working directory a forked
+child would have set up become file actions, so the parent's descriptors
+and directory never change, and the environment is the envp Ruby already
+builds for exec. `system`, `spawn`, backticks, `IO.popen` and so Open3 go
+through it, and their children's statuses are waited for as with fork. A
+pipe's IO closes and waits for its child as it does with fork. rlimits,
+uid and gid are refused with ENOTSUP. `fork` and `IO.popen("-")` raise
+NotImplementedError, as everywhere without fork(). A forked child makes its
+standard descriptors blocking before exec, since Ruby opens pipes
+non-blocking; the descriptors that become the child's 0, 1 and 2 are
+made blocking before posix_spawn() the same way, or `cat` reading
+Open3's pipe failed with EAGAIN.
+
+`exec` passes the environment as ENV has it too. wasix-libc's execv()
+and execl() give the new program the environment the process started
+with, so an `exec` after a change to ENV lost it: `bundle exec ruby x.rb`
+ran x.rb without the RUBYOPT Bundler had set. On WASIX they are execve()
+and execle() with environ when Ruby built no envp of its own, as the
+spawn path passes it.
+
+wasix-libc has no flock(), so Ruby compiles missing/flock.c, which on WASI
+fails every call with EINVAL: File#flock, and with it the locks RubyGems
+and Bundler take, raised. On WASIX it calls the CI runner's
+`wasix_32v1.iwci_fd_flock` (vendor/README.md), flock(2) as Linux has it.
+
+ext/socket's Happy Eyeballs code reads rb_fdset_t's `fdset` member, which
+only the large-fd_set variant has; without NFDBITS (WASI's headers have
+none) rb_fdset_t is a plain fd_set, and rb_fd_term() does nothing. And
+its extconf.rb took `msg_control` in struct msghdr to mean control
+messages work, which WASI's headers declare with no struct cmsghdr or
+CMSG_* macros; it now checks for CMSG_FIRSTHDR too, and without them
+BasicSocket#sendmsg and #recvmsg carry no ancillary data.
+
+io/console skips itself on any platform matching /wasi/, which
+`wasm32-wasix` does; WASIX has termios, so it is built.
+
+WASIX's poll.h makes POLLPRI another name for POLLIN, so RB_WAITFD_PRI
+was RB_WAITFD_IN and every wait for input (IO#wait_readable, and with it
+Net::HTTP's reads) asked select() for exceptional conditions too, which
+WASIX refuses with ENOSYS. RB_WAITFD_PRI gets a bit of its own there;
+nothing passes these values to poll() off Linux.
+
+On Linux a thread blocked in select() or a read is woken by a signal
+(ubf_select sends SIGVTALRM), and that is how Thread#kill, Thread#raise,
+Timeout and the main thread's exit reach it. WASIX cannot end a blocking
+call that way: a signal to another thread neither ends the host's wait
+nor, sent to a main thread blocked in poll_oneoff, reaches its handler,
+and SIGVTALRM's default ends the process. So USE_UBF_LIST is off, and a
+wait on descriptors (thread_pthread.c's native_fd_select, and io.c's
+nogvl_wait_for through it) is a series of waits of at most 100 ms
+between which the thread looks for an interrupt, returning EINTR for
+one as a signal would have.
+--- a/cont.c
++++ b/cont.c
+@@ -1595,7 +1595,7 @@
+             rb_raise(rb_eRuntimeError, "can't call across trace_func");
+         }
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+         if (th->ec->tag != sec->tag) {
+             /* find the lowest common ancestor tag of the current EC and the saved EC */
+ 
+--- a/eval_intern.h
++++ b/eval_intern.h
+@@ -33,7 +33,7 @@
+ #endif
+ 
+ #include <stdio.h>
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ # include "wasm/setjmp.h"
+ #else
+ # include <setjmp.h>
+--- a/ext/io/console/extconf.rb
++++ b/ext/io/console/extconf.rb
+@@ -17,7 +17,8 @@
+ have_func("rb_io_open_descriptor", "ruby/io.h")
+ have_func("rb_ractor_local_storage_value_newkey")
+ 
+-is_wasi = /wasi/ =~ MakeMakefile::RbConfig::CONFIG["platform"]
++# WASIX (wasm32-wasix) has termios.h.
++is_wasi = /wasi(?!x)/ =~ MakeMakefile::RbConfig::CONFIG["platform"]
+ # `ok` can be `true`, `false`, or `nil`:
+ #   * `true` : Required headers and functions available, proceed regular build.
+ #   * `false`: Required headers or functions not available, abort build.
+--- a/ext/socket/extconf.rb
++++ b/ext/socket/extconf.rb
+@@ -384,7 +384,9 @@
+ have_type("struct ipv6_mreq", headers) # RFC 3493
+ 
+ have_msg_control = nil
+-have_msg_control = have_struct_member('struct msghdr', 'msg_control', headers) unless $mswin or $mingw
++# No control messages without struct cmsghdr and its macros, which WASI's
++# headers lack beside msghdr's msg_control.
++have_msg_control = have_macro('CMSG_FIRSTHDR', headers) && have_struct_member('struct msghdr', 'msg_control', headers) unless $mswin or $mingw
+ have_struct_member('struct msghdr', 'msg_accrights', headers)
+ 
+ if have_type("struct tcp_info", headers)
+--- a/ext/socket/ipsocket.c
++++ b/ext/socket/ipsocket.c
+@@ -1290,8 +1290,14 @@
+        }
+     }
+ 
++#if defined(NFDBITS) && defined(HAVE_RB_FD_INIT)
+     if (arg->readfds.fdset) rb_fd_term(&arg->readfds);
+     if (arg->writefds.fdset) rb_fd_term(&arg->writefds);
++#else
++    /* rb_fdset_t is a plain fd_set without NFDBITS (ruby/internal/intern/select.h). */
++    rb_fd_term(&arg->readfds);
++    rb_fd_term(&arg->writefds);
++#endif
+ 
+     if (arg->connection_attempt_fds) {
+         free(arg->connection_attempt_fds);
+--- a/gc.c
++++ b/gc.c
+@@ -19,7 +19,7 @@
+ # include "ruby/ruby.h"
+ #endif
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ # include "wasm/setjmp.h"
+ # include "wasm/machine.h"
+ #else
+@@ -2884,7 +2884,7 @@
+     return gc_location_internal(rb_gc_get_objspace(), value);
+ }
+ 
+-#if defined(__wasm__)
++#if defined(__wasm__) && !defined(__wasix__)
+ 
+ 
+ static VALUE *rb_stack_range_tmp[2];
+--- a/include/ruby/io.h
++++ b/include/ruby/io.h
+@@ -35,7 +35,13 @@
+ #    undef revents
+ #  endif
+ #  define RB_WAITFD_IN  POLLIN
+-#  if defined(POLLPRI)
++#  if defined(POLLPRI) && POLLPRI == POLLIN
++     /* WASIX's poll.h makes POLLPRI another name for POLLIN, which made
++      * every wait for input a wait for exceptional conditions too: select()
++      * with an except set, which WASIX refuses with ENOSYS. A bit of its
++      * own, which nothing passes to poll() here (USE_POLL is Linux's). */
++#    define RB_WAITFD_PRI 0x004
++#  elif defined(POLLPRI)
+ #    define RB_WAITFD_PRI POLLPRI
+ #  else
+ #    define RB_WAITFD_PRI 0
+--- a/internal/process.h
++++ b/internal/process.h
+@@ -27,6 +27,12 @@
+ 
+ struct waitpid_state;
+ struct rb_process_status;
++/* WASIX has no fork(): child processes are started with posix_spawn(), its
++ * file actions doing what the forked child would have done. */
++#if !defined(HAVE_WORKING_FORK) && defined(__wasix__)
++# define RUBY_SPAWN_WITHOUT_FORK 1
++#endif
++
+ struct rb_execarg {
+     union {
+         struct {
+@@ -88,6 +94,9 @@
+ 
+ RUBY_SYMBOL_EXPORT_BEGIN
+ /* process.c (export) */
++#ifdef RUBY_SPAWN_WITHOUT_FORK
++rb_pid_t rb_spawn_process(struct rb_execarg *eargp, char *errmsg, size_t errmsg_buflen);
++#endif
+ int rb_exec_async_signal_safe(const struct rb_execarg *e, char *errmsg, size_t errmsg_buflen);
+ rb_pid_t rb_fork_async_signal_safe(int *status, int (*chfunc)(void*, char *, size_t), void *charg, VALUE fds, char *errmsg, size_t errmsg_buflen);
+ VALUE rb_execarg_new(int argc, const VALUE *argv, int accept_shell, int allow_exc_opt);
+--- a/io.c
++++ b/io.c
+@@ -1215,6 +1215,9 @@
+ #endif
+ 
+ static int nogvl_wait_for(VALUE th, rb_io_t *fptr, short events, struct timeval *timeout);
++#ifdef __wasix__
++int rb_wasix_thread_fd_select(VALUE thread, int n, rb_fdset_t *readfds, rb_fdset_t *writefds, struct timeval *timeout);
++#endif
+ 
+ /**
+  * Wait for the given events on the given file descriptor.
+@@ -7415,7 +7418,7 @@
+ static void
+ pipe_finalize(rb_io_t *fptr, int noraise)
+ {
+-#if !defined(HAVE_WORKING_FORK) && !defined(_WIN32)
++#if !defined(HAVE_WORKING_FORK) && !defined(_WIN32) && !defined(RUBY_SPAWN_WITHOUT_FORK)
+     int status = 0;
+     if (fptr->stdio_file) {
+         status = pclose(fptr->stdio_file);
+@@ -7486,7 +7489,7 @@
+ #define spawn(mode, cmd) rb_w32_uspawn((mode), (cmd), 0)
+ #endif
+ 
+-#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)
++#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV) || defined(RUBY_SPAWN_WITHOUT_FORK)
+ struct popen_arg {
+     VALUE execarg_obj;
+     struct rb_execarg *eargp;
+@@ -7620,7 +7623,7 @@
+ # endif
+ #endif
+ 
+-#if (defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)) && !defined __EMSCRIPTEN__
++#if (defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV) || defined(RUBY_SPAWN_WITHOUT_FORK)) && !defined __EMSCRIPTEN__
+ static VALUE
+ rb_execarg_fixup_v(VALUE execarg_obj)
+ {
+@@ -7645,9 +7648,11 @@
+     VALUE write_port;
+ #if defined(HAVE_WORKING_FORK)
+     int status;
++#endif
++#if defined(HAVE_WORKING_FORK) || defined(RUBY_SPAWN_WITHOUT_FORK)
+     char errmsg[80] = { '\0' };
+ #endif
+-#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)
++#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV) || defined(RUBY_SPAWN_WITHOUT_FORK)
+     int state;
+     struct popen_arg arg;
+ #endif
+@@ -7669,26 +7674,26 @@
+ #   endif
+ # endif
+ #endif
+-#if !defined(HAVE_WORKING_FORK)
++#if !defined(HAVE_WORKING_FORK) && !defined(RUBY_SPAWN_WITHOUT_FORK)
+     struct rb_execarg sarg, *sargp = &sarg;
+ #endif
+     FILE *fp = 0;
+     int fd = -1;
+     int write_fd = -1;
+-#if !defined(HAVE_WORKING_FORK)
++#if !defined(HAVE_WORKING_FORK) && !defined(RUBY_SPAWN_WITHOUT_FORK)
+     const char *cmd = 0;
+ 
+     if (prog)
+         cmd = StringValueCStr(prog);
+ #endif
+ 
+-#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)
++#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV) || defined(RUBY_SPAWN_WITHOUT_FORK)
+     arg.execarg_obj = execarg_obj;
+     arg.eargp = eargp;
+     arg.modef = fmode;
+     arg.pair[0] = arg.pair[1] = -1;
+     arg.write_pair[0] = arg.write_pair[1] = -1;
+-# if !defined(HAVE_WORKING_FORK)
++# if !defined(HAVE_WORKING_FORK) && !defined(RUBY_SPAWN_WITHOUT_FORK)
+     if (eargp && !eargp->use_shell) {
+         args = ARGVSTR2ARGV(eargp->invoke.cmd.argv_str);
+     }
+@@ -7736,6 +7741,11 @@
+ 
+ # if defined(HAVE_WORKING_FORK)
+         pid = rb_fork_async_signal_safe(&status, popen_exec, &arg, arg.eargp->redirect_fds, errmsg, sizeof(errmsg));
++# elif defined(RUBY_SPAWN_WITHOUT_FORK)
++        /* The pipes are redirections of eargp's (rb_execarg_addopt above),
++         * which the spawn makes file actions of. */
++        pid = rb_spawn_process(eargp, errmsg, sizeof(errmsg));
++        if (pid < 0) e = errno;
+ # else
+         rb_execarg_run_options(eargp, sargp, NULL, 0);
+ #   if defined(HAVE_SPAWNVE)
+@@ -7783,7 +7793,7 @@
+             close(arg.write_pair[0]);
+             close(arg.write_pair[1]);
+         }
+-# if defined(HAVE_WORKING_FORK)
++# if defined(HAVE_WORKING_FORK) || defined(RUBY_SPAWN_WITHOUT_FORK)
+         if (errmsg[0])
+             rb_syserr_fail(e, errmsg);
+ # endif
+@@ -12643,12 +12653,23 @@
+     rb_fd_set(fd, &fds);
+ 
+     switch (events) {
++#ifdef __wasix__
++      /* A wait no signal can end: the thread looks for interrupts between
++       * slices of it (thread_pthread.c, native_fd_select). */
+       case RB_WAITFD_IN:
++        ret = rb_wasix_thread_fd_select(th, fd + 1, &fds, 0, timeout);
++        break;
++      case RB_WAITFD_OUT:
++        ret = rb_wasix_thread_fd_select(th, fd + 1, 0, &fds, timeout);
++        break;
++#else
++      case RB_WAITFD_IN:
+         ret = rb_fd_select(fd + 1, &fds, 0, 0, timeout);
+         break;
+       case RB_WAITFD_OUT:
+         ret = rb_fd_select(fd + 1, 0, &fds, 0, timeout);
+         break;
++#endif
+       default:
+         VM_UNREACHABLE(nogvl_wait_for);
+     }
+--- a/missing/flock.c
++++ b/missing/flock.c
+@@ -2,6 +2,25 @@
+ #include "ruby/ruby.h"
+ 
+ #if defined _WIN32
++#elif defined __wasix__
++#include <errno.h>
++
++/* wasix-libc has no flock(), and WASIX no call for it. The CI runner's
++ * WASIX has one, iwci_fd_flock, with flock(2)'s operations, which answers a
++ * WASI errno (the C library's errno values are WASI's). */
++__attribute__((import_module("wasix_32v1"), import_name("iwci_fd_flock")))
++int iwci_fd_flock(int fd, int operation);
++
++int
++flock(int fd, int operation)
++{
++    int err = iwci_fd_flock(fd, operation);
++    if (err != 0) {
++        errno = err;
++        return -1;
++    }
++    return 0;
++}
+ #elif defined __wasi__
+ #include <errno.h>
+ 
+--- a/process.c
++++ b/process.c
+@@ -1660,11 +1660,22 @@
+     rb_w32_uaspawn(P_OVERLAY, prog, argv);
+     return errno;
+ #else
++#ifdef __wasix__
++    /* wasix-libc's execv() gives the new program the environment the
++     * process started with, not environ as ENV has changed it since, so
++     * the environment is always passed, as the spawn path passes it. */
++    {
++        extern char **environ;
++        envp = envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : environ;
++        execve(prog, argv, envp);
++    }
++#else
+     envp = envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : NULL;
+     if (envp_str)
+         execve(prog, argv, envp); /* async-signal-safe */
+     else
+         execv(prog, argv); /* async-signal-safe (since SUSv4) */
++#endif
+     err = errno;
+     try_with_sh(err, prog, argv, envp); /* try_with_sh() is async-signal-safe. */
+     return err;
+@@ -1699,6 +1710,12 @@
+         if (status != -1)
+             exit(status);
+     }
++#elif defined(__wasix__)
++    {
++        /* As in proc_exec_cmd: execl() would pass the start-up environment. */
++        extern char **environ;
++        execle("/bin/sh", "sh", "-c", str, (char *)NULL, envp_str ? RB_IMEMO_TMPBUF_PTR(envp_str) : environ);
++    }
+ #else
+     if (envp_str)
+         execle("/bin/sh", "sh", "-c", str, (char *)NULL, RB_IMEMO_TMPBUF_PTR(envp_str)); /* async-signal-safe */
+@@ -4542,9 +4559,228 @@
+ }
+ #endif
+ 
++#ifdef RUBY_SPAWN_WITHOUT_FORK
++#include <spawn.h>
++
++/* Adds a dup2 action for each [newfd, oldfd] pair of `ary`, in order. When a
++ * later pair reads a descriptor an earlier one replaces (`out: :err, err:
++ * :out`), every source is first duplicated in the parent to a descriptor
++ * above all the pairs name, the child takes its copies from those and closes
++ * them, and the parent closes its own after the spawn. `tmp` gets those
++ * descriptors, -1 where none was made. */
++static int
++spawn_add_dup2(posix_spawn_file_actions_t *fa, VALUE ary, int *tmp, char *errmsg, size_t errmsg_buflen)
++{
++    long i, j, n = RARRAY_LEN(ary);
++    int overlap = 0, maxfd = 2, err;
++
++    for (i = 0; i < n; i++) {
++        int newfd = FIX2INT(RARRAY_AREF(RARRAY_AREF(ary, i), 0));
++        int oldfd = FIX2INT(RARRAY_AREF(RARRAY_AREF(ary, i), 1));
++        tmp[i] = -1;
++        if (newfd > maxfd) maxfd = newfd;
++        if (oldfd > maxfd) maxfd = oldfd;
++        for (j = i + 1; j < n; j++) {
++            if (FIX2INT(RARRAY_AREF(RARRAY_AREF(ary, j), 1)) == newfd) overlap = 1;
++        }
++    }
++    for (i = 0; i < n; i++) {
++        int newfd = FIX2INT(RARRAY_AREF(RARRAY_AREF(ary, i), 0));
++        int oldfd = FIX2INT(RARRAY_AREF(RARRAY_AREF(ary, i), 1));
++        if (overlap) {
++            tmp[i] = fcntl(oldfd, F_DUPFD, maxfd + 1);
++            if (tmp[i] < 0) {
++                ERRMSG("fcntl");
++                return -1;
++            }
++            oldfd = tmp[i];
++        }
++        if ((err = posix_spawn_file_actions_adddup2(fa, oldfd, newfd)) != 0) {
++            errno = err;
++            ERRMSG("posix_spawn_file_actions_adddup2");
++            return -1;
++        }
++    }
++    for (i = 0; i < n; i++) {
++        if (tmp[i] >= 0 && (err = posix_spawn_file_actions_addclose(fa, tmp[i])) != 0) {
++            errno = err;
++            ERRMSG("posix_spawn_file_actions_addclose");
++            return -1;
++        }
++    }
++    return 0;
++}
++
++/* Starts the process `eargp` describes with posix_spawn(). The redirections,
++ * closes and working directory a forked child would set up
++ * (rb_execarg_run_options) are file actions, so the parent's own descriptors
++ * and directory never change, and the environment is the envp
++ * rb_execarg_parent_start1 built. A umask applies to the parent for the
++ * duration of the call. rlimits, uid and gid are refused (ENOTSUP). */
+ static rb_pid_t
++spawn_without_fork(struct rb_execarg *eargp, char *errmsg, size_t errmsg_buflen)
++{
++    extern char **environ;
++    posix_spawn_file_actions_t fa;
++    posix_spawnattr_t attr;
++    rb_pid_t pid = -1;
++    int err, saved_errno;
++    int *tmp = NULL;
++    long ntmp = 0, i;
++    char **envp = eargp->envp_str ? (char **)RB_IMEMO_TMPBUF_PTR(eargp->envp_str) : environ;
++    mode_t oldmask = 0;
++    VALUE tmpbuf = 0;
++
++    if ((err = posix_spawn_file_actions_init(&fa)) != 0) {
++        errno = err;
++        ERRMSG("posix_spawn_file_actions_init");
++        return -1;
++    }
++    if ((err = posix_spawnattr_init(&attr)) != 0) {
++        posix_spawn_file_actions_destroy(&fa);
++        errno = err;
++        ERRMSG("posix_spawnattr_init");
++        return -1;
++    }
++    if (eargp->rlimit_limits != Qfalse || eargp->uid_given || eargp->gid_given) {
++        errno = ENOTSUP;
++        ERRMSG("posix_spawn");
++        goto done;
++    }
++    if (eargp->pgroup_given && eargp->pgroup_pgid != -1) {
++        posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
++        posix_spawnattr_setpgroup(&attr, eargp->pgroup_pgid);
++    }
++    if (eargp->fd_dup2 != Qfalse) {
++        ntmp = RARRAY_LEN(eargp->fd_dup2);
++        tmp = ALLOCV_N(int, tmpbuf, ntmp);
++        if (spawn_add_dup2(&fa, eargp->fd_dup2, tmp, errmsg, errmsg_buflen) < 0) goto done;
++    }
++    if (eargp->fd_close != Qfalse) {
++        for (i = 0; i < RARRAY_LEN(eargp->fd_close); i++) {
++            int fd = FIX2INT(RARRAY_AREF(RARRAY_AREF(eargp->fd_close, i), 0));
++            if ((err = posix_spawn_file_actions_addclose(&fa, fd)) != 0) {
++                errno = err;
++                ERRMSG("posix_spawn_file_actions_addclose");
++                goto done;
++            }
++        }
++    }
++    if (eargp->close_others_do) {
++        /* Descriptors the parent has open without FD_CLOEXEC; Ruby opens
++         * its own with it, so this is what a library or a script left. */
++        int fd, maxfd = eargp->close_others_maxhint < 1023 ? 1023 : eargp->close_others_maxhint;
++        for (fd = 3; fd <= maxfd; fd++) {
++            if (!NIL_P(eargp->redirect_fds) && RTEST(rb_hash_lookup(eargp->redirect_fds, INT2FIX(fd)))) continue;
++            if (fcntl(fd, F_GETFD) < 0) continue;
++            posix_spawn_file_actions_addclose(&fa, fd);
++        }
++    }
++    if (eargp->fd_dup2_child != Qfalse) {
++        for (i = 0; i < RARRAY_LEN(eargp->fd_dup2_child); i++) {
++            VALUE pair = RARRAY_AREF(eargp->fd_dup2_child, i);
++            int newfd = FIX2INT(RARRAY_AREF(pair, 0));
++            int oldfd = FIX2INT(RARRAY_AREF(pair, 1));
++            if ((err = posix_spawn_file_actions_adddup2(&fa, oldfd, newfd)) != 0) {
++                errno = err;
++                ERRMSG("posix_spawn_file_actions_adddup2");
++                goto done;
++            }
++        }
++    }
++    if (eargp->chdir_given) {
++        if ((err = posix_spawn_file_actions_addchdir_np(&fa, RSTRING_PTR(eargp->chdir_dir))) != 0) {
++            errno = err;
++            ERRMSG("posix_spawn_file_actions_addchdir_np");
++            goto done;
++        }
++    }
++
++    /* A forked child makes its standard descriptors blocking
++     * (stdfd_clear_nonblock), since Ruby opens pipes non-blocking and many
++     * programs cannot read a non-blocking stdin: `cat` given Open3's pipe
++     * failed with EAGAIN. The flag belongs to the open file, which the
++     * child shares, so clearing it on what will be the child's 0, 1 and 2
++     * is what the forked child would have done. */
++    {
++        int std[3] = { 0, 1, 2 }, fd;
++        if (eargp->fd_dup2 != Qfalse) {
++            for (i = 0; i < RARRAY_LEN(eargp->fd_dup2); i++) {
++                VALUE pair = RARRAY_AREF(eargp->fd_dup2, i);
++                int newfd = FIX2INT(RARRAY_AREF(pair, 0));
++                if (newfd < 3) std[newfd] = FIX2INT(RARRAY_AREF(pair, 1));
++            }
++        }
++        if (eargp->fd_dup2_child != Qfalse) {
++            for (i = 0; i < RARRAY_LEN(eargp->fd_dup2_child); i++) {
++                VALUE pair = RARRAY_AREF(eargp->fd_dup2_child, i);
++                int newfd = FIX2INT(RARRAY_AREF(pair, 0));
++                int oldfd = FIX2INT(RARRAY_AREF(pair, 1));
++                if (newfd < 3 && oldfd < 3) std[newfd] = std[oldfd];
++            }
++        }
++        for (fd = 0; fd < 3; fd++) (void)set_blocking(std[fd]);
++    }
++
++    if (eargp->umask_given) oldmask = umask(eargp->umask_mask);
++    if (eargp->use_shell) {
++        char *argv[] = { (char *)"sh", (char *)"-c", RSTRING_PTR(eargp->invoke.sh.shell_script), NULL };
++        err = posix_spawn(&pid, "/bin/sh", &fa, &attr, argv, envp);
++    }
++    else if (NIL_P(eargp->invoke.cmd.command_abspath)) {
++        err = ENOENT;
++    }
++    else {
++        char *abspath = RSTRING_PTR(eargp->invoke.cmd.command_abspath);
++        char **argv = ARGVSTR2ARGV(eargp->invoke.cmd.argv_str);
++        err = posix_spawn(&pid, abspath, &fa, &attr, argv, envp);
++        if (err == ENOEXEC) {
++            /* A script without `#!` runs in the shell, as proc_exec_cmd
++             * runs one after execve() refuses it. argv has a slot before
++             * its first element for this (ARGVSTR2ARGV). */
++            char *argv0 = argv[0];
++            argv[0] = abspath;
++            argv[-1] = (char *)"sh";
++            err = posix_spawn(&pid, "/bin/sh", &fa, &attr, argv - 1, envp);
++            argv[0] = argv0;
++        }
++    }
++    if (eargp->umask_given) umask(oldmask);
++    if (err != 0) {
++        pid = -1;
++        errno = err;
++        ERRMSG("posix_spawn");
++    }
++
++  done:
++    saved_errno = errno;
++    for (i = 0; i < ntmp; i++) {
++        if (tmp[i] >= 0) close(tmp[i]);
++    }
++    if (tmpbuf) ALLOCV_END(tmpbuf);
++    posix_spawnattr_destroy(&attr);
++    posix_spawn_file_actions_destroy(&fa);
++    errno = saved_errno;
++    return pid;
++}
++
++rb_pid_t
+ rb_spawn_process(struct rb_execarg *eargp, char *errmsg, size_t errmsg_buflen)
+ {
++    rb_pid_t pid = spawn_without_fork(eargp, errmsg, errmsg_buflen);
++
++    if (pid == -1) {
++        rb_last_status_set(0x7f << 8, pid);
++    }
++    if (eargp->waitpid_state) {
++        eargp->waitpid_state->pid = pid;
++    }
++    return pid;
++}
++#else
++static rb_pid_t
++rb_spawn_process(struct rb_execarg *eargp, char *errmsg, size_t errmsg_buflen)
++{
+     rb_pid_t pid;
+ #if !defined HAVE_WORKING_FORK || USE_SPAWNV
+     VALUE prog;
+@@ -4594,6 +4830,7 @@
+ 
+     return pid;
+ }
++#endif /* RUBY_SPAWN_WITHOUT_FORK */
+ 
+ struct spawn_args {
+     VALUE execarg;
+@@ -4955,7 +5192,7 @@
+         RB_GC_GUARD(execarg_obj);
+         rb_syserr_fail_str(err, fail_str);
+     }
+-#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV)
++#if defined(HAVE_WORKING_FORK) || defined(HAVE_SPAWNV) || defined(RUBY_SPAWN_WITHOUT_FORK)
+     return PIDT2NUM(pid);
+ #else
+     return Qnil;
+--- a/thread_pthread.c
++++ b/thread_pthread.c
+@@ -314,7 +314,11 @@
+ 
+ static rb_serial_t current_fork_gen = 1; /* We can't use GET_VM()->fork_gen */
+ 
+-#if defined(SIGVTALRM) && !defined(__EMSCRIPTEN__)
++/* Not on WASIX, which cannot interrupt a blocking call with a signal to
++ * a thread: the signal neither ends the host's wait nor, sent to the main
++ * thread there, reaches the handler, and SIGVTALRM's default ends the
++ * process. native_fd_select() waits in slices instead. */
++#if defined(SIGVTALRM) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ #  define USE_UBF_LIST 1
+ #endif
+ 
+@@ -2481,11 +2485,60 @@
+ 
+ #endif /* USE_NATIVE_THREAD_PRIORITY */
+ 
++#ifdef __wasix__
++/* With no signal to end it (USE_UBF_LIST, above), a wait is a series of
++ * waits of at most 100 ms, between which the thread looks for an interrupt
++ * (Thread#kill, Thread#raise and so Timeout, the main thread exiting) and
++ * returns EINTR for one, which do_select() and io.c's callers handle as on
++ * Linux. select() empties the sets when it times out, so each slice starts
++ * from a copy. */
+ static int
+ native_fd_select(int n, rb_fdset_t *readfds, rb_fdset_t *writefds, rb_fdset_t *exceptfds, struct timeval *timeout, rb_thread_t *th)
+ {
++    const rb_hrtime_t slice = 100 * RB_HRTIME_PER_MSEC;
++    rb_hrtime_t end = 0;
++    rb_fdset_t orig_read, orig_write, orig_except;
++
++    if (timeout) end = rb_hrtime_add(rb_hrtime_now(), rb_timeval2hrtime(timeout));
++    if (readfds) rb_fd_dup(&orig_read, readfds);
++    if (writefds) rb_fd_dup(&orig_write, writefds);
++    if (exceptfds) rb_fd_dup(&orig_except, exceptfds);
++    for (;;) {
++        rb_hrtime_t wait = slice;
++        struct timeval tv;
++        int result;
++
++        if (timeout) {
++            rb_hrtime_t now = rb_hrtime_now();
++            wait = now < end ? end - now : 0;
++            if (wait > slice) wait = slice;
++        }
++        result = rb_fd_select(n, readfds, writefds, exceptfds, rb_hrtime2timeval(&tv, &wait));
++        if (result != 0 || (timeout && rb_hrtime_now() >= end)) return result;
++        if (RUBY_VM_INTERRUPTED(th->ec)) {
++            errno = EINTR;
++            return -1;
++        }
++        if (readfds) rb_fd_dup(readfds, &orig_read);
++        if (writefds) rb_fd_dup(writefds, &orig_write);
++        if (exceptfds) rb_fd_dup(exceptfds, &orig_except);
++    }
++}
++
++/* For io.c's waits without the GVL (nogvl_wait_for), where a blocking read
++ * or write waits for its descriptor. */
++int
++rb_wasix_thread_fd_select(VALUE thread, int n, rb_fdset_t *readfds, rb_fdset_t *writefds, struct timeval *timeout)
++{
++    return native_fd_select(n, readfds, writefds, NULL, timeout, rb_thread_ptr(thread));
++}
++#else
++static int
++native_fd_select(int n, rb_fdset_t *readfds, rb_fdset_t *writefds, rb_fdset_t *exceptfds, struct timeval *timeout, rb_thread_t *th)
++{
+     return rb_fd_select(n, readfds, writefds, exceptfds, timeout);
+ }
++#endif
+ 
+ static void
+ ubf_pthread_cond_signal(void *ptr)
+--- a/vm.c
++++ b/vm.c
+@@ -2743,7 +2743,7 @@
+ vm_exec_loop(rb_execution_context_t *ec, enum ruby_tag_type state, struct rb_vm_tag *tag, VALUE result);
+ 
+ // for non-Emscripten Wasm build, use vm_exec with optimized setjmp for runtime performance
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ 
+ struct rb_vm_exec_context {
+     rb_execution_context_t *const ec;
+@@ -2780,7 +2780,7 @@
+ 
+     _tag.retval = Qnil;
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+     struct rb_vm_exec_context ctx = {
+         .ec = ec,
+         .tag = &_tag,
+--- a/vm_core.h
++++ b/vm_core.h
+@@ -102,7 +102,7 @@
+ #define RUBY_ASSERT_CRITICAL_SECTION_LEAVE()
+ #endif
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ # include "wasm/setjmp.h"
+ #else
+ # include <setjmp.h>
+@@ -958,7 +958,7 @@
+   `RB_VM_TAG_JMPBUF_GET` transforms a `rb_vm_tag_jmpbuf_t` into a
+   `rb_jmpbuf_t` to be passed to `rb_setjmp/rb_longjmp`.
+ */
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ /*
+   WebAssembly target with Asyncify-based SJLJ needs
+   to capture the execution context by unwind/rewind-ing

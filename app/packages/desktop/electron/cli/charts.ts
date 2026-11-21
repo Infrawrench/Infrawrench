@@ -1,6 +1,6 @@
 // Tiny terminal chart toolkit for the CLI's text + TUI modes. Everything is
 // plain unicode + the shared color helpers: no chart library.
-import { c, seriesColor, visibleWidth, formatNumber } from "./output";
+import { c, seriesColor, visibleWidth, formatNumber, padEndVisible } from "./output";
 
 const SPARK_TICKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;
 
@@ -54,6 +54,8 @@ export interface LineChartOptions {
   height?: number;
   unit?: string | undefined;
   colorIndex?: number;
+  /** Formats the axis labels; defaults to `formatNumber` with `unit`. */
+  format?: ((value: number) => string) | undefined;
 }
 
 /**
@@ -75,7 +77,8 @@ export function lineChart(values: number[], opts: LineChartOptions = {}): string
   const max = Math.max(...sampled);
   const span = max - min || 1;
 
-  const axisLabels = [max, min + span / 2, min].map((v) => formatNumber(v, opts.unit));
+  const format = opts.format ?? ((v: number) => formatNumber(v, opts.unit));
+  const axisLabels = [max, min + span / 2, min].map(format);
   const axisWidth = Math.max(...axisLabels.map((l) => l.length));
 
   // Each column gets a fill height in 1/8 cells across the full plot height.
@@ -99,6 +102,36 @@ export function lineChart(values: number[], opts: LineChartOptions = {}): string
   return rows;
 }
 
+/**
+ * client-core's `createMetricValueFormatter`. The CLI loads client-core with a
+ * dynamic import (see the CLI section of KNOWLEDGE.md), so callers pass it in.
+ */
+export type MetricValueFormatterFactory = (
+  unit: string,
+  maxAbsValue: number,
+  locale?: string,
+) => (value: number) => string;
+
+/**
+ * How one metric series' values print: the summary line, the chart's axis
+ * and its padding all take this. Every series goes through client-core's
+ * formatter, the one the app's Metrics tab uses, so the CLI prints what the
+ * charts do: one binary scale for a byte series ("2.15 GiB", not
+ * "2303368539 bytes"), symbols against the number ("64.2%", "12/s"), a space
+ * before a word ("150 ms"), and compact numbers once the series reaches the
+ * thousands ("8K count"), each chosen once from the series' largest magnitude.
+ */
+export function metricSeriesFormat(
+  createFormatter: MetricValueFormatterFactory,
+  unit: string | undefined,
+  values: readonly number[],
+): (value: number) => string {
+  const maxAbs = values.reduce((max, v) => Math.max(max, Math.abs(v)), 0);
+  // The CLI prints numbers in en-US whatever the machine's locale, as
+  // `formatMoney` does, so its output reads the same everywhere.
+  return createFormatter(unit ?? "", maxAbs, "en-US");
+}
+
 export interface BarChartItem {
   label: string;
   value: number;
@@ -117,7 +150,9 @@ export function barChart(items: BarChartItem[], width = 30): string[] {
     const filled = Math.round((Math.max(0, item.value) / max) * width);
     const bar = "█".repeat(filled) + c.dim("░".repeat(width - filled));
     const value = item.display ?? formatNumber(item.value);
-    return `${item.label.padEnd(labelWidth)} ${color(bar)} ${value}`;
+    // The "other" row arrives dimmed: `padEnd` would count its escape codes
+    // as width and start its bar short of the others.
+    return `${padEndVisible(item.label, labelWidth)} ${color(bar)} ${value}`;
   });
 }
 

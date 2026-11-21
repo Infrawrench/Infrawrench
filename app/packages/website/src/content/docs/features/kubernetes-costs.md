@@ -161,7 +161,7 @@ The cluster's GPU tab shows which method priced each node.
 - **Unrequested GPUs** are GPUs no pod asked for. Like idle CPU they have their own line, never spread across workloads. On a GPU cluster this is usually the most expensive line on the page.
 - **Requested but idle** is GPU time a workload holds but doesn't use, measured from GPU utilization. It counts as that workload's waste in the Efficiency report.
 
-<insert [Cluster GPUs tab showing the GPU summary, the GPU nodes table with models, requested and unrequested GPUs and how each node's GPU share was priced, and the GPU workloads table] here>
+![Cluster GPUs tab showing the GPU summary, the GPU nodes table with models, requested and unrequested GPUs and how each node's GPU share was priced, and the GPU workloads table](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/cluster-gpus-tab.png)
 
 ### Where GPU utilization comes from
 
@@ -174,7 +174,7 @@ The metrics used are DCGM's `DCGM_FI_DEV_GPU_UTIL` and `DCGM_FI_DEV_FB_USED`, wi
 
 **Time-sliced and MPS GPUs read unknown**, since DCGM can't tell which sharing container is doing the work.
 
-<insert [Kubernetes account edit form with the optional "GPU metrics source" field filled in as monitoring/prometheus-operated:9090] here>
+![Kubernetes account Update credentials form with the optional "GPU metrics source" field filled in as monitoring/prometheus-operated:9090](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/account-gpu-metrics-source.png)
 
 ### GPU right-sizing
 
@@ -255,7 +255,7 @@ It shows, per namespace and per workload: what was requested, what's actually us
 
 On the cluster's tab, the **By node group** table splits machines by node pool and capacity type (spot, on-demand or reserved): how many nodes, their daily cost, how much is idle, and how much is held by unused requests. Since you resize pools, not workloads, this table tells you things like "the spot pool is 40% idle". Nodes with no pool label are grouped by instance type. The same table is in the **Share** text.
 
-<insert [Cluster Efficiency tab scrolled to the "By node group, most idle first" table, showing a spot pool and an on-demand pool with their idle percentages and idle cost per day] here>
+![Cluster Efficiency tab scrolled to the "By node group, most idle first" table, showing a GPU pool, an on-demand pool and a spot pool with their idle percentages and idle cost per day](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/cluster-efficiency-node-groups.png)
 
 ### Share it
 
@@ -293,7 +293,7 @@ The **Namespaces group in the Kubernetes pane** follows the listings, so system 
 - **The cloud cluster's own Metrics tab:** the same cluster-level figures appear next to the provider's node metrics, so cluster spend sits beside cluster CPU.
 - **[Cost graphs and budgets](./cloud-costs.md):** costs are recorded daily, so they chart and budget like any other spend.
 
-<insert [DOKS cluster Metrics tab showing the provider's node CPU series alongside the merged "Cluster cost", "Allocated to workloads" and "Idle capacity" series] here>
+![DOKS cluster Metrics tab showing the provider's node CPU, memory and network series above the merged "Kubernetes · Cluster cost", "Kubernetes · Allocated to workloads" and "Kubernetes · Idle capacity" series](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/doks-metrics-merged.png)
 
 ## In cost graphs
 
@@ -363,7 +363,7 @@ A workload running on several kinds of node gets one row per kind, so you can te
 
 Any pod, node or PersistentVolumeClaim label can become a dimension too, recorded as `k8s_pod_label:<label key>`, `k8s_node_label:<label key>` and `k8s_pvc_label:<label key>`. To choose them, open the Kubernetes account, choose **Update credentials**, and use the **Pod labels for cost**, **Node labels for cost** and **Volume labels for cost** pickers. They list the label keys on your cluster, most common first, with sample values.
 
-<insert [Update credentials modal on a Kubernetes account with the "Node labels for cost" picker open, listing label keys like team and karpenter.sh/nodepool with their node counts and sample values] here>
+![Update credentials modal on a Kubernetes account with the "Node labels for cost" picker open, listing label keys like team and karpenter.sh/nodepool with their node counts and sample values](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/node-labels-picker.png)
 
 If you leave them blank, defaults are used: standard topology and architecture labels for nodes, the `app.kubernetes.io/*` labels for claims and pods (plus `app` for pods), and `team`, `owner`, `environment` and `cost-center` for all three, wherever your objects have them. Choose **none** to record no extra labels. Labels that change per pod or per rollout, such as `pod-template-hash`, are never recorded.
 
@@ -388,7 +388,7 @@ The **Kubernetes network costs** section on the [Costs panel](./cloud-costs.md#t
 - **Top talkers:** workload to peer pairs, largest first. A peer is another workload, the internet, or a boundary class when the peer itself wasn't seen.
 - **Billed data transfer:** your cluster's real data transfer bill split across the rows, once you've said which cost rows those are.
 
-<insert [Costs panel, Kubernetes network costs section for one cluster: the headline with the estimate, billed and unallocated figures, the by-traffic-class list, and the by-workload table with a cross-zone workload at the top] here>
+![Costs panel, Kubernetes network costs section for one cluster: the headline with the estimate, billed and unallocated figures, the by-traffic-class list, and the by-workload table with a cross-zone workload at the top](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/kubernetes-network-costs.png)
 
 ### Where the traffic data comes from
 

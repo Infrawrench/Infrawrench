@@ -25,7 +25,7 @@ Both run over a dataset you have already uploaded, so you pick from lists instea
 
 The output dataset appears on the job when it completes. Upload datasets in the Cohere dashboard.
 
-<insert [Cohere create-batch form with the input dataset picker open, showing only validated batch input datasets] here>
+![Cohere create-batch form with the input dataset picker open, showing only validated batch input datasets](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cohere/create-batch.png)
 
 ## Connect your account
 

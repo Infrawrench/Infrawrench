@@ -23,10 +23,12 @@ import { Route as CostReportsRouteImport } from './routes/cost-reports'
 import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeliveryRouteImport } from './routes/delivery'
 import { Route as DnsRouteImport } from './routes/dns'
+import { Route as EnvFilesRouteImport } from './routes/env-files'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
+import { Route as HeartbeatsRouteImport } from './routes/heartbeats'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IacRouteImport } from './routes/iac'
 import { Route as IncidentsRouteImport } from './routes/incidents'
@@ -35,6 +37,7 @@ import { Route as JitAccessRouteImport } from './routes/jit-access'
 import { Route as K8sEfficiencyRouteImport } from './routes/k8s-efficiency'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
+import { Route as MigrationEstimatesRouteImport } from './routes/migration-estimates'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
@@ -126,6 +129,11 @@ const DnsRoute = DnsRouteImport.update({
   path: '/dns',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EnvFilesRoute = EnvFilesRouteImport.update({
+  id: '/env-files',
+  path: '/env-files',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
   id: '/environment-diff',
   path: '/environment-diff',
@@ -144,6 +152,11 @@ const ExpiringRoute = ExpiringRouteImport.update({
 const GraphRoute = GraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HeartbeatsRoute = HeartbeatsRouteImport.update({
+  id: '/heartbeats',
+  path: '/heartbeats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -184,6 +197,11 @@ const LogsRoute = LogsRouteImport.update({
 const MetricAlertsRoute = MetricAlertsRouteImport.update({
   id: '/metric-alerts',
   path: '/metric-alerts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MigrationEstimatesRoute = MigrationEstimatesRouteImport.update({
+  id: '/migration-estimates',
+  path: '/migration-estimates',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MomentRoute = MomentRouteImport.update({
@@ -303,10 +321,12 @@ export interface FileRoutesByFullPath {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -315,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -351,10 +372,12 @@ export interface FileRoutesByTo {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -363,6 +386,7 @@ export interface FileRoutesByTo {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -400,10 +424,12 @@ export interface FileRoutesById {
   '/costs': typeof CostsRoute
   '/delivery': typeof DeliveryRoute
   '/dns': typeof DnsRoute
+  '/env-files': typeof EnvFilesRoute
   '/environment-diff': typeof EnvironmentDiffRoute
   '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
+  '/heartbeats': typeof HeartbeatsRoute
   '/home': typeof HomeRoute
   '/iac': typeof IacRoute
   '/incidents': typeof IncidentsRoute
@@ -412,6 +438,7 @@ export interface FileRoutesById {
   '/k8s-efficiency': typeof K8sEfficiencyRoute
   '/logs': typeof LogsRoute
   '/metric-alerts': typeof MetricAlertsRoute
+  '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
@@ -450,10 +477,12 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -462,6 +491,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -498,10 +528,12 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -510,6 +542,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -546,10 +579,12 @@ export interface FileRouteTypes {
     | '/costs'
     | '/delivery'
     | '/dns'
+    | '/env-files'
     | '/environment-diff'
     | '/environments'
     | '/expiring'
     | '/graph'
+    | '/heartbeats'
     | '/home'
     | '/iac'
     | '/incidents'
@@ -558,6 +593,7 @@ export interface FileRouteTypes {
     | '/k8s-efficiency'
     | '/logs'
     | '/metric-alerts'
+    | '/migration-estimates'
     | '/moment'
     | '/posture'
     | '/price-catalog'
@@ -595,10 +631,12 @@ export interface RootRouteChildren {
   CostsRoute: typeof CostsRoute
   DeliveryRoute: typeof DeliveryRoute
   DnsRoute: typeof DnsRoute
+  EnvFilesRoute: typeof EnvFilesRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
   EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
+  HeartbeatsRoute: typeof HeartbeatsRoute
   HomeRoute: typeof HomeRoute
   IacRoute: typeof IacRoute
   IncidentsRoute: typeof IncidentsRoute
@@ -607,6 +645,7 @@ export interface RootRouteChildren {
   K8sEfficiencyRoute: typeof K8sEfficiencyRoute
   LogsRoute: typeof LogsRoute
   MetricAlertsRoute: typeof MetricAlertsRoute
+  MigrationEstimatesRoute: typeof MigrationEstimatesRoute
   MomentRoute: typeof MomentRoute
   PostureRoute: typeof PostureRoute
   PriceCatalogRoute: typeof PriceCatalogRoute
@@ -729,6 +768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DnsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/env-files': {
+      id: '/env-files'
+      path: '/env-files'
+      fullPath: '/env-files'
+      preLoaderRoute: typeof EnvFilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/environment-diff': {
       id: '/environment-diff'
       path: '/environment-diff'
@@ -755,6 +801,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/graph'
       preLoaderRoute: typeof GraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/heartbeats': {
+      id: '/heartbeats'
+      path: '/heartbeats'
+      fullPath: '/heartbeats'
+      preLoaderRoute: typeof HeartbeatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -811,6 +864,13 @@ declare module '@tanstack/react-router' {
       path: '/metric-alerts'
       fullPath: '/metric-alerts'
       preLoaderRoute: typeof MetricAlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/migration-estimates': {
+      id: '/migration-estimates'
+      path: '/migration-estimates'
+      fullPath: '/migration-estimates'
+      preLoaderRoute: typeof MigrationEstimatesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/moment': {
@@ -971,10 +1031,12 @@ const rootRouteChildren: RootRouteChildren = {
   CostsRoute: CostsRoute,
   DeliveryRoute: DeliveryRoute,
   DnsRoute: DnsRoute,
+  EnvFilesRoute: EnvFilesRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
   EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
+  HeartbeatsRoute: HeartbeatsRoute,
   HomeRoute: HomeRoute,
   IacRoute: IacRoute,
   IncidentsRoute: IncidentsRoute,
@@ -983,6 +1045,7 @@ const rootRouteChildren: RootRouteChildren = {
   K8sEfficiencyRoute: K8sEfficiencyRoute,
   LogsRoute: LogsRoute,
   MetricAlertsRoute: MetricAlertsRoute,
+  MigrationEstimatesRoute: MigrationEstimatesRoute,
   MomentRoute: MomentRoute,
   PostureRoute: PostureRoute,
   PriceCatalogRoute: PriceCatalogRoute,

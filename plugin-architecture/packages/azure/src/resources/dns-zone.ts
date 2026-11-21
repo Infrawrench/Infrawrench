@@ -4,6 +4,7 @@ export const DNSZoneResourceType = rt({
   name: "DNS Zone",
   id: "azure-dns-zone",
   description: "An Azure DNS Zone",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group", { showcase: true }),

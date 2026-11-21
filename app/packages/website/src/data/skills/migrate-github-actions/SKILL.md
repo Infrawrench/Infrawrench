@@ -10,7 +10,7 @@ The reference for every key is the runner's README, `ci-runner/README.md` in the
 
 2. **Classify each job** into one of three groups, and tell the user the result before writing files:
    - **Runs on the runner**: bash, Node, Python, Go, PHP, TypeScript type checks, formatters, Postgres or ClickHouse tests, deployment CLIs. Most jobs.
-   - **Becomes a cloud job** (`cloud:`): anything that needs Docker, a native binary with no WebAssembly build, Rust compilation, a GPU, or a real Linux machine. It runs on one of the organization's connected cloud accounts, which an admin has to opt in to CI first.
+   - **Becomes a cloud job** (`cloud:`): anything that needs Docker, a native binary with no WebAssembly build, a GPU, or a real Linux machine. Rust is not one of these: it compiles with `tools: [builtin:rust@1.100]` (see `references/limits.md`). It runs on one of the organization's connected cloud accounts, which an admin has to opt in to CI first.
    - **Stays on GitHub Actions**: macOS and Windows jobs, and anything relying on an event Infrawrench CI does not have (see `references/limits.md`).
 
 3. **Write one pipeline per workflow**, `.infrawrench/ci/<same-name>.yml`, starting with the schema comment so editors validate it:
@@ -40,7 +40,7 @@ The reference for every key is the runner's README, `ci-runner/README.md` in the
 
 - **A job is one script.** `run:` is bash with `set -euo pipefail`. Join a GitHub job's `run` steps into one `run: |` block in order. Use `if:` on a job, not on a line; inside the script, use shell conditionals.
 - **Secrets only in `env:`.** `${{ secrets.NAME }}` works only as an `env:` value. Map it to a variable and read the variable in the script.
-- **Pick an environment.** Every job without `cloud:` names `using:`: `env:bash@5`, `env:bash-node@24`, `env:python@3.13`, `env:go@1.27`, `env:php@8.4`, or a tool such as `builtin:typescript@7.1`. Versions are pinned; a bare name is an error.
+- **Pick an environment.** Every job without `cloud:` names `using:`: `env:bash@5`, `env:bash-node@24`, `env:python@3.13`, `env:go@1.27`, `env:php@8.4`, `env:ruby@4.0`, or a tool such as `builtin:typescript@7.1`. Versions are pinned; a bare name is an error.
 - **Jobs in `needs:` hand files on with `artifacts:`**, not with upload and download actions. Files for people to download from the run are `downloads:`.
 - **Pull requests from forks** run only after a maintainer approves them, get no secrets, and never run cloud jobs. There is no `pull_request_target` equivalent.
 

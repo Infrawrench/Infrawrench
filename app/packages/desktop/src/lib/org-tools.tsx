@@ -11,6 +11,7 @@ import {
   DomainsIcon,
   EnvironmentDiffIcon,
   EnvironmentsIcon,
+  EnvFilesIcon,
   ExpiryIcon,
   FanoutIcon,
   GraphIcon,
@@ -22,6 +23,7 @@ import {
   PostureIcon,
   PriceCatalogIcon,
   ProbesIcon,
+  HeartbeatsIcon,
   QueryMonitorIcon,
   QuotasIcon,
   RunbookIcon,
@@ -38,6 +40,7 @@ import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
+import { MigrationEstimatesIcon } from "@infrawrench/ui/migration-estimates/MigrationEstimatesIcon";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
@@ -53,11 +56,13 @@ import {
   dnsTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   graphTabTarget,
   iacTabTarget,
   invoicesTabTarget,
   jitAccessTabTarget,
   k8sEfficiencyTabTarget,
+  migrationEstimatesTabTarget,
   logsTabTarget,
   queryMonitorsTabTarget,
   resourceReportsTabTarget,
@@ -226,6 +231,14 @@ export function useOrgTools(): SidebarToolDef[] {
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
           },
+          // Cloud-only like probes: pings land on the cloud app and the
+          // deadline sweep runs in the cloud poller.
+          {
+            key: "heartbeats",
+            label: gt("Heartbeats"),
+            icon: <HeartbeatsIcon />,
+            onClick: () => void navigate({ to: "/heartbeats" }),
+          },
           // Cloud-only: an SLO is evaluated by the cloud poller over the cloud
           // metric store, the probes stance.
           {
@@ -277,6 +290,17 @@ export function useOrgTools(): SidebarToolDef[] {
             icon: <PriceCatalogIcon />,
             onClick: () => void navigate({ to: "/price-catalog" }),
           },
+          // Cloud-only: the current side is the cloud's billed spend, and the
+          // target is priced with the org's accounts.
+          {
+            key: "migration-estimates",
+            label: gt("Migration estimates"),
+            icon: <MigrationEstimatesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, migrationEstimatesTabTarget(), {
+                label: gt("Migration estimates"),
+              }),
+          },
           // Cloud-only for the same reason as Probes: an incident is
           // org-scoped and declaring one composes cloud features.
           {
@@ -295,6 +319,18 @@ export function useOrgTools(): SidebarToolDef[] {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, environmentsTabTarget(), {
                 label: gt("Environments"),
+              }),
+          },
+          // Cloud-only: references resolve against the org's synced
+          // resources and secrets, and the file is read from and committed
+          // to GitHub through the org's GitHub App.
+          {
+            key: "env-files",
+            label: gt("Environment files"),
+            icon: <EnvFilesIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, envFilesTabTarget(), {
+                label: gt("Environment files"),
               }),
           },
         ]

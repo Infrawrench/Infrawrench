@@ -6,6 +6,9 @@ export const LkeClusterResourceType = rt({
   name: "Kubernetes Cluster",
   id: "lke-cluster",
   description: "A Linode Kubernetes Engine (LKE) cluster",
+  // The largest pool's plan and the node total, as the create form's default
+  // pool takes them; the pools are also listed as `lke-node-pool`.
+  equivalence: "kubernetes-cluster",
   // Worker nodes are Linodes listed in their own right: shown here, never summed twice.
   carbon: {
     role: "aggregate",
@@ -25,6 +28,7 @@ export const LkeClusterResourceType = rt({
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
+      sizing: "region",
     }),
     f("k8sVersion", "Kubernetes Version", {
       description: "Upgrade one minor version at a time; nodes pick it up when recycled",
@@ -41,14 +45,20 @@ export const LkeClusterResourceType = rt({
       description:
         "A high-availability control plane is billed separately; it cannot be turned off again",
     }),
-    f("nodeType", "Node Plan", { required: false, editable: false }),
+    f("nodeType", "Node Plan", { required: false, editable: false, sizing: "instance-type" }),
     f("poolCount", "Node Pools", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
     }),
-    f("nodeCount", "Nodes", { showcase: true, kind: "number", required: false, editable: false }),
+    f("nodeCount", "Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "node-count",
+    }),
     f("tags", "Tags", { required: false }),
     f("created", "Created", { required: false, editable: false }),
   ],
@@ -112,16 +122,17 @@ export const LkeNodePoolResourceType = rt({
   id: "lke-node-pool",
   pinnable: false,
   description: "A pool of identical worker nodes in an LKE cluster",
+  equivalence: "kubernetes-node-pool",
   fields: [
     f("label", "Label", { required: false, editable: false }),
-    f("type", "Node Plan", { showcase: true, editable: false }),
-    f("count", "Nodes", { kind: "number", description: "1 to 100 nodes" }),
+    f("type", "Node Plan", { showcase: true, editable: false, sizing: "instance-type" }),
+    f("count", "Nodes", { kind: "number", description: "1 to 100 nodes", sizing: "node-count" }),
     f("autoscalerEnabled", "Autoscaler", { kind: "boolean", required: false }),
     f("autoscalerMin", "Autoscaler Minimum", { kind: "number", required: false }),
     f("autoscalerMax", "Autoscaler Maximum", { kind: "number", required: false }),
     f("nodesReady", "Ready Nodes", { kind: "number", required: false, editable: false }),
     f("clusterId", "Cluster", { required: false, editable: false }),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false, sizing: "region" }),
     f("tags", "Tags", { required: false }),
   ],
   outputs: [],
@@ -151,6 +162,20 @@ export const DatabaseResourceType = rt({
   name: "Managed Database",
   id: "database",
   description: "A Linode Managed Database cluster (MySQL or PostgreSQL)",
+  // The lister stores the bare engine; the create form's select holds
+  // `engine/version` ids, and the estimate reads the part before the slash.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["postgresql"] },
+      createFields: { engineVersion: "postgresql" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["mysql"] },
+      createFields: { engineVersion: "mysql" },
+    },
+  ],
   carbon: {
     regionFieldKey: "region",
     vcpus: {
@@ -172,16 +197,19 @@ export const DatabaseResourceType = rt({
     f("version", "Version", { showcase: true, editable: false }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
     }),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("type", "Node Plan", {
+      sizing: "instance-type",
       description: "Plan for every node. Linode only allows moving to a plan with more disk",
     }),
     f("clusterSize", "Nodes", {
       kind: "number",
+      sizing: "node-count",
       editable: false,
       description: "1 (single node) or 3 (high availability)",
     }),
@@ -193,7 +221,12 @@ export const DatabaseResourceType = rt({
     f("secondaryHost", "Read-only Host", { required: false, editable: false }),
     f("port", "Port", { kind: "number", required: false, editable: false }),
     f("diskUsedGb", "Disk Used (GB)", { kind: "number", required: false, editable: false }),
-    f("diskTotalGb", "Disk Total (GB)", { kind: "number", required: false, editable: false }),
+    f("diskTotalGb", "Disk Total (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     f("platform", "Platform", { required: false, editable: false }),
     f("managedBackups", "Automatic Backups", {
       kind: "boolean",

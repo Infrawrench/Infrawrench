@@ -36,7 +36,6 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
-  PaletteHostProvider,
   usePaletteIntent,
   useRecordRecentTabs,
   type PaletteHostValue,
@@ -44,6 +43,7 @@ import {
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
+import { DesktopOrgProviders } from "../lib/live-updates";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { PromptHost } from "@infrawrench/ui/workflows";
 import { DesktopCommandPalette } from "../components/CommandPalette";
@@ -175,9 +175,12 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "ssh-fanout" ||
     target.kind === "metric-alerts" ||
     target.kind === "probes" ||
+    target.kind === "heartbeats" ||
+    target.kind === "env-files" ||
     target.kind === "status-pages" ||
     target.kind === "quotas" ||
     target.kind === "price-catalog" ||
+    target.kind === "migration-estimates" ||
     target.kind === "incidents" ||
     target.kind === "slos" ||
     target.kind === "services" ||
@@ -615,7 +618,7 @@ function RootLayout() {
   }
 
   return (
-    <PaletteHostProvider value={paletteHost}>
+    <DesktopOrgProviders orgId={activeOrgId} paletteHost={paletteHost}>
       <DndShell
         onPinToDashboard={(r, d) => {
           void handlePinToDashboard(r, d);
@@ -931,6 +934,6 @@ function RootLayout() {
           />
         )}
       </DndShell>
-    </PaletteHostProvider>
+    </DesktopOrgProviders>
   );
 }

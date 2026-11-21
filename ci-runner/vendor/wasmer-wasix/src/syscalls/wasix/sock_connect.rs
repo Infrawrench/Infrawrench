@@ -21,13 +21,37 @@ pub fn sock_connect<M: MemorySize>(
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
 
+    // iwci patch: whether this is an AF_UNIX socket (net/unix.rs).
+    let unix = wasi_try_ok!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
+        socket.unix()
+    )));
+
     let env = ctx.data();
     let memory = unsafe { env.memory_view(&ctx) };
-    let addr = wasi_try_ok!(crate::net::read_ip_port(&memory, addr));
-    let peer_addr = SocketAddr::new(addr.0, addr.1);
+    // iwci patch: a path, for an AF_UNIX socket: the loopback port its file
+    // names (net/unix.rs).
+    let (peer_addr, peer_path) = match wasi_try_ok!(crate::net::unix::read_sock_addr(&memory, addr))
+    {
+        crate::net::unix::SockAddr::Ip(_) if unix.is_some() => return Ok(Errno::Inval),
+        crate::net::unix::SockAddr::Ip(addr) => (addr, None),
+        crate::net::unix::SockAddr::Unix(_) if unix.is_none() => return Ok(Errno::Inval),
+        crate::net::unix::SockAddr::Unix(path) => {
+            let port = wasi_try_ok!(crate::net::unix::find(&ctx.data().state, &path));
+            (crate::net::unix::loopback(port), Some(path))
+        }
+    };
     Span::current().record("addr", format!("{peer_addr:?}"));
 
-    wasi_try_ok!(sock_connect_internal(&mut ctx, sock, peer_addr)?);
+    let connected = sock_connect_internal(&mut ctx, sock, peer_addr)?;
+    if let (Some(mut name), Some(path)) = (unix, peer_path) {
+        // Named whether the connect finished or is in progress.
+        name.peer = Some(path);
+        let _ = __sock_actor(&mut ctx, sock, Rights::empty(), move |socket, _| {
+            socket.set_unix(Some(name));
+            Ok(())
+        });
+    }
+    wasi_try_ok!(connected);
 
     #[cfg(feature = "journal")]
     if ctx.data().enable_journal {

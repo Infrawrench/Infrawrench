@@ -18,6 +18,16 @@ pub fn sock_addr_local<M: MemorySize>(
     sock: WasiFd,
     ret_addr: WasmPtr<__wasi_addr_port_t, M>,
 ) -> Errno {
+    // iwci patch: an AF_UNIX socket answers with its path (net/unix.rs).
+    let unix = wasi_try!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
+        socket.unix()
+    )));
+    if let Some(name) = unix {
+        let memory = unsafe { ctx.data().memory_view(&ctx) };
+        let path = name.local.unwrap_or_default();
+        wasi_try!(crate::net::unix::write_unix_addr(&memory, ret_addr, &path));
+        return Errno::Success;
+    }
     let addr = wasi_try!(__sock_actor(
         &mut ctx,
         sock,

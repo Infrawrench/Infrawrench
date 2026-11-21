@@ -377,6 +377,20 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A heartbeat monitor went down (its scheduled job missed its ping past
+       * the grace period, or pinged `/fail`) or a down heartbeat pinged again
+       * (see server-core `heartbeats/`). One notification per transition.
+       *
+       * Target route: the probes screen on mobile, the Heartbeats tab elsewhere.
+       */
+      type: "heartbeat_alert";
+      orgId: string;
+      /** Heartbeat row id (`heartbeats.id`). */
+      heartbeatId: string;
+      status: "down" | "up";
+    }
+  | {
+      /**
        * An SLO's burn-rate alert changed level, its error budget ran out, or
        * the burn stopped (see server-core `slos/eval.ts`). One notification
        * per transition, never per evaluation.

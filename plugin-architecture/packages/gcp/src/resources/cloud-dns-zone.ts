@@ -4,6 +4,7 @@ export const CloudDnsZoneResourceType = rt({
   name: "Cloud DNS Zone",
   id: "cloud-dns-zone",
   description: "A Google Cloud DNS managed zone",
+  equivalence: "dns-zone",
   fields: [
     f("name", "Name"),
     f("dnsName", "DNS Name"),

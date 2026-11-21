@@ -7,6 +7,7 @@ import type {
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import { decodeOrThrow, metricsResponseSchema } from "@infrawrench/plugin-base/validation";
+import { metricsRequestRange } from "@infrawrench/client-core";
 import {
   buildChildResourceGroups,
   formatErrorMessage,
@@ -112,6 +113,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
       pluralDisplayName: string;
       supportsCreate: boolean;
       fields?: ResourceTypeDefinition["fields"];
+      topLevel?: boolean;
     }>;
     childResources: ChildResource[];
     peerPanes: Array<{
@@ -196,7 +198,8 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
         pluralDisplayName: ct.pluralDisplayName,
         supportsCreate: ct.supportsCreate,
         ...(ct.fields ? { fields: ct.fields } : {}),
-      })) as ResourceTypeDefinition[],
+        ...(ct.topLevel ? { topLevel: true } : {}),
+      })),
       detail.childResources,
     ) as ChildResourceGroup[],
   );
@@ -248,6 +251,10 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     fetchCloudMetrics(orgId, pluginId, resourceTypeId, {
       accountId,
       resourceId: decodedResourceId,
+      ...(peerParent ? { parentResourceId: peerParent } : {}),
+      // The window the chart's caption names; without it the route answers
+      // with the last hour whatever the caption says.
+      ...metricsRequestRange(detail.detailSchema.metricsCapability?.defaultTimeRangeMs),
     })
       .then((res) => {
         if (!isCancelled())

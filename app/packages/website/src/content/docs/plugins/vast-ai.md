@@ -18,11 +18,11 @@ Vast.ai is a GPU marketplace: independent hosts and data centers list machines, 
 - **Serverless endpoints** and their **workergroups**: create, edit the scaling targets (max and cold workers, minimum load, target utilization), start and stop an endpoint that has a deployment, and delete. Workergroups pick their template from your templates and Vast's recommended ones.
 - **Account environment variables**: the encrypted variables Vast adds to your instances. Create, replace the value and delete. Only names are shown here, and values stay in Vast.
 
-<insert [The Vast.ai create instance form with the Machine Offer picker open, showing offers grouped by GPU model with location, reliability and hourly price] here>
+![The Vast.ai create instance form with the Machine Offer picker showing offers grouped by GPU model, each with vCPUs, RAM, disk and monthly price, and the estimated cost of the selected offer](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vast-ai/create-instance-offers.png)
 
 Each instance shows its GPU, VRAM, vCPUs, RAM, disk, hourly price, host location and reliability. While it runs, you also see GPU and CPU utilization, GPU temperature and disk usage. Connect with the `ssh -p <port> root@<proxy>` command shown on the instance, or the direct command if the launch mode publishes SSH on the host's IP.
 
-<insert [A running Vast.ai instance detail page showing GPU, price, utilization and the Connect section with both SSH commands, and the Stop, Reboot and Recycle buttons] here>
+![A running Vast.ai instance detail page showing GPU, price, utilization and the Connect section with both SSH commands, and the Stop, Reboot and Recycle buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vast-ai/instance-detail.png)
 
 ## Connect your account
 
@@ -30,7 +30,7 @@ On the Vast.ai console's **Keys** page (cloud.vast.ai/manage-keys), click **+New
 
 The default key has full access, which covers everything here. A scoped key needs `instance_read`, `instance_write`, `user_read`, `user_write` and `misc` for resources, and `billing_read` for spend.
 
-<insert [The Add account form for Vast.ai with the API Key field] here>
+![The Add account form for Vast.ai with the API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vast-ai/add-account.png)
 
 ## Cost
 
@@ -38,7 +38,7 @@ You see the same charges as the console's Billing page: GPU time, storage and ba
 
 Your **credit balance** appears in the [credit burndown](../features/credit-burndown.md) section. The create instance form also shows a monthly estimate from the offer's hourly price.
 
-<insert [The Costs panel for a Vast.ai account grouped by service, showing GPU, Storage and Bandwidth] here>
+![The Costs page drilled into a Vast.ai account, broken down by service, showing GPU, Storage and download and upload Bandwidth](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vast-ai/costs-by-service.png)
 
 ## Savings and governance
 

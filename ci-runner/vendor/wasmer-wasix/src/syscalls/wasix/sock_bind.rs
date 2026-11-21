@@ -17,11 +17,24 @@ pub fn sock_bind<M: MemorySize>(
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
 
+    // iwci patch: whether this is an AF_UNIX socket (net/unix.rs).
+    let unix = wasi_try_ok!(__sock_actor(&mut ctx, sock, Rights::empty(), |socket, _| Ok(
+        socket.unix()
+    )));
+
     let env = ctx.data();
     let memory = unsafe { env.memory_view(&ctx) };
 
-    let addr = wasi_try_ok!(crate::net::read_ip_port(&memory, addr));
-    let addr = SocketAddr::new(addr.0, addr.1);
+    // iwci patch: a path, for an AF_UNIX socket (net/unix.rs).
+    let addr = match wasi_try_ok!(crate::net::unix::read_sock_addr(&memory, addr)) {
+        crate::net::unix::SockAddr::Ip(_) if unix.is_some() => return Ok(Errno::Inval),
+        crate::net::unix::SockAddr::Ip(addr) => addr,
+        crate::net::unix::SockAddr::Unix(_) if unix.is_none() => return Ok(Errno::Inval),
+        crate::net::unix::SockAddr::Unix(path) => {
+            Span::current().record("addr", path.as_str());
+            return sock_bind_unix(&mut ctx, sock, path);
+        }
+    };
     Span::current().record("addr", format!("{addr:?}"));
 
     wasi_try_ok!(sock_bind_internal(&mut ctx, sock, addr)?);
@@ -48,6 +61,35 @@ pub fn sock_bind<M: MemorySize>(
         })?;
     }
 
+    Ok(Errno::Success)
+}
+
+/// iwci patch: binds an AF_UNIX socket to `path`: its file first (which
+/// must not exist), then a port on the job's loopback, which the file names.
+fn sock_bind_unix(
+    ctx: &mut FunctionEnvMut<'_, WasiEnv>,
+    sock: WasiFd,
+    path: String,
+) -> Result<Errno, WasiError> {
+    let file = {
+        let state = ctx.data().state.clone();
+        wasi_try_ok!(crate::net::unix::create(&state, &path))
+    };
+    let bound = sock_bind_internal(ctx, sock, crate::net::unix::loopback(0))?.and_then(|()| {
+        __sock_actor(ctx, sock, Rights::empty(), |socket, _| {
+            let port = socket.addr_local()?.port();
+            socket.set_unix(Some(crate::net::unix::UnixName {
+                local: Some(path.clone()),
+                peer: None,
+            }));
+            Ok(port)
+        })
+    });
+    let published = bound.and_then(|port| crate::net::unix::publish(file, port));
+    if let Err(err) = published {
+        crate::net::unix::remove(&ctx.data().state, &path);
+        return Ok(err);
+    }
     Ok(Errno::Success)
 }
 

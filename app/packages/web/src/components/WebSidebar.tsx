@@ -27,6 +27,7 @@ import {
   formatErrorMessage,
   PanelLeftOpenIcon,
   SettingsIcon,
+  useLiveRefreshEach,
   usePaletteIntent,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
@@ -504,16 +505,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [expanded, apiBase]);
 
-  // Auto-refresh expanded accounts every 30s
-  useEffect(() => {
-    if (expanded.size === 0) return;
-    const id = setInterval(() => {
-      for (const accountId of expanded) {
-        void loadResources(accountId, true);
-      }
-    }, 30_000);
-    return () => clearInterval(id);
-  }, [expanded, apiBase]);
+  // Keep expanded accounts current: live where the server pushes, every 30s otherwise.
+  useLiveRefreshEach(
+    "account-resources",
+    [...expanded].map((accountId) => ({ accountId })),
+    ({ accountId }) => (accountId ? loadResources(accountId, true) : undefined),
+    { fallbackMs: 30_000, enabled: Boolean(apiBase) },
+  );
 
   if (sidebarCollapsed) {
     return (

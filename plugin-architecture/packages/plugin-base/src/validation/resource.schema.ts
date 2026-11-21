@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
 import { Int, NonEmpty, Positive, PositiveInt, Url, httpsUrl, rule } from "./primitives.js";
+import { EQUIVALENCE_CATEGORIES, SIZING_ROLES } from "../equivalence.js";
 
 export const fieldDefinitionSchema = Schema.Struct({
   key: NonEmpty,
@@ -22,13 +23,44 @@ export const fieldDefinitionSchema = Schema.Struct({
   allowLiteral: Schema.optional(Schema.Boolean),
   editable: Schema.optional(Schema.Boolean),
   showcase: Schema.optional(Schema.Boolean),
+  schedule: Schema.optional(Schema.Literals(["cron", "timezone"])),
+  sizing: Schema.optional(Schema.Literals(SIZING_ROLES)),
 }).check(
   rule(
     (f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"),
     "a secret or password field can't be shown on a tile",
     ["showcase"],
   ),
+  rule(
+    (f) => !f.sizing || (f.kind !== "secret" && f.kind !== "password" && f.kind !== "association"),
+    "a secret, password or association field can't carry a sizing value",
+    ["sizing"],
+  ),
 );
+
+const equivalenceCategorySchema = Schema.Literals(EQUIVALENCE_CATEGORIES);
+
+const equivalenceSchema = Schema.Union([
+  equivalenceCategorySchema,
+  Schema.Array(
+    Schema.Struct({
+      category: equivalenceCategorySchema,
+      when: Schema.optional(
+        Schema.Struct({
+          fieldKey: NonEmpty,
+          oneOf: Schema.optional(Schema.Array(NonEmpty)),
+          prefix: Schema.optional(NonEmpty),
+        }).check(
+          rule(
+            (w) => (w.oneOf?.length ?? 0) > 0 || w.prefix !== undefined,
+            "an equivalence condition needs `oneOf` or `prefix`",
+          ),
+        ),
+      ),
+      createFields: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    }),
+  ).check(rule((rules) => rules.length > 0, "an equivalence rule list can't be empty")),
+]);
 
 const resourceOutputSchema = Schema.Struct({
   key: NonEmpty,
@@ -37,6 +69,7 @@ const resourceOutputSchema = Schema.Struct({
   description: Schema.optional(Schema.String),
   hidden: Schema.optional(Schema.Boolean),
   dnsValue: Schema.optional(Schema.Literals(["ipv4", "ipv6", "hostname"])),
+  schedule: Schema.optional(Schema.Literals(["cron", "timezone"])),
 });
 
 const peerPluginIntegrationSchema = Schema.Struct({
@@ -651,4 +684,16 @@ export const resourceTypeDefinitionSchema = Schema.Struct({
   carbon: Schema.optional(carbonSchema),
   principalRole: Schema.optional(principalRoleSchema),
   runningImages: Schema.optional(runningImagesSchema),
-});
+  equivalence: Schema.optional(equivalenceSchema),
+}).check(
+  // One field per sizing role: the host reads the first and writes the first,
+  // so a second flag would be ignored on one side and silently wrong on the other.
+  rule(
+    (t) => {
+      const roles = t.fields.flatMap((f) => (f.sizing ? [f.sizing] : []));
+      return new Set(roles).size === roles.length;
+    },
+    "each sizing role can be flagged on one field only",
+    ["fields"],
+  ),
+);

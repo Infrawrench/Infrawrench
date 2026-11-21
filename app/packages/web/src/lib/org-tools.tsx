@@ -5,6 +5,7 @@ import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
 import { ResourceReportsIcon } from "@infrawrench/ui/resource-reports";
+import { MigrationEstimatesIcon } from "@infrawrench/ui/migration-estimates/MigrationEstimatesIcon";
 import { CostCanvasesIcon } from "@infrawrench/ui/cost-canvases";
 import { KubernetesEfficiencyIcon } from "@infrawrench/ui/k8s-efficiency";
 import { InvoicesIcon } from "@infrawrench/ui/invoices";
@@ -29,6 +30,7 @@ import {
   LogsIcon,
   MetricAlertIcon,
   ProbesIcon,
+  HeartbeatsIcon,
   StatusPagesIcon,
   QuotasIcon,
   PriceCatalogIcon,
@@ -38,6 +40,7 @@ import {
   DeliveryIcon,
   CiIcon,
   EnvironmentsIcon,
+  EnvFilesIcon,
 } from "@infrawrench/ui";
 import { useDisabledProducts } from "@/lib/disabled-products";
 import { complianceTabTarget, getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
@@ -139,6 +142,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       onClick: () => void navigate({ to: "/org/$orgId/environments", params: { orgId: orgId! } }),
     },
     {
+      key: "env-files",
+      label: gt("Environment files"),
+      icon: <EnvFilesIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/env-files", params: { orgId: orgId! } }),
+    },
+    {
       key: "expiring",
       label: gt("Expiring"),
       icon: <ExpiryIcon />,
@@ -236,6 +245,12 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       onClick: () => void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
     },
     {
+      key: "heartbeats",
+      label: gt("Heartbeats"),
+      icon: <HeartbeatsIcon />,
+      onClick: () => void navigate({ to: "/org/$orgId/heartbeats", params: { orgId: orgId! } }),
+    },
+    {
       key: "slos",
       label: gt("SLOs"),
       icon: <SlosIcon />,
@@ -276,6 +291,13 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       label: gt("Price catalog"),
       icon: <PriceCatalogIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/price-catalog", params: { orgId: orgId! } }),
+    },
+    {
+      key: "migration-estimates",
+      label: gt("Migration estimates"),
+      icon: <MigrationEstimatesIcon />,
+      onClick: () =>
+        void navigate({ to: "/org/$orgId/migration-estimates", params: { orgId: orgId! } }),
     },
     {
       key: "incidents",

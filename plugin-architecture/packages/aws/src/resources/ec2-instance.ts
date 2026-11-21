@@ -6,6 +6,7 @@ export const EC2InstanceResourceType = rt({
   id: "ec2-instance",
   iconKey: "cpu",
   description: "An Amazon EC2 virtual machine instance",
+  equivalence: "vm",
   fields: [
     // EC2 "names" are tags the lister derives; the only editable field is
     // instanceType (the right-sizing resize path).
@@ -13,11 +14,12 @@ export const EC2InstanceResourceType = rt({
     f("instanceId", "Instance ID", { editable: false }),
     f("instanceType", "Instance Type", {
       showcase: true,
+      sizing: "instance-type",
       description:
         "Instance type, e.g. t4g.small. Changing it resizes the instance (ModifyInstanceAttribute; only allowed while it is stopped)",
     }),
     f("availabilityZone", "Availability Zone", { editable: false }),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false, sizing: "region" }),
     f("state", "State", {
       showcase: true,
       editable: false,

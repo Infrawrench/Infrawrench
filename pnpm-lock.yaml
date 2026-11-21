@@ -53,7 +53,7 @@ overrides:
 packageExtensionsChecksum: sha256-ei3jLnUxokONz+I93eRBuhBqNFJfDTawJfQ/7MmPYu4=
 
 patchedDependencies:
-  '@generaltranslation/react-core@11.1.6': 78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017
+  '@generaltranslation/react-core@11.1.6': 82ed717a142061bb078761a91b4d10a7962b07fccea2c0af6024e2b91e4e6653
   '@tsc-rs/typescript@0.8.0': 9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b
 
 importers:
@@ -176,6 +176,9 @@ importers:
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
+      '@neon/realtime':
+        specifier: 0.2.1
+        version: 0.2.1(ws@8.22.0)
       yaml:
         specifier: '>=2.8.3'
         version: 2.9.0
@@ -192,30 +195,12 @@ importers:
 
   app/packages/desktop:
     dependencies:
-      '@infrawrench/api-contract':
-        specifier: workspace:*
-        version: link:../api-contract
-      '@infrawrench/appstream-core':
-        specifier: workspace:*
-        version: link:../../../plugin-architecture/packages/appstream-core
-      '@infrawrench/appstream-host':
-        specifier: workspace:*
-        version: link:../../../plugin-architecture/packages/appstream-host
-      '@infrawrench/workflow-runtime':
-        specifier: workspace:*
-        version: link:../workflow-runtime
-      '@kubernetes/client-node':
-        specifier: ^1.4.0
-        version: 1.4.0(encoding@0.1.13)(supports-color@10.2.2)
       '@libsql/client':
         specifier: ^0.14.0
         version: 0.14.0
       dockerode:
         specifier: ^5.0.1
         version: 5.0.1(supports-color@10.2.2)
-      effect:
-        specifier: 'catalog:'
-        version: 4.1.2
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@10.2.2)
@@ -262,6 +247,15 @@ importers:
       '@generaltranslation/compiler':
         specifier: ^1.3.37
         version: 1.3.37(supports-color@10.2.2)(vite@6.4.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+      '@infrawrench/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
+      '@infrawrench/appstream-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-core
+      '@infrawrench/appstream-host':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-host
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
@@ -736,6 +730,12 @@ importers:
       '@infrawrench/ui':
         specifier: workspace:*
         version: link:../ui
+      '@infrawrench/workflow-runtime':
+        specifier: workspace:*
+        version: link:../workflow-runtime
+      '@kubernetes/client-node':
+        specifier: ^1.4.0
+        version: 1.4.0(encoding@0.1.13)(supports-color@10.2.2)
       '@rollup/wasm-node':
         specifier: 4.62.4
         version: 4.62.4
@@ -784,6 +784,9 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
       electron:
         specifier: ^44.11.3
         version: 44.11.3(supports-color@10.2.2)
@@ -887,6 +890,27 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  app/packages/infraenv:
+    devDependencies:
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../client-core
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      kill-emudhra:
+        specifier: ^0.1.1
+        version: 0.1.1
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b))(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)))(oxc-resolver@11.24.2)(tsx@4.23.11)(unrun@0.3.1)
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
   app/packages/instances:
     dependencies:
@@ -1686,6 +1710,9 @@ importers:
       '@infrawrench/workflow-runtime':
         specifier: workspace:*
         version: link:../workflow-runtime
+      '@neon/realtime':
+        specifier: 0.2.1
+        version: 0.2.1(ws@8.21.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
@@ -1853,8 +1880,8 @@ importers:
         specifier: 1.90.0
         version: 1.90.0
       '@vscode/vsce':
-        specifier: ^4.0.0
-        version: 4.0.0(supports-color@10.2.2)
+        specifier: ^4.1.0
+        version: 4.1.1(supports-color@10.2.2)
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
@@ -8206,6 +8233,15 @@ packages:
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
 
+  '@neon/realtime@0.2.1':
+    resolution: {integrity: sha512-VHFkRPjtCFFneegpeYt6j5kB1X50SiFW8KPnXEy6iYRpo3pa4uCuFPg1wLQtRzxkeacvbatL4hFAVBALS5AcVw==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      ws: ^8.21.2
+    peerDependenciesMeta:
+      ws:
+        optional: true
+
   '@neondatabase/api-client@2.7.3':
     resolution: {integrity: sha512-hqJmcd8qeCNjcsSNlz77peGIwB9SLj8NC6kK6AjPRyb4bUvXB+TCmffx5893/0oRHYjqpua0nBLa5ql8z6acmw==}
 
@@ -10423,56 +10459,56 @@ packages:
   '@vscode/l10n@0.0.18':
     resolution: {integrity: sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ==}
 
-  '@vscode/vsce-sign-alpine-arm64@2.0.6':
-    resolution: {integrity: sha512-wKkJBsvKF+f0GfsUuGT0tSW0kZL87QggEiqNqK6/8hvqsXvpx8OsTEc3mnE1kejkh5r+qUyQ7PtF8jZYN0mo8Q==}
+  '@vscode/vsce-sign-alpine-arm64@2.0.8':
+    resolution: {integrity: sha512-3HSEDf4R2zhI3/eckZPWBoeFUiLpnG9O0/NBW8xCM3j+Ri0uhmOPvCDuCYsUmIsFVUJETaMu+JMY2DF8v8hNPg==}
     cpu: [arm64]
     os: [alpine]
 
-  '@vscode/vsce-sign-alpine-x64@2.0.6':
-    resolution: {integrity: sha512-YoAGlmdK39vKi9jA18i4ufBbd95OqGJxRvF3n6ZbCyziwy3O+JgOpIUPxv5tjeO6gQfx29qBivQ8ZZTUF2Ba0w==}
+  '@vscode/vsce-sign-alpine-x64@2.0.8':
+    resolution: {integrity: sha512-rHbdV7+esCVn/t8KnbSN9CyMGImAmGnxFb1K9d2uSrt0WNPYfL12FGFekhz2yI8sFhIhyxD+vIKTSp9+kLx+5A==}
     cpu: [x64]
     os: [alpine]
 
-  '@vscode/vsce-sign-darwin-arm64@2.0.6':
-    resolution: {integrity: sha512-5HMHaJRIQuozm/XQIiJiA0W9uhdblwwl2ZNDSSAeXGO9YhB9MH5C4KIHOmvyjUnKy4UCuiP43VKpIxW1VWP4tQ==}
+  '@vscode/vsce-sign-darwin-arm64@2.0.8':
+    resolution: {integrity: sha512-/JSzSLCbXSlc+X7PfmHWnXczFHRmKURCwN1MGmJXjUJlWHgTDpaqjaJNMnBNqruyrbb6LRE/DMXTfRY9iwr4jA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@vscode/vsce-sign-darwin-x64@2.0.6':
-    resolution: {integrity: sha512-25GsUbTAiNfHSuRItoQafXOIpxlYj+IXb4/qarrXu7kmbH94jlm5sdWSCKrrREs8+GsXF1b+l3OB7VJy5jsykw==}
+  '@vscode/vsce-sign-darwin-x64@2.0.8':
+    resolution: {integrity: sha512-iowH17iKIaAiC6TNGIksLmwtcKOHh/HT/pwKHwPZnuTLvdKWZ/8VOT+MphEt71EcWttohqUXx41SjdiCfUPBiA==}
     cpu: [x64]
     os: [darwin]
 
-  '@vscode/vsce-sign-linux-arm64@2.0.6':
-    resolution: {integrity: sha512-cfb1qK7lygtMa4NUl2582nP7aliLYuDEVpAbXJMkDq1qE+olIw/es+C8j1LJwvcRq1I2yWGtSn3EkDp9Dq5FdA==}
+  '@vscode/vsce-sign-linux-arm64@2.0.8':
+    resolution: {integrity: sha512-94aBLOVdO6eAOylUsyJ40/BdHtRrHuKAa/29KNOci2QtwUBAH9jTWJLpn1Yv+xjlUOaSjQC8UlAUtjqz/g6FPA==}
     cpu: [arm64]
     os: [linux]
 
-  '@vscode/vsce-sign-linux-arm@2.0.6':
-    resolution: {integrity: sha512-UndEc2Xlq4HsuMPnwu7420uqceXjs4yb5W8E2/UkaHBB9OWCwMd3/bRe/1eLe3D8kPpxzcaeTyXiK3RdzS/1CA==}
+  '@vscode/vsce-sign-linux-arm@2.0.8':
+    resolution: {integrity: sha512-SVzcxe2fx+1meLyO745eUiywrRDQIXwK/oZcwTrzYEkoVh4Val4/8CtDHIc5Z3EhHnwVBnqGqsbNwkR44k7rXA==}
     cpu: [arm]
     os: [linux]
 
-  '@vscode/vsce-sign-linux-x64@2.0.6':
-    resolution: {integrity: sha512-/olerl1A4sOqdP+hjvJ1sbQjKN07Y3DVnxO4gnbn/ahtQvFrdhUi0G1VsZXDNjfqmXw57DmPi5ASnj/8PGZhAA==}
+  '@vscode/vsce-sign-linux-x64@2.0.8':
+    resolution: {integrity: sha512-i55pKFRMF1nR94CMcFHbr3VQz7rQ8DFURvUd2Jymcbtv8qzhPX2otIHWzkcmAVr4dQApbYYCvRPjbP+i12ImQQ==}
     cpu: [x64]
     os: [linux]
 
-  '@vscode/vsce-sign-win32-arm64@2.0.6':
-    resolution: {integrity: sha512-ivM/MiGIY0PJNZBoGtlRBM/xDpwbdlCWomUWuLmIxbi1Cxe/1nooYrEQoaHD8ojVRgzdQEUzMsRbyF5cJJgYOg==}
+  '@vscode/vsce-sign-win32-arm64@2.0.8':
+    resolution: {integrity: sha512-2CoVlRNow2XkNboxlfx8hGdKLR2hvyBRg1O8gafx8I4F+scm1MLHdGcYV3+u3jXDsJaiSyDshTO5vPcLjQpVug==}
     cpu: [arm64]
     os: [win32]
 
-  '@vscode/vsce-sign-win32-x64@2.0.6':
-    resolution: {integrity: sha512-mgth9Kvze+u8CruYMmhHw6Zgy3GRX2S+Ed5oSokDEK5vPEwGGKnmuXua9tmFhomeAnhgJnL4DCna3TiNuGrBTQ==}
+  '@vscode/vsce-sign-win32-x64@2.0.8':
+    resolution: {integrity: sha512-93c+KXIvOsLlNLMEPtQBgJJgn2eaypv3G3+4O9RailUQTh9zL3ul/Fhnqf0O+NKOGKky9d/v+GYWhBwsAjZaww==}
     cpu: [x64]
     os: [win32]
 
-  '@vscode/vsce-sign@2.1.0':
-    resolution: {integrity: sha512-9AQrqazrBgTgRSuwleLVXUrIUphY02/SFCh2TKYoLV/xifJAdblhdmEmw5gUrYSPQ3sRwNs9iyCMD14sATEE6g==}
+  '@vscode/vsce-sign@2.1.1':
+    resolution: {integrity: sha512-Fm9SrvxonXpmzN0eKHKS/AHb/3Gc19c7SkGfSnhYOGPiLy2o8hJlIzx314IVSH//uEiKaAbE40P47wwFtyDByg==}
 
-  '@vscode/vsce@4.0.0':
-    resolution: {integrity: sha512-NImwuLaenMmb5D5Jer9/lzi/F9ZQUBOp8Azhj/BVYcTFgixv8KehFXqEUDjQlD2tAiw2E6dDGyjTuAB//di60A==}
+  '@vscode/vsce@4.1.1':
+    resolution: {integrity: sha512-JYw4KtAmePIik4F+sGZo8GAfX6IApSQTBhXb28ivfmbzUoojfJHL9mupjV0E/cckzSdrxdu4jUCj8tKDddV5kQ==}
     engines: {node: '>= 22'}
     hasBin: true
 
@@ -14665,6 +14701,10 @@ packages:
   postgres-array@2.0.0:
     resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
     engines: {node: '>=4'}
+
+  postgres-array@3.0.4:
+    resolution: {integrity: sha512-nAUSGfSDGOaOAEGwqsRY27GPOea7CNipJPOA7lPbdEpx5Kg3qzdP0AaWC5MlhTWV9s4hFX39nomVZ+C4tnGOJQ==}
+    engines: {node: '>=12'}
 
   postgres-bytea@1.0.1:
     resolution: {integrity: sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==}
@@ -20132,14 +20172,14 @@ snapshots:
     transitivePeerDependencies:
       - tree-sitter
 
-  '@generaltranslation/react-core@11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.2.8)':
+  '@generaltranslation/react-core@11.1.6(patch_hash=82ed717a142061bb078761a91b4d10a7962b07fccea2c0af6024e2b91e4e6653)(react@19.2.8)':
     dependencies:
       '@generaltranslation/format': 0.1.4
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.2.8
 
-  '@generaltranslation/react-core@11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.3.1)':
+  '@generaltranslation/react-core@11.1.6(patch_hash=82ed717a142061bb078761a91b4d10a7962b07fccea2c0af6024e2b91e4e6653)(react@19.3.1)':
     dependencies:
       '@generaltranslation/format': 0.1.4
       generaltranslation: 9.1.2
@@ -20923,6 +20963,20 @@ snapshots:
       '@nats-io/nuid': 3.0.0
 
   '@neon-rs/load@0.0.4': {}
+
+  '@neon/realtime@0.2.1(ws@8.21.3)':
+    dependencies:
+      base64-js: 1.5.1
+      postgres-array: 3.0.4
+    optionalDependencies:
+      ws: 8.21.3
+
+  '@neon/realtime@0.2.1(ws@8.22.0)':
+    dependencies:
+      base64-js: 1.5.1
+      postgres-array: 3.0.4
+    optionalDependencies:
+      ws: 8.22.0
 
   '@neondatabase/api-client@2.7.3(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
@@ -23042,7 +23096,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+      vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
   '@vitest/expect@4.1.12':
     dependencies:
@@ -23190,46 +23244,46 @@ snapshots:
 
   '@vscode/l10n@0.0.18': {}
 
-  '@vscode/vsce-sign-alpine-arm64@2.0.6':
+  '@vscode/vsce-sign-alpine-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-alpine-x64@2.0.6':
+  '@vscode/vsce-sign-alpine-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-darwin-arm64@2.0.6':
+  '@vscode/vsce-sign-darwin-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-darwin-x64@2.0.6':
+  '@vscode/vsce-sign-darwin-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-arm64@2.0.6':
+  '@vscode/vsce-sign-linux-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-arm@2.0.6':
+  '@vscode/vsce-sign-linux-arm@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-linux-x64@2.0.6':
+  '@vscode/vsce-sign-linux-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-win32-arm64@2.0.6':
+  '@vscode/vsce-sign-win32-arm64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign-win32-x64@2.0.6':
+  '@vscode/vsce-sign-win32-x64@2.0.8':
     optional: true
 
-  '@vscode/vsce-sign@2.1.0':
+  '@vscode/vsce-sign@2.1.1':
     optionalDependencies:
-      '@vscode/vsce-sign-alpine-arm64': 2.0.6
-      '@vscode/vsce-sign-alpine-x64': 2.0.6
-      '@vscode/vsce-sign-darwin-arm64': 2.0.6
-      '@vscode/vsce-sign-darwin-x64': 2.0.6
-      '@vscode/vsce-sign-linux-arm': 2.0.6
-      '@vscode/vsce-sign-linux-arm64': 2.0.6
-      '@vscode/vsce-sign-linux-x64': 2.0.6
-      '@vscode/vsce-sign-win32-arm64': 2.0.6
-      '@vscode/vsce-sign-win32-x64': 2.0.6
+      '@vscode/vsce-sign-alpine-arm64': 2.0.8
+      '@vscode/vsce-sign-alpine-x64': 2.0.8
+      '@vscode/vsce-sign-darwin-arm64': 2.0.8
+      '@vscode/vsce-sign-darwin-x64': 2.0.8
+      '@vscode/vsce-sign-linux-arm': 2.0.8
+      '@vscode/vsce-sign-linux-arm64': 2.0.8
+      '@vscode/vsce-sign-linux-x64': 2.0.8
+      '@vscode/vsce-sign-win32-arm64': 2.0.8
+      '@vscode/vsce-sign-win32-x64': 2.0.8
 
-  '@vscode/vsce@4.0.0(supports-color@10.2.2)':
+  '@vscode/vsce@4.1.1(supports-color@10.2.2)':
     dependencies:
       '@azure/identity': 4.14.1(supports-color@10.2.2)
       '@napi-rs/keyring': 1.3.0
@@ -23238,7 +23292,7 @@ snapshots:
       '@secretlint/secretlint-rule-preset-recommend': 10.2.2
       '@secretlint/source-creator': 10.2.2
       '@secretlint/types': 10.2.2
-      '@vscode/vsce-sign': 2.1.0
+      '@vscode/vsce-sign': 2.1.1
       azure-devops-node-api: 12.5.0
       cockatiel: 3.2.1
       commander: 12.1.0
@@ -25703,7 +25757,7 @@ snapshots:
 
   gt-react@11.1.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
-      '@generaltranslation/react-core': 11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.2.8)
+      '@generaltranslation/react-core': 11.1.6(patch_hash=82ed717a142061bb078761a91b4d10a7962b07fccea2c0af6024e2b91e4e6653)(react@19.2.8)
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.2.8
@@ -25711,7 +25765,7 @@ snapshots:
 
   gt-react@11.1.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      '@generaltranslation/react-core': 11.1.6(patch_hash=78e2157984c443f689a144c9072a720bbfb89798ec8b327b216a5b05bc9b2017)(react@19.3.1)
+      '@generaltranslation/react-core': 11.1.6(patch_hash=82ed717a142061bb078761a91b4d10a7962b07fccea2c0af6024e2b91e4e6653)(react@19.3.1)
       generaltranslation: 9.1.2
       gt-i18n: 1.0.12
       react: 19.3.1
@@ -28359,6 +28413,8 @@ snapshots:
       source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
+
+  postgres-array@3.0.4: {}
 
   postgres-bytea@1.0.1: {}
 

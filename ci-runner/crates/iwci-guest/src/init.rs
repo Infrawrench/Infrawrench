@@ -1,0 +1,288 @@
+//! The Linux machine's init: builds the job's root, starts the agent in it
+//! and powers the machine off when the agent is done.
+//!
+//! The machine image is read-only and has the directories this needs:
+//! `/.iwci/rw`, `/.iwci/ws`, `/.iwci/base` and `/.iwci/root`. The job's
+//! root is an overlay file system on `/.iwci/root`:
+//!
+//! - upper: `/.iwci/rw/upper` on a tmpfs, so it holds exactly what changed;
+//! - lower: the workspace image (the disk whose serial is `iwci-ws`, erofs,
+//!   on `/.iwci/ws`) when the machine has one, over the machine image
+//!   itself (`/` bound on `/.iwci/base`).
+//!
+//! Inside the new root `/.iwci/rw` is bound back in, so the agent can walk
+//! the upper directory, and the two lower layers are bound read-only on
+//! `/.iwci/ws` and `/.iwci/base`, so it can tell what a path was before
+//! the job. Collects never look under `/.iwci`.
+
+use std::ffi::CString;
+use std::io;
+use std::path::Path;
+
+use crate::platform::LinuxMachine;
+use crate::port::{open_linux, serve_port};
+use crate::tree::Overlay;
+
+const OVERLAY_OPTIONS: &str = "redirect_dir=off,metacopy=off,index=off,xino=off";
+
+fn c(text: &str) -> io::Result<CString> {
+    CString::new(text).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
+}
+
+fn mount(
+    source: &str,
+    target: &str,
+    fstype: Option<&str>,
+    flags: libc::c_ulong,
+    data: Option<&str>,
+) -> io::Result<()> {
+    let (source_c, target_c) = (c(source)?, c(target)?);
+    let fstype_c = fstype.map(c).transpose()?;
+    let data_c = data.map(c).transpose()?;
+    // SAFETY: every pointer is a NUL-terminated string that outlives the
+    // call, or null where the kernel allows it.
+    let result = unsafe {
+        libc::mount(
+            source_c.as_ptr(),
+            target_c.as_ptr(),
+            fstype_c.as_ref().map_or(std::ptr::null(), |s| s.as_ptr()),
+            flags,
+            data_c
+                .as_ref()
+                .map_or(std::ptr::null(), |s| s.as_ptr().cast()),
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        let e = io::Error::last_os_error();
+        Err(io::Error::new(
+            e.kind(),
+            format!("mounting {source} on {target}: {e}"),
+        ))
+    }
+}
+
+fn mkdir(path: &str) -> io::Result<()> {
+    match std::fs::create_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(io::Error::new(e.kind(), format!("making {path}: {e}"))),
+    }
+}
+
+/// A read-only bind of `source` on `target`.
+fn bind_read_only(source: &str, target: &str) -> io::Result<()> {
+    mount(source, target, None, libc::MS_BIND, None)?;
+    mount(
+        "none",
+        target,
+        None,
+        libc::MS_BIND | libc::MS_REMOUNT | libc::MS_RDONLY,
+        None,
+    )
+}
+
+/// The serial the runner gives the workspace image's disk.
+pub const WORKSPACE_SERIAL: &str = "iwci-ws";
+
+/// The workspace image's disk (`/dev/vdX`), found by its serial rather
+/// than its name: virtio-mmio devices are numbered in the reverse of the
+/// order QEMU is given them, so only the root disk's name is fixed (the
+/// runner puts it last, which makes it `vda`).
+fn workspace_disk() -> Option<String> {
+    let entries = std::fs::read_dir("/sys/block").ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("vd") {
+            continue;
+        }
+        let serial = std::fs::read_to_string(entry.path().join("serial")).unwrap_or_default();
+        if serial.trim() == WORKSPACE_SERIAL {
+            let dev = format!("/dev/{name}");
+            return Path::new(&dev).exists().then_some(dev);
+        }
+    }
+    None
+}
+
+/// Mounts the job's root and changes into it.
+pub fn build_root() -> io::Result<()> {
+    let nosuid = libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC;
+    mount("proc", "/proc", Some("proc"), nosuid, None)?;
+    mount("sysfs", "/sys", Some("sysfs"), nosuid, None)?;
+    mount(
+        "devtmpfs",
+        "/dev",
+        Some("devtmpfs"),
+        libc::MS_NOSUID,
+        Some("mode=0755"),
+    )?;
+
+    mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
+    mkdir("/.iwci/rw/upper")?;
+    mkdir("/.iwci/rw/work")?;
+    let disk = workspace_disk();
+    let workspace = disk.is_some();
+    if let Some(disk) = &disk {
+        mount(disk, "/.iwci/ws", Some("erofs"), libc::MS_RDONLY, None)?;
+    }
+    mount("/", "/.iwci/base", None, libc::MS_BIND, None)?;
+    let lower = if workspace {
+        "/.iwci/ws:/.iwci/base"
+    } else {
+        "/.iwci/base"
+    };
+    mount(
+        "overlay",
+        "/.iwci/root",
+        Some("overlay"),
+        0,
+        Some(&format!(
+            "lowerdir={lower},upperdir=/.iwci/rw/upper,workdir=/.iwci/rw/work,{OVERLAY_OPTIONS}"
+        )),
+    )?;
+
+    let root = "/.iwci/root";
+    mount(
+        "/.iwci/rw",
+        &format!("{root}/.iwci/rw"),
+        None,
+        libc::MS_BIND,
+        None,
+    )?;
+    if workspace {
+        bind_read_only("/.iwci/ws", &format!("{root}/.iwci/ws"))?;
+    }
+    bind_read_only("/.iwci/base", &format!("{root}/.iwci/base"))?;
+    mount("proc", &format!("{root}/proc"), Some("proc"), nosuid, None)?;
+    mount("sysfs", &format!("{root}/sys"), Some("sysfs"), nosuid, None)?;
+    mount(
+        "devtmpfs",
+        &format!("{root}/dev"),
+        Some("devtmpfs"),
+        libc::MS_NOSUID,
+        Some("mode=0755"),
+    )?;
+    mkdir(&format!("{root}/dev/pts"))?;
+    mount(
+        "devpts",
+        &format!("{root}/dev/pts"),
+        Some("devpts"),
+        libc::MS_NOSUID | libc::MS_NOEXEC,
+        Some("ptmxmode=0666,mode=0620"),
+    )?;
+    mkdir(&format!("{root}/dev/shm"))?;
+    mount(
+        "tmpfs",
+        &format!("{root}/dev/shm"),
+        Some("tmpfs"),
+        libc::MS_NOSUID | libc::MS_NODEV,
+        Some("mode=1777"),
+    )?;
+    // devtmpfs has none of these; shells use them (`<(...)`).
+    for (link, target) in [
+        ("fd", "/proc/self/fd"),
+        ("stdin", "/proc/self/fd/0"),
+        ("stdout", "/proc/self/fd/1"),
+        ("stderr", "/proc/self/fd/2"),
+    ] {
+        let _ = std::os::unix::fs::symlink(target, format!("{root}/dev/{link}"));
+    }
+    mount(
+        "cgroup2",
+        &format!("{root}/sys/fs/cgroup"),
+        Some("cgroup2"),
+        nosuid,
+        None,
+    )?;
+    mount(
+        "tmpfs",
+        &format!("{root}/run"),
+        Some("tmpfs"),
+        libc::MS_NOSUID | libc::MS_NODEV,
+        Some("mode=0755"),
+    )?;
+
+    std::env::set_current_dir(root)?;
+    let dot = c(".")?;
+    // SAFETY: a plain system call on a NUL-terminated string.
+    if unsafe { libc::chroot(dot.as_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    std::env::set_current_dir("/")
+}
+
+/// The environment every script starts from.
+const ENVIRONMENT: [(&str, &str); 6] = [
+    (
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    ),
+    ("HOME", "/root"),
+    ("USER", "root"),
+    ("LANG", "C.UTF-8"),
+    ("LC_ALL", "C.UTF-8"),
+    ("DEBIAN_FRONTEND", "noninteractive"),
+];
+
+fn power_off() -> ! {
+    // SAFETY: plain system calls; the machine stops here.
+    unsafe {
+        libc::sync();
+        libc::reboot(libc::RB_POWER_OFF);
+    }
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+/// Serves the runner from inside the job's root.
+pub fn agent() -> io::Result<()> {
+    let port = open_linux()?;
+    let mut tree = Overlay::linux();
+    serve_port(port, &LinuxMachine, &mut tree)
+}
+
+/// Runs as the machine's PID 1. Never returns: the machine powers off when
+/// the agent ends, or when the root cannot be built.
+pub fn run() -> ! {
+    if let Err(e) = build_root() {
+        eprintln!("iwci-guest: could not build the job's root: {e}");
+        power_off();
+    }
+    for (key, value) in ENVIRONMENT {
+        // SAFETY: the process has one thread so far.
+        unsafe { std::env::set_var(key, value) };
+    }
+    // SAFETY: the process has one thread, so the child may do anything.
+    let agent_pid = unsafe { libc::fork() };
+    if agent_pid < 0 {
+        eprintln!(
+            "iwci-guest: could not start the agent: {}",
+            io::Error::last_os_error()
+        );
+        power_off();
+    }
+    if agent_pid == 0 {
+        let code = match agent() {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("iwci-guest: {e}");
+                1
+            }
+        };
+        std::process::exit(code);
+    }
+    // PID 1 reaps every orphan until the agent itself ends.
+    loop {
+        let mut status = 0;
+        // SAFETY: a plain system call with a valid out pointer.
+        let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
+        if pid == agent_pid {
+            power_off();
+        }
+        if pid < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
+            power_off();
+        }
+    }
+}

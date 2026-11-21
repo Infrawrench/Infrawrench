@@ -339,12 +339,15 @@ const TAB_KINDS = [
   "iac",
   "environment-diff",
   "environments",
+  "env-files",
   "ssh-fanout",
   "metric-alerts",
   "probes",
+  "heartbeats",
   "status-pages",
   "quotas",
   "price-catalog",
+  "migration-estimates",
   "incidents",
   "slos",
   "services",
@@ -380,6 +383,11 @@ const TabTarget = Schema.Struct({
    * Never used to invalidate the tab, like `reportId`.
    */
   canvasId: Schema.optionalKey(Uuid),
+  /**
+   * Which estimate the Migration estimates tab was last on. Omitted for the
+   * list view. Never used to invalidate the tab, like `reportId`.
+   */
+  estimateId: Schema.optionalKey(Uuid),
   /**
    * Which SLO the SLOs tab was last on. Omitted for the list view. Never used
    * to invalidate the tab: a deleted SLO just lands on the list.

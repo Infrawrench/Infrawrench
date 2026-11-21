@@ -15,7 +15,7 @@ You need four values from the OCI Console, plus the region your tenancy was crea
 3. **API key fingerprint** and **private key**: on **My profile**, open **API keys** and choose **Add API key**. Let the Console generate the key pair, download the private key, then copy the fingerprint the Console shows. Paste the whole private key file, including the `BEGIN` and `END` lines. Keys with a passphrase aren't supported. Export an unencrypted copy with `openssl rsa -in key.pem -out key-unencrypted.pem`.
 4. **Home region**: pick it from the list (it's shown on the Tenancy page). Resources are still listed in every subscribed region.
 
-<insert [Oracle Cloud add-account form with the tenancy OCID, user OCID, fingerprint, private key and home region fields filled in] here>
+![Oracle Cloud add-account form with the tenancy OCID, user OCID, fingerprint, private key and home region fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/oracle-cloud/add-account.png)
 
 ### Grant permissions
 

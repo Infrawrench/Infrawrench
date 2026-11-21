@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The unattended install of the windows-11-arm machine image. build.sh copies
+  this onto the unattend ISO after filling in the @...@ placeholders:
+
+    @LANGUAGE@        the ISO's language (en-US unless build.sh is given another)
+    @IMAGE_NAME@      the edition installed from the ISO (/IMAGE/NAME)
+    @PRODUCT_KEY@     Microsoft's public KMS client setup key for that
+                      edition (https://learn.microsoft.com/windows-server/get-started/kms-client-activation-keys),
+                      which installs without activating; the operator
+                      brings the licence
+    @RUNNER_PASSWORD@ the `runner` account's password, generated per build
+                      and never written anywhere but the unattend ISO
+    @DRIVER_PATHS@    one PathAndCredentials per virtio driver and drive
+                      letter, because the unattend ISO's letter in Windows
+                      PE depends on the order the firmware finds the media
+
+  Written after Arm's working Windows 11 on Arm unattend
+  (https://github.com/jasonrandrews/win11arm, resources/autounattend.xml):
+  arm64 components, the LabConfig bypasses, and the virtio drivers loaded
+  in windowsPE so Setup sees the virtio disk. The component reference is
+  https://learn.microsoft.com/windows-hardware/customize/desktop/unattend/.
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+          xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>@LANGUAGE@</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>@LANGUAGE@</InputLocale>
+      <SystemLocale>@LANGUAGE@</SystemLocale>
+      <UILanguage>@LANGUAGE@</UILanguage>
+      <UserLocale>@LANGUAGE@</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <!-- viostor (the disk), NetKVM, vioserial (the agent's port) and
+           viorng, from virtio-win's w11\ARM64 folders. Drivers loaded here
+           are also added to the installed system, which boots from the
+           virtio disk. -->
+      <DriverPaths>
+        <!-- @DRIVER_PATHS@ -->
+      </DriverPaths>
+    </component>
+
+    <component name="Microsoft-Windows-Setup" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <!-- The machine has no TPM and no Secure Boot keys. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+
+      <Diagnostics>
+        <OptIn>false</OptIn>
+      </Diagnostics>
+      <!-- No downloads during Setup: what the ISO has is what is installed. -->
+      <DynamicUpdate>
+        <Enable>false</Enable>
+        <WillShowUI>Never</WillShowUI>
+      </DynamicUpdate>
+
+      <DiskConfiguration>
+        <WillShowUI>OnError</WillShowUI>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>260</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>@IMAGE_NAME@</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <InstallToAvailablePartition>false</InstallToAvailablePartition>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>runner</FullName>
+        <Organization>iwci</Organization>
+        <ProductKey>
+          <Key>@PRODUCT_KEY@</Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+    </component>
+  </settings>
+
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>iwci</ComputerName>
+      <TimeZone>UTC</TimeZone>
+      <RegisteredOwner>runner</RegisteredOwner>
+      <RegisteredOrganization>iwci</RegisteredOrganization>
+    </component>
+    <component name="Microsoft-Windows-Security-SPP-UX" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SkipAutoActivation>true</SkipAutoActivation>
+    </component>
+    <component name="Microsoft-Windows-SQMApi" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <CEIPEnabled>0</CEIPEnabled>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <!-- UAC stays on (App Installer, and so winget, refuses to run with
+             it off) but administrators are elevated without a prompt. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 0 /f</Path>
+        </RunSynchronousCommand>
+        <!-- Keep Windows Update from starting before setup.ps1 turns it off. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU /v NoAutoUpdate /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE /v BypassNRO /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>@LANGUAGE@</InputLocale>
+      <SystemLocale>@LANGUAGE@</SystemLocale>
+      <UILanguage>@LANGUAGE@</UILanguage>
+      <UserLocale>@LANGUAGE@</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="arm64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+        <VMModeOptimizations>
+          <SkipWinREInitialization>true</SkipWinREInitialization>
+        </VMModeOptimizations>
+      </OOBE>
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>runner</Name>
+            <DisplayName>runner</DisplayName>
+            <Description>Runs iwci jobs</Description>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>@RUNNER_PASSWORD@</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+      <!-- One automatic logon, for FirstLogonCommands: winget only works in
+           a logged-on user's session. setup.ps1 clears what is left of it,
+           so the finished image never logs anyone on. -->
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+        <Username>runner</Username>
+        <Password>
+          <Value>@RUNNER_PASSWORD@</Value>
+          <PlainText>true</PlainText>
+        </Password>
+      </AutoLogon>
+      <FirstLogonCommands>
+        <!-- setup.ps1 is on the unattend ISO, whose letter is not fixed: the
+             drive with iwci-unattend.tag at its root is the one. -->
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>iwci image setup</Description>
+          <CommandLine>cmd.exe /c for %d in (D E F G H I J K) do @if exist %d:\iwci-unattend.tag powershell.exe -NoProfile -ExecutionPolicy Bypass -File %d:\setup.ps1 -Source %d:\</CommandLine>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

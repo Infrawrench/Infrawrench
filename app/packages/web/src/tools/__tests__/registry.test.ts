@@ -44,6 +44,11 @@ vi.mock("../k8s-efficiency", () => ({
     { name: "ke1", title: "KE1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../commitment-reports", () => ({
+  commitmentReportTools: () => [
+    { name: "cm1", title: "CM1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../cost-alerts", () => ({
   costAlertTools: () => [
     { name: "ca1", title: "CA1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -92,6 +97,11 @@ vi.mock("../carbon", () => ({
 vi.mock("../price-catalog", () => ({
   priceCatalogTools: () => [
     { name: "pc1", title: "PC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
+vi.mock("../migration-estimates", () => ({
+  migrationEstimateTools: () => [
+    { name: "me1", title: "ME1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
 vi.mock("../instance-pricing", () => ({
@@ -185,12 +195,14 @@ describe("getToolRegistry", () => {
     expect(names).toContain("cr1");
     expect(names).toContain("cv1");
     expect(names).toContain("ke1");
+    expect(names).toContain("cm1");
     expect(names).toContain("ca1");
     expect(names).toContain("iv1");
     expect(names).toContain("m1");
     expect(names).toContain("cb1");
     expect(names).toContain("st1");
     expect(names).toContain("pc1");
+    expect(names).toContain("me1");
     expect(names).toContain("ip1");
     expect(names).toContain("gh1");
     expect(names).toContain("sv1");

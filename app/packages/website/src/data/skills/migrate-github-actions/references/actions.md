@@ -4,16 +4,18 @@ There are no actions. Each `uses:` step is dropped, becomes workspace or job con
 
 ## Setup and checkout
 
-| Action                                             | Replacement                                                                                                                                          |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `actions/checkout`                                 | Drop it. Every job starts in the commit's files at `/app`. There is no `.git`; see `limits.md` for jobs that need history.                           |
-| `actions/setup-node`, `pnpm/action-setup`          | `using: env:bash-node@24` (Node 24, `npm`, `pnpm`, `npx`), and `workspace: { deps: [pnpm] }` instead of the install step.                            |
-| `oven-sh/setup-bun`                                | `workspace: { deps: [bun] }` installs from `bun.lock`. Jobs run the scripts with `node`; there is no `bun` command, so `bun test` needs a cloud job. |
-| `actions/setup-python`                             | `using: env:python@3.13`, and `deps: [pip]` (reads `pylock.toml` or `requirements.txt`; `- pip: { file: requirements/ci.txt }` for another).         |
-| `actions/setup-go`                                 | `using: env:go@1.27` (1.23 to 1.27), and `deps: [go]` for `go.sum`.                                                                                  |
-| `shivammathur/setup-php`                           | `using: env:php@8.4` (8.1 to 8.5), and `deps: [composer]`.                                                                                           |
-| `dtolnay/rust-toolchain`, `actions-rs/*`           | Rust does not compile in a job. Make the job a cloud job (`cloud: aws/vm` or similar) and install the toolchain in its script.                       |
-| `actions/setup-java`, `setup-dotnet`, `setup-ruby` | No environment for these yet. Make the job a cloud job with an `image:` that has the runtime.                                                        |
+| Action                                    | Replacement                                                                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actions/checkout`                        | Drop it. Every job starts in the commit's files at `/app`. There is no `.git`; see `limits.md` for jobs that need history.                                                                               |
+| `actions/setup-node`, `pnpm/action-setup` | `using: env:bash-node@24` (Node 24, `npm`, `pnpm`, `npx`), and `workspace: { deps: [pnpm] }` (or `[npm]` for `package-lock.json`) instead of the install step.                                           |
+| `oven-sh/setup-bun`                       | `tools: [builtin:bun@1]` (Bun 1.4.4) on `using: env:bash@5`, and `bun install --frozen-lockfile` in the script, or `deps: [{ bun: { native: true } }]` when no install script matters; read `limits.md`. |
+| `actions/setup-python`                    | `using: env:python@3.13`, and `deps: [pip]` (reads `pylock.toml` or `requirements.txt`; `- pip: { file: requirements/ci.txt }` for another).                                                             |
+| `actions/setup-go`                        | `using: env:go@1.27` (1.23 to 1.27), and `deps: [go]` for `go.sum`.                                                                                                                                      |
+| `shivammathur/setup-php`                  | `using: env:php@8.4` (8.1 to 8.5), and `deps: [composer]`.                                                                                                                                               |
+| `dtolnay/rust-toolchain`, `actions-rs/*`  | `tools: [builtin:rust@1.100]` in an `env:bash@5` job (rustfmt and clippy included), with `workspace: { deps: [cargo] }`; see `limits.md`. A non-host `targets:` needs a cloud job.                       |
+| `Swatinem/rust-cache`                     | Nothing: crates come from `deps: [cargo]`. To keep `target/` between runs, `cache: { key: ..., paths: [target] }`.                                                                                       |
+| `ruby/setup-ruby`                         | `using: env:ruby@4.0` (or `@3.4`), and `deps: [bundler]` instead of `bundler-cache: true`; see `limits.md` for Rails.                                                                                    |
+| `actions/setup-java`, `setup-dotnet`      | No environment for these yet. Make the job a cloud job with an `image:` that has the runtime.                                                                                                            |
 
 ## Caches and files between jobs
 

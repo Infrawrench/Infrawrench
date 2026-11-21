@@ -20,6 +20,9 @@ import { runbooksDomain } from "./domains/runbooks/index";
 import { pagingProvidersDomain } from "./domains/paging-providers/index";
 import { incidentsDomain } from "./domains/incidents/index";
 import { probesDomain } from "./domains/probes/index";
+import { heartbeatsDomain } from "./domains/heartbeats/index";
+import { envFilesDomain } from "./domains/env-files/index";
+import { liveDomain } from "./domains/live/index";
 import { slosDomain } from "./domains/slos/index";
 import { servicesDomain } from "./domains/services/index";
 import { scorecardsDomain } from "./domains/scorecards/index";
@@ -105,6 +108,7 @@ import { creditsDomain } from "./domains/credits/index";
 import { carbonDomain } from "./domains/carbon/index";
 import { momentDomain } from "./domains/moment/index";
 import { priceCatalogDomain } from "./domains/price-catalog/index";
+import { migrationEstimatesDomain } from "./domains/migration-estimates/index";
 import { savingsDomain } from "./domains/savings/index";
 import { savingsFindingsDomain } from "./domains/savings-findings/index";
 import { invoicesDomain } from "./domains/invoices/index";
@@ -188,6 +192,9 @@ export const DOMAINS: readonly Domain[] = [
   pagingProvidersDomain,
   incidentsDomain,
   probesDomain,
+  heartbeatsDomain,
+  envFilesDomain,
+  liveDomain,
   slosDomain,
   servicesDomain,
   scorecardsDomain,
@@ -266,6 +273,7 @@ export const DOMAINS: readonly Domain[] = [
   carbonDomain,
   momentDomain,
   priceCatalogDomain,
+  migrationEstimatesDomain,
   savingsDomain,
   savingsFindingsDomain,
   searchDomain,

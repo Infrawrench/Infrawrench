@@ -1,0 +1,5 @@
+{
+  "title": "Environment files (.infraenv)",
+  "summary": "Writes and fixes a repository's .infraenv, the committed file that says where every environment variable comes from, without ever putting a secret in it.",
+  "description": "Create, edit, check and pull .infraenv files, Infrawrench's committed replacement for .env: each variable is a literal, a resource output (resource()) or an organization secret (secret()). Use when asked to set up, migrate or change a project's environment variables or .env file in a repository that uses Infrawrench, to add a database URL or API key to the environment, or to fix `infraenv check` / `infrawrench env check` problems."
+}

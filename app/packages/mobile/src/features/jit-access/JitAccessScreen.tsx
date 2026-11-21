@@ -24,6 +24,7 @@ import { useOrgPermissions } from "@/lib/permissions";
 import { Button, Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { ChipSelect, Sheet, SheetActions, TextField } from "@/components/form";
 import { colors, radii, spacing } from "@/lib/theme";
+import { useLiveRefetch } from "@/lib/live";
 
 /**
  * Just-in-time access on a phone: ask for a cloud role under a policy, and
@@ -64,7 +65,10 @@ export default function JitAccessScreen() {
     queryKey: requestsKey,
     queryFn: () => fetchJitRequests(api, orgId),
     enabled: canRead,
-    refetchInterval: POLL_MS,
+  });
+  useLiveRefetch("jit-requests", {}, () => requests.refetch(), {
+    fallbackMs: POLL_MS,
+    enabled: canRead,
   });
   const policies = useQuery({
     queryKey: ["jit-policies", orgId],

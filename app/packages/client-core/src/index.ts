@@ -10,6 +10,28 @@ export {
 } from "./tokens";
 export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOptions } from "./fetch";
 export {
+  LIVE_TOPICS,
+  LIVE_DEBOUNCE_MS,
+  LIVE_RENEW_EARLY_MS,
+  LIVE_RENEW_RETRY_MS,
+  LIVE_SAFETY_MS,
+  connectNeonRealtime,
+  createLiveWatcher,
+  fetchLiveTicket,
+  readLiveTicket,
+  type LiveNeonClient,
+  type LiveNeonConnector,
+  type LiveNeonSubscription,
+  type LiveSealedQuery,
+  type LiveTicket,
+  type LiveTicketSource,
+  type LiveTopic,
+  type LiveTopicParams,
+  type LiveWatchOptions,
+  type LiveWatcher,
+  type LiveWatcherDeps,
+} from "./live";
+export {
   isSeatLimitResponse,
   SeatLimitReachedClientError,
   PlanRequiredClientError,
@@ -773,7 +795,13 @@ export {
 } from "./business-metric-importers";
 export { niceAxis, type AxisScale } from "./chart-axis";
 export { SERIES_COLORS, OTHER_SERIES_COLOR, FORECAST_COLOR, SCENARIO_COLOR } from "./chart-colors";
-export { createMetricValueFormatter, type MetricValueFormatter } from "./metric-units";
+export {
+  createMetricTimeFormatter,
+  createMetricValueFormatter,
+  type MetricTimeFormatter,
+  type MetricValueFormatter,
+} from "./metric-units";
+export { metricsRequestRange } from "./metrics-window";
 export {
   dashboardCardId,
   parseDashboardCardId,
@@ -788,6 +816,9 @@ export {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
   getAccountRootType,
+  getDetailChildTypes,
+  isDetailChildRow,
+  type DetailChildType,
   type SectionTypeDef,
   type SectionResource,
   type SectionCategoryState,
@@ -984,6 +1015,7 @@ export * from "./environment-diff";
 export * from "./environments";
 export * from "./schedules";
 export * from "./probes";
+export * from "./heartbeats";
 // One screen, read from across the room.
 export * from "./wallboard";
 export * from "./help-links";
@@ -997,6 +1029,7 @@ export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
+export * from "./reroll-candidates";
 export * from "./log-tail-options";
 export * from "./alert-routing";
 export * from "./event-catalog";
@@ -1028,6 +1061,8 @@ export * from "./jit-access";
 export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";
+// Saved commitment reports: metric definitions, bucket assembly, CSV.
+export * from "./commitment-reports";
 // What the actions people took actually saved, against a pre-action baseline.
 export * from "./realized-savings";
 // Status lifecycle, detected dates and saved views over every savings finder.
@@ -1081,6 +1116,10 @@ export {
 export { ciCronDue, nextCiCronDue, parseCiCron, type CiCron } from "./ci-cron";
 export { safeRelativePathSegments } from "./download-paths";
 export * from "./price-catalog";
+export * from "./migration-estimates";
+export * from "./infraenv";
+export * from "./infraenv-hooks";
+export * from "./infraenv-client";
 export * from "./custom-costs";
 export * from "./exchange-rate-csv";
 export * from "./unit-cost-export";

@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shellcheck the builtin scripts
-        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/python/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
+        run: shellcheck -x builtins/*/build.sh builtins/environments/edgejs/build.sh builtins/environments/go/build.sh builtins/environments/php-cli/build.sh builtins/environments/pglite-server/build.sh builtins/environments/git/build.sh builtins/environments/tar/build.sh builtins/environments/openssl/build.sh builtins/environments/wasix-toolchain.sh builtins/environments/bash/build.sh builtins/environments/sed/build.sh builtins/environments/python/build.sh builtins/environments/ruby/build.sh builtins/environments/patch-module.sh builtins/environments/cloud-clis/*.sh builtins/environments/php-cli/fs/bin/* builtins/lib.sh builtins/test.sh builtins/publish.sh builtins/build-cache.sh builtins/v8/archive.sh release-build.sh crates/iwci-runtime/modes/* crates/iwci-runtime/services/* crates/iwci-sandbox/tests/fixtures.sh crates/iwci-sandbox-spawn/build.sh
 
   # The lisafs server (crates/iwci-sandbox) under gVisor's real kernel, on
   # both architectures the runners are: a busybox shell and Bun run in a
@@ -204,7 +204,7 @@ jobs:
           bash builtins/npm-cli/build.sh
 
   builtins:
-    name: Builtins (gofmt, bash, tools)
+    name: Builtins (gofmt, bash, tools, bun)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     defaults:
@@ -233,13 +233,15 @@ jobs:
       # build cache (builtins/build-cache.sh, as in ci-runner-builtins.yml)
       # keys it by git/, Edge.js's wasix-libc-*.patch, lib.sh and the
       # platform, so each architecture's build is checked against the pin.
-      - name: Git, built or restored from the build cache
+      # env:bash's tar and openssl are built the same way, with the same
+      # toolchain (builtins/environments/{tar,openssl}/build.sh).
+      - name: Git, tar and OpenSSL, built or restored from the build cache
         env:
           IWCI_R2_ACCOUNT_ID: ${{ secrets.IWCI_R2_ACCOUNT_ID }}
           IWCI_R2_BUCKET: ${{ secrets.IWCI_R2_BUCKET }}
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
-        run: bash builtins/build-cache.sh build git
+        run: bash builtins/build-cache.sh build git tar openssl
 
       # Downloads are checked against the content hashes pinned in the
       # scripts, so a changed upstream package fails here. Only bash:
@@ -267,6 +269,22 @@ jobs:
           cargo build -p iwci
           SKIP_BUILD=1 bash builtins/test.sh gofmt bash tools
 
+      # builtin:bun is the official release run natively in a gVisor
+      # sandbox (`abi: native-gvisor`), so its test needs gVisor, pinned as
+      # the runner hosts pin it, and root in a scope with a cgroup subtree
+      # of its own, as the runner's unit delegates one on the hosts (see
+      # the sandbox job above). The build only downloads and checks pinned
+      # files.
+      - name: gVisor, pinned
+        run: bash crates/iwci-sandbox/tests/fixtures.sh "$RUNNER_TEMP/sandbox" | tee -a "$GITHUB_ENV"
+
+      - name: Build Bun and run it in gVisor through iwci
+        run: |
+          bash builtins/bun/build.sh
+          sudo systemd-run --scope --quiet -p Delegate=yes \
+            env PATH="$PATH" SKIP_BUILD=1 IWCI_NATIVE_SANDBOX="$IWCI_TEST_GVISOR" \
+            bash builtins/test.sh bash bun
+
       # Main only: what passed above becomes what runners resolve.
       - name: Publish to the runner pool
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -276,4 +294,4 @@ jobs:
           IWCI_R2_ACCESS_KEY_ID: ${{ secrets.IWCI_R2_ACCESS_KEY_ID }}
           IWCI_R2_SECRET_ACCESS_KEY: ${{ secrets.IWCI_R2_SECRET_ACCESS_KEY }}
         # bash-node is published by ci-runner-builtins.yml, whose job runs it under V8.
-        run: bash builtins/publish.sh dist/builtin/gofmt/* dist/environment/bash/*
+        run: bash builtins/publish.sh dist/builtin/gofmt/* dist/environment/bash/* dist/builtin/bun/*

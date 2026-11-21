@@ -1,8 +1,8 @@
 /**
  * The renderer clients of the operations areas on the cloud transport
  * (changes, IaC, schedules, leases, DORA, metric alerts, runbooks, backups,
- * query monitors, savings findings, network flow reports, status pages, log
- * workspaces, custom graphs), against a fake `CloudHttp`: what each call
+ * query monitors, savings findings, network flow reports, commitment reports,
+ * status pages, log workspaces, custom graphs), against a fake `CloudHttp`: what each call
  * sends where the wrapper shapes the request, and what the panel gets back
  * where the wrapper reshapes the answer or the error.
  */
@@ -23,6 +23,7 @@ const { createDesktopLeasesClient } = await import("../leases-client");
 const { createDesktopDoraClient } = await import("../dora-client");
 const { createDesktopSavingsFindingsClient } = await import("../savings-findings-client");
 const { createDesktopNetworkFlowReportsClient } = await import("../network-flow-reports-client");
+const { createDesktopCommitmentReportsClient } = await import("../commitment-reports-client");
 const { createCloudCustomGraphsClient } = await import("../cloud-custom-graphs");
 const { previewCloudMetricAlertSelector, listCloudMetricAlertEvents } =
   await import("../cloud-metric-alerts");
@@ -253,6 +254,57 @@ describe("the savings findings client", () => {
     await expect(createDesktopSavingsFindingsClient().listViews()).rejects.toThrow(
       'Cloud request failed: 502 /savings-views ["upstream"]',
     );
+  });
+});
+
+describe("commitment reports", () => {
+  it("runs a saved report without a body", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { series: [] } }));
+
+    await createDesktopCommitmentReportsClient().runReport("r 1");
+
+    expect(http).toHaveBeenCalledWith({
+      method: "POST",
+      url: "/api/org/org-1/commitments/reports/r%201/run",
+    });
+  });
+
+  it("sends a report body as the contract encodes it", async () => {
+    const http = answerCloudHttp(() => ({ status: 200, json: { id: "r1" } }));
+    const input = {
+      name: "Coverage",
+      config: {
+        version: 1 as const,
+        dateRange: { kind: "relative" as const, preset: "90d" as const },
+        granularity: "weekly" as const,
+        groupBy: "account" as const,
+        filters: { providers: ["aws"] },
+        metric: "coverage" as const,
+      },
+      folderId: null,
+    };
+
+    await createDesktopCommitmentReportsClient().updateReport!("r1", input);
+
+    expect(http).toHaveBeenCalledWith({
+      method: "PUT",
+      url: "/api/org/org-1/commitments/reports/r1",
+      body: JSON.stringify(input),
+    });
+  });
+
+  it("reads report options for the editor's pickers", async () => {
+    const http = answerCloudHttp(() => ({
+      status: 200,
+      json: { providers: [], accounts: [], services: [], regions: [], commitments: [] },
+    }));
+
+    await createDesktopCommitmentReportsClient().getOptions();
+
+    expect(http).toHaveBeenCalledWith({
+      method: "GET",
+      url: "/api/org/org-1/commitments/report-options",
+    });
   });
 });
 

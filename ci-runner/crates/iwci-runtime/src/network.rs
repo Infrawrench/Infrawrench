@@ -206,6 +206,11 @@ impl JobNetwork {
     }
 
     fn route(&self, peer: SocketAddr) -> Result<Route> {
+        // A connection to the unspecified address (`0.0.0.0`, `::`) reaches
+        // the loopback, as on Linux: a test that listens on port 0 and
+        // connects to `server.address().address` connects to `::`. It went
+        // to the outside check, which refused it (ENETUNREACH).
+        let peer = normalise(peer);
         if peer.ip().is_loopback() {
             // The sandbox's loopback is real: its kernel decides.
             if let Some(stack) = &self.sandbox {
@@ -797,6 +802,102 @@ mod tests {
                 Err(NetworkError::ConnectionReset)
             ));
         }
+    }
+
+    #[test]
+    fn a_reset_from_outside_reads_as_a_reset_not_the_end_of_the_stream() {
+        // The host's sockets (wasmer's `LocalNetworking`, a job's way out):
+        // a guest that polls before it reads, as OpenSSL and every event
+        // loop do, had the reset taken by the readiness check, which reads
+        // the socket, and its read then got the end of the stream. A reset
+        // connection looked closed cleanly (vendor/README.md, virtual-net).
+        use std::os::fd::AsRawFd;
+        let tokio = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .build()
+            .unwrap();
+        let _enter = tokio.enter();
+        let host = virtual_net::host::LocalNetworking::new();
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client =
+            block_on(host.connect_tcp(any_v4(), server.local_addr().unwrap())).unwrap();
+        let (accepted, _) = server.accept().unwrap();
+        // Closed with a zero linger, the server answers with a reset.
+        let linger = libc::linger {
+            l_onoff: 1,
+            l_linger: 0,
+        };
+        let set = unsafe {
+            libc::setsockopt(
+                accepted.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_LINGER,
+                (&linger as *const libc::linger).cast(),
+                std::mem::size_of::<libc::linger>() as libc::socklen_t,
+            )
+        };
+        assert_eq!(set, 0);
+        drop(accepted);
+
+        let ready = block_on(futures::future::poll_fn(|cx| client.poll_read_ready(cx)));
+        assert_eq!(ready.unwrap(), 0, "readable, with nothing to read");
+        let mut buf = vec![MaybeUninit::<u8>::uninit(); 64];
+        assert!(
+            matches!(
+                client.try_recv(&mut buf, false),
+                Err(NetworkError::ConnectionReset)
+            ),
+            "the read after it gets the reset"
+        );
+        assert_eq!(
+            client.try_recv(&mut buf, false).unwrap(),
+            0,
+            "once, then the end"
+        );
+    }
+
+    #[test]
+    fn the_unspecified_address_connects_to_the_loopback_as_on_linux() {
+        // `server.listen(0)` and then a connect to
+        // `server.address().address`, which is `::`, as tRPC's tests do.
+        // Linux connects `::` to `::1` and `0.0.0.0` to `127.0.0.1`; neither
+        // ever leaves the job.
+        let net = JobNetwork::new(None);
+        let mut listeners = [
+            block_on(net.listen_tcp(addr("[::]:7446"), false, false, false)).unwrap(),
+            block_on(net.listen_tcp(addr("0.0.0.0:7447"), false, false, false)).unwrap(),
+        ];
+        for (peer, listener) in [("[::]:7446", 0), ("0.0.0.0:7446", 0), ("0.0.0.0:7447", 1)] {
+            let listener = &mut listeners[listener];
+            let any = if addr(peer).is_ipv4() {
+                any_v4()
+            } else {
+                addr("[::]:0")
+            };
+            let mut client = block_on(net.connect_tcp(any, addr(peer)))
+                .unwrap_or_else(|e| panic!("{peer}: {e:?}"));
+            let (mut server, _) = listener.try_accept().unwrap();
+            assert_eq!(
+                round_trip(client.as_mut(), server.as_mut(), b"hi"),
+                b"hi",
+                "{peer}"
+            );
+        }
+        // Nothing listens on the IPv6 loopback at 7447: refused, as on Linux.
+        assert!(matches!(
+            block_on(net.connect_tcp(addr("[::]:0"), addr("[::]:7447"))),
+            Err(NetworkError::ConnectionRefused)
+        ));
+        // With the internet on, the unspecified address still stays inside.
+        let fake = Arc::new(FakeOutside::default());
+        let net = JobNetwork::new(Some(Arc::new(OutsideNet::new(
+            fake.clone(),
+            HashSet::new(),
+        ))));
+        let _listener = block_on(net.listen_tcp(addr("[::]:7448"), false, false, false)).unwrap();
+        assert!(block_on(net.connect_tcp(addr("[::]:0"), addr("[::]:7448"))).is_ok());
+        assert!(block_on(net.connect_tcp(any_v4(), addr("0.0.0.0:7449"))).is_err());
+        assert!(fake.connects.lock().unwrap().is_empty());
     }
 
     #[test]

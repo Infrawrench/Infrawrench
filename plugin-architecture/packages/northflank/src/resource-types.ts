@@ -89,6 +89,14 @@ const ServiceType = rt({
     "A Northflank service: a combined (build and deploy), deployment (image) or build service",
   parentTypeId: T.project,
   showInSidebar: true,
+  // A build service only runs builds; the other two run the app.
+  equivalence: [
+    {
+      category: "container-app",
+      when: { fieldKey: "serviceType", oneOf: ["combined", "deployment"] },
+      createFields: { kind: "deployment" },
+    },
+  ],
   fields: [
     f("name", "Name", { editable: false }),
     f("projectId", "Project", { editable: false }),
@@ -105,8 +113,13 @@ const ServiceType = rt({
       kind: "number",
       required: false,
       description: "Number of running instances. 0 pauses the service.",
+      sizing: "node-count",
     }),
-    f("deploymentPlan", "Compute Plan", { required: false, editable: false }),
+    f("deploymentPlan", "Compute Plan", {
+      required: false,
+      editable: false,
+      sizing: "instance-type",
+    }),
     f("buildPlan", "Build Plan", { required: false, editable: false }),
     f("image", "Image", { showcase: true, required: false, editable: false }),
     f("repository", "Repository", { showcase: true, required: false, editable: false }),
@@ -162,7 +175,14 @@ const JobType = rt({
     f("schedule", "Schedule", {
       showcase: true,
       required: false,
-      description: "Cron expression (cron jobs only), e.g. 0 3 * * * for 03:00 UTC daily.",
+      description: "Cron expression (cron jobs only), e.g. 0 3 * * * for 03:00 daily.",
+      schedule: "cron",
+    }),
+    f("timeZone", "Time Zone", {
+      required: false,
+      editable: false,
+      schedule: "timezone",
+      description: "IANA zone the schedule is read in. Empty means UTC.",
     }),
     f("concurrencyPolicy", "Concurrency", {
       kind: "enum",
@@ -203,6 +223,28 @@ const AddonType = rt({
     "A managed Northflank addon: PostgreSQL, MySQL, MongoDB, Redis, RabbitMQ, MinIO and other databases and stores",
   parentTypeId: T.project,
   showInSidebar: true,
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "addonType", oneOf: ["postgresql"] },
+      createFields: { addonType: "postgresql" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "addonType", oneOf: ["mysql"] },
+      createFields: { addonType: "mysql" },
+    },
+    {
+      category: "managed-redis",
+      when: { fieldKey: "addonType", oneOf: ["redis"] },
+      createFields: { addonType: "redis" },
+    },
+    {
+      category: "managed-mongodb",
+      when: { fieldKey: "addonType", oneOf: ["mongodb"] },
+      createFields: { addonType: "mongodb" },
+    },
+  ],
   fields: [
     f("name", "Name", { editable: false }),
     f("projectId", "Project", { editable: false }),
@@ -211,11 +253,26 @@ const AddonType = rt({
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("version", "Version", { showcase: true, required: false, editable: false }),
     f("lifecycleStatus", "Version Support", { required: false, editable: false }),
-    f("deploymentPlan", "Compute Plan", { required: false, editable: false }),
-    f("replicas", "Replicas", { showcase: true, kind: "number", required: false, editable: false }),
-    f("storageMb", "Storage (MB)", { kind: "number", required: false, editable: false }),
+    f("deploymentPlan", "Compute Plan", {
+      required: false,
+      editable: false,
+      sizing: "instance-type",
+    }),
+    f("replicas", "Replicas", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "node-count",
+    }),
+    f("storageMb", "Storage (MB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-mb",
+    }),
     f("storageClass", "Storage Class", { required: false, editable: false }),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false, sizing: "region" }),
     f("tlsEnabled", "TLS", {
       kind: "boolean",
       required: false,
@@ -333,10 +390,12 @@ const VolumeType = rt({
   id: T.volume,
   description: "A persistent volume attached to a Northflank service or job",
   parentTypeId: T.project,
+  equivalence: "block-volume",
   fields: [
     f("name", "Name", { editable: false }),
     f("projectId", "Project", { editable: false }),
     f("storageSizeMb", "Size (MB)", {
+      sizing: "disk-mb",
       kind: "number",
       required: false,
       description: "Volumes can grow but not shrink.",

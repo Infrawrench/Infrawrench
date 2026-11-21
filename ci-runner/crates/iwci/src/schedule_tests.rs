@@ -9,6 +9,9 @@ mod split_tests;
 #[path = "schedule_inflight_tests.rs"]
 mod inflight_tests;
 
+#[path = "schedule_machines_tests.rs"]
+mod machines_tests;
+
 struct FakeWorkspaces {
     builds: AtomicUsize,
     /// Builds that installed dependencies, not just checked out.
@@ -449,6 +452,7 @@ fn run_full(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -966,6 +970,7 @@ fn run_sharing_with(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1105,6 +1110,7 @@ fn a_cancelled_run_leaves_nothing_waiting() {
                 split: None,
                 helping: None,
                 inflight: None,
+                machines: None,
                 downloads: None,
                 cancel: Some(cancel.clone()),
                 access: Default::default(),
@@ -1222,10 +1228,12 @@ fn a_job_cannot_write_past_its_memory_and_its_bytes_are_given_back() {
     );
 }
 
-/// Caches in memory: key to entries, plus what was saved, in order.
+/// Caches in memory: key to entries and their modes, plus what was saved,
+/// in order.
 #[derive(Default)]
 struct MemoryCaches {
     entries: Mutex<HashMap<String, Vec<iwci_vfs::Entry>>>,
+    modes: Mutex<HashMap<String, iwci_vfs::archive::ModeList>>,
     saved: Mutex<Vec<String>>,
 }
 
@@ -1237,11 +1245,20 @@ impl Caches for MemoryCaches {
         _max: u64,
     ) -> Result<Option<Restored>, String> {
         let entries = self.entries.lock().unwrap();
+        let modes = |k: &str| {
+            self.modes
+                .lock()
+                .unwrap()
+                .get(k)
+                .cloned()
+                .unwrap_or_default()
+        };
         if let Some(e) = entries.get(key) {
             return Ok(Some(Restored {
                 key: key.into(),
                 exact: true,
                 entries: e.clone(),
+                modes: modes(key),
             }));
         }
         for prefix in restore_keys {
@@ -1250,21 +1267,27 @@ impl Caches for MemoryCaches {
                     key: k.clone(),
                     exact: false,
                     entries: e.clone(),
+                    modes: modes(k),
                 }));
             }
         }
         Ok(None)
     }
-    fn save(
+    fn save_with_modes(
         &self,
         key: &str,
         _restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String> {
         self.entries
             .lock()
             .unwrap()
             .insert(key.into(), entries.to_vec());
+        self.modes
+            .lock()
+            .unwrap()
+            .insert(key.into(), modes.to_vec());
         self.saved.lock().unwrap().push(key.into());
         Ok(())
     }
@@ -1493,6 +1516,7 @@ fn runs_share_the_runners_slots() {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1505,11 +1529,115 @@ fn runs_share_the_runners_slots() {
     });
     assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
     assert_eq!(slots.in_use(), 0);
-    let held = slots.try_acquire().unwrap();
-    let _second = slots.try_acquire().unwrap();
-    assert!(slots.try_acquire().is_none(), "full is full");
+    let held = slots.try_acquire(1).unwrap();
+    let _second = slots.try_acquire(1).unwrap();
+    assert!(slots.try_acquire(1).is_none(), "full is full");
     drop(held);
     assert_eq!(slots.free(), 1);
+}
+
+/// Runs `p` on `slots`, a run at a time with room for every job.
+fn run_on_slots(p: &Plan, slots: &Arc<Slots>) -> (RunReport, FakeExecutor) {
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let commits = FakeCommitter(Mutex::default());
+    let options = Options {
+        parallelism: 8,
+        changed_paths: None,
+        base_env: vec![],
+        memory: None,
+        caches: None,
+        logs: None,
+        slots: Some(slots.clone()),
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: None,
+        split: None,
+        helping: None,
+        inflight: None,
+        machines: None,
+        downloads: None,
+        cancel: None,
+        access: Default::default(),
+    };
+    let report = run(p, &ws, &FakeTools, &exec, &commits, &options);
+    (report, exec)
+}
+
+#[test]
+fn a_job_with_cpus_holds_that_many_vcpus_of_slots() {
+    // Two vCPUs, four jobs to each: eight slots. A job of `cpus: 1` holds
+    // four of them, so two run at once where eight jobs of a share would.
+    let slots = Arc::new(Slots::for_cpus(2, 4));
+    let p = plan(
+        "name: x\njobs:\n  t:\n    using: builtin:slow@1\n    matrix: [a, b, c, d]\n    cpus: 1\n",
+    );
+    let (report, exec) = run_on_slots(&p, &slots);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert_eq!(exec.most_at_once.load(Ordering::SeqCst), 2);
+    assert!(report.jobs.iter().all(|j| j.cpus == Some(1)));
+    assert_eq!(slots.in_use(), 0);
+    let env = exec.seen_env.lock().unwrap()["t[a]"].clone();
+    assert!(env.contains(&("IWCI_CPUS".into(), "1".into())), "{env:?}");
+}
+
+#[test]
+fn a_job_asking_for_more_vcpus_than_the_runner_has_gets_them_all() {
+    let slots = Arc::new(Slots::for_cpus(2, 4));
+    let p = plan(
+        "name: x\njobs:\n  big:\n    using: builtin:ok@1\n    cpus: 8\n  small:\n    using: builtin:ok@1\n",
+    );
+    let (report, exec) = run_on_slots(&p, &slots);
+    assert!(report.passed(), "{:#?}", report.jobs);
+    let big = report.jobs.iter().find(|j| j.id == "big").unwrap();
+    assert_eq!(big.cpus, Some(2), "told and billed what it held");
+    let small = report.jobs.iter().find(|j| j.id == "small").unwrap();
+    assert_eq!(small.cpus, None);
+    let seen = exec.seen_env.lock().unwrap();
+    assert!(seen["big"].contains(&("IWCI_CPUS".into(), "2".into())));
+    assert!(!seen["small"].iter().any(|(k, _)| k == "IWCI_CPUS"));
+    drop(seen);
+    // Billed at the whole vCPUs it held, against a quarter of one.
+    let usage = crate::runner::usage_of(&report, 4);
+    let secs = |j: &JobReport| j.duration_ms as f64 / 1000.0;
+    let want = secs(big) * 2.0 + secs(small) / 4.0;
+    assert!((usage.vcpu_seconds - want).abs() < 1e-9, "{usage:?}");
+}
+
+#[test]
+fn a_job_gathering_slots_is_not_passed_by_jobs_of_one() {
+    let slots = Arc::new(Slots::for_cpus(2, 2));
+    assert_eq!(slots.for_job(None), 1);
+    assert_eq!(slots.for_job(Some(1)), 2);
+    assert_eq!(slots.for_job(Some(9)), 4, "at most every slot");
+    let one = slots.acquire(1);
+    let waiting = slots.clone();
+    let big = std::thread::spawn(move || waiting.acquire(4).held());
+    while !slots.gathering() {
+        std::thread::yield_now();
+    }
+    // Three slots are free, but they are the gathering job's to wait for.
+    assert_eq!(slots.free(), 3);
+    assert!(slots.try_acquire(1).is_none());
+    let behind = slots.clone();
+    let single = std::thread::spawn(move || behind.acquire(1).held());
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!single.is_finished(), "a job of one waits behind it");
+    drop(one);
+    assert_eq!(big.join().unwrap(), 4);
+    assert_eq!(single.join().unwrap(), 1);
+    assert_eq!(slots.in_use(), 0);
 }
 
 #[test]
@@ -1551,6 +1679,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1822,6 +1951,7 @@ fn run_cached_on(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2119,13 +2249,15 @@ impl Caches for SlowCaches {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.inner.restore(key, restore_keys, max)
     }
-    fn save(
+    fn save_with_modes(
         &self,
         key: &str,
         restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String> {
-        self.inner.save(key, restore_keys, entries)
+        self.inner
+            .save_with_modes(key, restore_keys, entries, modes)
     }
 }
 
@@ -2165,6 +2297,7 @@ fn run_looked_up(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2225,7 +2358,7 @@ fn a_hit_takes_no_slot_and_no_memory() {
     // Every slot of the runner is taken by other runs, and so is all of
     // its memory: a job that had to run would wait for ever. Hits do not.
     let slots = Arc::new(Slots::new(1));
-    let _held = slots.acquire();
+    let _held = slots.acquire(1);
     let budget = Arc::new(MemoryBudget::new(1 << 30));
     assert!(budget.try_take(1 << 30));
     let (second, ran, _) = run_looked_up(&p, &store, 4, Some(slots.clone()), Some(budget.clone()));
@@ -2543,6 +2676,7 @@ fn run_downloads(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
         cancel: None,
         access: Default::default(),
@@ -2694,6 +2828,7 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2774,6 +2909,7 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2854,6 +2990,7 @@ fn a_run_on_a_held_budget_starts_nothing_and_says_why_when_cancelled() {
             split: None,
             helping: None,
             inflight: None,
+            machines: None,
             downloads: None,
             cancel,
             access: Default::default(),
@@ -2911,6 +3048,7 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: Some(cancel),
         access: Default::default(),
@@ -2977,6 +3115,7 @@ fn run_access(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel,
         access,
@@ -3130,6 +3269,107 @@ jobs:
     for secret in [KUBE_TOKEN, KEY_LINE, DB_URL, R2_SECRET] {
         assert!(!everything.contains(secret), "{secret} leaked");
     }
+}
+
+const FILE_DB_URL: &str = "postgres://ci:file-db-hunter2@db.internal/app";
+const FILE_STRIPE: &str = "stripe-file-hunter2";
+
+#[test]
+fn an_env_file_reaches_its_job_under_its_own_env_and_is_masked() {
+    let p = plan(
+        r#"
+name: x
+jobs:
+  test:
+    using: builtin:print@1
+    env-file: { path: .infraenv, environment: staging }
+    env:
+      LOG_LEVEL: own-wins
+  other:
+    using: builtin:print@1
+"#,
+    );
+    let key = p
+        .template("test")
+        .unwrap()
+        .access
+        .env_file
+        .as_ref()
+        .unwrap()
+        .key();
+    let lent: crate::lent::Lent = serde_json::from_value(serde_json::json!({
+        "env-files": {
+            key.clone(): {
+                "env": {
+                    "NODE_ENV": [{ "text": "staging" }],
+                    "LOG_LEVEL": [{ "text": "debug" }],
+                    "DATABASE_URL": FILE_DB_URL
+                },
+                "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" }
+            }
+        }
+    }))
+    .unwrap();
+    lent.check().unwrap();
+    let access = RunAccess {
+        lent: Arc::new(lent),
+        trusted: true,
+        external: None,
+    };
+    let secrets = BTreeMap::from([("STRIPE_SECRET_KEY".to_string(), FILE_STRIPE.to_string())]);
+    let (report, exec, events) = run_access(&p, access, secrets, None, None);
+    assert_eq!(status(&report, "test"), &Status::Passed, "{report:#?}");
+    let env = exec.seen_env.lock().unwrap()["test"].clone();
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    assert_eq!(get("NODE_ENV").as_deref(), Some("staging"));
+    assert_eq!(get("DATABASE_URL").as_deref(), Some(FILE_DB_URL));
+    assert_eq!(get("STRIPE_KEY").as_deref(), Some(FILE_STRIPE));
+    // The job's own `env:` wins over the file.
+    assert_eq!(get("LOG_LEVEL").as_deref(), Some("own-wins"));
+    assert!(
+        !exec.seen_env.lock().unwrap()["other"]
+            .iter()
+            .any(|(k, _)| k == "DATABASE_URL" || k == "STRIPE_KEY")
+    );
+
+    let test = report.jobs.iter().find(|j| j.id == "test").unwrap();
+    let stdout = &test.execution.as_ref().unwrap().stdout;
+    assert!(stdout.contains("DATABASE_URL=***"), "{stdout}");
+    assert!(stdout.contains("STRIPE_KEY=***"), "{stdout}");
+    assert!(stdout.contains("NODE_ENV=staging"), "{stdout}");
+    assert_eq!(
+        test.access.env_file.as_ref().map(|f| f.path.as_str()),
+        Some(".infraenv")
+    );
+    // Nothing secret anywhere a report or the live log goes.
+    let everything = format!(
+        "{}{}",
+        serde_json::to_string(&report).unwrap(),
+        serde_json::to_string(&events).unwrap()
+    );
+    for secret in [FILE_DB_URL, FILE_STRIPE] {
+        assert!(!everything.contains(secret), "{secret} leaked");
+    }
+
+    // A CI secret the run does not have fails the job before it starts,
+    // rather than leave the variable empty.
+    let lent: crate::lent::Lent = serde_json::from_value(serde_json::json!({
+        "env-files": { key: { "secrets": { "STRIPE_KEY": "STRIPE_SECRET_KEY" } } }
+    }))
+    .unwrap();
+    let access = RunAccess {
+        lent: Arc::new(lent),
+        trusted: true,
+        external: None,
+    };
+    let (report, exec, _) = run_access(&p, access, BTreeMap::new(), None, None);
+    match status(&report, "test") {
+        Status::Failed { reason } => {
+            assert!(reason.contains("not a CI secret"), "{reason}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(ran(&exec), ["other"]);
 }
 
 #[test]
@@ -3597,6 +3837,7 @@ fn run_ordered(
         split: None,
         helping: None,
         inflight: None,
+        machines: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -4372,4 +4613,40 @@ fn a_package_job_is_keyed_on_its_part_of_a_pnpm_lockfile() {
         key("not: [a", "t", Some("app")),
         key("not: [b", "t", Some("app"))
     );
+}
+
+/// A list of artifacts carries its files' modes in a record beside them,
+/// which a job they are handed to gets back, and which is not a file of
+/// the list.
+#[test]
+fn artifacts_carry_their_modes() {
+    let fs = SnapshotBuilder::new()
+        .freeze()
+        .fork_limited(Arc::new(JobBudget {
+            cap: 1 << 20,
+            used: AtomicU64::new(0),
+            peak: AtomicU64::new(0),
+            refused: AtomicBool::new(false),
+            gauge: None,
+        }));
+    fs.write("/out/app", b"\x7fELF").unwrap();
+    fs.write("/out/notes.txt", b"hi").unwrap();
+    fs.modes().set(std::path::Path::new("/out/app"), 0o755);
+    let entries = with_modes(&fs, fs.entries_under(&["/out"]));
+    assert!(
+        entries
+            .iter()
+            .any(|e| entry_path(e) == std::path::Path::new(ARTIFACT_MODES))
+    );
+    let (files, modes) = artifact_modes(&entries);
+    assert!(
+        files
+            .iter()
+            .all(|e| entry_path(e) != std::path::Path::new(ARTIFACT_MODES))
+    );
+    assert_eq!(modes, vec![(PathBuf::from("/out/app"), 0o755)]);
+    // A list from before the record, or of files with no mode, has none.
+    let (plain, none) = artifact_modes(&files);
+    assert_eq!(plain.len(), files.len());
+    assert!(none.is_empty());
 }

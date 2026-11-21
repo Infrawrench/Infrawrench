@@ -1,0 +1,33 @@
+{
+  "name": "@infrawrench/cli",
+  "version": "0.0.0",
+  "description": "The infrawrench command without the desktop app: costs, resources, dashboards, environment files and the rest of Infrawrench Cloud from a terminal, a CI job or a server.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Infrawrench Services, Inc. <astrid@infrawrench.com> (https://infrawrench.com)",
+  "homepage": "https://infrawrench.com/docs/features/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infrawrench/Infrawrench.git",
+    "directory": "app/packages/desktop"
+  },
+  "keywords": [
+    "infrawrench",
+    "cli",
+    "cloud",
+    "finops",
+    "infrastructure",
+    "costs"
+  ],
+  "bin": {
+    "infrawrench": "infrawrench.cjs"
+  },
+  "files": [
+    "infrawrench.cjs",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
+}

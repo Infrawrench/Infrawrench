@@ -4,6 +4,8 @@ import { useGT } from "gt-react";
 import {
   useUIStore,
   useTabId,
+  useLiveWatcher,
+  watchLive,
   resourceTabTitle,
   RESOURCES_CHANGED_EVENT,
   REFRESH_RESOURCE_EVENT,
@@ -38,6 +40,7 @@ interface ResourceDetailResponse {
     displayName: string;
     pluralDisplayName: string;
     supportsCreate: boolean;
+    topLevel?: boolean;
   }[];
   pluginId: string;
   pluginLogoSvg: string;
@@ -91,6 +94,7 @@ interface ResourceDetailResponse {
   storageBucketName?: string;
   supportsMetrics?: boolean;
   schedulable?: boolean;
+  hasSchedule?: boolean;
 }
 
 export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
@@ -173,6 +177,7 @@ export function ResourcePanel({
 }: ResourcePanelProps) {
   const gt = useGT();
   const tabId = useTabId();
+  const live = useLiveWatcher();
   const [store, setStore] = useState<{
     forKey: string;
     data: ResourceDetailResponse | null;
@@ -290,20 +295,23 @@ export function ResourcePanel({
       setPromptModal(detail);
     }
 
-    const id = setInterval(refreshFromDb, 30_000);
+    // Re-read stored state when a sync touches this resource (every 30s without a push channel).
+    const stopLive = watchLive(live, "resource", { resourceId }, refreshFromDb, {
+      fallbackMs: 30_000,
+    });
     window.addEventListener(RESOURCES_CHANGED_EVENT, refreshFromDb);
     window.addEventListener(REFRESH_RESOURCE_EVENT, refreshFromProvider);
     window.addEventListener(INVOKE_PLUGIN_ACTION_EVENT, handlePluginAction);
     window.addEventListener(PROMPT_NOSQL_COMMAND_EVENT, handlePromptNoSqlCommand);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stopLive();
       window.removeEventListener(RESOURCES_CHANGED_EVENT, refreshFromDb);
       window.removeEventListener(REFRESH_RESOURCE_EVENT, refreshFromProvider);
       window.removeEventListener(INVOKE_PLUGIN_ACTION_EVENT, handlePluginAction);
       window.removeEventListener(PROMPT_NOSQL_COMMAND_EVENT, handlePromptNoSqlCommand);
     };
-  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent]);
+  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent, live]);
 
   if (error) {
     return (
@@ -372,6 +380,7 @@ export function ResourcePanel({
         initialCwd={initialCwd}
         supportsMetrics={data.supportsMetrics}
         schedulable={data.schedulable}
+        hasSchedule={data.hasSchedule}
         resourceFields={data.resourceFields}
         parentResourceId={parent}
       />

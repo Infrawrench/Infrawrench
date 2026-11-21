@@ -4,9 +4,10 @@ export const S3BucketResourceType = rt({
   name: "S3 Bucket",
   id: "s3-bucket",
   description: "An Amazon S3 object storage bucket",
+  equivalence: "object-storage",
   fields: [
     f("name", "Bucket Name"),
-    f("region", "Region", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false, sizing: "region" }),
     f("creationDate", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("bucketArn", "Bucket ARN"), o("endpoint", "Endpoint URL")],

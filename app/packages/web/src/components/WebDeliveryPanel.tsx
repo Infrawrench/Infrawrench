@@ -15,7 +15,7 @@ export function WebDeliveryPanel({ orgId }: { orgId: string }) {
     [orgId, canEditSettings],
   );
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="w-full p-6 max-w-6xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <DeliveryPanel key={orgId} client={client} />
     </div>

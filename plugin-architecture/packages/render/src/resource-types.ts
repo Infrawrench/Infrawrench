@@ -29,6 +29,7 @@ const regionField = f("region", "Region", {
   enumValues: [...REGIONS],
   required: false,
   editable: false,
+  sizing: "region",
 });
 
 export const WorkspaceResourceType = rt({
@@ -62,6 +63,18 @@ export const ServiceResourceType = rt({
   apiDocsUrl: "https://api-docs.render.com/reference/create-service",
   description:
     "A Render service: web service, private service, background worker, cron job or static site",
+  // Long-running services only: a cron job bills per run and a static site
+  // is free hosting, neither of which another provider's container app prices.
+  equivalence: [
+    {
+      category: "container-app",
+      when: {
+        fieldKey: "serviceType",
+        oneOf: ["web_service", "private_service", "background_worker"],
+      },
+      createFields: { type: "web_service" },
+    },
+  ],
   fields: [
     f("name", "Name"),
     f("serviceType", "Type", { kind: "enum", enumValues: [...SERVICE_TYPES], editable: false }),
@@ -79,6 +92,7 @@ export const ServiceResourceType = rt({
       kind: "enum",
       enumValues: SERVICE_PLANS,
       required: false,
+      sizing: "instance-type",
       description: "Changing the instance type redeploys the service.",
     }),
     f("runtime", "Runtime", {
@@ -110,6 +124,7 @@ export const ServiceResourceType = rt({
     }),
     f("schedule", "Schedule", {
       required: false,
+      schedule: "cron",
       description: "Cron jobs only: a cron expression in UTC, e.g. 0 * * * *.",
     }),
     f("healthCheckPath", "Health Check Path", {
@@ -127,7 +142,12 @@ export const ServiceResourceType = rt({
       required: false,
       description: "Seconds Render waits after SIGTERM before SIGKILL (1 to 300).",
     }),
-    f("numInstances", "Instances", { kind: "number", required: false, editable: false }),
+    f("numInstances", "Instances", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "node-count",
+    }),
     f("autoscalingEnabled", "Autoscaling", { kind: "boolean", required: false, editable: false }),
     f("autoscalingMin", "Autoscaling Min", { kind: "number", required: false, editable: false }),
     f("autoscalingMax", "Autoscaling Max", { kind: "number", required: false, editable: false }),
@@ -291,11 +311,13 @@ export const DiskResourceType = rt({
   name: "Disk",
   id: "disk",
   description: "A persistent SSD attached to a Render service",
+  equivalence: "block-volume",
   fields: [
     f("name", "Name"),
     f("sizeGB", "Size (GB)", {
       showcase: true,
       kind: "number",
+      sizing: "disk-gb",
       description: "Disks can only grow. The service must be running for a resize to apply.",
     }),
     f("mountPath", "Mount Path", {
@@ -328,11 +350,13 @@ export const PostgresResourceType = rt({
   plural: "Postgres Databases",
   id: "postgres",
   description: "A managed Render Postgres instance",
+  equivalence: "managed-postgres",
   fields: [
     f("name", "Name"),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("plan", "Instance Type", {
       required: false,
+      sizing: "instance-type",
       description: "Changing the instance type restarts the database.",
     }),
     { ...regionField, showcase: true },
@@ -350,6 +374,7 @@ export const PostgresResourceType = rt({
       showcase: true,
       kind: "number",
       required: false,
+      sizing: "disk-gb",
       description: "Storage can only grow.",
     }),
     f("diskAutoscalingEnabled", "Storage Autoscaling", { kind: "boolean", required: false }),
@@ -447,11 +472,13 @@ export const KeyValueResourceType = rt({
   plural: "Key Value Instances",
   id: "key-value",
   description: "A managed Render Key Value (Redis-compatible Valkey) instance",
+  equivalence: "managed-redis",
   fields: [
     f("name", "Name"),
     f("status", "Status", { showcase: true, required: false, editable: false }),
     f("plan", "Instance Type", {
       showcase: true,
+      sizing: "instance-type",
       kind: "enum",
       enumValues: ["free", "starter", "standard", "pro", "pro_plus"],
       required: false,

@@ -269,7 +269,8 @@ pub enum Depth {
 }
 
 /// `pnpm`, or `pnpm: { dir: app }` to point at a lockfile below the root.
-/// The ecosystems are `pnpm`, `bun`, `go`, `cargo`, `pip` and `composer`.
+/// The ecosystems are `pnpm`, `npm`, `bun`, `go`, `cargo`, `pip`,
+/// `composer` and `bundler`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Dep {
@@ -290,6 +291,40 @@ pub struct DepOptions {
     /// `pylock.toml` or `requirements.txt`.
     #[serde(default)]
     pub file: Option<String>,
+    /// bundler only: the Ruby (`"3.4"`, `"4.0"`) to install gems for,
+    /// instead of the lock's `RUBY VERSION` or `.ruby-version`. A number
+    /// is read as its text, so `4.0` works unquoted.
+    #[serde(default, deserialize_with = "version_text")]
+    pub ruby: Option<String>,
+    /// bundler only: gems whose native extension the jobs never load,
+    /// installed without it when the runner has no build of it, rather
+    /// than failing the install.
+    #[serde(default)]
+    pub without_extensions: Option<Vec<String>>,
+    /// pnpm, npm and bun only: also install the optional dependencies built
+    /// for the runner's own Linux (turbo's and sherif's binaries), which
+    /// only a job in the native sandbox can start.
+    #[serde(default)]
+    pub native: Option<bool>,
+}
+
+/// A `major.minor` written as a string or as a YAML number.
+fn version_text<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Text {
+        Str(String),
+        Int(u64),
+        Float(f64),
+    }
+    Ok(match Option::<Text>::deserialize(d)? {
+        None => None,
+        Some(Text::Str(s)) => Some(s),
+        Some(Text::Int(i)) => Some(format!("{i}.0")),
+        // `4.0` arrives as 4: keep the one decimal a minor version has.
+        Some(Text::Float(f)) if f.fract() == 0.0 => Some(format!("{f:.1}")),
+        Some(Text::Float(f)) => Some(f.to_string()),
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -310,6 +345,15 @@ pub struct Job {
     /// app. See [`Cloud`].
     #[serde(default)]
     pub cloud: Option<CloudField>,
+    /// What the job runs on: `wasm` (the default, a Wasmer isolate on the
+    /// runner), `linux` (a virtual machine the runner starts for it), or
+    /// `{ os, image }`. See [`PlatformField`].
+    #[serde(default)]
+    pub platform: Option<PlatformField>,
+    /// The interpreter of a `platform: linux` job's `run:` script: `bash`
+    /// (the default), `sh` or `pwsh`.
+    #[serde(default)]
+    pub shell: Option<String>,
     /// Infrawrench connections whose credentials are lent to the job (a
     /// kubeconfig, an SSH host entry): names, or `{ name, namespace }`.
     #[serde(default)]
@@ -326,6 +370,11 @@ pub struct Job {
     /// `GH_TOKEN`/`GITHUB_TOKEN` and Git credentials for the repository.
     #[serde(default)]
     pub github_token: Option<IndexMap<String, String>>,
+    /// A `.infraenv` file of the repository whose variables the app resolves
+    /// for the job when it sends the run, as its path or
+    /// `{ path, environment, vars }`. The job's own `env:` wins.
+    #[serde(default)]
+    pub env_file: Option<EnvFileRef>,
     /// Arguments for a tool (`builtin:` / `repo:`), as a list or one string
     /// split like a shell would split it (no expansion).
     #[serde(default)]
@@ -362,6 +411,10 @@ pub struct Job {
     pub timeout: Option<String>,
     #[serde(default)]
     pub memory: Option<String>,
+    /// Whole vCPUs the job holds and is told it has, instead of its share
+    /// of one (the runner's `--jobs-per-cpu`), with which it is told 1.
+    #[serde(default)]
+    pub cpus: Option<u32>,
     /// Files kept between runs: restored before the job, saved after it
     /// passes. One entry, or a list.
     #[serde(default)]
@@ -454,6 +507,41 @@ impl<'de> Deserialize<'de> for CloudField {
     }
 }
 
+/// `platform: linux`, or `platform: { os: linux, image: ubuntu-24.04 }`.
+/// Deserialised by hand, like [`CloudField`], so an unknown key in the map
+/// form is reported as such.
+#[derive(Debug, Clone)]
+pub enum PlatformField {
+    Short(String),
+    Full(Platform),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Platform {
+    /// `wasm` or `linux`.
+    #[serde(default)]
+    pub os: Option<String>,
+    /// The machine image; each `os` has a default.
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for PlatformField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(PlatformField::Short(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(PlatformField::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`platform` is `wasm`, `linux` or `{ os, image }`",
+            )),
+        }
+    }
+}
+
 /// One of `connections:`: a name, or `{ name, namespace }`.
 #[derive(Debug, Clone)]
 pub enum ConnectionRef {
@@ -497,6 +585,52 @@ impl<'de> Deserialize<'de> for ConnectionRef {
                 .map_err(serde::de::Error::custom),
             _ => Err(serde::de::Error::custom(
                 "a connection is its name, or `{ name, namespace }`",
+            )),
+        }
+    }
+}
+
+/// `env-file:`: a path, or `{ path, environment, vars }`.
+#[derive(Debug, Clone)]
+pub enum EnvFileRef {
+    Path(String),
+    Full(EnvFileEntry),
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct EnvFileEntry {
+    pub path: String,
+    /// The file's `[env.<name>]` section laid over its `[env]`.
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Substitutions laid over the file's own `[vars]`.
+    #[serde(default)]
+    pub vars: IndexMap<String, String>,
+}
+
+impl EnvFileRef {
+    pub fn entry(&self) -> EnvFileEntry {
+        match self {
+            EnvFileRef::Path(path) => EnvFileEntry {
+                path: path.clone(),
+                ..Default::default()
+            },
+            EnvFileRef::Full(e) => e.clone(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EnvFileRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml_ng::Value::deserialize(deserializer)?;
+        match value {
+            serde_yaml_ng::Value::String(s) => Ok(EnvFileRef::Path(s)),
+            serde_yaml_ng::Value::Mapping(_) => serde_yaml_ng::from_value(value)
+                .map(EnvFileRef::Full)
+                .map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "`env-file:` is a path, or `{ path, environment, vars }`",
             )),
         }
     }

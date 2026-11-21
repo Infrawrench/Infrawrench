@@ -1,3 +1,173 @@
+--- a/src/empty_fs.rs
++++ b/src/empty_fs.rs
+@@ -50,6 +50,8 @@
+                 created: 0,
+                 modified: 0,
+                 len: 0,
++                ino: 0,
++                nlink: 0,
+             })
+         } else {
+             Err(FsError::EntryNotFound)
+--- a/src/host_fs.rs
++++ b/src/host_fs.rs
+@@ -295,6 +295,24 @@
+             }
+         };
+ 
++        // iwci patch: the file's count of names, and its inode number when
++        // it is not a directory and has more than one (so that every name
++        // reports one number; one with a single name is numbered by its
++        // path, as the caller numbers every file), cut to 53 bits as
++        // `Inode::from_path` cuts its.
++        #[cfg(unix)]
++        let (ino, nlink) = {
++            use std::os::unix::fs::MetadataExt;
++            let nlink = self.nlink();
++            let ino = if nlink > 1 && !filetype.is_dir() {
++                self.ino() & ((1 << 53) - 1)
++            } else {
++                0
++            };
++            (ino, nlink)
++        };
++        #[cfg(not(unix))]
++        let (ino, nlink) = (0, 0);
+         Ok(Metadata {
+             ft: FileType {
+                 dir: filetype.is_dir(),
+@@ -318,6 +336,8 @@
+                 .and_then(|time| time.duration_since(UNIX_EPOCH).map_err(io::Error::other))
+                 .map_or(0, |time| time.as_nanos() as u64),
+             len: self.len(),
++            ino,
++            nlink,
+         })
+     }
+ }
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -147,6 +147,13 @@
+         (**self).create_symlink(source, target)
+     }
+ 
++    // iwci patch: forwarded like every other method. Without it a file
++    // system behind an `Arc` or a `Box` (WASIX's root, every mount) made
++    // no hard link, whatever the file system could do.
++    fn hard_link(&self, source: &Path, target: &Path) -> Result<()> {
++        (**self).hard_link(source, target)
++    }
++
+     fn remove_dir(&self, path: &Path) -> Result<()> {
+         (**self).remove_dir(path)
+     }
+@@ -683,6 +690,14 @@
+     pub created: u64,
+     pub modified: u64,
+     pub len: u64,
++    /// iwci patch: the file's inode number when the file system numbers
++    /// it itself, as `mem_fs` numbers a file with hard links so that every
++    /// name reports one number; 0 when it leaves that to the caller (which
++    /// numbers by path).
++    pub ino: u64,
++    /// iwci patch: how many names the file has, when the file system
++    /// counts them (`mem_fs` counts a file's hard links); 0 when not.
++    pub nlink: u64,
+ }
+ 
+ impl Metadata {
+--- a/src/mem_fs/file.rs
++++ b/src/mem_fs/file.rs
+@@ -244,45 +244,36 @@
+ 
+     fn unlink(&mut self) -> Result<()> {
+         let filesystem = self.filesystem.clone();
+-        let inode = self.inode;
++        let inode_of_file = self.inode;
+ 
+-        let (inode_of_parent, position, inode_of_file) = {
+-            // Read lock.
+-            let fs = filesystem.inner.read().map_err(|_| FsError::Lock)?;
+-
+-            // The inode of the file.
+-            let inode_of_file = inode;
+-
+-            // Find the position of the file in the parent, and the
+-            // inode of the parent.
+-            let (position, inode_of_parent) = fs
+-                .storage
+-                .iter()
+-                .find_map(|(inode_of_parent, node)| match node {
+-                    Node::Directory(DirectoryNode { children, .. }) => {
+-                        children.iter().enumerate().find_map(|(nth, inode)| {
+-                            if inode == &inode_of_file {
+-                                Some((nth, inode_of_parent))
+-                            } else {
+-                                None
+-                            }
+-                        })
+-                    }
++        // iwci patch (#1294): the file's place in its parent is found under
++        // the write lock it is removed under. Found under a read lock first,
++        // a name that left the directory in between (a removal, a rename, a
++        // `rmdir`, from any thread) shifted the file down, and the entry at
++        // the old place, its neighbour or past the end, was removed instead.
++        let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
+ 
+-                    _ => None,
+-                })
+-                .ok_or(FsError::BaseNotDirectory)?;
++        // Find the position of the file in the parent, and the
++        // inode of the parent.
++        let (position, inode_of_parent) = fs
++            .storage
++            .iter()
++            .find_map(|(inode_of_parent, node)| match node {
++                Node::Directory(DirectoryNode { children, .. }) => {
++                    children.iter().enumerate().find_map(|(nth, inode)| {
++                        if inode == &inode_of_file {
++                            Some((nth, inode_of_parent))
++                        } else {
++                            None
++                        }
++                    })
++                }
+ 
+-            (inode_of_parent, position, inode_of_file)
+-        };
+-
+-        {
+-            // Write lock.
+-            let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
+-            fs.unlink_file_inode(inode_of_parent, position, inode_of_file)?;
+-        }
++                _ => None,
++            })
++            .ok_or(FsError::BaseNotDirectory)?;
+ 
+-        Ok(())
++        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
+     }
+ 
+     fn get_special_fd(&self) -> Option<u32> {
+@@ -337,6 +328,8 @@
+                         created: src.created_time(),
+                         modified: src.last_modified(),
+                         len: src.size(),
++                        ino: 0,
++                        nlink: 0,
+                     };
+ 
+                     *inode = Node::CustomFile(CustomFileNode {
+@@ -370,6 +363,8 @@
+                         created: 1,
+                         modified: 1,
+                         len: src.len() as u64,
++                        ino: 0,
++                        nlink: 0,
+                     };
+ 
+                     *inode = Node::ReadOnlyFile(ReadOnlyFileNode {
 --- a/src/mem_fs/file_opener.rs
 +++ b/src/mem_fs/file_opener.rs
 @@ -1,4 +1,4 @@
@@ -6,7 +176,43 @@
  use super::*;
  use crate::{FileType, FsError, Metadata, OpenOptionsConfig, Result, VirtualFile};
  use shared_buffer::OwnedBuffer;
-@@ -289,7 +289,17 @@
+@@ -49,6 +49,8 @@
+                             created: time,
+                             modified: time,
+                             len: file_len,
++                            ino: 0,
++                            nlink: 0,
+                         }
+                     },
+                     lifecycle: Arc::default(),
+@@ -110,6 +112,8 @@
+                             created: time,
+                             modified: time,
+                             len: 0,
++                            ino: 0,
++                            nlink: 0,
+                         }
+                     }
+                 };
+@@ -196,6 +200,8 @@
+                                 created: time,
+                                 modified: time,
+                                 len: 0,
++                                ino: 0,
++                                nlink: 0,
+                             }
+                         },
+                     }));
+@@ -267,6 +273,8 @@
+                     created: time,
+                     modified: time,
+                     len: 0,
++                    ino: 0,
++                    nlink: 0,
+                 }
+             },
+             lifecycle: Arc::default(),
+@@ -289,7 +297,17 @@
      ) -> Result<(InodeResolution, Option<InodeResolution>, OsString)> {
          // Read lock.
          let fs = self.inner.read().map_err(|_| FsError::Lock)?;
@@ -24,7 +230,7 @@
          // Check the path has a parent.
          let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
  
-@@ -300,7 +310,7 @@
+@@ -300,7 +318,7 @@
              .to_os_string();
  
          // Find the parent inode.
@@ -33,16 +239,25 @@
              InodeResolution::Found(a) => a,
              InodeResolution::Redirect(fs, parent_path) => {
                  return Ok((
-@@ -312,7 +322,7 @@
+@@ -311,10 +329,14 @@
+             }
          };
  
-         // Find the inode of the file if it exists.
+-        // Find the inode of the file if it exists.
 -        let maybe_inode_of_file = fs
++        // Find the inode of the file if it exists (iwci patch: the file a
++        // hard link names).
 +        let maybe_inode_of_file = self
              .as_parent_get_position_and_inode_of_file(inode_of_parent, &name_of_file)?
-             .map(|(_nth, inode)| inode);
+-            .map(|(_nth, inode)| inode);
++            .map(|(_nth, inode)| match inode {
++                InodeResolution::Found(inode) => InodeResolution::Found(self.body_of(inode)),
++                redirect => redirect,
++            });
  
-@@ -356,13 +366,19 @@
+         Ok((
+             InodeResolution::Found(inode_of_parent),
+@@ -356,13 +378,19 @@
              write = false;
          }
  
@@ -65,7 +280,7 @@
                      .new_open_options()
                      .options(conf.clone())
                      .open(parent_path);
-@@ -370,8 +386,12 @@
+@@ -370,8 +398,12 @@
          };
          let maybe_inode_of_file = match maybe_inode_of_file {
              Some(InodeResolution::Found(inode)) => Some(inode),
@@ -80,7 +295,7 @@
              }
              None => None,
          };
-@@ -384,9 +404,6 @@
+@@ -384,9 +416,6 @@
  
              // The file already exists; it's OK.
              Some(inode_of_file) => {
@@ -90,7 +305,7 @@
                  let handle_lifecycle = match fs.storage.get_mut(inode_of_file) {
                      Some(Node::File(FileNode {
                          metadata,
-@@ -486,9 +503,6 @@
+@@ -486,9 +515,6 @@
              // 1. `create_new` is used with `write` or `append`,
              // 2. `create` is used with `write` or `append`.
              None if (create_new || create) && (create_new || write || append) => {
@@ -100,7 +315,16 @@
                  let handle_lifecycle: Arc<FileLifecycle> = Arc::default();
                  let metadata = {
                      let time = time();
-@@ -548,6 +562,7 @@
+@@ -501,6 +527,8 @@
+                         created: time,
+                         modified: time,
+                         len: 0,
++                        ino: 0,
++                        nlink: 0,
+                     }
+                 };
+                 let inode_of_file = fs.storage.vacant_entry().key();
+@@ -548,6 +576,7 @@
  
              None => return Err(FsError::EntryNotFound),
          };
@@ -110,17 +334,162 @@
          test_file_opener::run_open_before_handle_hook();
 --- a/src/mem_fs/filesystem.rs
 +++ b/src/mem_fs/filesystem.rs
-@@ -384,20 +384,21 @@
+@@ -6,7 +6,7 @@
+ use crate::{DirEntry, FileType, FsError, Metadata, OpenOptions, ReadDir, Result};
+ use futures::future::{BoxFuture, Either};
+ use slab::Slab;
+-use std::collections::VecDeque;
++use std::collections::{HashMap, VecDeque};
+ use std::convert::identity;
+ use std::ffi::OsString;
+ use std::fmt;
+@@ -51,6 +51,71 @@
+         lock.canonicalize_without_inode(path)
+     }
+ 
++    /// iwci patch: gives the file at `source` the second name `target`
++    /// (`link(2)`), and the inode number `ino` if it has none yet, which
++    /// every name of it then reports in its metadata. A directory is
++    /// refused with `PermissionDenied`, as Linux refuses one with `EPERM`,
++    /// and so is a symbolic link, which this file system cannot give two
++    /// names. A name in another file system mounted in this one is
++    /// `Unsupported`, the cross-device case.
++    pub fn hard_link_numbered(&self, source: &Path, target: &Path, ino: u64) -> Result<()> {
++        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
++        let source = fs.canonicalize_without_inode(source)?;
++        let target = fs.canonicalize_without_inode(target)?;
++        let body = match fs.inode_of(&source)? {
++            InodeResolution::Found(inode) => inode,
++            InodeResolution::Redirect(..) => return Err(FsError::Unsupported),
++        };
++        let lifecycle = match fs.storage.get(body) {
++            Some(node) => match node.file_lifecycle() {
++                Some(lifecycle) => lifecycle.clone(),
++                None => return Err(FsError::PermissionDenied),
++            },
++            None => return Err(FsError::EntryNotFound),
++        };
++        let parent_path = target.parent().ok_or(FsError::AlreadyExists)?;
++        let name = target
++            .file_name()
++            .ok_or(FsError::InvalidInput)?
++            .to_os_string();
++        let parent = match fs.inode_of_parent(parent_path)? {
++            InodeResolution::Found(inode) => inode,
++            InodeResolution::Redirect(..) => return Err(FsError::Unsupported),
++        };
++        if fs.child_named(parent, &name).is_some() {
++            return Err(FsError::AlreadyExists);
++        }
++        let metadata = fs
++            .storage
++            .get(body)
++            .map(|node| node.metadata().clone())
++            .unwrap_or_default();
++        let link = fs.storage.vacant_entry().key();
++        fs.storage.insert(Node::HardLink(HardLinkNode {
++            inode: link,
++            name,
++            target: body,
++            parent,
++            metadata,
++        }));
++        fs.add_child_to_node(parent, link)?;
++        fs.links.entry(body).or_default().push(link);
++        lifecycle.number(ino);
++        Ok(())
++    }
++
++    /// iwci patch: whether `a` and `b` are names of one file (or the same
++    /// name).
++    pub fn same_file(&self, a: &Path, b: &Path) -> bool {
++        let Ok(fs) = self.inner.read() else {
++            return false;
++        };
++        match (fs.inode_of(a), fs.inode_of(b)) {
++            (Ok(InodeResolution::Found(a)), Ok(InodeResolution::Found(b))) => a == b,
++            _ => false,
++        }
++    }
++
+     /// Merge all items from a given source path (directory) of a different file
+     /// system into this file system.
+     ///
+@@ -239,6 +304,8 @@
+                         created: time,
+                         modified: time,
+                         len: 0,
++                        ino: 0,
++                        nlink: 0,
+                     }
+                 },
+             }));
+@@ -256,20 +323,24 @@
+     }
+ 
+     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
++        // iwci patch (#1294): the parent is looked up under the write lock
++        // the link is added under, as `create_dir` and `open` do. Looked up
++        // under a read lock first, a parent removed in between (and its
++        // slot reused by another node) took the link into the wrong place.
++        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+         let (inode_of_parent, name_of_symlink) = {
+-            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
+-            let path = guard.canonicalize_without_inode(target)?;
++            let path = fs.canonicalize_without_inode(target)?;
+             let parent_of_path = path.parent().ok_or(FsError::BaseNotDirectory)?;
+             let name_of_symlink = path
+                 .file_name()
+                 .ok_or(FsError::InvalidInput)?
+                 .to_os_string();
+-            let inode_of_parent = match guard.inode_of_parent(parent_of_path)? {
++            let inode_of_parent = match fs.inode_of_parent(parent_of_path)? {
+                 InodeResolution::Found(a) => a,
+-                InodeResolution::Redirect(fs, mut redirected_path) => {
++                InodeResolution::Redirect(redirect_fs, mut redirected_path) => {
+                     redirected_path.push(&name_of_symlink);
+-                    drop(guard);
+-                    let fs_ref: &dyn crate::FileSystem = fs.as_ref();
++                    drop(fs);
++                    let fs_ref: &dyn crate::FileSystem = redirect_fs.as_ref();
+                     if let Some(mem_fs) = fs_ref.downcast_ref::<Self>() {
+                         return mem_fs.create_symlink(source, redirected_path.as_path());
+                     }
+@@ -279,7 +350,6 @@
+             (inode_of_parent, name_of_symlink)
+         };
+ 
+-        let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+         if fs.canonicalize(target).is_ok() {
+             return Err(FsError::AlreadyExists);
+         }
+@@ -300,6 +370,8 @@
+                     created: time,
+                     modified: time,
+                     len: source.as_os_str().len() as u64,
++                    ino: 0,
++                    nlink: 0,
+                 }
+             },
+         }));
+@@ -365,7 +437,9 @@
+ 
+                         entry_path
+                     },
+-                    metadata: Ok(node.metadata().clone()),
++                    metadata: guard
++                        .reported_metadata(node.inode())
++                        .ok_or(FsError::UnknownError),
+                 })
+                 .collect(),
+ 
+@@ -384,20 +458,21 @@
      }
  
      fn create_dir(&self, path: &Path) -> Result<()> {
 -        if self.read_dir(path).is_ok() {
 -            return Err(FsError::AlreadyExists);
 -        }
--
--        let (inode_of_parent, name_of_directory) = {
--            // Read lock.
--            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
 +        // iwci patch (#1092): the name is looked up under the write lock the
 +        // directory is added under, as wasmerio/wasmer#7039 does for rename,
 +        // remove and open. Looked up under a read lock first, two threads
@@ -130,6 +499,10 @@
 +            // Write lock.
 +            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
  
+-        let (inode_of_parent, name_of_directory) = {
+-            // Read lock.
+-            let guard = self.inner.read().map_err(|_| FsError::Lock)?;
+-
              // Canonicalize the path without checking the path exists,
              // because it's about to be created.
 -            let path = guard.canonicalize_without_inode(path)?;
@@ -142,7 +515,7 @@
  
              // Check the directory name.
              let name_of_directory = path
-@@ -406,25 +407,29 @@
+@@ -406,26 +481,30 @@
                  .to_os_string();
  
              // Find the parent inode.
@@ -161,14 +534,6 @@
  
 -            (inode_of_parent, name_of_directory)
 -        };
--
--        if self.read_dir(path).is_ok() {
--            return Err(FsError::AlreadyExists);
--        }
--
--        {
--            // Write lock.
--            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
 +            // Anything of that name, a directory or not, is in the way.
 +            let taken = match fs.storage.get(inode_of_parent) {
 +                Some(Node::Directory(DirectoryNode { children, .. })) => {
@@ -184,11 +549,38 @@
 +                return Err(FsError::AlreadyExists);
 +            }
  
+-        if self.read_dir(path).is_ok() {
+-            return Err(FsError::AlreadyExists);
+-        }
+-
+-        {
+-            // Write lock.
+-            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
+-
              // Creating the directory in the storage.
              let inode_of_directory = fs.storage.vacant_entry().key();
-@@ -465,73 +470,64 @@
+             let real_inode_of_directory = fs.storage.insert(Node::Directory(DirectoryNode {
+@@ -444,6 +523,8 @@
+                         created: time,
+                         modified: time,
+                         len: 0,
++                        ino: 0,
++                        nlink: 0,
+                     }
+                 },
+             }));
+@@ -464,74 +545,73 @@
+         self.create_symlink(source, target)
      }
  
++    /// iwci patch: a hard link, numbered from a counter of this crate's
++    /// when nobody gives it a number (`hard_link_numbered`).
++    fn hard_link(&self, source: &Path, target: &Path) -> Result<()> {
++        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1 << 52);
++        let ino = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        self.hard_link_numbered(source, target, ino)
++    }
++
      fn remove_dir(&self, path: &Path) -> Result<()> {
 -        let (inode_of_parent, position, inode_of_directory) = {
 -            // Read lock.
@@ -301,7 +693,7 @@
                  let from = fs.canonicalize_without_inode(from)?;
                  let to = fs.canonicalize_without_inode(to)?;
  
-@@ -544,7 +540,7 @@
+@@ -544,7 +624,7 @@
                      .file_name()
                      .ok_or(FsError::InvalidInput)?
                      .to_os_string();
@@ -310,7 +702,7 @@
  
                  // Find the parent inodes.
                  let inode_of_from_parent = match fs.inode_of_parent(parent_of_from)? {
-@@ -562,96 +558,22 @@
+@@ -562,96 +642,22 @@
                      }
                  };
  
@@ -323,7 +715,7 @@
 -            };
 -
 -            match (inode_of_from_parent, inode_of_to_parent) {
--                // Rename within this MemFS instance
+                 // Rename within this MemFS instance
 -                (Either::Left(inode_of_from_parent), Either::Left(inode_of_to_parent)) => {
 -                    let fs = self.inner.read().map_err(|_| FsError::Lock)?;
 -
@@ -348,7 +740,6 @@
 -                        (position_of_from, inode, inode_of_from_parent),
 -                        (inode_of_to_parent, name_of_to),
 -                        maybe_position_and_inode_of_file,
-+                // Rename within this MemFS instance
 +                if let (Either::Left(inode_of_from_parent), Either::Left(inode_of_to_parent)) =
 +                    (&inode_of_from_parent, &inode_of_to_parent)
 +                {
@@ -420,7 +811,39 @@
                  // Rename within the same mounted FS instance
                  (Either::Right((from_fs, from_path)), Either::Right((to_fs, to_path)))
                      if Arc::ptr_eq(&from_fs, &to_fs) =>
-@@ -701,55 +623,47 @@
+@@ -670,12 +676,9 @@
+         // Read lock.
+         let guard = self.inner.read().map_err(|_| FsError::Lock)?;
+         match guard.inode_of(path)? {
+-            InodeResolution::Found(inode) => Ok(guard
+-                .storage
+-                .get(inode)
+-                .ok_or(FsError::UnknownError)?
+-                .metadata()
+-                .clone()),
++            InodeResolution::Found(inode) => {
++                guard.reported_metadata(inode).ok_or(FsError::UnknownError)
++            }
+             InodeResolution::Redirect(fs, path) => {
+                 drop(guard);
+                 fs.metadata(path.as_path())
+@@ -687,12 +690,9 @@
+         // Read lock.
+         let guard = self.inner.read().map_err(|_| FsError::Lock)?;
+         match guard.inode_of(path)? {
+-            InodeResolution::Found(inode) => Ok(guard
+-                .storage
+-                .get(inode)
+-                .ok_or(FsError::UnknownError)?
+-                .metadata()
+-                .clone()),
++            InodeResolution::Found(inode) => {
++                guard.reported_metadata(inode).ok_or(FsError::UnknownError)
++            }
+             InodeResolution::Redirect(fs, path) => {
+                 drop(guard);
+                 fs.symlink_metadata(path.as_path())
+@@ -701,55 +701,47 @@
      }
  
      fn remove_file(&self, path: &Path) -> Result<()> {
@@ -478,12 +901,12 @@
 +                return redirect_fs.remove_file(parent_path.as_path());
              }
          };
- 
++
 +        // Find the inode of the file if it exists, along with its position.
 +        let (position, inode_of_file) = fs
 +            .as_parent_get_position_and_inode_of_file(inode_of_parent, &name_of_file)?
 +            .ok_or(FsError::EntryNotFound)?;
-+
+ 
          let inode_of_file = match inode_of_file {
              InodeResolution::Found(a) => a,
 -            InodeResolution::Redirect(fs, path) => {
@@ -505,7 +928,52 @@
      }
  
      fn new_open_options(&self) -> OpenOptions<'_> {
-@@ -815,6 +729,75 @@
+@@ -769,6 +761,9 @@
+ /// indexed by their respective `Inode` in a slab.
+ pub(super) struct FileSystemInner {
+     pub(super) storage: Slab<Node>,
++    /// iwci patch: the hard links of each file that has any, by the file's
++    /// node (see `HardLinkNode`).
++    pub(super) links: HashMap<Inode, Vec<Inode>>,
+     pub(super) backing_offload: Option<OffloadBackingStore>,
+     pub(super) limiter: Option<crate::limiter::DynFsMemoryLimiter>,
+ }
+@@ -798,6 +793,34 @@
+         position: usize,
+         inode_of_file: Inode,
+     ) -> Result<()> {
++        // iwci patch: one name of a file with others goes, and the file
++        // stays. A second name is a node of its own; the file's own name
++        // hands the file to the place of one of the others, so the file is
++        // listed under a name for as long as it has one, which is what an
++        // open handle's `unlink` finds it by.
++        if let Some(Node::HardLink(link)) = self.storage.get(inode_of_file) {
++            let body = link.target;
++            self.storage.remove(inode_of_file);
++            self.forget_link(body, inode_of_file);
++            return self.remove_child_from_node(inode_of_parent, position);
++        }
++        if let Some(&link) = self.links.get(&inode_of_file).and_then(|l| l.last()) {
++            self.forget_link(inode_of_file, link);
++            self.remove_child_from_node(inode_of_parent, position)?;
++            let Node::HardLink(link) = self.storage.remove(link) else {
++                return Err(FsError::UnknownError);
++            };
++            if let Some(Node::Directory(DirectoryNode { children, .. })) =
++                self.storage.get_mut(link.parent)
++                && let Some(entry) = children.iter_mut().find(|c| **c == link.inode)
++            {
++                *entry = inode_of_file;
++            }
++            if let Some(node) = self.storage.get_mut(inode_of_file) {
++                node.set_name(link.name);
++            }
++            return Ok(());
++        }
+         let remove_storage = match self.storage.get(inode_of_file) {
+             Some(node) => {
+                 if let Some(lifecycle) = node.file_lifecycle() {
+@@ -815,6 +838,81 @@
          }
  
          self.remove_child_from_node(inode_of_parent, position)
@@ -541,8 +1009,11 @@
 +            // Unlink the replaced file, keeping its storage alive
 +            // while handles to it are still open.
 +            match inode_of_file {
-+                // Renaming a file onto itself does nothing.
-+                InodeResolution::Found(inode_of_file) if inode_of_file == inode => {
++                // Renaming a file onto itself, or (iwci patch) onto another
++                // of its names, does nothing, as `rename(2)` does nothing.
++                InodeResolution::Found(inode_of_file)
++                    if self.body_of(inode_of_file) == self.body_of(inode) =>
++                {
 +                    return Ok(());
 +                }
 +                InodeResolution::Found(inode_of_file) => {
@@ -566,6 +1037,9 @@
 +            // Add the file to its new parent, and update the modified
 +            // time.
 +            self.add_child_to_node(inode_of_to_parent, inode)?;
++            if let Some(Node::HardLink(link)) = self.storage.get_mut(inode) {
++                link.parent = inode_of_to_parent;
++            }
 +        }
 +        // Otherwise, we need to at least update the modified time of the parent.
 +        else {
@@ -581,14 +1055,118 @@
      }
  
      /// Get the inode associated to a path if it exists.
-@@ -1652,7 +1635,67 @@
-                 ),
-                 "`hello2.txt` has been renamed to `world2.txt`",
-             );
+@@ -834,6 +932,7 @@
+                     .iter()
+                     .filter_map(|inode| self.storage.get(*inode))
+                     .find(|node| node.name() == component.as_os_str())
++                    .map(|node| self.follow(node))
+                     .ok_or(FsError::EntryNotFound)?,
+                 Node::ArcDirectory(ArcDirectoryNode {
+                     fs, path: fs_path, ..
+@@ -939,6 +1038,7 @@
+                     | Node::CustomFile(CustomFileNode { inode, name, .. })
+                     | Node::ArcFile(ArcFileNode { inode, name, .. })
+                     | Node::Symlink(SymlinkNode { inode, name, .. })
++                    | Node::HardLink(HardLinkNode { inode, name, .. })
+                         if name.as_os_str() == name_of_file =>
+                     {
+                         Some(Some((nth, InodeResolution::Found(*inode))))
+@@ -980,6 +1080,7 @@
+                     | Node::ReadOnlyFile(ReadOnlyFileNode { inode, name, .. })
+                     | Node::CustomFile(CustomFileNode { inode, name, .. })
+                     | Node::ArcFile(ArcFileNode { inode, name, .. })
++                    | Node::HardLink(HardLinkNode { inode, name, .. })
+                         if name.as_os_str() == name_of =>
+                     {
+                         Some(Some((nth, InodeResolution::Found(*inode))))
+@@ -1001,6 +1102,60 @@
+         }
+     }
+ 
++    /// iwci patch: the node a name stands for: the file a hard link
++    /// names, any other node itself.
++    fn follow<'a>(&'a self, node: &'a Node) -> &'a Node {
++        match node {
++            Node::HardLink(HardLinkNode { target, .. }) => {
++                self.storage.get(*target).unwrap_or(node)
++            }
++            node => node,
 +        }
 +    }
 +
-+    #[tokio::test]
++    /// iwci patch: the file the entry `inode` names.
++    pub(super) fn body_of(&self, inode: Inode) -> Inode {
++        match self.storage.get(inode) {
++            Some(Node::HardLink(HardLinkNode { target, .. })) => *target,
++            _ => inode,
++        }
++    }
++
++    /// iwci patch: the entry named `name` in the directory `parent`, of
++    /// whatever kind.
++    fn child_named(&self, parent: Inode, name: &OsString) -> Option<Inode> {
++        match self.storage.get(parent) {
++            Some(Node::Directory(DirectoryNode { children, .. })) => children
++                .iter()
++                .copied()
++                .find(|c| self.storage.get(*c).is_some_and(|n| n.name() == name)),
++            _ => None,
++        }
++    }
++
++    /// iwci patch: the hard link `link` of the file `body` is gone.
++    fn forget_link(&mut self, body: Inode, link: Inode) {
++        if let Some(links) = self.links.get_mut(&body) {
++            links.retain(|l| *l != link);
++            if links.is_empty() {
++                self.links.remove(&body);
++            }
++        }
++    }
++
++    /// iwci patch: the metadata a name reports: its file's (a hard link
++    /// reports the file it names), with the file's inode number, if it has
++    /// one of its own, and its count of names.
++    pub(super) fn reported_metadata(&self, inode: Inode) -> Option<Metadata> {
++        let node = self.follow(self.storage.get(inode)?);
++        let mut metadata = node.metadata().clone();
++        if let Some(lifecycle) = node.file_lifecycle() {
++            metadata.ino = lifecycle.ino();
++            metadata.nlink = 1 + self.links.get(&node.inode()).map_or(0, Vec::len) as u64;
++        }
++        Some(metadata)
++    }
++
+     /// Set a new name for the node represented by `inode`.
+     pub(super) fn update_node_name(&mut self, inode: Inode, new_name: OsString) -> Result<()> {
+         let node = self.storage.get_mut(inode).ok_or(FsError::UnknownError)?;
+@@ -1146,6 +1301,7 @@
+                         Node::Symlink { .. } => "symlink",
+                         Node::Directory { .. } => "dir",
+                         Node::ArcDirectory { .. } => "arc-dir",
++                        Node::HardLink { .. } => "hard-link",
+                     },
+                     name = node.name().to_string_lossy(),
+                     indentation_symbol = " ",
+@@ -1195,11 +1351,14 @@
+                 created: time,
+                 modified: time,
+                 len: 0,
++                ino: 0,
++                nlink: 0,
+             },
+         }));
+ 
+         Self {
+             storage: slab,
++            links: HashMap::new(),
+             backing_offload: None,
+             limiter: None,
+         }
+@@ -1656,6 +1815,66 @@
+     }
+ 
+     #[tokio::test]
 +    async fn test_rename_over_open_file_keeps_the_open_handle() {
 +        use tokio::io::AsyncWriteExt;
 +
@@ -602,7 +1180,7 @@
 +                .open(path!(path))
 +                .unwrap();
 +            file.write_all(contents).await.unwrap();
-         }
++        }
 +
 +        let mut replaced = fs
 +            .new_open_options()
@@ -646,24 +1224,65 @@
 +            3,
 +            "storage drops the replaced file once its last handle closes"
 +        );
-     }
++    }
++
++    #[tokio::test]
+     async fn test_metadata() {
+         use std::thread::sleep;
+         use std::time::Duration;
+@@ -1671,6 +1890,8 @@
+                 created,
+                 modified,
+                 len: 0
++                ino: 0,
++                nlink: 0,
+             }) if accessed == created && created == modified && modified > 0
+         ));
  
-     #[tokio::test]
-@@ -1824,9 +1867,8 @@
+@@ -1688,6 +1909,8 @@
+                 created,
+                 modified,
+                 len: 0
++                ino: 0,
++                nlink: 0,
+             } if accessed == created && created == modified && modified > 0
+         ));
+ 
+@@ -1704,6 +1927,8 @@
+                     created,
+                     modified,
+                     len: 0
++                    ino: 0,
++                    nlink: 0,
+                 }) if
+                     accessed == foo_metadata.accessed &&
+                     created == foo_metadata.created &&
+@@ -1720,6 +1945,8 @@
+                     created,
+                     modified,
+                     len: 0
++                    ino: 0,
++                    nlink: 0,
+                 }) if
+                     accessed <= foo_metadata.accessed &&
+                     created <= foo_metadata.created &&
+@@ -1824,9 +2051,8 @@
  
          drop(file);
  
 -        let fs_inner = fs.inner.read().unwrap();
-         assert_eq!(
+-        assert_eq!(
 -            fs_inner.storage.len(),
++        assert_eq!(
 +            fs.inner.read().unwrap().storage.len(),
              1,
              "storage drops the file once the last open handle closes"
          );
-@@ -2096,4 +2138,168 @@
+@@ -2095,5 +2321,169 @@
+         f.read_to_end(&mut buf).await.unwrap();
  
          assert_eq!(buf, b"a");
-     }
++    }
 +
 +    #[tokio::test]
 +    async fn test_rename_onto_itself_keeps_the_file() {
@@ -786,7 +1405,7 @@
 +            2 + names.len(),
 +            "no node leaked",
 +        );
-+    }
+     }
 +
 +    /// iwci patch (#1092): threads making and removing one directory at
 +    /// once. `create_dir` looked the name up under a read lock and added
@@ -829,6 +1448,130 @@
 +        assert_eq!(fs.create_dir(path!("/")), Err(FsError::AlreadyExists));
 +    }
  }
+--- a/src/mem_fs/mod.rs
++++ b/src/mem_fs/mod.rs
+@@ -19,7 +19,7 @@
+     path::PathBuf,
+     sync::{
+         Arc, Mutex,
+-        atomic::{AtomicBool, AtomicUsize, Ordering},
++        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+     },
+ };
+ 
+@@ -32,6 +32,10 @@
+ struct FileLifecycle {
+     open_handles: AtomicUsize,
+     unlinked: AtomicBool,
++    /// iwci patch: the inode number the file reports once it has been
++    /// given a second name (`FileSystem::hard_link_numbered`), so every
++    /// name reports the same one; 0 before, when the caller numbers it.
++    ino: AtomicU64,
+ }
+ 
+ impl FileLifecycle {
+@@ -60,6 +64,17 @@
+     fn is_unlinked(&self) -> bool {
+         self.unlinked.load(Ordering::Acquire)
+     }
++
++    fn ino(&self) -> u64 {
++        self.ino.load(Ordering::Acquire)
++    }
++
++    /// Numbers the file `ino`, unless it has a number already.
++    fn number(&self, ino: u64) {
++        let _ = self
++            .ino
++            .compare_exchange(0, ino, Ordering::AcqRel, Ordering::Acquire);
++    }
+ }
+ 
+ #[derive(Debug)]
+@@ -135,7 +150,24 @@
+     metadata: Metadata,
+ }
+ 
++/// iwci patch: a second (or later) name of a file, a hard link. The file
++/// itself stays listed under one name, its node's own; every other name is
++/// one of these, in the directory `parent`, naming the file's node
++/// `target`. `FileSystemInner::links` lists them by file, so the file's link
++/// count is one more than that list's length, and removing the file's own
++/// name moves the node into the place of one of these (see
++/// `FileSystemInner::unlink_file_inode`), so the file is listed under a
++/// name for as long as it has one.
+ #[derive(Debug)]
++struct HardLinkNode {
++    inode: Inode,
++    name: OsString,
++    target: Inode,
++    parent: Inode,
++    metadata: Metadata,
++}
++
++#[derive(Debug)]
+ enum Node {
+     File(FileNode),
+     OffloadedFile(OffloadedFileNode),
+@@ -145,6 +177,7 @@
+     Symlink(SymlinkNode),
+     Directory(DirectoryNode),
+     ArcDirectory(ArcDirectoryNode),
++    HardLink(HardLinkNode),
+ }
+ 
+ impl Node {
+@@ -158,6 +191,7 @@
+             Self::Symlink(SymlinkNode { inode, .. }) => inode,
+             Self::Directory(DirectoryNode { inode, .. }) => inode,
+             Self::ArcDirectory(ArcDirectoryNode { inode, .. }) => inode,
++            Self::HardLink(HardLinkNode { inode, .. }) => inode,
+         }
+     }
+ 
+@@ -171,6 +205,7 @@
+             Self::Symlink(SymlinkNode { name, .. }) => name.as_os_str(),
+             Self::Directory(DirectoryNode { name, .. }) => name.as_os_str(),
+             Self::ArcDirectory(ArcDirectoryNode { name, .. }) => name.as_os_str(),
++            Self::HardLink(HardLinkNode { name, .. }) => name.as_os_str(),
+         }
+     }
+ 
+@@ -184,6 +219,7 @@
+             Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
+             Self::Directory(DirectoryNode { metadata, .. }) => metadata,
+             Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
++            Self::HardLink(HardLinkNode { metadata, .. }) => metadata,
+         }
+     }
+ 
+@@ -208,6 +244,7 @@
+             Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
+             Self::Directory(DirectoryNode { metadata, .. }) => metadata,
+             Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
++            Self::HardLink(HardLinkNode { metadata, .. }) => metadata,
+         }
+     }
+ 
+@@ -221,6 +258,7 @@
+             Self::Symlink(SymlinkNode { name, .. }) => *name = new_name,
+             Self::Directory(DirectoryNode { name, .. }) => *name = new_name,
+             Self::ArcDirectory(ArcDirectoryNode { name, .. }) => *name = new_name,
++            Self::HardLink(HardLinkNode { name, .. }) => *name = new_name,
+         }
+     }
+ }
+--- a/src/mount_fs.rs
++++ b/src/mount_fs.rs
+@@ -212,6 +212,8 @@
+             created: ts,
+             modified: ts,
+             len: 0,
++            ino: 0,
++            nlink: 0,
+         }
+     }
+ 
 --- a/src/overlay_fs.rs
 +++ b/src/overlay_fs.rs
 @@ -1066,37 +1066,31 @@
@@ -891,3 +1634,22 @@
              Ok(())
          }
  
+--- a/src/tmp_fs.rs
++++ b/src/tmp_fs.rs
+@@ -38,6 +38,16 @@
+     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
+         self.fs.create_symlink(source, target)
+     }
++
++    /// iwci patch: `mem_fs::FileSystem::hard_link_numbered`.
++    pub fn hard_link_numbered(&self, source: &Path, target: &Path, ino: u64) -> Result<()> {
++        self.fs.hard_link_numbered(source, target, ino)
++    }
++
++    /// iwci patch: `mem_fs::FileSystem::same_file`.
++    pub fn same_file(&self, a: &Path, b: &Path) -> bool {
++        self.fs.same_file(a, b)
++    }
+ }
+ 
+ impl FileSystem for TmpFileSystem {

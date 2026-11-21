@@ -94,7 +94,7 @@ Without a resource, each tree starts from a resource nothing depends on, and eac
 
 With `--resource`, you get the terminal version of the **Dependencies** tab: a **Depends on** tree and a **Depended on by** tree, the second headed with the blast radius count.
 
-<insert [Terminal showing `infrawrench graph --resource` output: the focused resource, a "Depends on" ASCII tree, and a "Depended on by" tree headed with a blast-radius count] here>
+![Terminal showing `infrawrench graph --resource` output: the focused resource, a "Depends on" ASCII tree, and a "Depended on by" tree headed with a blast-radius count](https://agent-assets.infrawrench.com/docs-screenshots/features/dependency-graph/cli-graph-resource.png)
 
 `--json` outputs `nodes`, `edges` and `truncated`. With a resource, it also includes the direct `dependsOn` and `dependedOnBy` lists and a `blastRadius` array of resource ids.
 

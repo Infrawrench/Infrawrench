@@ -39,7 +39,7 @@ Infrawrench checks the host before it connects, and offers to fix anything missi
 
 If a host isn't ready, **Apps** shows a checklist instead of the launcher: what's missing, what each missing piece breaks, and the exact commands to install it. **Install what's missing** runs them on the host over the same SSH connection, shows the package manager's output as it goes, and then checks again to confirm the fix worked.
 
-<insert [The Apps tab showing the host setup checklist: keyboard layout data and session D-Bus marked missing, the apt-get commands that would install them, and the Install what's missing button] here>
+![The Apps tab showing the host setup checklist: keyboard layout data and session D-Bus marked missing, the apt-get commands that would install them, and the Install what's missing button](https://agent-assets.infrawrench.com/docs-screenshots/features/linux-apps/host-setup-checklist.png)
 
 There's nothing to prepare in advance. A host that already has everything goes straight to the launcher.
 

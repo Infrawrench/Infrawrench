@@ -167,7 +167,14 @@ impl Inode {
     }
 
     pub fn from_path(str: &str) -> Self {
-        Inode(xxhash_rust::xxh64::xxh64(str.as_bytes(), 0))
+        // iwci patch: 53 bits, so a number reaches JavaScript exactly. Node
+        // reads `st_ino` as a double, or as a BigInt that Edge.js makes
+        // from one, and every hash of 2^63 or more became 2^63 - 1 there:
+        // half of all files shared one inode number. `fs.realpathSync`
+        // keys the links it has read by device and inode, so a second
+        // symbolic link took the first one's target (a `bin/` link in a
+        // directory reached through another link).
+        Inode(xxhash_rust::xxh64::xxh64(str.as_bytes(), 0) & ((1 << 53) - 1))
     }
 }
 
@@ -316,6 +323,10 @@ enum ComponentResolution {
 #[derive(Debug)]
 struct WasiInodesProtected {
     lookup: HashMap<Inode, Weak<InodeVal>>,
+    /// Inodes added since dead entries were last cleared out.
+    added_since_sweep: usize,
+    /// How many entries were left by that clear-out.
+    left_by_sweep: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -328,6 +339,8 @@ impl WasiInodes {
         Self {
             protected: Arc::new(RwLock::new(WasiInodesProtected {
                 lookup: Default::default(),
+                added_since_sweep: 0,
+                left_by_sweep: 0,
             })),
         }
     }
@@ -344,9 +357,18 @@ impl WasiInodes {
         let ino = Inode(st_ino);
         guard.lookup.insert(ino, Arc::downgrade(&val));
 
-        // every 100 calls we clear out dead weaks
-        if guard.lookup.len() % 100 == 1 {
+        // Dead weaks are cleared out once as many inodes have been added
+        // as the clear-out before left (and at least 100), so each add pays
+        // for a constant share of a sweep. Sweeping whenever the length was
+        // 1 modulo 100 swept the whole map on every add while the length
+        // stayed there (an add that replaced an entry, a sweep that found
+        // nothing dead), which made an install's hundreds of thousands of
+        // files quadratic.
+        guard.added_since_sweep += 1;
+        if guard.added_since_sweep >= guard.left_by_sweep.max(100) {
             guard.lookup.retain(|_, v| Weak::strong_count(v) > 0);
+            guard.added_since_sweep = 0;
+            guard.left_by_sweep = guard.lookup.len();
         }
 
         let open_handles = Arc::new(AtomicI32::new(0));
@@ -1557,7 +1579,27 @@ impl WasiFs {
                 // The cur_inode is definitely a directory (Kind::Dir) at this
                 // stage, and we need to create an inode (new_inode) and cache
                 // as an entry in current directory (entry_name => cur_inode).
-                let (entry_name, new_inode, should_insert, should_return) =
+                // iwci patch (#1294): what the entry is cached for, a file
+                // or a directory at a path, which is checked again below.
+                let cached_path = match &component_resolution {
+                    ComponentResolution::Create {
+                        kind: Kind::File { path, .. },
+                        is_ephemeral: false,
+                        ..
+                    } => Some((path.clone(), false)),
+                    ComponentResolution::Create {
+                        kind: Kind::Dir { path, .. },
+                        is_ephemeral: false,
+                        ..
+                    } => Some((path.clone(), true)),
+                    #[cfg(unix)]
+                    ComponentResolution::Special {
+                        kind: Kind::File { path, .. },
+                        ..
+                    } => Some((path.clone(), false)),
+                    _ => None,
+                };
+                let (entry_name, mut new_inode, should_insert, should_return) =
                     match component_resolution {
                         ComponentResolution::Create {
                             kind,
@@ -1606,8 +1648,38 @@ impl WasiFs {
                         unreachable!("Attempted to insert special device into non-directory");
                     };
 
+                    // iwci patch (#1294): the entry is cached only if the
+                    // name is still uncached and the file system still has
+                    // it, both checked under the write lock it is cached
+                    // under. The file system was read before, under the
+                    // read lock, and an unlink that took the name's entry
+                    // out and removed the file in between left this lookup
+                    // caching a file that was gone: the directory listed the
+                    // name (its listing adds the cached entries), `stat` and
+                    // `unlink` said it was not there, and an exclusive
+                    // create of it failed with `EEXIST`. An unlink holds
+                    // this lock from taking the entry out to removing the
+                    // file, so the file system is checked wholly before or
+                    // after it. An entry another lookup or a creation cached
+                    // meanwhile is kept, not replaced.
                     if should_insert {
-                        entries.insert(entry_name, new_inode.clone());
+                        if let Some(entry) = entries.get(&entry_name) {
+                            new_inode = entry.clone();
+                        } else if let Some((path, is_dir)) = &cached_path {
+                            match self.root_fs.symlink_metadata(path) {
+                                Ok(md)
+                                    if md.file_type().is_dir() == *is_dir
+                                        && !md.file_type().is_symlink() =>
+                                {
+                                    entries.insert(entry_name, new_inode.clone());
+                                }
+                                // Something else is there now: look again.
+                                Ok(_) => continue 'component_lookup,
+                                Err(_) => return Err(Errno::Noent),
+                            }
+                        } else {
+                            entries.insert(entry_name, new_inode.clone());
+                        }
                     }
 
                     if should_return {
@@ -2104,8 +2176,12 @@ impl WasiFs {
             _ => Cow::Borrowed(name.as_ref()),
         };
 
-        let st_ino = Inode::from_path(&inode_key);
-        stat.st_ino = st_ino.as_u64();
+        // iwci patch: a number the file system gave (a file with hard
+        // links, `get_stat_for_kind`) is kept; anything else is numbered
+        // by its path.
+        if stat.st_ino == 0 {
+            stat.st_ino = Inode::from_path(&inode_key).as_u64();
+        }
 
         inodes.add_inode_val(InodeVal {
             stat: RwLock::new(stat),
@@ -2732,14 +2808,24 @@ impl WasiFs {
         );
     }
 
+    /// iwci patch: `st_ino` is the number the file system gives the file
+    /// (one with hard links, so that every name reports one number), and 0
+    /// when it gives none: the caller numbers by path (`create_inode_with_stat`)
+    /// or keeps the number the inode has (`path_filestat_get`). `st_nlink`
+    /// is the file system's count of the file's names.
     pub fn get_stat_for_kind(&self, kind: &Kind) -> Result<Filestat, Errno> {
         let md = match kind {
             Kind::File { handle, path, .. } => match handle {
                 Some(wf) => {
                     let wf = wf.read().unwrap();
+                    let (st_ino, st_nlink) = self
+                        .root_fs
+                        .metadata(path)
+                        .map_or((0, 1), |md| (md.ino, md.nlink.max(1)));
                     return Ok(Filestat {
                         st_filetype: Filetype::RegularFile,
-                        st_ino: Inode::from_path(path.to_string_lossy().as_ref()).as_u64(),
+                        st_ino,
+                        st_nlink,
                         st_size: wf.size(),
                         st_atim: wf.last_accessed(),
                         st_mtim: wf.last_modified(),
@@ -2784,12 +2870,38 @@ impl WasiFs {
         };
         Ok(Filestat {
             st_filetype: virtual_file_type_to_wasi_file_type(md.file_type()),
+            st_ino: md.ino,
+            st_nlink: md.nlink.max(1),
             st_size: md.len(),
             st_atim: md.accessed(),
             st_mtim: md.modified(),
             st_ctim: md.created(),
             ..Filestat::default()
         })
+    }
+
+    /// iwci patch: `stat`'s `st_ino` and `st_nlink` brought up to date from
+    /// the file system for the file `kind` names, when it still names the
+    /// file `stat` describes (the same number, or the number of its path):
+    /// a hard link made or removed since the inode was cached, by this
+    /// process or another, changes both.
+    pub(crate) fn refresh_links(&self, kind: &Kind, stat: &mut Filestat) {
+        let Kind::File { path, .. } = kind else {
+            return;
+        };
+        if path.as_os_str().is_empty() {
+            return;
+        }
+        let Ok(md) = self.root_fs.metadata(path) else {
+            return;
+        };
+        let by_path = Inode::from_path(path.to_string_lossy().as_ref()).as_u64();
+        if (md.ino != 0 && stat.st_ino == md.ino) || stat.st_ino == by_path {
+            if md.ino != 0 {
+                stat.st_ino = md.ino;
+            }
+            stat.st_nlink = md.nlink.max(1);
+        }
     }
 
     /// Closes an open FD under `fd_map.write()`, capturing a file handle for

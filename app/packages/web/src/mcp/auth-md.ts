@@ -29,6 +29,20 @@ export function authMarkdown(base: string): string {
 Infrawrench is a cloud infrastructure console. This document tells you how to
 get credentials for it without a human having to create an account first.
 
+## If your user already has an Infrawrench account
+
+Do not register. Connect to the MCP endpoint at ${base}/api/mcp and let your
+user sign in through the browser with OAuth; their workspace and connected
+cloud accounts come with it. For Claude Code:
+
+\`\`\`
+claude mcp add --transport http infrawrench ${base}/api/mcp
+\`\`\`
+
+Setup for other clients: https://infrawrench.com/docs/features/mcp.md
+
+The rest of this document is for agents whose user has no account yet.
+
 ## What you get, and what it costs your user
 
 Registering opens a **trial workspace**: a real organization with every paid

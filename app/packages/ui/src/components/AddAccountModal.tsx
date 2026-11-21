@@ -16,6 +16,7 @@ import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
 import { ProviderOptionsField, type LoadCredentialOptions } from "./ProviderOptionsField.js";
 import { formatErrorMessage } from "../utils.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { AdvancedFieldsDisclosure } from "./AdvancedFieldsDisclosure.js";
 import { stripOAuthGrantState } from "@infrawrench/plugin-base";
 import {
@@ -191,6 +192,7 @@ export function AddAccountModal({
   disabledProducts,
 }: AddAccountModalProps) {
   const gt = useGT();
+  const gtData = useDataString();
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selected, setSelected] = useState<PluginInfo | null>(null);
@@ -267,7 +269,7 @@ export function AddAccountModal({
     for (const f of selected.credentialFields) {
       if (f.optional) continue;
       if (!fieldValues[f.key]?.trim() && !f.defaultValue) {
-        setError(gt("{label} is required.", { label: f.label }));
+        setError(gt("{label} is required.", { label: gtData(f.label) }));
         return;
       }
     }
@@ -418,10 +420,12 @@ export function AddAccountModal({
                 if (oauthConnected && f.key === tokenKey) {
                   return (
                     <div key={f.key}>
-                      <span className="block text-xs text-on-surface-tertiary mb-1">{f.label}</span>
+                      <span className="block text-xs text-on-surface-tertiary mb-1">
+                        {gtData(f.label)}
+                      </span>
                       <ProviderOAuthConnectedChip
                         providerName={selected.displayName}
-                        fieldLabel={f.label}
+                        fieldLabel={gtData(f.label)}
                         status="pending-save"
                         onUseToken={switchToToken}
                       />
@@ -434,10 +438,10 @@ export function AddAccountModal({
                       htmlFor={fieldId}
                       className="block text-xs text-on-surface-tertiary mb-1"
                     >
-                      {f.label}
+                      {gtData(f.label)}
                     </label>
                     {f.description && (
-                      <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
+                      <p className="text-xs text-on-surface-faint mb-1">{gtData(f.description)}</p>
                     )}
                     {f.helpLink && (
                       <a
@@ -454,7 +458,7 @@ export function AddAccountModal({
                         }
                         className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
                       >
-                        {f.helpLink.label}
+                        {gtData(f.helpLink.label)}
                         <ExternalLinkIcon size={12} />
                       </a>
                     )}
@@ -469,11 +473,15 @@ export function AddAccountModal({
                         return (
                           <ProviderOptionsField
                             fieldId={fieldId}
-                            label={f.label}
+                            label={gtData(f.label)}
                             value={fieldValues[f.key] ?? ""}
                             onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
-                            placeholder={f.placeholder}
-                            emptyLabel={f.providerOptions.emptyLabel}
+                            placeholder={f.placeholder ? gtData(f.placeholder) : undefined}
+                            emptyLabel={
+                              f.providerOptions.emptyLabel !== undefined
+                                ? gtData(f.providerOptions.emptyLabel)
+                                : undefined
+                            }
                             multiple={f.providerOptions.multiple}
                             load={
                               loadCredentialOptions && depsReady
@@ -521,27 +529,28 @@ export function AddAccountModal({
                     ) : f.regions && f.regions.length > 0 ? (
                       <RegionPicker
                         regions={f.regions}
+                        fieldLabel={gtData(f.label)}
                         value={fieldValues[f.key] ?? ""}
                         onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
                       />
                     ) : f.multiline ? (
                       <textarea
                         id={fieldId}
-                        aria-label={f.label}
+                        aria-label={gtData(f.label)}
                         value={fieldValues[f.key] ?? ""}
                         onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                        placeholder={f.placeholder}
+                        placeholder={f.placeholder ? gtData(f.placeholder) : undefined}
                         rows={6}
                         className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
                       />
                     ) : (
                       <input
                         id={fieldId}
-                        aria-label={f.label}
+                        aria-label={gtData(f.label)}
                         type={f.sensitive ? "password" : "text"}
                         value={fieldValues[f.key] ?? ""}
                         onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                        placeholder={f.placeholder}
+                        placeholder={f.placeholder ? gtData(f.placeholder) : undefined}
                         className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
                       />
                     )}

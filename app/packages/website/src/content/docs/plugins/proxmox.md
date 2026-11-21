@@ -25,7 +25,7 @@ Proxmox VE runs on your own hardware, so the account points at your cluster's AP
 
 Node, VMID (the next free one is filled in), template, ISO, storage, bridge and pool are all picked from lists.
 
-<insert [Proxmox VE Create Virtual Machine form with "Clone a VM template" selected, showing the template, node, VMID and SSH key pickers] here>
+![Proxmox VE Create Virtual Machine form with "Clone a VM template" selected, showing the template, node, VMID and SSH key pickers](https://agent-assets.infrawrench.com/docs-screenshots/plugins/proxmox/create-vm-clone.png)
 
 ## Connect your cluster
 
@@ -36,7 +36,7 @@ Node, VMID (the next free one is filled in), template, ISO, storage, bridge and 
 
 Proxmox VE signs its certificate with the cluster's own CA. Paste `/etc/pve/pve-root-ca.pem` from any node into **CA Certificate** under advanced options, or use a node certificate from a public CA (ACME).
 
-<insert [Proxmox VE add-account form with URL, API Token ID, API Token Secret and the expanded CA Certificate field] here>
+![Proxmox VE add-account form with URL, API Token ID, API Token Secret and the expanded CA Certificate field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/proxmox/add-account.png)
 
 ## Metrics, logs and consoles
 
@@ -45,7 +45,7 @@ Proxmox VE signs its certificate with the cluster's own CA. Paste `/etc/pve/pve-
 - **Describe** on a guest prints its full configuration.
 - **SSH** works for nodes and running guests. VM addresses come from the QEMU guest agent, container addresses from the container's interfaces. **Open console** opens the guest's noVNC or xterm.js console in the Proxmox web UI.
 
-<insert [Proxmox VE VM detail view showing power actions, the Snapshots table with Roll back and Delete buttons, and the Metrics tab] here>
+![Proxmox VE VM detail view showing power actions, the Snapshots table with Roll back and Delete buttons, and the Metrics tab in the tab bar](https://agent-assets.infrawrench.com/docs-screenshots/plugins/proxmox/vm-detail.png)
 
 ## CI jobs
 

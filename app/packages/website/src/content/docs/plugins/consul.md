@@ -28,13 +28,13 @@ Connect a Consul datacenter through any agent's HTTP API. You can see what is re
 3. Under **Advanced options**, set a **Datacenter** to manage a WAN-federated datacenter other than the agent's own. On Consul Enterprise, you can also set a **Namespace** and **Admin Partition**.
 4. If the agent's certificate is signed by a private CA, paste the CA certificate under **Advanced options**. Agents that require client certificates (`verify_incoming` on the HTTPS port) aren't supported.
 
-<insert [Consul Add-account form with the address and ACL token filled in] here>
+![Consul Add-account form with the address and ACL token filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/consul/add-account.png)
 
 **Check credentials** tests the catalog, the KV store, intentions, ACLs and operator access separately, and tells you the ACL rule each missing capability needs.
 
-<insert [Consul cluster page with the Keys tab browsing a KV prefix] here>
+![Consul cluster page with the Keys tab browsing a KV prefix](https://agent-assets.infrawrench.com/docs-screenshots/plugins/consul/cluster-keys-tab.png)
 
-<insert [Consul service detail page with the instances table showing health] here>
+![Consul service detail page with the instances table showing health](https://agent-assets.infrawrench.com/docs-screenshots/plugins/consul/service-instances.png)
 
 ## Tips & limits
 

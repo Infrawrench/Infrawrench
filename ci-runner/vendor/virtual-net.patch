@@ -1,3 +1,68 @@
+--- a/src/host.rs
++++ b/src/host.rs
+@@ -540,6 +540,11 @@
+     handler_guard: HandlerGuardState,
+     buffer: BytesMut,
+     connect_state: Mutex<ConnectState>,
++    // iwci patch: a reset (or abort) that `poll_read_ready` read off the
++    // socket, kept for the next `try_recv`. The kernel reports it once, so
++    // turning it into readiness alone made the read after it the end of
++    // the stream: a reset connection looked closed cleanly.
++    read_error: Option<NetworkError>,
+ }
+ 
+ impl LocalTcpStream {
+@@ -553,6 +558,7 @@
+             handler_guard: HandlerGuardState::None,
+             buffer: BytesMut::new(),
+             connect_state: Mutex::new(ConnectState::Unknown),
++            read_error: None,
+         };
+ 
+         // In windows we can not poll the socket as it is not supported and hence
+@@ -736,6 +742,11 @@
+                 self.buffer.advance(amt);
+             }
+             return Ok(amt);
++        }
++        // iwci patch: the error a readiness check took, as the kernel would
++        // have given it to this read.
++        if let Some(err) = self.read_error.take() {
++            return Err(err);
+         }
+ 
+         if peek {
+@@ -872,6 +883,10 @@
+     fn poll_read_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<usize>> {
+         if !self.buffer.is_empty() {
+             return Poll::Ready(Ok(self.buffer.len()));
++        }
++
++        if self.read_error.is_some() {
++            return Poll::Ready(Ok(0));
+         }
+ 
+         let (state, selector, stream, buffer) = self.split_borrow();
+@@ -891,8 +906,17 @@
+                 }
+                 Poll::Ready(Ok(amt))
+             }
+-            Err(err) if err.kind() == io::ErrorKind::ConnectionAborted => Poll::Ready(Ok(0)),
+-            Err(err) if err.kind() == io::ErrorKind::ConnectionReset => Poll::Ready(Ok(0)),
++            // iwci patch: readable, as before, but the reset is kept for
++            // the read that follows rather than lost.
++            Err(err)
++                if matches!(
++                    err.kind(),
++                    io::ErrorKind::ConnectionAborted | io::ErrorKind::ConnectionReset
++                ) =>
++            {
++                self.read_error = Some(io_err_into_net_error(err));
++                Poll::Ready(Ok(0))
++            }
+             Err(err) if err.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
+             Err(err) => Poll::Ready(Err(io_err_into_net_error(err))),
+         }
 --- a/src/loopback.rs
 +++ b/src/loopback.rs
 @@ -487,7 +487,73 @@

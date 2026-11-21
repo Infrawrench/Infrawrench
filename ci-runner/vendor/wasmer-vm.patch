@@ -831,7 +831,7 @@
 +}
 --- a/src/mmap.rs
 +++ b/src/mmap.rs
-@@ -22,6 +22,10 @@
+@@ -22,6 +22,13 @@
      accessible_size: usize,
      #[cfg_attr(target_os = "windows", allow(dead_code))]
      sync_on_drop: bool,
@@ -839,58 +839,90 @@
 +    // may be mapped over (memory_image.rs), and how many times one has been.
 +    anonymous_private: bool,
 +    data_mappings: std::sync::atomic::AtomicU32,
++    // iwci patch (#1314): compiled code (`with_at_least`), whose addresses
++    // are never handed out again once it is dropped (`code_space` below).
++    code: bool,
  }
  
  /// The type of mmap to create
-@@ -46,6 +50,8 @@
+@@ -46,6 +53,9 @@
              total_size: 0,
              accessible_size: 0,
              sync_on_drop: false,
 +            anonymous_private: false,
 +            data_mappings: std::sync::atomic::AtomicU32::new(0),
++            code: false,
          }
      }
  
-@@ -156,6 +162,8 @@
+@@ -53,6 +63,21 @@
+     pub fn with_at_least(size: usize, hint_huge_pages: bool) -> Result<Self, String> {
+         let page_size = region::page::size();
+         let rounded_size = size.next_multiple_of(page_size);
++        // iwci patch (#1314): only an engine's code memory asks for this, and
++        // code goes where no code has been (`code_space` below).
++        #[cfg(not(target_os = "windows"))]
++        if rounded_size != 0 {
++            let ptr = code_space::allocate(rounded_size)?;
++            return Ok(Self {
++                ptr,
++                total_size: rounded_size,
++                accessible_size: rounded_size,
++                sync_on_drop: false,
++                anonymous_private: false,
++                data_mappings: std::sync::atomic::AtomicU32::new(0),
++                code: true,
++            });
++        }
+         Self::accessible_reserved(
+             rounded_size,
+             rounded_size,
+@@ -156,6 +181,9 @@
                  total_size: mapping_size,
                  accessible_size,
                  sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
 +                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
 +                data_mappings: std::sync::atomic::AtomicU32::new(0),
++                code: false,
              }
          } else {
              // Reserve the mapping size.
-@@ -182,6 +190,8 @@
+@@ -182,6 +210,9 @@
                  total_size: mapping_size,
                  accessible_size,
                  sync_on_drop: memory_fd != -1 && memory_type == MmapType::Shared,
 +                anonymous_private: memory_fd == -1 && memory_type == MmapType::Private,
 +                data_mappings: std::sync::atomic::AtomicU32::new(0),
++                code: false,
              };
  
              if accessible_size != 0 {
-@@ -238,6 +248,8 @@
+@@ -238,6 +269,9 @@
                  total_size: mapping_size,
                  accessible_size,
                  sync_on_drop: false,
 +                anonymous_private: false,
 +                data_mappings: std::sync::atomic::AtomicU32::new(0),
++                code: false,
              }
          } else {
              // Reserve the mapping size.
-@@ -252,6 +264,8 @@
+@@ -252,6 +286,9 @@
                  total_size: mapping_size,
                  accessible_size,
                  sync_on_drop: false,
 +                anonymous_private: false,
 +                data_mappings: std::sync::atomic::AtomicU32::new(0),
++                code: false,
              };
  
              if accessible_size != 0 {
-@@ -358,6 +372,21 @@
+@@ -356,6 +393,21 @@
+     /// Return the length of the allocated memory.
+     pub fn len(&self) -> usize {
          self.total_size
-     }
- 
++    }
++
 +    /// iwci patch (#996): whether `memory.init` may map a data segment over
 +    /// this memory now: only an anonymous private mapping, and only
 +    /// [`crate::memory_image::MAX_MAPPINGS_PER_MEMORY`] times, after which
@@ -904,11 +936,189 @@
 +                    (n < crate::memory_image::MAX_MAPPINGS_PER_MEMORY).then_some(n + 1)
 +                })
 +                .is_ok()
+     }
+ 
+     /// Return whether any memory has been allocated.
+@@ -412,6 +464,11 @@
+                     )
+                 };
+                 assert_eq!(r, 0, "msync failed: {}", io::Error::last_os_error());
++            }
++            // iwci patch (#1314): code's addresses stay reserved.
++            if self.code {
++                code_space::release(self.ptr, self.total_size);
++                return;
+             }
+             let r = unsafe { libc::munmap(self.ptr as *mut libc::c_void, self.total_size) };
+             assert_eq!(r, 0, "munmap failed: {}", io::Error::last_os_error());
+@@ -429,7 +486,167 @@
+     }
+ }
+ 
++/// iwci patch (#1314): where compiled code is mapped.
++///
++/// An engine registers its code's unwind information with the system
++/// unwinder (`__register_frame`), and the exceptions wasm throws are found
++/// by it. libgcc 13 and 14 keep those registrations in a B-tree whose inner
++/// separators are not raised for a range inserted across one (GCC PR
++/// libgcc/119151, fixed in GCC 15): once a range was deregistered and a new
++/// one registered over its old addresses, lookups in the upper part of the
++/// new range found nothing, and an exception thrown through that code was
++/// reported uncaught. Unloading and loading modules is exactly that, since
++/// the kernel hands freed addresses out again. Ruby's setjmp/longjmp through
++/// a C extension died this way now and then, with status 134.
++///
++/// So code is never put where code was: each mapping is carved, in
++/// increasing order, from a large reservation that is never returned to the
++/// kernel, and a dropped one becomes inaccessible again, its pages freed,
++/// with its addresses still reserved. A new range then never overlaps an
++/// old one, which is all the B-tree needs. What this costs is address
++/// space, the total size of all code ever loaded, out of 128 TiB.
++#[cfg(not(target_os = "windows"))]
++pub(crate) mod code_space {
++    use std::io;
++    use std::ptr;
++    use std::sync::Mutex;
++
++    /// How much address space each reservation takes.
++    const ARENA: usize = 64 << 30;
++
++    #[cfg(target_os = "linux")]
++    const NORESERVE: libc::c_int = libc::MAP_NORESERVE;
++    #[cfg(not(target_os = "linux"))]
++    const NORESERVE: libc::c_int = 0;
++
++    struct Arena {
++        next: usize,
++        end: usize,
 +    }
 +
-     /// Return whether any memory has been allocated.
-     pub fn is_empty(&self) -> bool {
-         self.len() == 0
++    static ARENA_STATE: Mutex<Arena> = Mutex::new(Arena { next: 0, end: 0 });
++
++    /// Maps `size` bytes (a multiple of the page size) of zeroed read-write
++    /// memory at addresses no code has had.
++    pub(crate) fn allocate(size: usize) -> Result<usize, String> {
++        let mut arena = ARENA_STATE.lock().unwrap_or_else(|e| e.into_inner());
++        if arena.end - arena.next < size {
++            // A new reservation; what is left of the old one stays reserved.
++            // Under a limit on address space (`ulimit -v`) that refuses a
++            // large one, a reservation of just this mapping still never
++            // reuses an address.
++            let reserve = |len: usize| {
++                let base = unsafe {
++                    libc::mmap(
++                        ptr::null_mut(),
++                        len,
++                        libc::PROT_NONE,
++                        libc::MAP_PRIVATE | libc::MAP_ANON | NORESERVE,
++                        -1,
++                        0,
++                    )
++                };
++                (base != libc::MAP_FAILED).then_some((base as usize, len))
++            };
++            let Some((base, len)) = reserve(ARENA.max(size)).or_else(|| reserve(size)) else {
++                return Err(io::Error::last_os_error().to_string());
++            };
++            arena.next = base;
++            arena.end = base + len;
++        }
++        let at = arena.next;
++        let mapped = unsafe {
++            libc::mmap(
++                at as *mut libc::c_void,
++                size,
++                libc::PROT_READ | libc::PROT_WRITE,
++                libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_FIXED,
++                -1,
++                0,
++            )
++        };
++        if mapped == libc::MAP_FAILED {
++            return Err(io::Error::last_os_error().to_string());
++        }
++        arena.next += size;
++        Ok(at)
++    }
++
++    /// Frees the pages of code mapped by [`allocate`] and keeps its
++    /// addresses reserved, so nothing is mapped there again.
++    pub(crate) fn release(at: usize, size: usize) {
++        let r = unsafe {
++            libc::mmap(
++                at as *mut libc::c_void,
++                size,
++                libc::PROT_NONE,
++                libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_FIXED | NORESERVE,
++                -1,
++                0,
++            )
++        };
++        assert_ne!(
++            r,
++            libc::MAP_FAILED,
++            "reserving freed code failed: {}",
++            io::Error::last_os_error()
++        );
++    }
++}
++
+ fn _assert() {
+     fn _assert_send_sync<T: Send + Sync>() {}
+     _assert_send_sync::<Mmap>();
+ }
++
++// iwci patch (#1314): code is never mapped where code was.
++#[cfg(all(test, not(target_os = "windows")))]
++mod code_space_tests {
++    use super::*;
++
++    fn range(m: &Mmap) -> (usize, usize) {
++        (m.as_ptr() as usize, m.as_ptr() as usize + m.len())
++    }
++
++    fn overlaps(a: (usize, usize), b: (usize, usize)) -> bool {
++        a.0 < b.1 && b.0 < a.1
++    }
++
++    #[test]
++    fn freed_code_addresses_are_never_handed_out_again() {
++        let page = region::page::size();
++        let mut seen: Vec<(usize, usize)> = Vec::new();
++        let mut held = Vec::new();
++        for i in 0..200 {
++            let mut code = Mmap::with_at_least(page * (1 + i % 7) - 100, false).unwrap();
++            let r = range(&code);
++            assert!(
++                seen.iter().all(|s| !overlaps(*s, r)),
++                "{r:x?} overlaps code mapped before"
++            );
++            // Zeroed and writable, as an engine's code memory needs.
++            assert!(code.as_slice().iter().all(|b| *b == 0));
++            code.as_mut_slice().fill(0xcc);
++            seen.push(r);
++            // Some go at once and others stay a while, as modules come and go.
++            if i % 3 == 0 {
++                held.push(code);
++            }
++            if held.len() > 10 {
++                held.remove(0);
++            }
++        }
++        drop(held);
++        // Nor does anything else land there.
++        for _ in 0..50 {
++            let data =
++                Mmap::accessible_reserved(page * 4, page * 4, None, MmapType::Private, false)
++                    .unwrap();
++            let r = range(&data);
++            assert!(
++                seen.iter().all(|s| !overlaps(*s, r)),
++                "{r:x?} overlaps freed code"
++            );
++        }
++    }
++}
 --- a/src/trap/traphandlers.rs
 +++ b/src/trap/traphandlers.rs
 @@ -261,7 +261,69 @@

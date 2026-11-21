@@ -8,7 +8,7 @@ Connect a Dynatrace environment to see what it monitors, act on what it finds, a
 
 ## What you can manage
 
-- **Environment**: its version, how many hosts, services and web applications it monitors, how many problems are open, and this month's platform subscription cost by capability. With a platform token, a **Query** tab runs DQL against Grail.
+- **Environment**: its version, how many hosts, services and web applications it monitors, how many problems are open, and this month's platform subscription cost by capability. With a platform token, a **DQL Editor** tab runs DQL against Grail.
 - **Hosts**: every host OneAgent monitors, with OS, CPU cores, memory, monitoring mode, IP addresses, host group, OneAgent version, tags and management zones. Metrics and Logs tabs.
 - **Process groups** and **services**: what runs where. Services link to the process groups they run in, and process groups to their hosts, so the dependency graph shows the whole chain. Services have Metrics and Logs tabs.
 - **Web applications** (Real User Monitoring) with user action metrics, and **Kubernetes clusters** monitored by the Dynatrace Operator.
@@ -19,7 +19,7 @@ Connect a Dynatrace environment to see what it monitors, act on what it finds, a
 - **Maintenance windows**: once, daily, weekly or monthly windows that pause alerting or problem detection, optionally for tagged entities only. Create, edit, turn off and on, and delete them.
 - **Access tokens**: owner, scopes, expiry and last use for every token in the environment. Rename, turn off and on, or revoke them. Expiring tokens show on the Expiry radar.
 
-<insert [Dynatrace environment detail page showing the environment counts, the Cost section by capability and the Query tab] here>
+![Dynatrace environment detail page with the DQL Editor tab, the environment counts, the Cost section by capability and the Query section](https://agent-assets.infrawrench.com/docs-screenshots/plugins/dynatrace/environment-detail-dql-tab.png)
 
 ## Connect your environment
 
@@ -28,7 +28,7 @@ Connect a Dynatrace environment to see what it monitors, act on what it finds, a
 3. **Platform token** (optional, SaaS only): at [myaccount.dynatrace.com](https://myaccount.dynatrace.com/platformTokens), select **Platform token**, pick this environment, and add `storage:buckets:read` plus the `storage:*:read` scopes for the data you want to query (`storage:logs:read`, `storage:events:read`, `storage:bizevents:read`, `storage:spans:read`, `storage:metrics:read`, `storage:entities:read`). It turns on DQL and host and service logs from Grail.
 4. **Cost** (optional, under Advanced options): in **Account Management > Identity & access management > OAuth clients**, create a client with the **View usage and consumption** (`account-uac-read`) account permission. Enter the account UUID (from the Account Management address bar), the client id and the client secret.
 
-<insert [Dynatrace Add-account form with the Environment URL, Access Token and Platform Token fields filled in and Advanced options expanded] here>
+![Dynatrace Add-account form with the Environment URL, Access Token and Platform Token fields filled in and Advanced options expanded](https://agent-assets.infrawrench.com/docs-screenshots/plugins/dynatrace/add-account.png)
 
 ## Metrics
 
@@ -45,7 +45,7 @@ Hosts and services have a Logs tab with the last 24 hours. Add a platform token 
 
 ## Run DQL
 
-With a platform token, the environment's **Query** tab runs DQL (`fetch logs`, `fetch dt.entity.host`, `fetch bizevents` and so on). Results stop at 1,000 records per run. On Dynatrace Platform Subscriptions, Grail bills queries by data scanned, so narrow the timeframe where you can.
+With a platform token, the environment's **DQL Editor** tab runs DQL (`fetch logs`, `fetch dt.entity.host`, `fetch bizevents` and so on). Results stop at 1,000 records per run. On Dynatrace Platform Subscriptions, Grail bills queries by data scanned, so narrow the timeframe where you can.
 
 ## Costs
 

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.116.0",
+    "version": "1.124.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -388,6 +388,15 @@
       "name": "Budgets"
     },
     {
+      "name": "Heartbeats"
+    },
+    {
+      "name": "Environment files"
+    },
+    {
+      "name": "Live updates"
+    },
+    {
       "name": "Services"
     },
     {
@@ -449,6 +458,9 @@
     },
     {
       "name": "Moment"
+    },
+    {
+      "name": "Migration estimates"
     },
     {
       "name": "Realized savings"
@@ -15305,6 +15317,1320 @@
         ],
         "additionalProperties": false
       },
+      "HeartbeatPings": {
+        "type": "object",
+        "properties": {
+          "pings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeartbeatPing"
+            }
+          }
+        },
+        "required": [
+          "pings"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatPing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "success",
+              "start",
+              "fail"
+            ]
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "userAgent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first 1000 characters of the request body, when the job sent one."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "receivedAt",
+          "durationMs",
+          "method",
+          "userAgent",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "Heartbeat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "intervalMinutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "False while paused."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "up",
+              "down"
+            ],
+            "description": "`new` until the first ping (a heartbeat never alerts before its job has reported once), `up` after a success, `down` after a missed deadline or a `/fail` ping."
+          },
+          "downReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "missed",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pingUrl": {
+            "type": "string",
+            "description": "The secret URL the job pings; append `/start` before a run and `/fail` on failure. Absolute when the server knows its public address, otherwise a path."
+          },
+          "lastPingAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastStartAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastFailAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastDurationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last run's duration, from its `/start` ping to the ping that closed it."
+          },
+          "nextExpectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`nextExpectedAt` plus the grace period; null while new, paused or down."
+          },
+          "lastStateChangeAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scheduled resource this heartbeat watches; advisory, not a foreign key."
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PluginId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resource field the schedule was read from."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scheduleKind",
+          "cronExpression",
+          "timezone",
+          "intervalMinutes",
+          "graceMinutes",
+          "enabled",
+          "status",
+          "downReason",
+          "pingUrl",
+          "lastPingAt",
+          "lastStartAt",
+          "lastFailAt",
+          "lastDurationMs",
+          "nextExpectedAt",
+          "deadlineAt",
+          "lastStateChangeAt",
+          "accountId",
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "fieldKey",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Up to 120 characters.",
+            "examples": [
+              "Nightly backup"
+            ]
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "type": "string",
+            "description": "Five-field cron (minute hour day-of-month month day-of-week).",
+            "examples": [
+              "0 2 * * *"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the cron expression is read in. Defaults to UTC.",
+            "examples": [
+              "Europe/London"
+            ]
+          },
+          "intervalMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Minutes between expected pings. Clamped server-side to 1-44640 (31 days).",
+            "examples": [
+              60
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How late a ping may be before the heartbeat goes down. Clamped server-side to 1-10080.",
+            "examples": [
+              10
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "False pauses. Resuming returns the heartbeat to `new` until its next ping."
+          }
+        },
+        "additionalProperties": false
+      },
+      "HeartbeatCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Up to 120 characters.",
+            "examples": [
+              "Nightly backup"
+            ]
+          },
+          "scheduleKind": {
+            "type": "string",
+            "enum": [
+              "cron",
+              "interval"
+            ],
+            "description": "A cron expression read in `timezone`, or a fixed interval in minutes."
+          },
+          "cronExpression": {
+            "type": "string",
+            "description": "Five-field cron (minute hour day-of-month month day-of-week).",
+            "examples": [
+              "0 2 * * *"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA time zone the cron expression is read in. Defaults to UTC.",
+            "examples": [
+              "Europe/London"
+            ]
+          },
+          "intervalMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Minutes between expected pings. Clamped server-side to 1-44640 (31 days).",
+            "examples": [
+              60
+            ]
+          },
+          "graceMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How late a ping may be before the heartbeat goes down. Clamped server-side to 1-10080.",
+            "examples": [
+              10
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "Link to the scheduled resource being watched."
+          },
+          "fieldKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "scheduleKind"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSuggestions": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeartbeatSuggestion"
+            }
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSuggestion": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "fieldKey": {
+            "type": "string",
+            "description": "The field the plugin flags as the resource's schedule."
+          },
+          "rawSchedule": {
+            "type": "string",
+            "description": "The value as the provider reported it."
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeartbeatSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The value read as a heartbeat schedule; null when its dialect is not readable."
+          },
+          "watchedBy": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Heartbeats already watching this resource."
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "fieldKey",
+          "rawSchedule",
+          "schedule",
+          "watchedBy"
+        ],
+        "additionalProperties": false
+      },
+      "HeartbeatSchedule": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cron"
+                ]
+              },
+              "cronExpression": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "cronExpression",
+              "timezone"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "interval"
+                ]
+              },
+              "intervalMinutes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "kind",
+              "intervalMinutes"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "HeartbeatList": {
+        "type": "object",
+        "properties": {
+          "heartbeats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Heartbeat"
+            }
+          }
+        },
+        "required": [
+          "heartbeats"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvCommitResult": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull-request"
+            ]
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string"
+          },
+          "commitUrl": {
+            "type": "string"
+          },
+          "pullRequest": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "number",
+                  "url"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "branch",
+          "commitSha",
+          "commitUrl",
+          "pullRequest"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvCommitRequest": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 201,
+            "description": "`owner/name`.",
+            "examples": [
+              "acme/web"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Path of the file in the repository. Defaults to `.infraenv` in the editors.",
+            "examples": [
+              ".infraenv",
+              "apps/web/.infraenv"
+            ]
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The branch to commit to, or to open the pull request against. Null means the default branch."
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The blob sha the file had when it was read, or null for a new file. A file changed since then answers 400 rather than being overwritten."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull-request"
+            ],
+            "description": "Commit straight to the branch, or to a new branch with a pull request."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "installationId",
+          "repo",
+          "path",
+          "content",
+          "sha",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepoFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the file does not exist on that branch yet."
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blob sha to send back with a commit that replaces the file."
+          }
+        },
+        "required": [
+          "path",
+          "branch",
+          "content",
+          "sha"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepoList": {
+        "type": "object",
+        "properties": {
+          "appConfigured": {
+            "type": "boolean"
+          },
+          "repos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvRepo"
+            }
+          }
+        },
+        "required": [
+          "appConfigured",
+          "repos"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvRepo": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "installationId",
+          "fullName",
+          "defaultBranch"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSourceList": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSource"
+            }
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSourceOutput"
+            }
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "outputs"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSourceOutput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "suggestedKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "sensitive"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResolveResponse": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvProblem"
+            },
+            "description": "Variables that did not resolve, with why. They are left out of `values` and `dotenv`."
+          },
+          "dotenv": {
+            "type": "string",
+            "description": "The resolved `.env` text, starting with its auto-generated header."
+          }
+        },
+        "required": [
+          "environment",
+          "values",
+          "problems",
+          "dotenv"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvProblem": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "1-based; 0 for the file as a whole."
+          },
+          "message": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResolveRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "description": "An `[env.<name>]` section to lay over `[env]`. Omit for `[env]` alone.",
+                "examples": [
+                  "production"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceName": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "The file's path, named in the generated `.env` header. Defaults to `.infraenv`."
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvDescribeResponse": {
+        "type": "object",
+        "properties": {
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvProblem"
+            },
+            "description": "Syntax problems, then references that point at nothing."
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvResourceDescription"
+            }
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraenvSecretDescription"
+            }
+          }
+        },
+        "required": [
+          "problems",
+          "environments",
+          "resources",
+          "secrets"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvSecretDescription": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "hasValue": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "found",
+          "hasValue"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvResourceDescription": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean",
+            "description": "False when the organization has no such resource (deleted, or a typo)."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "outputLabel": {
+            "type": "string"
+          },
+          "outputKnown": {
+            "type": "boolean",
+            "description": "False when the resource's type does not declare this output."
+          },
+          "sensitive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "resourceId",
+          "output",
+          "found",
+          "outputKnown",
+          "sensitive"
+        ],
+        "additionalProperties": false
+      },
+      "InfraenvDescribeRequest": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "The `.infraenv` file's text.",
+            "examples": [
+              "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "GithubPermissionRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "github_permission_required"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "installationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "accountLogin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "permissions",
+          "installationId",
+          "accountLogin",
+          "manageUrl"
+        ],
+        "additionalProperties": false
+      },
+      "LiveTicket": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "driver": {
+                "type": "string",
+                "enum": [
+                  "poll"
+                ],
+                "description": "No push channel is configured: refetch on your own interval."
+              }
+            },
+            "required": [
+              "driver"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "driver": {
+                "type": "string",
+                "enum": [
+                  "neon"
+                ],
+                "description": "Subscribe to `query` at `url` with the Neon Realtime client and refetch whenever its result changes. The result carries ids and statuses only, never the data itself."
+              },
+              "url": {
+                "type": "string",
+                "description": "The Neon Realtime WebSocket URL."
+              },
+              "query": {
+                "$ref": "#/components/schemas/LiveSealedQuery"
+              }
+            },
+            "required": [
+              "driver",
+              "url",
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "How to learn that a topic changed. Clients should treat an unknown `driver` as `poll`."
+      },
+      "LiveSealedQuery": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "Opaque encrypted capability. A bearer credential: keep it out of URLs and logs."
+          },
+          "queryFingerprint": {
+            "type": "string",
+            "description": "Stable identity of the query; a renewal carries the same one."
+          },
+          "expiresAt": {
+            "type": "number",
+            "description": "Unix milliseconds. Ask for a fresh ticket shortly before this to renew."
+          }
+        },
+        "required": [
+          "capability",
+          "queryFingerprint",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "LiveTicketRequest": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "enum": [
+              "jit-requests",
+              "access-requests",
+              "workflow-approvals",
+              "change-freezes",
+              "account-resources",
+              "resource",
+              "ci-runs"
+            ],
+            "description": "What to watch. `jit-requests` and `access-requests` need `access:read`, `workflow-approvals` `workflows:read`, `change-freezes` `freezes:read`, `account-resources` (with `accountId`) and `resource` (with `resourceId`) `resources:read`, and `ci-runs` `ci:read`."
+          },
+          "accountId": {
+            "type": "string",
+            "description": "The account, for `account-resources`."
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "The resource, for `resource`."
+          },
+          "workflowId": {
+            "type": "string",
+            "description": "Narrow `workflow-approvals` to one workflow's pending approvals."
+          }
+        },
+        "required": [
+          "topic"
+        ],
+        "additionalProperties": false
+      },
       "SloActiveFreeze": {
         "type": "object",
         "properties": {
@@ -19676,13 +21002,16 @@
             "type": "string"
           },
           "providerPluginId": {
-            "type": "string"
+            "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource."
           },
           "providerResourceTypeId": {
-            "type": "string"
+            "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource."
           },
           "providerAccountId": {
             "type": "string",
+            "description": "Deprecated and ignored: read from the stored provider resource.",
             "format": "uuid",
             "examples": [
               "00000000-0000-0000-0000-000000000000"
@@ -19693,10 +21022,49 @@
           "consumerResourceId",
           "consumerFieldKey",
           "providerResourceId",
-          "providerOutputKey",
-          "providerPluginId",
-          "providerResourceTypeId",
-          "providerAccountId"
+          "providerOutputKey"
+        ],
+        "additionalProperties": false
+      },
+      "AssociationCandidate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "outputKey": {
+            "type": "string",
+            "description": "The output that would fill the field; send it as `providerOutputKey`."
+          },
+          "pluginLogoSvg": {
+            "type": "string",
+            "description": "Inline SVG markup; may be empty."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "displayName",
+          "outputKey",
+          "pluginLogoSvg"
         ],
         "additionalProperties": false
       },
@@ -37375,6 +38743,7 @@
           "leakedSecretAlerts",
           "vulnerabilityAlerts",
           "probeAlerts",
+          "heartbeatAlerts",
           "sloAlerts",
           "scorecardAlerts",
           "quotaAlerts",
@@ -41182,60 +42551,6 @@
         ],
         "additionalProperties": false,
         "description": "What an installation has **accepted**. An installation made before issue filing existed shows `issues: none` until an owner of the GitHub account approves the app's updated permissions."
-      },
-      "GithubPermissionRequired": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string",
-            "enum": [
-              "github_permission_required"
-            ]
-          },
-          "permissions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "installationId": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "accountLogin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "manageUrl": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "error",
-          "code",
-          "permissions",
-          "installationId",
-          "accountLogin",
-          "manageUrl"
-        ],
-        "additionalProperties": false
       },
       "WorkflowMetric": {
         "type": "object",
@@ -56104,12 +57419,15 @@
               "iac",
               "environment-diff",
               "environments",
+              "env-files",
               "ssh-fanout",
               "metric-alerts",
               "probes",
+              "heartbeats",
               "status-pages",
               "quotas",
               "price-catalog",
+              "migration-estimates",
               "incidents",
               "slos",
               "services",
@@ -56160,6 +57478,13 @@
             ]
           },
           "canvasId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "estimateId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -57331,6 +58656,804 @@
           "vcpus",
           "memoryMb",
           "priceMonthly"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportRunResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "First day of the resolved window."
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day of the resolved window; never past today."
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every bucket start in the window, gaps included, ascending."
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "One per group and currency, largest commitment cost first."
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportProvider"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportNotice"
+            }
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "buckets",
+          "series",
+          "overall",
+          "providers",
+          "notices",
+          "reportId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportNotice": {
+        "type": "string",
+        "enum": [
+          "unused_lumped_monthly",
+          "unattributed_commitment_usage",
+          "partial_savings_measurement",
+          "no_measurable_accounts"
+        ],
+        "description": "`unused_lumped_monthly`: a provider in scope books a month's unused commitment fee on one day of its daily data, so a daily or weekly utilization dips on that day. `unattributed_commitment_usage`: some covered usage could not be tied to a commitment and is grouped as `__unattributed__`. `partial_savings_measurement`: some covered usage had no reported on-demand equivalent and counts as saving nothing. `no_measurable_accounts`: no account in scope can measure coverage."
+      },
+      "CommitmentReportProvider": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "inventory_only"
+            ],
+            "description": "`inventory_only`: the provider's holdings are collected but its cost rows do not distinguish covered usage (GCP today), so it is left out of every metric rather than read as 0% covered."
+          },
+          "accountCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "pluginId",
+          "displayName",
+          "status",
+          "accountCount"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportSeries": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Group key and currency, joined by U+0000: unique within a result."
+          },
+          "groupKey": {
+            "type": "string",
+            "description": "The group's key: empty without grouping; a sentinel (`__on_demand__`, `__unattributed__`, `__unknown_kind__`) or the value otherwise."
+          },
+          "label": {
+            "type": "string",
+            "description": "An account's name, a provider's display name or a holding's description where the server can name the key; the key itself otherwise (clients name kinds and sentinels)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportPoint"
+            }
+          },
+          "total": {
+            "type": "object",
+            "properties": {
+              "totals": {
+                "$ref": "#/components/schemas/CommitmentReportTotals"
+              },
+              "metrics": {
+                "$ref": "#/components/schemas/CommitmentReportMetricValues"
+              }
+            },
+            "required": [
+              "totals",
+              "metrics"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "groupKey",
+          "label",
+          "currency",
+          "points",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportMetricValues": {
+        "type": "object",
+        "properties": {
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "covered ÷ (coveredAll + uncovered), or the bucket's usage under a commitment grouping. Null when the denominator is zero, never 0."
+          },
+          "eligibleCoverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "covered ÷ (coveredAll + uncoveredEligible): the upper bound of coverage. Null when the denominator is zero, never 0."
+          },
+          "utilization": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "covered ÷ (covered + unused). Null when the denominator is zero, never 0."
+          },
+          "effectiveSavingsRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "netSavings ÷ (onDemandEquivalent + uncovered). Null also when netSavings is null. Null when the denominator is zero, never 0."
+          },
+          "netSavings": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(coveredOnDemand − coveredMeasured) − unused. Null when there was covered usage and none of it had a reported on-demand equivalent; covered usage without one counts as saving nothing."
+          },
+          "onDemandRemainder": {
+            "type": "number",
+            "description": "uncovered."
+          },
+          "commitmentCost": {
+            "type": "number",
+            "description": "covered + unused."
+          },
+          "usedCommitmentCost": {
+            "type": "number",
+            "description": "covered."
+          },
+          "unusedCommitmentCost": {
+            "type": "number",
+            "description": "unused."
+          },
+          "onDemandEquivalent": {
+            "type": "number",
+            "description": "coveredOnDemand + (covered − coveredMeasured)."
+          },
+          "savingsMeasuredShare": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "coveredMeasured ÷ covered: how much of the covered spend the savings figure measured. Null without covered spend."
+          }
+        },
+        "required": [
+          "coverage",
+          "eligibleCoverage",
+          "utilization",
+          "effectiveSavingsRate",
+          "netSavings",
+          "onDemandRemainder",
+          "commitmentCost",
+          "usedCommitmentCost",
+          "unusedCommitmentCost",
+          "onDemandEquivalent",
+          "savingsMeasuredShare"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportTotals": {
+        "type": "object",
+        "properties": {
+          "covered": {
+            "type": "number",
+            "description": "Amortized usage the selected commitments covered: the used commitment cost."
+          },
+          "coveredAll": {
+            "type": "number",
+            "description": "Amortized usage any commitment covered."
+          },
+          "unused": {
+            "type": "number",
+            "description": "Amortized commitment fees no usage absorbed (only fee rows with a reported amortized amount)."
+          },
+          "uncovered": {
+            "type": "number",
+            "description": "Amortized usage no commitment covered: the on-demand remainder."
+          },
+          "uncoveredEligible": {
+            "type": "number",
+            "description": "Uncovered usage in (provider, service, region) cells with any covered usage in the window."
+          },
+          "coveredOnDemand": {
+            "type": "number",
+            "description": "On-demand equivalent of covered usage, summed over rows whose provider reported one."
+          },
+          "coveredMeasured": {
+            "type": "number",
+            "description": "Amortized amount of those same rows."
+          }
+        },
+        "required": [
+          "covered",
+          "coveredAll",
+          "unused",
+          "uncovered",
+          "uncoveredEligible",
+          "coveredOnDemand",
+          "coveredMeasured"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "The bucket's first day, `YYYY-MM-DD`."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CommitmentReportTotals"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/CommitmentReportMetricValues"
+          }
+        },
+        "required": [
+          "bucket",
+          "totals",
+          "metrics"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportGroupBy": {
+        "type": "string",
+        "enum": [
+          "none",
+          "provider",
+          "commitment_type",
+          "commitment",
+          "service",
+          "account",
+          "region"
+        ],
+        "description": "`commitment_type` and `commitment` split the commitment side by holding and put uncovered usage in its own `__on_demand__` group; covered usage the provider did not tie to a commitment (all of AWS, whose Cost Explorer cannot group by commitment) is `__unattributed__`, and a commitment the inventory no longer holds is `__unknown_kind__` under `commitment_type`. Under those two, each group's coverage is its share of the bucket's whole usage, so the groups add up. Instance family is not offered: no collector stores it on cost rows."
+      },
+      "CommitmentReportGranularity": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly",
+          "quarterly"
+        ],
+        "description": "Bucket size. There is no hourly: spend is collected one row per UTC day, so an hourly bucket would put each day's spend at midnight. Weeks start on Monday."
+      },
+      "CommitmentReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/CommitmentReportConfig"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdByUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "config",
+          "folderId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportConfig": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CommitmentReportFilters"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/CommitmentReportMetric"
+          }
+        },
+        "required": [
+          "version",
+          "dateRange",
+          "granularity",
+          "groupBy",
+          "filters",
+          "metric"
+        ],
+        "additionalProperties": false,
+        "description": "An absolute range covers at most 1096 days, and at most 367 at daily granularity. Every relative preset fits every granularity."
+      },
+      "CommitmentReportMetric": {
+        "type": "string",
+        "enum": [
+          "coverage",
+          "eligibleCoverage",
+          "utilization",
+          "effectiveSavingsRate",
+          "netSavings",
+          "onDemandRemainder",
+          "commitmentCost",
+          "usedCommitmentCost",
+          "unusedCommitmentCost"
+        ],
+        "description": "The metric the chart draws. A result always carries every metric."
+      },
+      "CommitmentReportFilters": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+            },
+            "description": "Plugin ids, as `report-options` lists them (`aws`, `azure`).",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "commitmentTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportKind"
+            },
+            "description": "Narrows the commitment side to holdings of these kinds.",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+            },
+            "description": "Provider service names, as `report-options` lists them.",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+            },
+            "description": "Connected account ids.",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+            },
+            "description": "Provider regions, as `report-options` lists them.",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "commitmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+            },
+            "description": "Provider-native commitment ids, as `report-options` lists them. Narrows the commitment side to those holdings.",
+            "minItems": 1,
+            "maxItems": 200,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Lists AND-compose; values within a list OR. An absent list does not filter. `commitmentTypes` and `commitmentIds` narrow the commitment side (covered usage and unused fees) only: uncovered usage stays in, because it is the rest of the coverage denominator."
+      },
+      "CommitmentReportKind": {
+        "type": "string",
+        "enum": [
+          "reservation",
+          "savings_plan",
+          "committed_use"
+        ]
+      },
+      "CommitmentReportInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored as sent; absent is null."
+          },
+          "config": {
+            "$ref": "#/components/schemas/CommitmentReportConfig"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A report folder (`/cost-report-folders`, shared with cost reports); absent or null is the top level."
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportResult": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "First day of the resolved window."
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day of the resolved window; never past today."
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/CommitmentReportGranularity"
+          },
+          "groupBy": {
+            "$ref": "#/components/schemas/CommitmentReportGroupBy"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every bucket start in the window, gaps included, ascending."
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "One per group and currency, largest commitment cost first."
+          },
+          "overall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportSeries"
+            },
+            "description": "All groups combined, one series per currency."
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportProvider"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentReportNotice"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "granularity",
+          "groupBy",
+          "buckets",
+          "series",
+          "overall",
+          "providers",
+          "notices"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentReportOptions": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "measured",
+                    "inventory_only"
+                  ],
+                  "description": "`inventory_only`: the provider's holdings are collected but its cost rows do not distinguish covered usage (GCP today), so it is left out of every metric rather than read as 0% covered."
+                }
+              },
+              "required": [
+                "pluginId",
+                "displayName",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "examples": [
+                    "00000000-0000-0000-0000-000000000000"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "pluginId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "commitments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "commitmentId": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "examples": [
+                    "00000000-0000-0000-0000-000000000000"
+                  ]
+                },
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/CommitmentReportKind"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "commitmentId",
+                "accountId",
+                "pluginId",
+                "kind",
+                "description",
+                "state"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "providers",
+          "accounts",
+          "services",
+          "regions",
+          "commitments"
         ],
         "additionalProperties": false
       },
@@ -59596,6 +61719,1185 @@
           "error",
           "fetchedAt",
           "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationScenarioCreated": {
+        "type": "object",
+        "properties": {
+          "scenarioModelId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "monthlyDelta": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "scenarioModelId",
+          "name",
+          "currency",
+          "monthlyDelta"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationScenarioInput": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day the migration lands: the scenario's recurring change starts here."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The scenario model's name. Defaults to the estimate's name and target."
+          }
+        },
+        "required": [
+          "startDate"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTerraformResult": {
+        "type": "object",
+        "properties": {
+          "hcl": {
+            "type": "string"
+          },
+          "exported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "address"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unsupported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "hcl",
+          "exported",
+          "unsupported"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationEstimateResult": {
+        "type": "object",
+        "properties": {
+          "estimateId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "examples": [
+                  "00000000-0000-0000-0000-000000000000"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "service",
+                  "resources"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "resourceCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "kind",
+              "label",
+              "resourceCount"
+            ],
+            "additionalProperties": false
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "$ref": "#/components/schemas/PluginId"
+              },
+              "pluginName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "pluginId",
+              "pluginName"
+            ],
+            "additionalProperties": false
+          },
+          "region": {
+            "$ref": "#/components/schemas/MigrationRegionNote"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationRow"
+            }
+          },
+          "unmatched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationUnmatchedRow"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/MigrationTotals"
+          },
+          "displayCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "terraform": {
+            "type": "boolean",
+            "description": "The target plugin can write Terraform for at least one matched row."
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "estimateId",
+          "name",
+          "source",
+          "target",
+          "region",
+          "rows",
+          "unmatched",
+          "totals",
+          "displayCurrency",
+          "terraform",
+          "truncated",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTotals": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "target": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "currentUnknown": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "targetUnknown": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unmatchedCurrent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationMoney"
+            }
+          },
+          "comparable": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "currency": {
+                    "type": "string"
+                  },
+                  "current": {
+                    "type": "number"
+                  },
+                  "target": {
+                    "type": "number"
+                  },
+                  "pairedDelta": {
+                    "type": "number",
+                    "description": "Target minus current over the rows priced on both sides. Negative saves money."
+                  },
+                  "pairedRows": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "currency",
+                  "current",
+                  "target",
+                  "pairedDelta",
+                  "pairedRows"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every figure in one currency (the org's display currency, or the one currency all figures are in); null when they cannot be converted."
+          }
+        },
+        "required": [
+          "current",
+          "target",
+          "currentUnknown",
+          "targetUnknown",
+          "unmatchedCurrent",
+          "comparable"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationMoney": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "examples": [
+              "USD"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationUnmatchedRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-category",
+              "no-target-type"
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCost"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "category",
+          "reason",
+          "current"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationCost": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Per month (730 hours)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "billed",
+              "estimate",
+              "list-price"
+            ],
+            "description": "`billed`: the resource's own spend in collected cost data over the last 30 days, scaled to 730 hours. `estimate`: the plugin's estimate for the configuration. `list-price`: the size's published list price times the count."
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "Only part of the resource could be priced; the true figure is higher."
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "basis",
+          "partial"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationCategory": {
+        "type": "string",
+        "enum": [
+          "vm",
+          "kubernetes-cluster",
+          "kubernetes-node-pool",
+          "managed-postgres",
+          "managed-mysql",
+          "managed-redis",
+          "managed-mongodb",
+          "object-storage",
+          "block-volume",
+          "file-storage",
+          "load-balancer",
+          "container-app",
+          "serverless-function",
+          "container-registry",
+          "static-ip",
+          "dns-zone"
+        ],
+        "description": "What a resource is across providers, as its plugin declares it. Resources are matched to the target's type of the same category."
+      },
+      "MigrationRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/MigrationCategory"
+          },
+          "sourceRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceArea": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instanceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "specs": {
+            "type": "object",
+            "properties": {
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memoryGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuCount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuModel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "diskGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "count": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "vcpus",
+              "memoryGb",
+              "gpuCount",
+              "gpuModel",
+              "diskGb",
+              "count"
+            ],
+            "additionalProperties": false
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationCost"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What it costs now; null when nothing can price it (never 0)."
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "resourceTypeId": {
+                "type": "string"
+              },
+              "resourceTypeName": {
+                "type": "string"
+              },
+              "sizeId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sizeLabel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memoryGb": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpuCount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "region": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "regionLabel": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cost": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MigrationCost"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "overridden": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "resourceTypeId",
+              "resourceTypeName",
+              "sizeId",
+              "sizeLabel",
+              "vcpus",
+              "memoryGb",
+              "gpuCount",
+              "region",
+              "regionLabel",
+              "cost",
+              "overridden"
+            ],
+            "additionalProperties": false
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no-account",
+                  "source-size-unknown",
+                  "no-size-match",
+                  "no-price",
+                  "catalog-unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the target has no figure, when it has none."
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationSizeOption"
+            },
+            "description": "Target sizes for the picker: qualifying first, cheapest first."
+          },
+          "targetTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "category",
+          "sourceRegion",
+          "sourceArea",
+          "instanceType",
+          "specs",
+          "current",
+          "target",
+          "note",
+          "candidates",
+          "targetTypes"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationSizeOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "vcpus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memoryGb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gpuCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gpuModel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "monthly": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationMoney"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One unit, per month; null if unpriced."
+          },
+          "meetsSpec": {
+            "type": "boolean",
+            "description": "Meets or exceeds the source's known vCPUs, memory and GPUs."
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "vcpus",
+          "memoryGb",
+          "gpuCount",
+          "gpuModel",
+          "monthly",
+          "meetsSpec"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationArea": {
+        "type": "string",
+        "enum": [
+          "north-america",
+          "south-america",
+          "europe",
+          "asia-pacific",
+          "middle-east",
+          "africa",
+          "oceania"
+        ]
+      },
+      "MigrationRegionNote": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regionLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "area": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationArea"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceAreas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationArea"
+            }
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "user",
+              "nearest",
+              "default",
+              "none"
+            ]
+          },
+          "crossesArea": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Some sources are in another area than the target region; null if unknown."
+          }
+        },
+        "required": [
+          "region",
+          "regionLabel",
+          "area",
+          "sourceAreas",
+          "choice",
+          "crossesArea"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationEstimate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MigrationEstimateSource"
+          },
+          "sourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetPluginId": {
+            "type": "string"
+          },
+          "targetRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MigrationRowOverride"
+            }
+          },
+          "createdByUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source",
+          "sourceName",
+          "targetPluginId",
+          "targetRegion",
+          "overrides",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationRowOverride": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target resource type, of the row's category."
+          },
+          "sizeId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Target size: a catalog SKU or size-picker id."
+          }
+        },
+        "additionalProperties": false
+      },
+      "MigrationEstimateSource": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "service"
+                ]
+              },
+              "serviceId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The service's id or slug."
+              }
+            },
+            "required": [
+              "kind",
+              "serviceId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resources"
+                ]
+              },
+              "resourceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "kind",
+              "resourceIds"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "What to price: a service's members (resolved on every read, so the estimate follows the service) or a set of resource ids."
+      },
+      "MigrationEstimateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "source": {
+            "$ref": "#/components/schemas/MigrationEstimateSource"
+          },
+          "targetPluginId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The provider to price on, as a plugin id (`hetzner`, `gcp`)."
+          },
+          "targetRegion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A region of the target provider, or null for the one nearest the source resources."
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MigrationRowOverride"
+            },
+            "description": "Per source resource id, the user's target type and size in place of the match."
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "targetPluginId"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTargets": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationTargetProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "additionalProperties": false
+      },
+      "MigrationTargetProvider": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MigrationCategory"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "area": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MigrationArea"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "area"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "priceCatalog": {
+            "type": "boolean"
+          },
+          "needsAccount": {
+            "type": "boolean",
+            "description": "Pricing on this provider needs one of the org's accounts on it."
+          },
+          "hasAccount": {
+            "type": "boolean"
+          },
+          "terraform": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pluginId",
+          "pluginName",
+          "categories",
+          "regions",
+          "priceCatalog",
+          "needsAccount",
+          "hasAccount",
+          "terraform"
         ],
         "additionalProperties": false
       },
@@ -65673,7 +68975,8 @@
           "kubernetes_efficiency_report",
           "savings_view",
           "resource_report",
-          "network_flow_report"
+          "network_flow_report",
+          "commitment_report"
         ]
       },
       "ObjectSharing": {
@@ -75876,6 +79179,10 @@
           "schedulable": {
             "type": "boolean",
             "description": "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule."
+          },
+          "hasSchedule": {
+            "type": "boolean",
+            "description": "The type flags a field as the schedule it runs on, so a heartbeat can watch it."
           }
         },
         "required": [
@@ -76057,6 +79364,10 @@
             "items": {
               "$ref": "#/components/schemas/JsonObject"
             }
+          },
+          "topLevel": {
+            "type": "boolean",
+            "description": "A top-level type shown on the account root's detail view beside its children. Its resources have no parent: send no `parentResourceId` when creating, editing or deleting one."
           }
         },
         "required": [
@@ -89904,6 +93215,1278 @@
         "operationId": "getOrgOrgIdProbesProbeIdMetrics"
       }
     },
+    "/api/org/{orgId}/heartbeats": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's heartbeats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every heartbeat in the organization with its status, schedule, ping URL, last ping and next deadline.\n\n_Requires permission: `resources:read`._",
+        "summary": "List heartbeat monitors",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeats"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The created heartbeat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a heartbeat with a schedule and grace period. It stays `new` until its first ping, then goes down whenever a ping is later than the schedule plus grace. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Create a heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:write",
+        "operationId": "postOrgOrgIdHeartbeats"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/suggestions": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Only this resource's schedule."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatSuggestions"
+                }
+              }
+            }
+          }
+        },
+        "description": "Scheduled jobs, pipelines and functions from the organization's synced resources (the fields their plugins flag as a schedule), with each schedule read into cron or an interval. A read over stored state; no provider API calls.\n\n_Requires permission: `resources:read`._",
+        "summary": "Suggest scheduled resources to watch",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeatsSuggestions"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}": {
+      "put": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated heartbeat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Edit the name, schedule or grace period, or toggle `enabled`. A schedule change recomputes the deadline from the last ping. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Update, pause or resume a heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:write",
+        "operationId": "putOrgOrgIdHeartbeatsHeartbeatId"
+      },
+      "delete": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove the heartbeat and its ping history. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Delete a heartbeat",
+        "x-required-permission": "resources:write",
+        "operationId": "deleteOrgOrgIdHeartbeatsHeartbeatId"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}/rotate-token": {
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The heartbeat with its new ping URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Issue a new secret ping URL. The old one stops working at once. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "summary": "Replace a heartbeat's ping URL",
+        "x-required-permission": "resources:write",
+        "operationId": "postOrgOrgIdHeartbeatsHeartbeatIdRotateToken"
+      }
+    },
+    "/api/org/{orgId}/heartbeats/{heartbeatId}/pings": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "heartbeatId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent pings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatPings"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Recent pings, newest first, with each run's duration where a `/start` opened it. Kept for 30 days.\n\n_Requires permission: `resources:read`._",
+        "summary": "Read a heartbeat's ping history",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdHeartbeatsHeartbeatIdPings"
+      }
+    },
+    "/api/ping/{token}": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The job ran: the heartbeat is up and its next deadline is set from the schedule. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Ping a heartbeat (GET)",
+        "operationId": "getPingToken"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The job ran: the heartbeat is up and its next deadline is set from the schedule. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Ping a heartbeat",
+        "operationId": "postPingToken"
+      }
+    },
+    "/api/ping/{token}/start": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. Records the start so the closing ping can report the run's duration. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run started (GET)",
+        "operationId": "getPingTokenStart"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. Records the start so the closing ping can report the run's duration. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run started",
+        "operationId": "postPingTokenStart"
+      }
+    },
+    "/api/ping/{token}/fail": {
+      "get": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run failed (GET)",
+        "operationId": "getPingTokenFail"
+      },
+      "post": {
+        "tags": [
+          "Heartbeats"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recorded",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "**Unauthenticated**: the token in the path is the credential. The heartbeat goes down at once and alerts. Answers `OK` in plain text; an unknown token answers 404, and more than 20 pings a minute for one heartbeat answer 429 without being recorded. A POST body's first 1000 characters are kept with the ping.",
+        "summary": "Signal a run failed",
+        "operationId": "postPingTokenFail"
+      }
+    },
+    "/api/org/{orgId}/env-files/describe": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the file references",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvDescribeResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Parses the file and looks up every reference it makes: which resource, account and output each `resource()` names, and whether each `secret()` exists. Returns no values and calls no provider.\n\n_Requires permission: `resources:read`._",
+        "summary": "Check an .infraenv file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvDescribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "resources:read",
+        "operationId": "postOrgOrgIdEnvFilesDescribe"
+      }
+    },
+    "/api/org/{orgId}/env-files/resolve": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvResolveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Resolves every variable of one environment: literals as written, `resource()` through the resource's provider, `secret()` from the organization's secrets. Returns the values in plaintext along with the generated `.env` text, and records an audit entry naming the variables (never their values). A variable that does not resolve is reported in `problems` and left out. A file with syntax errors answers 400.\n\n_Requires permission: `secrets:read`._",
+        "summary": "Resolve an .infraenv file into .env values",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "secrets:read",
+        "operationId": "postOrgOrgIdEnvFilesResolve"
+      }
+    },
+    "/api/org/{orgId}/env-files/sources": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Matches the resource's name, id, type or account."
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resources with outputs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvSourceList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Synced resources whose type declares outputs, each with those outputs and, where the type has a secret export template, the variable name it suggests. Backs the editor's picker.\n\n_Requires permission: `resources:read`._",
+        "summary": "List resources an .infraenv variable can reference",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdEnvFilesSources"
+      }
+    },
+    "/api/org/{orgId}/env-files/repos": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvRepoList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every repository the organization's GitHub App installations can reach.\n\n_Requires permission: `github-issues:read`._",
+        "summary": "List repositories an .infraenv can be read from and committed to",
+        "x-required-permission": "github-issues:read",
+        "operationId": "getOrgOrgIdEnvFilesRepos"
+      }
+    },
+    "/api/org/{orgId}/env-files/repo-file": {
+      "get": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "installationId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 201,
+              "description": "`owner/name`.",
+              "examples": [
+                "acme/web"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "description": "Path of the file in the repository. Defaults to `.infraenv` in the editors.",
+              "examples": [
+                ".infraenv",
+                "apps/web/.infraenv"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvRepoFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The file's text and blob sha on a branch (the default branch when omitted). A file that does not exist yet answers 200 with `content: null`.\n\n_Requires permission: `github-issues:read`._",
+        "summary": "Read an .infraenv file from a repository",
+        "x-required-permission": "github-issues:read",
+        "operationId": "getOrgOrgIdEnvFilesRepoFile"
+      }
+    },
+    "/api/org/{orgId}/env-files/commit": {
+      "post": {
+        "tags": [
+          "Environment files"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraenvCommitResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The installation has not accepted the permission this needs. An owner of the GitHub account approves it from `manageUrl`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubPermissionRequired"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Writes the file to the branch in one commit, or to a new branch with a pull request. The text is checked first: a file with syntax errors is refused, so nothing unparseable is committed. Values are never committed; the file only holds references.\n\n_Requires permission: `github-issues:write`._",
+        "summary": "Commit an .infraenv file to a repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfraenvCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "github-issues:write",
+        "operationId": "postOrgOrgIdEnvFilesCommit"
+      }
+    },
+    "/api/org/{orgId}/live/tickets": {
+      "post": {
+        "tags": [
+          "Live updates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A ticket for watching one topic: either `poll` (no push channel on this server) or a sealed Neon Realtime query scoped to the organization. Each topic needs the read permission of the list it signals; a ticket expires after about a minute and is renewed by asking again, which checks the permission again.",
+        "summary": "Get a live-update ticket",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveTicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "postOrgOrgIdLiveTickets"
+      }
+    },
     "/api/org/{orgId}/slos": {
       "get": {
         "tags": [
@@ -92277,6 +96860,75 @@
         "operationId": "getOrgOrgIdOwnershipResource"
       }
     },
+    "/api/org/{orgId}/associations/candidates": {
+      "get": {
+        "tags": [
+          "Associations"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId",
+              "description": "The resource holding the field."
+            },
+            "required": true
+          },
+          {
+            "name": "fieldKey",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The secret field to fill, e.g. `connectionString`."
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candidates, sorted by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssociationCandidate"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A candidate is a stored resource whose type hands one of its outputs to the field's plugin under the field's key (a peer integration's credential mapping) and whose fields pass that integration's visibility gates. Send one to `POST /associations` to point the field at it.\n\n_Requires permission: `resources:read`._",
+        "summary": "List the resources whose outputs can fill a secret field",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdAssociationsCandidates"
+      }
+    },
     "/api/org/{orgId}/associations": {
       "post": {
         "tags": [
@@ -92375,8 +97027,19 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Bad gateway: an upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
+        "description": "When the resource's plugin applies a new value upstream (resetting a database password, say), it does so first; a refusal there answers 502 and stores nothing.\n\n_Requires permission: `secrets:write`._",
         "summary": "Set a secret field to a literal plaintext value",
         "requestBody": {
           "content": {
@@ -92389,8 +97052,7 @@
           "required": true
         },
         "x-required-permission": "secrets:write",
-        "operationId": "postOrgOrgIdAssociationsLiteral",
-        "description": "_Requires permission: `secrets:write`._"
+        "operationId": "postOrgOrgIdAssociationsLiteral"
       }
     },
     "/api/org/{orgId}/blast-radius": {
@@ -123242,6 +127904,485 @@
         "operationId": "getOrgOrgIdCommitments"
       }
     },
+    "/api/org/{orgId}/commitments/report-options": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportOptions"
+                }
+              }
+            }
+          }
+        },
+        "description": "Providers (with whether their cost rows can measure coverage), accounts, the services and regions with usage in the last 180 days, and the commitment inventory. Scoped to what the caller may see.\n\n_Requires permission: `costs:read`._",
+        "summary": "Picker values for the commitment report editor",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdCommitmentsReportOptions"
+      }
+    },
+    "/api/org/{orgId}/commitments/report-query": {
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Coverage, utilization, savings and commitment cost over time, on the amortized basis. See `CommitmentReportMetricValues` for each metric's formula. A read despite the method.\n\n_Requires permission: `costs:read`._",
+        "summary": "Run an unsaved commitment report config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:read",
+        "operationId": "postOrgOrgIdCommitmentsReportQuery"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommitmentReport"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "The saved commitment reports the caller's sharing lets them open, by name.\n\n_Requires permission: `costs:read`._",
+        "summary": "List saved commitment reports",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdCommitmentsReports"
+      },
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Stored exactly as sent. The creator is the report's implicit owner for sharing; filing it in a folder needs editor access to the folder. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Create a commitment report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdCommitmentsReports"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports/{id}": {
+      "get": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a commitment report",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdCommitmentsReportsId",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Name, description, config and folder together. Needs editor. Moving it to another folder needs editor access to that folder. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Replace a commitment report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentReportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "putOrgOrgIdCommitmentsReportsId"
+      },
+      "delete": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Soft delete; its sharing goes with it. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Delete a commitment report",
+        "x-required-permission": "costs:write",
+        "operationId": "deleteOrgOrgIdCommitmentsReportsId"
+      }
+    },
+    "/api/org/{orgId}/commitments/reports/{id}/run": {
+      "post": {
+        "tags": [
+          "Commitments"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentReportRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "A relative date range resolves against today on every run, and a range reaching past today ends today.\n\n_Requires permission: `costs:read`._",
+        "summary": "Run a saved commitment report",
+        "x-required-permission": "costs:read",
+        "operationId": "postOrgOrgIdCommitmentsReportsIdRun"
+      }
+    },
     "/api/org/{orgId}/credits": {
       "get": {
         "tags": [
@@ -124070,6 +129211,625 @@
         "summary": "Compare equivalent instances across providers",
         "x-required-permission": "resources:read",
         "operationId": "getOrgOrgIdPriceCatalogCompare"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/targets": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationTargets"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every provider with at least one resource type that declares a cross-provider category, with its categories, the regions it can be priced in (with their area) and whether pricing it needs one of the org's accounts.\n\n_Requires permission: `costs:read`._",
+        "summary": "Providers an estimate can target",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesTargets"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/preview": {
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Matches each resource to the target's type of the same category, picks the cheapest size meeting or exceeding its vCPUs, memory and GPUs (or the override), and prices it beside what the resource costs now. Resources with no equivalent are listed apart with the reason. A figure nothing can price is null, never 0. A read despite the method.\n\n_Requires permission: `costs:read`._",
+        "summary": "Compute an unsaved migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:read",
+        "operationId": "postOrgOrgIdMigrationEstimatesPreview"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estimates, most recently changed first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MigrationEstimate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List saved migration estimates",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimates",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Stores the inputs only; the figures are computed on every read. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Save a migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdMigrationEstimates"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate's inputs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a saved migration estimate",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesId",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Name, source, target, region and overrides together. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Replace a migration estimate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationEstimateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "putOrgOrgIdMigrationEstimatesId"
+      },
+      "delete": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Delete a migration estimate",
+        "x-required-permission": "costs:write",
+        "operationId": "deleteOrgOrgIdMigrationEstimatesId",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/result": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationEstimateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The saved inputs priced now: current spend as the caller's cost visibility scope sees it, and today's list prices.\n\n_Requires permission: `costs:read`._",
+        "summary": "Compute a saved migration estimate",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesIdResult"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/terraform": {
+      "get": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HCL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationTerraformResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "HCL for the matched rows through the target plugin's own Terraform export, with each row's matched type, size and region. Rows the export cannot map are listed with the reason. 400 when the target has no Terraform export.\n\n_Requires permission: `costs:read`._",
+        "summary": "Terraform for the target provider",
+        "x-required-permission": "costs:read",
+        "operationId": "getOrgOrgIdMigrationEstimatesIdTerraform"
+      }
+    },
+    "/api/org/{orgId}/migration-estimates/{id}/scenario": {
+      "post": {
+        "tags": [
+          "Migration estimates"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scenario model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationScenarioCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a scenario model with one recurring monthly amount, the estimate's paired delta (target minus current over the rows priced on both sides), from `startDate`. 400 when the estimate has no single-currency delta. Audit-logged.\n\n_Requires permission: `costs:write`._",
+        "summary": "Turn an estimate into a scenario model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationScenarioInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "costs:write",
+        "operationId": "postOrgOrgIdMigrationEstimatesIdScenario"
       }
     },
     "/api/org/{orgId}/savings/realized": {
@@ -142454,7 +148214,7 @@
             }
           }
         },
-        "description": "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues and `ping` is acknowledged. Every other event is ignored.",
+        "description": "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues; `push` and `pull_request` events start CI runs; `check_suite` and `check_run` `rerequested` events retry the CI runs behind Infrawrench's own checks; and `ping` is acknowledged. Every other event is ignored.",
         "summary": "Inbound GitHub App webhook for issue status",
         "operationId": "postIssueWebhooksGithub"
       }

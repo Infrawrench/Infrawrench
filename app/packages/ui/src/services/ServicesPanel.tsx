@@ -41,6 +41,8 @@ export interface ServicesPanelProps {
   onOpenResource?: ((ref: ServiceResourceRef) => void) | undefined;
   /** Where the org grade's pillar cards (in the scorecards view) lead. */
   orgScorecardLinks?: OrgScorecardPillarLinks | undefined;
+  /** Start a migration estimate for a service; the action renders only when wired. */
+  onEstimateMigration?: ((service: { id: string; name: string }) => void) | undefined;
 }
 
 function ServiceRow({
@@ -244,6 +246,7 @@ function ServiceDetailLoader({
   onNavigate,
   onEdit,
   onOpenResource,
+  onEstimateMigration,
   reloadKey,
 }: {
   client: ServicesClient;
@@ -252,6 +255,7 @@ function ServiceDetailLoader({
   onNavigate: (location: ServicesPanelLocation) => void;
   onEdit: (service: Service) => void;
   onOpenResource?: ((ref: ServiceResourceRef) => void) | undefined;
+  onEstimateMigration?: ((service: { id: string; name: string }) => void) | undefined;
   reloadKey: number;
 }) {
   const gt = useGT();
@@ -330,6 +334,7 @@ function ServiceDetailLoader({
       onEdit={() => onEdit(detail.service)}
       onDeleted={() => onNavigate({})}
       onOpenResource={onOpenResource}
+      onEstimateMigration={onEstimateMigration}
       onMembershipChanged={(next) => {
         setDetail(next);
         // Membership feeds cost, findings and the scores: refresh them too.
@@ -353,6 +358,7 @@ export function ServicesPanel({
   onNavigate,
   onOpenResource,
   orgScorecardLinks,
+  onEstimateMigration,
 }: ServicesPanelProps) {
   const gt = useGT();
   const [editing, setEditing] = useState<{ existing: Service | null } | null>(null);
@@ -396,6 +402,7 @@ export function ServicesPanel({
           onNavigate={onNavigate}
           onEdit={(service) => setEditing({ existing: service })}
           onOpenResource={onOpenResource}
+          onEstimateMigration={onEstimateMigration}
           reloadKey={reloadKey}
         />
       ) : showScorecards ? (
@@ -420,7 +427,8 @@ export function ServicesPanel({
           existing={editing.existing}
           onSaved={(saved) => {
             if (!editing.existing && saved) onNavigate({ serviceId: saved.id });
-            else setReloadKey((k) => k + 1);
+            // Always reload too: the editor saves members after the service itself.
+            setReloadKey((k) => k + 1);
           }}
           onClose={() => setEditing(null)}
         />

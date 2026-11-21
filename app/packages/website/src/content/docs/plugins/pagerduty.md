@@ -18,7 +18,7 @@ Connect a PagerDuty account to manage your incident response setup from Infrawre
 - **Business services**: create, edit the name, description and point of contact, and delete.
 - **Event orchestrations**: global rulesets with their route counts. Rename or delete them. The orchestration's routing key is shown as an output.
 
-<insert [PagerDuty service detail page showing On call now, the Last 30 days summary with MTTA and MTTR, and the Open incidents table] here>
+![PagerDuty service detail page showing On call now, the Last 30 days summary with mean time to acknowledge and to resolve, and the Open incidents table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/pagerduty/service-detail.png)
 
 ## Connect with PagerDuty
 
@@ -30,7 +30,7 @@ The connection renews itself. If you revoke access in PagerDuty, or don't use In
 
 Connect with PagerDuty works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
 
-<insert [PagerDuty add-account form showing the Connect with PagerDuty button above the REST API Key field] here>
+![PagerDuty add-account form showing the Connect with PagerDuty button above the REST API Key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/pagerduty/add-account-connect.png)
 
 ## Use an API key instead
 
@@ -38,7 +38,7 @@ Connect with PagerDuty works in the web app, in the desktop app's cloud mode, an
 - **Service Region**: choose **European Union** if you sign in at a `.eu.pagerduty.com` address. Otherwise leave it on United States.
 - **Default Acting User** (optional): PagerDuty records a person against acknowledging, resolving, snoozing and annotating incidents, opening incidents and scheduling maintenance. Infrawrench acts as the signed-in member if their email is a PagerDuty user, and as the user you pick here otherwise. Without it, members whose email PagerDuty doesn't know can't act on incidents.
 
-<insert [PagerDuty Add-account form with the REST API Key filled in, Service Region on United States, and the Default Acting User picker open showing the account's users] here>
+![PagerDuty Add-account form with the REST API Key filled in, Service Region on the US (api.pagerduty.com), and the Default Acting User picker set to one of the account's users](https://agent-assets.infrawrench.com/docs-screenshots/plugins/pagerduty/add-account-acting-user.png)
 
 ## Page from Infrawrench
 

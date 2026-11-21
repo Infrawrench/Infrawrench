@@ -49,6 +49,17 @@ vi.mock("@infrawrench/server-core/ci/runs", () => ({
   announceAwaitingApproval: (...a: unknown[]) => mockAnnounce(...a),
 }));
 
+// Re-runs asked for from GitHub: the parser is real, what they start is
+// pinned in server-core (`ci/__tests__/rerun.test.ts`).
+const mockAcceptRerun = vi.fn();
+const mockFollowUpRerun = vi.fn();
+vi.mock("@infrawrench/server-core/ci/rerun", () => ({
+  acceptCheckRerequest: (...a: unknown[]) => mockAcceptRerun(...a),
+  followUpCheckRerun: (...a: unknown[]) => mockFollowUpRerun(...a),
+}));
+const mockAudit = vi.fn();
+vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockAudit(...a) }));
+
 const { issueWebhooksDomain } = await import("@/http/domains/issue-webhooks/index");
 
 const app = buildTestApi(issueWebhooksDomain);
@@ -287,5 +298,101 @@ describe("POST /api/issue-webhooks/github", () => {
     });
     expect(res.status).toBe(202);
     expect(mockAccept).not.toHaveBeenCalled();
+  });
+
+  const RUN = "0f8c6c2e-5b1a-4c6e-9d2f-3a4b5c6d7e8f";
+  const checkRunDelivery = (action: string) => ({
+    action,
+    installation: { id: 7 },
+    repository,
+    sender: { login: "octo" },
+    check_run: {
+      id: 901,
+      head_sha: "a".repeat(40),
+      external_id: `${RUN}:Test:build`,
+      app: { id: 42 },
+      check_suite: { id: 55, head_branch: "main" },
+    },
+  });
+
+  it("retries the run behind a re-run check, dispatching and auditing after answering", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    const retry = { id: "run-9", status: "queued", retryOfRunId: RUN, repoFullName: "acme/infra" };
+    const rerun = {
+      organizationId: "org-1",
+      installationId: 7,
+      repoFullName: "acme/infra",
+      retried: [retry],
+      notes: [],
+    };
+    mockAcceptRerun.mockResolvedValue(rerun);
+    const res = await signed("check_run", checkRunDelivery("rerequested"));
+    expect(res.status).toBe(202);
+    expect(mockAcceptRerun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "check_run",
+        installationId: 7,
+        appId: 42,
+        checkRunId: 901,
+        externalId: `${RUN}:Test:build`,
+        senderLogin: "octo",
+      }),
+    );
+    await settle();
+    expect(mockFollowUpRerun).toHaveBeenCalledWith(rerun);
+    // No Infrawrench user asked: the audit names the GitHub login instead.
+    expect(mockAudit).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      action: "ci.run.retry",
+      entityType: "ci_run",
+      entityId: "run-9",
+      metadata: {
+        retryOf: RUN,
+        repo: "acme/infra",
+        noTaskCache: false,
+        source: "github",
+        githubLogin: "octo",
+        rerequested: "check_run",
+      },
+    });
+    // Never treated as an issue event.
+    expect(mockApplyGithub).not.toHaveBeenCalled();
+  });
+
+  it("hands a re-run of a commit's suite over too", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    mockAcceptRerun.mockResolvedValue(null);
+    const res = await signed("check_suite", {
+      action: "rerequested",
+      installation: { id: 7 },
+      repository,
+      sender: { login: "octo" },
+      check_suite: { id: 55, head_sha: "a".repeat(40), head_branch: "main", app: { id: 42 } },
+    });
+    expect(res.status).toBe(202);
+    expect(mockAcceptRerun).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "check_suite", headBranch: "main" }),
+    );
+    await settle();
+    expect(mockFollowUpRerun).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing for a check's other actions", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    for (const action of ["created", "completed", "requested_action"]) {
+      const res = await signed("check_run", checkRunDelivery(action));
+      expect(res.status).toBe(202);
+    }
+    expect(mockAcceptRerun).not.toHaveBeenCalled();
+    expect(mockApplyGithub).not.toHaveBeenCalled();
+  });
+
+  it("answers 500 when recording a re-run fails", async () => {
+    process.env["GITHUB_APP_WEBHOOK_SECRET"] = GITHUB_SECRET;
+    mockAcceptRerun.mockRejectedValue(new Error("db down"));
+    const res = await signed("check_run", checkRunDelivery("rerequested"));
+    expect(res.status).toBe(500);
+    expect(mockFollowUpRerun).not.toHaveBeenCalled();
   });
 });

@@ -1,68 +1,52 @@
-import { useEffect, useId, useState } from "react";
+import { useState } from "react";
 import { useGT } from "gt-react";
 import { SERVICE_LIMITS } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
-import { useDataString } from "../i18n/data-strings.js";
-import {
-  errorMessage,
-  inputClass,
-  labelClass,
-  primaryButtonClass,
-  secondaryButtonClass,
-} from "./shared.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
+import { ResourcePicker, type PickerRowState } from "./ResourcePicker.js";
+import { errorMessage, primaryButtonClass, secondaryButtonClass } from "./shared.js";
 import type { ServiceResourceOption, ServicesClient } from "./types.js";
 
 export interface AddResourcesModalProps {
   client: ServicesClient;
-  /** Resources already in the service; offered greyed out. */
+  /** Resources already in the service; offered ticked and locked. */
   memberIds: ReadonlySet<string>;
   onAdd: (resourceIds: string[]) => Promise<void>;
   onClose: () => void;
 }
 
 /**
- * Pick resources to add to a service by hand. Searches the same index the
- * spotlight uses (name, account, provider and type), across every account,
- * and keeps the picks while the query changes so a service spanning three
- * providers is one dialog, not three.
+ * Pick resources to add to a service by hand, from the service page. The
+ * same picker the service editor shows: a fuzzy search across every account,
+ * a provider filter, and picks that survive a new query, so a service
+ * spanning three providers is one dialog, not three.
  */
 export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddResourcesModalProps) {
   const gt = useGT();
-  const dataString = useDataString();
-  const searchId = useId();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ServiceResourceOption[] | null>(null);
-  const [picked, setPicked] = useState<Map<string, ServiceResourceOption>>(new Map());
+  const [picked, setPicked] = useState<ReadonlyMap<string, ServiceResourceOption>>(new Map());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setResults(null);
-    const timer = setTimeout(() => {
-      client.searchResources(query.trim()).then(
-        (rows) => {
-          if (!cancelled) setResults(rows);
-        },
-        (e) => {
-          if (!cancelled) {
-            setResults([]);
-            setError(errorMessage(e, gt("Search failed")));
-          }
-        },
-      );
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [client, query, gt]);
+  const stateOf = (row: ServiceResourceOption): PickerRowState =>
+    memberIds.has(row.id)
+      ? { checked: true, lockedReason: gt("Already a member") }
+      : picked.has(row.id)
+        ? { checked: true, badge: { text: gt("New"), tone: "accent" } }
+        : { checked: false };
 
   const toggle = (row: ServiceResourceOption) => {
+    if (memberIds.has(row.id)) return;
     setPicked((prev) => {
       const next = new Map(prev);
-      if (next.has(row.id)) next.delete(row.id);
-      else next.set(row.id, row);
+      if (!next.delete(row.id)) next.set(row.id, row);
+      return next;
+    });
+  };
+
+  const selectMany = (rows: ServiceResourceOption[]) => {
+    setPicked((prev) => {
+      const next = new Map(prev);
+      for (const row of rows) if (!memberIds.has(row.id)) next.set(row.id, row);
       return next;
     });
   };
@@ -81,104 +65,51 @@ export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddReso
     }
   };
 
-  const describe = (row: ServiceResourceOption) =>
-    [
-      row.pluginDisplayName ?? row.pluginId,
-      row.resourceTypeLabel ? dataString(row.resourceTypeLabel) : row.resourceTypeId,
-      row.accountName,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+  const dismiss = () => {
+    if (!saving) onClose();
+  };
 
   return (
-    <Modal onClose={() => (saving ? undefined : onClose())} ariaLabel={gt("Add resources")}>
-      <div className="w-[36rem] max-w-[94vw] max-h-[90vh] flex flex-col rounded-2xl border border-border bg-surface p-5 shadow-xl">
-        <h2 className="text-sm font-semibold text-on-surface">{gt("Add resources")}</h2>
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          {gt("Hand-picked members stay until you remove them, whatever the membership rules say.")}
-        </p>
-        <div className="mt-3">
-          <label className={labelClass} htmlFor={searchId}>
-            {gt("Search resources")}
-          </label>
-          <input
-            id={searchId}
-            type="search"
-            className={inputClass}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={gt("Name, account, provider or type")}
-          />
-        </div>
-        {picked.size > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {[...picked.values()].map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => toggle(row)}
-                className="rounded-md border border-border bg-surface-raised px-2 py-0.5 text-xs text-on-surface hover:border-border-strong"
-                aria-label={gt("Remove {name} from the selection", { name: row.displayName })}
-              >
-                {row.displayName} ×
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="mt-2 min-h-[10rem] flex-1 overflow-y-auto rounded-lg border border-border">
-          {results === null ? (
-            <p role="status" className="p-3 text-sm text-on-surface-faint">
-              {gt("Searching…")}
-            </p>
-          ) : results.length === 0 ? (
-            <p role="status" className="p-3 text-sm text-on-surface-faint">
-              {gt("No resources match.")}
-            </p>
-          ) : (
-            <ul>
-              {results.map((row) => {
-                const already = memberIds.has(row.id);
-                return (
-                  <li key={row.id} className="border-b border-border last:border-b-0">
-                    <label
-                      className={`flex items-start gap-2 px-3 py-2 text-sm ${already ? "opacity-60" : "hover:bg-surface-sunken cursor-pointer"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        disabled={already}
-                        checked={already || picked.has(row.id)}
-                        onChange={() => toggle(row)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-on-surface">{row.displayName}</span>
-                        <span className="block truncate text-xs text-on-surface-faint">
-                          {already
-                            ? gt("{details} · already a member", { details: describe(row) })
-                            : describe(row)}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-        {results !== null && results.length >= 50 && (
-          <p className="mt-1 text-xs text-on-surface-faint">
-            {gt("Showing the first 50 matches; refine the search to find more.")}
-          </p>
-        )}
-        {error && (
-          <div role="alert" className="mt-2 text-sm text-danger">
-            {error}
-          </div>
-        )}
-        <div className="mt-3 flex justify-end gap-2">
+    <Modal onClose={dismiss} ariaLabel={gt("Add resources")}>
+      <div className="flex h-[min(42rem,90vh)] w-[44rem] max-w-[96vw] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+        <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
+          <h2 className="flex-1 text-sm font-semibold text-on-surface">{gt("Add resources")}</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={dismiss}
+            disabled={saving}
+            className="rounded-lg p-1.5 text-on-surface-faint hover:bg-surface-sunken hover:text-on-surface"
+            aria-label={gt("Close")}
+          >
+            <CloseIcon size={16} />
+          </button>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col p-5">
+          <ResourcePicker
+            client={client}
+            stateOf={stateOf}
+            onToggle={toggle}
+            onSelectMany={selectMany}
+            autoFocus
+          />
+        </div>
+        <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
+          <div className="min-w-0 flex-1">
+            {error ? (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            ) : picked.size > SERVICE_LIMITS.maxMembersPerRequest ? (
+              <p className="text-xs text-warning">
+                {gt("Add at most {max} resources at a time.", {
+                  max: SERVICE_LIMITS.maxMembersPerRequest,
+                })}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
             disabled={saving}
             className={secondaryButtonClass}
           >
@@ -198,7 +129,7 @@ export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddReso
                   count: picked.size,
                 })}
           </button>
-        </div>
+        </footer>
       </div>
     </Modal>
   );

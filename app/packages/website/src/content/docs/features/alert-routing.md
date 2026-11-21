@@ -57,20 +57,20 @@ The same picker also offers **whoever is on call** on a PagerDuty schedule or es
 
 If a send fails because the provider is down or rate limited, it's retried in the background. If it's refused (a deleted service, a revoked key), Infrawrench stops trying and shows it under **Settings > On-call > Paging providers**.
 
-<insert [The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker] here>
+![The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/paging-provider-destinations.png)
 
 ## Conditions
 
-| Condition         | Matches on                                                                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Trigger**       | What kind of alert it is: sync failures, budgets, anomalies, drift, pages, probes, declared incidents, leaked credentials, and so on |
-| **Severity**      | `info`, `warning` or `critical`, in that order, so "at least warning" is a floor, not an exact match                                 |
-| **Account**       | The account the alert is about                                                                                                       |
-| **Provider**      | The provider, for example to route AWS incidents to the team that runs on AWS                                                        |
-| **Resource type** | The kind of resource, for alerts about one                                                                                           |
-| **Amount**        | Money at stake, for budgets and cost anomalies                                                                                       |
-| **Name**          | The alert's name: an anomaly's service, a probe's name, a metric rule's name                                                         |
-| **Message text**  | Text in the alert's title or body, for anything the fields above don't cover                                                         |
+| Condition         | Matches on                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Trigger**       | What kind of alert it is: sync failures, budgets, anomalies, drift, pages, probes, heartbeats, declared incidents, leaked credentials, and so on |
+| **Severity**      | `info`, `warning` or `critical`, in that order, so "at least warning" is a floor, not an exact match                                             |
+| **Account**       | The account the alert is about                                                                                                                   |
+| **Provider**      | The provider, for example to route AWS incidents to the team that runs on AWS                                                                    |
+| **Resource type** | The kind of resource, for alerts about one                                                                                                       |
+| **Amount**        | Money at stake, for budgets and cost anomalies                                                                                                   |
+| **Name**          | The alert's name: an anomaly's service, a probe's name, a metric rule's name                                                                     |
+| **Message text**  | Text in the alert's title or body, for anything the fields above don't cover                                                                     |
 
 One thing to know: **a condition about something the alert doesn't have never matches**, either way. An account condition won't match an alert that isn't about an account, with `is one of` or with `is not one of`. A provider status incident covers your whole organization, so a rule about one account won't catch it. To catch organization-wide alerts, leave the account condition off.
 

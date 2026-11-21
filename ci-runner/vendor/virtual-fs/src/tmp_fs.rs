@@ -38,6 +38,16 @@ impl TmpFileSystem {
     pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
         self.fs.create_symlink(source, target)
     }
+
+    /// iwci patch: `mem_fs::FileSystem::hard_link_numbered`.
+    pub fn hard_link_numbered(&self, source: &Path, target: &Path, ino: u64) -> Result<()> {
+        self.fs.hard_link_numbered(source, target, ino)
+    }
+
+    /// iwci patch: `mem_fs::FileSystem::same_file`.
+    pub fn same_file(&self, a: &Path, b: &Path) -> bool {
+        self.fs.same_file(a, b)
+    }
 }
 
 impl FileSystem for TmpFileSystem {

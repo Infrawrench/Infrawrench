@@ -1,0 +1,157 @@
+# Publish @infrawrench/infraenv (app/packages/infraenv) to npm.
+#
+# Shape: the npm half of publish-sdks.yml. One job builds, tests and packs the
+# package and publishes it with npm's OIDC trusted publishing (no stored
+# token; provenance is automatic), then a second job tags the release.
+#
+# Gate: publishing happens when the version changes. `version` in the
+# package's package.json is the single source, and the tag
+# `infraenv-v<version>` in this repository is the ledger, so a re-run on an
+# unchanged version is a no-op and a re-run after a partial failure resumes.
+# Cutting a release is one edit: bump the version (and CHANGELOG.md) and merge.
+#
+# One-time setup on npmjs.com: the package's trusted publisher is this
+# repository, this workflow file and the `release` environment.
+name: Publish infraenv
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/infraenv/**"
+      # What the bundle inlines.
+      - "app/packages/client-core/src/**"
+      - ".github/workflows/publish-infraenv.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if this version is already tagged"
+        type: boolean
+        default: false
+
+# Not cancel-safe: a cancelled run can publish without tagging.
+concurrency:
+  group: publish-infraenv
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: "npm: @infrawrench/infraenv"
+    # workflow_dispatch can target any ref; only main may publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      published: ${{ steps.publish.outputs.published }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Tags are the publish ledger; a shallow clone cannot see them.
+          fetch-depth: 0
+
+      - id: gate
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./app/packages/infraenv/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Forced publish of infraenv v$VERSION."
+          elif git rev-parse -q --verify "refs/tags/infraenv-v$VERSION" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::infraenv v$VERSION is already released (tag infraenv-v$VERSION). Nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - if: steps.gate.outputs.publish == 'true'
+        run: corepack enable
+      # `--ignore-scripts` skips native builds the package never loads.
+      - if: steps.gate.outputs.publish == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build and test
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          pnpm exec turbo run build --filter=@infrawrench/infraenv
+          pnpm --filter @infrawrench/infraenv test
+          node app/packages/infraenv/scripts/sync-skill.mjs --check
+
+      # The package bundles everything it imports. A `dependencies` entry
+      # would make npm install a workspace package that is not published.
+      - name: Check the package
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: app/packages/infraenv
+        run: |
+          set -euo pipefail
+          node -e '
+            const p = require("./package.json");
+            for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+              if (p[field] && Object.keys(p[field]).length) {
+                console.error(`::error::package.json has ${field}; everything must be bundled.`);
+                process.exit(1);
+              }
+            }'
+          node dist/cli.mjs --version | grep -qx "$(node -p "require('./package.json').version")"
+          # The workspace's devDependencies (`workspace:*`, `catalog:`) mean
+          # nothing outside this repository: publish the manifest without them.
+          npm pkg delete devDependencies
+          npm pack --dry-run 2>&1 | tee pack.txt
+          grep -q "skills/infraenv/SKILL.md" pack.txt
+          grep -q "dist/cli.mjs" pack.txt
+
+      # Trusted publishing needs npm >= 11.5.1; the bundled CLI may be older.
+      # Pinned rather than @latest: this job holds the id-token that publishes.
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm install -g npm@11.21.0
+      - name: Publish
+        id: publish
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: app/packages/infraenv
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        # Skip-if-present, not fail-if-present: a re-run after the publish
+        # succeeded and the tag did not still has to reach the tag.
+        run: |
+          set -euo pipefail
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          if npm view "@infrawrench/infraenv@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::@infrawrench/infraenv@$VERSION is already published; skipping."
+            exit 0
+          fi
+          npm publish --access public
+
+  tag:
+    name: Record the release
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Tag infraenv-v${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          V="${{ needs.publish.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/infraenv-v$V" >/dev/null; then
+            echo "::notice::infraenv-v$V is already tagged."
+            exit 0
+          fi
+          git tag -a "infraenv-v$V" -m "@infrawrench/infraenv v$V published to npm"
+          git push origin "infraenv-v$V"

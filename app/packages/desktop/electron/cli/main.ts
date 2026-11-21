@@ -1,8 +1,9 @@
 // Headless CLI runner. Reached via the bootstrap in electron/index.ts when
 // the process was launched with --cli (normally through the `infrawrench`
-// shell shim). Runs the full Electron app object (safeStorage needs it for
-// the master key) but never opens a window, registers a protocol, or keeps
-// the single-instance lock.
+// shell shim), or from `standalone/entry.ts` in the standalone CLI, where
+// `electron` is the Node stand-in in `standalone/electron.ts`. Runs the full
+// Electron app object (safeStorage needs it for the master key) but never
+// opens a window, registers a protocol, or keeps the single-instance lock.
 //
 // Every command line goes through `effect/cli` (`effect/root.ts`, run by
 // `effect/run.ts`); this file only makes the Electron process behave like a
@@ -14,6 +15,8 @@ import { setTokenStoreReadOnly } from "../cloud-tokens";
 import { CliError } from "./context";
 import { setColorEnabled, printErr, c } from "./output";
 import { runEffectCli } from "./effect/run";
+import { isStandaloneCli } from "./edition";
+import { markPhase, reportTiming } from "../startup-timing";
 
 /**
  * Make an Electron process behave like a terminal program. Three things the
@@ -75,15 +78,20 @@ function detectGuiRunning(): boolean {
  */
 async function bootstrap(): Promise<boolean> {
   await app.whenReady();
-  const guiRunning = detectGuiRunning();
+  markPhase("app ready");
+  // The standalone CLI has a profile of its own that no GUI ever opens.
+  const standalone = isStandaloneCli();
+  const guiRunning = standalone ? false : detectGuiRunning();
+  markPhase("lock probe");
 
   wireDbGetter();
   setDatabaseReadOnly(guiRunning);
   setTokenStoreReadOnly(guiRunning);
   // The GUI owns first-run key creation. A terminal session that can't reach
   // the keychain must fail loudly rather than mint a key that orphans every
-  // stored credential.
-  setRequireExistingEncryptionKey(true);
+  // stored credential. The standalone CLI owns its profile, so it mints its
+  // own key on first sign-in.
+  setRequireExistingEncryptionKey(!standalone);
   return guiRunning;
 }
 
@@ -122,13 +130,19 @@ function drained(stream: NodeJS.WriteStream): Promise<void> {
   return new Promise((resolve) => stream.write("", () => resolve()));
 }
 
-export async function runCli(): Promise<void> {
+/**
+ * Run one command line and exit. `argv` is the CLI's own arguments: by
+ * default everything after `--cli` (the desktop app); the standalone entry
+ * (`standalone/entry.ts`) passes them itself.
+ */
+export async function runCli(
+  argv: ReadonlyArray<string> = process.argv.slice(process.argv.indexOf("--cli") + 1),
+): Promise<void> {
+  markPhase("cli modules loaded");
   installTerminalGuards();
-  // Terminal process: no GPU, no dock icon, as little Chromium as possible.
-  app.commandLine.appendSwitch("disable-gpu");
-  if (process.platform === "darwin") app.dock?.hide();
+  // No Dock icon and no GPU were settled in `../index.ts`, before this
+  // module (and the app's launch) got this far.
 
-  const argv = process.argv.slice(process.argv.indexOf("--cli") + 1);
   setColorEnabled(
     !noColorRequested(argv) && process.stdout.isTTY === true && !process.env.NO_COLOR,
   );
@@ -148,6 +162,8 @@ export async function runCli(): Promise<void> {
       exitCode = 1;
     }
   }
+  markPhase("command done");
+  reportTiming();
   await Promise.all([drained(process.stdout), drained(process.stderr)]);
   app.exit(cliExitStatus(exitCode));
 }

@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration as Terraform resources, incl
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 84 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
+The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 86 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
 
 Use it if your team already keeps infrastructure in Terraform and wants the rest of its platform setup to go through the same pull requests and reviews, with a plan that shows exactly what will change.
 
@@ -104,7 +104,7 @@ An API key can manage everything in the provider except two things, whatever sco
 
 If you manage API keys or roles in Terraform, keep them in a separate Terraform root that a person applies while signed in with a WorkOS access token. If a key hits this restriction, the provider tells you which resource is affected.
 
-<insert [The Create API Key dialog under Settings > API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
+![The Create API Key dialog under Settings \> API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-provider/create-api-key-costs-scopes.png)
 
 ## A worked example
 
@@ -453,6 +453,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | `infrawrench_savings_view`              | [Saved views over savings findings](./savings-findings.md)                                           |
 | `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                                    |
 | `infrawrench_resource_report`           | [Resource reports](./resource-reports.md): inventory tables with per-resource cost                   |
+| `infrawrench_commitment_report`         | [Commitment reports](./commitment-reports.md): coverage, utilization and savings over time           |
 | `infrawrench_cost_report_folder`        | Report folders                                                                                       |
 | `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                                              |
 | `infrawrench_cost_report_anomaly_alert` | A report's own [anomaly alert](./cost-reports.md#anomaly-alerts-for-a-report)                        |
@@ -487,6 +488,7 @@ Only use them with a state backend you'd trust with any other secret: encrypted,
 | Resource                    | Manages                                                                                 |
 | --------------------------- | --------------------------------------------------------------------------------------- |
 | `infrawrench_probe`         | [Synthetic probes](./synthetic-probes.md)                                               |
+| `infrawrench_heartbeat`     | [Heartbeat monitors](./heartbeat-monitors.md)                                           |
 | `infrawrench_slo`           | [SLOs and error budgets](./slos.md)                                                     |
 | `infrawrench_status_page`   | [Public status pages](./status-pages.md) and their components                           |
 | `infrawrench_metric_alert`  | [Metric threshold alerts](./metric-alerts.md)                                           |

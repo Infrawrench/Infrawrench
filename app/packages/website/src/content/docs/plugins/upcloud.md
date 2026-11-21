@@ -20,7 +20,7 @@ Connect UpCloud with an API token or an API user. You can list, create, edit and
 - **Managed Object Storage**: create services in a region, start or stop them, create and delete buckets, and create users with full S3 access. **Get credentials** on a user creates a new access key and shows its secret once.
 - **Account**: prepaid credits, the account currency and the resource limits.
 
-<insert [UpCloud account page showing Servers, Storage, Kubernetes Clusters, Managed Databases and Load Balancers] here>
+![UpCloud account page showing the Servers section, with section tabs for Kubernetes Clusters, Load Balancers, Managed Databases and Storages](https://agent-assets.infrawrench.com/docs-screenshots/plugins/upcloud/account-page.png)
 
 ## Connect your account
 
@@ -31,7 +31,7 @@ Use either:
 
 Costs need the **Billing** role. Click **Check credentials** after adding the account to see what the key can reach.
 
-<insert [Add account dialog for UpCloud with the API Token field filled in and the API user fields empty] here>
+![Add account dialog for UpCloud with the API Token field filled in and the API user fields empty](https://agent-assets.infrawrench.com/docs-screenshots/plugins/upcloud/add-account.png)
 
 ## Costs, credits and limits
 

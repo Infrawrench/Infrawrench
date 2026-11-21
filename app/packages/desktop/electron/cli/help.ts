@@ -9,6 +9,8 @@
 // verbs under a word, the cross-command flag notes and which commands read
 // them). Each command's own `--help` is `effect/cli`'s, generated from its
 // flags.
+import { isStandaloneCli } from "./edition";
+
 export const HELP = `infrawrench: manage your infrastructure from the terminal
 
 USAGE
@@ -211,6 +213,9 @@ COMMANDS
   prices compare      the cheapest instance per provider meeting a spec   [--vcpus 4] [--memory 16]
                       [--gpus 1] [--gpu-model L4] [--area europe] [--rate spot], or a product's
                       specs: prices compare <sku> --provider <plugin>
+  migrate-estimate    what a service or a set of resources would cost on another provider, side
+                      by side (cloud only)   --service <id|slug|name> | --resources <id,id>
+                      --to <plugin> [--region <id>] [--save <name>]
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)
@@ -219,6 +224,21 @@ COMMANDS
   pr-check            the pull request check (monthly cost change, blast radius, warnings) for
                       the local working tree vs a base, or for an open pull request; posts
                       nothing   [--base origin/main] [--repo owner/name] [--pr 42] (cloud only)
+  env pull            resolve the project's .infraenv into the .env it describes (mode 0600; never
+                      replaces a hand-written .env without --force)   [--env <name>] [-f <.infraenv>]
+                      [--var name=value  sets the \${name} substitution over [vars], repeatable]
+                      [--out <path>] [--stdout] [--force] [-q/--quiet] (cloud only)
+  env check           what each .infraenv reference points at (resource, account, output, secret;
+                      a by-name resource() shows what it matched, or none / ambiguous) and what is
+                      broken; exit 1 on problems   [-f <.infraenv>] [--var name=value] (cloud only)
+  env init            create a portable .infraenv (no org pinned), gitignore .env and install the
+                      env hooks   [--from .env  its keys as secret("KEY") lines, never its values]
+                      [-f <path>] [--no-hooks]
+  env hooks [status]  git hooks (post-checkout, post-merge, post-rewrite, post-commit) that pull when
+                      a commit changes .infraenv or .env is missing, in the background (log in
+                      .git/infraenv.log); they run the project's node_modules/.bin/infraenv when the
+                      npm package is installed, else infrawrench env pull. install|uninstall keep a
+                      hook someone else wrote intact
   extended-support    clusters & databases on versions billed at extended-support / end-of-life
                       rates, with the monthly surcharge an upgrade removes (--local: list price)
   seats               paid SaaS seats to act on: inactive, duplicated across tools, or on a
@@ -299,6 +319,16 @@ COMMANDS
   credits             prepaid balances with burn rate & runway ("6 days left")
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
+  commitments reports [name|id]
+                      list saved commitment reports, or run one: coverage, utilization,
+                      savings & commitment cost over time   [--metric utilization]
+                      [--format csv] [--out file.csv] (cloud only)
+  commitments report  an unsaved commitment report   [--last 90d | --from --to]
+                      [--bin day|week|month|quarter] [--group-by provider|commitment_type|
+                      commitment|service|account|region] [--metric <m>] [--provider aws]
+                      [-a <account>] [--service <name>] [--region <r>] [--commitment-type
+                      reservation|savings_plan|committed_use] [--commitment <id|description>]
+                      (filters repeat; --format csv; cloud only)
   savings             realized savings: what resizes, cleanups, schedules & commitments
                       actually saved vs projected   [--from] [--to] [--group-by month|kind|cost-centre|account]
   savings log "<what>" log a saving by hand   --amount <monthly> [--currency USD] [--from <day>] [--note]
@@ -336,6 +366,8 @@ COMMANDS
                       star or unstar one (kind and id as "search --json" prints them)
   probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
                       live status, 24h uptime & last latency (give an id/name for its chart)
+  heartbeats [id|name] heartbeat monitors for scheduled jobs: status, schedule, last ping & last
+                      run (give an id/name for its ping URL, recent pings & run durations)
   slos [id|name]      service-level objectives: SLI against target, error budget left (as a
                       share and as time) & burn rate (give an id/name for its burn rates & charts)
   services [list]     services (resources grouped across providers): tier, owners, member count
@@ -414,7 +446,11 @@ FLAGS
                       pdf for reports/dashboards <name|id> and canvas show|refresh; csv or ndjson
                       for unit-costs <key> and k8s-efficiency <name|id>; costs push: json
                       (default), csv or focus; network-reports <name|id>: csv or pairs-csv;
-                      resource-reports <name|id>: csv
+                      resource-reports <name|id>, commitments reports <name|id> and
+                      commitments report: csv
+  --metric <m>        commitments reports/report: the metric the sparkline draws (coverage,
+                      eligibleCoverage, utilization, effectiveSavingsRate, netSavings,
+                      onDemandRemainder, commitmentCost, usedCommitmentCost, unusedCommitmentCost)
   --reason <text>     posture / vulns dismiss: why the finding is an accepted risk; costs --anomalies
                       feedback: the reason category (planned_launch, migration, …); leaks
                       dismiss: false-positive, wont-fix or used-in-tests
@@ -471,8 +507,8 @@ FLAGS
                       earlier upload (required then)
   --out <path>        config export / export --format focus: write here instead of stdout;
                       reports/dashboards/canvas --format pdf: the PDF's path (default: <name>.pdf
-                      here); compliance export: the ZIP's path; network-reports, k8s-efficiency
-                      and resource-reports --format: the CSV's path
+                      here); compliance export: the ZIP's path; network-reports, k8s-efficiency,
+                      resource-reports and commitments reports/report --format: the CSV's path
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   --list              ssh-fanout: show the selectable hosts instead of running
@@ -494,3 +530,44 @@ FLAGS
 
 The CLI shares the desktop app's data: the same local accounts, the same
 cloud session, the same organizations. Sign in once, use both.`;
+
+/**
+ * Entries of {@link HELP} the standalone CLI leaves out, whole lines each:
+ * the desktop-only commands (`DESKTOP_ONLY_COMMANDS` in `effect/commands.ts`)
+ * and the flag only they take. A test checks every one is still in HELP, so
+ * a reworded entry fails rather than reappearing.
+ */
+export const DESKTOP_ONLY_HELP: ReadonlyArray<string> = [
+  `  apps <resource>     graphical applications installed on a Linux host
+                      (--check what it is missing, --install to fix it)
+                      (--launch <id> opens one in the app; --key, --user to connect)
+`,
+  `  cli install         install this shell command (also: uninstall, status)
+`,
+  `  --launch <app-id>   apps: open this application in the desktop app
+`,
+];
+
+/** Lines the standalone CLI rewords rather than drops: [desktop, standalone]. */
+export const STANDALONE_REWORDED: ReadonlyArray<readonly [string, string]> = [
+  [
+    "  --user <name>       ssh-fanout, apps: username override for VM hosts",
+    "  --user <name>       ssh-fanout: username override for VM hosts",
+  ],
+];
+
+export const DESKTOP_FOOTER = `The CLI shares the desktop app's data: the same local accounts, the same
+cloud session, the same organizations. Sign in once, use both.`;
+
+const STANDALONE_FOOTER = `This is the standalone CLI: it works with your Infrawrench Cloud
+organizations and keeps its own session (\`infrawrench login\`). Local
+accounts (--local) and apps need the desktop app's \`infrawrench\` command.`;
+
+/** The root help this build prints: {@link HELP}, less what it cannot run. */
+export function rootHelp(): string {
+  if (!isStandaloneCli()) return HELP;
+  let text = HELP;
+  for (const entry of DESKTOP_ONLY_HELP) text = text.replace(entry, "");
+  for (const [desktop, standalone] of STANDALONE_REWORDED) text = text.replace(desktop, standalone);
+  return text.replace(DESKTOP_FOOTER, STANDALONE_FOOTER);
+}

@@ -169,6 +169,9 @@ pub const MAX_SERVICES: usize = 8;
 pub const MAX_LENT: usize = 16;
 /// How long a job waits for a service's `ready:` unless it says.
 pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 60;
+/// The most whole vCPUs a job may ask for with `cpus:`. A runner with
+/// fewer gives the job all of its own.
+pub const MAX_CPUS: u32 = 64;
 pub const MIN_MEMORY: u64 = 16 << 20;
 pub const MAX_MEMORY: u64 = 16 << 30;
 pub const DEFAULT_CLONE_INTO: &str = "/app";
@@ -245,9 +248,10 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         .and_then(|w| w.services.clone())
         .unwrap_or_default();
     for job in raw.jobs.values_mut() {
-        if job.cloud.is_some() {
-            // A cloud job starts nothing on the runner, so the workspace's
-            // services are not its; services of its own are an error.
+        if job.cloud.is_some() || vm_os(job).is_some() {
+            // A cloud job starts nothing on the runner, and a virtual
+            // machine has no isolate to start them in, so the workspace's
+            // services are not theirs; services of their own are an error.
             job.services = match job.services.take() {
                 Some(raw::Services::Map(own)) => Some(raw::Services::Map(own)),
                 _ => Some(raw::Services::Map(indexmap::IndexMap::new())),
@@ -328,6 +332,57 @@ pub(crate) fn is_grant_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
 }
 
+/// The most substitutions one `env-file:` may set with `vars:`.
+pub const MAX_ENV_FILE_VARS: usize = 16;
+/// The longest an `env-file:` substitution's value may be, in characters.
+pub const MAX_ENV_FILE_VAR_VALUE: usize = 256;
+
+/// Why `path` is not an `env-file:` path: relative to the repository's
+/// root, without `.` or `..` segments or a backslash, up to 256 characters.
+fn env_file_path_problem(path: &str) -> Option<&'static str> {
+    if path.is_empty() || path.chars().count() > 256 {
+        Some("a path has 1 to 256 characters")
+    } else if path.chars().any(char::is_control) || path.contains('\\') {
+        Some("a path has no control characters or backslashes")
+    } else if path.contains("${{") {
+        Some(
+            "the path is literal, so the app can read the file before the run starts; `${{ }}` is not allowed here",
+        )
+    } else if path.starts_with('/')
+        || path
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        Some(
+            "a path is relative to the repository's root, such as `.infraenv` or `apps/web/.infraenv`, without `.` or `..`",
+        )
+    } else {
+        None
+    }
+}
+
+/// A `.infraenv` environment's name: `[env.<name>]`.
+fn is_env_file_environment(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-' || *b == b'_')
+}
+
+/// A `.infraenv` substitution's name: `${name}`.
+fn is_env_file_var(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && (bytes[0].is_ascii_alphabetic() || bytes[0] == b'_')
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+}
+
 /// An Infrawrench connection's or SSH key's name as the app shows it: any
 /// text up to 128 characters without control characters or padding, and
 /// literal, so the app can resolve it before the run starts.
@@ -381,11 +436,13 @@ fn is_version_req(s: &str) -> bool {
         None => (s, None),
     };
     let parts: Vec<&str> = core.split('.').collect();
-    let core_ok = (1..=3).contains(&parts.len())
+    // A fourth number is a rebuild of an upstream release (`1.4.4.1`).
+    let core_ok = (1..=4).contains(&parts.len())
         && parts
             .iter()
             .all(|p| !p.is_empty() && p.len() <= 9 && p.bytes().all(|b| b.is_ascii_digit()));
     // A prerelease only makes sense on a full version: `7.1.0-beta.1`.
+    let rebuild_ok = parts.len() < 4 || (pre.is_none() && !parts[3].starts_with('0'));
     let pre_ok = pre.is_none_or(|pre| {
         parts.len() == 3
             && !pre.is_empty()
@@ -393,7 +450,7 @@ fn is_version_req(s: &str) -> bool {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
     });
-    core_ok && pre_ok
+    core_ok && rebuild_ok && pre_ok
 }
 
 fn is_env_key(s: &str) -> bool {
@@ -424,7 +481,7 @@ fn parse_tool(using: &str) -> Result<ToolRef, String> {
     }
     if !is_version_req(version) {
         return Err(format!(
-            "`{version}` is not a version; use `7`, `7.1` or `7.1.3`"
+            "`{version}` is not a version; use `7`, `7.1`, `7.1.3` or a rebuild, `7.1.3.1`"
         ));
     }
     let (name, version) = (name.to_string(), version.to_string());
@@ -463,10 +520,14 @@ struct JobStatic {
     tool: Option<ToolRef>,
     /// `cloud:`, checked, its matrix expressions left for each entry.
     cloud: Option<CloudSpec>,
+    /// `platform: linux`, checked.
+    vm: Option<VmSpec>,
     access: JobAccess,
     tools: Vec<ToolRef>,
     timeout: u64,
     memory: u64,
+    /// `cpus:`, checked; `None` for the runner's share of one.
+    cpus: Option<u32>,
     changes: ChangePolicy,
     /// The services that passed their checks, substituted per entry.
     services: Vec<ServiceStatic>,
@@ -489,6 +550,26 @@ enum Shape {
     Axes,
     /// From another job's output, not known yet.
     Pending,
+}
+
+/// The operating system of the virtual machine a job asks for with
+/// `platform:`, or `None` for a job on the runner (no `platform:`, `wasm`,
+/// or something [`Validator::platform`] reports).
+fn vm_os(job: &raw::Job) -> Option<VmOs> {
+    match job.platform.as_ref()? {
+        raw::PlatformField::Short(os) => VmOs::parse(os.trim()),
+        raw::PlatformField::Full(p) => VmOs::parse(p.os.as_deref()?.trim()),
+    }
+}
+
+/// `` `a`, `b` or `c` ``.
+fn quoted_list(items: &[&str]) -> String {
+    let quoted: Vec<String> = items.iter().map(|i| format!("`{i}`")).collect();
+    match quoted.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+    }
 }
 
 fn is_output_name(s: &str) -> bool {
@@ -625,6 +706,10 @@ impl Validator<'_> {
                 // A cloud job installs nothing on the runner: its machine
                 // starts from the commit alone.
                 _ if job.cloud.is_some() => Vec::new(),
+                // Nor does a virtual machine's: the runner installs for
+                // `wasm32`, and the machine's script installs for itself
+                // as it would on any other CI.
+                _ if vm_os(&job).is_some() => Vec::new(),
                 None | Some(raw::Override::Disabled(true)) => base_deps.clone(),
                 Some(raw::Override::Disabled(false)) => Vec::new(),
                 Some(raw::Override::Value(d)) => d.clone(),
@@ -673,6 +758,7 @@ impl Validator<'_> {
                 self.instances(&key, &job, &st, ws_index, &workspaces, None);
             let path_tools = st.tools.clone();
             let cloud = st.cloud.clone();
+            let vm = st.vm.clone();
             let access = st.access.clone();
             let Some(tool) = st.tool else { continue };
             jobs.push(JobTemplate {
@@ -688,6 +774,7 @@ impl Validator<'_> {
                 instances: (!deferred).then_some(instances),
                 package,
                 cloud,
+                vm,
                 access,
                 raw: deferred.then(|| job.clone()),
             });
@@ -942,7 +1029,7 @@ impl Validator<'_> {
                 self.error(
                     &dep_path,
                     format!(
-                        "unknown ecosystem `{name}`; expected `pnpm`, `bun`, `go`, `cargo`, `pip` or `composer`"
+                        "unknown ecosystem `{name}`; expected `pnpm`, `npm`, `bun`, `go`, `cargo`, `pip`, `composer` or `bundler`"
                     ),
                 );
                 continue;
@@ -968,6 +1055,13 @@ impl Validator<'_> {
             if options.only.is_some() && ecosystem != Ecosystem::Pnpm {
                 self.error(format!("{dep_path}.only"), "only applies to pnpm");
             }
+            let native = options.native.unwrap_or(false);
+            if native && !matches!(ecosystem, Ecosystem::Pnpm | Ecosystem::Npm | Ecosystem::Bun) {
+                self.error(
+                    format!("{dep_path}.native"),
+                    "native applies only to pnpm, npm and bun",
+                );
+            }
             let file = match options.file {
                 Some(_) if ecosystem != Ecosystem::Pip => {
                     self.error(format!("{dep_path}.file"), "file applies only to pip");
@@ -982,11 +1076,52 @@ impl Validator<'_> {
                 }
                 file => file,
             };
+            let ruby = match options.ruby {
+                Some(_) if ecosystem != Ecosystem::Bundler => {
+                    self.error(format!("{dep_path}.ruby"), "ruby applies only to bundler");
+                    None
+                }
+                Some(v) if !is_major_minor(&v) => {
+                    self.error(
+                        format!("{dep_path}.ruby"),
+                        format!("{v:?} is not a Ruby version such as \"3.4\" or \"4.0\""),
+                    );
+                    None
+                }
+                ruby => ruby,
+            };
+            let without_extensions = match options.without_extensions {
+                Some(_) if ecosystem != Ecosystem::Bundler => {
+                    self.error(
+                        format!("{dep_path}.without-extensions"),
+                        "without-extensions applies only to bundler",
+                    );
+                    None
+                }
+                Some(names) => {
+                    for name in &names {
+                        if !is_gem_name(name) {
+                            self.error(
+                                format!("{dep_path}.without-extensions"),
+                                format!("{name:?} is not a gem name"),
+                            );
+                        }
+                    }
+                    let mut names = names;
+                    names.sort();
+                    names.dedup();
+                    Some(names)
+                }
+                None => None,
+            };
             let spec = DepSpec {
                 ecosystem,
                 dir,
                 only: options.only,
                 file,
+                ruby,
+                without_extensions,
+                native,
             };
             if specs.contains(&spec) {
                 self.error(&dep_path, "listed twice");
@@ -1226,7 +1361,27 @@ impl Validator<'_> {
 
     fn job_static(&mut self, path: &str, job: &raw::Job, workspace: &WorkspaceSpec) -> JobStatic {
         let cloud = job.cloud.as_ref().and_then(|c| self.cloud(path, c));
+        let vm = self.platform(path, job);
+        let wants_vm = vm_os(job).is_some();
         let tool = match (&job.using, &job.cloud) {
+            _ if wants_vm && job.cloud.is_some() => {
+                self.error(
+                    format!("{path}.platform"),
+                    "`platform:` and `cloud:` both say where the job runs; give it one",
+                );
+                None
+            }
+            (Some(_), _) if wants_vm => {
+                self.error(
+                    format!("{path}.using"),
+                    "a job on a virtual machine runs in the machine's image; give it a `run:` script, not `using:`",
+                );
+                None
+            }
+            (None, None) if wants_vm => vm.as_ref().map(|v| ToolRef::Vm {
+                os: v.os,
+                image: v.image.clone(),
+            }),
             (Some(_), Some(_)) => {
                 self.error(
                     format!("{path}.using"),
@@ -1237,7 +1392,7 @@ impl Validator<'_> {
             (None, None) => {
                 self.error(
                     path,
-                    "needs `using:` (a tool or environment), or `cloud:` to run on a connected cloud account",
+                    "needs `using:` (a tool or environment), `platform: linux` to run a script in a virtual machine, or `cloud:` to run on a connected cloud account",
                 );
                 None
             }
@@ -1255,6 +1410,14 @@ impl Validator<'_> {
         };
         if job.cloud.is_some() {
             self.cloud_limits(path, job);
+        }
+        if let Some(os) = vm_os(job) {
+            self.vm_limits(path, job, os);
+        } else if job.shell.is_some() {
+            self.error(
+                format!("{path}.shell"),
+                "is for a `platform: linux` job's script; a job on the runner runs its script with its environment's shell",
+            );
         }
         let access = self.access(path, job);
         let timeout = match &job.timeout {
@@ -1274,13 +1437,29 @@ impl Validator<'_> {
                 }
             },
         };
+        // A machine's `memory:` is its whole memory, operating system
+        // included, so each kind has a floor of its own.
+        let (default_memory, min_memory) = match vm_os(job) {
+            Some(os) => (os.default_memory(), os.min_memory()),
+            None => (DEFAULT_MEMORY, MIN_MEMORY),
+        };
         let memory = match &job.memory {
-            None => DEFAULT_MEMORY,
+            None => default_memory,
             Some(m) => match units::parse_bytes(m) {
-                Some(b) if (MIN_MEMORY..=MAX_MEMORY).contains(&b) => b,
+                Some(b) if (min_memory..=MAX_MEMORY).contains(&b) => b,
                 Some(_) => {
-                    self.error(format!("{path}.memory"), "must be between 16MiB and 16GiB");
-                    DEFAULT_MEMORY
+                    self.error(
+                        format!("{path}.memory"),
+                        format!(
+                            "must be between {}MiB and 16GiB{}",
+                            min_memory >> 20,
+                            match vm_os(job) {
+                                Some(VmOs::Windows) => ": Windows does not start in less than 4GiB",
+                                _ => "",
+                            }
+                        ),
+                    );
+                    default_memory
                 }
                 None => {
                     self.error(
@@ -1290,6 +1469,16 @@ impl Validator<'_> {
                     DEFAULT_MEMORY
                 }
             },
+        };
+        let cpus = match job.cpus {
+            Some(n) if !(1..=MAX_CPUS).contains(&n) => {
+                self.error(
+                    format!("{path}.cpus"),
+                    format!("must be a whole number of vCPUs from 1 to {MAX_CPUS}"),
+                );
+                None
+            }
+            n => n,
         };
         let changes = match &job.changes {
             None => ChangePolicy::Ignore,
@@ -1340,6 +1529,18 @@ impl Validator<'_> {
         }
         let using = job.using.as_deref().unwrap_or_default();
         match (&tool, &job.args, &job.run) {
+            (_, Some(_), _) if wants_vm => {
+                self.error(
+                    format!("{path}.args"),
+                    "a job on a virtual machine takes a `run:` script, not `args:`",
+                );
+            }
+            (_, _, None) if wants_vm => {
+                self.error(
+                    path,
+                    "a job on a virtual machine needs a `run:` script, which runs with its `shell:`",
+                );
+            }
             (_, Some(_), _) if job.cloud.is_some() => {
                 self.error(
                     format!("{path}.args"),
@@ -1364,7 +1565,7 @@ impl Validator<'_> {
                     "an environment job takes a `run:` script, not `args:`",
                 );
             }
-            (Some(t), _, Some(_)) if !t.is_env() && !t.is_cloud() => {
+            (Some(t), _, Some(_)) if !t.is_env() && !t.is_cloud() && !t.is_vm() => {
                 self.error(format!("{path}.run"), format!("`{using}` is a tool; give it `args:`, or use an `env:` environment for a script"));
             }
             _ => {}
@@ -1456,6 +1657,11 @@ impl Validator<'_> {
                     "a job that is lent a GitHub token cannot be task-cached",
                 );
             }
+            if job.env_file.is_some() {
+                // Its variables are read fresh for every run, from outside
+                // anything the key can hold.
+                self.error(&at, "a job with `env-file:` cannot be task-cached");
+            }
         }
         let mut tools: Vec<ToolRef> = Vec::new();
         if !job.tools.is_empty() && tool.as_ref().is_some_and(|t| !t.is_env()) {
@@ -1504,10 +1710,12 @@ impl Validator<'_> {
         JobStatic {
             tool,
             cloud,
+            vm,
             access,
             tools,
             timeout,
             memory,
+            cpus,
             changes,
             services,
             downloads,
@@ -1604,6 +1812,136 @@ impl Validator<'_> {
         })
     }
 
+    /// Checks `platform:` and `shell:`, and returns where a job on a
+    /// virtual machine runs. `None` for a job on the runner (`wasm`, or no
+    /// `platform:`), and for one whose platform has an error.
+    fn platform(&mut self, path: &str, job: &raw::Job) -> Option<VmSpec> {
+        let at = format!("{path}.platform");
+        let (os, image) = match job.platform.as_ref()? {
+            raw::PlatformField::Short(os) => (os.trim().to_string(), None),
+            raw::PlatformField::Full(p) => (
+                p.os.as_deref().unwrap_or_default().trim().to_string(),
+                p.image.clone(),
+            ),
+        };
+        let os = match os.as_str() {
+            "wasm" => {
+                if image.is_some() {
+                    self.error(
+                        format!("{at}.image"),
+                        "a `wasm` job runs in an isolate; its `using:` is its environment",
+                    );
+                }
+                return None;
+            }
+            other => {
+                let at_os = if matches!(job.platform, Some(raw::PlatformField::Full(_))) {
+                    format!("{at}.os")
+                } else {
+                    at.clone()
+                };
+                match VmOs::parse(other) {
+                    Some(os) if os.enabled() => os,
+                    Some(os) => {
+                        self.error(
+                            at_os,
+                            format!("`{os}` machines are not available yet; use `linux`"),
+                        );
+                        return None;
+                    }
+                    None => {
+                        self.error(
+                            at_os,
+                            format!("is `wasm` or `linux`, written out, not `{other}`"),
+                        );
+                        return None;
+                    }
+                }
+            }
+        };
+        let image = match image {
+            None => os.images()[0].to_string(),
+            Some(image) if os.images().contains(&image.as_str()) => image,
+            Some(image) => {
+                self.error(
+                    format!("{at}.image"),
+                    format!(
+                        "`{image}` is not a {os} image; use {}",
+                        quoted_list(os.images())
+                    ),
+                );
+                return None;
+            }
+        };
+        let shell = match &job.shell {
+            None => os.shells()[0].to_string(),
+            Some(shell) if os.shells().contains(&shell.as_str()) => shell.clone(),
+            Some(shell) => {
+                self.error(
+                    format!("{path}.shell"),
+                    format!(
+                        "`{shell}` is not a {os} shell; use {}",
+                        quoted_list(os.shells())
+                    ),
+                );
+                return None;
+            }
+        };
+        Some(VmSpec { os, image, shell })
+    }
+
+    /// What a job on a virtual machine cannot have: what only means
+    /// something inside an isolate on the runner, and on Windows what is
+    /// written for Linux paths.
+    fn vm_limits(&mut self, path: &str, job: &raw::Job, os: VmOs) {
+        let mut refuse = |key: &str, why: &str| self.error(format!("{path}.{key}"), why);
+        if job.deps.is_some() {
+            refuse(
+                "deps",
+                "installs dependencies for the runner's isolates; a virtual machine's script installs its own (`pnpm install`, `go mod download`)",
+            );
+        }
+        if !job.tools.is_empty() {
+            refuse(
+                "tools",
+                "puts the runner's tools on an isolate's PATH; a virtual machine has its image's tools, and installs any other in its script",
+            );
+        }
+        if matches!(&job.services, Some(raw::Services::Map(m)) if !m.is_empty()) {
+            refuse(
+                "services",
+                "starts services in the job's isolate; on a virtual machine, start them in the script (`docker run -d`, `pg_ctl start`)",
+            );
+        }
+        if job.env_cache.is_some() {
+            refuse(
+                "env-cache",
+                "keeps an isolate environment's caches; use `cache:` for a virtual machine's",
+            );
+        }
+        if matches!(
+            job.task_cache,
+            Some(raw::TaskCache::Inputs(_)) | Some(raw::TaskCache::Enabled(true))
+        ) {
+            refuse(
+                "task-cache",
+                "replays a job from the task cache, which a job on a virtual machine does not support yet",
+            );
+        }
+        if os == VmOs::Windows {
+            let linux_paths = "writes files at Linux paths (`~/.ssh`, a kubeconfig, Git's configuration), which a Windows machine does not support yet";
+            if !job.connections.is_empty() {
+                refuse("connections", linux_paths);
+            }
+            if !job.ssh_keys.is_empty() {
+                refuse("ssh-keys", linux_paths);
+            }
+            if job.github_token.is_some() {
+                refuse("github-token", linux_paths);
+            }
+        }
+    }
+
     /// What a cloud job cannot have yet: everything that only means
     /// something on the runner.
     fn cloud_limits(&mut self, path: &str, job: &raw::Job) {
@@ -1622,6 +1960,12 @@ impl Validator<'_> {
         if job.memory.is_some() {
             refuse(
                 "memory",
+                "sizes a job on the runner; a cloud job's size is its `cloud.machine`".into(),
+            );
+        }
+        if job.cpus.is_some() {
+            refuse(
+                "cpus",
                 "sizes a job on the runner; a cloud job's size is its `cloud.machine`".into(),
             );
         }
@@ -1757,6 +2101,9 @@ impl Validator<'_> {
                 }
             }
         }
+        if let Some(file) = &job.env_file {
+            access.env_file = self.env_file(&format!("{path}.env-file"), &file.entry());
+        }
         let services = match &job.services {
             Some(raw::Services::Map(m)) => m.values().map(|s| &s.env).collect(),
             _ => Vec::new(),
@@ -1774,6 +2121,62 @@ impl Validator<'_> {
             }
         }
         access
+    }
+
+    /// `env-file:`, checked: everything in it is literal, since the app
+    /// reads the file and resolves it before the run starts.
+    fn env_file(&mut self, at: &str, entry: &raw::EnvFileEntry) -> Option<EnvFileUse> {
+        let mut ok = true;
+        if let Some(problem) = env_file_path_problem(&entry.path) {
+            self.error(at, format!("`{}`: {problem}", entry.path));
+            ok = false;
+        }
+        if let Some(env) = &entry.environment
+            && !is_env_file_environment(env)
+        {
+            self.error(
+                at,
+                format!("`{env}` is not an environment name (letters, digits, `-` and `_`, starting with a letter or digit, up to 64)"),
+            );
+            ok = false;
+        }
+        if entry.vars.len() > MAX_ENV_FILE_VARS {
+            self.error(
+                at,
+                format!(
+                    "sets {} vars; the limit is {MAX_ENV_FILE_VARS}",
+                    entry.vars.len()
+                ),
+            );
+            ok = false;
+        }
+        for (key, value) in &entry.vars {
+            if !is_env_file_var(key) {
+                self.error(
+                    at,
+                    format!("`{key}` is not a substitution name (letters, digits and `_`, not starting with a digit, up to 64)"),
+                );
+                ok = false;
+            } else if value.chars().count() > MAX_ENV_FILE_VAR_VALUE
+                || value.chars().any(char::is_control)
+                || value.contains("${{")
+            {
+                self.error(
+                    at,
+                    format!("`vars.{key}` is up to {MAX_ENV_FILE_VAR_VALUE} characters of literal text, without control characters or `${{{{ }}}}`: the app reads it before the run starts"),
+                );
+                ok = false;
+            }
+        }
+        ok.then(|| EnvFileUse {
+            path: entry.path.clone(),
+            environment: entry.environment.clone(),
+            vars: entry
+                .vars
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        })
     }
 
     /// Checks a job's `downloads:` and returns its retention and `when:`.
@@ -2355,6 +2758,7 @@ impl Validator<'_> {
                     timeout: std::time::Duration::from_secs(st.timeout),
                     // A cloud job takes none of the runner's memory.
                     memory_bytes: if cloud.is_some() { 0 } else { st.memory },
+                    cpus: if cloud.is_some() { None } else { st.cpus },
                     caches,
                     artifacts,
                     downloads: st.downloads.map(|(retention_secs, when)| DownloadSpec {
@@ -2377,6 +2781,7 @@ impl Validator<'_> {
                     task_cache,
                     services,
                     cloud,
+                    vm: st.vm.clone(),
                     access: st.access.clone(),
                 });
             }
@@ -2416,6 +2821,26 @@ fn normalise_abs(path: &str) -> Option<String> {
         }
     }
     Some(format!("/{}", parts.join("/")))
+}
+
+/// `3.4`, `4.0`: digits, one dot, digits.
+/// What RubyGems accepts as a gem's name.
+fn is_gem_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+        && name.bytes().any(|b| b.is_ascii_alphanumeric())
+}
+
+fn is_major_minor(v: &str) -> bool {
+    v.split_once('.').is_some_and(|(major, minor)| {
+        !major.is_empty()
+            && !minor.is_empty()
+            && major.bytes().all(|b| b.is_ascii_digit())
+            && minor.bytes().all(|b| b.is_ascii_digit())
+    })
 }
 
 fn join_relative(root: &str, rel: &str) -> Option<String> {
@@ -2470,3 +2895,5 @@ fn find_cycle(jobs: &indexmap::IndexMap<String, raw::Job>) -> Option<Vec<String>
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_platform;

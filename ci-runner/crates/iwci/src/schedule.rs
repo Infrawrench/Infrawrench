@@ -27,6 +27,7 @@
 //! key waits for that run's entry rather than compute it too: see
 //! [`InFlight`] and the `inflight` module.
 
+use iwci_vm_proto::gitignore::GitIgnore;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -170,6 +171,7 @@ impl LockIndexes {
                     iwci_spec::Ecosystem::Pnpm => {
                         let options = iwci_deps::pnpm::PnpmOptions {
                             only_importers: dep.only.clone(),
+                            native: crate::adapters::workspace::native_platform(dep),
                             ..Default::default()
                         };
                         iwci_deps::pnpm::KeyIndex::new(&read, root, &options)
@@ -177,7 +179,10 @@ impl LockIndexes {
                             .map(LockIndex::Pnpm)
                     }
                     iwci_spec::Ecosystem::Bun => {
-                        let options = iwci_deps::bun::BunOptions::default();
+                        let options = iwci_deps::bun::BunOptions {
+                            native: crate::adapters::workspace::native_platform(dep),
+                            ..Default::default()
+                        };
                         iwci_deps::bun::KeyIndex::new(&read, root, &options)
                             .ok()
                             .map(LockIndex::Bun)
@@ -487,6 +492,29 @@ pub struct Execution {
     /// what the sandbox itself took and what it reserved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxUsage>,
+    /// The job ran in a virtual machine (`platform: linux`):
+    /// which, how long it took to start, and what it reserved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<MachineUsage>,
+}
+
+/// What a job's virtual machine was and took.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct MachineUsage {
+    /// `linux`.
+    pub os: String,
+    /// The image, as the machine's agent names it (`ubuntu-24.04`).
+    pub image: String,
+    /// `x86_64` or `aarch64`.
+    pub arch: String,
+    /// From starting the emulator to the agent answering.
+    pub boot_ms: u64,
+    /// Writing the job's files into it, and reading back what it left.
+    pub transfer_ms: u64,
+    /// What the runner reserved for it on top of the job's `memory:`.
+    pub reserved_mib: u64,
+    /// The CPU time the whole machine used, as the host saw it.
+    pub cpu_ms: u64,
 }
 
 /// What a job's gVisor sandbox took besides the job: its peak and held
@@ -592,6 +620,11 @@ pub struct JobReport {
     /// The memory the job reserved while it ran (its `memory:`), for
     /// billing; 0 for a job that never ran.
     pub memory_mib: u64,
+    /// The whole vCPUs the job held while it ran (its `cpus:`, at most the
+    /// runner's), for billing; `None` for a job that held its share of
+    /// one, or never ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     /// The most memory the job held at once, to size its `memory:` by:
     /// the linear memories of its programs and services, the room its V8
     /// heaps had reserved, and the files it wrote, each at its own peak.
@@ -739,6 +772,9 @@ pub struct Options {
     /// that missed waits for theirs rather than compute it too; `None`
     /// never waits.
     pub inflight: Option<Arc<dyn InFlight>>,
+    /// The runner's virtual machines, for `platform: linux` jobs; `None`
+    /// fails such jobs, saying so.
+    pub machines: Option<Arc<dyn crate::machines::Machines>>,
 }
 
 impl Options {
@@ -790,23 +826,47 @@ pub trait Durations: Send + Sync {
 
 /// The runner's job slots: how many jobs may run at once across every run.
 ///
-/// A vCPU is shared by `jobs_per_cpu` jobs. Most CI work is not CPU-bound
-/// all the way through (a job waits on its own subprocesses, reads its
-/// snapshot, starts up), so a core interleaves several jobs better than it
-/// runs one; the operating system time-slices them. Billing charges each
-/// job its share, `1 / jobs_per_cpu` of a vCPU for its wall time.
+/// A vCPU is shared by `per_cpu` jobs (`--jobs-per-cpu`). Most CI work is
+/// not CPU-bound all the way through (a job waits on its own subprocesses,
+/// reads its snapshot, starts up), so a core interleaves several jobs
+/// better than it runs one; the operating system time-slices them. Billing
+/// charges each job its share, `1 / per_cpu` of a vCPU for its wall time.
+/// That share rounded up, 1 (`per_cpu` is at least 1), is the CPU count
+/// such a job is told (`iwci_runtime::Limits::told_cpus`), though it may
+/// use whatever CPU time no other job wants.
+///
+/// A job with `cpus:` holds `cpus × per_cpu` slots instead, every slot of
+/// that many vCPUs, and is billed for them. While it waits for them, no
+/// other job takes a slot, so jobs of one slot coming and going cannot
+/// keep it waiting for good; one such job gathers at a time.
 #[derive(Debug)]
 pub struct Slots {
     total: usize,
-    used: Mutex<usize>,
+    per_cpu: usize,
+    state: Mutex<SlotState>,
     freed: Condvar,
 }
 
+#[derive(Debug, Default)]
+struct SlotState {
+    used: usize,
+    /// A job waits for more than one slot: the others wait behind it.
+    gathering: bool,
+}
+
 impl Slots {
+    /// `total` slots, each a whole vCPU.
     pub fn new(total: usize) -> Self {
+        Self::for_cpus(total, 1)
+    }
+
+    /// `cpus` vCPUs, each shared by `per_cpu` jobs.
+    pub fn for_cpus(cpus: usize, per_cpu: usize) -> Self {
+        let per_cpu = per_cpu.max(1);
         Self {
-            total: total.max(1),
-            used: Mutex::new(0),
+            total: cpus.max(1) * per_cpu,
+            per_cpu,
+            state: Mutex::new(SlotState::default()),
             freed: Condvar::new(),
         }
     }
@@ -816,42 +876,105 @@ impl Slots {
     }
 
     pub fn in_use(&self) -> usize {
-        *self.used.lock().unwrap()
+        self.lock().used
     }
 
     pub fn free(&self) -> usize {
         self.total - self.in_use()
     }
 
-    /// Waits for a slot.
-    pub fn acquire(self: &Arc<Self>) -> SlotGuard {
-        let mut used = self.used.lock().unwrap();
-        while *used >= self.total {
-            used = self.freed.wait(used).unwrap();
-        }
-        *used += 1;
-        SlotGuard(self.clone())
+    /// The whole vCPUs the slots are.
+    pub fn cpus(&self) -> u32 {
+        u32::try_from(self.total / self.per_cpu)
+            .unwrap_or(u32::MAX)
+            .max(1)
     }
 
-    /// A slot if one is free now.
-    pub fn try_acquire(self: &Arc<Self>) -> Option<SlotGuard> {
-        let mut used = self.used.lock().unwrap();
-        if *used >= self.total {
+    /// The vCPUs a job asking for `cpus` holds here: all of the runner's
+    /// when it asks for more than there are.
+    pub fn held_cpus(&self, cpus: u32) -> u32 {
+        cpus.clamp(1, self.cpus())
+    }
+
+    /// The slots a job holds: one, or every slot of its `cpus:`.
+    pub fn for_job(&self, cpus: Option<u32>) -> usize {
+        match cpus {
+            None => 1,
+            Some(n) => self.held_cpus(n) as usize * self.per_cpu,
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, SlotState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether a job waits to gather slots of its own.
+    #[cfg(test)]
+    pub(crate) fn gathering(&self) -> bool {
+        self.lock().gathering
+    }
+
+    /// Waits for `n` slots (at most all of them).
+    pub fn acquire(self: &Arc<Self>, n: usize) -> SlotGuard {
+        let n = n.clamp(1, self.total);
+        let mut state = self.lock();
+        while state.gathering || (n == 1 && state.used >= self.total) {
+            state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner());
+        }
+        if state.used + n > self.total {
+            // More than one slot, not free yet: the slots that come back
+            // are this job's, so no job of one slot can keep it waiting.
+            state.gathering = true;
+            while state.used + n > self.total {
+                state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+            state.gathering = false;
+            // Whoever waited behind it looks again.
+            self.freed.notify_all();
+        }
+        state.used += n;
+        SlotGuard {
+            slots: self.clone(),
+            held: n,
+        }
+    }
+
+    /// `n` slots (at most all of them) if they are free now and no job
+    /// waits to gather slots of its own.
+    pub fn try_acquire(self: &Arc<Self>, n: usize) -> Option<SlotGuard> {
+        let n = n.clamp(1, self.total);
+        let mut state = self.lock();
+        if state.gathering || state.used + n > self.total {
             return None;
         }
-        *used += 1;
-        Some(SlotGuard(self.clone()))
+        state.used += n;
+        Some(SlotGuard {
+            slots: self.clone(),
+            held: n,
+        })
     }
 }
 
-/// A held slot, given back on drop.
+/// Held slots, given back on drop.
 #[derive(Debug)]
-pub struct SlotGuard(Arc<Slots>);
+pub struct SlotGuard {
+    slots: Arc<Slots>,
+    held: usize,
+}
+
+impl SlotGuard {
+    /// How many slots it holds.
+    pub fn held(&self) -> usize {
+        self.held
+    }
+}
 
 impl Drop for SlotGuard {
     fn drop(&mut self) {
-        *self.0.used.lock().unwrap() -= 1;
-        self.0.freed.notify_one();
+        self.slots.lock().used -= self.held;
+        // Every waiter: a job gathering slots wants more than the one a
+        // single wake would hand on.
+        self.slots.freed.notify_all();
     }
 }
 
@@ -864,6 +987,8 @@ pub struct Restored {
     /// prefix; an exact hit is not saved again.
     pub exact: bool,
     pub entries: Vec<iwci_vfs::Entry>,
+    /// The modes saved with them ([`iwci_vfs::JobFs::modes_of`]).
+    pub modes: iwci_vfs::archive::ModeList,
 }
 
 /// The store behind `cache:`. An implementation decides where entries live
@@ -877,12 +1002,23 @@ pub trait Caches: Send + Sync {
         restore_keys: &[String],
         max_bytes: u64,
     ) -> Result<Option<Restored>, String>;
+    /// Saves `entries` and the modes recorded for their paths under `key`.
+    fn save_with_modes(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
+    ) -> Result<(), String>;
+    /// Saves `entries` with no modes (the durations record, tests).
     fn save(
         &self,
         key: &str,
         restore_keys: &[String],
         entries: &[iwci_vfs::Entry],
-    ) -> Result<(), String>;
+    ) -> Result<(), String> {
+        self.save_with_modes(key, restore_keys, entries, &[])
+    }
 }
 
 /// A file a job left under its `downloads:` paths, ready to keep: masked
@@ -2016,7 +2152,13 @@ pub fn run<T: Tools>(
         .iter()
         .map(|(id, ms)| (id.clone(), *ms))
         .collect();
-    let sandbox = |job: &PlannedJob| sandbox_need(tools, job);
+    // A virtual machine is reserved like a sandbox: its own overhead on
+    // top of the job's `memory:`, and it stays with the runner that has
+    // the run.
+    let sandbox = |job: &PlannedJob| match &job.vm {
+        Some(vm) => Some(options.machines.as_ref().map_or(0, |m| m.overhead(vm.os))),
+        None => sandbox_need(tools, job),
+    };
     let state = Mutex::new(State {
         sandbox: &sandbox,
         waiting: plan.jobs.iter().collect(),
@@ -2423,7 +2565,13 @@ pub fn run<T: Tools>(
                     // A helper's job can be stopped by itself, to give way,
                     // from the moment it holds a slot and memory.
                     let helped = helper
-                        .then(|| split::helped(options, lookup.reserve))
+                        .then(|| {
+                            split::helped(
+                                options,
+                                lookup.reserve,
+                                slot.as_ref().map_or(1, SlotGuard::held),
+                            )
+                        })
                         .flatten();
                     // In a split run, whoever writes the job's claim runs
                     // it. A job another runner has stays in this run's
@@ -2457,15 +2605,23 @@ pub fn run<T: Tools>(
                         );
                         continue;
                     }
-                    // A slot shared with every other run on this runner;
-                    // held for the job's workspace build and its run. One
-                    // of this runner's own runs gets a helper job's.
+                    // Slots shared with every other run on this runner;
+                    // held for the job's workspace build and its run: one,
+                    // or those of its `cpus:`. One of this runner's own
+                    // runs gets a helper job's.
                     let slot = slot.or_else(|| {
                         options
                             .slots
                             .as_ref()
-                            .map(|slots| split::own_slot(options, slots))
+                            .map(|slots| split::own_slot(options, slots, slots.for_job(job.cpus)))
                     });
+                    // What it holds of its `cpus:`, which is what it is
+                    // told it has and billed for: at most the runner's
+                    // own vCPUs.
+                    let mut job = job;
+                    if let (Some(cpus), Some(slots)) = (job.cpus, &options.slots) {
+                        job.cpus = Some(slots.held_cpus(cpus));
+                    }
                     let cancel = helped
                         .as_ref()
                         .map(|h| h.cancel.clone())
@@ -2489,6 +2645,7 @@ pub fn run<T: Tools>(
                         &inherited, lookup, cancel, &mut kept, &mut saved,
                     );
                     report.queued_ms = queued_ms;
+                    report.cpus = job.cpus;
                     if let Some(sharing) = sharing {
                         sharing.running.fetch_sub(1, Ordering::SeqCst);
                     }
@@ -2893,6 +3050,7 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -3059,6 +3217,7 @@ fn run_job<T: Tools>(
         &options.access.lent,
         &job.access,
         options.access.trusted,
+        &options.secrets,
         crate::runner::now_secs(),
         job.timeout,
     ) {
@@ -3075,9 +3234,24 @@ fn run_job<T: Tools>(
             );
         }
     };
-    let tool = match tools.resolve(&job.tool) {
-        Ok(t) => t,
-        Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
+    // A job in a virtual machine has no tool on the runner: the machine's
+    // image is its environment. A runner without such machines fails it
+    // before anything is built for it.
+    let tool = match &job.vm {
+        Some(vm) => {
+            if !options
+                .machines
+                .as_ref()
+                .is_some_and(|m| m.platforms().contains(&vm.os))
+            {
+                return errored(job, crate::machines::missing(vm.os), started.elapsed());
+            }
+            None
+        }
+        None => match tools.resolve(&job.tool) {
+            Ok(t) => Some(t),
+            Err(e) => return errored(job, format!("{}: {e}", job.tool), started.elapsed()),
+        },
     };
     let mut path_tools = Vec::with_capacity(job.tools.len());
     for t in &job.tools {
@@ -3128,12 +3302,17 @@ fn run_job<T: Tools>(
     let mut artifact_notes = Vec::new();
     let mut restored: HashSet<PathBuf> = HashSet::new();
     for (from, entries) in inherited {
-        if let Err(e) = fs.apply(entries) {
+        let (entries, modes) = artifact_modes(entries);
+        if let Err(e) = fs.apply(&entries) {
             return errored(
                 job,
                 format!("could not write the artifacts of `{from}`: {e}"),
                 started.elapsed(),
             );
+        }
+        let job_modes = fs.modes();
+        for (path, mode) in &modes {
+            job_modes.set(path, *mode);
         }
         let files = entries
             .iter()
@@ -3214,6 +3393,7 @@ fn run_job<T: Tools>(
             None => {}
             Some(Ok(Some(restored))) => match fs.apply(&restored.entries) {
                 Ok(()) => {
+                    fs.apply_modes(&restored.modes);
                     exact = restored.exact;
                     cache_lines.push(if restored.exact {
                         format!("cache `{key}`: restored")
@@ -3233,9 +3413,9 @@ fn run_job<T: Tools>(
         cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
     }
     // The environment's own caches, which `env-cache:` can turn off.
-    let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
-        Some(store) => tools
-            .env_caches(&tool)
+    let env_caches: Vec<crate::env_cache::Active> = match (&options.caches, &tool) {
+        (Some(store), Some(tool)) => tools
+            .env_caches(tool)
             .into_iter()
             .filter(|c| job.env_cache.keeps(&c.name))
             .map(|c| {
@@ -3249,13 +3429,16 @@ fn run_job<T: Tools>(
                 )
             })
             .collect(),
-        None => Vec::new(),
+        _ => Vec::new(),
     };
 
     let mut env = options.base_env.clone();
     env.push(("IWCI_JOB".into(), job.id.clone()));
     env.push(("IWCI_OUTPUT".into(), OUTPUT_PATH.into()));
     env.push(("IWCI_SCRATCH".into(), iwci_spec::SCRATCH_PATH.into()));
+    if let Some(cpus) = job.cpus {
+        env.push(("IWCI_CPUS".into(), cpus.to_string()));
+    }
     merge_env(&mut env, &workspace.env);
     merge_env(&mut env, &lent.env);
     merge_env(&mut env, &job.env);
@@ -3334,25 +3517,55 @@ fn run_job<T: Tools>(
         let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
         sink
     });
-    let executed = executor.execute(
-        &tool,
-        &path_tools,
-        &services,
-        &job.action,
-        Invocation {
+    let executed = match (&job.vm, &tool, &options.machines) {
+        (Some(vm), _, Some(machines)) => machines.run(crate::machines::MachineRun {
             job,
+            vm,
+            workspace: &workspace.snapshot,
+            workspace_key: format!(
+                "{}:{}",
+                plan.context().commit_sha,
+                plan.workspaces[job.workspace].key
+            ),
             fs: &fs,
             scratch: shared.scratch,
             env,
-            path: &workspace.path,
+            cwd: job.cwd.clone(),
+            collect: crate::machines::collect_paths(
+                job,
+                root.as_deref(),
+                OUTPUT_PATH,
+                options.caches.is_some(),
+            ),
             log,
             cancel,
-            memory_watch: gauge.map(|gauge| {
-                let watch: iwci_runtime::MemoryWatch = Arc::new(move |bytes| gauge.program(bytes));
-                watch
-            }),
-        },
-    );
+        }),
+        (None, Some(tool), _) => executor.execute(
+            tool,
+            &path_tools,
+            &services,
+            &job.action,
+            Invocation {
+                job,
+                fs: &fs,
+                scratch: shared.scratch,
+                env,
+                path: &workspace.path,
+                log,
+                cancel,
+                memory_watch: gauge.map(|gauge| {
+                    let watch: iwci_runtime::MemoryWatch =
+                        Arc::new(move |bytes| gauge.program(bytes));
+                    watch
+                }),
+            },
+        ),
+        // Checked when the tool was: a job in a machine on a runner
+        // without machines never gets here.
+        _ => Err(crate::machines::missing(
+            job.vm.as_ref().map_or(iwci_spec::VmOs::Linux, |v| v.os),
+        )),
+    };
     if let Some(sink) = &line_sink {
         sink.flush();
     }
@@ -3381,11 +3594,21 @@ fn run_job<T: Tools>(
             .any(|c| path == std::path::Path::new(c) || path.starts_with(c))
     };
     let changes: Vec<Change> = match &root {
-        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => fs
-            .changes(root)
-            .into_iter()
-            .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()))
-            .collect(),
+        Some(root) if !matches!(job.changes, ChangePolicy::Ignore) => {
+            // What git ignores is no change to the repository either: a job
+            // that installs `node_modules` or builds `target` changed
+            // nothing, as `git status` would say. A file the clone had is
+            // still one, whatever its rules say now.
+            let rules = GitIgnore::new(root, |path: &str| fs.read(path).ok());
+            let ignored = |c: &Change| {
+                matches!(c, Change::Added { .. })
+                    && c.path().to_str().is_some_and(|p| rules.ignored(p, false))
+            };
+            fs.changes(root)
+                .into_iter()
+                .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()) && !ignored(c))
+                .collect()
+        }
         _ => Vec::new(),
     };
     let changed: Vec<ChangedFile> = changes
@@ -3493,7 +3716,7 @@ fn run_job<T: Tools>(
         // `changes` walks a directory, so a path naming one file would find
         // nothing: read every change once (only what the job wrote lives in
         // its upper layer) and keep those at or under an artifact path.
-        let entries = written_under(&fs, &job.artifacts, &restored);
+        let entries = with_modes(&fs, written_under(&fs, &job.artifacts, &restored));
         keep_artifacts(entries, plan, shared, &mut status, &mut notes, kept);
     }
 
@@ -3578,7 +3801,7 @@ fn run_job<T: Tools>(
                     _ => 0,
                 })
                 .sum();
-            match store.save(key, restore_keys, &entries) {
+            match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
                 Ok(()) => {
                     cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
                 }
@@ -3663,6 +3886,7 @@ fn run_job<T: Tools>(
         downloads,
         notes,
         memory_mib: job.memory_bytes >> 20,
+        cpus: None,
         peak_memory_mib,
         held_memory_mib,
         queued_ms: 0,
@@ -3691,7 +3915,9 @@ fn keep_artifacts(
 ) {
     let files = entries
         .iter()
-        .filter(|e| matches!(e, Entry::File { .. }))
+        .filter(|e| {
+            matches!(e, Entry::File { .. }) && entry_path(e) != std::path::Path::new(ARTIFACT_MODES)
+        })
         .count();
     let bytes: u64 = entries
         .iter()
@@ -3766,6 +3992,7 @@ fn run_external(
         &options.access.lent,
         &job.access,
         options.access.trusted,
+        &options.secrets,
         crate::runner::now_secs(),
         job.timeout,
     ) {
@@ -3991,6 +4218,7 @@ fn run_external(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -4077,8 +4305,8 @@ fn job_tools(job: &PlannedJob) -> impl Iterator<Item = &ToolRef> {
 /// `dep`'s lockfile that package can resolve, as `(lockfile name, digest)`,
 /// to key it on in place of the whole file: pnpm, and Bun's isolated
 /// linker. `None` keys it on the whole file: any other job, which may reach
-/// every project from where it runs; Bun's hoisted linker, which puts every
-/// project's packages where any project can import them; the ecosystems
+/// every project from where it runs; Bun's hoisted linker and npm, which
+/// put every project's packages where any project can import them; the ecosystems
 /// whose projects `packages:` does not expand over (Go, Cargo, pip,
 /// Composer); and a lockfile the
 /// index cannot read (the install reports why).
@@ -4183,8 +4411,21 @@ fn task_cache_key(
         let part = lockfile_part(job, &root, index, dep, snapshot, locks);
         // Patch files, which `bun.lock` names without pinning their content.
         let bun_patches;
+        let bundler_gemspecs;
+        // What an npm install writes beyond the lockfile: the native
+        // packages it puts WebAssembly builds in place of, which no lockfile
+        // names, and (since 2) `node_modules/.bin`.
+        if matches!(
+            dep.ecosystem,
+            iwci_spec::Ecosystem::Pnpm | iwci_spec::Ecosystem::Npm | iwci_spec::Ecosystem::Bun
+        ) {
+            hash.update(b"npm layout 2\0wasm builds\0");
+            hash.update(iwci_deps::wasm_builds::key().as_bytes());
+            hash.update([0]);
+        }
         let names: Vec<&str> = match dep.ecosystem {
             iwci_spec::Ecosystem::Pnpm => vec!["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+            iwci_spec::Ecosystem::Npm => iwci_deps::npm::INPUT_FILES.to_vec(),
             iwci_spec::Ecosystem::Bun => {
                 let lock = snapshot.read(format!("{}/bun.lock", dep.dir)).ok();
                 bun_patches = iwci_deps::bun::patch_files(lock.as_deref());
@@ -4201,6 +4442,23 @@ fn task_cache_key(
                 None => iwci_deps::pip::DEFAULT_FILES.to_vec(),
             },
             iwci_spec::Ecosystem::Composer => vec!["composer.lock", "composer.json"],
+            iwci_spec::Ecosystem::Bundler => {
+                // The extensions built for the job's Ruby, which the
+                // install places beside the gems.
+                hash.update(b"gem builds\0");
+                hash.update(crate::gem_builds::key().as_bytes());
+                hash.update([0]);
+                // The gemspecs of `PATH` sources, which Bundler reads when
+                // the bundle loads and the lock does not pin.
+                let lock = iwci_deps::bundler::LOCKFILES
+                    .iter()
+                    .find_map(|name| snapshot.read(format!("{}/{name}", dep.dir)).ok());
+                bundler_gemspecs = iwci_deps::bundler::path_gemspecs(lock.as_deref());
+                iwci_deps::bundler::INPUT_FILES
+                    .into_iter()
+                    .chain(bundler_gemspecs.iter().map(String::as_str))
+                    .collect()
+            }
         };
         for name in names {
             let path = format!("{}/{name}", dep.dir);
@@ -4298,10 +4556,10 @@ fn replay(
         })
         .ok_or("the entry has no record of its run")?;
     let record: TaskRecord = serde_json::from_slice(&record).map_err(|e| e.to_string())?;
-    if files
-        .iter()
-        .any(|e| !job.artifacts.iter().any(|a| entry_path(e).starts_with(a)))
-    {
+    if files.iter().any(|e| {
+        entry_path(e) != std::path::Path::new(ARTIFACT_MODES)
+            && !job.artifacts.iter().any(|a| entry_path(e).starts_with(a))
+    }) {
         // Only ever what the job kept: anything else is not this job's.
         return Err("the entry holds files outside the job's `artifacts:`".into());
     }
@@ -4375,6 +4633,7 @@ fn replay(
             service_failure: None,
             cancelled: false,
             sandbox: None,
+            machine: None,
         }),
         changes: Vec::new(),
         commit: None,
@@ -4388,6 +4647,7 @@ fn replay(
         notes,
         duration_ms: millis(started.elapsed()),
         memory_mib: 0,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,
@@ -4400,6 +4660,58 @@ fn replay(
         waited_for: None,
         elsewhere: false,
     })
+}
+
+/// Where a list of artifacts keeps the modes of its files (`<octal mode>
+/// <path>` a line), which [`Entry`] does not carry: a program a job built
+/// is still executable in the job it is handed to. Under `/iwci`, which no
+/// job's artifacts can name; a list without one hands its files on as
+/// they always were.
+pub(crate) const ARTIFACT_MODES: &str = "/iwci/artifact-modes";
+
+/// `entries` with a record of the modes `fs` has for its files, when any
+/// has one.
+fn with_modes(fs: &JobFs, mut entries: Vec<Entry>) -> Vec<Entry> {
+    let modes = fs.modes();
+    let mut text = String::new();
+    for entry in &entries {
+        if let Entry::File { path, .. } = entry
+            && let Some(mode) = modes.get(path)
+            && let Some(path) = path.to_str()
+        {
+            text.push_str(&format!("{mode:o} {path}\n"));
+        }
+    }
+    if !text.is_empty() {
+        entries.push(Entry::File {
+            path: ARTIFACT_MODES.into(),
+            data: text.into_bytes().into(),
+        });
+    }
+    entries
+}
+
+/// The files of a list of artifacts, without its modes record, and the
+/// modes it records, by path.
+pub(crate) fn artifact_modes(entries: &[Entry]) -> (Vec<Entry>, Vec<(PathBuf, u32)>) {
+    let mut files = Vec::with_capacity(entries.len());
+    let mut modes = Vec::new();
+    for entry in entries {
+        match entry {
+            Entry::File { path, data } if path == std::path::Path::new(ARTIFACT_MODES) => {
+                for line in String::from_utf8_lossy(data).lines() {
+                    if let Some((mode, path)) = line.split_once(' ')
+                        && let Ok(mode) = u32::from_str_radix(mode, 8)
+                        && let Ok(path) = iwci_vfs::normalise(path)
+                    {
+                        modes.push((path, mode & 0o7777));
+                    }
+                }
+            }
+            other => files.push(other.clone()),
+        }
+    }
+    (files, modes)
 }
 
 fn entry_path(entry: &Entry) -> &std::path::Path {
@@ -4542,6 +4854,7 @@ fn errored(job: &PlannedJob, message: String, elapsed: Duration) -> JobReport {
         downloads: Vec::new(),
         notes: Vec::new(),
         memory_mib: job.memory_bytes >> 20,
+        cpus: None,
         peak_memory_mib: 0,
         held_memory_mib: 0,
         queued_ms: 0,

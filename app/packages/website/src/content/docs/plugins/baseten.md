@@ -27,7 +27,7 @@ Paste an **API key** from [Settings, API keys](https://app.baseten.co/settings/a
 - Inference-only and metrics-only keys won't work.
 - Costs need a key whose user can see the workspace's Billing page. Without it, everything else still works and the Costs page tells you the permission is missing rather than showing zero.
 
-<insert [Baseten Add-account form showing the API key field] here>
+![Baseten Add-account form showing the API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/baseten/add-account.png)
 
 ## Costs
 
@@ -41,7 +41,7 @@ Spend matches Baseten's Billing page and is **billed, not estimated**:
 
 History starts on 1 January 2026, the earliest date Baseten provides. Amounts are before credits, because Baseten only reports credits as a total with no date.
 
-<insert [Cost explorer filtered to a Baseten account, grouped by the deployment tag] here>
+![Cost report filtered to a Baseten account, grouped by the deployment tag](https://agent-assets.infrawrench.com/docs-screenshots/plugins/baseten/cost-by-deployment.png)
 
 ## Find idle deployments
 
@@ -51,7 +51,7 @@ The detail page also shows the **min-replica floor**: what the min replicas cost
 
 Development deployments are excluded, because Baseten pins them to 0 or 1 replica.
 
-<insert [Baseten deployment detail page showing the idle replicas warning and the billed usage by day table] here>
+![Baseten deployment detail page showing the idle replicas warning and the billed usage by day table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/baseten/deployment-idle.png)
 
 ## Metrics and logs
 

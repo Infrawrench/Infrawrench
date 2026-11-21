@@ -3,6 +3,7 @@
 // with: 2 for a usage mistake, 1 for everything else. A failure that is none
 // of these, a defect, prints its stack instead, the way `runCli` always has.
 import { Schema } from "effect";
+import { isStandaloneCli } from "../edition";
 
 /** A mistake on the command line (a bad flag value, a contradictory pair). Exit 2. */
 export class CliUsageError extends Schema.TaggedError<CliUsageError>()("CliUsageError", {
@@ -39,7 +40,10 @@ export class Canceled extends Schema.TaggedError<Canceled>()("Canceled", {}) {
 export class NotSignedIn extends Schema.TaggedError<NotSignedIn>()("NotSignedIn", {}) {
   readonly exitCode = 1;
   override get message(): string {
-    return "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app; the CLI shares its session).";
+    // The standalone CLI keeps a session of its own (`../edition.ts`).
+    return isStandaloneCli()
+      ? "Not signed in to Infrawrench Cloud. Run `infrawrench login`."
+      : "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app; the CLI shares its session).";
   }
 }
 

@@ -52,7 +52,7 @@ Enterprise organizations get Prometheus-compatible metrics with the same API key
 
 On any other tier the tab stays empty. Checking costs you nothing.
 
-<insert [Groq model Metrics tab on an Enterprise account, showing the requests per second and latency percentile charts for llama-3.1-8b-instant] here>
+![Groq model Metrics tab on an Enterprise account, showing the requests per second and latency percentile charts for llama-3.1-8b-instant](https://agent-assets.infrawrench.com/docs-screenshots/plugins/groq/model-metrics.png)
 
 ## Tips and limits
 

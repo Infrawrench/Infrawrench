@@ -104,9 +104,14 @@ pub struct SandboxHost {
     system: Vec<Placed>,
     platform: String,
     overhead: u64,
-    /// The CPUs a sandbox may use and is told it has: the runner's own
-    /// (`--cpus`), as a WASIX job's threads share them.
+    /// The CPUs a sandbox has (gVisor's `--cpu-num`, which also sizes its
+    /// kernel's threads): the runner's own (`--cpus`), as a WASIX job's
+    /// threads share them, unless its job holds vCPUs of its own (`cpus:`).
+    /// What the job is told is `Limits::told_cpus` (`JobSpec::told_cpus`).
     cpus: u32,
+    /// How many jobs share a vCPU (`--jobs-per-cpu`): a job holding
+    /// `cpus:` weighs as many jobs as the slots it holds.
+    jobs_per_cpu: u32,
 }
 
 impl std::fmt::Debug for SandboxHost {
@@ -165,6 +170,7 @@ impl SandboxHost {
             platform: "systrap".into(),
             overhead: DEFAULT_OVERHEAD,
             cpus,
+            jobs_per_cpu: 1,
         })
     }
 
@@ -184,13 +190,21 @@ impl SandboxHost {
 
     /// Holds every sandbox together to `cpus` CPUs' time (`cpu.max` on the
     /// runner's `jobs/` cgroup, shared by equal weight), which is also how
-    /// many each is told it has: the runner's `--cpus`.
+    /// many CPUs each has to run on: the runner's `--cpus`.
     pub fn with_cpus(mut self, cpus: u32) -> io::Result<Self> {
         self.cpus = cpus.max(1);
         if let Some(jobs) = &self.jobs {
             jobs.hold_cpus(Some(self.cpus))?;
         }
         Ok(self)
+    }
+
+    /// How many jobs share a vCPU, so that a sandbox whose job holds
+    /// `cpus:` gets as much more CPU time than one job's as the slots it
+    /// holds (`cpu.weight`).
+    pub fn with_jobs_per_cpu(mut self, jobs_per_cpu: u32) -> Self {
+        self.jobs_per_cpu = jobs_per_cpu.max(1);
+        self
     }
 
     pub fn with_overhead(mut self, bytes: u64) -> Self {
@@ -295,6 +309,12 @@ fn serve(export: Export) -> Result<(Served, OwnedFd)> {
     let (ours, theirs) = lisafs::socket_pair().map_err(setup)?;
     let serving = lisafs::serve(export, ours).map_err(setup)?;
     Ok((Served { _serving: serving }, theirs))
+}
+
+/// The `cpu.weight` of a sandbox whose job holds `cpus` vCPUs, where a
+/// job of one slot, `1 / jobs_per_cpu` of a vCPU, weighs the default 100.
+fn cpu_weight(cpus: u32, jobs_per_cpu: u32) -> u64 {
+    100 * u64::from(cpus.max(1)) * u64::from(jobs_per_cpu.max(1))
 }
 
 /// A unique name for a sandbox.
@@ -514,7 +534,8 @@ impl Runtime {
             memory_bytes: inv.limits.memory_bytes,
             output_cap: 64 << 10,
             internet: inv.internet,
-            cpus: host.cpus as usize,
+            cpus: inv.limits.cpus.unwrap_or(host.cpus) as usize,
+            told_cpus: inv.limits.told_cpus(),
             cache_dir: PathBuf::from(IWCI_DIR).join("cache"),
             packages: packages.iter().map(spec_package).collect(),
             tools,
@@ -751,6 +772,13 @@ impl Runtime {
             ),
             None => None,
         };
+        // Sandboxes share the runner's CPUs by equal weight, one job's
+        // each; one whose job holds `cpus:` weighs the jobs its slots are.
+        if let (Some(cgroup), Some(cpus)) = (&cgroup, inv.limits.cpus) {
+            cgroup
+                .set_cpu_weight(cpu_weight(cpus, host.jobs_per_cpu))
+                .map_err(setup)?;
+        }
         let written = Arc::new(AtomicU64::new(0));
         let stdout = Capture::new(self.output_cap)
             .with_sink(inv.log.clone(), crate::Stream::Stdout)

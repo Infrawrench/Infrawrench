@@ -75,6 +75,13 @@ impl Fetcher for AnyRegistry {
         if TARBALLS.iter().any(|(known, _)| *known == url) {
             return self.real.fetch(url, integrity);
         }
+        // A registry's version manifest, which only a WebAssembly build
+        // asks for: it has none, so the native package stays.
+        if *integrity == Integrity::Unpinned {
+            return Err(FetchError::NotFound {
+                url: url.to_string(),
+            });
+        }
         let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         let mut builder = tar::Builder::new(encoder);
         for (path, data) in [
@@ -370,6 +377,164 @@ fn a_wasm_build_bun_has_no_cpu_name_for_is_installed() {
     assert!(builder.is_file(format!(
         "{ROOT}/node_modules/@rolldown/binding-wasm32-wasi/package.json"
     )));
+}
+
+#[test]
+fn esbuild_is_installed_as_its_webassembly_build() {
+    fn package(name: &str, main: &str) -> (Vec<u8>, String) {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        for (path, data) in [
+            (
+                "package/package.json",
+                format!(r#"{{"name":"{name}","version":"0.25.0"}}"#),
+            ),
+            ("package/lib/main.js", main.to_string()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            builder
+                .append_data(&mut header, path, data.as_bytes())
+                .unwrap();
+        }
+        let bytes = builder.into_inner().unwrap().finish().unwrap();
+        let digest = <sha2::Sha512 as sha2::Digest>::digest(&bytes);
+        let sri = format!(
+            "sha512-{}",
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, digest)
+        );
+        (bytes, sri)
+    }
+    let (native, native_sri) = package("esbuild", "spawn('@esbuild/linux-x64')");
+    let (wasm, wasm_sri) = package("esbuild-wasm", "spawn('node', ['bin/esbuild'])");
+    let lock = format!(
+        r#"{{
+  "lockfileVersion": 1,
+  "workspaces": {{
+    "": {{ "name": "w", "devDependencies": {{ "esbuild": "^0.25.0" }} }},
+  }},
+  "packages": {{
+    "esbuild": ["esbuild@0.25.0", "", {{}}, "{native_sri}"],
+  }}
+}}"#
+    );
+    let fetcher = MemoryFetcher::new();
+    fetcher.insert(
+        "https://registry.npmjs.org/esbuild/-/esbuild-0.25.0.tgz",
+        native,
+    );
+    fetcher.insert(
+        "https://registry.npmjs.org/esbuild-wasm/0.25.0",
+        format!(
+            r#"{{"name":"esbuild-wasm","version":"0.25.0","dist":{{"integrity":"{wasm_sri}"}}}}"#
+        ),
+    );
+    fetcher.insert(
+        "https://registry.npmjs.org/esbuild-wasm/-/esbuild-wasm-0.25.0.tgz",
+        wasm,
+    );
+
+    let builder = project(&[("bun.lock", &lock)]);
+    let report = install(&builder, ROOT, &fetcher, &BunOptions::default()).unwrap();
+    assert_eq!(
+        report.wasm_builds,
+        ["esbuild@0.25.0 as esbuild-wasm@0.25.0"]
+    );
+    assert!(read(&builder, "node_modules/esbuild/lib/main.js").contains("bin/esbuild"));
+    assert!(
+        !fetcher
+            .requests()
+            .iter()
+            .any(|url| url.ends_with("/esbuild-0.25.0.tgz"))
+    );
+
+    // On a host that can run the native build, it stays.
+    let builder = project(&[("bun.lock", &lock)]);
+    let report = install(&builder, ROOT, &fetcher, &darwin()).unwrap();
+    assert!(report.wasm_builds.is_empty());
+    assert!(read(&builder, "node_modules/esbuild/lib/main.js").contains("linux-x64"));
+}
+
+#[test]
+fn commands_are_linked_into_node_modules_bin() {
+    use iwci_vfs::virtual_fs::FileSystem as _;
+
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut tar = tar::Builder::new(encoder);
+    for (path, data) in [
+        (
+            "package/package.json",
+            r#"{"name":"tool","version":"1.0.0","bin":{"tool":"bin/tool.js"}}"#,
+        ),
+        ("package/bin/tool.js", "#!/usr/bin/env node\n"),
+    ] {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        tar.append_data(&mut header, path, data.as_bytes()).unwrap();
+    }
+    let bytes = tar.into_inner().unwrap().finish().unwrap();
+    let digest = <sha2::Sha512 as sha2::Digest>::digest(&bytes);
+    let sri = format!(
+        "sha512-{}",
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, digest)
+    );
+    let fetcher = MemoryFetcher::new();
+    fetcher.insert("https://registry.npmjs.org/tool/-/tool-1.0.0.tgz", bytes);
+    let lock = |config_version: u32| {
+        format!(
+            r#"{{
+  "lockfileVersion": 1,
+  "configVersion": {config_version},
+  "workspaces": {{
+    "": {{ "name": "w" }},
+    "packages/a": {{ "name": "a", "devDependencies": {{ "tool": "1.0.0" }} }},
+  }},
+  "packages": {{
+    "a": ["a@workspace:packages/a"],
+    "tool": ["tool@1.0.0", "", {{ "bin": {{ "tool": "bin/tool.js" }} }}, "{sri}"],
+  }}
+}}"#
+        )
+    };
+    let link = |builder: &SnapshotBuilder, path: &str| {
+        builder
+            .fs()
+            .readlink(&Path::new(ROOT).join(path))
+            .unwrap_or_else(|e| panic!("{path}: {e}"))
+            .display()
+            .to_string()
+    };
+
+    // Hoisted: the root `node_modules` holds `tool`, so its `.bin` does.
+    let builder = project(&[
+        ("bun.lock", &lock(0)),
+        ("packages/a/package.json", r#"{"name":"a"}"#),
+    ]);
+    let report = install(&builder, ROOT, &fetcher, &BunOptions::default()).unwrap();
+    assert_eq!(report.linker, Linker::Hoisted);
+    assert_eq!(
+        link(&builder, "node_modules/.bin/tool"),
+        "../tool/bin/tool.js"
+    );
+    assert_eq!(report.bins, 1);
+
+    // Isolated: the workspace's own `node_modules`.
+    let builder = project(&[
+        ("bun.lock", &lock(1)),
+        ("packages/a/package.json", r#"{"name":"a"}"#),
+    ]);
+    let report = install(&builder, ROOT, &fetcher, &BunOptions::default()).unwrap();
+    assert_eq!(report.linker, Linker::Isolated);
+    assert_eq!(
+        link(&builder, "packages/a/node_modules/.bin/tool"),
+        "../../../../node_modules/.bun/tool@1.0.0/node_modules/tool/bin/tool.js"
+    );
+    assert_eq!(
+        read(&builder, "packages/a/node_modules/.bin/tool"),
+        "#!/usr/bin/env node\n"
+    );
 }
 
 #[test]

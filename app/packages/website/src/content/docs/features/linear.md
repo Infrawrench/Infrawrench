@@ -8,7 +8,7 @@ Infrawrench finds lots of things someone has to act on: spend anomalies, resourc
 
 You can connect Linear, [Jira](./jira.md), or both. With both connected, the button reads **File an issue** and lets you pick the tracker for each finding. A finding filed to both shows both identifiers.
 
-<insert [The Costs panel Anomalies table with a "File in Linear" link on one row and a filed Linear identifier like ENG-123 on another] here>
+![The Costs panel Anomalies table with a "File in Linear" link on one row and a filed Linear identifier like ENG-123 on another](https://agent-assets.infrawrench.com/docs-screenshots/features/linear/anomalies-file-in-linear.png)
 
 ## What you can file
 
@@ -62,7 +62,7 @@ Once a finding is filed, its row shows the issue identifier (like `ENG-123`) and
 
 Next to every filed identifier, you see the issue's state in Linear (`Backlog`, `In Progress`, `Done`, or your team's own names) with a coloured dot for not started, in progress, finished or cancelled. Hover it to see the assignee and the last change.
 
-<insert [A Costs panel Anomalies row showing a filed Linear identifier ENG-123 followed by a green dot and "Done", with the hover tooltip naming the assignee] here>
+![A Costs panel Anomalies row showing a filed Linear identifier ENG-123 followed by a green dot and "Done"](https://agent-assets.infrawrench.com/docs-screenshots/features/linear/anomaly-issue-status.png)
 
 Statuses update in two ways:
 

@@ -123,6 +123,7 @@ pub fn restore(
     match store.restore(&key, &[], memory_bytes) {
         Ok(Some(found)) => match fs.apply(&found.entries) {
             Ok(()) => {
+                fs.apply_modes(&found.modes);
                 lines.push(format!(
                     "env cache `{name}`: restored {}",
                     kib(file_bytes(&found.entries))
@@ -222,7 +223,7 @@ pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<Str
             ),
         )
     };
-    match store.save(&active.key, &[], &kept) {
+    match store.save_with_modes(&active.key, &[], &kept, &fs.modes_of(&kept)) {
         Ok(()) => lines.push(format!(
             "env cache `{name}`: saved {}{note}",
             kib(file_bytes(&kept))

@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useGT } from "gt-react";
 import { useDataString } from "../../i18n/data-strings.js";
-import type { QueryCostEstimate, SqlTableMeta } from "@infrawrench/plugin-base";
+import type {
+  QueryCostEstimate,
+  SqlEditorCapability,
+  SqlTableMeta,
+} from "@infrawrench/plugin-base";
 import { CloseIcon } from "../icons/ChromeIcons.js";
 
 export interface QueryResult {
@@ -9,9 +13,39 @@ export interface QueryResult {
   durationMs: number;
 }
 
+/**
+ * The query the editor opens with, and runs once. The plugin's own starter
+ * when it gives one; otherwise a SQL editor gets `SELECT 1;`, and an editor for
+ * another language starts empty rather than running SQL it cannot parse.
+ */
+export function initialEditorQuery(
+  editor: Pick<SqlEditorCapability, "defaultQuery" | "queryLanguage">,
+): string {
+  return editor.defaultQuery ?? (editor.queryLanguage ? "" : "SELECT 1;");
+}
+
+/**
+ * The query clicking a table in the sidebar inserts and runs: the plugin's
+ * `tableQuery` with the table's name in place of every `{table}`. Without one,
+ * a SQL editor browses the table with `SELECT … LIMIT 100`, and an editor for
+ * another language gets `null`, so the click inserts and runs nothing.
+ */
+export function tableBrowseQuery(
+  editor: { tableQuery?: string | undefined; queryLanguage?: string | undefined },
+  tableName: string,
+): string | null {
+  const template =
+    editor.tableQuery ?? (editor.queryLanguage ? undefined : "SELECT * FROM {table} LIMIT 100;");
+  return template === undefined ? null : template.split("{table}").join(tableName);
+}
+
 interface Props {
   tables: SqlTableMeta[];
   defaultQuery: string;
+  /** The editor's language when it is not SQL ("PromQL", "DQL" …); left out, SQL. */
+  queryLanguage?: string | undefined;
+  /** What clicking a table inserts, `{table}` standing for its name; see `tableBrowseQuery`. */
+  tableQuery?: string | undefined;
   onRunQuery: (sql: string) => Promise<QueryResult>;
   /** Run a mutation with typed params ($1, $2 …); returns rows affected */
   onExecute?: ((sql: string, params: unknown[]) => Promise<number>) | undefined;
@@ -105,6 +139,8 @@ function pgCast(dataType: string): string {
 export function SqlEditorView({
   tables,
   defaultQuery,
+  queryLanguage,
+  tableQuery,
   onRunQuery,
   onExecute,
   onEstimateQueryCost,
@@ -191,8 +227,7 @@ export function SqlEditorView({
     }
   }
 
-  function clickTable(tableName: string) {
-    const sql = `SELECT * FROM ${tableName} LIMIT 100;`;
+  function clickTable(sql: string) {
     setQuery(sql);
     textareaRef.current?.focus();
     runQuery(sql);
@@ -296,6 +331,7 @@ export function SqlEditorView({
           ) : (
             filteredTables.map((table) => {
               const expanded = expandedTables.has(table.name);
+              const browse = tableBrowseQuery({ tableQuery, queryLanguage }, table.name);
               const pks = new Set(table.pkColumns ?? []);
               return (
                 <div key={table.name}>
@@ -326,13 +362,19 @@ export function SqlEditorView({
                         </svg>
                       )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => clickTable(table.name)}
-                      className="flex-1 text-left p-1 text-xs text-on-surface-secondary hover:text-on-surface hover:bg-surface-overlay rounded truncate leading-tight"
-                    >
-                      {table.name}
-                    </button>
+                    {browse === null ? (
+                      <span className="flex-1 p-1 text-xs text-on-surface-secondary truncate leading-tight">
+                        {table.name}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => clickTable(browse)}
+                        className="flex-1 text-left p-1 text-xs text-on-surface-secondary hover:text-on-surface hover:bg-surface-overlay rounded truncate leading-tight"
+                      >
+                        {table.name}
+                      </button>
+                    )}
                   </div>
                   {expanded && table.columns.length > 0 && (
                     <div className="ml-4 border-l border-border pl-2 mb-0.5">
@@ -450,14 +492,16 @@ export function SqlEditorView({
           </div>
           <textarea
             ref={textareaRef}
-            aria-label={gt("SQL query")}
+            aria-label={
+              queryLanguage ? gt("{language} query", { language: queryLanguage }) : gt("SQL query")
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             spellCheck={false}
             className="flex-1 bg-surface-raised px-4 py-3 text-xs font-mono text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none resize-none"
-            // i18n-ignore: SQL syntax example
-            placeholder="SELECT …"
+            // A SQL syntax example, so only for SQL.
+            placeholder={queryLanguage ? undefined : "SELECT …"}
           />
         </div>
 

@@ -39,6 +39,7 @@ import {
   type DependencyGraphNode,
   type KvBrowserListParams,
   type PeerPaneData,
+  type ProviderResource,
   type QueryResult,
   type RerollSelection,
   type ResourceDependencies,
@@ -61,7 +62,11 @@ import {
   navigateToWorkspaceTarget,
   resourceTabTarget,
   servicesTabTarget,
+  heartbeatsTabTarget,
 } from "../../lib/workspace-tabs";
+import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
+import type { HeartbeatsClient } from "@infrawrench/ui/heartbeats/types";
+import { createDesktopHeartbeatsClient } from "../../lib/heartbeats-client";
 import { fetchDesktopServicesForResource } from "../../lib/services-client";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
@@ -131,6 +136,8 @@ interface DetailViewContainerProps {
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) => void;
+  /** The reroll picker's "From resource" list, loaded when it opens. */
+  loadProviderResources?: (fieldKey: string) => Promise<ProviderResource[]>;
   /** Renders the file browser when schema.storageBrowser is set. */
   renderStorageBrowser?: () => React.ReactNode;
 }
@@ -145,6 +152,12 @@ let desktopLeasesClient: LeasesClient | null = null;
 function getLeasesClient(): LeasesClient {
   if (!desktopLeasesClient) desktopLeasesClient = createDesktopLeasesClient();
   return desktopLeasesClient;
+}
+
+let desktopHeartbeatsClient: HeartbeatsClient | null = null;
+function getHeartbeatsClient(): HeartbeatsClient {
+  if (!desktopHeartbeatsClient) desktopHeartbeatsClient = createDesktopHeartbeatsClient();
+  return desktopHeartbeatsClient;
 }
 
 let desktopOwnershipClient: OwnershipClient | null = null;
@@ -201,6 +214,7 @@ export function DetailViewContainer({
   onChildDelete,
   onChildEdit,
   onReroll,
+  loadProviderResources,
   renderStorageBrowser,
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
@@ -211,6 +225,9 @@ export function DetailViewContainer({
   // start/stop pair. Discovered from the local plugin definition, never from
   // provider names.
   const [schedulable, setSchedulable] = useState(false);
+  // Heartbeat tab: cloud mode only, for types whose plugin flags the field
+  // holding the schedule the resource runs on (`schedule: "cron"`).
+  const [hasSchedule, setHasSchedule] = useState(false);
   // Depend on the two identifying strings rather than the resource object:
   // a refetched (new-identity) resource of the same type must not re-run the
   // plugin load.
@@ -219,12 +236,17 @@ export function DetailViewContainer({
   useEffect(() => {
     let cancelled = false;
     setSchedulable(false);
+    setHasSchedule(false);
     if (!activeCloudOrgId || !resourcePluginId || !resourceTypeId) return undefined;
     getPlugin(resourcePluginId)
       .then((loaded) => {
         if (cancelled) return;
         const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
         setSchedulable(!!typeDef?.lifecycle);
+        setHasSchedule(
+          typeDef?.fields?.some((f) => f.schedule === "cron") === true ||
+            typeDef?.outputs?.some((o) => o.schedule === "cron") === true,
+        );
       })
       .catch(() => {
         if (!cancelled) setSchedulable(false);
@@ -313,6 +335,7 @@ export function DetailViewContainer({
         carbonEstimate={carbonEstimate}
         onQueryInstancePricing={desktopInstancePricingQuery}
         {...(onReroll ? { onReroll } : {})}
+        {...(loadProviderResources ? { loadProviderResources } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (
           <PeerPaneView
@@ -445,6 +468,22 @@ export function DetailViewContainer({
                     accountId,
                     resourceName: resource?.displayName ?? decodedResourceId,
                   }}
+                />
+              ),
+            }
+          : {})}
+        {...(hasSchedule && activeCloudOrgId
+          ? {
+              renderHeartbeatTab: () => (
+                <ResourceHeartbeatPanel
+                  client={getHeartbeatsClient()}
+                  resourceId={decodedResourceId}
+                  resourceName={resource?.displayName ?? decodedResourceId}
+                  onOpenHeartbeats={() =>
+                    void navigateToWorkspaceTarget(navigate, heartbeatsTabTarget(), {
+                      mode: "pin",
+                    })
+                  }
                 />
               ),
             }

@@ -1,0 +1,52 @@
+--- a/libc-bottom-half/cloudlibc/src/common/net.h
++++ b/libc-bottom-half/cloudlibc/src/common/net.h
+@@ -87,6 +87,12 @@
+   return -1;
+ }
+ 
++// iwci patch: the length of a sockaddr_un's path, read as Linux reads it:
++// up to its first NUL within `addrlen`. Callers commonly pass
++// sizeof(struct sockaddr_un) whatever the path (libuv does), which counted
++// the whole buffer as the path and failed every such bind and connect.
++size_t __wasilibc_iwci_sun_path_len(const struct sockaddr_un *addr, socklen_t addrlen);
++
+ static inline int sockaddr_to_wasi(const struct sockaddr *restrict addr, const socklen_t addrlen, struct __wasi_addr_port_t *restrict peer_addr) {
+   memset(peer_addr, 0, sizeof(struct __wasi_addr_port_t));
+   if (addr->sa_family == AF_INET && addrlen >= sizeof(struct sockaddr_in)) {
+@@ -108,15 +114,19 @@
+   } else if (addr->sa_family == AF_UNIX && addrlen >= offsetof(struct sockaddr_un, sun_path) + 1) {
+     struct sockaddr_un *addrun = (struct sockaddr_un *)addr;
+     peer_addr->tag = __WASI_ADDRESS_FAMILY_UNIX;
+-    socklen_t pathlen = addrlen - offsetof(struct sockaddr_un, sun_path);
++    size_t pathlen = __wasilibc_iwci_sun_path_len(addrun, addrlen);
+     if (pathlen > 107) { // Addresses are limited to 107 bytes + 1 null byte only
+-      return -1;
++      return EINVAL;
+     }
+     memcpy(&peer_addr->u.unix.b0, &addrun->sun_path, (size_t)pathlen);
+     *(uint8_t *)(&peer_addr->u.unix.b0 + pathlen) = '\0';
+     return 0;
+   } else {
+-    return -1;
++    // iwci patch: an errno, which every caller sets errno to (-1 read as
++    // no error code at all): a known family with too short an address, or
++    // a family there is no socket for.
++    return addr->sa_family == AF_INET || addr->sa_family == AF_INET6 || addr->sa_family == AF_UNIX
++      ? EINVAL : EAFNOSUPPORT;
+   }
+ }
+ 
+--- a/libc-bottom-half/cloudlibc/src/libc/sys/socket/bind.c
++++ b/libc-bottom-half/cloudlibc/src/libc/sys/socket/bind.c
+@@ -6,6 +6,11 @@
+ #include <wasi/api.h>
+ #include <errno.h>
+ #include <string.h>
++
++// iwci patch: see common/net.h.
++size_t __wasilibc_iwci_sun_path_len(const struct sockaddr_un *addr, socklen_t addrlen) {
++  return strnlen(addr->sun_path, addrlen - offsetof(struct sockaddr_un, sun_path));
++}
+ 
+ int bind(int socket, const struct sockaddr *restrict addr, socklen_t addrlen) {
+   __wasi_addr_port_t peer_addr;

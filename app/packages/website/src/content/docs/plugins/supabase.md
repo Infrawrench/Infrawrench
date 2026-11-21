@@ -25,7 +25,7 @@ Connect a Supabase account to manage every project you can reach, without openin
 - **Read replicas**: add a replica in another region and remove it.
 - **Backups**: the daily backups Supabase keeps for each project.
 
-<insert [Supabase project detail page showing the Overview, Security, Backups and Disk sections with the Pause and Reset database password actions] here>
+![Supabase project detail page showing the Overview, Security, Backups and Disk sections with the Pause and Reset database password actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/supabase/project-detail.png)
 
 ## Connect with Supabase
 
@@ -37,7 +37,7 @@ The connection renews itself. If you revoke Infrawrench's access in your Supabas
 
 Connect with Supabase works in the web app and in the desktop app's cloud mode. Accounts stored locally on the desktop use a token.
 
-<insert [Supabase add-account form showing the Connect with Supabase button above the Access Token field] here>
+![Supabase add-account form showing the Connect with Supabase button above the Access Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/supabase/add-account-connect.png)
 
 ## Use a token instead
 
@@ -48,7 +48,7 @@ Create a **personal access token** in the Supabase dashboard under **Account > A
 
 When you add the account, the permission checklist tests each of these and tells you which are missing.
 
-<insert [Supabase Add-account form with the Access Token field filled in and the permission checklist below it] here>
+![Supabase Add-account form with the Access Token field filled in and the permission checklist below it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/supabase/add-account-checklist.png)
 
 ## Connection strings and the SQL editor
 

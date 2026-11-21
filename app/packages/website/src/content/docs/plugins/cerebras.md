@@ -24,13 +24,13 @@ For Dedicated Inference, also fill in the optional fields:
 - **Organization ID** (`org_…`, from the console's **Settings** page) to see endpoint metrics.
 - **Organization Name** (the prefix of your endpoint ids, for example `my-org` in `my-org-gpt-oss-120b`) and the **Management API Key** from the **Management API keys** section of the API Keys page. These let you list endpoints and model versions and deploy.
 
-<insert [Cerebras Add-account form showing the API Key field and the collapsed Dedicated Inference fields] here>
+![Cerebras Add-account form showing the API Key field and the optional Dedicated Inference fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cerebras/add-account.png)
 
 ## Chat in the Playground
 
 Open a model or a dedicated endpoint and use the **Playground** tab. Replies stream in as they are generated.
 
-<insert [Cerebras model detail page with pricing and limits, and the Playground tab streaming a reply] here>
+![Cerebras model detail page with the Playground tab showing a streamed reply and its token counts](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cerebras/model-playground.png)
 
 ## Endpoint metrics
 

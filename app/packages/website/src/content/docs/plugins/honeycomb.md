@@ -22,7 +22,7 @@ Connect a Honeycomb team to manage its setup and chart what your services send i
 - **Signals**: Honeycomb's anomaly detection per service. Turn them on or off and change their sensitivity.
 - **API keys**: ingest and configuration keys for each environment. Create one with exactly the permissions it needs, rename, disable, enable or delete it. Honeycomb shows a key's secret only once. For keys created here, it's saved as the key's **Key** output, ready to export to a Kubernetes secret or a server.
 
-<insert [Honeycomb dataset detail page showing the Dataset definitions section and the Metrics tab with Events, P99 duration and Error rate charts] here>
+![Honeycomb dataset Metrics tab with Events, P50, P95 and P99 duration, and Error rate charts](https://agent-assets.infrawrench.com/docs-screenshots/plugins/honeycomb/dataset-metrics.png)
 
 ## Connect your account
 
@@ -35,7 +35,7 @@ A management key can't read anything inside an environment, so with one you need
 
 Pick the **Region** your team is in: US if you sign in at ui.honeycomb.io, EU if at ui.eu1.honeycomb.io.
 
-<insert [Honeycomb Add-account form with the Region set to US and the Management Key ID, Management Key Secret and Configuration Key fields filled in] here>
+![Honeycomb Add-account form with the US region (ui.honeycomb.io) selected and the Management Key ID, Management Key Secret and Configuration Key fields filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/honeycomb/add-account.png)
 
 ## Metrics
 

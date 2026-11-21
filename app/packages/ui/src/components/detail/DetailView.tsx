@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState, type KeyboardEvent } from "react";
+import React, { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -29,7 +29,7 @@ import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
-import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
+import { SqlEditorView, initialEditorQuery, type QueryResult } from "./SqlEditorView.js";
 import { ManifestEditorView } from "./ManifestEditorView.js";
 import { SettingsEditorView } from "./SettingsEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
@@ -54,6 +54,7 @@ import {
   dispatchNavigateToResource,
   dispatchPromptNoSqlCommand,
   dispatchRefreshResource,
+  formatErrorMessage,
 } from "../../utils.js";
 import type { HostAction } from "@infrawrench/plugin-base";
 import type { DependencyGraphNode, ResourceDependencies } from "@infrawrench/client-core";
@@ -81,8 +82,12 @@ interface DetailViewProps {
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) => void;
-  /** Available provider resources for the reroll picker */
-  providerResources?: ProviderResource[];
+  /**
+   * The resources whose outputs can fill `fieldKey`: the reroll picker's
+   * "From resource" list, loaded when the picker opens. Keep its identity
+   * stable (`useCallback`); a new function reloads the open picker's list.
+   */
+  loadProviderResources?: (fieldKey: string) => Promise<ProviderResource[]>;
   /**
    * Host-provided SQL executor. Required when schema.sqlEditor is set.
    * The host owns the DB driver: this component only provides the UI.
@@ -182,6 +187,13 @@ interface DetailViewProps {
    */
   renderLeaseTab?: (() => React.ReactNode) | undefined;
   /**
+   * When set, a "Heartbeat" tab renders the heartbeats watching this
+   * scheduled job, with "Watch with a heartbeat". Host-driven like
+   * `renderScheduleTab`: hosts wire it only for types whose plugin flags a
+   * field as the resource's schedule, and only in cloud mode.
+   */
+  renderHeartbeatTab?: (() => React.ReactNode) | undefined;
+  /**
    * When set, an "Ownership" tab renders who owns the resource, what it is
    * for, and its authorizing ticket. Host-driven like `renderLeaseTab`, and
    * ungated for the same reason: any resource can have an owner, so hosts
@@ -258,6 +270,7 @@ type Tab =
   | "changes"
   | "schedule"
   | "lease"
+  | "heartbeat"
   | "ownership"
   | "blast-radius"
   | "artifacts"
@@ -272,6 +285,13 @@ type Tab =
   | `custom:${string}`;
 
 const EMPTY_PROVIDER_RESOURCES: ProviderResource[] = [];
+
+/** The reroll picker's "From resource" list, for the field it was loaded for. */
+interface ProviderResourcesState {
+  fieldKey: string;
+  resources: ProviderResource[];
+  error: string | null;
+}
 const EMPTY_PEER_PANES: PeerPaneData[] = [];
 const EMPTY_CHILD_RESOURCE_GROUPS: ChildResourceGroup[] = [];
 
@@ -280,7 +300,7 @@ export function DetailView({
   resourceId,
   pluginLogoSvg,
   onReroll,
-  providerResources = EMPTY_PROVIDER_RESOURCES,
+  loadProviderResources,
   onRunQuery,
   onExecute,
   onEstimateQueryCost,
@@ -314,6 +334,7 @@ export function DetailView({
   renderChangesTab,
   renderScheduleTab,
   renderLeaseTab,
+  renderHeartbeatTab,
   renderOwnershipTab,
   renderBlastRadiusTab,
   renderNoSqlBrowser,
@@ -328,6 +349,32 @@ export function DetailView({
 }: DetailViewProps) {
   const gt = useGT();
   const { rerollingField, closeReroll } = useUIStore();
+  const rerollFieldKey =
+    rerollingField && rerollingField.resourceId === resourceId ? rerollingField.fieldKey : null;
+  const [providerResources, setProviderResources] = useState<ProviderResourcesState | null>(null);
+  useEffect(() => {
+    if (!rerollFieldKey || !loadProviderResources) return;
+    let cancelled = false;
+    loadProviderResources(rerollFieldKey).then(
+      (resources) => {
+        if (!cancelled) setProviderResources({ fieldKey: rerollFieldKey, resources, error: null });
+      },
+      (err: unknown) => {
+        if (!cancelled) {
+          setProviderResources({
+            fieldKey: rerollFieldKey,
+            resources: EMPTY_PROVIDER_RESOURCES,
+            error: formatErrorMessage(err),
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [rerollFieldKey, loadProviderResources]);
+  const loadedProviderResources =
+    providerResources && providerResources.fieldKey === rerollFieldKey ? providerResources : null;
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
   const hasSettingsEditor = !!schema.settingsEditor && !!onGetManifest;
@@ -347,15 +394,20 @@ export function DetailView({
   // Kubernetes cost series) into "Last 1440 min".
   // The cut-off is two hours, not one: a one-hour window reads better as
   // "Last 60 min" than as "Last 1 h", and that is the commonest window there is.
+  // Days take over at two days for the same reason ("Last 24 h", not "Last 1
+  // days"), so a 30-day window reads "Last 30 days" rather than "Last 720 h".
   const defaultTimeRangeMs = schema.metricsCapability?.defaultTimeRangeMs;
   const metricsTimeRangeLabel = !defaultTimeRangeMs
     ? undefined
-    : defaultTimeRangeMs >= 2 * 3_600_000
-      ? gt("Last {hours} h", { hours: Math.round(defaultTimeRangeMs / 3_600_000) })
-      : gt("Last {minutes} min", { minutes: Math.round(defaultTimeRangeMs / 60_000) });
+    : defaultTimeRangeMs >= 2 * 86_400_000
+      ? gt("Last {days} days", { days: Math.round(defaultTimeRangeMs / 86_400_000) })
+      : defaultTimeRangeMs >= 2 * 3_600_000
+        ? gt("Last {hours} h", { hours: Math.round(defaultTimeRangeMs / 3_600_000) })
+        : gt("Last {minutes} min", { minutes: Math.round(defaultTimeRangeMs / 60_000) });
   const hasChangesTab = !!renderChangesTab;
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
+  const hasHeartbeatTab = !!renderHeartbeatTab;
   const hasOwnershipTab = !!renderOwnershipTab;
   const hasBlastRadiusTab = !!renderBlastRadiusTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
@@ -397,6 +449,7 @@ export function DetailView({
     hasChangesTab ||
     hasScheduleTab ||
     hasLeaseTab ||
+    hasHeartbeatTab ||
     hasOwnershipTab ||
     hasBlastRadiusTab ||
     hasArtifacts ||
@@ -428,6 +481,7 @@ export function DetailView({
   if (hasChangesTab) tabKeys.push("changes");
   if (hasScheduleTab) tabKeys.push("schedule");
   if (hasLeaseTab) tabKeys.push("lease");
+  if (hasHeartbeatTab) tabKeys.push("heartbeat");
   if (hasOwnershipTab) tabKeys.push("ownership");
   if (hasBlastRadiusTab) tabKeys.push("blast-radius");
   if (hasArtifacts) tabKeys.push("artifacts");
@@ -525,49 +579,55 @@ export function DetailView({
             dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
             aria-hidden
           />
-          <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-1">
-              <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
-              {titleAccessory}
+          {/* Title and actions share a wrapping row. The title keeps at least
+              its basis; when the actions don't fit beside it they drop to
+              their own lines under it (wrapping among themselves) instead of
+              squeezing the title to nothing. */}
+          <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-[1_1_20rem]">
+              <div className="flex min-w-0 items-center gap-1">
+                <h1 className="text-xl font-semibold text-on-surface truncate">{schema.title}</h1>
+                {titleAccessory}
+              </div>
+              {schema.subtitle && (
+                <p className="text-sm text-on-surface-muted mt-0.5">{schema.subtitle}</p>
+              )}
             </div>
-            {schema.subtitle && (
-              <p className="text-sm text-on-surface-muted mt-0.5">{schema.subtitle}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0 pt-1">
-            {carbonEstimate?.estimate && (
-              <CarbonEstimateChip
-                footprint={carbonEstimate.estimate}
-                aggregate={carbonEstimate.role === "aggregate"}
-              />
-            )}
-            {costEstimate && (
-              <CostEstimateChip
-                label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
-                estimate={costEstimate}
-              />
-            )}
-            {schema.status && <StatusDotNodeRenderer node={schema.status} />}
-            {onOpenConsole && (
-              <button
-                type="button"
-                onClick={onOpenConsole}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary transition-colors"
-              >
-                {gt("Console")}
-              </button>
-            )}
-            {(() => {
-              // Custom tabs can override the top-bar header actions when
-              // active, otherwise we fall back to the schema-level ones.
-              const activeCustom = activeTab.startsWith("custom:")
-                ? customTabs.find((t) => `custom:${t.id}` === activeTab)
-                : null;
-              const actions = activeCustom?.headerActions ?? schema.headerActions ?? [];
-              return actions.map((action, i) => (
-                <SchemaRenderer key={i} node={action} resourceId={resourceId} />
-              ));
-            })()}
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pt-1">
+              {carbonEstimate?.estimate && (
+                <CarbonEstimateChip
+                  footprint={carbonEstimate.estimate}
+                  aggregate={carbonEstimate.role === "aggregate"}
+                />
+              )}
+              {costEstimate && (
+                <CostEstimateChip
+                  label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
+                  estimate={costEstimate}
+                />
+              )}
+              {schema.status && <StatusDotNodeRenderer node={schema.status} />}
+              {onOpenConsole && (
+                <button
+                  type="button"
+                  onClick={onOpenConsole}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary transition-colors"
+                >
+                  {gt("Console")}
+                </button>
+              )}
+              {(() => {
+                // Custom tabs can override the top-bar header actions when
+                // active, otherwise we fall back to the schema-level ones.
+                const activeCustom = activeTab.startsWith("custom:")
+                  ? customTabs.find((t) => `custom:${t.id}` === activeTab)
+                  : null;
+                const actions = activeCustom?.headerActions ?? schema.headerActions ?? [];
+                return actions.map((action, i) => (
+                  <SchemaRenderer key={i} node={action} resourceId={resourceId} />
+                ));
+              })()}
+            </div>
           </div>
         </div>
         {/* Tab bar: its own full-width row so the right-side actions never
@@ -611,7 +671,9 @@ export function DetailView({
               if (key === "sql") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("sql")}>
-                    {gt("SQL Editor")}
+                    {schema.sqlEditor?.queryLanguage
+                      ? gt("{language} Editor", { language: schema.sqlEditor.queryLanguage })
+                      : gt("SQL Editor")}
                   </TabButton>
                 );
               }
@@ -675,6 +737,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("lease")}>
                     {gt("Lease")}
+                  </TabButton>
+                );
+              }
+              if (key === "heartbeat") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("heartbeat")}>
+                    {gt("Heartbeat")}
                   </TabButton>
                 );
               }
@@ -838,7 +907,9 @@ export function DetailView({
         >
           <SqlEditorView
             tables={schema.sqlEditor!.tables ?? []}
-            defaultQuery={schema.sqlEditor!.defaultQuery ?? "SELECT 1;"}
+            defaultQuery={initialEditorQuery(schema.sqlEditor!)}
+            queryLanguage={schema.sqlEditor!.queryLanguage}
+            tableQuery={schema.sqlEditor!.tableQuery}
             onRunQuery={onRunQuery!}
             onExecute={onExecute}
             onEstimateQueryCost={
@@ -992,6 +1063,18 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderLeaseTab!()}
+        </div>
+      )}
+
+      {hasHeartbeatTab && activeTab === "heartbeat" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("heartbeat")}
+          aria-labelledby={tabIdFor("heartbeat")}
+          tabIndex={0}
+          className="flex-1 overflow-auto p-4"
+        >
+          {renderHeartbeatTab!()}
         </div>
       )}
 
@@ -1180,12 +1263,14 @@ export function DetailView({
       )}
 
       {/* AssociationPicker modal */}
-      {rerollingField && rerollingField.resourceId === resourceId && (
+      {rerollFieldKey !== null && (
         <AssociationPicker
-          fieldKey={rerollingField.fieldKey}
-          providerResources={providerResources}
+          fieldKey={rerollFieldKey}
+          providerResources={loadedProviderResources?.resources ?? EMPTY_PROVIDER_RESOURCES}
+          providerResourcesLoading={!!loadProviderResources && !loadedProviderResources}
+          providerResourcesError={loadedProviderResources?.error ?? null}
           onConfirm={(selection) => {
-            onReroll?.(rerollingField.fieldKey, selection);
+            onReroll?.(rerollFieldKey, selection);
             closeReroll();
           }}
           onCancel={closeReroll}

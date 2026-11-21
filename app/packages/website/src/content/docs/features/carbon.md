@@ -13,7 +13,7 @@ Wherever Infrawrench shows a price, it also shows an estimate of the emissions f
 - in an [ephemeral environment](./ephemeral-environments.md)'s estimate
 - in the [CLI](./cli.md), to agents over [MCP](./mcp.md), and in [workflows](./workflows.md) and [custom graphs](./custom-graphs.md)
 
-<insert [The Estimated carbon section on the Costs page Carbon tab, showing total kg CO2e over 30 days, the Estimated and Not estimated counts, the by-provider list and the one-line assumptions footnote] here>
+![The Estimated carbon section on the Costs page Carbon tab, showing total kg CO2e over 30 days, the Estimated and Not estimated counts, the by-provider list and the one-line assumptions footnote](https://agent-assets.infrawrench.com/docs-screenshots/features/carbon/costs-carbon-tab.png)
 
 ## How the estimate is calculated
 
@@ -49,7 +49,7 @@ vCPU counts come from each provider's own size list (the one the create form's s
 - **Create form.** Each size card shows its estimate for the region you picked, and the header shows the total for your configuration beside its price.
 - **Resource header and edit form.** The header shows the resource's monthly estimate. Click it to see what it's based on. The edit form shows how a change affects carbon, next to how it affects your bill.
 
-  <insert [A resource detail header with the Estimated carbon chip expanded, showing vCPUs, grid zone and figure, PUE and the assumed utilisation, beside the Estimated cost chip] here>
+  ![A resource detail header with the Estimated carbon chip expanded, showing vCPUs, grid zone and figure, PUE and the assumed utilisation, beside the Estimated cost chip](https://agent-assets.infrawrench.com/docs-screenshots/features/carbon/resource-header-chip.png)
 
 - **Right-sizing.** Each recommendation shows the CO2e a resize would save each month, next to the money.
 - **Ephemeral environments.** The instantiate dialog's estimate includes the environment's monthly CO2e and how many members couldn't be estimated.

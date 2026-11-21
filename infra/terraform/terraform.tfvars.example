@@ -86,8 +86,9 @@ app_env = {
   # <APP_URL>/api/issue-webhooks/github, set the same random secret there and
   # here, and subscribe to the "Issues" event. Without it the receiver answers
   # 404 and statuses refresh through the poller instead (every 30 minutes per
-  # open issue). Required for CI: also subscribe to "Push" and "Pull request"
-  # and grant "Checks: Read and write" and "Contents: Read".
+  # open issue). Required for CI: also subscribe to "Push", "Pull request",
+  # "Check run" and "Check suite" (the last two make GitHub's Re-run buttons
+  # retry a run) and grant "Checks: Read and write" and "Contents: Read".
   # GITHUB_APP_WEBHOOK_SECRET = "..."
 
   # Optional: comma-separated emails allowed on /api/admin + the /admin page
@@ -236,8 +237,9 @@ app_env = {
   # Optional: CI (app/packages/ci-proxy in front of the runners that
   # infra/ci-runners provisions). Without CI_PROXY_URL and CI_PROXY_KEY (the
   # proxy's PROXY_KEY) CI stays off for every org; with them it is on for every
-  # org on a paid plan. The GitHub App's webhook must subscribe to "Push" and
-  # "Pull request", with "Checks: write".
+  # org on a paid plan. The GitHub App's webhook must subscribe to "Push",
+  # "Pull request", "Check run" and "Check suite", with "Checks: write".
+  # Without the two check events GitHub's Re-run buttons do nothing.
   CI_PROXY_URL = "https://ci-proxy.example.com"
   CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
   # Optional: signs the links a CI run's downloads (`downloads:`) are fetched
@@ -344,6 +346,28 @@ app_env = {
   # process even with the secret set, for a deployment whose APP_URL does not
   # front the edge Worker. Unset means on whenever APP_URL and the secret are.
   # REALTIME_RELAY = "off"
+
+  # Live updates (server-core/src/live/): panels refetch the moment their rows
+  # change instead of polling. Both OPTIONAL as a pair; without them every
+  # panel polls on its own interval, as before.
+  #
+  # NEON_REALTIME_URL / NEON_REALTIME_SECRET: from the Realtime page of the
+  # Neon branch DATABASE_URL points at (Postgres database > Realtime > Enable
+  # Realtime), or `neon env pull --service realtime`. Enabling Realtime turns
+  # on logical replication for the whole Neon project, which restarts its
+  # computes once. The secret seals each panel's org-scoped query; it never
+  # reaches a browser. Rotating it on Neon needs the new value here and an
+  # apply (plus deploy-edge for the Workers).
+  # NEON_REALTIME_URL    = "wss://..."
+  # NEON_REALTIME_SECRET = "..."
+  #
+  # NEON_REALTIME_DB: OPTIONAL. The database the sealed queries read; defaults
+  # to the database name in DATABASE_URL.
+  # NEON_REALTIME_DB = "core"
+  #
+  # LIVE_UPDATES: OPTIONAL. "poll" turns live updates off (back to polling)
+  # without removing the Neon values: the rollback.
+  # LIVE_UPDATES = "poll"
 
   # Egress guard (server-core/src/egress-guard.ts). Both OPTIONAL.
   #

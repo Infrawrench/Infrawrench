@@ -1,0 +1,13 @@
+L node_modules/@fixture/a -> ../../packages/a
+L node_modules/@fixture/b -> ../../packages/b
+P node_modules/@esbuild/darwin-arm64
+P node_modules/esbuild
+P node_modules/fsevents
+P node_modules/is-number
+P node_modules/is-odd/node_modules/is-number
+P node_modules/is-odd
+P node_modules/isnum
+P node_modules/ms
+P node_modules/withbundle/node_modules/inner
+P node_modules/withbundle
+P packages/b/node_modules/ms

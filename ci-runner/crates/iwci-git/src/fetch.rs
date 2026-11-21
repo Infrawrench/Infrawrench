@@ -284,6 +284,43 @@ fn fetch_through_hint(
     Ok(received)
 }
 
+/// The host a credential request names, as gix's own helpers read it: the
+/// URL's host, with its port when that is not the scheme's default.
+fn credential_host(url: gix::bstr::BString) -> Option<String> {
+    let mut context = gix::credentials::protocol::Context {
+        url: Some(url),
+        ..Default::default()
+    };
+    context.destructure_url_in_place(false).ok()?;
+    context.host
+}
+
+/// What the credential callback answers: the token, for the remote's own
+/// host only. gix asks with only `url` set (its `host` is empty until
+/// someone destructures the URL), so the host is read from the URL here;
+/// comparing the bare field refused every private repository.
+fn offer(
+    mut context: gix::credentials::protocol::Context,
+    host: Option<&str>,
+    auth: Option<&Auth>,
+) -> Option<gix::credentials::protocol::Outcome> {
+    let auth = auth?;
+    if context.url.is_some() {
+        context.destructure_url_in_place(false).ok()?;
+    }
+    if host.is_none() || context.host.as_deref() != host {
+        return None;
+    }
+    Some(gix::credentials::protocol::Outcome {
+        identity: gix::sec::identity::Account {
+            username: auth.username.clone(),
+            password: auth.secret.clone(),
+            oauth_refresh_token: None,
+        },
+        next: context.into(),
+    })
+}
+
 /// One fetch with one refspec. Returns the number of objects received.
 fn transfer(
     repo: &gix::Repository,
@@ -296,7 +333,7 @@ fn transfer(
         .remote_at_without_url_rewrite(cache.remote.fetch_url.clone())?
         .with_fetch_tags(Tags::None)
         .with_refspecs([refspec], Direction::Fetch)?;
-    let host = cache.remote.fetch_url.host().map(str::to_owned);
+    let host = credential_host(cache.remote.fetch_url.to_bstring());
     let auth = auth.cloned();
     // Always a callback, even without a token: the default would run the
     // host's credential helpers or prompt on a terminal. The token is only
@@ -309,20 +346,7 @@ fn transfer(
             let Action::Get(context) = action else {
                 return Ok(None);
             };
-            let Some(auth) = auth.as_ref() else {
-                return Ok(None);
-            };
-            if context.host.as_deref() != host.as_deref() {
-                return Ok(None);
-            }
-            Ok(Some(gix::credentials::protocol::Outcome {
-                identity: gix::sec::identity::Account {
-                    username: auth.username.clone(),
-                    password: auth.secret.clone(),
-                    oauth_refresh_token: None,
-                },
-                next: context.into(),
-            }))
+            Ok(offer(context, host.as_deref(), auth.as_ref()))
         });
     let options = gix::remote::ref_map::Options {
         extra_refspecs: vec![
@@ -410,6 +434,77 @@ fn prune_commit_refs(repo: &gix::Repository) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn asked(url: &str) -> gix::credentials::protocol::Context {
+        // As gix's handshake asks: the URL and nothing else.
+        gix::credentials::protocol::Context {
+            url: Some(url.into()),
+            ..Default::default()
+        }
+    }
+
+    fn token() -> Auth {
+        Auth {
+            username: "x-access-token".into(),
+            secret: "ghs_example".into(),
+        }
+    }
+
+    #[test]
+    fn the_token_is_offered_to_the_remotes_host() {
+        let host = credential_host("https://github.com/acme/private.git".into());
+        assert_eq!(host.as_deref(), Some("github.com"));
+        let auth = token();
+        let outcome = offer(
+            asked("https://github.com/acme/private.git"),
+            host.as_deref(),
+            Some(&auth),
+        )
+        .expect("the remote's own host gets the token");
+        assert_eq!(outcome.identity.username, "x-access-token");
+        assert_eq!(outcome.identity.password, "ghs_example");
+    }
+
+    #[test]
+    fn the_token_is_not_offered_anywhere_else() {
+        let host = credential_host("https://github.com/acme/private.git".into());
+        let auth = token();
+        for elsewhere in [
+            "https://evil.example/acme/private.git",
+            "https://github.com:8443/acme/private.git",
+            "https://github.com.evil.example/acme/private.git",
+        ] {
+            assert!(
+                offer(asked(elsewhere), host.as_deref(), Some(&auth)).is_none(),
+                "{elsewhere}"
+            );
+        }
+        assert!(offer(asked("https://github.com/a/b.git"), host.as_deref(), None).is_none());
+        assert!(offer(asked("https://github.com/a/b.git"), None, Some(&auth)).is_none());
+    }
+
+    #[test]
+    fn a_port_is_part_of_the_host() {
+        let host = credential_host("https://git.example:8443/a/b.git".into());
+        assert_eq!(host.as_deref(), Some("git.example:8443"));
+        let auth = token();
+        assert!(
+            offer(
+                asked("https://git.example:8443/a/b.git"),
+                host.as_deref(),
+                Some(&auth)
+            )
+            .is_some()
+        );
+        assert!(
+            offer(
+                asked("https://git.example/a/b.git"),
+                host.as_deref(),
+                Some(&auth)
+            )
+            .is_none()
+        );
+    }
 
     #[test]
     fn hints_that_would_change_the_refspec_are_refused() {

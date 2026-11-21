@@ -100,6 +100,7 @@ export const objectAccessGrants = pgTable(
         | "savings_view"
         | "resource_report"
         | "network_flow_report"
+        | "commitment_report"
       >()
       .notNull(),
     objectId: text("object_id").notNull(),

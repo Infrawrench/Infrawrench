@@ -13,6 +13,7 @@ export const LinodeInstanceResourceType = rt({
   name: "Linode",
   id: "linode",
   description: "An Akamai Cloud (Linode) compute instance",
+  equivalence: "vm",
   fields: [
     f("label", "Label", {
       description: "3 to 64 characters: letters, digits, dashes, underscores and periods",
@@ -40,24 +41,38 @@ export const LinodeInstanceResourceType = rt({
       ],
     }),
     f("type", "Plan", {
+      sizing: "instance-type",
       description:
         "Linode plan, e.g. g6-standard-2. Changing it resizes the Linode: it is powered off, migrated to the new plan and booted again",
     }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: REGION_IDS,
       editable: false,
     }),
     f("image", "Image", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "vcpus",
+    }),
     f("memoryMb", "Memory (MB)", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      sizing: "memory-mb",
     }),
-    f("diskGb", "Disk (GB)", { kind: "number", required: false, editable: false }),
+    f("diskGb", "Disk (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      sizing: "disk-gb",
+    }),
     f("backupsEnabled", "Backups", {
       kind: "boolean",
       required: false,

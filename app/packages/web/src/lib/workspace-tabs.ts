@@ -29,12 +29,15 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   quotasTabTarget,
   priceCatalogTabTarget,
+  migrationEstimatesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
   servicesTabTarget,
@@ -55,6 +58,8 @@ import {
 // Re-export shared target factories
 export {
   homeTabTarget,
+  heartbeatsTabTarget,
+  envFilesTabTarget,
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
@@ -67,6 +72,7 @@ export {
   workflowsTabTarget,
   costReportsTabTarget,
   resourceReportsTabTarget,
+  migrationEstimatesTabTarget,
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   invoicesTabTarget,
@@ -363,6 +369,12 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "env-files":
+      return {
+        to: "/org/$orgId/env-files",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "ssh-fanout":
       return {
         to: "/org/$orgId/ssh-fanout",
@@ -378,6 +390,12 @@ export function getWorkspaceNavigateArgs(
     case "probes":
       return {
         to: "/org/$orgId/probes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "heartbeats":
+      return {
+        to: "/org/$orgId/heartbeats",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -399,6 +417,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    // Migration estimates: the Resource reports shape (path segment on web,
+    // ?estimate= on desktop).
+    case "migration-estimates":
+      return target.estimateId
+        ? {
+            to: "/org/$orgId/migration-estimates/$estimateId",
+            params: { orgId, estimateId: target.estimateId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/migration-estimates",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "incidents":
       // The incident id is a path segment rather than a search param, so an
       // incident link reads as a place: /org/{org}/incidents/{id}.
@@ -722,6 +754,9 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "environments") {
     return environmentsTabTarget();
   }
+  if (s[0] === "env-files") {
+    return envFilesTabTarget();
+  }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();
   }
@@ -731,6 +766,9 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "probes") {
     return probesTabTarget();
   }
+  if (s[0] === "heartbeats") {
+    return heartbeatsTabTarget();
+  }
   if (s[0] === "status-pages") {
     return statusPagesTabTarget();
   }
@@ -739,6 +777,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "price-catalog") {
     return priceCatalogTabTarget();
+  }
+  if (s[0] === "migration-estimates") {
+    // /migration-estimates is the list; /migration-estimates/{id} one estimate. One tab.
+    return migrationEstimatesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "incidents") {
     return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);

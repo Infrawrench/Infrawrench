@@ -25,11 +25,19 @@ import {
 } from "./context";
 import { CloudApi, type OrgInfo } from "./effect/cloud-api";
 import { wire } from "./effect/wire";
+import { NotSignedIn } from "./effect/errors";
+import { isStandaloneCli } from "./edition";
 import type { CostQueryResponse } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { c, colorIsEnabled, seriesColor, visibleWidth, formatNumber, formatMoney } from "./output";
-import { sparkline, lineChart, barChart } from "./charts";
+import {
+  sparkline,
+  lineChart,
+  barChart,
+  metricSeriesFormat,
+  type MetricValueFormatterFactory,
+} from "./charts";
 
 const ESC = "\u001b";
 const ALT_SCREEN_ON = `${ESC}[?1049h`;
@@ -118,11 +126,15 @@ function followScroll(scroll: number, index: number, visible: number, total: num
 
 /** The full-screen dashboard, until `q`. The caller checks that both ends are a terminal. */
 export async function runTui(runner: TuiRunner): Promise<void> {
-  const scopes: Scope[] = [{ kind: "local", org: null, label: "Local" }];
+  // The standalone CLI has no local workspace (`./edition.ts`).
+  const scopes: Scope[] = isStandaloneCli() ? [] : [{ kind: "local", org: null, label: "Local" }];
   // Signed out is the local workspace alone, not an error.
   for (const org of await runner(CloudApi.use((api) => api.orgs))) {
     scopes.push({ kind: "org", org, label: org.displayName });
   }
+  // ...unless there is no local workspace either. `run.ts` prints a typed
+  // failure thrown from here as its one line.
+  if (scopes.length === 0) throw new NotSignedIn();
 
   const state: TuiState = {
     scopes,
@@ -271,6 +283,9 @@ export async function runTui(runner: TuiRunner): Promise<void> {
   // Metrics arrive async while the user may already be looking at another
   // resource: same staleness hazard as resource listing.
   let metricsLoadToken = 0;
+  // client-core's metric value formatter, loaded with the first metrics (the
+  // CLI imports client-core dynamically; see the CLI section of KNOWLEDGE.md).
+  let createMetricFormatter: MetricValueFormatterFactory | null = null;
 
   async function loadMetrics(): Promise<void> {
     const scope = activeScope();
@@ -281,6 +296,11 @@ export async function runTui(runner: TuiRunner): Promise<void> {
     const token = ++metricsLoadToken;
     const endMs = Date.now();
     const startMs = endMs - 6 * 60 * 60 * 1000;
+    // Without it the pane still renders, with raw numbers.
+    createMetricFormatter ??= await import("@infrawrench/client-core").then(
+      (core) => core.createMetricValueFormatter,
+      () => null,
+    );
     try {
       if (scope.kind === "local") {
         // Live from the plugin, exactly as the GUI's Metrics tab does.
@@ -524,12 +544,15 @@ export async function runTui(runner: TuiRunner): Promise<void> {
     }
     for (const s of state.metrics) {
       const values = s.points.map((p) => p.value);
-      const now = values.length > 0 ? formatNumber(values[values.length - 1]!, s.unit) : "—";
+      const format = createMetricFormatter
+        ? metricSeriesFormat(createMetricFormatter, s.unit, values)
+        : (v: number) => formatNumber(v, s.unit);
+      const now = values.length > 0 ? format(values[values.length - 1]!) : "—";
       lines.push(`${c.bold(truncate(s.label, 28))} ${c.dim("6h")} ${c.dim("now")} ${now}`);
       for (const line of lineChart(values, {
         width: Math.max(20, width - 12),
         height: 4,
-        unit: s.unit,
+        format,
       })) {
         lines.push(line);
       }

@@ -163,6 +163,7 @@ export function mapJob(accountId: string, projectId: string, j: NfJob): Resource
       jobType: j.jobType,
       description: j.description,
       schedule: j.settings?.cron?.schedule,
+      timeZone: j.settings?.cron?.timeZone,
       concurrencyPolicy: j.settings?.cron?.concurrencyPolicy?.toLowerCase(),
       backoffLimit: j.settings?.backoffLimit,
       activeDeadlineSeconds: j.settings?.activeDeadlineSeconds,

@@ -386,12 +386,17 @@ export async function createBranch(
   );
 }
 
+/**
+ * Create or replace one file in one commit. `sha` is the blob being replaced
+ * (GitHub refuses with 409 when the file has moved on since), null for a new
+ * file. Answers the commit GitHub made.
+ */
 export async function putFile(
   installationId: number,
   repo: string,
-  input: { path: string; branch: string; content: string; sha: string; message: string },
-): Promise<void> {
-  await call(
+  input: { path: string; branch: string; content: string; sha: string | null; message: string },
+): Promise<{ commitSha: string; commitUrl: string }> {
+  const body = await call<{ commit?: { sha?: string; html_url?: string } }>(
     { installationId, what: `commit ${input.path}`, permission: "contents" },
     `${repoPath(repo)}/contents/${contentPath(input.path)}`,
     {
@@ -399,11 +404,12 @@ export async function putFile(
       body: JSON.stringify({
         message: input.message,
         content: Buffer.from(input.content, "utf8").toString("base64"),
-        sha: input.sha,
+        ...(input.sha ? { sha: input.sha } : {}),
         branch: input.branch,
       }),
     },
   );
+  return { commitSha: body?.commit?.sha ?? "", commitUrl: body?.commit?.html_url ?? "" };
 }
 
 export async function deleteFile(

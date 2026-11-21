@@ -37,6 +37,11 @@ export interface ResourceReportsPanelProps {
   onReportChange: (reportId: string | null) => void;
   /** A row's resource: the host opens its detail view. */
   onOpenResource?: ((ref: ResourceReportResourceRef) => void) | undefined;
+  /**
+   * Estimate what the selected rows would cost on another provider. When
+   * wired, rows get a checkbox and the selection an "Estimate migration" action.
+   */
+  onEstimateMigration?: ((resourceIds: string[]) => void) | undefined;
 }
 
 const buttonClass =
@@ -73,6 +78,7 @@ export function ResourceReportsPanel({
   reportId,
   onReportChange,
   onOpenResource,
+  onEstimateMigration,
 }: ResourceReportsPanelProps) {
   const [creating, setCreating] = useState(false);
   // Opening a report (from the URL or the list) ends a draft.
@@ -95,6 +101,7 @@ export function ResourceReportsPanel({
           onReportChange(id);
         }}
         onOpenResource={onOpenResource}
+        onEstimateMigration={onEstimateMigration}
       />
     );
   }
@@ -258,12 +265,14 @@ function ReportView({
   onBack,
   onSaved,
   onOpenResource,
+  onEstimateMigration,
 }: {
   client: ResourceReportsClient;
   reportId: string | null;
   onBack: () => void;
   onSaved: (id: string) => void;
   onOpenResource: ((ref: ResourceReportResourceRef) => void) | undefined;
+  onEstimateMigration: ((resourceIds: string[]) => void) | undefined;
 }) {
   const gt = useGT();
   const [report, setReport] = useState<ResourceReport | null>(null);
@@ -279,6 +288,8 @@ function ReportView({
   const [sharing, setSharing] = useState<ShareTarget | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Selected row ids, kept across pages so a selection can span them.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const canWrite = Boolean(client.createReport && client.updateReport && client.deleteReport);
 
   // Load the saved report (or start a draft).
@@ -438,6 +449,15 @@ function ReportView({
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-on-surface">
           {draft.name || gt("New resource report")}
         </h1>
+        {onEstimateMigration && selected.size > 0 && (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => onEstimateMigration([...selected])}
+          >
+            {gt("Estimate migration ({count})", { count: selected.size })}
+          </button>
+        )}
         <button type="button" className={buttonClass} onClick={() => setModal("columns")}>
           {gt("Columns")}
         </button>
@@ -498,6 +518,22 @@ function ReportView({
         running={running}
         onSort={toggleSort}
         onOpenResource={onOpenResource}
+        selection={
+          onEstimateMigration
+            ? {
+                selected,
+                onToggle: (ids, on) =>
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    for (const id of ids) {
+                      if (on) next.add(id);
+                      else next.delete(id);
+                    }
+                    return next;
+                  }),
+              }
+            : undefined
+        }
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-on-surface-secondary">
@@ -646,6 +682,7 @@ function ReportTable({
   running,
   onSort,
   onOpenResource,
+  selection,
 }: {
   result: ResourceReportRowsResult | null;
   columnLabel: (id: string) => string;
@@ -653,6 +690,13 @@ function ReportTable({
   running: boolean;
   onSort: (column: string) => void;
   onOpenResource: ((ref: ResourceReportResourceRef) => void) | undefined;
+  /** Row checkboxes, when the host offers an action on a selection. */
+  selection?:
+    | {
+        selected: ReadonlySet<string>;
+        onToggle: (ids: readonly string[], on: boolean) => void;
+      }
+    | undefined;
 }) {
   const gt = useGT();
   if (!result) {
@@ -677,6 +721,23 @@ function ReportTable({
       <table className="w-full text-sm">
         <thead className="bg-surface-sunken text-left">
           <tr>
+            {selection && (
+              <th scope="col" className="w-8 px-3 py-2">
+                <input
+                  type="checkbox"
+                  aria-label={gt("Select every row on this page")}
+                  checked={
+                    result.rows.length > 0 && result.rows.every((r) => selection.selected.has(r.id))
+                  }
+                  onChange={(e) =>
+                    selection.onToggle(
+                      result.rows.map((r) => r.id),
+                      e.target.checked,
+                    )
+                  }
+                />
+              </th>
+            )}
             {result.columns.map((col) => {
               const active = sort.column === col.id;
               return (
@@ -706,6 +767,18 @@ function ReportTable({
         <tbody>
           {result.rows.map((row) => (
             <tr key={row.id} className="border-t border-border hover:bg-surface-sunken/60">
+              {selection && (
+                <td className="w-8 px-3 py-1.5">
+                  <input
+                    type="checkbox"
+                    aria-label={gt("Select {name}", {
+                      name: row.values[result.columns[0]?.id ?? ""] || row.id,
+                    })}
+                    checked={selection.selected.has(row.id)}
+                    onChange={(e) => selection.onToggle([row.id], e.target.checked)}
+                  />
+                </td>
+              )}
               {result.columns.map((col, i) => {
                 if (col.kind === "cost") {
                   const cell = row.costs[col.id] ?? [];

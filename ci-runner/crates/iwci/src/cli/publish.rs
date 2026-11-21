@@ -45,12 +45,17 @@ struct Build {
     targets: BTreeMap<String, BuildTarget>,
     #[serde(default)]
     aliases: Vec<String>,
+    /// A native builtin's programs by command name, each the guest path of
+    /// one of every target's files.
+    #[serde(default)]
+    commands: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BuildTarget {
-    program: String,
+    #[serde(default)]
+    program: Option<String>,
     #[serde(default)]
     files: Vec<BuildFile>,
 }
@@ -60,6 +65,9 @@ struct BuildTarget {
 enum Kind {
     Builtin,
     Environment,
+    /// Files the runner pins by digest in its own source (the gem builds,
+    /// `crate::gem_builds`): uploaded as blobs, with no manifest.
+    Blobs,
 }
 
 #[derive(Deserialize)]
@@ -135,16 +143,41 @@ pub fn publish(mut args: Args) -> Result<ExitCode, String> {
                             Ok((
                                 target.clone(),
                                 TargetSource {
-                                    program: at(&t.program)?,
+                                    program: t.program.as_deref().map(at).transpose()?,
                                     files: sources(&t.files)?,
                                 },
                             ))
                         })
                         .collect::<Result<_, String>>()?,
                     aliases: build.aliases,
+                    commands: build.commands,
                 };
                 iwci_store::publish_tool(store.as_ref(), &Namespace::Builtin, &draft)
                     .map(|(_, report)| report)
+            }
+            Kind::Blobs => {
+                let files = build
+                    .files
+                    .iter()
+                    .map(|f| at(&f.file))
+                    .collect::<Result<Vec<_>, String>>()?;
+                let (uploaded, skipped) = iwci_store::publish_blobs(store.as_ref(), &files)
+                    .map_err(|e| format!("{}: {e}", dir.display()))?;
+                println!(
+                    "{} {}@{} as blobs ({} uploaded, {} already there): {}",
+                    style::ok("published"),
+                    build.name,
+                    version,
+                    uploaded.len(),
+                    skipped.len(),
+                    uploaded
+                        .iter()
+                        .chain(&skipped)
+                        .map(|d| format!("sha256:{d}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                continue;
             }
             Kind::Environment => {
                 let draft = EnvDraft {

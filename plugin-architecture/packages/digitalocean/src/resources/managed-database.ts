@@ -72,6 +72,30 @@ export const ManagedDatabaseResourceType = rt({
     countFieldKey: "nodeCount",
   },
   description: "A DigitalOcean Managed Database cluster",
+  // The lister stores the API's engine slug. DO now creates Valkey where it
+  // once created Redis, and lists either.
+  equivalence: [
+    {
+      category: "managed-postgres",
+      when: { fieldKey: "engine", oneOf: ["pg"] },
+      createFields: { engine: "pg" },
+    },
+    {
+      category: "managed-mysql",
+      when: { fieldKey: "engine", oneOf: ["mysql"] },
+      createFields: { engine: "mysql" },
+    },
+    {
+      category: "managed-redis",
+      when: { fieldKey: "engine", oneOf: ["valkey", "redis"] },
+      createFields: { engine: "valkey" },
+    },
+    {
+      category: "managed-mongodb",
+      when: { fieldKey: "engine", oneOf: ["mongodb"] },
+      createFields: { engine: "mongodb" },
+    },
+  ],
   fields: [
     f("name", "Name"),
     f("engine", "Engine", {
@@ -81,6 +105,7 @@ export const ManagedDatabaseResourceType = rt({
     f("version", "Version", { description: "Engine version, e.g. 16 for PostgreSQL 16" }),
     f("region", "Region", {
       showcase: true,
+      sizing: "region",
       kind: "enum",
       enumValues: [
         "nyc1",
@@ -96,8 +121,12 @@ export const ManagedDatabaseResourceType = rt({
         "syd1",
       ],
     }),
-    f("size", "Node Size", { showcase: true, description: "Node size slug, e.g. db-s-1vcpu-1gb" }),
-    f("nodeCount", "Node Count", { showcase: true, kind: "number" }),
+    f("size", "Node Size", {
+      showcase: true,
+      description: "Node size slug, e.g. db-s-1vcpu-1gb",
+      sizing: "instance-type",
+    }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number", sizing: "node-count" }),
   ],
   outputs: [
     o("connectionString", "Connection String", {

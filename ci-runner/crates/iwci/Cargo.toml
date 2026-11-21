@@ -17,6 +17,8 @@ iwci-spec.workspace = true
 iwci-vfs.workspace = true
 iwci-store.workspace = true
 iwci-runtime.workspace = true
+iwci-vm.workspace = true
+iwci-vm-proto.workspace = true
 iwci-git.workspace = true
 iwci-deps.workspace = true
 serde.workspace = true
@@ -47,3 +49,8 @@ tar = { version = "0.4.46", default-features = false }
 # already in the tree.
 bytes = "1.9"
 shared-buffer = "0.1.4"
+
+[dev-dependencies]
+# The gem builds' tests write a gzipped archive. Already in the tree through
+# iwci-deps.
+flate2 = "1.1"

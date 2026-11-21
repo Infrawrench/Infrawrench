@@ -8,7 +8,7 @@ sidebar_order: 12
 
 Find them under **Settings > On-call**.
 
-<insert [The Settings On-call page showing the "On call right now" card with two rotations, and one rotation expanded to show its next eight shifts] here>
+![The Settings On-call page showing the "On call right now" card with two rotations, and one rotation expanded to show its next eight shifts](https://agent-assets.infrawrench.com/docs-screenshots/features/on-call/rotations.png)
 
 ## Create a rotation
 
@@ -59,7 +59,7 @@ If your organization already pages people with [PagerDuty](../plugins/pagerduty.
 
 The same card shows who's on call on each provider schedule right now, plus the alerts Infrawrench recently opened there and any that are being retried or were refused.
 
-<insert [Settings, On-call tab, the Paging providers card with a PagerDuty account mirroring incidents (webhook subscribed) and an incident.io account showing its webhook URL and signing secret field] here>
+![Settings, On-call tab, the Paging providers card with a PagerDuty account mirroring incidents (webhook subscribed) and an incident.io account showing its webhook URL and signing secret field](https://agent-assets.infrawrench.com/docs-screenshots/features/on-call/paging-providers.png)
 
 ### Keep the incident list up to date
 
@@ -76,7 +76,7 @@ Permissions:
 - Acknowledging and resolving their incidents needs `incidents:write`, the same as declared incidents.
 - Seeing who's on call needs `team:read`.
 
-<insert [The Incidents tab with two open PagerDuty incidents above the declared incidents, one marked "opened by an Infrawrench alert", showing the Acknowledge, Resolve and Declare incident buttons] here>
+![The Incidents tab with two open PagerDuty incidents above the declared incidents, one marked "opened by an Infrawrench alert", showing the Acknowledge, Resolve and Declare incident buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/on-call/pager-incidents.png)
 
 ## Not available yet
 

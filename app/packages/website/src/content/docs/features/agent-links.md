@@ -17,7 +17,7 @@ You approve a link once. After that the platform creates, edits and removes its 
 5. Tick the **most this platform may ever grant its agents**. The boxes the platform asked for are pre-ticked, and only permissions you hold yourself are offered.
 6. Choose **Approve**. The platform picks up its connection within a few seconds.
 
-<insert The Connect a platform page for "Nibblets on PogAir-4", showing the warning, the organization picker and the permission ceiling with Resources (read) and Costs (read) ticked here>
+![The Connect a platform page for "Nibblets on PogAir-4", showing the warning, the organization picker and the permission ceiling with Resources (read) and Costs (read) ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/agent-links/connect-platform.png)
 
 The code expires after 15 minutes and works once.
 
@@ -42,7 +42,7 @@ Over MCP, an agent is only shown the tools it can actually use.
 
 **Settings > Agent Credentials** has a **Connected platforms** section. Each link shows the platform, who approved it, when, when it was last used and what it may currently grant. Its agents are listed under it with their scopes, providers and last use.
 
-<insert Settings → Agent Credentials with a connected Nibblets platform and two agents nested under it, one with "Only: AWS" here>
+![Settings → Agent Credentials with a connected Nibblets platform and two agents nested under it, one with "Only: AWS"](https://agent-assets.infrawrench.com/docs-screenshots/features/agent-links/connected-platform.png)
 
 - **Edit scopes** on an agent changes what it may do, within the link's ceiling. You can only add permissions you hold yourself.
 - **Revoke** on an agent cuts that agent off on its next request.

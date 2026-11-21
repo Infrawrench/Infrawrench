@@ -21,7 +21,7 @@ On a business metric, add an importer and choose a Metronome account. Each choic
 - **Customer**: one customer, or **All customers**.
 - **Break down by customer**: store a value per customer per day, labelled with the customer's name, so you can read unit costs per customer. The day's total stays the same.
 
-<insert [Business metric importer form with the Metronome source selected, showing the Measure, Billable metric, Customer and Break down by customer pickers] here>
+![Business metric importer form with the Metronome source selected, showing the Measure, Billable metric, Customer and Break down by customer pickers](https://agent-assets.infrawrench.com/docs-screenshots/plugins/metronome/importer-form.png)
 
 ## Connect your account
 

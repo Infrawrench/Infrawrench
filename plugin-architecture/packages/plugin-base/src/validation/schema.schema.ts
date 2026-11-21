@@ -306,6 +306,8 @@ export const detailViewSchema = Schema.Struct({
         ),
       ),
       supportsQueryCost: Schema.optional(Schema.Boolean),
+      queryLanguage: Schema.optional(Schema.String),
+      tableQuery: Schema.optional(Schema.String),
     }),
   ),
   storageBrowser: Schema.optional(Schema.Struct({ bucketName: Schema.String })),

@@ -14,7 +14,7 @@ A **scorecard** then grades every service against the bar you set: does it have 
 on-call rotation, an SLO within budget, tested backups? Above the scorecards sits one
 [org grade](#org-grade) for your whole organisation, with a 90-day trend.
 
-<insert [The Services tab listing several services: name, Tier 1 / Tier 2 badges, owning team, member count and a Gold / Silver / Bronze level badge per scorecard] here>
+![The Services tab listing several services: name, Tier 1 / Tier 2 / Tier 3 labels, owning team and owners, member count, and a Gold / Silver / Bronze level badge per scorecard](https://agent-assets.infrawrench.com/docs-screenshots/features/services/services-list.png)
 
 ## Where to find it
 
@@ -22,6 +22,9 @@ on-call rotation, an SLO within budget, tested backups? Above the scorecards sit
 - **Mobile:** a read-only list, service page and scorecard overview (with the org grade).
 - **[CLI](./cli.md):** `infrawrench services` and `infrawrench scorecards` (which prints the org
   grade first).
+
+**Estimate migration** on a service's page shows what its resources would cost on another
+provider, side by side with today. See [Migration estimates](./migration-estimates.md).
 
 ## Create a service
 
@@ -42,8 +45,14 @@ is a picker:
 
 You can use either or both:
 
-- **Pick them.** Click **Add resources** on the service page and choose from any account and
-  provider.
+- **Pick them.** The editor's **Add resources** tab searches every account at once: type any mix
+  of name, type, account and provider (`aws prod db`), narrow the results with the provider
+  chips, and tick what belongs. **Enter** ticks the top result and **Select all** ticks every
+  result shown, and ticks survive a new search, so a service spanning several providers is one
+  pass. **In this service** lists the members you'll end up with: untick one to take it out, or
+  tick an excluded one to let it back in. Nothing changes until you save, and the footer counts
+  what will be added and removed. The service page's **Add resources** button opens the same
+  picker on its own.
 - **Add a membership rule.** A rule adds every resource that matches it, now and in future. A
   database tagged `service=checkout` joins the service the next time it syncs, with no one
   editing the service. A rule matches on:
@@ -54,15 +63,22 @@ You can use either or both:
 
   You can narrow any rule to one provider or one account.
 
+  Rules sit on the editor's **Membership rules** tab, and a saved rule shows how many resources it
+  matches now.
+
 If you remove a resource that a rule matched, it's **excluded** rather than deleted, so the rule
 doesn't add it straight back. Excluded resources are listed at the bottom of the members table
-with a **Restore** button.
+with a **Restore** button, and in the editor's **In this service** tab, unticked.
 
-<insert [The service editor: name and tier filled in, the owners picker with two members chosen, the on-call schedule, SLO and runbook pickers, and the membership rules section with a tag rule "service = checkout" and a name rule "starts with checkout-" narrowed to the AWS provider] here>
+![The service editor: details (name, slug, tier, owners, on-call) on the left; on the right the Add resources tab with a search box, provider filter chips (All, Amazon Web Services, Cloudflare, Kubernetes, Google Cloud) and a ticked list of resources with provider logos, rule badges ("Rule 2"), a "New" badge on two picked resources and a "Will be removed" badge on one unticked member; the footer reads "2 to add · 1 to remove"](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-resources.png)
+
+![The service editor's In this service tab: every member with its type, account and provider, rule-matched ones marked "Rule 1" / "Rule 2", and a filter box above the list](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-members.png)
+
+![The service editor's Membership rules tab: a tag rule "service = checkout" matching 2 resources and a name rule "starts with checkout-" narrowed to AWS matching 5, with the dashed Add rule button below](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-editor-rules.png)
 
 ## What the service page shows
 
-<insert [One service's page: the header with tier, owners and links; summary cards for 30-day cost by currency, SLO standing, who is on call now and next, and open findings; the members table with resource, provider, account, how it joined (rule or picked) and owner; and the scorecard section with a score, a Silver badge and the failing checks] here>
+![One service's page: the header with tier, owners and links; summary cards for 30-day cost by currency, SLO standing, who is on call now and next, and open findings; the members table with resource, provider, account, how it joined (rule or picked) and owner; and the scorecard section with a score, a Silver badge and the failing checks](https://agent-assets.infrawrench.com/docs-screenshots/features/services/service-page.png)
 
 - **Cost**: the last 30 days of spend on the service's resources, per currency and per provider.
   Only resources with per-resource cost rows can be priced, and the page says how many were. If
@@ -98,7 +114,7 @@ New organisations start with a **Production readiness** scorecard that uses ever
 and three levels: **Bronze** at 50%, **Silver** at 75% and **Gold** at 90%. You can edit it, add
 your own scorecards, or delete it. A deleted default doesn't come back.
 
-<insert [The Scorecards view: a matrix with services down the side and two scorecards across the top, each cell showing a score percentage on the level's colour, filters for scorecard, tier, level and team above it] here>
+![The Scorecards view: a matrix with services down the side and two scorecards across the top, each cell showing a score percentage on a badge in the level's colour, with filters for scorecard, tier, level, owning team and failing check above it](https://agent-assets.infrawrench.com/docs-screenshots/features/services/scorecards-matrix.png)
 
 ### Built-in checks
 
@@ -126,7 +142,7 @@ raise a service's level. A service where no check applies is **not scored**, nev
 
 ### Edit a scorecard
 
-<insert [The scorecard editor: name, the "Applies to" tier selector with Tier 1 and Tier 2 chosen, the checks list with weights and a parameter field (Restore drill within 90 days), and the levels list with Bronze, Silver and Gold, their minimum scores and colours] here>
+![The scorecard editor: name, the "Applies to" tier selector with Tier 1 and Tier 2 chosen, the checks list with weights and a parameter field (Restore drill within 90 days), and the levels list with Bronze, Silver and Gold, their minimum scores and colours](https://agent-assets.infrawrench.com/docs-screenshots/features/services/scorecard-editor.png)
 
 - **Checks**: add any check type, set its weight from 1 to 10, rename it, and set its parameters.
 - **Levels**: up to six, each with a name, a minimum score from 0 to 100 and a colour.
@@ -148,7 +164,7 @@ and a score out of 100, a 90-day trend line, the pillar pulling the grade down t
 card per pillar. Each card says what it measured, what would move it, and links to the page it
 comes from.
 
-<insert [The top of the Scorecards view: the org grade header showing a B and 84, a 90-day trend sparkline, the "Biggest drag" callout naming Recoverability, and the grid of seven pillar cards (one marked "Not assessed"), with the service scorecard matrix starting below] here>
+![The top of the Scorecards view: the org grade header showing a B and 84, a 90-day trend sparkline, the "Biggest drag" callout naming Recoverability, and the grid of seven pillar cards (one marked "Not assessed"), with the service scorecard matrix starting below](https://agent-assets.infrawrench.com/docs-screenshots/features/services/org-grade.png)
 
 ### The seven pillars
 

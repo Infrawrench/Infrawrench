@@ -21,7 +21,7 @@ export function DesktopStatusPagesPanel() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="w-full p-6 max-w-4xl mx-auto">
       <StatusPagesPanel
         key={activeCloudOrgId}
         client={client}

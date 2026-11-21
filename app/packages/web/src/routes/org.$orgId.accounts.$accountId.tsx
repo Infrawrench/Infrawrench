@@ -5,6 +5,7 @@ import {
   useUIStore,
   useTabId,
   getAccountRootType,
+  useLiveRefresh,
   RESOURCES_CHANGED_EVENT,
   type ResourcesChangedDetail,
 } from "@infrawrench/ui";
@@ -159,13 +160,11 @@ export function AccountPanel({
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId, resyncType]);
 
-  // Auto-refresh every 30s, just re-reads the DB, no provider calls.
-  useEffect(() => {
-    const id = setInterval(() => {
-      setLoadVersion((v) => v + 1);
-    }, 30_000);
-    return () => clearInterval(id);
-  }, []);
+  // Re-read the DB (no provider calls) when a sync writes this account's
+  // resources; every 30s without a push channel.
+  useLiveRefresh("account-resources", { accountId }, () => setLoadVersion((v) => v + 1), {
+    fallbackMs: 30_000,
+  });
 
   // When the user focuses a section, kick off a fresh provider-side sync for
   // that type so slow-to-poll groups get priority loading. Each type only
@@ -225,7 +224,9 @@ export function AccountPanel({
   // Account-root plugins (UploadThing) hold exactly one instance of their root
   // type, and that instance *is* the account, so the account opens straight
   // to its detail view rather than to an inventory whose only content is a
-  // section holding one pill.
+  // section holding one pill. That detail view also groups the plugin's other
+  // top-level types with their Create buttons (`getDetailChildTypes`), so
+  // nothing the inventory would have listed goes missing.
   //
   // The tab, the URL, and the sidebar selection all stay the account's: only
   // the body is swapped. That matters because the root is discovered from

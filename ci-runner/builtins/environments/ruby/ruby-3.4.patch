@@ -1,0 +1,46 @@
+Ruby 3.4's part of env:ruby's WASIX build, beside ruby-wasix.patch.
+
+main.c starts main() through ruby.wasm's Asyncify loop (rb_wasm_rt_start)
+on every non-Emscripten WebAssembly target; not on WASIX.
+
+The collector's page locks and the Fiber stacks' guard pages call
+mprotect() with PROT_NONE, which wasix-libc does not have (its mman
+emulation is mmap, munmap and msync): every link against libruby-static.a,
+mkmf's checks included, failed. Ruby 4.0 skips both on `__wasi__`; this
+is that change.
+--- a/cont.c
++++ b/cont.c
+@@ -552,6 +552,9 @@
+             VirtualFree(allocation->base, 0, MEM_RELEASE);
+             rb_raise(rb_eFiberError, "can't set a guard page: %s", ERRNOMSG);
+         }
++#elif defined(__wasi__)
++        // wasi-libc's mprotect emulation doesn't support PROT_NONE.
++        (void)page;
+ #else
+         if (mprotect(page, RB_PAGE_SIZE, PROT_NONE) < 0) {
+             munmap(allocation->base, count*stride);
+--- a/gc/default/default.c
++++ b/gc/default/default.c
+@@ -3201,6 +3201,10 @@
+     DWORD old_protect;
+     return VirtualProtect(body, HEAP_PAGE_SIZE, protect, &old_protect) != 0;
+ }
++#elif defined(__wasi__)
++// wasi-libc's mprotect emulation does not support PROT_NONE
++enum {HEAP_PAGE_LOCK, HEAP_PAGE_UNLOCK};
++#define protect_page_body(body, protect) 1
+ #else
+ enum {HEAP_PAGE_LOCK = PROT_NONE, HEAP_PAGE_UNLOCK = PROT_READ | PROT_WRITE};
+ #define protect_page_body(body, protect) !mprotect((body), HEAP_PAGE_SIZE, (protect))
+--- a/main.c
++++ b/main.c
+@@ -43,7 +43,7 @@
+     return ruby_run_node(ruby_options(argc, argv));
+ }
+ 
+-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
++#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__wasix__)
+ int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv);
+ #define rb_main(argc, argv) rb_wasm_rt_start(rb_main, argc, argv)
+ #endif

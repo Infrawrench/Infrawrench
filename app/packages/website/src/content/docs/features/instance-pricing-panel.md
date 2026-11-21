@@ -5,7 +5,7 @@ description: See the prices, price history, regions and specs of what a resource
 
 Resource pages for the compute your accounts run have a collapsible **Instance pricing and specs** panel on their Overview tab. It brings the data from [instances.infrawrench.com](https://instances.infrawrench.com) to the resource, already set to its instance type, region and configuration, so you don't have to look anything up.
 
-<insert [A resource detail page's Overview tab with the Instance pricing and specs panel expanded: the price cards, the pickers, the price history chart and the on-demand price by region bars] here>
+![A resource detail page's Overview tab with the Instance pricing and specs panel expanded: the price cards, the pickers, the price history chart and the on-demand price by region bars](https://agent-assets.infrawrench.com/docs-screenshots/features/instance-pricing-panel/panel-expanded.png)
 
 The panel starts collapsed and loads nothing until you open it. It stays open or closed the way you left it, on this device. It works in the web app and in the desktop app, and the desktop app shows it even when you aren't signed in.
 

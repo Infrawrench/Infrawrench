@@ -14,6 +14,7 @@ import {
 
 import type { SettingsApi } from "../settings/host.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { useLiveRefresh } from "../live/index.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "../settings/styles.js";
 
 export interface JitAccessPanelProps {
@@ -103,13 +104,10 @@ export function JitAccessPanel({
   }, [api, base, gt]);
 
   useEffect(() => {
-    if (!canRead) return;
-    void load();
-    // A request somebody else decides should show up without a reload; the
-    // queue is small, so a modest poll is cheaper than a push channel.
-    const id = setInterval(() => void load(), 15_000);
-    return () => clearInterval(id);
+    if (canRead) void load();
   }, [canRead, load]);
+  // A request somebody else raises or decides shows up without a reload.
+  useLiveRefresh("jit-requests", {}, load, { fallbackMs: 15_000, enabled: canRead });
 
   // Countdowns move on a tick, without refetching.
   const [, setTick] = useState(0);

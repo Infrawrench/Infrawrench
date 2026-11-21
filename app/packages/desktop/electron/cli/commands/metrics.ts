@@ -10,8 +10,10 @@ import { CliFailure } from "../effect/errors";
 import * as Print from "../effect/print";
 import { from, lastDuration, series as seriesFlag, to } from "../effect/range-flags";
 import { CliSession } from "../effect/session";
-import { c, formatNumber, safe } from "../output";
-import { lineChart, timeAxis } from "../charts";
+import { c, safe } from "../output";
+import { lineChart, metricSeriesFormat, timeAxis } from "../charts";
+
+type Core = typeof import("@infrawrench/client-core", { with: { "resolution-mode": "import" } });
 
 const Series = Schema.Struct({
   label: Schema.String,
@@ -136,21 +138,24 @@ export const metrics = Command.make(
       );
     }
 
+    const core: Core = yield* Effect.promise(() => import("@infrawrench/client-core"));
     const width = Math.min(72, Math.max(30, (process.stdout.columns ?? 80) - 14));
     for (const [idx, { series: s }] of kept.entries()) {
       if (idx > 0) yield* Print.line();
       const values = s.points.map((p) => p.value);
+      // One formatter per series, so the summary and the axis share a scale.
+      const format = metricSeriesFormat(core.createMetricValueFormatter, s.unit, values);
       const last = values[values.length - 1];
       const stats =
         last !== undefined
-          ? ` ${c.dim("min")} ${formatNumber(Math.min(...values), s.unit)}  ${c.dim("max")} ${formatNumber(Math.max(...values), s.unit)}  ${c.dim("now")} ${formatNumber(last, s.unit)}`
+          ? ` ${c.dim("min")} ${format(Math.min(...values))}  ${c.dim("max")} ${format(Math.max(...values))}  ${c.dim("now")} ${format(last)}`
           : "";
       yield* Print.line(`${c.bold(safe(s.label))}${stats}`);
-      for (const line of lineChart(values, { width, height: 7, unit: s.unit, colorIndex: idx })) {
+      for (const line of lineChart(values, { width, height: 7, format, colorIndex: idx })) {
         yield* Print.line(line);
       }
       const axisPad = Math.max(
-        ...[Math.min(...values, 0), Math.max(...values)].map((v) => formatNumber(v, s.unit).length),
+        ...[Math.min(...values, 0), Math.max(...values)].map((v) => format(v).length),
         0,
       );
       yield* Print.line(timeAxis(startMs, endMs, width, axisPad));

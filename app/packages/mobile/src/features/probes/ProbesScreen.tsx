@@ -1,7 +1,10 @@
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  describeHeartbeatSchedule,
   formatUptime,
+  heartbeatScheduleOf,
   statusPageUrl,
+  type Heartbeat,
   type StatusPage,
   type SyntheticProbe,
 } from "@infrawrench/client-core";
@@ -11,6 +14,7 @@ import { CLOUD_URL } from "../../../env";
 import { IssueIndicator } from "@/components/IssueIndicator";
 import { useProbes } from "./useProbes";
 import { useStatusPages } from "./useStatusPages";
+import { useHeartbeats } from "./useHeartbeats";
 
 /**
  * Synthetic probes; the native counterpart of the web/desktop Probes tab and
@@ -25,6 +29,7 @@ import { useStatusPages } from "./useStatusPages";
 export function ProbesScreen() {
   const probes = useProbes();
   const statusPages = useStatusPages();
+  const heartbeats = useHeartbeats();
 
   if (probes.isLoading) return <LoadingView />;
   if (probes.isError) {
@@ -37,9 +42,12 @@ export function ProbesScreen() {
   }
 
   const list = probes.data?.probes ?? [];
-  if (list.length === 0) {
+  // Like status pages, heartbeats failing to load must not take the probes
+  // with them.
+  const beats = heartbeats.data?.heartbeats ?? [];
+  if (list.length === 0 && beats.length === 0) {
     return (
-      <EmptyView message="No probes yet. Create one on the web or desktop app; the editor suggests endpoints from your synced resources." />
+      <EmptyView message="No probes or heartbeats yet. Create them on the web or desktop app; the editors suggest endpoints and schedules from your synced resources." />
     );
   }
 
@@ -52,18 +60,38 @@ export function ProbesScreen() {
       onRefresh={() => {
         void probes.refetch();
         void statusPages.refetch();
+        void heartbeats.refetch();
       }}
       refreshing={probes.isRefetching}
     >
-      <Card list>
-        {list.map((probe) => (
-          <ProbeRow key={probe.id} probe={probe} />
-        ))}
-      </Card>
-      <Text style={styles.footnote}>
-        Checked on an interval from outside your infrastructure, so latency and reachability are
-        what your users see. Probes are managed on the web or desktop app.
-      </Text>
+      {list.length > 0 && (
+        <>
+          <Card list>
+            {list.map((probe) => (
+              <ProbeRow key={probe.id} probe={probe} />
+            ))}
+          </Card>
+          <Text style={styles.footnote}>
+            Checked on an interval from outside your infrastructure, so latency and reachability are
+            what your users see. Probes are managed on the web or desktop app.
+          </Text>
+        </>
+      )}
+
+      {beats.length > 0 && (
+        <>
+          <SectionTitle>Heartbeats</SectionTitle>
+          <Card list>
+            {beats.map((heartbeat) => (
+              <HeartbeatRow key={heartbeat.id} heartbeat={heartbeat} />
+            ))}
+          </Card>
+          <Text style={styles.footnote}>
+            Scheduled jobs that ping in when they run. Heartbeats are managed on the web or desktop
+            app.
+          </Text>
+        </>
+      )}
 
       {pages.length > 0 && (
         <>
@@ -112,6 +140,48 @@ function StatusPageRow({ page }: { page: StatusPage }) {
         {live ? "live" : "draft"}
       </Text>
     </Pressable>
+  );
+}
+
+function heartbeatLabel(heartbeat: Heartbeat): string {
+  if (!heartbeat.enabled) return "paused";
+  if (heartbeat.status === "down") return heartbeat.downReason === "failed" ? "failed" : "missed";
+  return heartbeat.status === "up" ? "up" : "new";
+}
+
+function heartbeatColor(heartbeat: Heartbeat): string {
+  if (!heartbeat.enabled) return colors.textFaint;
+  if (heartbeat.status === "down") return colors.danger;
+  return heartbeat.status === "up" ? colors.success : colors.warning;
+}
+
+/** One heartbeat, read-only: its schedule, last ping and state. */
+function HeartbeatRow({ heartbeat }: { heartbeat: Heartbeat }) {
+  const schedule = heartbeatScheduleOf(heartbeat);
+  const detail = [
+    schedule ? describeHeartbeatSchedule(schedule) : null,
+    heartbeat.lastPingAt
+      ? `last ping ${new Date(heartbeat.lastPingAt).toLocaleString()}`
+      : "never pinged",
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
+  const label = heartbeatLabel(heartbeat);
+  return (
+    <View accessibilityLabel={`${heartbeat.name}, ${label}, ${detail}`} style={styles.row}>
+      {heartbeat.enabled && heartbeat.status === "down" && (
+        <IssueIndicator tone="danger" reason={label} />
+      )}
+      <View style={styles.rowMain}>
+        <Text style={styles.title} numberOfLines={1}>
+          {heartbeat.name}
+        </Text>
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      <Text style={[styles.status, { color: heartbeatColor(heartbeat) }]}>{label}</Text>
+    </View>
   );
 }
 

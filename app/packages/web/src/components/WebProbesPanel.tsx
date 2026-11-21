@@ -22,7 +22,7 @@ export function WebProbesPanel({ orgId }: { orgId: string }) {
   const [seed, setSeed] = useState<IncidentSeed | null>(null);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8">
+    <div className="w-full p-6 max-w-4xl mx-auto flex flex-col gap-8">
       {/* Keyed by org so switching org remounts and refetches. */}
       <ProbesPanel key={orgId} client={client} onDeclareIncident={setSeed} />
       {seed && (

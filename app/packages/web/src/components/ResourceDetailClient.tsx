@@ -32,12 +32,16 @@ import {
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type PeerPaneData,
+  type ProviderResource,
+  type RerollSelection,
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
   CloseIcon,
 } from "@infrawrench/ui";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
+import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
+import { createWebHeartbeatsClient } from "@/lib/heartbeats-client";
 import type {
   ArtifactEntry,
   ChatMessage,
@@ -66,6 +70,7 @@ import type {
   ResolvedPeerPane,
   ResourceCarbonEstimate,
 } from "@infrawrench/client-core";
+import { metricsRequestRange, rerollRequest } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -82,6 +87,7 @@ import {
   resourceAppsTabTarget,
   resourceTabTarget,
   servicesTabTarget,
+  heartbeatsTabTarget,
 } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
@@ -130,6 +136,8 @@ interface ChildTypeData {
   showcase?: ShowcaseField[];
   supportsCreate: boolean;
   fields?: FieldDefinition[];
+  /** A top-level type on the account root's page: its rows have no parent. */
+  topLevel?: boolean;
 }
 
 type PeerPaneServerData = ResolvedPeerPane;
@@ -179,6 +187,8 @@ interface Props {
   initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
   schedulable?: boolean | undefined;
+  /** The type flags the field holding the schedule it runs on: offer the Heartbeat tab. */
+  hasSchedule?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -228,6 +238,7 @@ export function ResourceDetailClient({
   initialCwd,
   supportsMetrics,
   schedulable,
+  hasSchedule,
   resourceFields,
   parentResourceId,
 }: Props) {
@@ -237,6 +248,7 @@ export function ResourceDetailClient({
   const orgId = useOrgId();
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
+  const heartbeatsClient = useMemo(() => createWebHeartbeatsClient(orgId), [orgId]);
   const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const blastRadiusClient = useMemo(() => createWebBlastRadiusClient(orgId), [orgId]);
   /**
@@ -319,6 +331,9 @@ export function ResourceDetailClient({
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleToken, setConsoleToken] = useState<string | null>(null);
 
+  // The window the chart's caption names. Without it the route answers with
+  // the last hour whatever the caption says.
+  const metricsWindowMs = detailSchema.metricsCapability?.defaultTimeRangeMs;
   useEffect(() => {
     if (!supportsMetrics) return;
     let cancelled = false;
@@ -328,6 +343,7 @@ export function ResourceDetailClient({
         accountId,
         resourceId,
         ...(parentResourceId ? { parentResourceId } : {}),
+        ...metricsRequestRange(metricsWindowMs),
       },
     )
       .then((r) => {
@@ -348,6 +364,7 @@ export function ResourceDetailClient({
     accountId,
     resourceId,
     parentResourceId,
+    metricsWindowMs,
     gt,
   ]);
 
@@ -451,9 +468,9 @@ export function ResourceDetailClient({
 
   useEffect(() => {
     if (!launchLookupKey || !agentSessionId) {
-      // Shared constant, not a fresh `{}`: `gt` is in this effect's deps and
-      // is not referentially stable, so the effect re-runs on every render and
-      // a new object here would loop forever. See NO_AGENT_LAUNCH_DEFAULTS.
+      // Shared constant, not a fresh `{}`: a new object here loops the page
+      // forever as soon as any dependency of this effect becomes
+      // referentially unstable, as `gt` once was. See NO_AGENT_LAUNCH_DEFAULTS.
       setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
       setResolvedLaunchLookupKey(null);
       setAgentLaunchError(null);
@@ -684,6 +701,13 @@ export function ResourceDetailClient({
     setCreateTarget(group);
   }, []);
 
+  // Top-level types grouped on the account root's page have no parent, so
+  // nothing done to their rows names this resource as one.
+  const topLevelChildTypeIds = useMemo(
+    () => new Set(childTypes.flatMap((ct) => (ct.topLevel ? [ct.id] : []))),
+    [childTypes],
+  );
+
   const handleChildEdit = useCallback(
     async (child: ChildResource, changedFields: Record<string, string>): Promise<void> => {
       await apiPost(`/api/org/${orgId}/resources/update`, {
@@ -692,27 +716,61 @@ export function ResourceDetailClient({
         resourceTypeId: child.resourceTypeId,
         resourceId: child.id,
         fields: changedFields,
-        parentResourceId: resourceId,
+        ...(topLevelChildTypeIds.has(child.resourceTypeId) ? {} : { parentResourceId: resourceId }),
       });
       toast.success(gt("Saved."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId, gt],
+    [orgId, accountId, resourceId, topLevelChildTypeIds, gt],
   );
 
   const handleChildDelete = useCallback(
     async (child: ChildResource): Promise<void> => {
+      const parentQuery = topLevelChildTypeIds.has(child.resourceTypeId)
+        ? ""
+        : `&parentResourceId=${encodeURIComponent(resourceId)}`;
       await apiDelete(
         `/api/org/${orgId}/resources/${child.pluginId}/${child.resourceTypeId}?resourceId=${encodeURIComponent(
           child.id,
-        )}&accountId=${encodeURIComponent(child.accountId || accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
+        )}&accountId=${encodeURIComponent(child.accountId || accountId)}${parentQuery}`,
       );
       toast.success(gt("Deleted."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId, gt],
+    [orgId, accountId, resourceId, topLevelChildTypeIds, gt],
+  );
+
+  // A secret field's Reroll dialog: the "From resource" list and the confirm
+  // both go through the associations routes.
+  const loadRerollCandidates = useCallback(
+    (fieldKey: string) =>
+      apiGet<ProviderResource[]>(
+        `/api/org/${orgId}/associations/candidates?resourceId=${encodeURIComponent(
+          resourceId,
+        )}&fieldKey=${encodeURIComponent(fieldKey)}`,
+      ),
+    [orgId, resourceId],
+  );
+  const handleReroll = useCallback(
+    async (fieldKey: string, selection: RerollSelection | { kind: "literal"; value: string }) => {
+      const request = rerollRequest(resourceId, fieldKey, selection);
+      try {
+        await apiPost(
+          request.endpoint === "literal"
+            ? `/api/org/${orgId}/associations/literal`
+            : `/api/org/${orgId}/associations`,
+          request.payload,
+        );
+        toast.success(gt("{field} updated.", { field: fieldKey }));
+        dispatchResourcesChanged({ accountId, resourceTypeId });
+        void router.invalidate();
+      } catch (err) {
+        toast.error(gt("Reroll failed: {error}", { error: formatErrorMessage(err) }));
+      }
+    },
+    [orgId, resourceId, accountId, resourceTypeId, gt, router],
   );
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
@@ -1407,6 +1465,8 @@ export function ResourceDetailClient({
               }
               costEstimate={costEstimate}
               carbonEstimate={carbonEstimate}
+              onReroll={handleReroll}
+              loadProviderResources={loadRerollCandidates}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,
@@ -1581,6 +1641,23 @@ export function ResourceDetailClient({
                   target={{ resourceId, accountId, resourceName: resourceDisplayName }}
                 />
               )}
+              {...(hasSchedule
+                ? {
+                    renderHeartbeatTab: () => (
+                      <ResourceHeartbeatPanel
+                        client={heartbeatsClient}
+                        resourceId={resourceId}
+                        resourceName={resourceDisplayName}
+                        onOpenHeartbeats={() =>
+                          void navigateToWorkspaceTarget(navigate, heartbeatsTabTarget(), {
+                            label: gt("Heartbeats"),
+                            mode: "pin",
+                          })
+                        }
+                      />
+                    ),
+                  }
+                : {})}
               renderOwnershipTab={() => (
                 <>
                   <ServiceAnnotation
@@ -1776,7 +1853,7 @@ export function ResourceDetailClient({
           pluginId={pluginId}
           resourceTypeId={createTarget.typeId}
           resourceTypeDisplayName={createTarget.displayName}
-          parentResourceId={resourceId}
+          {...(createTarget.topLevel ? {} : { parentResourceId: resourceId })}
           onClose={() => setCreateTarget(null)}
           onCreated={(resource) => {
             const childTypeId = createTarget.typeId;

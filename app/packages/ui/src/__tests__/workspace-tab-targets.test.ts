@@ -21,6 +21,7 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
+  heartbeatsTabTarget,
   statusPagesTabTarget,
   incidentsTabTarget,
   slosTabTarget,
@@ -28,6 +29,7 @@ import {
   deliveryTabTarget,
   workflowsTabTarget,
   environmentsTabTarget,
+  envFilesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -112,8 +114,13 @@ describe("tab target factories", () => {
     expect(environmentsTabTarget()).toEqual({ kind: "environments" });
   });
 
+  it("envFilesTabTarget", () => {
+    expect(envFilesTabTarget()).toEqual({ kind: "env-files" });
+  });
+
   it("probesTabTarget", () => {
     expect(probesTabTarget()).toEqual({ kind: "probes" });
+    expect(heartbeatsTabTarget()).toEqual({ kind: "heartbeats" });
   });
 
   it("statusPagesTabTarget", () => {

@@ -27,7 +27,7 @@ To work with the search engine inside a cluster (indices, documents, queries), u
 - **Extensions**: custom Elasticsearch plugins and bundles (scripts, dictionaries, synonym files) with the deployments that use them. Register one from a download URL, edit its name, description, version or URL, or delete it.
 - **Budgets**: monthly budgets in ECUs for the whole organization or for one deployment or project, with the alert thresholds Elastic emails about. To create one, pick what it applies to, an amount, the thresholds (for example 50, 80 and 100 percent) and who gets alerted. Edit the name, amount, thresholds and whether it's active, or delete it.
 
-<insert [Elastic Cloud hosted deployment detail page showing the topology table, the Elasticsearch instances with memory pressure, and the traffic filters section with Apply and Remove buttons] here>
+![Elastic Cloud hosted deployment detail page showing the topology table, the Elasticsearch instances with memory pressure, and the traffic filters section with Apply and Remove buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/elastic-cloud/deployment-detail.png)
 
 ## Connect an account
 
@@ -42,7 +42,7 @@ There's one field: an **Elastic Cloud API key**. Create it in the Elastic Cloud 
 
 **Organization owner** covers everything. Anything the key's role can't reach shows as empty instead of breaking the whole account. So a Billing admin key gives you cost graphs without inventory, and a deployment-only key gives you inventory without costs.
 
-<insert [Elastic Cloud Add-account form with the API key field filled] here>
+![Elastic Cloud Add-account form with the API key field filled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/elastic-cloud/add-account.png)
 
 ## Cost graphs
 
@@ -55,7 +55,7 @@ Elastic Cloud accounts feed [cost graphs and budgets](../features/cloud-costs.md
 
 Amounts are shown in US dollars at Elastic's nominal rate of **1 ECU = $1.00**. If you bought prepaid ECUs at a discount, you see the nominal value, not the price you negotiated.
 
-<insert [Cost graph grouped by service for an Elastic Cloud account, showing Capacity, Data Transfer Out and Snapshot Storage stacked by day] here>
+![Cost graph grouped by service for an Elastic Cloud account, showing Capacity, Data Transfer Out and Snapshot Storage stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/elastic-cloud/cost-by-service.png)
 
 ## Prepaid ECU burndown
 

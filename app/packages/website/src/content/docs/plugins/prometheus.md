@@ -9,7 +9,7 @@ Connect a Prometheus server, or anything that speaks its HTTP API, to query it, 
 ## What you can manage
 
 - **Server**: the account opens on the server, with its version, retention, head series and chunks, the oldest sample in the head block, target health, rule and alert counts, the Alertmanagers it sends to, and whether the last configuration reload worked (a failed reload is a posture finding).
-  - The **Query** tab runs PromQL and shows the result as a table, suggesting metric names as you type.
+  - The **PromQL Editor** tab runs PromQL and shows the result as a table, suggesting metric names as you type.
   - The **Configuration** tab shows the loaded configuration as YAML (read only, since Prometheus loads it from a file).
   - The **Describe** tab shows the TSDB cardinality report (series by metric name, label values, series by label pair, memory by label) and the flags the server runs with.
   - **Reload config** reloads the configuration and rule files. **Snapshot TSDB** writes a snapshot under the data directory. **Delete series** deletes the samples matching a selector over an optional time range. **Clean tombstones** removes deleted data from disk.
@@ -30,13 +30,13 @@ Connect a Prometheus server, or anything that speaks its HTTP API, to query it, 
 3. Optionally enter the **Alertmanager URL**, for example `http://alertmanager.internal:9093` or Mimir's `/alertmanager`. It uses the same credentials.
 4. If the endpoint's certificate is signed by a private CA, paste the CA certificate under **Advanced options**.
 
-<insert [Prometheus Add-account form with the Prometheus URL and Alertmanager URL filled in] here>
+![Prometheus Add-account form with the Prometheus URL and Alertmanager URL filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/add-account.png)
 
 **Check credentials** tests queries, targets, rules, server status and the Alertmanager one by one, so if a Thanos, Mimir or VictoriaMetrics endpoint lacks some of them, you see exactly which.
 
-<insert [Prometheus server page with the Query tab running sum by (job) (up)] here>
+![Prometheus server page with the PromQL Editor tab running sum by (job) (up)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/query-tab-promql.png)
 
-<insert [Prometheus Create silence dialog filled in from a firing alert] here>
+![Prometheus Create silence dialog filled in from a firing alert](https://agent-assets.infrawrench.com/docs-screenshots/plugins/prometheus/create-silence.png)
 
 ## Import a business metric
 

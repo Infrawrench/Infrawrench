@@ -26,7 +26,7 @@ Each Clerk account you add is one Clerk instance: the development or production 
 
 Each secret key belongs to one instance, so add a separate account for development and production.
 
-<insert [Clerk add-account form with the Secret Key field filled in] here>
+![Clerk add-account form with the Secret Key field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/clerk/add-account.png)
 
 ## Common tasks
 
@@ -38,7 +38,7 @@ Each secret key belongs to one instance, so add a separate account for developme
 - **Secrets**: Clerk only returns an OAuth application's client secret when it's created or rotated, so one created or rotated from Infrawrench stays in Outputs. For an older application, rotate it from **Get credentials** to keep it here. A machine's secret key can be read at any time, and can rotate with a one-hour grace period for the old key.
 - **Metrics**: the instance's Metrics tab charts new users per day and shows active users over the last day, week and month. The dashboard card shows total, active and banned users.
 
-<insert [Clerk instance Restrictions tab showing the allowlist, blocklist and organization toggles] here>
+![Clerk instance Restrictions tab showing the allowlist, blocklist and organization toggles](https://agent-assets.infrawrench.com/docs-screenshots/plugins/clerk/instance-restrictions.png)
 
 ## Tips & limits
 

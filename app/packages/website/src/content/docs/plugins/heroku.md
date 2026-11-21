@@ -27,7 +27,7 @@ Connect Heroku to scale and roll back apps, manage config vars, add-ons, domains
 2. Paste the key. The **Team** picker then lists your teams.
 3. Pick a team to limit the account to that team's apps, or leave **Personal and all teams**.
 
-<insert [Heroku Add-account form with the API Key field filled in and the Team picker open, listing two teams] here>
+![Heroku Add-account form with the API Key field filled in and a team chosen in the Team picker (a native dropdown, shown closed)](https://agent-assets.infrawrench.com/docs-screenshots/plugins/heroku/add-account.png)
 
 ## Day-to-day tasks
 
@@ -38,9 +38,9 @@ Connect Heroku to scale and roll back apps, manage config vars, add-ons, domains
 - **Track costs**: invoices are imported per month. Team invoices are split into platform, add-on and data charges, with credits as their own line. The current month shows once Heroku issues its invoice.
 - **Track credits**: unexpired account credits show in credit burndown.
 
-<insert [Heroku app detail view showing the Restart All Dynos, Run One-Off Dyno and Roll Back header actions, the Formation table and Recent Releases] here>
+![Heroku app detail view showing the Restart All Dynos, Run One-Off Dyno and Roll Back header actions, the Formation table and Recent Releases](https://agent-assets.infrawrench.com/docs-screenshots/plugins/heroku/app-detail.png)
 
-<insert [Heroku pipeline detail view showing the Stages table and the Promote dialog with the source app selected] here>
+![Heroku pipeline Promote dialog with the staging app selected as the source](https://agent-assets.infrawrench.com/docs-screenshots/plugins/heroku/pipeline-promote.png)
 
 ## Status, DNS and Terraform
 

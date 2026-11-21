@@ -24,7 +24,7 @@ export function DesktopDeliveryPanel() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="w-full p-6 max-w-6xl mx-auto">
       {/* Keyed by org so switching org remounts and refetches. */}
       <DeliveryPanel
         key={activeCloudOrgId}

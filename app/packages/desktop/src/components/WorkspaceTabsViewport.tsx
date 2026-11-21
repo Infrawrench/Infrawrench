@@ -48,6 +48,8 @@ import {
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopNetworkFlowReportsClient } from "@/lib/network-flow-reports-client";
 import type { NetworkFlowReportsClient } from "@infrawrench/ui";
+import { createDesktopCommitmentReportsClient } from "@/lib/commitment-reports-client";
+import type { CommitmentReportsClient } from "@infrawrench/ui";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
 import { createDesktopCostCanvasesClient } from "@/lib/cost-canvases-client";
@@ -155,6 +157,12 @@ const DesktopMetricAlertsPanel = lazyPanel(() =>
 const DesktopProbesPanel = lazyPanel(() =>
   import("@/components/DesktopProbesPanel").then((m) => m.DesktopProbesPanel),
 );
+const DesktopHeartbeatsPanel = lazyPanel(() =>
+  import("@/components/DesktopHeartbeatsPanel").then((m) => m.DesktopHeartbeatsPanel),
+);
+const DesktopEnvFilesPanel = lazyPanel(() =>
+  import("@/components/DesktopEnvFilesPanel").then((m) => m.DesktopEnvFilesPanel),
+);
 const DesktopStatusPagesPanel = lazyPanel(() =>
   import("@/components/DesktopStatusPagesPanel").then((m) => m.DesktopStatusPagesPanel),
 );
@@ -163,6 +171,11 @@ const DesktopQuotasPanel = lazyPanel(() =>
 );
 const DesktopPriceCatalogPanel = lazyPanel(() =>
   import("@/components/DesktopPriceCatalogPanel").then((m) => m.DesktopPriceCatalogPanel),
+);
+const DesktopMigrationEstimatesPanel = lazyPanel(() =>
+  import("@/components/DesktopMigrationEstimatesPanel").then(
+    (m) => m.DesktopMigrationEstimatesPanel,
+  ),
 );
 const DesktopIncidentsPanel = lazyPanel(() =>
   import("@/components/DesktopIncidentsPanel").then((m) => m.DesktopIncidentsPanel),
@@ -199,6 +212,12 @@ let costsClient: CostsClient | null = null;
 function getCostsClient(): CostsClient {
   if (!costsClient) costsClient = createDesktopCostsClient();
   return costsClient;
+}
+
+let commitmentReportsClient: CommitmentReportsClient | null = null;
+function getCommitmentReportsClient(): CommitmentReportsClient {
+  if (!commitmentReportsClient) commitmentReportsClient = createDesktopCommitmentReportsClient();
+  return commitmentReportsClient;
 }
 
 let networkFlowReportsClient: NetworkFlowReportsClient | null = null;
@@ -428,6 +447,8 @@ function renderPanel(
           client={getCostsClient()}
           // Cloud-only: reports read the server's network-flow store.
           networkFlowReports={activeCloudOrgId ? getNetworkFlowReportsClient() : undefined}
+          // Cloud-only: reports read server-side cost rows and the inventory.
+          commitmentReports={activeCloudOrgId ? getCommitmentReportsClient() : undefined}
           // Always the system browser: a provider's top-up page is a billing
           // flow and has no business inside the app shell.
           onOpenExternal={(url) => void openExternalUrl(url)}
@@ -882,12 +903,18 @@ function renderPanel(
       return <DesktopMetricAlertsPanel />;
     case "probes":
       return <DesktopProbesPanel />;
+    case "heartbeats":
+      return <DesktopHeartbeatsPanel />;
+    case "env-files":
+      return <DesktopEnvFilesPanel />;
     case "status-pages":
       return <DesktopStatusPagesPanel />;
     case "quotas":
       return <DesktopQuotasPanel />;
     case "price-catalog":
       return <DesktopPriceCatalogPanel />;
+    case "migration-estimates":
+      return <DesktopMigrationEstimatesPanel estimateId={t.estimateId} />;
     case "incidents":
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "slos":

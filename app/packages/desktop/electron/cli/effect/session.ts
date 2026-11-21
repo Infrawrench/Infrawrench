@@ -6,6 +6,8 @@ import { Context, Effect, Option } from "effect";
 import { Flag } from "effect/cli";
 import { setColorEnabled } from "../output";
 import { CliUsageError } from "./errors";
+import { isStandaloneCli, LOCAL_NEEDS_DESKTOP } from "../edition";
+import { markPhase } from "../../startup-timing";
 
 export type OutputMode = "json" | "text";
 
@@ -91,6 +93,7 @@ export interface GlobalFlagValues {
  * `output.ts`, which every printer reads.
  */
 export const makeSession = Effect.fnUntraced(function* (flags: GlobalFlagValues) {
+  markPhase("command line parsed");
   const host = yield* CliHost;
   if (flags.json && flags.text) {
     return yield* new CliUsageError({ message: "--json and --text are mutually exclusive" });
@@ -98,6 +101,9 @@ export const makeSession = Effect.fnUntraced(function* (flags: GlobalFlagValues)
   const org = Option.getOrNull(flags.org);
   if (org && flags.local) {
     return yield* new CliUsageError({ message: "--org and --local are mutually exclusive" });
+  }
+  if (flags.local && isStandaloneCli()) {
+    return yield* new CliUsageError({ message: LOCAL_NEEDS_DESKTOP });
   }
   const output: OutputMode = flags.json
     ? "json"

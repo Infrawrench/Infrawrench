@@ -16,7 +16,14 @@
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"
 
 BUN_VERSION=1.4.4
-out="$(out_dir builtin bun "$BUN_VERSION")"
+# The builtin's version is Bun's, and a fourth number counts our rebuilds
+# of one Bun release (a published version never changes; `@1.4.4` picks
+# the highest rebuild). 1: the rest of the C library (librt and others).
+# Back to none (BUN_REBUILD=0) with the next Bun release.
+BUN_REBUILD=1
+version="$BUN_VERSION"
+[[ "$BUN_REBUILD" == 0 ]] || version="$BUN_VERSION.$BUN_REBUILD"
+out="$(out_dir builtin bun "$version")"
 
 # target  bun asset                bun sha256
 BUN_ASSETS=(
@@ -34,8 +41,12 @@ DEBS=(
   "aarch64 http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-14/libgcc-s1_14-20240412-0ubuntu1_arm64.deb bb1c262f2ac9aeb357d3344a06f22f1057306694f6200896775a03ecced08b13"
 )
 
-# The libraries Bun and the runner link, by the name the loader asks for.
-LIBS=(libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 libstdc++.so.6 libgcc_s.so.1)
+# The libraries Bun and the runner link, by the name the loader asks for,
+# and the rest of the C library a native program or addon Bun loads may
+# link: rolldown's and oxlint's Node bindings need librt, which glibc 2.34
+# folded into libc but still ships as its own file.
+LIBS=(libc.so.6 libm.so.6 libpthread.so.0 libdl.so.2 libstdc++.so.6 libgcc_s.so.1
+  librt.so.1 libutil.so.1 libresolv.so.2 libanl.so.1 libmvec.so.1)
 
 # fetch <url> <sha256> <file>: downloads and checks one input.
 fetch() {
@@ -81,7 +92,7 @@ cat >"$out/build.json" <<JSON
 {
   "kind": "builtin",
   "name": "bun",
-  "version": "$BUN_VERSION",
+  "version": "$version",
   "abi": "native-gvisor",
   "aliases": ["bunx"],
   "targets": {$targets},

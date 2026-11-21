@@ -14,7 +14,7 @@ Web, desktop, the [mobile app](./mobile-app.md), the [CLI](./cli.md) and schedul
 - **A cost report:** open the report from **Reports** and choose **Download PDF** beside its name.
 - **On your phone:** **Share PDF** on a dashboard or a report opens the share sheet with the file.
 
-<insert [A dashboard header with the Download PDF and Schedule delivery buttons, and the downloaded PDF open beside it showing a stacked bar chart, a totals table and a budget bar] here>
+![A dashboard header with the Download PDF and Schedule delivery buttons, above a stacked bar cost graph, a budget card with its bar and a KPI card](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard-pdf/dashboard-with-export-buttons.png)
 
 ## What the PDF contains
 
@@ -43,7 +43,7 @@ Open the dashboard and choose **Schedule delivery**. Schedules work just like [r
 - **Destinations:** any mix of your org's connected Slack channels, Teams webhooks and up to 20 email addresses.
 - **Attach PDF:** on by default.
 
-<insert [The Schedule delivery modal on a dashboard, listing one weekly schedule with "PDF attached" and its last status, and the New delivery schedule form open with the Attach PDF checkbox] here>
+![The New delivery schedule form opened from a dashboard's Schedule delivery dialog: weekly on Monday at 08:00, a Slack channel and two email recipients, with the Attach PDF checkbox ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard-pdf/schedule-delivery-modal.png)
 
 What each destination receives:
 

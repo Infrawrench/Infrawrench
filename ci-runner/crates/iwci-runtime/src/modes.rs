@@ -10,8 +10,9 @@
 //!   and times, and writing an octal mode to `mode/<path>` sets it. `<path>`
 //!   is the absolute path with `%` written `%25` and `/` written `%2F`, so it
 //!   is one file name whatever the target is. `ino/<n>` is `mode/` for the
-//!   file with a recorded mode whose `st_ino` is `n` (see [`ino_of`]); one
-//!   with no mode recorded is not there, and has the default for its type.
+//!   file with a recorded mode whose `st_ino` is `n` (see
+//!   [`iwci_vfs::modes::ino_of`]); one with no mode recorded is not there,
+//!   and has the default for its type.
 //!   Edge.js's C library asks by inode after every `stat`, which spares a
 //!   walk of the path for the files nobody gave a mode, nearly all of them,
 //!   and it is all `fstat` and `fchmod` have.
@@ -117,14 +118,11 @@ impl ModeControl {
 
     /// The path with a recorded mode whose `st_ino` is `ino`. Only recorded
     /// paths can be found: a file nobody gave a mode has the default, which
-    /// the caller knows from its type, and the record is small (the
-    /// checkout's executables and what the job changed).
+    /// the caller knows from its type. Asked after every `stat`, so the
+    /// record finds it by number rather than by a walk of every mode it
+    /// holds, which an install's thousands of executables made quadratic.
     fn by_ino(&self, ino: u64) -> Option<PathBuf> {
-        self.modes
-            .recorded()
-            .into_iter()
-            .map(|(path, _)| path)
-            .find(|path| ino_of(path) == ino)
+        self.modes.by_ino(ino)
     }
 
     fn is_dir(path: &Path) -> bool {
@@ -146,13 +144,15 @@ impl ModeControl {
             return format!("{:o}\n", described.mode & iwci_vfs::modes::MODE_BITS);
         }
         let mut line = format!(
-            "{} {:o} {} {} {} {}\n",
+            "{} {:o} {} {} {} {} {} {}\n",
             described.kind,
             described.mode,
             described.meta.len,
             described.meta.accessed,
             described.meta.modified,
             described.meta.created,
+            described.ino,
+            described.nlink,
         );
         if let Some(link) = described.link {
             line.push_str(&link.to_string_lossy());
@@ -201,18 +201,6 @@ fn decode(name: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// The `st_ino` wasmer-wasix gives the file at `path` (absolute, no
-/// symlinks left): the 64-bit xxHash of the path as its file system was
-/// asked for it (`Inode::from_path`), and after a rename the number of its
-/// new path (vendor/README.md, #1054). The C library has an `st_ino` from
-/// `fstat` and no path, so this is how `ino/` finds the file. Tested end to
-/// end in `builtins/test.sh` (`bash-node/modes-passes` and
-/// `renamed-modes-passes`), since a change in how wasmer-wasix numbers
-/// inodes breaks it.
-pub(crate) fn ino_of(path: &Path) -> u64 {
-    xxhash_rust::xxh64::xxh64(path.as_os_str().as_encoded_bytes(), 0)
-}
-
 /// What a job sees of a path.
 struct Described {
     /// `stat -c %F`'s letter: `f`, `d`, `l`, `c`, `b`, `p` or `s`.
@@ -221,6 +209,11 @@ struct Described {
     mode: u32,
     meta: Metadata,
     link: Option<PathBuf>,
+    /// `st_ino` as WASIX reports it: the file system's number for a file
+    /// with hard links, else its path's ([`iwci_vfs::modes::ino_of`]).
+    ino: u64,
+    /// `st_nlink`: the file system's count of names; 2 for a directory.
+    nlink: u64,
 }
 
 fn describe(
@@ -253,10 +246,10 @@ fn describe(
     } else {
         Some(path.to_path_buf())
     };
-    let perm = match resolved {
+    let perm = match &resolved {
         Some(p)
             if kind == 'f'
-                && modes.get(&p).is_none()
+                && modes.get(p).is_none()
                 && p.parent()
                     .is_some_and(|d| COMMAND_DIRS.iter().any(|c| d == Path::new(c))) =>
         {
@@ -264,11 +257,19 @@ fn describe(
         }
         _ => perm,
     };
+    let numbered = resolved.as_deref().unwrap_or(path);
+    let ino = match meta.ino {
+        0 => iwci_vfs::modes::ino_of(numbered),
+        ino => ino,
+    };
+    let nlink = if kind == 'd' { 2 } else { meta.nlink.max(1) };
     Some(Described {
         kind,
         mode: bits | perm,
         meta,
         link,
+        ino,
+        nlink,
     })
 }
 
@@ -577,6 +578,23 @@ mod tests {
             "600\n"
         );
 
+        // A file with two names: one inode number, two links.
+        job.as_dyn()
+            .hard_link(Path::new("/app/data.txt"), Path::new("/app/data2.txt"))
+            .unwrap();
+        let fields = |p: &str| -> Vec<String> {
+            read(&fs, &format!("/stat/{}", encode(p)))
+                .split_whitespace()
+                .map(String::from)
+                .collect()
+        };
+        let (a, b) = (fields("/app/data.txt"), fields("/app/data2.txt"));
+        let ino = iwci_vfs::modes::ino_of(Path::new("/app/data.txt")).to_string();
+        assert_eq!((&a[6], &a[7]), (&ino, &"2".to_string()));
+        assert_eq!((&b[6], &b[7]), (&ino, &"2".to_string()));
+        job.remove_file("/app/data2.txt").unwrap();
+        assert_eq!(fields("/app/data.txt")[7], "1");
+
         // Nonsense and missing targets are refused; describing is read-only.
         assert!(write(&fs, &format!("/mode/{}", encode("/app/data.txt")), "rw").is_err());
         assert!(write(&fs, &format!("/mode/{}", encode("/app/data.txt")), "17777").is_err());
@@ -588,7 +606,7 @@ mod tests {
     #[test]
     fn it_finds_a_recorded_file_by_its_inode_number() {
         let (fs, job) = control();
-        let ino = |path: &str| format!("/ino/{}", ino_of(Path::new(path)));
+        let ino = |path: &str| format!("/ino/{}", iwci_vfs::modes::ino_of(Path::new(path)));
         assert!(fs.metadata(Path::new("/ino")).unwrap().is_dir());
         assert_eq!(read(&fs, &ino("/app/run.sh")), "755\n");
         write(&fs, &ino("/app/run.sh"), "700").unwrap();

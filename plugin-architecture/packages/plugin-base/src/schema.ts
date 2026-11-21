@@ -295,6 +295,20 @@ export interface SqlEditorCapability {
    * pay-per-byte-scanned backends like BigQuery.
    */
   supportsQueryCost?: boolean;
+  /**
+   * Name of the query language the editor takes when it is not SQL, such as
+   * "PromQL", "DQL" or "APL". The host labels the tab "<queryLanguage> Editor";
+   * left out, the tab is the "SQL Editor".
+   */
+  queryLanguage?: string;
+  /**
+   * The query the editor inserts and runs when the user clicks a table in its
+   * sidebar, with every `{table}` replaced by the table's name, for example
+   * "fetch {table}\n| limit 100" for DQL or "{table}" for PromQL metric names.
+   * Left out, a SQL editor uses `SELECT * FROM {table} LIMIT 100;`, and an
+   * editor with a `queryLanguage` inserts nothing, since SQL would not parse.
+   */
+  tableQuery?: string;
 }
 
 /**

@@ -5,6 +5,14 @@
 //! `^7.1`, and there are no operators. Build metadata is refused outright:
 //! semver says it does not affect precedence, so `1.0.0+a` and `1.0.0+b` would
 //! be two keys for one version, and `+` is outside the key grammar anyway.
+//!
+//! A fourth number is a rebuild of the same upstream release, for a builtin
+//! whose version is its upstream's (`builtin:bun@1.4.4`) and whose build
+//! changed: `1.4.4.1` sorts after `1.4.4` and before `1.4.5`, and `1`,
+//! `1.4` and `1.4.4` all pick the highest rebuild, since a published
+//! version's bytes never change. Four numbers pin one rebuild. A runner
+//! from before rebuilds does not parse such a key and skips it, so it keeps
+//! resolving the upstream release it knew. A rebuild is never a prerelease.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -47,7 +55,8 @@ impl PartialOrd for PreId {
     }
 }
 
-/// A `MAJOR.MINOR.PATCH[-PRERELEASE]` version. Serialises as its string.
+/// A `MAJOR.MINOR.PATCH[.REBUILD][-PRERELEASE]` version (a rebuild and a
+/// prerelease never together). Serialises as its string.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Version {
@@ -57,6 +66,8 @@ pub struct Version {
     pub minor: u64,
     /// Patch component.
     pub patch: u64,
+    /// The rebuild of the upstream `MAJOR.MINOR.PATCH`, from 1; 0 for none.
+    pub rebuild: u64,
     /// Prerelease identifiers; empty for a release.
     pub pre: Vec<PreId>,
 }
@@ -70,8 +81,8 @@ impl Version {
 
 impl Ord for Version {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.major, self.minor, self.patch)
-            .cmp(&(other.major, other.minor, other.patch))
+        (self.major, self.minor, self.patch, self.rebuild)
+            .cmp(&(other.major, other.minor, other.patch, other.rebuild))
             .then_with(|| match (self.pre.is_empty(), other.pre.is_empty()) {
                 // A release sorts above any prerelease of the same triple.
                 (true, true) => Ordering::Equal,
@@ -91,6 +102,9 @@ impl PartialOrd for Version {
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
+        if self.rebuild > 0 {
+            write!(f, ".{}", self.rebuild)?;
+        }
         for (i, id) in self.pre.iter().enumerate() {
             f.write_str(if i == 0 { "-" } else { "." })?;
             match id {
@@ -136,7 +150,7 @@ fn prerelease(input: &str, pre: &str) -> Result<Vec<PreId>, VersionError> {
 }
 
 /// Splits off the prerelease and parses the dotted numeric part into at most
-/// three components.
+/// four components.
 fn parse_parts(input: &str) -> Result<(Vec<u64>, Vec<PreId>), VersionError> {
     let err = |reason| VersionError {
         input: input.to_owned(),
@@ -153,8 +167,14 @@ fn parse_parts(input: &str) -> Result<(Vec<u64>, Vec<PreId>), VersionError> {
         .split('.')
         .map(|p| numeric(input, p))
         .collect::<Result<Vec<_>, _>>()?;
-    if nums.len() > 3 {
-        return Err(err("more than three components"));
+    if nums.len() > 4 {
+        return Err(err("more than four components"));
+    }
+    if nums.len() == 4 && !pre.is_empty() {
+        return Err(err("a rebuild is never a prerelease"));
+    }
+    if nums.len() == 4 && nums[3] == 0 {
+        return Err(err("a rebuild counts from 1"));
     }
     Ok((nums, pre))
 }
@@ -164,16 +184,21 @@ impl FromStr for Version {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (nums, pre) = parse_parts(s)?;
-        let [major, minor, patch] = nums[..] else {
-            return Err(VersionError {
-                input: s.to_owned(),
-                reason: "expected MAJOR.MINOR.PATCH",
-            });
+        let (major, minor, patch, rebuild) = match nums[..] {
+            [major, minor, patch] => (major, minor, patch, 0),
+            [major, minor, patch, rebuild] => (major, minor, patch, rebuild),
+            _ => {
+                return Err(VersionError {
+                    input: s.to_owned(),
+                    reason: "expected MAJOR.MINOR.PATCH",
+                });
+            }
         };
         Ok(Version {
             major,
             minor,
             patch,
+            rebuild,
             pre,
         })
     }
@@ -193,14 +218,16 @@ impl From<Version> for String {
     }
 }
 
-/// A prefix requirement: `7`, `7.1`, `7.1.3` or `7.1.3-rc.1`.
+/// A prefix requirement: `7`, `7.1`, `7.1.3`, `7.1.3.2` or `7.1.3-rc.1`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum VersionReq {
-    /// `7`: the highest `7.x.y` release.
+    /// `7`: the highest `7.x.y` release, rebuilds included.
     Major(u64),
-    /// `7.1`: the highest `7.1.x` release.
+    /// `7.1`: the highest `7.1.x` release, rebuilds included.
     Minor(u64, u64),
-    /// `7.1.3` or `7.1.3-rc.1`: exactly that version.
+    /// `7.1.3`: `7.1.3` or its highest rebuild (`7.1.3.2`).
+    Patch(u64, u64, u64),
+    /// `7.1.3.2` or `7.1.3-rc.1`: exactly that version.
     Exact(Version),
 }
 
@@ -212,6 +239,9 @@ impl VersionReq {
         match self {
             VersionReq::Major(m) => !v.is_prerelease() && v.major == *m,
             VersionReq::Minor(m, n) => !v.is_prerelease() && v.major == *m && v.minor == *n,
+            VersionReq::Patch(m, n, p) => {
+                !v.is_prerelease() && (v.major, v.minor, v.patch) == (*m, *n, *p)
+            }
             VersionReq::Exact(e) => v == e,
         }
     }
@@ -227,6 +257,7 @@ impl fmt::Display for VersionReq {
         match self {
             VersionReq::Major(m) => write!(f, "{m}"),
             VersionReq::Minor(m, n) => write!(f, "{m}.{n}"),
+            VersionReq::Patch(m, n, p) => write!(f, "{m}.{n}.{p}"),
             VersionReq::Exact(v) => write!(f, "{v}"),
         }
     }
@@ -240,12 +271,8 @@ impl FromStr for VersionReq {
         match (nums.as_slice(), pre.is_empty()) {
             (&[m], true) => Ok(VersionReq::Major(m)),
             (&[m, n], true) => Ok(VersionReq::Minor(m, n)),
-            (&[major, minor, patch], _) => Ok(VersionReq::Exact(Version {
-                major,
-                minor,
-                patch,
-                pre,
-            })),
+            (&[m, n, p], true) => Ok(VersionReq::Patch(m, n, p)),
+            (&[_, _, _], false) | (&[_, _, _, _], _) => Ok(VersionReq::Exact(s.parse()?)),
             _ => Err(VersionError {
                 input: s.to_owned(),
                 reason: "a prerelease needs a full MAJOR.MINOR.PATCH",
@@ -270,6 +297,8 @@ mod tests {
             "1.0.0-rc.1",
             "1.0.0-alpha-1.x.0",
             "10.20.30",
+            "1.4.4.1",
+            "1.4.4.12",
         ] {
             assert_eq!(v(s).to_string(), s);
         }
@@ -277,7 +306,10 @@ mod tests {
             "",
             "1",
             "1.2",
-            "1.2.3.4",
+            "1.2.3.4.5",
+            "1.2.3.0",
+            "1.2.3.01",
+            "1.2.3.4-rc.1",
             "01.2.3",
             "1.02.3",
             "1.2.3-",
@@ -303,6 +335,9 @@ mod tests {
             "1.0.0-beta.11",
             "1.0.0-rc.1",
             "1.0.0",
+            "1.0.0.1",
+            "1.0.0.2",
+            "1.0.0.10",
             "1.0.1",
             "1.1.0",
             "2.0.0",
@@ -343,5 +378,38 @@ mod tests {
         assert!(!"7.1".parse::<VersionReq>().unwrap().matches(&v("7.10.0")));
         assert!("7.1-rc.1".parse::<VersionReq>().is_err());
         assert!("7.1.3+x".parse::<VersionReq>().is_err());
+    }
+
+    /// A rebuild of an upstream release (`builtin:bun` 1.4.4 with more of
+    /// the C library): every prefix and the bare upstream version pick the
+    /// highest rebuild, four numbers pin one, and the next upstream release
+    /// still wins over any rebuild of this one.
+    #[test]
+    fn rebuilds_are_picked_by_every_prefix_and_pinned_by_four_numbers() {
+        let mut all: Vec<Version> = ["1.4.3", "1.4.4", "1.4.4.1", "1.4.4.2"]
+            .iter()
+            .map(|s| v(s))
+            .collect();
+        let best = |all: &[Version], r: &str| {
+            r.parse::<VersionReq>()
+                .unwrap()
+                .best(all)
+                .map(ToString::to_string)
+        };
+        for r in ["1", "1.4", "1.4.4"] {
+            assert_eq!(best(&all, r).as_deref(), Some("1.4.4.2"), "{r}");
+        }
+        assert_eq!(best(&all, "1.4.4.1").as_deref(), Some("1.4.4.1"));
+        assert_eq!(best(&all, "1.4.3").as_deref(), Some("1.4.3"));
+        assert_eq!(best(&all, "1.4.4.3"), None);
+        assert_eq!("1.4.4".parse::<VersionReq>().unwrap().to_string(), "1.4.4");
+        assert_eq!(
+            "1.4.4.1".parse::<VersionReq>().unwrap().to_string(),
+            "1.4.4.1"
+        );
+        all.push(v("1.4.5"));
+        assert_eq!(best(&all, "1.4").as_deref(), Some("1.4.5"));
+        assert!("1.4.4.0".parse::<VersionReq>().is_err());
+        assert!("1.4.4.1-rc.1".parse::<VersionReq>().is_err());
     }
 }

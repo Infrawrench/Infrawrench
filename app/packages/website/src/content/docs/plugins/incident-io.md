@@ -18,7 +18,7 @@ Connect incident.io to work with its incidents and on-call from Infrawrench, and
 - **Incident statuses**, **status pages** (with their public URL), **users** and **teams**.
 - **Maintenance windows**: active and upcoming windows. **End now** ends an active one, and you can delete an upcoming one.
 
-<insert [incident.io incident detail page showing status, severity, lead, the Durations section and the Post update dialog open with a status picker] here>
+![incident.io incident detail page showing status, severity, lead, the Durations section and the Post update action](https://agent-assets.infrawrench.com/docs-screenshots/plugins/incident-io/incident-detail.png)
 
 ## Connect your account
 
@@ -55,7 +55,7 @@ To make the list update within seconds, add a webhook (incident.io doesn't let a
 
 Every delivery's signature is checked, and deliveries more than five minutes old are refused. Without a webhook, incidents update every two minutes.
 
-<insert [Settings, On-call tab, Paging providers card for an incident.io account showing the webhook URL, the signing secret field and Last reconciled] here>
+![Settings, On-call tab, Paging providers card for an incident.io account showing the webhook URL, the signing secret field and Last reconciled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/incident-io/paging-providers.png)
 
 ## Status
 

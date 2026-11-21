@@ -1,5 +1,6 @@
-//! Installs a workspace's dependencies into its snapshot: pnpm, Bun, Go
-//! modules, Cargo crates, Python wheels (pip) and Composer packages.
+//! Installs a workspace's dependencies into its snapshot: pnpm, npm, Bun, Go
+//! modules, Cargo crates, Python wheels (pip), Composer packages and Ruby
+//! gems (Bundler).
 //!
 //! Installation runs on the host, before any job, because it is the only
 //! step that needs the network: the isolates that run jobs get none. Each
@@ -15,10 +16,16 @@
 
 mod archive;
 pub mod bun;
+pub mod bundler;
 pub mod cache;
 pub mod cargo;
 pub mod composer;
 pub mod fetch;
+pub mod git;
 pub mod go;
+pub mod node_bins;
+pub mod npm;
+pub mod npmrc;
 pub mod pip;
 pub mod pnpm;
+pub mod wasm_builds;

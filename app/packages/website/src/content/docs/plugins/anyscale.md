@@ -17,7 +17,7 @@ sidebar_order: 50
 - **Compute configs**: the latest version of each named config, with its head node, worker node groups and their autoscaling bounds, spot usage, idle termination and maximum uptime. Deleting a compute config archives it in Anyscale. It can no longer launch clusters, and clusters already using it keep running.
 - **Budgets**: Anyscale's own daily or monthly spend alerts. Create one by choosing what it applies to (the whole organization, a cloud or a project), an amount in US dollars or Anyscale credits, and a period. Afterwards you can edit the amount, unit and period, **Enable** or **Disable** it, or delete it. A budget's scope can't change, so create a new one instead.
 
-<insert [Anyscale organization page showing month-to-date spend, the by-workload-type, by-project and by-user tables, and the credit grants table] here>
+![Anyscale organization page showing month-to-date spend, the by-workload-type, by-project and by-user tables, and the credit grants table](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anyscale/organization-spend.png)
 
 ## Connect your account
 
@@ -26,7 +26,7 @@ You only need an **API key**.
 - A **service account key** is the best choice, because it doesn't expire. In the Anyscale console, open **Organization settings > Service accounts**, create a service account, then create an API key for it. See [Anyscale service accounts](https://docs.anyscale.com/auth/service-accounts).
 - A **user key** works too (**API keys** under your user menu), but it expires after the organization's maximum lifetime, 30 days by default. The account stops syncing until you paste a new one.
 
-<insert [Anyscale Add-account form with the API key field filled] here>
+![Anyscale Add-account form with the API key field filled](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anyscale/add-account.png)
 
 ### Permissions
 
@@ -53,7 +53,7 @@ Only Anyscale's own charges are recorded, so connecting Anyscale alongside your 
 
 Filter or group by the `hosting` tag to tell the two apart.
 
-<insert [Cost graph for an Anyscale account grouped by service, showing Workspace, Job and Service spend stacked by day] here>
+![Cost report for an Anyscale account grouped by service, showing Job, Service and Workspace spend stacked by day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anyscale/cost-by-service.png)
 
 ## Credits
 

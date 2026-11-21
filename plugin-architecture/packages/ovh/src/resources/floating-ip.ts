@@ -5,9 +5,10 @@ export const FloatingIpResourceType = rt({
   name: "Floating IP",
   plural: "Floating IPs",
   description: "An OVHcloud Public Cloud floating IP",
+  equivalence: "static-ip",
   fields: [
     f("ip", "IP", { showcase: true }),
-    f("region", "Region", { showcase: true }),
+    f("region", "Region", { showcase: true, sizing: "region" }),
     f("status", "Status", { showcase: true, required: false }),
     f("networkId", "Network ID", { required: false }),
     f("associatedEntity", "Associated Entity", { required: false }),

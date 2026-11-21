@@ -7,7 +7,7 @@ import {
   selectOptionSecondaryLines,
   SELECT_NARROW_LABEL_LIMIT,
 } from "../../components/create-resource/select-layout.js";
-import { RegionPicker } from "../../components/create-resource/RegionPicker.js";
+import { RegionPicker, regionOptionLines } from "../../components/create-resource/RegionPicker.js";
 import { DiskPicker } from "../../components/create-resource/DiskPicker.js";
 import { DiskSlider } from "../../components/create-resource/DiskSlider.js";
 import { SizeCard } from "../../components/create-resource/SizeCard.js";
@@ -199,6 +199,58 @@ describe("RegionPicker", () => {
     render(<RegionPicker regions={regions} value="ams3" onChange={onChange} filterValue="pg" />);
     expect(onChange).toHaveBeenCalledWith("nyc1");
   });
+
+  it("leads with the location when the label is only the id", () => {
+    expect(
+      regionOptionLines({ id: "us-east-2", label: "us-east-2", location: "Ohio, USA" }),
+    ).toEqual({ primary: "Ohio, USA", detail: null, id: "us-east-2" });
+    expect(regionOptionLines({ id: "ams1", label: "AMS1", location: "Amsterdam" })).toEqual({
+      primary: "Amsterdam",
+      detail: null,
+      id: "ams1",
+    });
+    expect(regionOptionLines({ id: "lon1", label: "lon1" })).toEqual({
+      primary: "lon1",
+      detail: null,
+      id: null,
+    });
+  });
+
+  it("leads with a label that names the option, keeping the location as detail", () => {
+    expect(
+      regionOptionLines({ id: "eastus", label: "East US", location: "Virginia, USA" }),
+    ).toEqual({ primary: "East US", detail: "Virginia, USA", id: "eastus" });
+    expect(regionOptionLines({ id: "us1", label: "US", location: "ui.honeycomb.io" })).toEqual({
+      primary: "US",
+      detail: "ui.honeycomb.io",
+      id: "us1",
+    });
+  });
+
+  it("shows a plan's name and summary when a plugin reuses it for plans", () => {
+    const plans = [
+      { id: "developer", label: "Developer ($20/month)", location: "500 build min" },
+      { id: "startup", label: "Startup ($200/month)", location: "5,000 build min" },
+    ];
+    render(<RegionPicker regions={plans} value="startup" onChange={vi.fn()} />);
+    const listbox = screen.getByRole("listbox", { name: "Regions" });
+    expect(within(listbox).getByText("Developer ($20/month)")).toBeInTheDocument();
+    expect(within(listbox).getByText("500 build min")).toBeInTheDocument();
+    expect(within(listbox).getByText("developer")).toBeInTheDocument();
+    // The selected value names the plan too, not its allowance.
+    expect(screen.getAllByText("Startup ($200/month)")).toHaveLength(2);
+  });
+
+  it("names the search and the list after the field it serves", () => {
+    const plans = [{ id: "developer", label: "Developer ($20/month)", location: "500 build min" }];
+    render(
+      <RegionPicker regions={plans} value="developer" onChange={vi.fn()} fieldLabel="Depot Plan" />,
+    );
+    const search = screen.getByLabelText("Search Depot Plan");
+    expect(search).toHaveAttribute("placeholder", "Search Depot Plan…");
+    expect(screen.getByRole("listbox", { name: "Depot Plan" })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search by location or zone…")).toBeNull();
+  });
 });
 
 describe("DiskPicker", () => {
@@ -264,6 +316,14 @@ describe("SizeCard", () => {
     render(<SizeCard size={small} selected maxMemory={2048} maxCpu={4} onSelect={vi.fn()} />);
     expect(screen.getByText("512 MB")).toBeInTheDocument();
   });
+
+  it("keeps the whole label readable when it is clamped", () => {
+    const long = { ...size, label: "1x RTX 4090 · Quebec, CA · 99.5% reliable · $0.350/hr" };
+    render(
+      <SizeCard size={long} selected={false} maxMemory={4096} maxCpu={4} onSelect={vi.fn()} />,
+    );
+    expect(screen.getByText(long.label)).toHaveAttribute("title", long.label);
+  });
 });
 
 describe("SizePicker", () => {
@@ -285,6 +345,25 @@ describe("SizePicker", () => {
     render(<SizePicker sizes={sizes} value="s1" onChange={onChange} />);
     fireEvent.click(screen.getByText("small").closest("button")!);
     expect(onChange).toHaveBeenCalledWith("s1");
+  });
+
+  it("lays a category with long labels out in two columns", () => {
+    const long: SizeOption[] = [
+      { id: "o1", label: "1x RTX 4090 · Quebec, CA · $0.350/hr", vcpus: 8, memoryMb: 32768 },
+      { id: "o2", label: "small", vcpus: 1, memoryMb: 1024, category: "Basic" },
+    ] as SizeOption[];
+    render(<SizePicker sizes={long} value="o1" onChange={vi.fn()} />);
+    const card = screen.getByText(long[0]!.label).closest("button")!;
+    expect(card.parentElement).toHaveClass("grid-cols-2");
+    fireEvent.click(screen.getByText("Basic").closest("button")!);
+    expect(screen.getByText("small").closest("button")!.parentElement).toHaveClass("grid-cols-3");
+  });
+
+  it("counts each collapsed category's options", () => {
+    const more = [...sizes, { ...sizes[1]!, id: "s3", label: "larger" }] as SizeOption[];
+    render(<SizePicker sizes={more} value="" onChange={vi.fn()} />);
+    expect(screen.getByText("1 option")).toBeInTheDocument();
+    expect(screen.getByText("2 options")).toBeInTheDocument();
   });
 
   it("opens a collapsed category when its header is clicked", () => {

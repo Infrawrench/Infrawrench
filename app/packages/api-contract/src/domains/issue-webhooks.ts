@@ -83,7 +83,7 @@ export class GithubIssueWebhookGroup extends HttpApiGroup.make("githubIssueWebho
       .annotate(OpenApi.Summary, "Inbound GitHub App webhook for issue status")
       .annotate(
         OpenApi.Description,
-        "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues and `ping` is acknowledged. Every other event is ignored.",
+        "The GitHub App's webhook URL. `X-Hub-Signature-256` is verified with the server's `GITHUB_APP_WEBHOOK_SECRET`; `issues` events update the status of filed issues; `push` and `pull_request` events start CI runs; `check_suite` and `check_run` `rerequested` events retry the CI runs behind Infrawrench's own checks; and `ping` is acknowledged. Every other event is ignored.",
       )
       .annotate(Security, [])
       .annotate(OpenApi.Transform, (operation) =>

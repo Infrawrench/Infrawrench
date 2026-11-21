@@ -64,7 +64,7 @@ const KEEP_FINISHED: usize = 1000;
 /// good (#1066).
 const KEEP_REPORT_SECS: u64 = 5 * 60;
 /// The current [`UsageRecord::schema`].
-pub const USAGE_SCHEMA: u32 = 4;
+pub const USAGE_SCHEMA: u32 = 5;
 /// The most runs of other runners this one helps at once, unless
 /// `--helping` says.
 pub const DEFAULT_HELPING: usize = 2;
@@ -192,6 +192,9 @@ pub struct JobUsage {
     pub status: String,
     pub duration_ms: u64,
     pub memory_mib: u64,
+    /// The whole vCPUs it held (`cpus:`); absent for its share of one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<u32>,
     /// A cloud job: it ran on the customer's account.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external: bool,
@@ -571,6 +574,9 @@ impl Server {
         let sandbox: Option<u64> = None;
         capacity["native_sandbox"] = json!(sandbox.is_some());
         capacity["sandbox_overhead"] = json!(sandbox);
+        // What jobs can run on here (`platform:`): the proxy places a run
+        // that needs a virtual machine on a runner that has one.
+        capacity["platforms"] = json!(self.runner.platforms());
         capacity
     }
 
@@ -617,10 +623,11 @@ impl Server {
                 loop {
                     let started = std::time::Instant::now();
                     let out = server.runner.layers.compact();
-                    if out.packed > 0 || !out.problems.is_empty() {
+                    if out.packed > 0 || out.removed > 0 || !out.problems.is_empty() {
                         eprintln!(
-                            "iwci serve: packed {} unused installs in {:.1}s, freeing {} MiB{}",
+                            "iwci serve: packed {} unused installs and removed {} an older installer made in {:.1}s, freeing {} MiB{}",
                             out.packed,
+                            out.removed,
                             started.elapsed().as_secs_f64(),
                             out.freed >> 20,
                             if out.problems.is_empty() {
@@ -824,6 +831,7 @@ impl Server {
                                         .as_ref()
                                         .and_then(|e| e.sandbox)
                                         .map_or(0, |s| s.reserved_mib),
+                                cpus: j.cpus,
                                 external: j.cloud.is_some(),
                                 remote: j.remote.is_some(),
                             });
@@ -1013,7 +1021,7 @@ impl Server {
     fn prepare(&self, req: &RunRequest) -> Response<std::io::Cursor<Vec<u8>>> {
         let slots = self.runner.slots.as_ref().expect("checked in new");
         // Preparing uses a slot like a job does: it unpacks and compiles.
-        let Some(_slot) = slots.try_acquire() else {
+        let Some(_slot) = slots.try_acquire(1) else {
             return self.full();
         };
         match self.runner.prepare(req) {
@@ -1396,6 +1404,7 @@ mod tests {
             helping: Some(Arc::new(crate::schedule::Helping::default())),
             #[cfg(target_os = "linux")]
             sandbox: None,
+            machines: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()
@@ -1506,6 +1515,47 @@ mod tests {
         done.recv_timeout(std::time::Duration::from_secs(10))
             .expect("the offer ended by itself");
         wait_for("the drain to be idle", || server.busy() == 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // Native tools have Linux targets only.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn warming_leaves_a_native_tool_as_it_is() {
+        // builtin:bun is a native program gVisor runs, not a module: the
+        // warmer read it as WebAssembly and reported a problem every pass.
+        let (server, dir) = server("warm-native", 0);
+        let program = dir.join("bun");
+        std::fs::write(&program, b"\x7fELF not a wasm module").unwrap();
+        let draft = iwci_store::ToolDraft {
+            name: "bun".into(),
+            version: "1.4.4".parse().unwrap(),
+            abi: iwci_store::Abi::NativeGvisor,
+            module: None,
+            files: Vec::new(),
+            args: Vec::new(),
+            env: Default::default(),
+            description: None,
+            targets: [(
+                iwci_store::host_target(),
+                iwci_store::TargetSource {
+                    program: Some(program),
+                    files: Vec::new(),
+                },
+            )]
+            .into(),
+            aliases: vec!["bunx".into()],
+            commands: Default::default(),
+        };
+        iwci_store::publish_tool(
+            server.runner.store.as_ref(),
+            &iwci_store::Namespace::Builtin,
+            &draft,
+        )
+        .unwrap();
+        let out = server.runner.warm_published();
+        assert_eq!(out.problems, Vec::<String>::new());
+        assert_eq!(out.warmed, vec!["builtin:bun@1.4.4".to_string()]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

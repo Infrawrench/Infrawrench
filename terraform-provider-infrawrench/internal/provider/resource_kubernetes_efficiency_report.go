@@ -74,7 +74,8 @@ func (r *kubernetesEfficiencyReportResource) Schema(_ context.Context, _ resourc
 			"what workloads reserved only. The figures are computed when the report runs, under the " +
 			"viewer's cost visibility scope; this resource manages the definition.\n\n" +
 			"Write either `date_preset` (a rolling window) or both `date_from` and `date_to` (a fixed " +
-			"span).",
+			"span). Share a report with `infrawrench_object_sharing` using " +
+			"`object_type = \"kubernetes_efficiency_report\"`.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,

@@ -129,6 +129,7 @@ pub(crate) fn make(
         limits: crate::Limits {
             timeout: Duration::from_secs(120),
             memory_bytes: 2 << 30,
+            cpus: None,
         },
         log: None,
         scratch: None,

@@ -47,9 +47,9 @@ If you're on a Team, enter the team ID so you see team-owned projects.
 - **Manage environment variables**: create with a project picker, then **Edit** to replace the value, switch between encrypted, sensitive (write-only) and plain, or change the targets and branch.
 - **Add webhooks**: pick the events (deployments, projects, domains, env vars, firewall, budgets) and optionally the projects. The signing secret is shown once, when you create it, and kept as the webhook's **Signing Secret** output.
 
-<insert [Vercel deployment detail view showing the Cancel/Redeploy/Promote header actions and the Logs tab with build output] here>
+![Vercel deployment detail view showing the Redeploy and Promote to Production header actions and the Logs tab with build output](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vercel/deployment-logs.png)
 
-<insert [Vercel project Metrics tab showing Page Views, Visitors and Custom Events charts over the last week] here>
+![Vercel project Metrics tab showing Page Views, Visitors and Custom Events charts over the last week](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vercel/project-metrics.png)
 
 ## Tips & limits
 

@@ -10,7 +10,7 @@ Connect an Axiom organization to manage its datasets and alerting, query your da
 
 - **Organization**: the account opens on your organization, with its plan, billing period, default edge deployment and the limits its license sets. You can rename it here. The Metrics tab charts hourly ingest (GB) and query compute (GB·ms).
 - **Datasets**: create datasets (events, OpenTelemetry logs, traces or metrics, in any edge deployment your plan includes), and edit the description and retention. **Trim to 30 days** or **Trim to 7 days** deletes older events. **Vacuum fields** removes fields that no longer hold data. Each dataset has:
-  - a **query editor** that runs APL against it (it's in the SQL editor tab, but takes APL),
+  - an **APL Editor** tab that runs APL against it,
   - a **Logs** tab with its newest events, which also makes datasets available in [Log workspaces](../features/log-workspace.md),
   - a **Metrics** tab charting events over time and the bytes the dataset ingested.
 - **Fields**: every field of a dataset. Set its unit, description and visibility, or delete it.
@@ -22,7 +22,7 @@ Connect an Axiom organization to manage its datasets and alerting, query your da
 - **API tokens**: create a token with ingest or query access to the datasets you pick and read access to the parts of the organization you pick, **Regenerate** it, or delete it. Axiom shows a token only once. For tokens you create or regenerate here, it's saved as the token's **Token** output, ready to export to a Kubernetes secret or a server.
 - **Users**: list members with their role, and remove them.
 
-<insert [Axiom dataset detail page with the query editor running an APL query and the Metrics tab showing Events and Ingested (GB) charts] here>
+![Axiom dataset detail page with the APL Editor tab running an APL query and showing its results](https://agent-assets.infrawrench.com/docs-screenshots/plugins/axiom/dataset-query-apl-tab.png)
 
 ## Connect your organization
 
@@ -33,7 +33,7 @@ Use an **advanced API token**. In Axiom, open **Settings > API tokens > New API 
 
 A **personal access token** (Settings > Profile > Personal tokens) also works and can do everything your user can. It needs the **Organization** field, which you pick from the organizations the token can see. With a personal token, queries only reach your organization's default edge deployment.
 
-<insert [Axiom Add-account form with the API Token field filled in and the Organization field left on The token's organization] here>
+![Axiom Add-account form with the API Token field filled in and the Organization field left on The token's organization](https://agent-assets.infrawrench.com/docs-screenshots/plugins/axiom/add-account.png)
 
 ## Metrics and usage
 

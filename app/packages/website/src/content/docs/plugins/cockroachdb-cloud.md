@@ -19,7 +19,7 @@ Connect a CockroachDB Cloud organization to manage its clusters on every plan (B
 - **Folders**: create, rename and delete.
 - **Service accounts** and their **API keys**: create service accounts with organization roles, rename them, create keys (the secret is shown once) and delete them.
 
-<insert [CockroachDB Cloud cluster detail page showing plan, regions, the Nodes table and the Access, Backups and Operations tabs] here>
+![CockroachDB Cloud cluster detail page showing plan, regions, the Nodes table and the Access, Backups and Operations tabs](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cockroachdb-cloud/cluster-detail.png)
 
 ## Connect your organization
 
@@ -34,7 +34,7 @@ Use a **service account API key**.
 
 When you add the account, the permission checklist tests each capability.
 
-<insert [CockroachDB Cloud Add-account form with the API Key field filled in and the permission checklist below it] here>
+![CockroachDB Cloud Add-account form with the API Key field filled in and the permission checklist below it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cockroachdb-cloud/add-account.png)
 
 ## Connect to a database as a SQL user
 

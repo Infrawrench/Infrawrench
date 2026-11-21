@@ -29,7 +29,7 @@ Connect to vCenter Server 7.0 or later. Standalone ESXi hosts can't be added dir
 
 Clusters, hosts, resource pools, datastores, folders, networks, templates and ISOs are all picked from lists.
 
-<insert [vSphere Create Virtual Machine form with "Content library VM template" selected, showing the template, cluster, datastore and network pickers] here>
+![vSphere Create Virtual Machine form with "Content library VM template" selected, showing the template, cluster, host, resource pool, datastore and folder pickers](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vsphere/create-vm-template.png)
 
 ## Connect vCenter
 
@@ -39,7 +39,7 @@ Clusters, hosts, resource pools, datastores, folders, networks, templates and IS
 
 By default vCenter signs its certificate with the VMware Certificate Authority. Download the root CA from the vCenter landing page (**Download trusted root CA certificates**) and paste the PEM into **CA Certificate** under advanced options.
 
-<insert [vSphere add-account form with vCenter URL, username, password and the expanded CA Certificate field] here>
+![vSphere add-account form with vCenter URL, username, password and the expanded CA Certificate field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vsphere/add-account.png)
 
 ## Consoles and Terraform
 
@@ -47,7 +47,7 @@ By default vCenter signs its certificate with the VMware Certificate Authority. 
 - **Open remote console** launches the VMware Remote Console app with a one-time ticket. You need VMRC installed.
 - **Export to Terraform** writes `vmware/vsphere` blocks for tag categories, tags, content libraries, datacenters and resource pools.
 
-<insert [vSphere VM detail view showing the power and guest actions, the Guest section with IP address and VMware Tools state, and attached tags] here>
+![vSphere VM detail view showing the power and guest actions, the Guest section with IP address and VMware Tools state, and attached tags](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vsphere/vm-detail.png)
 
 ## CI jobs
 

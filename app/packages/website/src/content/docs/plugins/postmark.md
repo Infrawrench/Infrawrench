@@ -17,7 +17,7 @@ Connect a Postmark account to see and manage everything it sends mail with, and 
 - **Templates and layouts**: create, edit (name, alias, subject, HTML and text bodies, layout) and delete.
 - **Inbound rules**: addresses and domains whose inbound mail the server blocks.
 
-<insert [Postmark server detail page showing the Last 30 days stats, Bounces by type and Recent outbound messages sections] here>
+![Postmark server detail page showing the Last 30 days stats, Bounces by type and Recent outbound messages sections](https://agent-assets.infrawrench.com/docs-screenshots/plugins/postmark/server-detail.png)
 
 ## Connect your account
 
@@ -25,7 +25,7 @@ Use the **account API token** (recommended). In Postmark, open **Account > API T
 
 If you can't get the account token, enter a single **server API token** instead, from the server's **API Tokens** tab. You'll then see just that server and what's inside it. Domains and sender signatures need the account token.
 
-<insert [Postmark Add-account form with the Account API Token field filled in and the Server API Token field left blank] here>
+![Postmark Add-account form with the Account API Token field filled in and the Server API Token field left blank](https://agent-assets.infrawrench.com/docs-screenshots/plugins/postmark/add-account.png)
 
 ## Metrics
 

@@ -16,6 +16,7 @@ import { virtualTagTools } from "./virtual-tags";
 import { costReportTools } from "./cost-reports";
 import { costCanvasTools } from "./cost-canvases";
 import { kubernetesEfficiencyTools } from "./k8s-efficiency";
+import { commitmentReportTools } from "./commitment-reports";
 import { costAlertTools } from "./cost-alerts";
 import { invoiceTools } from "./invoices";
 import { scheduleTools } from "./schedules";
@@ -26,6 +27,7 @@ import { extendedSupportTools } from "./extended-support";
 import { seatTools } from "./seats";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
+import { migrationEstimateTools } from "./migration-estimates";
 import { instancePricingTools } from "./instance-pricing";
 import { aiAttributionTools } from "./ai-attribution";
 import { networkCostTools } from "./network-costs";
@@ -37,6 +39,7 @@ import { sshHostKeyTools } from "./ssh-host-keys";
 import { linuxAppTools } from "./linux-apps";
 import { vulnerabilityTools } from "./vulnerabilities";
 import { ciTools } from "./ci";
+import { envFileTools } from "./env-files";
 import { forProduct } from "./products";
 import type { ToolDefinition } from "./types";
 
@@ -49,7 +52,8 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     // (`./products`); `./generic` tags its own per tool. Untagged modules are always available: connections,
     // SSH keys and host keys, Linux apps and the per-plugin create tools are
     // Infrastructure; sleep/wake schedules act on resources; GitHub issues and
-    // IaC pull requests, the moment view and custom graphs cut across apps.
+    // IaC pull requests, the moment view, custom graphs and environment files
+    // cut across apps.
     ...genericTools(),
     ...connectionTools(),
     ...forProduct("costs", costTools()),
@@ -59,6 +63,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...forProduct("costs", costReportTools()),
     ...forProduct("costs", costCanvasTools()),
     ...forProduct("costs", kubernetesEfficiencyTools()),
+    ...forProduct("costs", commitmentReportTools()),
     ...forProduct("costs", costAlertTools()),
     ...forProduct("costs", invoiceTools()),
     ...scheduleTools(),
@@ -69,6 +74,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...forProduct("costs", seatTools()),
     ...forProduct("costs", carbonTools()),
     ...forProduct("costs", priceCatalogTools()),
+    ...forProduct("costs", migrationEstimateTools()),
     ...forProduct("costs", instancePricingTools()),
     ...forProduct("costs", aiAttributionTools()),
     ...forProduct("costs", networkCostTools()),
@@ -78,6 +84,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...sshKeyTools(),
     ...sshHostKeyTools(),
     ...linuxAppTools(),
+    ...envFileTools(),
     ...forProduct("security", vulnerabilityTools()),
     ...forProduct("delivery", ciTools()),
     ...(await perPluginCreateTools()),

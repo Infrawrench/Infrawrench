@@ -17,7 +17,7 @@ Start from the cluster or account that will hold the secret, then pick the sourc
 5. Pick a namespace, rename keys if you like, and set the secret name.
 6. Click **Create Secret**.
 
-<insert [The Create Kubernetes Secret dialog opened from Connect resource, showing the key rows, namespace picker and secret name] here>
+![The Create Kubernetes Secret dialog opened from Connect resource, showing the key rows, namespace picker and secret name](https://agent-assets.infrawrench.com/docs-screenshots/features/secret-export-to-kubernetes/create-secret-from-connect.png)
 
 ## Create a secret on desktop
 
