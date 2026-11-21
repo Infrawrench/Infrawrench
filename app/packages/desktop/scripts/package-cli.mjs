@@ -18,7 +18,6 @@
 //
 // Environment:
 //   CLI_CODESIGN_IDENTITY  macOS signing identity (default "-", ad hoc)
-//   POSTJECT               postject command (default: npx postject@1.0.0-alpha.6)
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
@@ -30,6 +29,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -40,6 +40,7 @@ const release = join(out, "release");
 
 // From the Node docs; postject flips its last character to mark the blob present.
 const SENTINEL = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+const POSTJECT = "postject@1.0.0-alpha.6";
 
 const OS = { linux: "linux", darwin: "darwin", win32: "windows" }[process.platform];
 const ARCH = { x64: "x64", arm64: "arm64" }[process.arch];
@@ -50,16 +51,35 @@ function run(command, args, options = {}) {
   return execFileSync(command, args, { stdio: "inherit", shell: false, ...options });
 }
 
-function postject(args) {
-  const custom = process.env.POSTJECT;
-  if (custom) return run(custom, args, { shell: process.platform === "win32" });
-  return run("npx", ["--yes", "postject@1.0.0-alpha.6", ...args], {
-    shell: process.platform === "win32",
-  });
+/**
+ * postject's API, installed into out/cli/tools for this run. Not `npx
+ * postject`: on Windows, npx under cmd installs the package and then cannot
+ * find its `postject` command. Not a devDependency either: only release
+ * runners need it.
+ */
+function loadPostject() {
+  const tools = join(out, "tools");
+  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  run(
+    npm,
+    [
+      "install",
+      "--no-save",
+      "--no-package-lock",
+      "--no-audit",
+      "--no-fund",
+      "--prefix",
+      tools,
+      POSTJECT,
+    ],
+    // Node refuses to spawn a .cmd without a shell.
+    { shell: process.platform === "win32" },
+  );
+  return createRequire(join(tools, "package.json"))("postject");
 }
 
 /** The executable: this `node`, with the bundle injected. */
-function buildExecutable(version) {
+async function buildExecutable(version) {
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
   const blob = join(work, "sea-prep.blob");
@@ -87,14 +107,12 @@ function buildExecutable(version) {
   copyFileSync(process.execPath, exe);
   chmodSync(exe, 0o755);
   if (process.platform === "darwin") run("codesign", ["--remove-signature", exe]);
-  postject([
-    exe,
-    "NODE_SEA_BLOB",
-    blob,
-    "--sentinel-fuse",
-    SENTINEL,
-    ...(process.platform === "darwin" ? ["--macho-segment-name", "NODE_SEA"] : []),
-  ]);
+  const { inject } = loadPostject();
+  console.log(`postject: injecting NODE_SEA_BLOB into ${exe}`);
+  await inject(exe, "NODE_SEA_BLOB", readFileSync(blob), {
+    sentinelFuse: SENTINEL,
+    ...(process.platform === "darwin" ? { machoSegmentName: "NODE_SEA" } : {}),
+  });
   if (process.platform === "darwin") {
     const identity = process.env.CLI_CODESIGN_IDENTITY || "-";
     run("codesign", ["--sign", identity, "--force", exe]);
@@ -171,7 +189,7 @@ if (!OS || !ARCH)
   throw new Error(`package-cli: unsupported platform ${process.platform}-${process.arch}`);
 if (!existsSync(bundle)) throw new Error("package-cli: run scripts/build-cli.mjs first");
 const { version } = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-const exe = buildExecutable(version);
+const exe = await buildExecutable(version);
 const files = [archive(exe)];
 if (process.platform === "linux") files.push(debian(exe, version));
 for (const file of files) console.log(`package-cli: ${file}`);

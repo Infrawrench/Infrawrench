@@ -20,15 +20,34 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = path.join(__dirname, "../../../website/public/cli/install.sh");
 
+/** Whether `sh` finds `tool` on PATH the way the script asks: `command -v`. */
+const shellFinds = (tool: string, dir?: string) =>
+  spawnSync("sh", ["-c", `command -v ${tool}`], {
+    env: { ...process.env, PATH: `${dir ? `${dir}:` : ""}${process.env.PATH ?? ""}` },
+  }).status === 0;
+
+/**
+ * The script downloads with whichever of curl and wget `command -v` finds,
+ * so the tests stub `curl` on PATH. Infrawrench CI's WASIX shell runs a stub
+ * by name (the `uname` stub works there) but `command -v` does not report
+ * one, so the cases that download need a shell that does.
+ */
+const FINDS_STUBS = (() => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "iw-probe-"));
+  try {
+    writeFileSync(path.join(dir, "iw-probe"), "#!/bin/sh\n", { mode: 0o755 });
+    return shellFinds("iw-probe", dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
 /**
  * Installing extracts the archive with `tar -xz`, which needs `tar` and
- * `gzip` on PATH. Infrawrench CI's `env:bash-node@24.0.18` has neither (they
- * arrived in 24.0.22), so the install cases run where both exist and the
- * refusals, which never extract, run everywhere.
+ * `gzip`. Infrawrench CI's `env:bash-node@24.0.18` has neither (they arrived
+ * in 24.0.22). The refusals, which never download or extract, run everywhere.
  */
-const HAS_TAR = ["tar", "gzip"].every(
-  (tool) => spawnSync("sh", ["-c", `command -v ${tool}`]).status === 0,
-);
+const CAN_INSTALL = FINDS_STUBS && shellFinds("tar") && shellFinds("gzip");
 
 /** One regular file as a POSIX ustar archive. */
 function tarball(name: string, content: string, mode: number): Buffer {
@@ -118,7 +137,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     ["Linux", "x86_64", "infrawrench-cli-linux-x64.tar.gz"],
     ["Linux", "aarch64", "infrawrench-cli-linux-arm64.tar.gz"],
     ["Darwin", "arm64", "infrawrench-cli-darwin-arm64.tar.gz"],
-  ])("installs the %s %s build", { skip: !HAS_TAR }, (system, machine, asset) => {
+  ])("installs the %s %s build", { skip: !CAN_INSTALL }, (system, machine, asset) => {
     stub(system, machine);
     publish(asset);
     const result = install();
@@ -131,7 +150,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(installed.stdout.trim()).toBe("1.2.3");
   });
 
-  it("refuses a download whose checksum does not match", () => {
+  it("refuses a download whose checksum does not match", { skip: !FINDS_STUBS }, () => {
     stub("Linux", "x86_64");
     publish(
       "infrawrench-cli-linux-x64.tar.gz",
