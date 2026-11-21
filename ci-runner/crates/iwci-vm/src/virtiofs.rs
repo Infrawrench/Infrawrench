@@ -41,6 +41,9 @@ use vm_memory::{
     GuestMemoryMmap,
 };
 use vmm_sys_util::epoll::EventSet;
+use vmm_sys_util::event::{
+    EventConsumer, EventFlag, EventNotifier, new_event_consumer_and_notifier,
+};
 
 use crate::fuse::{MAX_IO, Server};
 
@@ -195,6 +198,13 @@ impl VhostUserBackend for Backend {
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
         VhostUserProtocolFeatures::MQ
+    }
+
+    /// An event per worker thread of the library's, which it signals when
+    /// the device goes away; without one, dropping the daemon waits for
+    /// those threads forever.
+    fn exit_event(&self, _thread_index: usize) -> Option<(EventConsumer, EventNotifier)> {
+        new_event_consumer_and_notifier(EventFlag::NONBLOCK | EventFlag::CLOEXEC).ok()
     }
 
     fn set_event_idx(&self, _enabled: bool) {

@@ -110,13 +110,18 @@ pub fn build_root() -> io::Result<()> {
     let nosuid = libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC;
     mount("proc", "/proc", Some("proc"), nosuid, None)?;
     mount("sysfs", "/sys", Some("sysfs"), nosuid, None)?;
-    mount(
+    // A kernel booted without an initramfs mounts devtmpfs on /dev itself
+    // (CONFIG_DEVTMPFS_MOUNT), so it may be there already.
+    match mount(
         "devtmpfs",
         "/dev",
         Some("devtmpfs"),
         libc::MS_NOSUID,
         Some("mode=0755"),
-    )?;
+    ) {
+        Err(e) if e.raw_os_error() == Some(libc::EBUSY) => {}
+        other => other?,
+    }
 
     mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
     mkdir("/.iwci/rw/upper")?;
