@@ -241,7 +241,8 @@ pub fn build_root() -> io::Result<()> {
     std::env::set_current_dir("/")
 }
 
-/// The environment every script starts from.
+/// The environment every script starts from, before the image's
+/// `/etc/environment` ([`crate::exec::image_environment`]).
 const ENVIRONMENT: [(&str, &str); 6] = [
     (
         "PATH",
@@ -325,6 +326,13 @@ pub fn run() -> ! {
     }
     mark("root built");
     for (key, value) in ENVIRONMENT {
+        // SAFETY: the process has one thread so far.
+        unsafe { std::env::set_var(key, value) };
+    }
+    // What the image sets for every job (rbenv's shims on the PATH,
+    // NVM_DIR): it knows what it installed.
+    let file = std::fs::read_to_string("/etc/environment").unwrap_or_default();
+    for (key, value) in crate::exec::image_environment(&file) {
         // SAFETY: the process has one thread so far.
         unsafe { std::env::set_var(key, value) };
     }

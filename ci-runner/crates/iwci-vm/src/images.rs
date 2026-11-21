@@ -48,6 +48,82 @@ pub struct ImageInfo {
     /// Windows: states saved just after boot, one per size.
     #[serde(default)]
     pub states: Vec<SavedState>,
+    /// Directories whose additions a job keeps between runs, as an
+    /// isolate environment's `caches` (the versions nvm and rbenv
+    /// install). Checked by [`check_caches`].
+    #[serde(default)]
+    pub caches: Vec<ImageCache>,
+}
+
+/// One of an image's caches.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageCache {
+    /// What `env-cache:` and the report call it.
+    pub name: String,
+    /// An absolute directory in the machine.
+    pub path: String,
+    /// The most a saved cache holds, in bytes of file content.
+    #[serde(rename = "max-bytes")]
+    pub max_bytes: u64,
+}
+
+/// The limits an environment's caches have: up to 8, names
+/// `[a-z0-9][a-z0-9_-]*`, absolute paths none inside another, and
+/// `max-bytes` between 1 MiB and 4 GiB.
+pub fn check_caches(caches: &[ImageCache]) -> Result<(), String> {
+    if caches.len() > 8 {
+        return Err(format!("{} caches, more than 8", caches.len()));
+    }
+    for (n, cache) in caches.iter().enumerate() {
+        let name_ok = cache
+            .name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && cache
+                .name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');
+        if !name_ok {
+            return Err(format!(
+                "cache name `{}` is not [a-z0-9][a-z0-9_-]*",
+                cache.name
+            ));
+        }
+        let path_ok = cache.path.starts_with('/')
+            && cache.path.len() > 1
+            && !cache.path.ends_with('/')
+            && !cache
+                .path
+                .split('/')
+                .any(|part| part == "." || part == "..");
+        if !path_ok {
+            return Err(format!(
+                "cache `{}`: `{}` is not an absolute directory",
+                cache.name, cache.path
+            ));
+        }
+        if !(1 << 20..=4 << 30).contains(&cache.max_bytes) {
+            return Err(format!(
+                "cache `{}`: max-bytes is not between 1 MiB and 4 GiB",
+                cache.name
+            ));
+        }
+        for other in &caches[..n] {
+            let inside = |a: &str, b: &str| a == b || a.starts_with(&format!("{b}/"));
+            if other.name == cache.name {
+                return Err(format!("two caches are called `{}`", cache.name));
+            }
+            if inside(&cache.path, &other.path) || inside(&other.path, &cache.path) {
+                return Err(format!(
+                    "caches `{}` and `{}` overlap",
+                    other.name, cache.name
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,6 +186,8 @@ pub struct LinuxImage {
 impl LinuxImage {
     pub fn open(dir: &Path, arch: &str) -> Result<LinuxImage, String> {
         let info = read_info(dir, "linux", arch)?;
+        check_caches(&info.caches)
+            .map_err(|e| format!("{}: {e}", dir.join("image.json").display()))?;
         let kernel = if arch == "aarch64" {
             "Image"
         } else {
@@ -305,6 +383,62 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn an_images_caches_are_read_and_checked() {
+        let dir = temp("caches");
+        std::fs::write(dir.join("vmlinux"), b"k").unwrap();
+        std::fs::write(dir.join("rootfs.erofs"), b"r").unwrap();
+        let write = |caches: &str| {
+            std::fs::write(
+                dir.join("image.json"),
+                format!(
+                    r#"{{"os":"linux","image":"ubuntu-24.04","arch":"x86_64","caches":[{caches}]}}"#
+                ),
+            )
+            .unwrap();
+        };
+        write(
+            r#"{"name":"nvm","path":"/root/.nvm/versions","max-bytes":1048576},{"name":"rbenv","path":"/root/.rbenv","max-bytes":4294967296}"#,
+        );
+        let image = LinuxImage::open(&dir, "x86_64").unwrap();
+        assert_eq!(
+            image.info.caches[0],
+            ImageCache {
+                name: "nvm".into(),
+                path: "/root/.nvm/versions".into(),
+                max_bytes: 1 << 20,
+            }
+        );
+        for (bad, why) in [
+            (
+                r#"{"name":"Nvm","path":"/a","max-bytes":1048576}"#,
+                "is not [a-z0-9]",
+            ),
+            (
+                r#"{"name":"a","path":"a","max-bytes":1048576}"#,
+                "not an absolute",
+            ),
+            (
+                r#"{"name":"a","path":"/a/../b","max-bytes":1048576}"#,
+                "not an absolute",
+            ),
+            (r#"{"name":"a","path":"/a","max-bytes":1}"#, "between 1 MiB"),
+            (
+                r#"{"name":"a","path":"/a","max-bytes":1048576},{"name":"b","path":"/a/b","max-bytes":1048576}"#,
+                "overlap",
+            ),
+            (
+                r#"{"name":"a","path":"/a","max-bytes":1048576},{"name":"a","path":"/b","max-bytes":1048576}"#,
+                "two caches",
+            ),
+        ] {
+            write(bad);
+            let e = LinuxImage::open(&dir, "x86_64").unwrap_err();
+            assert!(e.contains(why), "{bad}: {e}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
