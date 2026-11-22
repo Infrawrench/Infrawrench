@@ -512,6 +512,8 @@ BASH_ENV="/etc/iwci/bash_env"
 RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
+npm_config_package_import_method="hardlink"
+npm_config_node_linker="isolated"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
 EOF
 
