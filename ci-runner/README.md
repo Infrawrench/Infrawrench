@@ -721,8 +721,11 @@ jobs:
   216 MB clone right after boot takes the same time, a second walk of it
   is faster, and no image has to be made for the commit. An older image
   gets the clone as a read-only erofs disk made once per commit, and the
-  rest copied in. Either way, what the job writes stays in the machine's
-  own memory, and afterwards it sends back what the scheduler reads:
+  rest copied in. Either way, what the job writes goes to a 20 GiB sparse
+  disk the runner attaches to the machine and formats as ext4; the guest
+  mounts it as the writable layer, so a large install no longer comes out
+  of the job's memory. A runner that cannot attach one falls back to the
+  old tmpfs. Afterwards the job sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
   `changes:`, the clone without what its `.gitignore` ignores. A job's
   `npm ci` stays in the machine, and artifacts in ignored directories

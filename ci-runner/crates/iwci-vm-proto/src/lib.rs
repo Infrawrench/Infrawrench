@@ -303,6 +303,9 @@ pub struct Setup {
 
 /// The tag the run's `/tmp/workflow` device carries.
 pub const SCRATCH_TAG: &str = "iwci-scratch";
+/// The serial of the block device the runner attaches as the job's
+/// writable layer; the agent finds it by serial and formats it as ext4.
+pub const SCRATCH_SERIAL: &str = "iwci-rw";
 /// The tag the job's own files carry when they are served read only
 /// rather than given as a disk image and an archive; the kernel's command
 /// line says `iwci.files=<tag>` then, for the agent to mount at boot.

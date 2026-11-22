@@ -40,7 +40,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use iwci_vm_proto::{AGENT_PORT, GUEST_MAC};
+use iwci_vm_proto::{AGENT_PORT, GUEST_MAC, SCRATCH_SERIAL};
 
 /// The serial the workspace disk carries, which the guest looks for.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
@@ -103,6 +103,9 @@ pub struct Linux<'a> {
     pub rootfs: &'a Path,
     /// The workspace's erofs image, when the job has files.
     pub workspace: Option<&'a Path>,
+    /// This job's scratch disk, formatted as ext4 by the guest and mounted
+    /// as the writable layer. Sparse on the host, deleted with the run dir.
+    pub scratch_disk: Option<&'a Path>,
     pub memory_mib: u64,
     pub cpus: u32,
     pub sockets: &'a Sockets,
@@ -278,6 +281,17 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
         args.push("-device".into());
         args.push(format!("virtio-blk-device,drive=ws,serial={WORKSPACE_SERIAL}").into());
     }
+    // Before the aarch64 root: adding a block device after it would move
+    // `vda` off the root disk. The guest finds this one by its serial.
+    if let Some(disk) = m.scratch_disk {
+        args.push("-drive".into());
+        args.push(path_arg(
+            "if=none,id=rw,format=raw,cache=unsafe,file=",
+            disk,
+        ));
+        args.push("-device".into());
+        args.push(format!("virtio-blk-device,drive=rw,serial={SCRATCH_SERIAL}").into());
+    }
     if m.arch == Arch::Aarch64 {
         root(&mut args);
     }
@@ -398,6 +412,7 @@ mod tests {
             kernel: Path::new("/img/vmlinux"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 2048,
             cpus: 1,
             sockets: &s,
@@ -428,6 +443,7 @@ mod tests {
             kernel: Path::new("/img/Image"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 512,
             cpus: 1,
             sockets: &s,
@@ -458,6 +474,7 @@ mod tests {
             kernel: Path::new("/img/vmlinux"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 1024,
             cpus: 1,
             sockets: &s,
@@ -479,6 +496,7 @@ mod tests {
             kernel: Path::new("/img/vmlinux"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 1024,
             cpus: 1,
             sockets: &sockets(false),
@@ -496,6 +514,7 @@ mod tests {
             kernel: Path::new("/img/vmlinux"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: Some(Path::new("/cache/ws.erofs")),
+            scratch_disk: None,
             memory_mib: 2048,
             cpus: 2,
             sockets: &s,
@@ -527,6 +546,44 @@ mod tests {
     }
 
     #[test]
+    fn the_scratch_disk_does_not_move_the_root_disk() {
+        let s = sockets(true);
+        for (arch, kernel) in [
+            (Arch::X86_64, "/img/vmlinux"),
+            (Arch::Aarch64, "/img/Image"),
+        ] {
+            let args = strings(&linux_args(&Linux {
+                arch,
+                kernel: Path::new(kernel),
+                rootfs: Path::new("/img/rootfs.erofs"),
+                workspace: Some(Path::new("/cache/ws.erofs")),
+                scratch_disk: Some(Path::new("/m/scratch.img")),
+                memory_mib: 2048,
+                cpus: 2,
+                sockets: &s,
+                huge_pages: false,
+            }));
+            let text = args.join(" ");
+            assert!(
+                text.contains("if=none,id=rw,format=raw,cache=unsafe,file=/m/scratch.img"),
+                "{text}"
+            );
+            assert!(
+                text.contains("virtio-blk-device,drive=rw,serial=iwci-rw"),
+                "{text}"
+            );
+            let root = text.find("drive=root").unwrap();
+            let rw = text.find("drive=rw").unwrap();
+            // `root=/dev/vda`: microvm numbers devices in command-line
+            // order, virt on aarch64 in reverse.
+            match arch {
+                Arch::X86_64 => assert!(root < rw, "{text}"),
+                Arch::Aarch64 => assert!(rw < root, "{text}"),
+            }
+        }
+    }
+
+    #[test]
     fn a_linux_machine_without_network_or_files() {
         let s = sockets(false);
         let args = strings(&linux_args(&Linux {
@@ -534,6 +591,7 @@ mod tests {
             kernel: Path::new("/img/Image"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 512,
             cpus: 1,
             sockets: &s,

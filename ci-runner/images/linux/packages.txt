@@ -56,6 +56,7 @@ apt 7zip -
 apt xz-utils -
 apt zstd -
 apt bzip2 -
+apt e2fsprogs -
 
 # Data
 apt jq -
