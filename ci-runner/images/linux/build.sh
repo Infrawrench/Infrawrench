@@ -434,6 +434,16 @@ in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
 rm -rf "$root/root/.goenv/versions/iwci-shim-names"
 [[ -x "$root/root/.goenv/shims/go" ]] || die "goenv rehash made no shims"
 
+# goenv reads a `go` line in go.mod as a version request, so the Go installed
+# above must also be a goenv version or jobs with a go.mod refuse to start.
+# Link the real install under GOENV_ROOT (goenv lists versions with -d, which
+# follows a link) and rehash once more so the shims see it.
+read -r gov _sum < <(release_line go)
+ln -s /usr/local/go "$root/root/.goenv/versions/$gov"
+in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
+installed_versions="$(in_root env GOENV_ROOT=/root/.goenv goenv versions)"
+grep -qF "$gov" <<<"$installed_versions" || die "goenv does not list the bundled Go $gov"
+
 read -r v s < <(release_line rustup)
 fetch "https://static.rust-lang.org/rustup/archive/$v/$rusttriple/rustup-init" "$s" "rustup-init"
 install -m 0755 "$dl/rustup-init" "$root/tmp/rustup-init"
@@ -508,6 +518,7 @@ GOENV_ROOT="/root/.goenv"
 GOENV_DISABLE_GOPATH="1"
 GOENV_DISABLE_GOCACHE="1"
 GOENV_ASSUME_YES="1"
+GOENV_AUTO_INSTALL="1"
 BASH_ENV="/etc/iwci/bash_env"
 RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
