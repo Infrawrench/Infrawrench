@@ -14,7 +14,7 @@ use gix::objs::tree::EntryKind;
 use iwci_vfs::VfsError;
 use iwci_vfs::virtual_fs::{AsyncWriteExt, FileSystem, FsError, mem_fs};
 
-use crate::{GitError, Result, find_commit};
+use crate::{GitError, Result, find_commit, git_dir};
 
 /// Deeper trees than this are refused. Real repositories stay far below
 /// it; a crafted one could otherwise recurse until the stack runs out.
@@ -63,6 +63,7 @@ pub(crate) fn checkout(
     commit: ObjectId,
     builder: &iwci_vfs::SnapshotBuilder,
     into: &str,
+    with_git: bool,
 ) -> Result<Checkout> {
     let fs = builder.fs();
     let tree = find_commit(repo, commit)?.tree_id()?.detach();
@@ -77,7 +78,7 @@ pub(crate) fn checkout(
         hash: repo.object_hash(),
         fs,
         root_len: root.as_os_str().len(),
-        path: root,
+        path: root.clone(),
         blob: Vec::new(),
         tree_bufs: Vec::new(),
         files: Vec::new(),
@@ -88,11 +89,31 @@ pub(crate) fn checkout(
         },
     };
     walker.tree(tree, 0)?;
-    let Walker { files, mut out, .. } = walker;
+    let Walker {
+        mut files, mut out, ..
+    } = walker;
     out.files = files.len();
-    out.bytes = write_files(repo, fs, &files)?;
+    out.bytes = write_files(repo, fs, &mut files)?;
     for job in files.iter().filter(|job| job.executable) {
         builder.set_mode(&job.path, iwci_vfs::modes::EXECUTABLE_MODE)?;
+    }
+    if with_git {
+        let entries = files
+            .iter()
+            .map(|job| git_dir::IndexEntry {
+                path: job
+                    .path
+                    .strip_prefix(&root)
+                    .unwrap_or(&job.path)
+                    .as_os_str()
+                    .as_bytes()
+                    .to_vec(),
+                id: job.id,
+                executable: job.executable,
+                size: job.size,
+            })
+            .collect::<Vec<_>>();
+        git_dir::write(repo, builder, &root, commit, tree, &entries)?;
     }
     Ok(out)
 }
@@ -103,9 +124,15 @@ struct FileJob {
     id: ObjectId,
     /// Git's `100755`.
     executable: bool,
+    /// The blob's decoded size, filled in as it is written.
+    size: u64,
 }
 
-fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob]) -> Result<u64> {
+fn write_files(
+    repo: &gix::Repository,
+    fs: &mem_fs::FileSystem,
+    files: &mut [FileJob],
+) -> Result<u64> {
     let parallelism = std::thread::available_parallelism().map_or(1, |n| n.get());
     let threads = parallelism
         .min(MAX_THREADS)
@@ -129,7 +156,7 @@ fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
     let chunk = files.len().div_ceil(threads);
     std::thread::scope(|scope| {
         let handles: Vec<_> = files
-            .chunks(chunk)
+            .chunks_mut(chunk)
             .map(|files| {
                 let repo = with_cache(shared.to_thread_local());
                 scope.spawn(move || write_chunk(&repo, fs, files))
@@ -143,10 +170,14 @@ fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
     })
 }
 
-fn write_chunk(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob]) -> Result<u64> {
+fn write_chunk(
+    repo: &gix::Repository,
+    fs: &mem_fs::FileSystem,
+    files: &mut [FileJob],
+) -> Result<u64> {
     let mut blob = Vec::new();
     let mut total = 0;
-    for job in files {
+    for job in files.iter_mut() {
         let data = repo.objects.find_blob(&job.id, &mut blob)?.data;
         // The walk saw to it that every name in a directory is unique, so
         // `create_new` failing means something else wrote here meanwhile.
@@ -161,7 +192,8 @@ fn write_chunk(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
             file.flush().await
         })
         .map_err(|e| vfs_err(&job.path, e.into()))?;
-        total += data.len() as u64;
+        job.size = data.len() as u64;
+        total += job.size;
     }
     Ok(total)
 }
@@ -235,6 +267,7 @@ impl Walker<'_> {
                         path: self.path.clone(),
                         id: entry.oid.to_owned(),
                         executable: kind == EntryKind::BlobExecutable,
+                        size: 0,
                     });
                     self.out.executables += usize::from(kind == EntryKind::BlobExecutable);
                     Ok(())

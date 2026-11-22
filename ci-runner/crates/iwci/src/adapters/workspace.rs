@@ -57,7 +57,7 @@ impl iwci_deps::git::GitTrees for CachedGitTrees {
             .map_err(|e| format!("fetch: {e}"))?;
         let scratch = SnapshotBuilder::new();
         remote
-            .checkout_into(commit, &scratch, "/tree")
+            .checkout_bare_into(commit, &scratch, "/tree")
             .map_err(|e| format!("checkout: {e}"))?;
         let tree = scratch.freeze();
         let mut files = Vec::new();

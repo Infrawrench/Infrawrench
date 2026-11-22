@@ -2937,11 +2937,13 @@ dependencies = [
 name = "iwci-git"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "gix",
  "hex",
  "iwci-vfs",
  "reqwest",
  "rustls",
+ "sha1",
  "sha2",
  "thiserror",
 ]

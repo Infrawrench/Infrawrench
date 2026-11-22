@@ -12,6 +12,10 @@ iwci-vfs.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
+# The VFS-mocked .git writes its index checksum and its two loose objects
+# itself; both crates are already in the lock through gix and its deps.
+sha1 = "0.11"
+flate2 = "1"
 
 # No default features: those bring in status, blame, merge, diff, mailmap,
 # worktree checkout and attribute handling, none of which a bare cache that

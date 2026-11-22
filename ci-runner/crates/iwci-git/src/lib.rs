@@ -26,6 +26,7 @@ mod checkout;
 mod commit;
 mod diff;
 mod fetch;
+mod git_dir;
 mod lock;
 mod url;
 
@@ -44,6 +45,12 @@ pub enum GitError {
     NotFetched(String),
     #[error("{id} is a {kind}, not a commit")]
     NotACommit { id: String, kind: String },
+    #[error("{id} is a {actual}, not a {expected}")]
+    WrongObjectKind {
+        id: String,
+        expected: String,
+        actual: String,
+    },
     #[error("the remote sent no commit {commit} (asked by sha{})", match hint { Some(h) => format!(" and through {h}"), None => String::new() })]
     NotReachable {
         commit: String,
@@ -293,10 +300,32 @@ impl RemoteCache {
         builder: &iwci_vfs::SnapshotBuilder,
         into: &str,
     ) -> Result<Checkout> {
+        self.checkout(commit_sha, builder, into, true)
+    }
+
+    /// Checkout a commit's tree without the minimal `.git` a job snapshot
+    /// gets. Dependency trees and scratch workspaces only want the files;
+    /// a `.git` there would end up inside a vendored package or a cache key.
+    pub fn checkout_bare_into(
+        &self,
+        commit_sha: &str,
+        builder: &iwci_vfs::SnapshotBuilder,
+        into: &str,
+    ) -> Result<Checkout> {
+        self.checkout(commit_sha, builder, into, false)
+    }
+
+    fn checkout(
+        &self,
+        commit_sha: &str,
+        builder: &iwci_vfs::SnapshotBuilder,
+        into: &str,
+        with_git: bool,
+    ) -> Result<Checkout> {
         let id = parse_oid(commit_sha)?;
         let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Shared)?;
         let repo = self.open_or_not_fetched(commit_sha)?;
-        checkout::checkout(&repo, id, builder, into)
+        checkout::checkout(&repo, id, builder, into, with_git)
     }
 
     /// Paths (relative to the repository root, `/`-separated, sorted) whose
