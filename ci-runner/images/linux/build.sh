@@ -315,6 +315,15 @@ in_root() {
     "$@"
 }
 
+# Jobs run as an unprivileged user with passwordless sudo, as on GitHub's
+# hosted runners: suites that expect chmod and ownership to be enforced
+# need a process that is not root. The version managers and their caches
+# all live in this user's home, so it is created before they are installed.
+in_root useradd --create-home --uid 1001 --user-group --shell /bin/bash runner
+install -d -m 0755 "$root/etc/sudoers.d"
+printf 'runner ALL=(ALL) NOPASSWD:ALL\n' >"$root/etc/sudoers.d/runner"
+chmod 0440 "$root/etc/sudoers.d/runner"
+
 rm -f "$root/etc/apt/sources.list"
 cat >"$root/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
@@ -361,9 +370,9 @@ in_root corepack enable pnpm yarn
 
 read -r v s < <(release_line nvm)
 fetch "https://github.com/nvm-sh/nvm/archive/refs/tags/v$v.tar.gz" "$s" "nvm.tar.gz"
-rm -rf "$root/root/.nvm"
-install -d "$root/root/.nvm/versions/node"
-tar -C "$root/root/.nvm" -xzf "$dl/nvm.tar.gz" --strip-components=1 --no-same-owner \
+rm -rf "$root/home/runner/.nvm"
+install -d "$root/home/runner/.nvm/versions/node"
+tar -C "$root/home/runner/.nvm" -xzf "$dl/nvm.tar.gz" --strip-components=1 --no-same-owner \
   "nvm-$v/nvm.sh" "nvm-$v/nvm-exec" "nvm-$v/bash_completion" "nvm-$v/LICENSE.md"
 
 read -r v s < <(release_line bun)
@@ -376,7 +385,7 @@ ln -sf bun "$root/usr/local/bin/bunx"
 
 # rbenv's own files in /usr/local/rbenv, ruby-build's commands on the
 # PATH (rbenv finds `rbenv-install` there), and RBENV_ROOT, where the
-# rubies and their shims go, in /root/.rbenv.
+# rubies and their shims go, in /home/runner/.rbenv.
 read -r v s < <(release_line rbenv)
 fetch "https://github.com/rbenv/rbenv/archive/refs/tags/v$v.tar.gz" "$s" "rbenv.tar.gz"
 rm -rf "$root/usr/local/rbenv"
@@ -389,20 +398,20 @@ rm -rf "$work/ruby-build"
 mkdir -p "$work/ruby-build"
 tar -C "$work/ruby-build" -xzf "$dl/ruby-build.tar.gz" --strip-components=1 --no-same-owner
 PREFIX="$root/usr/local" "$work/ruby-build/install.sh"
-install -d "$root/root/.rbenv/versions" "$root/root/.rbenv/shims"
+install -d "$root/home/runner/.rbenv/versions" "$root/home/runner/.rbenv/shims"
 # Shims for Ruby's own commands from the start, which run the system Ruby
 # until a version is chosen: otherwise bash remembers /usr/bin/ruby from a
 # job's first `ruby`, and keeps running it after `rbenv install` makes the
 # shim. rbenv only makes shims for what a version has, so a stand-in
 # version lends the names and goes again.
-stand_in="$root/root/.rbenv/versions/iwci-shim-names/bin"
+stand_in="$root/home/runner/.rbenv/versions/iwci-shim-names/bin"
 install -d "$stand_in"
 for name in ruby gem bundle bundler erb irb rake rdoc ri racc rbs rdbg; do
   install -m 0755 /dev/null "$stand_in/$name"
 done
-in_root env RBENV_ROOT=/root/.rbenv rbenv rehash
-rm -rf "$root/root/.rbenv/versions/iwci-shim-names"
-[[ -x "$root/root/.rbenv/shims/ruby" ]] || die "rbenv rehash made no shims"
+in_root env RBENV_ROOT=/home/runner/.rbenv rbenv rehash
+rm -rf "$root/home/runner/.rbenv/versions/iwci-shim-names"
+[[ -x "$root/home/runner/.rbenv/shims/ruby" ]] || die "rbenv rehash made no shims"
 
 read -r v s < <(release_line go)
 fetch "https://go.dev/dl/go$v.linux-$goarch.tar.gz" "$s" "go.tar.gz"
@@ -412,7 +421,7 @@ ln -sf ../go/bin/go "$root/usr/local/bin/go"
 ln -sf ../go/bin/gofmt "$root/usr/local/bin/gofmt"
 
 # goenv's binary on the PATH and GOENV_ROOT, where the Go versions and their
-# shims go, in /root/.goenv, as for rbenv: shims for `go` and `gofmt` from
+# shims go, in /home/runner/.goenv, as for rbenv: shims for `go` and `gofmt` from
 # the start (a stand-in version lends the names), which run the Go above
 # until a version is chosen. goenv 3 installs gopls, golangci-lint,
 # staticcheck and delve after every `goenv install` unless told not to:
@@ -423,30 +432,30 @@ rm -rf "$work/goenv"
 mkdir -p "$work/goenv"
 tar -C "$work/goenv" -xzf "$dl/goenv.tar.gz" --no-same-owner goenv
 install -m 0755 "$work/goenv/goenv" "$root/usr/local/bin/goenv"
-install -d "$root/root/.goenv/versions" "$root/root/.goenv/shims"
-printf 'enabled: false\ntools: []\n' >"$root/root/.goenv/default-tools.yaml"
-stand_in="$root/root/.goenv/versions/iwci-shim-names/bin"
+install -d "$root/home/runner/.goenv/versions" "$root/home/runner/.goenv/shims"
+printf 'enabled: false\ntools: []\n' >"$root/home/runner/.goenv/default-tools.yaml"
+stand_in="$root/home/runner/.goenv/versions/iwci-shim-names/bin"
 install -d "$stand_in"
 for name in go gofmt; do
   install -m 0755 /dev/null "$stand_in/$name"
 done
-in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
-rm -rf "$root/root/.goenv/versions/iwci-shim-names"
-[[ -x "$root/root/.goenv/shims/go" ]] || die "goenv rehash made no shims"
+in_root env GOENV_ROOT=/home/runner/.goenv goenv rehash >/dev/null
+rm -rf "$root/home/runner/.goenv/versions/iwci-shim-names"
+[[ -x "$root/home/runner/.goenv/shims/go" ]] || die "goenv rehash made no shims"
 
 read -r v s < <(release_line rustup)
 fetch "https://static.rust-lang.org/rustup/archive/$v/$rusttriple/rustup-init" "$s" "rustup-init"
 install -m 0755 "$dl/rustup-init" "$root/tmp/rustup-init"
 toolchain="$(awk '$1 == "rust" && $2 == "toolchain" { print $3 }' "$self/packages.txt")"
 [[ -n "$toolchain" ]] || die "packages.txt has no rust toolchain line"
-# Into root's own ~/.rustup and ~/.cargo (jobs run as root with
-# HOME=/root), with the proxies linked onto the default PATH: a proxy finds
-# its toolchain by the name it was started under, so links work.
-in_root /tmp/rustup-init -y --no-modify-path --profile minimal \
+# Into the job user's ~/.rustup and ~/.cargo, with the proxies linked onto
+# the default PATH: a proxy finds its toolchain by the name it was started
+# under, so links work. `in_root` fixes HOME for the build; override it here.
+in_root env HOME=/home/runner /tmp/rustup-init -y --no-modify-path --profile minimal \
   --default-toolchain "$toolchain" -c rustfmt -c clippy
 rm -f "$root/tmp/rustup-init"
-for proxy in "$root"/root/.cargo/bin/*; do
-  ln -sf "/root/.cargo/bin/${proxy##*/}" "$root/usr/local/bin/${proxy##*/}"
+for proxy in "$root"/home/runner/.cargo/bin/*; do
+  ln -sf "/home/runner/.cargo/bin/${proxy##*/}" "$root/usr/local/bin/${proxy##*/}"
 done
 
 read -r v s < <(release_line pwsh)
@@ -501,14 +510,16 @@ EOF
 # A Ruby that ruby-build compiles comes without its documentation, which
 # takes minutes and nobody reads in CI.
 cat >"$root/etc/environment" <<'EOF'
-PATH="/root/.goenv/shims:/root/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-NVM_DIR="/root/.nvm"
-RBENV_ROOT="/root/.rbenv"
-GOENV_ROOT="/root/.goenv"
+PATH="/home/runner/.goenv/shims:/home/runner/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+NVM_DIR="/home/runner/.nvm"
+RBENV_ROOT="/home/runner/.rbenv"
+GOENV_ROOT="/home/runner/.goenv"
 GOENV_DISABLE_GOPATH="1"
 GOENV_DISABLE_GOCACHE="1"
 GOENV_ASSUME_YES="1"
 BASH_ENV="/etc/iwci/bash_env"
+HOME="/home/runner"
+USER="runner"
 RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
@@ -520,20 +531,26 @@ EOF
 install -d "$root/etc/iwci"
 cat >"$root/etc/iwci/bash_env" <<'EOF'
 # Read by every non-interactive bash (BASH_ENV in /etc/environment).
-if ! declare -F nvm >/dev/null && [ -s "${NVM_DIR:-/root/.nvm}/nvm.sh" ]; then
+if ! declare -F nvm >/dev/null && [ -s "${NVM_DIR:-/home/runner/.nvm}/nvm.sh" ]; then
   nvm() {
     unset -f nvm
     # shellcheck disable=SC1091
-    . "${NVM_DIR:-/root/.nvm}/nvm.sh" --no-use && nvm "$@"
+    . "${NVM_DIR:-/home/runner/.nvm}/nvm.sh" --no-use && nvm "$@"
   }
 fi
 EOF
-cat >>"$root/root/.bashrc" <<'EOF'
-export NVM_DIR="/root/.nvm"
+cat >>"$root/home/runner/.bashrc" <<'EOF'
+export NVM_DIR="/home/runner/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 EOF
 
-# Jobs run as root over files the workspace image owns, and use LFS.
+# The toolchains were installed by root but are used by `runner`.
+in_root chown -R runner:runner /home/runner
+# The app lends the GH token's git config at /root/.gitconfig. Let the job
+# user traverse /root so it can read that one file (exec hands it to 1001).
+in_root chmod 0755 /root
+
+# Jobs see files the workspace image owns, and use LFS.
 in_root git config --system --add safe.directory '*'
 in_root git lfs install --system --skip-repo >/dev/null
 
@@ -570,6 +587,7 @@ until docker info >/dev/null 2>&1; do
 done
 EOF
 chmod 0755 "$root/usr/local/bin/iwci-dockerd"
+in_root usermod -aG docker runner
 
 # shellcheck disable=SC2016 # dpkg-query's format, not the shell's
 in_root dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' >"$stage/packages.lock"
@@ -579,8 +597,8 @@ step "cleaning up"
 in_root apt-get clean
 rm -f "$root/usr/sbin/policy-rc.d"
 rm -rf "$root"/var/lib/apt/lists/* "$root"/var/cache/apt/* "$root"/var/cache/debconf/*-old \
-  "$root"/var/log/* "$root"/tmp/* "$root"/var/tmp/* "$root"/root/.cache \
-  "$root"/root/.rustup/downloads "$root"/root/.rustup/tmp "$root"/root/.npm
+  "$root"/var/log/* "$root"/tmp/* "$root"/var/tmp/* "$root"/home/runner/.cache \
+  "$root"/home/runner/.rustup/downloads "$root"/home/runner/.rustup/tmp "$root"/home/runner/.npm
 for ((i = ${#mounted[@]} - 1; i >= 0; i--)); do
   umount "${mounted[$i]}"
 done
@@ -622,9 +640,9 @@ cat >"$stage/image.json" <<EOF
   "snapshot": "$snapshot",
   "features": ["files-virtiofs"],
   "caches": [
-    { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
-    { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
-    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 }
+    { "name": "nvm", "path": "/home/runner/.nvm/versions", "max-bytes": 2147483648 },
+    { "name": "rbenv", "path": "/home/runner/.rbenv", "max-bytes": 2147483648 },
+    { "name": "goenv", "path": "/home/runner/.goenv", "max-bytes": 2147483648 }
   ]
 }
 EOF

@@ -131,6 +131,20 @@ pub fn run<W: Write + Send + 'static>(
         cmd.process_group(0);
     }
     #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::chown;
+        use std::os::unix::process::CommandExt;
+        // Linux jobs run as an unprivileged user, like GitHub's hosted
+        // runners, so suites that rely on chmod and ownership behaving
+        // normally pass. The agent wrote the script and the output file as
+        // root; hand them to that user before the shell starts.
+        let _ = chown(&file, 1001, 1001);
+        let _ = chown(Path::new("/iwci/output"), 1001, 1001);
+        // The GH token's git config is lent as root-owned 0600 at this path.
+        let _ = chown(Path::new("/root/.gitconfig"), 1001, 1001);
+        cmd.uid(1001).gid(1001);
+    }
+    #[cfg(target_os = "linux")]
     let cgroup = if ctx.cgroups {
         cgroup::JobCgroup::create(n)
     } else {

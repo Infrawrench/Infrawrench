@@ -63,6 +63,15 @@ fn mount(
     }
 }
 
+fn chown(path: &str, uid: u32, gid: u32) -> io::Result<()> {
+    let path = c(path)?;
+    // SAFETY: a plain system call on a NUL-terminated string.
+    if unsafe { libc::chown(path.as_ptr(), uid, gid) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 fn mkdir(path: &str) -> io::Result<()> {
     match std::fs::create_dir_all(path) {
         Ok(()) => Ok(()),
@@ -142,6 +151,9 @@ pub fn build_root() -> io::Result<()> {
 
     mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
     mkdir("/.iwci/rw/upper")?;
+    // Jobs run as uid 1001. Everything they add is copied up into the
+    // upper layer, so it has to be theirs to create files in.
+    chown("/.iwci/rw/upper", 1001, 1001)?;
     mkdir("/.iwci/rw/work")?;
     // The job's files: streamed in over virtio-fs, read only, or a disk
     // image of the workspace. Either is the overlay's upper lower layer.
@@ -248,8 +260,8 @@ const ENVIRONMENT: [(&str, &str); 6] = [
         "PATH",
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     ),
-    ("HOME", "/root"),
-    ("USER", "root"),
+    ("HOME", "/home/runner"),
+    ("USER", "runner"),
     ("LANG", "C.UTF-8"),
     ("LC_ALL", "C.UTF-8"),
     ("DEBIAN_FRONTEND", "noninteractive"),
