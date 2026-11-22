@@ -4152,7 +4152,7 @@ false }` turns off the ones it names.
 
 A virtual machine's image declares caches the same way, in its
 `image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`),
-`rbenv` (`/root/.rbenv`) and `goenv` (`/root/.goenv`), keyed by the image's name rather than its
+`rbenv` (`/root/.rbenv`), `goenv` (`/root/.goenv`), `m2` (`/root/.m2/repository`) and `gradle` (`/root/.gradle/caches`), keyed by the image's name rather than its
 version (`machine:ubuntu-24.04`), so a rebuild of the image on the same
 Ubuntu release keeps them. Only what the job added is saved there too:
 the image's own files are its read-only root, never the job's.
