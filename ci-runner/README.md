@@ -4133,9 +4133,13 @@ job cache that the environment wrote:
   the default branch's cache and saves into a scope of its own, which
   nothing on the default branch reads. These caches hold compiled code that
   later builds link or run, so this matters more here, not less.
-- **Saved after a pass, and only when the job changed it.** A failed job
-  saves nothing, and a run that leaves the directory as it was restored
-  saves nothing either.
+- **Saved after the job ran, and only when it changed the directory.** A
+  failed job saves what it added too: these caches hold toolchains and
+  packages keyed by version, not test results, so a suite that fails still
+  warms the next run. A run that leaves the directory as it was restored
+  saves nothing, and neither does one that never ran its script (skipped,
+  errored, cancelled or timed out). Job `cache:` entries still save only
+  after a pass, as GitHub's `actions/cache` does.
 - **Bounded.** A cache keeps at most its declared `max-bytes`, and never
   more than a quarter of the job's `memory:` (restored files are in the
   job's memory). Past that, only what that run wrote or changed is kept,

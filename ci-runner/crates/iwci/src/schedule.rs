@@ -3858,8 +3858,8 @@ fn run_job<T: Tools>(
         }
     }
 
-    // Save caches only after a pass, and only when the job did not start
-    // from an exact hit (that entry is already what it would save).
+    // Save job caches only after a pass, and only when the job did not
+    // start from an exact hit (that entry is already what it would save).
     if status == Status::Passed
         && let Some(store) = &options.caches
     {
@@ -3894,6 +3894,15 @@ fn run_job<T: Tools>(
                 Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
             }
         }
+    }
+
+    // Environment caches hold toolchains and packages keyed by version,
+    // not test results: a job whose tests failed still filled them, and
+    // saving them is what makes its next run warm. A job that never ran
+    // its script (skipped, errored, cancelled, timed out) saved nothing.
+    if matches!(status, Status::Passed | Status::Failed { .. })
+        && let Some(store) = &options.caches
+    {
         for active in &env_caches {
             crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines);
         }
