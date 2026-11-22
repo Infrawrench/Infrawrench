@@ -513,6 +513,10 @@ RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
+npm_config_store_dir="/root/.cache/pnpm-store"
+npm_config_cache="/root/.npm"
+YARN_CACHE_FOLDER="/root/.cache/yarn"
+BUN_INSTALL_CACHE_DIR="/root/.bun/install/cache"
 EOF
 
 # nvm is a shell function, so it is defined for every bash, scripts
@@ -624,7 +628,9 @@ cat >"$stage/image.json" <<EOF
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
     { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
-    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 }
+    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 },
+    { "name": "pnpm-store", "path": "/root/.cache/pnpm-store", "max-bytes": 2147483648 },
+    { "name": "npm", "path": "/root/.npm", "max-bytes": 2147483648 }
   ]
 }
 EOF
