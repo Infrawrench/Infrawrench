@@ -54,6 +54,10 @@ if [[ "$native" == "true" ]]; then
   fi
   gvisor_dir="/opt/iwci/lib/gvisor-$gvisor_release"
   if [[ ! -x "$gvisor_dir/gvisor-bin/gvisor_sentry" ]]; then
+    # The release is a .tar.bz2, and a minimal Ubuntu image has no bzip2.
+    if ! command -v bzip2 >/dev/null; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends bzip2
+    fi
     tmp="$(mktemp -d)"
     curl -fsSL --retry 3 -o "$tmp/gvisor.tar.bz2" \
       "https://storage.googleapis.com/gvisor/releases/release/$gvisor_release/$gvisor_arch/gvisor.tar.bz2"
@@ -239,7 +243,19 @@ case "${1:-}" in
       echo "zram swap already in use: $(devices | tr '\n' ' ')"
       exit 0
     fi
-    device="$(zramctl --find --size "$IWCI_ZRAM_SIZE" --algorithm zstd)"
+    # Right after modprobe, udev may still hold the new device, and
+    # `zramctl --find` fails to reset it ("Device or resource busy", seen
+    # on a fresh 7.0 kernel): wait for udev, and try a few times.
+    udevadm settle --timeout=10 || true
+    device=""
+    for attempt in 1 2 3 4 5; do
+      if device="$(zramctl --find --size "$IWCI_ZRAM_SIZE" --algorithm zstd)"; then
+        break
+      fi
+      device=""
+      sleep 1
+    done
+    [[ -n "$device" ]] || { echo "no zram device could be set up" >&2; exit 1; }
     mkswap --label iwci-zram "$device" >/dev/null
     swapon --priority 100 "$device"
     echo "zram swap on $device ($IWCI_ZRAM_SIZE, zstd)"

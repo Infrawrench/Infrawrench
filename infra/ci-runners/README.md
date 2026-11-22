@@ -183,7 +183,12 @@ host with `ci-runner/images/linux/build.sh --out /var/lib/iwci/machines/linux`
 (`ci-runner/images/README.md` has what it needs). The runner lists what it can run in
 `/v1/capacity` (`"platforms": ["wasm", "linux"]`) and leaves out, with a
 line in its log, whatever the host lacks: KVM (on x86_64 VT-x or AMD-V, on
-Graviton a `.metal` instance), the image, or a tool. To check a host after applying: `journalctl -u iwci | grep
+Graviton a `.metal` instance), the image, or a tool. On EC2, the 7th and 8th
+generation Intel types (C7i, M7i, R7i, C8i, M8i, R8i and their flex
+variants) offer KVM without `.metal` when launched with nested
+virtualization on (`CpuOptions` `NestedVirtualization=enabled`, which the
+AWS CLI before about 2.32 does not know; boto3 1.44 does); ci-2 is an
+`m8i.16xlarge` spot instance launched that way. To check a host after applying: `journalctl -u iwci | grep
 machines:` names anything missing, and `curl` of `/v1/capacity` on the
 listen address lists the platforms.
 
