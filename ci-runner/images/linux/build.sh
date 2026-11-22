@@ -472,6 +472,15 @@ read -r v s < <(release_line yq)
 fetch "https://github.com/mikefarah/yq/releases/download/v$v/yq_linux_$goarch" "$s" "yq"
 install -m 0755 "$dl/yq" "$root/usr/local/bin/yq"
 
+# uv, from Astral's GitHub release: uv and uvx into /usr/local/bin.
+case "$karch" in x86_64) uvarch=x86_64 ;; arm64) uvarch=aarch64 ;; *) die "no uv for $karch" ;; esac
+read -r v s < <(release_line uv)
+fetch "https://github.com/astral-sh/uv/releases/download/$v/uv-$uvarch-unknown-linux-gnu.tar.gz" "$s" "uv.tar.gz"
+rm -rf "$work/uv" && mkdir -p "$work/uv"
+tar -C "$work/uv" -xzf "$dl/uv.tar.gz" --no-same-owner --strip-components=1
+install -m 0755 "$work/uv/uv" "$work/uv/uvx" "$root/usr/local/bin/"
+in_root uv --version >/dev/null || die "uv does not run in the image"
+
 # --- 3. what the agent and jobs expect -----------------------------------------
 
 step "agent and machine settings"
@@ -513,6 +522,10 @@ RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
+UV_PYTHON_INSTALL_DIR="/root/.local/share/uv/python"
+UV_CACHE_DIR="/root/.cache/uv"
+UV_LINK_MODE="copy"
+UV_PYTHON_DOWNLOADS="automatic"
 EOF
 
 # nvm is a shell function, so it is defined for every bash, scripts
@@ -624,7 +637,9 @@ cat >"$stage/image.json" <<EOF
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
     { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
-    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 }
+    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 },
+    { "name": "uv-python", "path": "/root/.local/share/uv/python", "max-bytes": 2147483648 },
+    { "name": "uv", "path": "/root/.cache/uv", "max-bytes": 2147483648 }
   ]
 }
 EOF

@@ -132,6 +132,10 @@ release goenv 3.2.2 6d8842dca397c2b3ed047a0c5c3f46d419ea93919d6da2709aa6a97846fd
 # Go. Sums from https://go.dev/dl/?mode=json.
 release go 1.27.4 7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840 3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
 
+# uv (one static binary, plus uvx). Sums are the GitHub release digests of
+# uv-x86_64-unknown-linux-gnu.tar.gz and uv-aarch64-unknown-linux-gnu.tar.gz.
+release uv 0.13.7 c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83 71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc
+
 # Rust: rustup, then the stable toolchain with the minimal profile plus
 # rustfmt and clippy. Sums from static.rust-lang.org's rustup-init.sha256.
 release rustup 1.29.3 b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55 9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282
