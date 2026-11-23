@@ -1317,6 +1317,12 @@ struct MemoryCaches {
     entries: Mutex<HashMap<String, Vec<iwci_vfs::Entry>>>,
     modes: Mutex<HashMap<String, iwci_vfs::archive::ModeList>>,
     saved: Mutex<Vec<String>>,
+    /// Keys another job saves while this one runs: absent when first
+    /// asked about, there from then on.
+    late: Mutex<std::collections::HashSet<String>>,
+    landed: Mutex<std::collections::HashSet<String>>,
+    /// Keys with an entry no restore can read (another archive format).
+    unreadable: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Caches for MemoryCaches {
@@ -1373,6 +1379,52 @@ impl Caches for MemoryCaches {
         self.saved.lock().unwrap().push(key.into());
         Ok(())
     }
+    fn has(&self, key: &str) -> bool {
+        if self.late.lock().unwrap().remove(key) {
+            self.landed.lock().unwrap().insert(key.into());
+            return false;
+        }
+        self.entries.lock().unwrap().contains_key(key)
+            || self.landed.lock().unwrap().contains(key)
+            || self.unreadable.lock().unwrap().contains(key)
+    }
+}
+
+/// A key is saved once: when another job saved it while this one ran (a
+/// matrix sharing a package store), this one does not compress and upload
+/// the same files again. An entry under the key that no restore could read
+/// is replaced, not kept.
+#[test]
+fn a_cache_another_job_saved_meanwhile_is_not_saved_again() {
+    let p = plan(
+        "name: x\njobs:\n  w:\n    using: builtin:write@1\n    cache: { key: shared, paths: [src] }\n",
+    );
+    let store: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    store.late.lock().unwrap().insert("shared".into());
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert_eq!(job.status, Status::Passed);
+    assert!(
+        job.caches
+            .iter()
+            .any(|l| l == "cache `shared`: already saved"),
+        "{:?}",
+        job.caches
+    );
+    assert!(store.saved.lock().unwrap().is_empty());
+
+    let store: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    store.unreadable.lock().unwrap().insert("shared".into());
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert!(
+        job.caches
+            .iter()
+            .any(|l| l.starts_with("cache `shared`: saved")),
+        "{:?}",
+        job.caches
+    );
+    assert_eq!(*store.saved.lock().unwrap(), vec!["shared".to_string()]);
 }
 
 #[test]
