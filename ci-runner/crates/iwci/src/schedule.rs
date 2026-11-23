@@ -3898,9 +3898,18 @@ fn run_job<T: Tools>(
 
     // Environment caches hold toolchains and packages keyed by version,
     // not test results: a job whose tests failed still filled them, and
-    // saving them is what makes its next run warm. A job that never ran
-    // its script (skipped, errored, cancelled, timed out) saved nothing.
+    // saving them is what makes its next run warm. Only a script that ended
+    // on its own counts: one stopped mid-write (timed out, stalled, out of
+    // memory, a write refused, cancelled) may leave half an install behind,
+    // which the next run would take for a whole one.
+    let ended_on_its_own = !execution.cancelled
+        && execution.service_failure.is_none()
+        && !execution.timed_out
+        && execution.stalled_after.is_none()
+        && !execution.out_of_memory
+        && !write_budget.refused.load(Ordering::SeqCst);
     if matches!(status, Status::Passed | Status::Failed { .. })
+        && ended_on_its_own
         && let Some(store) = &options.caches
     {
         for active in &env_caches {
