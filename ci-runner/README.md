@@ -687,9 +687,17 @@ jobs:
 
 - **Where.** Only a runner started with `--machines <dir>` (or
   `IWCI_MACHINES`) runs them: it needs KVM and the image
-  `images/linux/build.sh` builds into that directory. Each machine gets
-  the vCPUs its job holds with `cpus:`, or `--machine-cpus` (default 2)
-  without one. `/v1/capacity` lists what a runner
+  `images/linux/build.sh` builds into that directory. Each machine holds
+  the vCPUs its job asks for with `cpus:`, or `--machine-cpus` (default 2)
+  without one, and is given more to run on when the runner has a
+  delegated cgroup subtree (the one its sandboxes use): up to four times
+  its `cpus:` and one per GiB of its `memory:` (a build or a test run
+  starts a worker per CPU it sees, and each needs memory), in a cgroup of
+  its own whose `cpu.weight` is what those `cpus:` hold. So a compile or a
+  parallel test run spreads over the host's idle CPUs, and when every job
+  wants more than there is, each gets its `cpus:` share, as if it had only
+  those. `--machine-burst off` keeps every machine to its `cpus:`.
+  `/v1/capacity` lists what a runner
   runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
   log, whatever the host lacks, and the proxy places a run whose pipelines
   need a machine on a runner that has it. A runner without one fails just
@@ -4514,7 +4522,7 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d] \
          [--spill-disk 20GiB]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
-         [--machines <dir>] [--machine-cpus 2]
+         [--machines <dir>] [--machine-cpus 2] [--machine-burst on|off]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -4650,7 +4658,8 @@ whole pipeline.
   `/sys/devices/system/cpu` and so Bun's `os.cpus()` and the C library's
   `sysconf(_SC_NPROCESSORS_ONLN)`, is the sandbox's CPUs (the runner's
   `--cpus`). A [Linux machine](#linux-machines) is told its own vCPUs,
-  which are real ones it is held to.
+  which are real ones, more than its `cpus:` when it may use idle CPUs,
+  and held to its `cpus:` share when the host is busy.
 - **`/proc/cpuinfo`** is the one file the runner puts in a job's `/proc`
   (WASIX has no procfs): a `processor` section per CPU the job is told, all
   cores of one package (`physical id`, `siblings`, `core id`,

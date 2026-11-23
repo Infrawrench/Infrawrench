@@ -71,10 +71,45 @@ pub struct Config {
     pub cpus: u32,
     /// The most disk the workspace images keep.
     pub workspace_cache_bytes: u64,
+    /// Lets a Linux machine use the host's idle CPUs (see [`Burst`]);
+    /// `None` gives it its `cpus:` and no more.
+    pub burst: Option<Burst>,
     /// The runner's network policy, the one every job's network goes
     /// through; `None` gives machines no network at all.
     #[cfg(target_os = "linux")]
     pub outside: Option<Arc<dyn iwci_sandbox::net::Outside>>,
+}
+
+/// How a Linux machine uses CPUs no job is using. It gets more vCPUs than
+/// its job's `cpus:` ([`burst_vcpus`]) and runs in a cgroup of its own
+/// among the runner's sandboxes, weighted by those `cpus:`: when the host
+/// has idle CPUs a compile or a parallel test run spreads over them, and
+/// when every job wants more than there is, each gets its `cpus:` share,
+/// as if it had only that many.
+#[derive(Debug, Clone, Copy)]
+pub struct Burst {
+    /// The host's CPUs, the most any machine gets.
+    pub host_cpus: u32,
+    /// `cpu.weight` per CPU a job holds: the runner's sandboxes weigh 100
+    /// per slot, `--jobs-per-cpu` slots to a CPU.
+    pub weight_per_cpu: u64,
+}
+
+/// At most this many times its `cpus:` in vCPUs.
+const BURST_FACTOR: u32 = 4;
+
+/// The vCPUs a machine whose job holds `cpus` and `memory_bytes` gets when
+/// it may burst: up to [`BURST_FACTOR`] times its `cpus:` and one per GiB
+/// of its memory, since a build or a test run starts a worker per CPU it
+/// sees and each needs memory; never fewer than its `cpus:` nor more than
+/// the host has.
+pub fn burst_vcpus(cpus: u32, memory_bytes: u64, host_cpus: u32) -> u32 {
+    let cpus = cpus.max(1);
+    let by_memory = u32::try_from(memory_bytes >> 30).unwrap_or(u32::MAX);
+    cpus.saturating_mul(BURST_FACTOR)
+        .min(by_memory)
+        .min(host_cpus)
+        .max(cpus)
 }
 
 /// Where a job's output goes as it is written: `true` for stderr.
@@ -185,6 +220,10 @@ pub struct Host {
     /// pool): a machine's shared memory is put in them, which is most of
     /// what its boot costs otherwise (`qemu::linux_args`).
     huge_pages: bool,
+    /// Where Linux machines get their weighted cgroups when they may burst
+    /// ([`Burst`]): the runner's delegated `jobs/`.
+    #[cfg(target_os = "linux")]
+    cgroups: Option<iwci_sandbox::cgroup::Jobs>,
 }
 
 /// `name` on `PATH`, or `path` when given and present.
@@ -267,6 +306,8 @@ impl Host {
             problems: Vec::new(),
             virtiofs: false,
             huge_pages: false,
+            #[cfg(target_os = "linux")]
+            cgroups: None,
             config,
         };
         if !cfg!(target_os = "linux") {
@@ -298,6 +339,15 @@ impl Host {
         }
         host.virtiofs = host.qemu.as_deref().is_some_and(has_virtiofs);
         host.huge_pages = lends_huge_pages();
+        #[cfg(target_os = "linux")]
+        if host.config.burst.is_some() {
+            match iwci_sandbox::cgroup::Jobs::delegated() {
+                Ok(jobs) => host.cgroups = Some(jobs),
+                Err(e) => problems.push(format!(
+                    "machines keep to their `cpus:`: no cgroup subtree to weigh them in ({e})"
+                )),
+            }
+        }
         if host.virtiofs && !host.huge_pages {
             problems.push(
                 "Linux: machines boot slower: the host lends no 2 MiB huge pages (vm.nr_overcommit_hugepages)"
@@ -372,6 +422,24 @@ impl Host {
                     .iter()
                     .any(|f| f == iwci_vm_proto::MEMORY_UPPER_FEATURE)
             })
+    }
+
+    /// The vCPUs a Linux machine gets: its job's `cpus:`, or more when it
+    /// may burst into a weighted cgroup ([`Burst`]).
+    fn linux_vcpus(&self, job: &Job<'_>) -> u32 {
+        let cpus = job.cpus.unwrap_or(self.config.cpus);
+        match (self.config.burst, self.bursts()) {
+            (Some(burst), true) => burst_vcpus(cpus, job.memory_bytes, burst.host_cpus),
+            _ => cpus,
+        }
+    }
+
+    /// Whether Linux machines run in weighted cgroups of their own.
+    fn bursts(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.cgroups.is_some();
+        #[cfg(not(target_os = "linux"))]
+        false
     }
 
     /// The kinds of machine it can start.
@@ -520,7 +588,7 @@ impl Host {
                             } else {
                                 memory_mib
                             },
-                            cpus: job.cpus.unwrap_or(self.config.cpus),
+                            cpus: self.linux_vcpus(&job),
                             sockets: &sockets,
                             huge_pages,
                             user,
@@ -653,12 +721,39 @@ impl Host {
                 .stderr(log)
                 .spawn()
                 .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
+            // In a cgroup of its own, weighted by the CPUs its job holds,
+            // when it may use more than those ([`Burst`]).
+            #[cfg(target_os = "linux")]
+            let cgroup = match (&self.cgroups, self.config.burst, job.os) {
+                (Some(jobs), Some(burst), Os::Linux) => {
+                    let cpus = job.cpus.unwrap_or(self.config.cpus).max(1);
+                    let made = jobs
+                        .create_weighted(
+                            &format!("vm-{}", unique()),
+                            burst.weight_per_cpu.saturating_mul(u64::from(cpus)),
+                        )
+                        .and_then(|cgroup| {
+                            cgroup.add(child.id() as libc::pid_t)?;
+                            Ok(cgroup)
+                        });
+                    match made {
+                        Ok(cgroup) => Some(cgroup),
+                        Err(e) => {
+                            eprintln!("iwci: machine {}: no cgroup of its own: {e}", job.id);
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            };
             let mut machine = Machine {
                 child,
                 dir: dir.to_path_buf(),
                 bridge: Vec::new(),
                 #[cfg(target_os = "linux")]
                 gateway: None,
+                #[cfg(target_os = "linux")]
+                _cgroup: cgroup,
             };
             mark("started QEMU");
             // Everything up to the agent's hello: QEMU connects its sockets
@@ -962,6 +1057,10 @@ struct Machine {
     bridge: Vec<std::thread::JoinHandle<()>>,
     #[cfg(target_os = "linux")]
     gateway: Option<iwci_sandbox::net::Gateway>,
+    /// Its weighted cgroup, removed once the emulator is gone (killed
+    /// first, in `drop`, before the fields are).
+    #[cfg(target_os = "linux")]
+    _cgroup: Option<iwci_sandbox::cgroup::Cgroup>,
 }
 
 impl Machine {
@@ -1159,6 +1258,21 @@ mod tests {
         ));
     }
 
+    /// A machine gets up to four times its `cpus:` in vCPUs, one per GiB
+    /// of its memory, never fewer than its `cpus:` and never more than the
+    /// host has.
+    #[test]
+    fn a_machine_bursts_to_what_its_memory_can_feed() {
+        let gib = 1u64 << 30;
+        assert_eq!(burst_vcpus(2, 6 * gib, 64), 6);
+        assert_eq!(burst_vcpus(2, 16 * gib, 64), 8, "four times its cpus");
+        assert_eq!(burst_vcpus(2, 2 * gib, 64), 2);
+        assert_eq!(burst_vcpus(4, 2 * gib, 64), 4, "never below its cpus");
+        assert_eq!(burst_vcpus(1, gib / 2, 64), 1);
+        assert_eq!(burst_vcpus(8, 64 * gib, 12), 12, "the host's CPUs");
+        assert_eq!(burst_vcpus(0, 0, 64), 1);
+    }
+
     #[test]
     fn a_host_without_kvm_offers_nothing_and_says_why() {
         let host = Host::open(Config {
@@ -1169,6 +1283,7 @@ mod tests {
             mkfs_erofs: None,
             cpus: 2,
             workspace_cache_bytes: 1 << 30,
+            burst: None,
             #[cfg(target_os = "linux")]
             outside: None,
         });
