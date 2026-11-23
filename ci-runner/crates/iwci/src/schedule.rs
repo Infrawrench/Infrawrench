@@ -1028,6 +1028,10 @@ pub trait Caches: Send + Sync {
         entries: &[iwci_vfs::Entry],
         modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String>;
+    /// Whether an entry is saved under exactly `key` where this run saves.
+    fn has(&self, _key: &str) -> bool {
+        false
+    }
     /// Saves `entries` with no modes (the durations record, tests).
     fn save(
         &self,
@@ -3530,7 +3534,11 @@ fn run_job<T: Tools>(
                 "cache `{key}`: could not read the cache ({e}); starting cold"
             )),
         }
-        cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
+        // An entry under the exact key that did not restore (a runner of
+        // another archive format wrote it) is one this job's save replaces;
+        // otherwise an entry there at save time is a sibling's (below).
+        let unreadable = !exact && options.caches.as_ref().is_some_and(|c| c.has(&key));
+        cache_keys.push((key, restore_keys, exact, unreadable, cache.paths.clone()));
     }
     // The environment's own caches, which `env-cache:` can turn off: an
     // isolate's environment's, or a machine image's.
@@ -3918,8 +3926,15 @@ fn run_job<T: Tools>(
     if status == Status::Passed
         && let Some(store) = &options.caches
     {
-        for (key, restore_keys, exact, paths) in &cache_keys {
+        for (key, restore_keys, exact, unreadable, paths) in &cache_keys {
             if *exact {
+                continue;
+            }
+            // A key is saved once: when another job of the run (a matrix
+            // sharing a package store) saved it while this one ran, saving
+            // it again would compress and upload the same files for nothing.
+            if !*unreadable && store.has(key) {
+                cache_lines.push(format!("cache `{key}`: already saved"));
                 continue;
             }
             // Never a lent credential, whatever path the cache names.

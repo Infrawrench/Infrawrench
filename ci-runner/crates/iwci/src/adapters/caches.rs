@@ -28,7 +28,16 @@ pub struct StoreCaches {
     /// parts (see [`StoreCaches::save_with_modes`]). The store's own cap,
     /// smaller in tests.
     part_bytes: u64,
+    /// How old another save's parts must be before a save of the same key
+    /// removes them ([`STALE_PARTS_SECS`]; 0 in tests).
+    stale_parts_secs: u64,
 }
+
+/// Parts of another save of the same key younger than this are left: jobs
+/// of one run sharing a key save at the same moment, and the last to
+/// write its header must find its parts. Older ones are what a replaced
+/// save left, and go; eviction and clearing take the rest.
+const STALE_PARTS_SECS: u64 = 3600;
 
 fn short_hash(text: &str) -> String {
     hex::encode(&sha2::Sha256::digest(text.as_bytes())[..16])
@@ -71,6 +80,7 @@ impl StoreCaches {
             write_scope,
             read_scopes,
             part_bytes: iwci_store::MAX_OBJECT_SIZE,
+            stale_parts_secs: STALE_PARTS_SECS,
         }
     }
 
@@ -587,6 +597,12 @@ impl Caches for StoreCaches {
     /// beside it, written before it so a reader that sees the new header
     /// finds them. A save's parts carry a nonce, so two runners saving the
     /// same key never mix theirs, and the last save's parts are the ones kept.
+    fn has(&self, key: &str) -> bool {
+        self.store
+            .head(&self.entry_key(&self.write_scope, key))
+            .is_ok_and(|meta| meta.is_some())
+    }
+
     fn save_with_modes(
         &self,
         key: &str,
@@ -658,15 +674,20 @@ impl Caches for StoreCaches {
         self.store
             .put(&object, &first, "application/zstd")
             .map_err(|e| e.to_string())?;
-        // Parts an earlier save of this key left: replaced now.
+        // Parts an earlier save of this key left: replaced now. Not a
+        // concurrent save's, whose header may yet land after this one's.
         let mine = nonce.as_deref().map(|n| format!("{object}.{n}-"));
+        let now = crate::runner::now_secs();
         let stale = self
             .store
-            .list(&format!("{object}."))
+            .list_detailed(&format!("{object}."))
             .map_err(|e| e.to_string())?;
         for old in stale {
-            if mine.as_deref().is_none_or(|m| !old.starts_with(m)) {
-                self.store.delete(&old).map_err(|e| e.to_string())?;
+            let replaced = old
+                .modified
+                .is_some_and(|m| m.saturating_add(self.stale_parts_secs) <= now);
+            if replaced && mine.as_deref().is_none_or(|m| !old.key.starts_with(m)) {
+                self.store.delete(&old.key).map_err(|e| e.to_string())?;
             }
         }
         // Point each prefix this key falls under at it, so the next run's
@@ -1014,6 +1035,7 @@ mod tests {
                 quota,
             );
             c.part_bytes = 40 << 10;
+            c.stale_parts_secs = 0;
             c
         };
         let parts = |c: &StoreCaches, key: &str| {
@@ -1025,6 +1047,7 @@ mod tests {
         let c = caches(None);
         c.save("pnpm", &[], &big(100 << 10)).unwrap();
         assert_eq!(parts(&c, "pnpm").len(), 2, "100 KiB over 40 KiB objects");
+        assert!(c.has("pnpm") && !c.has("npm"));
         let hit = c.restore("pnpm", &[], 1 << 20).unwrap().unwrap();
         assert_eq!(hit.entries, big(100 << 10));
         assert_eq!(
@@ -1074,6 +1097,37 @@ mod tests {
         assert!(parts(&tight, "pnpm").is_empty());
         let usage = storage_usage(store.as_ref(), &org, None).unwrap();
         assert!(usage.used_bytes <= 150 << 10, "{usage:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Jobs of one run sharing a key save it at the same moment: one save
+    /// must not remove the parts of another whose header lands after its
+    /// own, or that entry points at nothing. Only parts older than
+    /// [`STALE_PARTS_SECS`] are another save's leftovers.
+    #[test]
+    fn a_concurrent_save_keeps_the_other_saves_parts() {
+        let (store, dir) = store();
+        let mut c = StoreCaches::new(
+            store.clone(),
+            &RepoId::new("github.com-acme").unwrap(),
+            &RepoId::new("web").unwrap(),
+            "main",
+            "main",
+            Event::Push,
+            None,
+        );
+        c.part_bytes = 40 << 10;
+        let object = c.entry_key(&c.write_scope, "pnpm");
+        c.save("pnpm", &[], &big(100 << 10)).unwrap();
+        let first = store.get(&object).unwrap().unwrap();
+        c.save("pnpm", &[], &big(90 << 10)).unwrap();
+        // The first save's header lands last.
+        store.put(&object, &first, "application/zstd").unwrap();
+        assert_eq!(
+            c.restore("pnpm", &[], 1 << 20).unwrap().unwrap().entries,
+            big(100 << 10)
+        );
+        assert_eq!(store.list(&format!("{object}.")).unwrap().len(), 4);
         let _ = std::fs::remove_dir_all(dir);
     }
 
