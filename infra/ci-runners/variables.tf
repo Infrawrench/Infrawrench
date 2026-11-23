@@ -153,7 +153,7 @@ variable "release_public_key" {
 variable "storage_quota" {
   description = "Each owner's cache storage unless a run says otherwise."
   type        = string
-  default     = "10GiB"
+  default     = "100GiB"
 }
 
 variable "proxy_url" {
