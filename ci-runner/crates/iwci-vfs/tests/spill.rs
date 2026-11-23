@@ -156,11 +156,14 @@ fn many_spilled_files_share_one_disk_file() {
     );
     let before = open_descriptors();
     for n in 0..3000 {
-        job.write(format!("/store/f{n}"), &content(n, 1000)).unwrap();
+        job.write(format!("/store/f{n}"), &content(n, 1000))
+            .unwrap();
     }
-    let (_, spilled) = job.spill_usage().unwrap();
-    let (resident, _) = job.spill_usage().unwrap();
-    assert!(spilled > (2000 * 1000) as u64, "{spilled} on disk, {resident} in memory");
+    let (resident, spilled) = job.spill_usage().unwrap();
+    assert!(
+        spilled > (2000 * 1000) as u64,
+        "{spilled} on disk, {resident} in memory"
+    );
     if let (Some(before), Some(after)) = (before, open_descriptors()) {
         assert!(after <= before + 4, "{before} descriptors, then {after}");
     }
