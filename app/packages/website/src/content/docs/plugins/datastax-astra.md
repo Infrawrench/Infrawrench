@@ -25,6 +25,8 @@ Connect DataStax Astra with one application token to manage your Astra DB databa
 - **Users**: invite with roles, change roles, remove.
 - **Application tokens**: generate with roles (the token is shown once, in the new resource's outputs), revoke.
 
+Capacity runway tracks each database's used storage against the total storage Astra reports for it.
+
 ![DataStax Astra database detail page showing the Capacity and Connectivity sections and the Resume and Secure connect bundle buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/datastax-astra/database-detail.png)
 
 ## Connect your organization

@@ -57,11 +57,16 @@ export const AutoscalePoolResourceType = rt({
       required: false,
       description: "Minutes between scaling events, 5-20.",
     }),
+    // `active_resources_count` against the dynamic config's `max_instances`
+    // (`autoscale_pool`, GET /v2/droplets/autoscale, DigitalOcean public API
+    // spec, read 2026-11-23). A static pool has no maximum, so the lister
+    // leaves `maxInstances` blank and no row is drawn.
     f("activeResourcesCount", "Active Droplets", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      usage: { limit: { field: "maxInstances" }, unit: "droplets", label: "Pool size" },
     }),
     f("vpcUuid", "VPC", { required: false, editable: false }),
     f("createdAt", "Created At", { required: false, editable: false }),

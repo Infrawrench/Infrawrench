@@ -73,6 +73,22 @@ export const ManagedDatabaseResourceType = rt({
   supportsUpdate: true,
   // CPU, memory, disk and connections from the RDB metrics route.
   supportsMetrics: true,
+  // `disk_usage_percent` and `total_connections_percent` from GET
+  // /rdb/v1/regions/{region}/instances/{id}/metrics, labelled by
+  // `rdbMetricLabel` in client.ts. Both are shares of the instance's own
+  // volume and `max_connections`, so 100 is the ceiling
+  // (https://www.scaleway.com/en/docs/managed-databases-for-postgresql-and-mysql/how-to/monitor-databases-cockpit/,
+  // read 2026-11-23). A multi-node instance labels each series by node and
+  // records none of them.
+  capacityMetrics: [
+    { seriesLabel: "Disk Usage", limit: { constant: 100 }, unit: "%", label: "Storage" },
+    {
+      seriesLabel: "Connection Usage",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Connections",
+    },
+  ],
   backupPolicy: {
     protectedBy: [],
     automatedBackupFieldKey: "backupsEnabled",

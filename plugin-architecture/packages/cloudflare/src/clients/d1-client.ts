@@ -19,7 +19,7 @@ function queryRows(results: Array<unknown> | undefined): Record<string, unknown>
   return rows;
 }
 
-function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
+export function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
   const uuid = String(db["uuid"] ?? db["id"] ?? "");
   const name = String(db["name"] ?? "");
   return {
@@ -32,6 +32,7 @@ function mapD1Database(db: Record<string, unknown>, accountId: string): Resource
       name,
       version: String(db["version"] ?? ""),
       numTables: Number(db["num_tables"] ?? 0),
+      // Absent `file_size` stays "" (no reading), never a zero size.
       fileSize: String(db["file_size"] ?? ""),
       createdAt: String(db["created_at"] ?? ""),
     },

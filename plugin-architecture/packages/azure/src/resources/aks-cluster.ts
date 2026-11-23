@@ -35,6 +35,22 @@ export const AKSClusterResourceType = rt({
       sizing: "node-count",
     }),
     f("nodePoolCount", "Node Pool Count", { showcase: true, kind: "number", required: false }),
+    // Nodes in the autoscaled pools against the sum of their `maxCount`: at the
+    // ceiling the cluster autoscaler stops adding nodes and pods go unscheduled.
+    // https://learn.microsoft.com/rest/api/aks/managed-clusters/list (read 2026-11-23)
+    f("autoscaleNodeCount", "Autoscaled Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "Nodes in the node pools the cluster autoscaler manages",
+      usage: { limit: { field: "autoscaleMaxNodes" }, unit: "nodes" },
+    }),
+    f("autoscaleMaxNodes", "Autoscaler Max Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "Sum of the autoscaled node pools' maximum node counts",
+    }),
     // The stored spelling; the create form calls it `nodeSize`, and the
     // estimator accepts both.
     f("vmSize", "VM Size", {
@@ -129,6 +145,15 @@ export const AKSClusterResourceType = rt({
       limit: { constant: 100 },
       unit: "%",
       label: "etcd database",
+    },
+    // "Disk Used Percentage" (`node_disk_usage_percentage`, Percent, "Disk space used
+    // in percent by device") on the same page, read 2026-11-23; requested as the
+    // maximum across nodes so the fullest node's disk is what shows.
+    {
+      seriesLabel: "Disk Used Percentage",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Node disk",
     },
   ],
   peerIntegrations: [

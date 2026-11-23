@@ -41,8 +41,26 @@ export const WorkspaceResourceType = rt({
     f("has2FAEnforcement", "Two-Factor Enforced", { kind: "boolean", ...ro }),
     f("memberCount", "Members", { showcase: true, kind: "number", ...ro }),
     f("preferredRegion", "Default Region", ro),
-    f("currentUsage", "Usage This Period (USD)", { kind: "number", ...ro }),
+    // `customer.currentUsage` against `customer.usageLimit.hardLimit`, through
+    // `customer.billingPeriod`. At the hard limit Railway takes every
+    // workload in the workspace down until the next period
+    // (https://docs.railway.com/reference/usage-limits, read 2026-11-23).
+    f("currentUsage", "Usage This Period (USD)", {
+      kind: "number",
+      ...ro,
+      usage: {
+        limit: { field: "hardLimit" },
+        unit: "USD",
+        cycle: {
+          period: "monthly",
+          startField: "billingPeriodStart",
+          endField: "billingPeriodEnd",
+        },
+        label: "Usage Hard Limit",
+      },
+    }),
     f("creditBalance", "Credit Balance (USD)", { kind: "number", ...ro }),
+    f("billingPeriodStart", "Billing Period Starts", ro),
     f("billingPeriodEnd", "Billing Period Ends", ro),
     f("softLimit", "Usage Alert (USD)", {
       kind: "number",

@@ -66,7 +66,9 @@ vi.mock("@neondatabase/api-client", () => ({
   NeonAuthSupportedAuthProvider: { Mock: "mock", Stack: "stack", BetterAuth: "better_auth" },
 }));
 
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { NeonClient } from "../client.js";
+import { plugin } from "../plugin.js";
 
 const ACCOUNT = "acct1";
 
@@ -92,6 +94,97 @@ describe("constructor", () => {
   it("creates api client with apiKey", () => {
     makeClient();
     expect(createApiClient).toHaveBeenCalledWith({ apiKey: "neon_test" });
+  });
+});
+
+describe("listResources - project consumption", () => {
+  const listed = {
+    id: "p1",
+    name: "Proj 1",
+    region_id: "aws-us-east-2",
+    pg_version: 17,
+    created_at: "2024-01-01",
+    updated_at: "2024-01-02",
+    settings: { quota: { active_time_seconds: 360000, written_data_bytes: 0 } },
+  };
+
+  it("stores this period's consumption and quotas from the project's full record", async () => {
+    api.listProjects.mockResolvedValue(wrap({ projects: [listed] }));
+    api.getProject.mockResolvedValue(
+      wrap({
+        project: {
+          ...listed,
+          owner: {
+            name: "n",
+            email: "e@example.com",
+            branches_limit: 10,
+            subscription_type: "free_v3",
+          },
+          compute_time_seconds: 90000,
+          active_time_seconds: 180000,
+          data_transfer_bytes: 1_000_000_000,
+          written_data_bytes: 193990002,
+          consumption_period_start: "2026-11-01T00:00:00Z",
+          consumption_period_end: "2026-12-01T00:00:00Z",
+        },
+      }),
+    );
+    const [project] = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(api.getProject).toHaveBeenCalledWith("p1");
+    expect(project!.fields).toMatchObject({
+      plan: "free_v3",
+      computeCuHours: 25,
+      activeTimeSeconds: 180000,
+      activeTimeQuotaSeconds: 360000,
+      dataTransferBytes: 1_000_000_000,
+      writtenDataBytes: 193990002,
+      consumptionPeriodStart: "2026-11-01T00:00:00Z",
+      consumptionPeriodEnd: "2026-12-01T00:00:00Z",
+    });
+    // A quota of 0 is no limit.
+    expect(project!.fields).not.toHaveProperty("writtenDataQuotaBytes");
+
+    const type = plugin.resourceTypes.find((t) => t.id === "neon-project")!;
+    const limits = Object.fromEntries(
+      capacityDeclarations(type).map((d) => [
+        d.key,
+        resolveCapacityLimit(d.declaration.limit, project!.fields)?.limit ?? null,
+      ]),
+    );
+    expect(limits).toEqual({
+      computeCuHours: 100,
+      dataTransferBytes: 5_000_000_000,
+      activeTimeSeconds: 360000,
+      writtenDataBytes: null,
+    });
+  });
+
+  it("keeps the row without counters when the full read fails", async () => {
+    api.listProjects.mockResolvedValue(wrap({ projects: [listed] }));
+    api.getProject.mockRejectedValue(
+      Object.assign(new Error("boom"), { response: { status: 500 } }),
+    );
+    const [project] = await makeClient().listResources("neon-project", ACCOUNT);
+    expect(project!.fields).toMatchObject({ name: "Proj 1", activeTimeQuotaSeconds: 360000 });
+    expect(project!.fields).not.toHaveProperty("computeCuHours");
+    expect(project!.fields).not.toHaveProperty("consumptionPeriodStart");
+  });
+
+  it("reads only the wanted project's full record on a lookup", async () => {
+    api.listProjects.mockResolvedValue(
+      wrap({ projects: [listed, { ...listed, id: "p2", name: "Proj 2" }] }),
+    );
+    api.getProject.mockResolvedValue(
+      wrap({ project: { ...listed, id: "p2", compute_time_seconds: 0 } }),
+    );
+    const project = await makeClient().getResource(
+      "neon-project",
+      `${ACCOUNT}:neon-project:p2`,
+      ACCOUNT,
+    );
+    expect(api.getProject).toHaveBeenCalledTimes(1);
+    expect(api.getProject).toHaveBeenCalledWith("p2");
+    expect(project.fields["computeCuHours"]).toBe(0);
   });
 });
 

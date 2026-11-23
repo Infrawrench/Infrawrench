@@ -927,6 +927,36 @@ const LB_METRICS: Array<{
   { name: "droplets_downtime", label: "Downtime", unit: "s", split: true },
 ];
 
+/** Labels of the derived load balancer series `capacityMetrics` names. */
+export const LB_CONNECTIONS_USED_LABEL = "Connections Used";
+export const LB_TLS_RATE_USED_LABEL = "TLS Connection Rate Used";
+
+/**
+ * `used` as a percent of `limit` at each timestamp both report. DO publishes
+ * the load balancer's current connections and its connection limit as two
+ * series (`frontend_connections_current` / `_limit`, and the TLS pair,
+ * DigitalOcean public API spec, read 2026-11-23); the limit follows the size,
+ * so the share is what capacity runway projects against 100%.
+ */
+export function percentOfSeries(
+  series: readonly MetricSeries[],
+  usedLabel: string,
+  limitLabel: string,
+  label: string,
+): MetricSeries | null {
+  const used = series.find((s) => s.label === usedLabel);
+  const limit = series.find((s) => s.label === limitLabel);
+  if (!used || !limit) return null;
+  const limits = new Map(limit.points.map((p) => [p.timestamp, p.value]));
+  const points = used.points.flatMap((p) => {
+    const cap = limits.get(p.timestamp);
+    return cap !== undefined && cap > 0 && Number.isFinite(p.value)
+      ? [{ timestamp: p.timestamp, value: (p.value / cap) * 100 }]
+      : [];
+  });
+  return points.length > 0 ? { label, unit: "%", points } : null;
+}
+
 const AUTOSCALE_METRICS: Array<{
   name: MetricName<"droplet_autoscale">;
   label: string;
@@ -1014,7 +1044,12 @@ export async function fetchDoServiceMetrics(
         ),
       ),
     );
-    return all.flat();
+    const series = all.flat();
+    const derived = [
+      percentOfSeries(series, "Connections", "Connection Limit", LB_CONNECTIONS_USED_LABEL),
+      percentOfSeries(series, "TLS Connections", "TLS Connection Limit", LB_TLS_RATE_USED_LABEL),
+    ].filter((s): s is MetricSeries => s !== null);
+    return [...series, ...derived];
   }
   if (typeId === "autoscale-pool") {
     const all = await Promise.all(

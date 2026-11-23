@@ -12,6 +12,13 @@ export const CloudNatResourceType = rt({
     f("router", "Router"),
     f("natIpAllocateOption", "IP Allocation", { required: false }),
     f("sourceSubnetworkIpRangesToNat", "Subnet IP Ranges", { required: false }),
+    f("portsPerVm", "Ports per VM", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "Source ports each VM gets (the maximum under dynamic port allocation), which caps its connections to any one destination",
+    }),
     f("status", "Status", { showcase: true, required: false }),
   ],
   outputs: [],
@@ -20,6 +27,18 @@ export const CloudNatResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
+  // `router.googleapis.com/nat/port_usage` ("Maximum number of connections
+  // from VM to a single internet endpoint (IP:port)"), worst VM, against the
+  // ports each VM is allocated; at the limit new connections are dropped:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+  capacityMetrics: [
+    {
+      seriesLabel: "Port usage (max per VM)",
+      limit: { field: "portsPerVm" },
+      unit: "ports",
+      label: "NAT Ports per VM",
+    },
+  ],
   attachTargets: [
     {
       pluginId: "gcp",

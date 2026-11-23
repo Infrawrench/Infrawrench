@@ -208,7 +208,8 @@ export async function listWAFWebACLs(
           description: String(acl["Description"] ?? ""),
           ruleCount: 0,
           defaultAction: "ALLOW",
-          capacity: 0,
+          // No `capacity`: the list does not report it, and a 0 would read
+          // as a measured usage.
         },
         resolvedOutputs: { webAclArn: arn, webAclId: aclId },
         secretStates: [],

@@ -1,8 +1,10 @@
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { createResendApi } from "../api.js";
 import { ResendClient, WEBHOOK_EVENTS, parseList } from "../client.js";
 import { qualify, toIso } from "../mappers.js";
+import { AccountResourceType as ACCOUNT_TYPE } from "../resource-types.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import type { Call } from "./helpers.js";
 import { makeHttp } from "./helpers.js";
@@ -129,10 +131,14 @@ describe("account usage", () => {
         },
         contacts: { used: 400, limit: 1000 },
         domains: { used: 1, limit: null },
+        automation_runs: { used: 120, limit: 1000, resets_at: "2026-12-01T00:00:00.000Z" },
       };
     });
     const [account] = await c.listResources("resend-account", ACC);
     expect(account!.fields).toMatchObject({
+      automationRuns: 120,
+      automationRunsLimit: 1000,
+      automationRunsResetAt: "2026-12-01T00:00:00.000Z",
       emailsThisPeriod: 100,
       monthlyLimit: 3000,
       periodResetsAt: "2026-12-01T00:00:00.000Z",
@@ -143,6 +149,16 @@ describe("account usage", () => {
     expect(account!.fields).not.toHaveProperty("domainsLimit");
     expect(account!.fields).not.toHaveProperty("segments");
     expect(account!.fields).not.toHaveProperty("segmentsLimit");
+    const runs = capacityDeclarations(ACCOUNT_TYPE).find((d) => d.key === "automationRuns");
+    expect(runs?.declaration.cycle?.endField).toBe("automationRunsResetAt");
+    expect(resolveCapacityLimit(runs!.declaration.limit, account!.fields)?.limit).toBe(1000);
+  });
+
+  it("leaves automation runs out when the usage read has none", async () => {
+    const { c } = client(() => ({ object: "usage" }));
+    const [account] = await c.listResources("resend-account", ACC);
+    expect(account!.fields).not.toHaveProperty("automationRuns");
+    expect(account!.fields).not.toHaveProperty("automationRunsLimit");
   });
 });
 

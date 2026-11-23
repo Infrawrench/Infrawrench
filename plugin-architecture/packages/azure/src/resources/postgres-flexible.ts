@@ -87,6 +87,16 @@ export const PostgresFlexibleServerResourceType = rt({
   // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-dbforpostgresql-flexibleservers-metrics
   capacityMetrics: [
     { seriesLabel: "Storage percent", limit: { constant: 100 }, unit: "%", label: "Storage" },
+    // "Maximum Used Transaction IDs" (`maximum_used_transactionIDs`, Count) on the same
+    // page. PostgreSQL "will refuse to assign new XIDs once there are fewer than three
+    // million transactions left until wraparound", 2^31 transactions out:
+    // https://www.postgresql.org/docs/current/routine-vacuuming.html (read 2026-11-23)
+    {
+      seriesLabel: "Maximum Used Transaction IDs",
+      limit: { constant: 2 ** 31 - 3_000_000 },
+      unit: "transaction IDs",
+      label: "Transaction ID wraparound",
+    },
   ],
   peerIntegrations: [
     {

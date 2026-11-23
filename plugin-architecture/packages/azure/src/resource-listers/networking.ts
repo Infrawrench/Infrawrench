@@ -1,4 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { mapBounded, ReadBudget, readOptionalArmList, startingRow } from "../arm-list.js";
 import {
   ARM,
   listAllPages,
@@ -52,18 +53,61 @@ export async function listVNets(
   });
 }
 
+/**
+ * IP addresses used and the subnet's size, per subnet ARM id, from
+ * `GET .../virtualNetworks/{name}/usages`: one `SubnetSpace` entry per subnet whose
+ * `currentValue` "Indicates number of IPs used from the Subnet" and whose `limit`
+ * "Indicates the size of the subnet" (a gateway subnet reports -1 for both). One
+ * request per virtual network; `undefined` when it failed or could not be read.
+ * https://learn.microsoft.com/rest/api/virtualnetwork/virtual-networks/list-usage
+ * (read 2026-11-23)
+ */
+async function readSubnetIpUsage(
+  reader: Pick<ListerContext, "get">,
+  budget: ReadBudget,
+  vnetId: string,
+): Promise<Map<string, { used: number; size: number }> | undefined> {
+  const usages = await budget.hydrate(() =>
+    readOptionalArmList(reader, `${ARM}${vnetId}/usages?api-version=2023-09-01`),
+  );
+  if (!usages) return undefined;
+  const bySubnet = new Map<string, { used: number; size: number }>();
+  for (const usage of usages) {
+    const id = String(usage["id"] ?? "").toLowerCase();
+    const used = usage["currentValue"];
+    const size = usage["limit"];
+    if (!id || typeof used !== "number" || typeof size !== "number") continue;
+    bySubnet.set(id, { used, size });
+  }
+  return bySubnet;
+}
+
 export async function listSubnets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
   const items = await listAllPages(
-    ctx,
+    reader,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/virtualNetworks?api-version=2023-09-01`,
   );
+  const ipUsage = await mapBounded(
+    items,
+    async (vnet) => {
+      const vnetId = String(vnet["id"] ?? "");
+      const subnets = (vnet["properties"] as Record<string, unknown> | undefined)?.["subnets"];
+      // A network with no subnets has nothing to report.
+      if (!vnetId || !Array.isArray(subnets) || subnets.length === 0) return undefined;
+      return readSubnetIpUsage(reader, budget, vnetId);
+    },
+    { from: startingRow(items) },
+  );
   const resources: ResourceInstance[] = [];
-  for (const vnet of items) {
+  for (const [vnetIndex, vnet] of items.entries()) {
     const vnetName = String(vnet["name"] ?? "");
     const vnetId = String(vnet["id"] ?? "");
+    const usageBySubnet = ipUsage[vnetIndex];
     const rg = extractResourceGroup(vnetId);
     const location = String(vnet["location"] ?? "");
     const props = vnet["properties"] as Record<string, unknown> | undefined;
@@ -77,6 +121,14 @@ export async function listSubnets(
       const nsg = subnetProps["networkSecurityGroup"] as Record<string, unknown> | undefined;
       const routeTable = subnetProps["routeTable"] as Record<string, unknown> | undefined;
       const natGateway = subnetProps["natGateway"] as Record<string, unknown> | undefined;
+      // Left out when the usages read failed; blank when it answered without a
+      // usable figure for this subnet (a gateway subnet's -1).
+      const ipCounts = usageBySubnet?.get(azureId.toLowerCase());
+      const ipFields = !usageBySubnet
+        ? {}
+        : ipCounts && ipCounts.used >= 0 && ipCounts.size > 0
+          ? { ipAddressesUsed: ipCounts.used, ipAddressCapacity: ipCounts.size }
+          : { ipAddressesUsed: "", ipAddressCapacity: "" };
       resources.push({
         id: ctx.id(accountId, "azure-subnet", `${rg}/${vnetName}/${name}`),
         pluginId: "azure",
@@ -93,6 +145,7 @@ export async function listSubnets(
           networkSecurityGroup: extractName(String(nsg?.["id"] ?? "")),
           routeTable: extractName(String(routeTable?.["id"] ?? "")),
           natGateway: extractName(String(natGateway?.["id"] ?? "")),
+          ...ipFields,
         },
         resolvedOutputs: { resourceId: azureId },
         secretStates: [],
@@ -205,6 +258,7 @@ export async function listLoadBalancers(
       Array<Record<string, unknown>> | undefined;
     const backendPools = props?.["backendAddressPools"] as unknown[] | undefined;
     const rules = props?.["loadBalancingRules"] as unknown[] | undefined;
+    const natRules = props?.["inboundNatRules"] as unknown[] | undefined;
 
     // Try to get the first frontend IP
     const firstFrontend = frontendIps?.[0];
@@ -226,6 +280,10 @@ export async function listLoadBalancers(
         frontendIpCount: frontendIps?.length ?? 0,
         backendPoolCount: backendPools?.length ?? 0,
         ruleCount: rules?.length ?? 0,
+        // Azure's per-load-balancer rule limit counts load-balancing and inbound NAT
+        // rules together ("Rules (Load Balancer + Inbound NAT) per resource").
+        inboundNatRuleCount: natRules?.length ?? 0,
+        totalRuleCount: (rules?.length ?? 0) + (natRules?.length ?? 0),
         publicIpNames: joinRefs(
           (frontendIps ?? []).map((fe) => extractName(refId(propsOf(fe), "publicIPAddress"))),
         ),

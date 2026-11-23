@@ -338,6 +338,29 @@ describe("metrics", () => {
     ]);
     expect(periodFor({ startMs: 0, endMs: 86_400_000 })).toBe("day");
   });
+
+  it("emits the disk share the database type declares, skipping empty samples", () => {
+    const series = databaseSeries({
+      disk_usage: {
+        data: {
+          cols: [{ label: "time" }, { label: "db-1 (master)" }, { label: "db-2 (standby)" }],
+          rows: [
+            ["2024-01-31T21:01:00Z", null, null],
+            ["2024-01-31T21:01:30Z", 41.5, null],
+          ],
+        },
+      },
+    });
+    const type = plugin.resourceTypes.find((t) => t.id === "database")!;
+    expect((type.capacityMetrics ?? []).map((m) => m.seriesLabel)).toEqual(["Disk Used"]);
+    expect(series).toEqual([
+      {
+        label: "Disk Used",
+        unit: "%",
+        points: [{ timestamp: Date.parse("2024-01-31T21:01:30Z"), value: 41.5 }],
+      },
+    ]);
+  });
 });
 
 describe("status feed", () => {

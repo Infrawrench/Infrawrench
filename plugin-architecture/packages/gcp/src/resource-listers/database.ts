@@ -8,6 +8,21 @@ import {
 import { engineInfoFromVersion } from "../cloudsql-engine.js";
 import { cloudSqlTierVcpus } from "../extended-support.js";
 
+/**
+ * The `max_connections` database flag, when the instance sets one.
+ * `settings.databaseFlags` is a list of `{ name, value }` with string values
+ * (https://docs.cloud.google.com/sql/docs/mysql/admin-api/rest/v1/instances,
+ * read 2026-11-23). Without the flag the engine's default applies, which the
+ * instance resource does not report, so the field is left out rather than
+ * guessed.
+ */
+export function cloudSqlMaxConnections(db: Record<string, unknown>): number | undefined {
+  const settings = db["settings"] as Record<string, unknown> | undefined;
+  const flags = (settings?.["databaseFlags"] as Array<Record<string, unknown>> | undefined) ?? [];
+  const value = Number(flags.find((flag) => flag["name"] === "max_connections")?.["value"]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 export async function listCloudSqlInstances(
   ctx: ListerContext,
   accountId: string,
@@ -31,6 +46,7 @@ export async function listCloudSqlInstances(
       "ipConfiguration"
     ] as Record<string, unknown> | undefined;
     const privateNetwork = lastSegment(ipConfiguration?.["privateNetwork"]);
+    const maxConnections = cloudSqlMaxConnections(db);
     return {
       id: ctx.id(accountId, "cloudsql-instance", String(db["name"])),
       pluginId: "gcp",
@@ -57,6 +73,7 @@ export async function listCloudSqlInstances(
         publicIpAddress: publicIp,
         privateIpAddress: privateIp,
         privateNetwork,
+        ...(maxConnections !== undefined ? { maxConnections } : {}),
       },
       resolvedOutputs: {
         connectionName: String(db["connectionName"] ?? ""),

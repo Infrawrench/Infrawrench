@@ -33,7 +33,7 @@ sidebar_order: 21
 - **Edit a service**: name, branch, root directory, auto-deploy (every commit, after CI checks pass, or off), build, start and pre-deploy commands, instance type, health check path, cron schedule, publish directory and preview environments.
 - **Cron jobs**: **Run Now** starts a run (and cancels one in progress). **Cancel Run** stops it.
 - **Logs** for services, jobs, Postgres and Key Value. For services, filter to application, request or build logs.
-- **Metrics**: CPU, memory and instance count for services, plus request count, p95 latency and bandwidth for web services. CPU, memory, disk use, connections and replication lag for Postgres. CPU, memory and connections for Key Value. Used and total space for disks.
+- **Metrics**: CPU, memory and instance count for services, plus request count, p95 latency and bandwidth for web services. CPU, memory, disk use, connections and replication lag for Postgres. CPU, memory and connections for Key Value. Used and total space for disks. Capacity runway tracks each disk's and Postgres database's used space against its capacity, from that chart.
 - **Connection details**: Postgres outputs the external, internal and pooled connection strings and the password. Key Value outputs its external and internal URLs. Both open in the SQL and key browser tabs once your IP is in **Allowed Sources**, and export as `DATABASE_URL` or `REDIS_URL`.
 - **Environment groups**: create one from `KEY=value` lines, add or change variables, and drag the group onto a service (or use **Link to Service**) to link it.
 - **Point-in-time recovery**: create a new database from a Postgres instance as it was at the moment you pick. The detail view shows how far back you can go.

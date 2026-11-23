@@ -335,14 +335,55 @@ describe("messaging metrics", () => {
   });
   it("mskClusterMetrics", async () => {
     const { ctx, calls } = ctxWithData();
-    expect((await mskClusterMetrics(ctx, res({ clusterName: "c" }))).length).toBe(4);
+    // Without a broker count there is no broker to read disk usage from.
+    expect((await mskClusterMetrics(ctx, res({ clusterName: "c" }))).length).toBe(3);
     expect((calls[0]![2] as { Name: string }[])[0]!.Name).toBe("Cluster Name");
     expect(await mskClusterMetrics(ctx, res({}))).toEqual([]);
+  });
+  it("mskClusterMetrics reads data log disk per broker and keeps the fullest", async () => {
+    const calls: unknown[][] = [];
+    const ctx: MetricsContext = {
+      creds,
+      start: 0,
+      end: 3600_000,
+      period: 60,
+      fetchCw: (async (ns: string, metric: string, dims: { Name: string; Value: string }[]) => {
+        calls.push([ns, metric, dims]);
+        const broker = dims.find((d) => d.Name === "Broker ID")?.Value;
+        return {
+          label: metric,
+          unit: "Percent",
+          points: [{ timestamp: 1, value: broker === "2" ? 81 : 40 }],
+        };
+      }) as unknown as MetricsContext["fetchCw"],
+    };
+    const out = await mskClusterMetrics(ctx, res({ clusterName: "c", numberOfBrokerNodes: 3 }));
+    const disk = out.find((s) => s.label === "Data Log Disk Used")!;
+    expect(disk.points).toEqual([{ timestamp: 1, value: 81 }]);
+    const diskCalls = calls.filter((c) => c[1] === "KafkaDataLogsDiskUsed");
+    expect(diskCalls.map((c) => (c[2] as { Name: string; Value: string }[])[1])).toEqual([
+      { Name: "Broker ID", Value: "1" },
+      { Name: "Broker ID", Value: "2" },
+      { Name: "Broker ID", Value: "3" },
+    ]);
   });
   it("mqBrokerMetrics", async () => {
     const { ctx } = ctxWithData();
     expect((await mqBrokerMetrics(ctx, res({ brokerName: "b" }))).length).toBe(3);
     expect(await mqBrokerMetrics(ctx, res({}))).toEqual([]);
+  });
+  it("mqBrokerMetrics reads ActiveMQ under the -1 suffix with its store usage", async () => {
+    const { ctx, calls } = ctxWithData();
+    const out = await mqBrokerMetrics(ctx, res({ brokerName: "b", engineType: "ACTIVEMQ" }));
+    expect(calls[0]![2]).toEqual([{ Name: "Broker", Value: "b-1" }]);
+    expect(out.map((s) => s.label)).toContain("Store Used");
+  });
+  it("mqBrokerMetrics derives RabbitMQ memory against its limit", async () => {
+    const { ctx, calls } = ctxWithData();
+    const out = await mqBrokerMetrics(ctx, res({ brokerName: "b", engineType: "RABBITMQ" }));
+    expect(calls[0]![2]).toEqual([{ Name: "Broker", Value: "b" }]);
+    // ctxWithData returns 5 for every metric, so used/limit is 100%.
+    expect(out.find((s) => s.label === "Memory Used (of limit)")!.points[0]!.value).toBe(100);
   });
   it("stepFunctionMetrics", async () => {
     const { ctx } = ctxWithData();

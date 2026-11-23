@@ -440,7 +440,7 @@ describe("delete, metrics and logs", () => {
       "rid",
       "acct",
     );
-    expect(valkeySeries).toHaveLength(11);
+    expect(valkeySeries).toHaveLength(12);
     expect(
       urls.some((u) =>
         u.includes('metric.type="memorystore.googleapis.com/instance/cpu/average_utilization"'),

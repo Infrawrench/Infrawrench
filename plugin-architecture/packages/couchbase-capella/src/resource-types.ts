@@ -240,7 +240,15 @@ const BucketType = rt({
     f("itemCount", "Items", { showcase: true, kind: "number", required: false, editable: false }),
     f("opsPerSecond", "Ops/sec", { kind: "number", required: false, editable: false }),
     f("diskUsedMib", "Disk Used (MiB)", { kind: "number", required: false, editable: false }),
-    f("memoryUsedMib", "Memory Used (MiB)", { kind: "number", required: false, editable: false }),
+    // `stats.memoryUsedInMib` against `memoryAllocationInMb`, the bucket's
+    // memory quota, both MiB per the Management API's GetBucketResponse
+    // (docs.couchbase.com/cloud/management-api-reference, read 2026-11-23).
+    f("memoryUsedMib", "Memory Used (MiB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "memoryAllocationInMb" }, unit: "MiB", label: "Memory quota" },
+    }),
     f("backupSchedule", "Backup Schedule", { required: false, editable: false }),
   ],
   dependsOn: [

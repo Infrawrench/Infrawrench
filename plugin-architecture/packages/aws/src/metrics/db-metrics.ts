@@ -1,5 +1,8 @@
 import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
+import { combineSeries, mapSeriesPoints } from "./series-math.js";
+
+const GIB = 1024 ** 3;
 
 /**
  * Database-family metric handlers: RDS instances/clusters, DynamoDB,
@@ -50,6 +53,16 @@ export async function rdsInstanceMetrics(
   if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
   if (freeStorage && freeStorage.points.length > 0)
     results.push({ ...freeStorage, label: "Free Storage", unit: "bytes" });
+  // `FreeStorageSpace` is what is left, not a usage. The used bytes are the
+  // allocated size (AllocatedStorage, GiB, from DescribeDBInstances:
+  // https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DBInstance.html,
+  // read 2026-11-23) minus it. Aurora instances report AllocatedStorage 1 and
+  // keep their data on the cluster volume, so they get no used series.
+  const allocatedGb = Number(f.allocatedStorage ?? 0);
+  if (allocatedGb > 0 && !String(f.engine ?? "").startsWith("aurora")) {
+    const used = mapSeriesPoints(freeStorage, (free) => Math.max(0, allocatedGb * GIB - free));
+    if (used.length > 0) results.push({ label: "Storage Used", unit: "bytes", points: used });
+  }
   if (freeableMem && freeableMem.points.length > 0)
     results.push({ ...freeableMem, label: "Freeable Memory", unit: "bytes" });
   if (swap && swap.points.length > 0) results.push({ ...swap, label: "Swap Usage", unit: "bytes" });
@@ -100,6 +113,8 @@ export async function rdsClusterMetrics(
     replicaLagMax,
     deadlocks,
     volBytes,
+    volLeft,
+    acus,
   ] = await Promise.all([
     ctx.fetchCw("AWS/RDS", "CPUUtilization", dims).catch(() => null),
     ctx.fetchCw("AWS/RDS", "DatabaseConnections", dims, "Sum").catch(() => null),
@@ -113,6 +128,10 @@ export async function rdsClusterMetrics(
     ctx.fetchCw("AWS/RDS", "AuroraReplicaLagMaximum", dims).catch(() => null),
     ctx.fetchCw("AWS/RDS", "DeadlockCount", dims, "Sum").catch(() => null),
     ctx.fetchCw("AWS/RDS", "VolumeBytesUsed", dims).catch(() => null),
+    // Aurora MySQL only; Aurora PostgreSQL leaves it empty.
+    ctx.fetchCw("AWS/RDS", "AuroraVolumeBytesLeftTotal", dims, "Minimum").catch(() => null),
+    // Aurora Serverless v2 only.
+    ctx.fetchCw("AWS/RDS", "ServerlessDatabaseCapacity", dims, "Maximum").catch(() => null),
   ]);
   const results: MetricSeries[] = [];
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
@@ -134,6 +153,18 @@ export async function rdsClusterMetrics(
   if (deadlocks && deadlocks.points.length > 0) results.push({ ...deadlocks, label: "Deadlocks" });
   if (volBytes && volBytes.points.length > 0)
     results.push({ ...volBytes, label: "Volume Size", unit: "bytes" });
+  // The cluster volume's ceiling depends on the engine version (128 or 256
+  // TiB), so read it from what AWS says is left rather than a table:
+  // `AuroraVolumeBytesLeftTotal` reaches zero when the volume is full
+  // (https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMonitoring.Metrics.html
+  // and https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/CHAP_Limits.html,
+  // read 2026-11-23).
+  const volumePct = combineSeries(volBytes, volLeft, (used, left) =>
+    used + left > 0 ? (used / (used + left)) * 100 : null,
+  );
+  if (volumePct.length > 0) results.push({ label: "% Volume Used", unit: "%", points: volumePct });
+  if (acus && acus.points.length > 0)
+    results.push({ ...acus, label: "Serverless Capacity", unit: "ACU" });
   return results;
 }
 
@@ -276,6 +307,14 @@ export async function elastiCacheServerlessCacheMetrics(
       results.push({ ...m, label: spec.label, ...(spec.unit ? { unit: spec.unit } : {}) });
     }
   });
+  // The cache's ECPU ceiling (CacheUsageLimits.ECPUPerSecond.Maximum) is a
+  // rate, and ElastiCache throttles requests above it
+  // (https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Scaling-serverless.html,
+  // read 2026-11-23). The consumed series is a Sum per period, so divide by
+  // the period for the same unit.
+  const ecpuPerSecond = mapSeriesPoints(series[0] ?? null, (sum) => sum / ctx.period);
+  if (ecpuPerSecond.length > 0)
+    results.push({ label: "ECPUs per Second", unit: "ECPU/s", points: ecpuPerSecond });
   return results;
 }
 
@@ -355,7 +394,19 @@ export async function openSearchDomainMetrics(
   const f = resource.fields;
   const domainName = String(f.domainName ?? resource.externalId ?? "");
   if (!domainName) return [];
-  const dims = [{ Name: "DomainName", Value: domainName }];
+  // Cluster metrics live under the `ClientId, DomainName` pair (ClientId is
+  // the account id, read here from the domain ARN), and CloudWatch matches
+  // dimensions exactly. The bare DomainName form stays as the fallback for a
+  // row synced before the ARN was stored.
+  const accountId = /^arn:[^:]+:es:[^:]*:(\d{12}):/.exec(
+    String(resource.resolvedOutputs?.["domainArn"] ?? ""),
+  )?.[1];
+  const dims = accountId
+    ? [
+        { Name: "ClientId", Value: accountId },
+        { Name: "DomainName", Value: domainName },
+      ]
+    : [{ Name: "DomainName", Value: domainName }];
   const [
     cpu,
     jvm,
@@ -370,6 +421,7 @@ export async function openSearchDomainMetrics(
     indexRate,
     indexLat,
     docs,
+    usedSpace,
   ] = await Promise.all([
     ctx.fetchCw("AWS/ES", "CPUUtilization", dims).catch(() => null),
     ctx.fetchCw("AWS/ES", "JVMMemoryPressure", dims).catch(() => null),
@@ -384,6 +436,7 @@ export async function openSearchDomainMetrics(
     ctx.fetchCw("AWS/ES", "IndexingRate", dims, "Sum").catch(() => null),
     ctx.fetchCw("AWS/ES", "IndexingLatency", dims).catch(() => null),
     ctx.fetchCw("AWS/ES", "SearchableDocuments", dims).catch(() => null),
+    ctx.fetchCw("AWS/ES", "ClusterUsedSpace", dims, "Maximum").catch(() => null),
   ]);
   const results: MetricSeries[] = [];
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
@@ -410,6 +463,11 @@ export async function openSearchDomainMetrics(
   if (indexLat && indexLat.points.length > 0)
     results.push({ ...indexLat, label: "Indexing Latency", unit: "ms" });
   if (docs && docs.points.length > 0) results.push({ ...docs, label: "Searchable Documents" });
+  // `ClusterUsedSpace` is the total used space for the cluster, which
+  // CloudWatch reports in MiB; converted to bytes so it sits on the same
+  // axis as the EBS volumes it fills.
+  const used = mapSeriesPoints(usedSpace, (mib) => mib * 1024 * 1024);
+  if (used.length > 0) results.push({ label: "Storage Used", unit: "bytes", points: used });
   return results;
 }
 
@@ -438,6 +496,7 @@ export async function documentDbClusterMetrics(
     opDelete,
     netIn,
     netOut,
+    volBytes,
   ] = await Promise.all([
     ctx.fetchCw("AWS/DocDB", "CPUUtilization", dims).catch(() => null),
     ctx.fetchCw("AWS/DocDB", "DatabaseConnections", dims).catch(() => null),
@@ -452,6 +511,7 @@ export async function documentDbClusterMetrics(
     ctx.fetchCw("AWS/DocDB", "OpcountersDelete", dims, "Sum").catch(() => null),
     ctx.fetchCw("AWS/DocDB", "NetworkReceiveThroughput", dims).catch(() => null),
     ctx.fetchCw("AWS/DocDB", "NetworkTransmitThroughput", dims).catch(() => null),
+    ctx.fetchCw("AWS/DocDB", "VolumeBytesUsed", dims, "Maximum").catch(() => null),
   ]);
   const results: MetricSeries[] = [];
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
@@ -474,6 +534,8 @@ export async function documentDbClusterMetrics(
     results.push({ ...netIn, label: "Network In", unit: "bytes/s" });
   if (netOut && netOut.points.length > 0)
     results.push({ ...netOut, label: "Network Out", unit: "bytes/s" });
+  if (volBytes && volBytes.points.length > 0)
+    results.push({ ...volBytes, label: "Volume Used", unit: "bytes" });
   return results;
 }
 
@@ -504,6 +566,8 @@ export async function neptuneClusterMetrics(
     replicaLag,
     http4xx,
     http5xx,
+    volUsed,
+    volLeft,
   ] = await Promise.all([
     ctx.fetchCw("AWS/Neptune", "CPUUtilization", dims).catch(() => null),
     ctx.fetchCw("AWS/Neptune", "FreeableMemory", dims).catch(() => null),
@@ -518,6 +582,8 @@ export async function neptuneClusterMetrics(
     ctx.fetchCw("AWS/Neptune", "ClusterReplicaLag", dims).catch(() => null),
     ctx.fetchCw("AWS/Neptune", "Http4xx", dims, "Sum").catch(() => null),
     ctx.fetchCw("AWS/Neptune", "Http5xx", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Neptune", "VolumeBytesUsed", dims, "Maximum").catch(() => null),
+    ctx.fetchCw("AWS/Neptune", "VolumeBytesLeftTotal", dims, "Minimum").catch(() => null),
   ]);
   const results: MetricSeries[] = [];
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
@@ -541,5 +607,15 @@ export async function neptuneClusterMetrics(
     results.push({ ...replicaLag, label: "Replica Lag", unit: "ms" });
   if (http4xx && http4xx.points.length > 0) results.push({ ...http4xx, label: "4xx Errors" });
   if (http5xx && http5xx.points.length > 0) results.push({ ...http5xx, label: "5xx Errors" });
+  if (volUsed && volUsed.points.length > 0)
+    results.push({ ...volUsed, label: "Volume Size", unit: "bytes" });
+  // `VolumeBytesLeftTotal` is what the 128 TiB cluster volume has left and
+  // reaches zero when it is full
+  // (https://docs.aws.amazon.com/neptune/latest/userguide/cw-metrics.html,
+  // read 2026-11-23); with the allocated bytes it gives the share used.
+  const volumePct = combineSeries(volUsed, volLeft, (used, left) =>
+    used + left > 0 ? (used / (used + left)) * 100 : null,
+  );
+  if (volumePct.length > 0) results.push({ label: "% Volume Used", unit: "%", points: volumePct });
   return results;
 }

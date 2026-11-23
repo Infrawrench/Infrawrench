@@ -229,6 +229,10 @@ const ServiceType = rt({
         "The service, and every backup, can be deleted in one step. Turn termination protection on for anything holding data you need.",
     },
   ],
+  // The fullest node's `disk_usage` percentage (mappers.ts `chartsToSeries`).
+  capacityMetrics: [
+    { seriesLabel: "Disk used (max node)", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   iconKey: "database",
   supportsCreate: true,
   supportsUpdate: true,

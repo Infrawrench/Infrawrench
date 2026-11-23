@@ -91,6 +91,19 @@ export const LoadBalancerResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // Derived in `fetchDoServiceMetrics` from `frontend_connections_current` over
+  // `frontend_connections_limit`, and the TLS connection rate over its limit
+  // (/v2/monitoring/metrics/load_balancer/*, DigitalOcean public API spec, read
+  // 2026-11-23). The limit follows the load balancer's size.
+  capacityMetrics: [
+    { seriesLabel: "Connections Used", limit: { constant: 100 }, unit: "%", label: "Connections" },
+    {
+      seriesLabel: "TLS Connection Rate Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "TLS connection rate",
+    },
+  ],
   iconKey: "load-balancer",
   /**
    * A load balancer bills per node whether or not anything sits behind it.

@@ -520,6 +520,13 @@ export const DatabaseResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // "Disk Used" is `usage.disk.percentage` from GET /v2/databases/{id}/usage
+  // (`current_gb` of `max_gb`; metrics.ts), so the ceiling is 100
+  // (https://github.com/vultr/govultr/blob/master/database.go
+  // `DatabaseDiskUsage`, read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Disk Used", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   carbon: { regionFieldKey: "region", vcpus: { from: "field", fieldKey: "vcpus" } },
   // Vultr backs up every MySQL, PostgreSQL and Valkey cluster daily; Kafka
   // has no backups at all, which the lister records as false.

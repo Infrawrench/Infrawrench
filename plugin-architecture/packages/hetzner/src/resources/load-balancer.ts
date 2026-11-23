@@ -36,6 +36,33 @@ export const LoadBalancerResourceType = rt({
       kind: "number",
       required: false,
       editable: false,
+      usage: { limit: { field: "maxServices" }, unit: "services" },
+    }),
+    // `load_balancer_type.max_targets` / `max_services` on GET
+    // /load_balancers: "Number of targets a single Load Balancer can have",
+    // "Number of services a Load Balancer of this type can have"
+    // (https://docs.hetzner.cloud/cloud.spec.json, read 2026-11-23). Only
+    // services carry a usage: the docs do not say whether a label selector
+    // counts as one target or as each server it matches.
+    f("maxTargets", "Max Targets", { kind: "number", required: false, editable: false }),
+    f("maxServices", "Max Services", { kind: "number", required: false, editable: false }),
+    // Same traffic pair as a server: outbound bytes this billing period
+    // against the type's free monthly allowance.
+    f("outgoingTrafficBytes", "Outgoing Traffic (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "includedTrafficBytes" },
+        unit: "bytes",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Traffic",
+      },
+    }),
+    f("includedTrafficBytes", "Included Traffic (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
     }),
     f("targetServerIds", "Target Servers", {
       required: false,

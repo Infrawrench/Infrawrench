@@ -225,6 +225,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AlloyDbInstanceResourceType,
   // Storage & Messaging
   GcsBucketResourceType,
+  FilestoreInstanceResourceType,
   PubSubTopicResourceType,
   PubSubSubscriptionResourceType,
   // Serverless

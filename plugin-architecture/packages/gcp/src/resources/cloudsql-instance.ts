@@ -57,6 +57,13 @@ export const CloudSqlInstanceResourceType = rt({
       required: false,
       description: "Name of the VPC network serving this instance's private IP",
     }),
+    f("maxConnections", "Max Connections", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "The max_connections database flag; empty when the instance runs on the engine's default",
+    }),
   ],
   // The API returns a resource link; the lister keeps its last segment, which is
   // what a vpc-network's `name` field holds.
@@ -82,11 +89,37 @@ export const CloudSqlInstanceResourceType = rt({
   extendedSupport: CLOUDSQL_EXTENDED_SUPPORT,
   supportsCreate: true,
   supportsMetrics: true,
-  // `database/disk/utilization` ("The fraction of the disk quota that is
-  // currently in use"), charted as 0..100 under this label:
-  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_c
+  // From https://docs.cloud.google.com/monitoring/api/metrics_gcp_c (read
+  // 2026-11-23), each charted under its series label:
+  // - `database/disk/utilization` ("The fraction of the disk quota that is
+  //   currently in use"), as 0..100.
+  // - `database/disk/bytes_used` over `database/disk/storage_auto_increase_limit`
+  //   ("Storage auto increase limit in bytes"), as 0..100: where a disk that
+  //   grows on its own stops growing. No series when the limit is unset.
+  // - `database/network/connections` over `database/mysql/max_connections`
+  //   ("Value of the MySQL max_connections configuration"), as 0..100.
+  // - `database/postgresql/num_backends` against the `max_connections` flag,
+  //   when the instance sets one; PostgreSQL reports no limit series.
   capacityMetrics: [
     { seriesLabel: "Disk Utilization", limit: { constant: 100 }, unit: "%", label: "Disk" },
+    {
+      seriesLabel: "Disk Used of Auto-Increase Limit",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Disk Auto-Increase Limit",
+    },
+    {
+      seriesLabel: "MySQL Connections Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Connections",
+    },
+    {
+      seriesLabel: "PostgreSQL Connections",
+      limit: { field: "maxConnections" },
+      unit: "connections",
+      label: "Connections",
+    },
   ],
   peerIntegrations: (() => {
     // The peer plugin connects directly to the Cloud SQL instance's public IP

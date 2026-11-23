@@ -16,4 +16,11 @@ export const SpannerInstanceResourceType = rt({
   outputs: [],
   supportsCreate: true,
   supportsMetrics: true,
+  // `instance/storage/utilization` ("Storage used as a fraction of storage
+  // limit", per storage class), charted as 0..100 for the fuller class under
+  // this label. The limit scales with nodes or processing units:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+  capacityMetrics: [
+    { seriesLabel: "Storage Utilization", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
 });

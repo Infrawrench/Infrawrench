@@ -8,7 +8,7 @@ Connect a JFrog Platform, on JFrog Cloud or self-hosted, to manage its Artifacto
 
 ## What you can manage
 
-- **Platform**: the account opens on the platform itself, with the Artifactory version, license and add-ons, the storage summary (artifacts, binaries, deduplication savings, file store capacity and usage) and the largest repositories. **Refresh storage summary** asks Artifactory to recalculate it. The Metrics tab charts the same figures.
+- **Platform**: the account opens on the platform itself, with the Artifactory version, license and add-ons, the storage summary (artifacts, binaries, deduplication savings, file store capacity and usage) and the largest repositories. **Refresh storage summary** asks Artifactory to recalculate it. The Metrics tab charts the same figures, and capacity runway tracks the file store's used space against its capacity.
 - **Repositories**: local, remote, virtual and federated repositories with their package type, patterns, Xray indexing and storage use.
   - **Create** a repository: pick the class and package type. A remote one takes its upstream URL, a virtual one its member repositories from a list.
   - **Edit** its description, notes, include and exclude patterns, Xray indexing, blackout, upstream URL, offline mode, cache period, members and default deployment repository, or delete it.

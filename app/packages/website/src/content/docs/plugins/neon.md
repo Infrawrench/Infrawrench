@@ -45,7 +45,7 @@ A personal API key lists the projects of every organization you belong to. An or
 ## Usage and logs
 
 - **Metrics tab**: projects and branches chart compute (CU-hours), root, child and instant-restore storage, and public and private network transfer. Branches use their own history where Neon provides it, otherwise the project's. The project chart also includes snapshot storage and extra branch-months, which Neon only reports per project. Organizations still on a legacy plan see active time, compute time and data written instead.
-- **Capacity runway**: tracks each branch's logical size against the per-branch limit Neon reports for its project.
+- **Capacity runway**: tracks each branch's logical size against the per-branch limit Neon reports for its project; a Free plan project's compute (CU-hours) and network transfer this billing period against the plan's monthly allowance; and active time and data written against any consumption quota set on the project, projected to the end of Neon's billing period.
 - **Logs tab**: a branch shows the last 24 hours of logs from its Postgres computes, Object Storage and Functions, with a picker to narrow to one source. Neon's logs are in Private Beta, so a branch without access, or one not collecting telemetry, says so in the tab.
 
 ## Beta and Private Beta services

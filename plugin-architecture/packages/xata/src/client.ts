@@ -76,6 +76,9 @@ const METRICS: Array<[XMetricName, string]> = [
   ["replication_lag_time", "Replication lag"],
 ];
 
+/** The fullest instance's disk, which `capacityMetrics` on the branch names. */
+export const DISK_HIGHEST_LABEL = "Disk Used (highest)";
+
 export const DEFAULT_METRICS_WINDOW_MS = 3 * 3_600_000;
 
 /** `BranchLogsRequest.limit` has a maximum of 200 in Xata's document; the rest is paged. */
@@ -249,11 +252,17 @@ export class XataClient implements PluginClient {
           return Promise.all(
             orgs.map(async (o) => {
               // Neither is a list of what this type stores, so a failure only leaves a field blank.
-              const [detail, members] = await Promise.all([
+              const [detail, members, customer] = await Promise.all([
                 this.api.get(this.orgPath(o.id)).catch(() => undefined),
                 this.api.get(`${this.orgPath(o.id)}/members`).catch(() => undefined),
+                this.api.get(`${this.orgPath(o.id)}/billing/customer`).catch(() => undefined),
               ]);
-              return orgResource({ ...o, ...detail }, accountId, members?.members?.length);
+              return orgResource(
+                { ...o, ...detail },
+                accountId,
+                members?.members?.length,
+                creditFields(customer?.credit_details),
+              );
             }),
           );
         }
@@ -924,6 +933,7 @@ export class XataClient implements PluginClient {
       const out: MetricSeries[] = [];
       for (const result of res?.results ?? []) {
         const several = result.series.length > 1;
+        const highest = new Map<number, number>();
         for (const s of result.series) {
           const points = s.values
             .map((v) => ({ timestamp: Date.parse(v.timestamp), value: Number(v.value) }))
@@ -934,6 +944,21 @@ export class XataClient implements PluginClient {
             label: several ? `${base} (${s.instanceID})` : base,
             unit: result.unit,
             points,
+          });
+          for (const pt of points) {
+            highest.set(pt.timestamp, Math.max(highest.get(pt.timestamp) ?? pt.value, pt.value));
+          }
+        }
+        // The fullest instance's disk, one line whatever the replica count, for
+        // capacity runway against the branch's storage size. Xata reports disk
+        // in bytes and says so in `unit`; anything else is not compared.
+        if (result.metric === "disk" && result.unit === "bytes" && highest.size > 0) {
+          out.push({
+            label: DISK_HIGHEST_LABEL,
+            unit: "bytes",
+            points: [...highest]
+              .sort(([a], [b]) => a - b)
+              .map(([timestamp, value]) => ({ timestamp, value })),
           });
         }
       }
@@ -1068,7 +1093,46 @@ export class XataClient implements PluginClient {
 
 // ---- mappers -----------------------------------------------------------------------
 
-export function orgResource(o: XOrg, accountId: string, memberCount?: number): ResourceInstance {
+/**
+ * The organization's active credits (`credit_details.active_credits` on GET
+ * /organizations/{organizationID}/billing/customer, Xata API, read 2026-11-23):
+ * what they started at (`maximum_initial_balance`) and how much of that is
+ * spent (less the remaining `balance`), summed, with the last expiry. Nothing
+ * when there are no active credits or the read failed.
+ */
+export function creditFields(
+  details:
+    | {
+        active_credits?: Array<{ balance: number; maximum_initial_balance: number }>;
+        last_active_credit_expiry?: string | null;
+      }
+    | undefined,
+): Record<string, string | number> {
+  const credits = details?.active_credits ?? [];
+  let granted = 0;
+  let remaining = 0;
+  for (const c of credits) {
+    if (!Number.isFinite(c.balance) || !Number.isFinite(c.maximum_initial_balance)) return {};
+    granted += c.maximum_initial_balance;
+    remaining += c.balance;
+  }
+  if (!(granted > 0)) return {};
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return {
+    creditsGranted: round(granted),
+    creditsUsed: round(Math.max(0, granted - remaining)),
+    ...(details?.last_active_credit_expiry
+      ? { creditsExpireAt: details.last_active_credit_expiry }
+      : {}),
+  };
+}
+
+export function orgResource(
+  o: XOrg,
+  accountId: string,
+  memberCount?: number,
+  credits: Record<string, string | number> = {},
+): ResourceInstance {
   return instance(
     accountId,
     "xata-organization",
@@ -1083,6 +1147,7 @@ export function orgResource(o: XOrg, accountId: string, memberCount?: number): R
       usageTier: o.status.usage_tier,
       marketplace: o.marketplace ?? "",
       memberCount,
+      ...credits,
       createdAt: o.status.created_at ?? "",
     },
     undefined,

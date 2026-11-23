@@ -103,6 +103,8 @@ export async function lambdaFunctionMetrics(
   const specs: Array<{ metric: string; stat: string; label: string; unit?: string }> = [
     { metric: "Invocations", stat: "Sum", label: "Invocations" },
     { metric: "Duration", stat: "Average", label: "Duration", unit: "ms" },
+    // The slowest invocation per period, read against the function's timeout.
+    { metric: "Duration", stat: "Maximum", label: "Max Duration", unit: "ms" },
     { metric: "Errors", stat: "Sum", label: "Errors" },
     { metric: "Throttles", stat: "Sum", label: "Throttles" },
     { metric: "ConcurrentExecutions", stat: "Maximum", label: "Concurrent Executions" },

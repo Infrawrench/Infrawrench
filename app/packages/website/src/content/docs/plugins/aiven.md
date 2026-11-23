@@ -21,6 +21,8 @@ Connect an Aiven account to manage its projects and managed services (PostgreSQL
 - **Project VPCs** and **VPC peerings**: create a VPC in a cloud, add peering connections to your AWS, Google Cloud, Azure or UpCloud networks, check their state and delete them.
 - **Billing groups**: payment method, balance, invoices and credits, and **Claim credit code**.
 
+Capacity runway tracks the disk use of each service's fullest node, for services pinned to a dashboard.
+
 ![Aiven service detail page for a PostgreSQL service showing the Service, Connection and Maintenance sections with the Change plan and Move cloud actions in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aiven/service-detail.png)
 
 ## Open a database console

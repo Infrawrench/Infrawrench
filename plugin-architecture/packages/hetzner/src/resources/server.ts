@@ -77,6 +77,28 @@ export const ServerResourceType = rt({
       editable: false,
     }),
     f("rescueEnabled", "Rescue Mode", { kind: "boolean", required: false, editable: false }),
+    // `outgoing_traffic` ("Outbound Traffic for the current billing period in
+    // bytes") against `included_traffic` ("Free Traffic for the current
+    // billing period in bytes"), both on GET /servers. Only outbound traffic
+    // is billed, and the allowance is per month
+    // (https://docs.hetzner.cloud/cloud.spec.json and
+    // https://docs.hetzner.com/cloud/billing/faq/, read 2026-11-23).
+    f("outgoingTrafficBytes", "Outgoing Traffic (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "includedTrafficBytes" },
+        unit: "bytes",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Traffic",
+      },
+    }),
+    f("includedTrafficBytes", "Included Traffic (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [
     o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),

@@ -6591,8 +6591,6 @@ one-time `POST /team/invitations` response. `decrypt()` now always takes an AAD;
   `mfaConfiguration: OFF` for resources whose real posture is unknown.
 - **Mobile secret fields render a "Tap to copy" affordance wired to nothing** — the
   `resolveFieldValue` handler it dispatches to is supplied by no screen, so it silently no-ops.
-- **`FilestoreInstanceResourceType`** is fully implemented in the GCP plugin — lister, create
-  config, create, delete, resolve-output, tests — and simply never registered in the manifest.
 
 ## Weekly digest
 

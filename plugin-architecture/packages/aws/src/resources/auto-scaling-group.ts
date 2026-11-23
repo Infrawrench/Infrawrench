@@ -8,7 +8,13 @@ export const AutoScalingGroupResourceType = rt({
     f("name", "Name"),
     f("minSize", "Min Size", { kind: "number" }),
     f("maxSize", "Max Size", { kind: "number" }),
-    f("desiredCapacity", "Desired Capacity", { kind: "number" }),
+    // The group cannot scale out past MaxSize
+    // (https://docs.aws.amazon.com/autoscaling/ec2/APIReference/API_AutoScalingGroup.html,
+    // read 2026-11-23).
+    f("desiredCapacity", "Desired Capacity", {
+      kind: "number",
+      usage: { limit: { field: "maxSize" }, unit: "instances", label: "Scaling Headroom" },
+    }),
     f("status", "Status", { showcase: true, required: false }),
     f("healthCheckType", "Health Check Type", {
       kind: "enum",

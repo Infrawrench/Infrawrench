@@ -563,6 +563,18 @@ export const AutonomousDatabaseResourceType = rt({
       description: "ECPU databases need at least 2. Scaling is online.",
     }),
     f("storageTb", "Storage (TB)", { kind: "number", required: false }),
+    // See `autonomousStorageFields` in listers.ts for the source fields.
+    f("storageUsedGb", "Storage Used (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "storageLimitGb" }, unit: "GB", label: "Storage" },
+    }),
+    f("storageLimitGb", "Reserved Storage (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("autoScaling", "Compute Auto Scaling", {
       kind: "boolean",
       required: false,

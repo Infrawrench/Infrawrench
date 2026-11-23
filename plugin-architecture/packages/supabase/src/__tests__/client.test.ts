@@ -1,6 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { SupabaseApiError, statusOf } from "../api.js";
 import { poolerUrl, SupabaseClient } from "../client.js";
 import { fetchSupabaseCostData } from "../cost-data.js";
@@ -765,5 +766,45 @@ describe("a 2xx answer that does not hold its list", () => {
     ]);
     await expect(c.deleteStorageObject!(`${REF}/avatars`, "folder/")).rejects.toThrow(REFUSED);
     expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+});
+
+describe("edge function count against the plan", () => {
+  it("counts a running project's functions and stores its organization's plan", async () => {
+    const { c, calls } = client([
+      on("GET", "/v1/projects", [project]),
+      on("GET", "/v1/organizations/acme/projects", { projects: [], pagination: { count: 0 } }),
+      on("GET", "/v1/organizations/acme", { id: "org", name: "Acme", plan: "free" }),
+      on("GET", `/v1/projects/${REF}/functions`, [
+        { id: "f1", slug: "hello", name: "hello", status: "ACTIVE", version: 1 },
+        { id: "f2", slug: "bye", name: "bye", status: "ACTIVE", version: 3 },
+      ]),
+    ]);
+    const [p] = await c.listResources("supabase-project", ACCOUNT);
+    expect(p!.fields).toMatchObject({ functionCount: 2, organizationPlan: "free" });
+    // One plan read for the organization, however many projects it has.
+    expect(calls.filter((x) => new URL(x.url).pathname === "/v1/organizations/acme")).toHaveLength(
+      1,
+    );
+    const decl = capacityDeclarations(ProjectType).find((d) => d.key === "functionCount");
+    expect(resolveCapacityLimit(decl!.declaration.limit, p!.fields)).toMatchObject({
+      limit: 100,
+      source: "plan",
+    });
+  });
+
+  it("states no limit on Enterprise and no count when the read fails", async () => {
+    const { c } = client([
+      on("GET", "/v1/projects", [project]),
+      on("GET", "/v1/organizations/acme", { id: "org", name: "Acme", plan: "enterprise" }),
+    ]);
+    const [p] = await c.listResources("supabase-project", ACCOUNT);
+    expect(p!.fields).not.toHaveProperty("functionCount");
+    expect(
+      resolveCapacityLimit(
+        { plan: { field: "organizationPlan", allowances: { free: 100, pro: 1000, team: 2000 } } },
+        p!.fields,
+      ),
+    ).toBeNull();
   });
 });

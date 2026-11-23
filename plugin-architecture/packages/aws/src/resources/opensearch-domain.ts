@@ -31,6 +31,12 @@ export const OpenSearchDomainResourceType = rt({
     f("status", "Processing", { kind: "boolean", required: false }),
     f("volumeType", "Volume Type", { required: false }),
     f("volumeSize", "Volume Size (GB)", { kind: "number", required: false }),
+    f("dataStorageGb", "Data Storage (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "EBS volume size times the number of data nodes",
+    }),
     f("encryptionEnabled", "Encryption", { kind: "boolean", required: false }),
     f("vpcId", "VPC ID", { required: false, description: "Set on VPC-attached domains only" }),
     f("subnetIds", "Subnets", {
@@ -56,6 +62,19 @@ export const OpenSearchDomainResourceType = rt({
   iconKey: "search",
   supportsCreate: true,
   supportsMetrics: true,
+  // `openSearchDomainMetrics` charts `ClusterUsedSpace` (MiB, converted to
+  // bytes) as "Storage Used":
+  // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-cloudwatchmetrics.html
+  // (read 2026-11-23). OpenSearch blocks writes before the volumes are
+  // completely full, so the crossing date is the latest it can be.
+  capacityMetrics: [
+    {
+      seriesLabel: "Storage Used",
+      limit: { field: "dataStorageGb", scale: 1024 ** 3 },
+      unit: "bytes",
+      label: "Storage",
+    },
+  ],
   peerIntegrations: [
     {
       // Forwards the domain endpoint to the OpenSearch plugin. Auth is set

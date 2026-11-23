@@ -53,6 +53,11 @@ export const SQLDatabaseResourceType = rt({
       unit: "%",
       label: "Data space",
     },
+    // "Sessions percentage" (`sessions_percent`) and "Workers percentage"
+    // (`workers_percent`), both Percent of the service objective's limit; a database
+    // at either limit refuses new sessions or requests. Same page, read 2026-11-23.
+    { seriesLabel: "Sessions percentage", limit: { constant: 100 }, unit: "%", label: "Sessions" },
+    { seriesLabel: "Workers percentage", limit: { constant: 100 }, unit: "%", label: "Workers" },
   ],
   peerIntegrations: [
     {

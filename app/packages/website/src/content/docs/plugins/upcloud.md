@@ -42,7 +42,7 @@ Costs need the **Billing** role. Click **Check credentials** after adding the ac
 
 ## Metrics
 
-- Managed Databases: CPU, memory, disk, load, disk I/O and network, per primary node.
+- Managed Databases: CPU, memory, disk, load, disk I/O and network, per primary node. Capacity runway tracks the primary node's disk use.
 - Servers: daily outbound public transfer (UpCloud has no CPU graphs).
 - Object Storage: object count and stored size.
 

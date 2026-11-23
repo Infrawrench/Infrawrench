@@ -30,6 +30,18 @@ export const ContainerRegistryResourceType = rt({
       required: false,
       sizing: "disk-gb",
     }),
+    f("usedBytes", "Storage Used (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "storageLimitBytes" }, unit: "bytes", label: "Image Storage" },
+    }),
+    f("storageLimitBytes", "Storage Limit (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("plan", "Plan", { required: false, editable: false }),
     f("version", "Harbor Version", { showcase: true, required: false }),
     f("iamEnabled", "OVHcloud IAM", { kind: "boolean", required: false }),
   ],

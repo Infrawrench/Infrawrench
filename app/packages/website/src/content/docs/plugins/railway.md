@@ -6,7 +6,7 @@ sidebar_order: 21
 
 ## What you can manage
 
-- **Workspaces**: plan, members and their two-factor status, usage this billing period, projected usage, credit balance, and the usage alert and hard limit (editable).
+- **Workspaces**: plan, members and their two-factor status, usage this billing period, projected usage, credit balance, and the usage alert and hard limit (editable). Capacity runway tracks usage this billing period against the hard limit.
 - **Projects**: create, rename, edit the description, PR environments and public visibility, delete.
 - **Environments**: create (empty, or copied from another environment), rename, delete.
 - **Services**, one per environment they run in: create from a GitHub repository, a Docker image or empty. Edit the name, source, builder, build, start and pre-deploy commands, root directory, Dockerfile path, config file, healthcheck, cron schedule, serverless sleeping, restart policy, region, replicas and the CPU and memory limits.

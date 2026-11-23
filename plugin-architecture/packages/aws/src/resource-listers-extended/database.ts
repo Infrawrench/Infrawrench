@@ -99,6 +99,38 @@ export async function listRedshiftClusters(
   });
 }
 
+/**
+ * An Aurora Serverless v2 cluster's capacity ceiling,
+ * `ServerlessV2ScalingConfiguration.MaxCapacity`: the most ACUs any one of
+ * its instances scales to, from
+ * DescribeDBClusters
+ * (https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_ServerlessV2ScalingConfigurationInfo.html,
+ * read 2026-11-23). Provisioned clusters have none.
+ */
+export function serverlessMaxAcu(c: Record<string, unknown>): { maxAcu?: number } {
+  const scaling = c["ServerlessV2ScalingConfiguration"] as Record<string, unknown> | undefined;
+  const max = Number(scaling?.["MaxCapacity"] ?? NaN);
+  return Number.isFinite(max) && max > 0 ? { maxAcu: max } : {};
+}
+
+/**
+ * The EBS storage across a domain's data nodes: `EBSOptions.VolumeSize`
+ * (GiB per data node:
+ * https://docs.aws.amazon.com/opensearch-service/latest/APIReference/API_EBSOptions.html,
+ * read 2026-11-23) times `ClusterConfig.InstanceCount` (data nodes; dedicated
+ * masters and warm nodes are counted separately). Instance-store domains have no EBS volume and no value.
+ */
+export function openSearchDataStorage(
+  ebsOptions: Record<string, unknown> | undefined,
+  clusterConfig: Record<string, unknown> | undefined,
+): { dataStorageGb?: number } {
+  if (ebsOptions?.["EBSEnabled"] === false) return {};
+  const size = Number(ebsOptions?.["VolumeSize"] ?? 0);
+  const nodes = Number(clusterConfig?.["InstanceCount"] ?? 0);
+  const total = size * nodes;
+  return Number.isFinite(total) && total > 0 ? { dataStorageGb: total } : {};
+}
+
 export async function listRDSClusters(
   ctx: ListerContext,
   accountId: string,
@@ -123,6 +155,7 @@ export async function listRDSClusters(
         multiAZ: String(c["MultiAZ"]) === "true",
         storageEncrypted: String(c["StorageEncrypted"]) === "true",
         allocatedStorage: Number(c["AllocatedStorage"] ?? 0),
+        ...serverlessMaxAcu(c),
         dbClusterMembers: members.length,
         // The count stays; these are the member instances themselves.
         dbClusterMemberIds: joinIds(members.map((m) => m["DBInstanceIdentifier"])),
@@ -194,6 +227,7 @@ export async function listOpenSearchDomains(
           status: ds["Processing"] === true,
           volumeType: String(ebsOptions?.["VolumeType"] ?? ""),
           volumeSize: Number(ebsOptions?.["VolumeSize"] ?? 0),
+          ...openSearchDataStorage(ebsOptions, clusterConfig),
           encryptionEnabled: encryptionConfig?.["Enabled"] === true,
           vpcId: String(vpcOptions?.["VPCId"] ?? ""),
           subnetIds: joinIds((vpcOptions?.["SubnetIds"] as string[] | undefined) ?? []),

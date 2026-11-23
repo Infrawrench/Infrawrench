@@ -156,5 +156,33 @@ export async function fetchRenderMetrics(
       }
     }),
   );
-  return results.flat();
+  const series = results.flat();
+  return [...series, ...diskPercentSeries(series)];
+}
+
+/** Label of the derived share-of-capacity series; see {@link diskPercentSeries}. */
+export const DISK_PERCENT_LABEL = "Disk Used %";
+
+/**
+ * `/metrics/disk-usage` and `/metrics/disk-capacity` both answer bytes for
+ * the same disk (https://api-docs.render.com/reference/get-disk-usage, read
+ * 2026-11-23). Their ratio at each shared timestamp is the disk's fill level
+ * against the filesystem Render actually measured, which is what runs out.
+ * One series per instance, paired by the suffix `seriesLabel` adds.
+ */
+export function diskPercentSeries(series: MetricSeries[]): MetricSeries[] {
+  const out: MetricSeries[] = [];
+  for (const used of series) {
+    if (!used.label.startsWith(DISK_USAGE.label)) continue;
+    const suffix = used.label.slice(DISK_USAGE.label.length);
+    const capacity = series.find((s) => s.label === `${DISK_CAPACITY.label}${suffix}`);
+    if (!capacity) continue;
+    const capAt = new Map(capacity.points.map((p) => [p.timestamp, p.value]));
+    const points = used.points.flatMap((p) => {
+      const cap = capAt.get(p.timestamp);
+      return cap && cap > 0 ? [{ timestamp: p.timestamp, value: (p.value / cap) * 100 }] : [];
+    });
+    if (points.length > 0) out.push({ label: `${DISK_PERCENT_LABEL}${suffix}`, unit: "%", points });
+  }
+  return out;
 }

@@ -2118,6 +2118,9 @@ export class OvhClient implements PluginClient {
           isUpToDate: c.isUpToDate ?? false,
           nextUpgradeVersions: (c.nextUpgradeVersions ?? []).join(", "),
           plan: c.plan ?? "",
+          // `cloud.kube.EtcdUsage`: `usage` and `quota`, both bytes.
+          ...(etcd?.usage != null ? { etcdUsedBytes: etcd.usage } : {}),
+          ...(etcd?.quota ? { etcdQuotaBytes: etcd.quota } : {}),
           ...(etcd
             ? {
                 etcdUsagePercent:

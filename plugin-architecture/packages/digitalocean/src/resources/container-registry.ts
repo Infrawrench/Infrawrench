@@ -36,6 +36,21 @@ export const ContainerRegistryResourceType = rt({
       required: false,
       editable: false,
     }),
+    // `meta.total` of GET /v2/registry/{name}/repositoriesV2 against the tier's
+    // `included_repositories` (DigitalOcean public API spec, read 2026-11-23).
+    // The spec gives `0` for unlimited (Professional), which the lister leaves
+    // out, so only Starter (1) and Basic (5) carry a limit.
+    f("repositoryCount", "Repositories", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "includedRepositories" }, unit: "repositories" },
+    }),
+    f("includedRepositories", "Included Repositories", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [

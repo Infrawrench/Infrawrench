@@ -119,8 +119,11 @@ export function mapAccount(accountId: string, usage: ResendUsage | null): Resour
       ...reported("segments", usage?.segments?.used),
       ...reported("segmentsLimit", usage?.segments?.limit),
       broadcastsSent: num(usage?.broadcasts?.used),
-      automationRuns: num(usage?.automation_runs?.used),
-      automationRunsLimit: num(usage?.automation_runs?.limit),
+      ...reported("automationRuns", usage?.automation_runs?.used),
+      ...reported("automationRunsLimit", usage?.automation_runs?.limit),
+      ...(usage?.automation_runs?.resets_at
+        ? { automationRunsResetAt: toIso(usage.automation_runs.resets_at) }
+        : {}),
       aiCredits: num(usage?.ai_credits?.used),
       aiCreditsLimit: num(usage?.ai_credits?.limit),
       rateLimit: rate?.limit ? `${rate.limit} per ${rate.duration ?? "second"}` : "",

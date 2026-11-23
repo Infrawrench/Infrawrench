@@ -749,6 +749,28 @@ async function listNfsShares(ctx: DoListerContext, accountId: string): Promise<R
   });
 }
 
+/**
+ * Nodes in a cluster's autoscaling pools against the sum of their
+ * `max_nodes` (`auto_scale`, `count`, `max_nodes` on each
+ * `kubernetes_node_pool`, GET /v2/kubernetes/clusters, DigitalOcean public API
+ * spec, read 2026-11-23). A pool at its maximum cannot add a node, so pods
+ * that need one stay pending. Fixed-size pools have no ceiling to approach and
+ * are left out; a cluster with no autoscaling pool gets neither field.
+ */
+export function autoscaleNodes(
+  pools: ReadonlyArray<{ auto_scale?: boolean; count?: number; max_nodes?: number }> | undefined,
+): { autoscaleNodeCount?: number; autoscaleMaxNodes?: number } {
+  let count = 0;
+  let max = 0;
+  for (const pool of pools ?? []) {
+    if (pool.auto_scale !== true) continue;
+    if (typeof pool.max_nodes !== "number" || pool.max_nodes <= 0) return {};
+    count += typeof pool.count === "number" ? pool.count : 0;
+    max += pool.max_nodes;
+  }
+  return max > 0 ? { autoscaleNodeCount: count, autoscaleMaxNodes: max } : {};
+}
+
 async function listDOKSClusters(
   ctx: DoListerContext,
   accountId: string,
@@ -778,6 +800,7 @@ async function listDOKSClusters(
         nodePoolSize: String(nodePool?.size ?? ""),
         nodeCount: Number(nodePool?.count ?? 0),
         status: String(statusObj?.state ?? ""),
+        ...autoscaleNodes(c.node_pools),
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -1004,9 +1027,27 @@ async function listContainerRegistry(
   const r = data.registry;
   if (!r) return [];
   const name = String(r.name ?? "");
-  const subscription = await ctx.api.get("/registry/subscription").catch(() => null);
+  const [subscription, repositories] = await Promise.all([
+    ctx.api.get("/registry/subscription").catch(() => null),
+    // One `per_page=1` read whose `meta.total` counts every repository
+    // (GET /v2/registry/{registry_name}/repositoriesV2, DigitalOcean public API
+    // spec, read 2026-11-23). Best-effort like the subscription: a failure
+    // leaves the count out rather than storing a zero.
+    name
+      ? ctx.api
+          .get(`/registry/${idSegment(name)}/repositoriesV2`, { query: { per_page: 1 } })
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
   const now = new Date().toISOString();
-  const includedStorage = subscription?.subscription?.tier?.included_storage_bytes;
+  const tier = subscription?.subscription?.tier;
+  const includedStorage = tier?.included_storage_bytes;
+  const repositoryCount = repositories?.meta?.total;
+  // `0` is the spec's "unlimited repositories" (Professional), not a cap.
+  const includedRepositories =
+    typeof tier?.included_repositories === "number" && tier.included_repositories > 0
+      ? tier.included_repositories
+      : undefined;
   return [
     {
       id: `${accountId}:container-registry:${name}`,
@@ -1021,6 +1062,8 @@ async function listContainerRegistry(
         // Absent stays absent: no reading is not an empty registry.
         ...(r.storage_usage_bytes != null ? { storageUsageBytes: r.storage_usage_bytes } : {}),
         ...(includedStorage != null ? { includedStorageBytes: includedStorage } : {}),
+        ...(typeof repositoryCount === "number" ? { repositoryCount } : {}),
+        ...(includedRepositories !== undefined ? { includedRepositories } : {}),
         createdAt: String(r.created_at ?? ""),
       },
       resolvedOutputs: {

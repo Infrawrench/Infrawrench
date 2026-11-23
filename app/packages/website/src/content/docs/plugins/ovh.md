@@ -38,7 +38,8 @@ Create API credentials on the [OVH API token page](https://www.ovh.com/auth/api/
 - **Attach block volumes** to instances in the same region.
 - **Instance actions**: start, stop, soft and hard reboot, shelve and unshelve, and take a snapshot. Start and stop also drive sleep schedules. OVHcloud keeps billing a stopped instance at its full rate; shelving is what stops the compute charge.
 - **Volume snapshots** from a volume's header. Snapshots are listed with their source volume and count toward backup coverage. Unattached volumes are flagged as orphans.
-- **Kubernetes**: update to the latest patch release, upgrade to the next minor version when OVH offers one, and reset the admin kubeconfig. Each cluster shows whether it's up to date and how full its etcd quota is.
+- **Kubernetes**: update to the latest patch release, upgrade to the next minor version when OVH offers one, and reset the admin kubeconfig. Each cluster shows whether it's up to date and how full its etcd quota is, and capacity runway tracks that quota.
+- **Container registries** show their plan, and capacity runway tracks stored images against the plan's storage limit.
 - **Create a managed database**: the form lists the engines, versions, plans, flavors and regions OVH currently offers. Backup retention is shown and counts toward backup coverage. Valkey services open the Redis tab.
 - **Managed database Logs tab**: the cluster's most recent log messages (up to 1,000, tagged by node on multi-node clusters). OVHcloud has deprecated this in favour of Logs Data Platform subscriptions and plans to remove it on 1 January 2027.
 - **Public Cloud Load Balancers** show lifetime counters (active and total connections, bytes in and out, request errors) on their dashboard.

@@ -177,17 +177,32 @@ export function networkIsOpen(net: SbNetworkRestrictions | undefined): boolean |
   return v4.includes(OPEN_V4) || v6.includes(OPEN_V6);
 }
 
+/**
+ * The plan of the organization `slug` (`plan` on GET /v1/organizations/{slug},
+ * Supabase Management API, read 2026-11-23), or nothing when the read fails: the
+ * plan only states a limit, and no limit is better than a wrong one.
+ */
+export async function orgPlan(ctx: SupabaseContext, slug: string): Promise<string | undefined> {
+  if (!slug) return undefined;
+  try {
+    return (await supabaseApi(ctx).get(`/v1/organizations/${pathEncode(slug)}`)).plan ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function toProjectResource(
   ctx: SupabaseContext,
   project: SbProject,
   accountId: string,
   org: SbOrgProject | undefined,
+  plan?: Promise<string | undefined>,
 ): Promise<ResourceInstance> {
   const ref = project.ref;
   const running = isRunning(project);
   const base = `/v1/projects/${pathEncode(ref)}` as const;
   const api = supabaseApi(ctx);
-  const [ssl, net, backups, poolers, legacy, addons] = running
+  const [ssl, net, backups, poolers, legacy, addons, functions] = running
     ? await Promise.all([
         settle(api.get(`${base}/ssl-enforcement`)),
         settle(api.get(`${base}/network-restrictions`)),
@@ -195,8 +210,11 @@ export async function toProjectResource(
         settle(api.get(`${base}/config/database/pooler`)),
         settle(api.get(`${base}/api-keys/legacy`)),
         settle(api.get(`${base}/billing/addons`)),
+        // Counted against the plan's per-project cap on Edge Functions.
+        settle(api.get(`${base}/functions`)),
       ])
-    : [undefined, undefined, undefined, undefined, undefined, undefined];
+    : [undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+  const organizationPlan = await (plan ?? orgPlan(ctx, project.organization_slug));
 
   const primary = org?.databases.find((d) => d.type === "PRIMARY");
   const replicas = org?.databases.filter((d) => d.type === "READ_REPLICA") ?? [];
@@ -236,6 +254,8 @@ export async function toProjectResource(
       pitrEnabled: backups?.pitr_enabled,
       automatedBackups: backups ? backups.walg_enabled || backups.pitr_enabled : undefined,
       readReplicaCount: org ? replicas.length : undefined,
+      organizationPlan,
+      functionCount: Array.isArray(functions) ? functions.length : undefined,
       createdAt: project.created_at,
     }),
     { createdAt: project.created_at },
@@ -253,7 +273,17 @@ export async function listProjects(
   );
   // Preview branches are projects too; they are listed as branches instead.
   const primaries = projects.filter((p) => index.get(p.ref)?.is_branch !== true);
-  return Promise.all(primaries.map((p) => toProjectResource(ctx, p, accountId, index.get(p.ref))));
+  // One plan read per organization, shared by its projects.
+  const plans = new Map<string, Promise<string | undefined>>();
+  for (const p of primaries) {
+    if (!plans.has(p.organization_slug))
+      plans.set(p.organization_slug, orgPlan(ctx, p.organization_slug));
+  }
+  return Promise.all(
+    primaries.map((p) =>
+      toProjectResource(ctx, p, accountId, index.get(p.ref), plans.get(p.organization_slug)),
+    ),
+  );
 }
 
 export function listBranches(

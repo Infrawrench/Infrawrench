@@ -121,6 +121,18 @@ export const LambdaFunctionResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // `lambdaFunctionMetrics` charts the `Duration` Maximum (ms) as "Max
+  // Duration"; an invocation that reaches the timeout is cut off:
+  // https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    {
+      seriesLabel: "Max Duration",
+      limit: { field: "timeout", scale: 1000 },
+      unit: "ms",
+      label: "Timeout",
+    },
+  ],
   iconKey: "function",
   secretExportTemplates: [
     {

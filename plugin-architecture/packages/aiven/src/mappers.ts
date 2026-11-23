@@ -484,8 +484,18 @@ export function parseChartTime(raw: ChartCell): number {
  * Each node is a column. Percentages (and load) are averaged across nodes;
  * everything else (network, bytes, counts) is summed.
  */
+/**
+ * Label of the fullest node's disk, the series the service type's
+ * `capacityMetrics` names. Read from the `disk_usage` chart ("Disk space usage
+ * percentage", github.com/aiven/aiven-docs docs/tools/cli/service-cli.md,
+ * `avn service metrics`, read 2026-11-23). The averaged chart hides one node
+ * filling ahead of the others, so this one takes the maximum.
+ */
+export const DISK_MAX_NODE_SERIES = "Disk used (max node)";
+
 export function chartsToSeries(metrics: Record<string, AvMetric> | undefined): MetricSeries[] {
   const out: MetricSeries[] = [];
+  const diskMax: Array<{ timestamp: number; value: number }> = [];
   for (const [key, metric] of Object.entries(metrics ?? {})) {
     const cols = metric?.data?.cols ?? [];
     const rows = metric?.data?.rows ?? [];
@@ -500,10 +510,17 @@ export function chartsToSeries(metrics: Record<string, AvMetric> | undefined): M
       if (!Number.isFinite(ts)) continue;
       const values = cells
         .slice(1)
-        .map((c) => Number(cellValue(c)))
+        // A node with no sample at this moment answers null (or an empty
+        // cell); `Number(null)` is 0, which would read as an empty disk.
+        .map((c) => cellValue(c))
+        .filter((v) => v !== null && v !== undefined && v !== "")
+        .map((v) => Number(v))
         .filter((v) => Number.isFinite(v));
       if (!values.length) continue;
       const total = values.reduce((a, b) => a + b, 0);
+      if (key === "disk_usage") {
+        diskMax.push({ timestamp: ts, value: Math.round(Math.max(...values) * 1000) / 1000 });
+      }
       points.push({
         timestamp: ts,
         value: Math.round((average ? total / values.length : total) * 1000) / 1000,
@@ -513,6 +530,10 @@ export function chartsToSeries(metrics: Record<string, AvMetric> | undefined): M
     points.sort((a, b) => a.timestamp - b.timestamp);
     const unit = /%/.test(title) ? "%" : undefined;
     out.push({ label: title, ...(unit ? { unit } : {}), points });
+  }
+  if (diskMax.length) {
+    diskMax.sort((a, b) => a.timestamp - b.timestamp);
+    out.push({ label: DISK_MAX_NODE_SERIES, unit: "%", points: diskMax });
   }
   return out;
 }

@@ -33,6 +33,8 @@ Get your keys from **Settings > API Keys** in the [Algolia dashboard](https://da
 - **Application**: search and write operations, records, data size, average, p90 and p99 processing time, peak QPS, search capacity used and queries degraded by capacity (Usage API key), plus search latency and indexing time per cluster (Monitoring API key).
 - **Index**: search and write operations, records, data size and processing time (Usage API key), and daily searches, users, no-result rate and click-through rate from Search Analytics (needs the analytics ACL, and click-through needs click events).
 
+Capacity runway tracks the application's search capacity used, for applications pinned to a dashboard (needs the Usage API key).
+
 Ranges up to a week are hourly. Longer ranges are daily.
 
 ![Algolia index detail page showing the Metrics tab with searches, users, no-result rate and click-through rate](https://agent-assets.infrawrench.com/docs-screenshots/plugins/algolia/index-metrics.png)

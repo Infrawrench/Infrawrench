@@ -1,6 +1,7 @@
 /** API response → `ResourceInstance` mapping for every Grafana Cloud type. */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { GrafanaBillSummary } from "./cost-data.js";
 import type {
   GcAccessPolicy,
   GcMember,
@@ -79,10 +80,37 @@ export function parseLabels(raw: string): Record<string, string> {
 const idText = (v: number | undefined): string | undefined =>
   v === undefined || v === null || v === 0 ? undefined : String(v);
 
+/**
+ * This month's usage and included amount of the billing dimensions the
+ * capacity runway tracks, keyed by the dimension ids Grafana documents in the
+ * billed usage example: `hm` metrics (series), `hl` logs (GB), `hg` Grafana
+ * users. A dimension that is absent, or reports no number, leaves both out.
+ */
+const INCLUDED_DIMENSIONS: ReadonlyArray<
+  [dimensionId: string, usedKey: string, includedKey: string]
+> = [
+  ["hm", "metricsSeries", "metricsSeriesIncluded"],
+  ["hl", "logsIngestedGb", "logsIncludedGb"],
+  ["hg", "grafanaUsers", "grafanaUsersIncluded"],
+];
+
+function includedUsage(bill: GrafanaBillSummary | undefined): Record<string, number | string> {
+  if (!bill) return {};
+  const out: Record<string, number | string> = {};
+  for (const [id, usedKey, includedKey] of INCLUDED_DIMENSIONS) {
+    const row = bill.products.find((p) => p.dimensionId === id);
+    if (typeof row?.usage === "number") out[usedKey] = row.usage;
+    if (typeof row?.included === "number") out[includedKey] = row.included;
+  }
+  if (bill.periodStart) out["billingPeriodStart"] = bill.periodStart;
+  if (bill.periodEnd) out["billingPeriodEnd"] = bill.periodEnd;
+  return out;
+}
+
 export function mapOrganization(
   accountId: string,
   org: GcOrg,
-  extra: { monthToDate?: number; stackCount?: number } = {},
+  extra: { monthToDate?: number; stackCount?: number; bill?: GrafanaBillSummary } = {},
 ): ResourceInstance {
   const slug = org.slug ?? str(org.id);
   const current = org.subscriptions?.current;
@@ -100,6 +128,7 @@ export function mapOrganization(
       contractType: org.contractType,
       monthToDate: extra.monthToDate,
       stackCount: extra.stackCount,
+      ...includedUsage(extra.bill),
       createdAt: org.createdAt,
       orgId: idText(org.id),
     },

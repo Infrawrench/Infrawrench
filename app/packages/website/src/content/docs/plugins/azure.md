@@ -107,7 +107,7 @@ Every resource type has a **Metrics** tab from Azure Monitor, except resource gr
 
 Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance, it shows the selected container's recent output with timestamps. Azure keeps those logs only while the group is running.
 
-Capacity runway tracks each DNS zone's record sets and each private DNS zone's virtual network links against the zone's limits. For resources pinned to a dashboard it also tracks storage on SQL databases and PostgreSQL and MySQL flexible servers, and an AKS cluster's etcd database.
+Capacity runway tracks each DNS zone's record sets and each private DNS zone's virtual network links against the zone's limits; each subnet's IP addresses against its size; container registry storage and webhooks against the registry's quota; an App Service plan's file system storage and instances against its plan (and apps on Free and Shared plans); the fullest queue or topic in a Service Bus namespace; Event Hubs throughput units against the auto-inflate ceiling; an AKS cluster's autoscaled nodes against the pools' maximums; and rules, routes, subnets, frontend IPs, backend pools and listeners against Azure's published per-resource limits. For resources pinned to a dashboard it also tracks storage on SQL databases and PostgreSQL and MySQL flexible servers, SQL sessions and workers, PostgreSQL transaction ID wraparound, an AKS cluster's etcd database and fullest node disk, Redis memory, Azure Firewall SNAT ports, container app replicas against the maximum, and storage account capacity.
 
 ## Idle resource findings
 

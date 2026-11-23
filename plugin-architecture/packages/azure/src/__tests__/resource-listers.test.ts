@@ -753,6 +753,8 @@ describe("listAppServicePlans", () => {
 
     expect(urls).toEqual([
       "https://management.azure.com/subscriptions/sub1/providers/Microsoft.Web/serverfarms?api-version=2023-01-01",
+      // The plan's file system storage usage, one filtered read per plan.
+      `https://management.azure.com${planId}/usages?api-version=2023-01-01&$filter=name.value%20eq%20'FileSystemStorage'`,
     ]);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({

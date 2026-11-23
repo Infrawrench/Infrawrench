@@ -20,6 +20,8 @@ Qdrant Cloud runs managed Qdrant vector database clusters on AWS, GCP and Azure,
 - **Hybrid cloud environments**: Kubernetes version and distribution, node count, readiness, namespace. Create and rename environments, and use **Generate bootstrap commands** to get the kubectl and helm commands that connect your Kubernetes cluster (kept as a sensitive output).
 - **Collections**: points, indexed vectors, segments, vector size and distance, shards and replication. Create a collection, change its replication factor and write consistency, or delete it.
 
+For clusters pinned to a dashboard, capacity runway tracks the fullest node's disk and memory (RSS) against the disk and RAM each node has.
+
 ### See a cluster's collections
 
 Collections need a database API key, not the management key. Run **Connect Infrawrench** on a cluster once. It creates a database key named `infrawrench` with manage access and stores it encrypted in Infrawrench. The same key fills the cluster's **Database API Key** output, and the **Qdrant environment variables** export writes `QDRANT_URL` and `QDRANT_API_KEY` into a Kubernetes secret or a server's environment.

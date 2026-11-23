@@ -162,7 +162,19 @@ export const ServiceResourceType = rt({
     f("pgVersion", "Postgres Version", { kind: "number", ...ro }),
     f("dbHost", "Database Host", ro),
     f("dbState", "Database Endpoint State", ro),
-    f("dbSizeMb", "Database Size (MB)", { kind: "number", ...ro }),
+    // `database_info.neon_postgres.default_branch_logical_size` (bytes, here
+    // in MiB). Only the `free` database instance type caps stored data, at
+    // 1 GB; paid types bill storage instead of capping it
+    // (https://www.koyeb.com/docs/databases, read 2026-11-23).
+    f("dbSizeMb", "Database Size (MB)", {
+      kind: "number",
+      ...ro,
+      usage: {
+        limit: { plan: { field: "instanceType", allowances: { free: 1000 } } },
+        unit: "MB",
+        label: "Database Storage",
+      },
+    }),
     f("activeDeploymentId", "Active Deployment", ro),
     f("latestDeploymentId", "Latest Deployment", ro),
     f("appId", "App", ro),

@@ -89,6 +89,28 @@ export const ElastiCacheServerlessCacheResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // `elastiCacheServerlessCacheMetrics` charts `BytesUsedForCache` as "Data
+  // Stored" and derives "ECPUs per Second" from `ElastiCacheProcessingUnits`;
+  // the cache's usage limits are in GB (`DataStorage.Unit` is always `GB`)
+  // and ECPU per second, and a cache at either one evicts or throttles:
+  // https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Scaling-serverless.html
+  // and https://docs.aws.amazon.com/AmazonElastiCache/latest/APIReference/API_DataStorage.html
+  // (read 2026-11-23). GB is read as 10^9 bytes, the earlier of the two
+  // readings. A cache with no maximum set stores 0 and yields no row.
+  capacityMetrics: [
+    {
+      seriesLabel: "Data Stored",
+      limit: { field: "maxDataStorageGb", scale: 1e9 },
+      unit: "bytes",
+      label: "Data Storage",
+    },
+    {
+      seriesLabel: "ECPUs per Second",
+      limit: { field: "maxEcpuPerSecond" },
+      unit: "ECPU/s",
+      label: "ECPU Rate",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "redis",

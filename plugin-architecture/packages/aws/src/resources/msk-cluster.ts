@@ -51,6 +51,18 @@ export const MSKClusterResourceType = rt({
   ],
   iconKey: "stream",
   supportsMetrics: true,
+  // `mskClusterMetrics` charts the fullest broker's `KafkaDataLogsDiskUsed`
+  // (percent of the data log volume) as "Data Log Disk Used":
+  // https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    {
+      seriesLabel: "Data Log Disk Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Broker Storage",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "kafka-connection",

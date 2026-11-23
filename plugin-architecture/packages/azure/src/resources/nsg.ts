@@ -9,7 +9,14 @@ export const NSGResourceType = rt({
     f("resourceGroup", "Resource Group"),
     f("location", "Location", { showcase: true }),
     f("provisioningState", "Provisioning State", { showcase: true }),
-    f("securityRuleCount", "Security Rules", { showcase: true, kind: "number", required: false }),
+    // "NSG rules per NSG: 2,000" (Networking limits, Azure Resource Manager), read
+    // 2026-11-23 at https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-resource-manager-virtual-networking-limits
+    f("securityRuleCount", "Security Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 2000 }, unit: "rules" },
+    }),
     f("subnetCount", "Associated Subnets", { showcase: true, kind: "number", required: false }),
     f("nicCount", "Associated NICs", { kind: "number", required: false }),
   ],

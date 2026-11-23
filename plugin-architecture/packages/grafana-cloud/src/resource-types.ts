@@ -28,6 +28,68 @@ export const OrganizationResourceType = rt({
       editable: false,
     }),
     f("stackCount", "Stacks", { showcase: true, kind: "number", required: false, editable: false }),
+    // `totalUsage` against `includedUsage` per dimension from `GET /api/orgs/{org}/billed-usage`
+    // for the current month, with the items' `periodStart` and `periodEnd`
+    // (grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api/#get-billed-usage,
+    // read 2026-11-23). On Free the included amount is the cap; on Pro usage past it is billed.
+    f("metricsSeries", "Metrics Series", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "metricsSeriesIncluded" },
+        unit: "series",
+        cycle: {
+          period: "monthly",
+          startField: "billingPeriodStart",
+          endField: "billingPeriodEnd",
+        },
+        label: "Included metrics series",
+      },
+    }),
+    f("metricsSeriesIncluded", "Metrics Series Included", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("logsIngestedGb", "Logs Ingested (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "logsIncludedGb" },
+        unit: "GB",
+        cycle: {
+          period: "monthly",
+          startField: "billingPeriodStart",
+          endField: "billingPeriodEnd",
+        },
+        label: "Included logs",
+      },
+    }),
+    f("logsIncludedGb", "Logs Included (GB)", { kind: "number", required: false, editable: false }),
+    f("grafanaUsers", "Grafana Users", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "grafanaUsersIncluded" },
+        unit: "users",
+        cycle: {
+          period: "monthly",
+          startField: "billingPeriodStart",
+          endField: "billingPeriodEnd",
+        },
+        label: "Included Grafana users",
+      },
+    }),
+    f("grafanaUsersIncluded", "Grafana Users Included", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("billingPeriodStart", "Billing Period Start", { required: false, editable: false }),
+    f("billingPeriodEnd", "Billing Period End", { required: false, editable: false }),
     f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("slug", "Organization Slug"), o("orgId", "Organization ID")],

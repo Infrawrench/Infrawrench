@@ -73,6 +73,13 @@ export const RDSInstanceResourceType = rt({
       required: false,
       sizing: "disk-gb",
     }),
+    f("storageLimitGb", "Storage Limit (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "The storage autoscaling maximum when autoscaling is on, otherwise the allocated storage",
+    }),
     f("availabilityZone", "Availability Zone", { showcase: true, required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("vpcId", "VPC ID", { required: false, description: "VPC of the instance's DB subnet group" }),
@@ -125,6 +132,18 @@ export const RDSInstanceResourceType = rt({
     { fieldKey: "dbClusterIdentifier", targetTypeId: "neptune-cluster", label: "member of" },
   ],
   supportsMetrics: true,
+  // `rdsInstanceMetrics` derives "Storage Used" as the allocated size minus
+  // `FreeStorageSpace` (bytes, by DBInstanceIdentifier):
+  // https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html
+  // (read 2026-11-23). The instance is full at its autoscaling maximum.
+  capacityMetrics: [
+    {
+      seriesLabel: "Storage Used",
+      limit: { field: "storageLimitGb", scale: 1024 ** 3 },
+      unit: "bytes",
+      label: "Storage",
+    },
+  ],
   // Sleep/wake schedules: StartDBInstance / StopDBInstance. A stopped instance
   // stops instance-hour billing (storage and backups keep billing); note AWS
   // auto-starts a stopped RDS instance again after 7 days.

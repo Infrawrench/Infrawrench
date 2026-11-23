@@ -1,5 +1,8 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
+/** 5 PiB, the default maximum capacity of a standard storage account. */
+const STANDARD_ACCOUNT_CAPACITY = 5 * 1024 ** 5;
+
 export const StorageAccountResourceType = rt({
   name: "Storage Account",
   id: "azure-storage-account",
@@ -51,6 +54,33 @@ export const StorageAccountResourceType = rt({
   supportsStorageBrowser: true,
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display name:
+  // "Used capacity" for `UsedCapacity` (Bytes) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-storage-storageaccounts-metrics
+  // The ceiling is the "Default maximum storage account capacity: 5 PiB" for standard
+  // (GPv2, GPv1, Blob Storage) accounts; premium accounts are sized differently and
+  // get no row. Support can raise it. Read 2026-11-23 at
+  // https://learn.microsoft.com/azure/storage/common/scalability-targets-standard-account
+  capacityMetrics: [
+    {
+      seriesLabel: "Used capacity",
+      limit: {
+        plan: {
+          field: "sku",
+          allowances: {
+            Standard_LRS: STANDARD_ACCOUNT_CAPACITY,
+            Standard_GRS: STANDARD_ACCOUNT_CAPACITY,
+            Standard_RAGRS: STANDARD_ACCOUNT_CAPACITY,
+            Standard_ZRS: STANDARD_ACCOUNT_CAPACITY,
+            Standard_GZRS: STANDARD_ACCOUNT_CAPACITY,
+            Standard_RAGZRS: STANDARD_ACCOUNT_CAPACITY,
+          },
+        },
+      },
+      unit: "bytes",
+      label: "Account capacity",
+    },
+  ],
   credentialFormats: [
     {
       id: "connection-string",

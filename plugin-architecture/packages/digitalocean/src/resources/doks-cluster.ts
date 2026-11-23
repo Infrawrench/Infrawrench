@@ -39,6 +39,20 @@ export const DOKSClusterResourceType = rt({
       sizing: "instance-type",
     }),
     f("nodeCount", "Node Count", { showcase: true, kind: "number", sizing: "node-count" }),
+    // The autoscaling pools' `count` summed against their `max_nodes`
+    // (`kubernetes_node_pool`, GET /v2/kubernetes/clusters, DigitalOcean public
+    // API spec, read 2026-11-23). At the maximum the autoscaler adds no node.
+    f("autoscaleNodeCount", "Autoscaling Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "autoscaleMaxNodes" }, unit: "nodes", label: "Autoscale nodes" },
+    }),
+    f("autoscaleMaxNodes", "Autoscaling Max Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {

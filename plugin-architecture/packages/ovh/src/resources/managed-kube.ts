@@ -56,6 +56,18 @@ export const ManagedKubeResourceType = rt({
     f("nextUpgradeVersions", "Upgrade Available To", { required: false, editable: false }),
     f("plan", "Plan", { required: false, editable: false }),
     f("etcdUsagePercent", "etcd Usage (%)", { kind: "number", required: false, editable: false }),
+    // GET /cloud/project/{sn}/kube/{id}/metrics/etcdUsage: `usage`, "Size of
+    // etcd data used by the cluster (bytes)", against `quota`, "Maximum
+    // allowed size of etcd data for the cluster (bytes)"
+    // (https://eu.api.ovh.com/v1/cloud.json, read 2026-11-23). A full etcd
+    // refuses writes, which stops the control plane.
+    f("etcdUsedBytes", "etcd Used (bytes)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "etcdQuotaBytes" }, unit: "bytes", label: "etcd" },
+    }),
+    f("etcdQuotaBytes", "etcd Quota (bytes)", { kind: "number", required: false, editable: false }),
     f("nodesUrl", "Nodes URL", { required: false, editable: false }),
     f("privateNetworkId", "Private Network", {
       required: false,

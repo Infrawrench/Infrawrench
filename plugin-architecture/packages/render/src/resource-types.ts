@@ -333,6 +333,10 @@ export const DiskResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // Derived in metrics.ts from Render's disk usage and capacity series.
+  capacityMetrics: [
+    { seriesLabel: "Disk Used %", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   iconKey: "volume",
 });
 
@@ -428,6 +432,10 @@ export const PostgresResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // Derived in metrics.ts from Render's disk usage and capacity series.
+  capacityMetrics: [
+    { seriesLabel: "Disk Used %", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   iconKey: "database",
   lifecycle: {
     startActionId: "resume",

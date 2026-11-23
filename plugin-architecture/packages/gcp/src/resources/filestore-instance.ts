@@ -3,6 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const FilestoreInstanceResourceType = rt({
   name: "Filestore Instance",
   id: "filestore-instance",
+  iconKey: "storage",
   description: "A Google Cloud Filestore managed NFS file server",
   equivalence: "file-storage",
   fields: [

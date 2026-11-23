@@ -14,6 +14,30 @@ export const ContainerRegistryResourceType = rt({
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("adminEnabled", "Admin Enabled", { kind: "boolean", required: false }),
     f("publicNetworkAccess", "Public Access", { required: false }),
+    // From the registry's quota usages (`listUsages`): `Size` in bytes and
+    // `Webhooks`, each with the limit Azure applies to the registry's tier.
+    // https://learn.microsoft.com/rest/api/container-registry/registries/list-usages
+    // (read 2026-11-23)
+    f("storageUsedBytes", "Storage Used", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "storageQuotaBytes" }, unit: "bytes", label: "Storage" },
+    }),
+    f("storageQuotaBytes", "Storage Quota", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "Storage the tier includes, as the registry reports it (Basic 10 GiB, Standard 100 GiB, Premium 500 GiB); more is billed per GiB",
+    }),
+    f("webhookCount", "Webhooks", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "webhookLimit" }, unit: "webhooks" },
+    }),
+    f("webhookLimit", "Webhook Limit", { kind: "number", required: false, editable: false }),
   ],
   outputs: [
     o("loginServer", "Login Server"),

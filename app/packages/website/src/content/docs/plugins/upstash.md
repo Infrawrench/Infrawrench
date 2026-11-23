@@ -48,7 +48,7 @@ Upstash reports a daily cost for each Redis database and each regional QStash ac
 
 ## Limits and quotas
 
-QStash schedules, queues and URL groups are tracked against your plan's limits, and each Redis database's storage against its storage limit, on the Quotas page.
+QStash schedules, queues and URL groups are tracked against your plan's limits, and each Redis database's storage against its storage limit, on the Quotas page. For databases and indexes pinned to a dashboard, capacity runway also tracks Redis connections against the database's connection limit, and Vector and Search counts against the index's maximum.
 
 ## Status
 

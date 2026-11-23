@@ -52,6 +52,28 @@ export const DocumentDBClusterResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `documentDbClusterMetrics` charts `VolumeBytesUsed` as "Volume Used".
+  // The cluster size limit is 256 TiB on engine 8.0 and 128 TiB before it:
+  // https://docs.aws.amazon.com/documentdb/latest/developerguide/limits.html
+  // (read 2026-11-23). An engine version missing here yields no row.
+  capacityMetrics: [
+    {
+      seriesLabel: "Volume Used",
+      limit: {
+        plan: {
+          field: "engineVersion",
+          allowances: {
+            "3.6.0": 128 * 1024 ** 4,
+            "4.0.0": 128 * 1024 ** 4,
+            "5.0.0": 128 * 1024 ** 4,
+            "8.0.0": 256 * 1024 ** 4,
+          },
+        },
+      },
+      unit: "bytes",
+      label: "Cluster Volume",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "mongodb",

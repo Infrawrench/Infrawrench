@@ -2501,6 +2501,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/registry/{registry_name}/repositoriesV2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @deprecated */
+        get: operations["registry_list_repositoriesV2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/registry/docker-credentials": {
         parameters: {
             query?: never;
@@ -6027,9 +6044,35 @@ export interface components {
             readonly storage_usage_bytes_updated_at?: string;
         };
         registry_create: {
+            insights?: components["schemas"]["registry_insights_opt_in"];
             name: string;
             region?: string;
             subscription_tier_slug: string;
+        };
+        registry_insights_opt_in: {
+            logs?: boolean;
+        } | null;
+        repository_blob: {
+            compressed_size_bytes?: number;
+            digest?: string;
+        };
+        repository_manifest: {
+            blobs?: components["schemas"]["repository_blob"][];
+            compressed_size_bytes?: number;
+            digest?: string;
+            registry_name?: string;
+            repository?: string;
+            size_bytes?: number;
+            tags?: string[];
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        repository_v2: {
+            latest_manifest?: components["schemas"]["repository_manifest"];
+            manifest_count?: number;
+            name?: string;
+            registry_name?: string;
+            tag_count?: number;
         };
         reserved_ip: {
             droplet?: (Record<string, never> | null) | components["schemas"]["droplet"];
@@ -6631,6 +6674,19 @@ export interface components {
             content: {
                 "application/json": {
                     regions: components["schemas"]["region"][];
+                } & components["schemas"]["pages_pagination"] & components["schemas"]["meta"];
+            };
+        };
+        all_repositories_v2: {
+            headers: {
+                "ratelimit-limit": components["headers"]["ratelimit-limit"];
+                "ratelimit-remaining": components["headers"]["ratelimit-remaining"];
+                "ratelimit-reset": components["headers"]["ratelimit-reset"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    repositories?: components["schemas"]["repository_v2"][];
                 } & components["schemas"]["pages_pagination"] & components["schemas"]["meta"];
             };
         };
@@ -7560,6 +7616,7 @@ export interface components {
         project_id: string;
         region: "nyc2" | "tor1" | "atl1";
         registry_expiry_seconds: number;
+        registry_name: string;
         registry_read_write: boolean;
         reserved_ip: string;
         snapshot_id: number | string;
@@ -7570,6 +7627,8 @@ export interface components {
         tag_id: string;
         tag_name: string;
         time_wait: string;
+        token_pagination_page: number;
+        token_pagination_page_token: string;
         type: "application" | "distribution";
         username: string;
         volume_id: string;
@@ -10302,6 +10361,24 @@ export interface operations {
         requestBody?: never;
         responses: {
             204: components["responses"]["no_content"];
+        };
+    };
+    registry_list_repositoriesV2: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["token_pagination_page"];
+                page_token?: components["parameters"]["token_pagination_page_token"];
+                per_page?: components["parameters"]["parameters_per_page"];
+            };
+            header?: never;
+            path: {
+                registry_name: components["parameters"]["registry_name"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["all_repositories_v2"];
         };
     };
     registry_get_dockerCredentials: {

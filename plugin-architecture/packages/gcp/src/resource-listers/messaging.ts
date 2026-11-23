@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { readEachRegion, type ListerContext } from "./shared.js";
+import { durationSeconds } from "./serverless.js";
 
 export async function listPubSubTopics(
   ctx: ListerContext,
@@ -50,6 +51,12 @@ export async function listPubSubSubscriptions(
     // Subscriptions can reference topics in other projects; only link as a child
     // when the topic lives in the same project we're listing from.
     const topicInSameProject = topicFull.startsWith(`projects/${p}/topics/`);
+    // "How long to retain unacknowledged messages in the subscription's
+    // backlog, from the moment a message is published", a protobuf Duration
+    // such as "604800s" (default 7 days, 10 minutes to 31 days):
+    // https://docs.cloud.google.com/pubsub/docs/reference/rest/v1/projects.subscriptions,
+    // read 2026-11-23. A backlog older than this is discarded unread.
+    const retentionSeconds = durationSeconds(s["messageRetentionDuration"]);
     return {
       id: ctx.id(accountId, "pubsub-subscription", fullName),
       pluginId: "gcp",
@@ -61,6 +68,7 @@ export async function listPubSubSubscriptions(
         topic,
         ackDeadlineSeconds: Number(s["ackDeadlineSeconds"] ?? 10),
         messageRetentionDuration: String(s["messageRetentionDuration"] ?? ""),
+        ...(retentionSeconds > 0 ? { messageRetentionSeconds: retentionSeconds } : {}),
         filter: String(s["filter"] ?? ""),
       },
       resolvedOutputs: {},

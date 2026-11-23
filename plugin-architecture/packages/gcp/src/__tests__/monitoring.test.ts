@@ -93,7 +93,8 @@ describe("fetchMetricSeries", () => {
     const { ctx, queries } = metricsCtx();
     const series = await fetchMetricSeries(ctx, typeId, "rid", "acct");
     expect(series.length).toBeGreaterThan(0);
-    expect(queries.length).toBe(series.length);
+    // A usage charted against a limit series reads both: two queries, one series.
+    expect(queries.length).toBeGreaterThanOrEqual(series.length);
     for (const q of queries) expect(q.reducer).toBeTruthy();
   });
 

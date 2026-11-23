@@ -54,6 +54,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organizations/{organizationID}/billing/customer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationID: components["parameters"]["OrganizationIDParam"];
+            };
+            cookie?: never;
+        };
+        get: operations["getBillingCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organizations/{organizationID}/billing/invoices": {
         parameters: {
             query?: never;
@@ -529,6 +547,47 @@ export interface components {
             /** Format: date-time */
             latestRestore?: string;
         };
+        /** @enum {string} */
+        BillingCollectionMethod: "unknown" | "stripe_payment_method" | "marketplace" | "bank_transfer";
+        BillingCredit: {
+            /** Format: double */
+            balance: number;
+            /** Format: date-time */
+            effective_date: string;
+            /** Format: date-time */
+            expiry_date: string | null;
+            id: string;
+            /** Format: double */
+            maximum_initial_balance: number;
+            /** @enum {string} */
+            status: "active" | "pending_payment";
+        };
+        BillingCreditDetails: {
+            active_credits: components["schemas"]["BillingCredit"][];
+            days_until_last_active_credit_expiry: number | null;
+            days_until_last_expiry_with_balance: number | null;
+            /** Format: date-time */
+            last_active_credit_expiry: string | null;
+            /** Format: date-time */
+            last_expiry: string | null;
+            /** Format: date-time */
+            last_expiry_with_balance: string | null;
+            /** Format: double */
+            total_active_credits: number;
+            /** Format: double */
+            total_lifetime_credits: number;
+        };
+        BillingCustomerResponse: {
+            /** Format: email */
+            billing_email: string;
+            can_collect_payment: boolean;
+            collection_method: components["schemas"]["BillingCollectionMethod"];
+            credit_details: components["schemas"]["BillingCreditDetails"];
+            credits: components["schemas"]["BillingCredit"][];
+            default_payment_method: components["schemas"]["BillingPaymentMethod"] | null;
+            has_payment_method: boolean;
+            marketplace: components["schemas"]["OrganizationMarketplaceProvider"] | null;
+        };
         BillingInvoice: {
             /** Format: double */
             amount_due: number;
@@ -544,6 +603,15 @@ export interface components {
         BillingInvoicesResponse: {
             data: components["schemas"]["BillingInvoice"][];
             pagination_metadata: components["schemas"]["PaginationMetadata"];
+        };
+        BillingPaymentMethod: {
+            card: components["schemas"]["BillingPaymentMethodCard"];
+        };
+        BillingPaymentMethodCard: {
+            brand: string;
+            expiry_month: number;
+            expiry_year: number;
+            last4: string;
         };
         BillingUpcomingInvoiceResponse: {
             /** Format: double */
@@ -666,6 +734,7 @@ export interface components {
             start: string;
         };
         BranchShortMetadata: {
+            backupsEnabled?: boolean;
             /** @deprecated */
             connectionString?: string | null;
             /** Format: date-time */
@@ -1222,6 +1291,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getBillingCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationID: components["parameters"]["OrganizationIDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingCustomerResponse"];
+                };
             };
         };
     };

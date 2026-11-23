@@ -44,4 +44,27 @@ export const CloudFunctionResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
+  capacityMetrics: [
+    // `serviceConfig.maxInstanceCount` caps the underlying Cloud Run service's
+    // `container/instance_count`. The lister fills 100 when the API leaves it
+    // out (the 2nd gen default, https://cloud.google.com/run/docs/configuring/max-instances,
+    // read 2026-11-23); 0 means no maximum, which states no row.
+    {
+      seriesLabel: "Container Instances",
+      limit: { field: "maxInstances" },
+      unit: "instances",
+      label: "Instances",
+    },
+    // `run.googleapis.com/container/memory/utilizations` ("Container memory
+    // utilization distribution across all container instances", a fraction of
+    // each container's memory limit), charted as its p95 0..100; an instance
+    // that reaches its limit is stopped:
+    // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+    {
+      seriesLabel: "Memory Utilization (p95)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory",
+    },
+  ],
 });

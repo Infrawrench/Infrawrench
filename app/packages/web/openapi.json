@@ -1119,6 +1119,7 @@
           "file",
           "file-search-document",
           "file-search-store",
+          "filestore-instance",
           "filesystem",
           "fine-tune",
           "fine-tuning-job",

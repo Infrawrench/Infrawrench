@@ -35,6 +35,7 @@ Connect DigitalOcean with a single API token, then manage Droplets, databases, n
 - **Spaces**: S3-compatible object storage, with the [file browser](../features/file-browsers.md). Buckets in every Spaces region are found, including LON1, TOR1, BLR1, ATL1 and MKC1.
 - **DNS**: domains and records.
 - **Projects**: list, create, edit (name, description, purpose, environment) and delete. Click **Edit Project…** at the bottom of the project detail page to rename or repurpose a project.
+- **Capacity runway**: tracks the container registry's storage and repositories against its tier's allowance, a DOKS cluster's autoscaling nodes against their maximum, an autoscale pool's Droplets against its maximum, and, for resources pinned to a dashboard, a managed database's disk, a Droplet's root filesystem (needs the Metrics Agent) and a load balancer's connections and TLS connection rate against their limits.
 
 ![DigitalOcean Project detail page with the Edit Project button at the bottom highlighted](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/project-detail.png)
 

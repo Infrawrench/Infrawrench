@@ -69,8 +69,21 @@ export const AccountResourceType = rt({
     }),
     f("segmentsLimit", "Segments Limit", { ...ro, kind: "number" }),
     f("broadcastsSent", "Broadcasts Sent", { ...ro, kind: "number" }),
-    f("automationRuns", "Automation Runs", { ...ro, kind: "number" }),
+    // `automation_runs` from the same `GET /usage` is `{ used, limit, resets_at }`
+    // (resend.com/docs/api-reference/usage, read 2026-11-23); its documented `resets_at`
+    // falls on a month boundary, so the cycle ends there.
+    f("automationRuns", "Automation Runs", {
+      ...ro,
+      kind: "number",
+      usage: {
+        limit: { field: "automationRunsLimit" },
+        unit: "runs",
+        cycle: { period: "monthly", endField: "automationRunsResetAt", anchorDay: 1 },
+        label: "Monthly automation runs",
+      },
+    }),
     f("automationRunsLimit", "Automation Runs Limit", { ...ro, kind: "number" }),
+    f("automationRunsResetAt", "Automation Runs Reset", ro),
     f("aiCredits", "AI Credits Used", { ...ro, kind: "number" }),
     f("aiCreditsLimit", "AI Credits Limit", { ...ro, kind: "number" }),
     f("rateLimit", "API Rate Limit", ro),

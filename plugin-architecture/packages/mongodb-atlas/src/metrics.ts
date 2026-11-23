@@ -28,6 +28,14 @@ export const COST_METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const CPU_SERIES = "CPU (normalized, max across nodes)";
 export const MEMORY_SERIES = "Memory used (max across nodes)";
+/**
+ * Capacity labels: the cluster type's `capacityMetrics` names these, so they
+ * are load-bearing too. Connections are per node because Atlas's connection
+ * limit (`net.maxIncomingConnections`) is per node; disk is the fullest node's
+ * data volume as a percentage.
+ */
+export const CONNECTIONS_MAX_NODE_SERIES = "Connections (max node)";
+export const DISK_PERCENT_SERIES = "Disk used (max node)";
 
 export interface TimeRange {
   startMs: number;
@@ -100,6 +108,15 @@ const FULL_SET: MeasurementName[] = [
   "QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED",
 ];
 
+/**
+ * Storage space on the node's data volume. `STORAGE_SPACE_PERCENT_USED` is in
+ * the `m` enum of `getGroupProcessMeasurements` in the Admin API v2 document
+ * (github.com/mongodb/openapi, openapi/v2.json, read 2026-11-23). Atlas
+ * answers 400 when a name does not apply to the host, so it is asked for on
+ * top of the full set and dropped first.
+ */
+const STORAGE_SET: MeasurementName[] = ["STORAGE_SPACE_PERCENT_USED"];
+
 /** What every dedicated cluster reports; the fallback when Atlas rejects a name. */
 const CORE_SET: MeasurementName[] = [
   "CONNECTIONS",
@@ -128,14 +145,16 @@ async function measurementsFor(
         end: new Date(range.endMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
       },
     });
-  try {
-    const res = await fetchNamed(FULL_SET);
-    return res?.measurements ?? [];
-  } catch (err) {
-    if (statusOf(err) !== 400) throw err;
-    const res = await fetchNamed(CORE_SET);
-    return res?.measurements ?? [];
+  for (const set of [[...FULL_SET, ...STORAGE_SET], FULL_SET]) {
+    try {
+      const res = await fetchNamed(set);
+      return res?.measurements ?? [];
+    } catch (err) {
+      if (statusOf(err) !== 400) throw err;
+    }
   }
+  const res = await fetchNamed(CORE_SET);
+  return res?.measurements ?? [];
 }
 
 function toBytes(value: number, units: string | undefined): number {
@@ -220,6 +239,8 @@ export async function clusterSeries(
       transform: toBytes,
     },
     { label: "Connections", names: ["CONNECTIONS"], how: "sum" },
+    { label: CONNECTIONS_MAX_NODE_SERIES, names: ["CONNECTIONS"], how: "max" },
+    { label: DISK_PERCENT_SERIES, unit: "%", names: ["STORAGE_SPACE_PERCENT_USED"], how: "max" },
     { label: "Queries", unit: "ops/s", names: ["OPCOUNTER_QUERY"], how: "sum" },
     { label: "Inserts", unit: "ops/s", names: ["OPCOUNTER_INSERT"], how: "sum" },
     { label: "Updates", unit: "ops/s", names: ["OPCOUNTER_UPDATE"], how: "sum" },
