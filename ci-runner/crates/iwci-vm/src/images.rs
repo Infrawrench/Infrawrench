@@ -68,20 +68,12 @@ pub struct ImageCache {
     pub max_bytes: u64,
 }
 
-/// How many directories a machine image may keep between runs. The Linux
-/// image declares the three version managers, two package-manager stores,
-/// two JVM repositories and uv's two directories.
-pub const MAX_IMAGE_CACHES: usize = 10;
-
-/// The limits an environment's caches have, [`MAX_IMAGE_CACHES`] of them,
-/// names `[a-z0-9][a-z0-9_-]*`, absolute paths none inside another, and
+/// The limits an environment's caches have: up to 8, names
+/// `[a-z0-9][a-z0-9_-]*`, absolute paths none inside another, and
 /// `max-bytes` between 1 MiB and 4 GiB.
 pub fn check_caches(caches: &[ImageCache]) -> Result<(), String> {
-    if caches.len() > MAX_IMAGE_CACHES {
-        return Err(format!(
-            "{} caches, more than {MAX_IMAGE_CACHES}",
-            caches.len()
-        ));
+    if caches.len() > 8 {
+        return Err(format!("{} caches, more than 8", caches.len()));
     }
     for (n, cache) in caches.iter().enumerate() {
         let name_ok = cache

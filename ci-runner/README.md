@@ -748,9 +748,8 @@ jobs:
   ([Environment caches](#environment-caches)): `nvm install 22`,
   `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once,
   and the next run restores it before the machine starts. uv is there too,
-  with its managed Pythons cached the same way. An image may declare up to
-  10 such directories. `env-cache:` turns them off as it does an
-  environment's.
+  with its managed Pythons cached the same way. `env-cache:` turns them off
+  as it does an environment's.
 - **What it cannot have.** Keys that only mean something in an isolate are
   errors: `using`, `args`, `deps`, `tools`, `services` and
   `task-cache` (the script installs and starts what it needs, and `cache:`

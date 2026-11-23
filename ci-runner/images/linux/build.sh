@@ -524,8 +524,6 @@ COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
 UV_PYTHON_INSTALL_DIR="/root/.local/share/uv/python"
 UV_CACHE_DIR="/root/.cache/uv"
-UV_LINK_MODE="copy"
-UV_PYTHON_DOWNLOADS="automatic"
 EOF
 
 # nvm is a shell function, so it is defined for every bash, scripts
