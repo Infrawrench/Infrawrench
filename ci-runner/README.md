@@ -2084,12 +2084,14 @@ install:
   `stat` walked the runner's record of file modes and every few inodes it
   swept its whole inode table, both quadratic in the number of files
   (`vendor/README.md`, wasmer-wasix, and `iwci-vfs`'s `modes.rs`).
-- **The store and `node_modules` are both in memory**, and with Edge.js's
-  default `npm_config_package_import_method=copy` (below) the package files
-  are copied out of the store. `hardlink` (or `auto`) in a job's `env:`
-  links them instead ([Hard links](#hard-links)), which pays for each
-  file's bytes once. create-t3-turbo's install passed in the default
-  `memory: 2GiB` every time it was tried; a larger tree needs more.
+- **The store and `node_modules` are both the job's files**, in memory
+  until they come to half its `memory:` and on the runner's disk past that
+  (see `memory:` under [Limits](#limits)), and with Edge.js's default
+  `npm_config_package_import_method=copy` (below) the package files are
+  copied out of the store. `hardlink` (or `auto`) in a job's `env:` links
+  them instead ([Hard links](#hard-links)), which pays for each file's
+  bytes once. create-t3-turbo's install passed in the default
+  `memory: 2GiB` every time it was tried, before files spilled.
 - **Edge.js's pnpm has its own defaults**, which a job's `env:` can
   override: `npm_config_node_linker=hoisted` (a flat `node_modules`, as
   npm makes, not pnpm's linked one; `isolated` works and was faster here,
@@ -4104,7 +4106,8 @@ jobs:
   changed is saved, never the environment's own files. Restored files
   belong to the cache, not the repository: they never count as changes for
   `changes: fail` or `changes: commit`.
-- Restored files count against the job's `memory:` like any other write.
+- Restored files count against the job's `memory:` like any other write
+  (and spill to disk with the rest, past half of it).
 - Files and directories keep their modes, so a program saved executable
   comes back executable. A cache saved by a runner from before modes were
   kept is a miss, and the next pass saves over it.
@@ -4480,7 +4483,8 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--stall-after 5m] [--json] [--store <dir>] \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
-         [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
+         [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d] \
+         [--spill-disk 20GiB]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
          [--machines <dir>] [--machine-cpus 2]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
@@ -4827,17 +4831,25 @@ whole pipeline.
   so a job longer than that should not need them near its end.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
-limit) and, separately, the files it writes, which live in memory: without
-that a job could write past any limit. That is every file it writes, in
-`/tmp` and in its environment's directories (`GOCACHE`) too. A write over it is refused before
-any of it lands, and the job's report says so.
+limit) and, separately, the files it writes, which start in memory. That is
+every file it writes, in `/tmp` and in its environment's directories
+(`GOCACHE`) too. Once they come to half its `memory:`, the files read or
+written least recently move, whole, to the runner's disk (unlinked files
+under the cache directory's `spill/`) until those in memory are back under
+three quarters of that half; a file on disk stays there until it is
+truncated to nothing. What a job writes is held to the runner's
+`--spill-disk` (20 GiB by default, or its `memory:` if that is more), and a
+write over it is refused before any of it lands, as a full disk refuses
+one; the job's report says so. With `--spill-disk 0` every file stays in
+memory and is held to `memory:`, as before.
 
 **Sizing `memory:`.** A job's report says what it used beside what it
 reserved (`memory_mib`): `peak_memory_mib` is the most it held at once,
 adding up the linear memories of its programs and its services (every
 process has one, each at the size it had grown to), the room its V8 heaps
 had reserved (read five times a second, so a heap that lived for less can
-be missed) and the files it had written, each at its own peak. A `memory:`
+be missed) and the files it had written in memory (at most half its
+`memory:` when they spill), each at its own peak. A `memory:`
 at or above it would have refused the job nothing; leave room above it,
 since a suite's peak moves from run to run and with what else shares the
 runner. `queued_ms` is how long the job waited, once its `needs` had

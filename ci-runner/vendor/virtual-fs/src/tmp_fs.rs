@@ -22,6 +22,11 @@ impl TmpFileSystem {
         self.fs.set_memory_limiter(limiter);
     }
 
+    /// iwci patch: see [`mem_fs::FileSystem::set_spill`].
+    pub fn set_spill(&self, config: mem_fs::SpillConfig) -> std::sync::Arc<mem_fs::Spill> {
+        self.fs.set_spill(config)
+    }
+
     pub fn new_open_options_ext(&self) -> &mem_fs::FileSystem {
         self.fs.new_open_options_ext()
     }

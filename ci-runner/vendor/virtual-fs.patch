@@ -78,7 +78,31 @@
  impl Metadata {
 --- a/src/mem_fs/file.rs
 +++ b/src/mem_fs/file.rs
-@@ -244,45 +244,36 @@
+@@ -17,8 +17,11 @@
+ use std::fmt;
+ use std::io;
+ use std::pin::Pin;
++use std::sync::atomic::{AtomicU64, Ordering};
+ use std::task::{Context, Poll};
+ 
++use super::spill::Spill;
++
+ /// A file handle. The file system doesn't return the [`File`] type
+ /// directly, but rather this `FileHandle` type, which contains the
+ /// inode, the flags, and (a light copy of) the filesystem. For each
+@@ -215,9 +218,9 @@
+         let inode = fs.storage.get_mut(self.inode);
+         match inode {
+             Some(Node::File(FileNode { file, metadata, .. })) => {
+-                file.buffer
+-                    .resize(new_size.try_into().map_err(|_| FsError::UnknownError)?, 0)?;
++                file.resize(new_size.try_into().map_err(|_| FsError::UnknownError)?)?;
+                 metadata.len = new_size;
++                fs.spill_over();
+             }
+             Some(Node::OffloadedFile(OffloadedFileNode { file, metadata, .. })) => {
+                 file.resize(new_size, 0);
+@@ -244,45 +247,36 @@
  
      fn unlink(&mut self) -> Result<()> {
          let filesystem = self.filesystem.clone();
@@ -91,7 +115,13 @@
 -
 -            // The inode of the file.
 -            let inode_of_file = inode;
--
++        // iwci patch (#1294): the file's place in its parent is found under
++        // the write lock it is removed under. Found under a read lock first,
++        // a name that left the directory in between (a removal, a rename, a
++        // `rmdir`, from any thread) shifted the file down, and the entry at
++        // the old place, its neighbour or past the end, was removed instead.
++        let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
+ 
 -            // Find the position of the file in the parent, and the
 -            // inode of the parent.
 -            let (position, inode_of_parent) = fs
@@ -107,16 +137,6 @@
 -                            }
 -                        })
 -                    }
-+        // iwci patch (#1294): the file's place in its parent is found under
-+        // the write lock it is removed under. Found under a read lock first,
-+        // a name that left the directory in between (a removal, a rename, a
-+        // `rmdir`, from any thread) shifted the file down, and the entry at
-+        // the old place, its neighbour or past the end, was removed instead.
-+        let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
- 
--                    _ => None,
--                })
--                .ok_or(FsError::BaseNotDirectory)?;
 +        // Find the position of the file in the parent, and the
 +        // inode of the parent.
 +        let (position, inode_of_parent) = fs
@@ -133,24 +153,28 @@
 +                    })
 +                }
  
+-                    _ => None,
+-                })
+-                .ok_or(FsError::BaseNotDirectory)?;
+-
 -            (inode_of_parent, position, inode_of_file)
 -        };
--
++                _ => None,
++            })
++            .ok_or(FsError::BaseNotDirectory)?;
+ 
 -        {
 -            // Write lock.
 -            let mut fs = filesystem.inner.write().map_err(|_| FsError::Lock)?;
 -            fs.unlink_file_inode(inode_of_parent, position, inode_of_file)?;
 -        }
-+                _ => None,
-+            })
-+            .ok_or(FsError::BaseNotDirectory)?;
- 
+-
 -        Ok(())
 +        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
      }
  
      fn get_special_fd(&self) -> Option<u32> {
-@@ -337,6 +328,8 @@
+@@ -337,6 +331,8 @@
                          created: src.created_time(),
                          modified: src.last_modified(),
                          len: src.size(),
@@ -159,7 +183,7 @@
                      };
  
                      *inode = Node::CustomFile(CustomFileNode {
-@@ -370,6 +363,8 @@
+@@ -370,6 +366,8 @@
                          created: 1,
                          modified: 1,
                          len: src.len() as u64,
@@ -168,6 +192,310 @@
                      };
  
                      *inode = Node::ReadOnlyFile(ReadOnlyFileNode {
+@@ -406,7 +404,7 @@
+         let inode = fs.storage.get_mut(self.inode);
+         match inode {
+             Some(Node::File(node)) => {
+-                let remaining = node.file.buffer.len() - (self.cursor as usize);
++                let remaining = node.file.len() - (self.cursor as usize);
+                 Poll::Ready(Ok(remaining))
+             }
+             Some(Node::OffloadedFile(node)) => {
+@@ -1078,6 +1076,7 @@
+                     cursor = self.write_cursor(node.file.len() as u64);
+                     let bytes_written = node.file.write(buf, &mut cursor)?;
+                     node.metadata.len = node.file.len().try_into().unwrap();
++                    fs.spill_over();
+                     bytes_written
+                 }
+                 Some(Node::OffloadedFile(node)) => {
+@@ -1163,7 +1162,8 @@
+                         .find(|b| !b.is_empty())
+                         .map_or(&[][..], |b| &**b);
+                     let bytes_written = node.file.write(buf, &mut cursor)?;
+-                    node.metadata.len = node.file.buffer.len() as u64;
++                    node.metadata.len = node.file.len() as u64;
++                    fs.spill_over();
+                     Poll::Ready(Ok(bytes_written))
+                 }
+                 Some(Node::OffloadedFile(node)) => {
+@@ -1417,7 +1417,7 @@
+             assert_eq!(buf[0..expected.len()], *expected);
+         }
+ 
+-        let mut file = File::new(None);
++        let mut file = File::new(None, None);
+ 
+         let mut cursor = 0;
+ 
+@@ -1675,46 +1675,188 @@
+ 
+ /// The real file! It is simply a buffer of bytes with a cursor that
+ /// represents a read/write position in the buffer.
++///
++/// iwci patch: a file's contents are in memory, as published, or, when
++/// its file system spills (`spill.rs`), possibly in a file on disk.
+ #[derive(Debug)]
+ pub(super) struct File {
+-    buffer: TrackedVec,
++    data: Data,
++    limiter: Option<crate::limiter::DynFsMemoryLimiter>,
++    spill: Option<Arc<Spill>>,
++    /// When it was last read or written, on `spill`'s clock.
++    last_used: AtomicU64,
+ }
+ 
++#[derive(Debug)]
++enum Data {
++    Memory(TrackedVec),
++    Disk { file: std::fs::File, len: u64 },
++}
++
+ impl File {
+-    pub(super) fn new(limiter: Option<crate::limiter::DynFsMemoryLimiter>) -> Self {
+-        Self {
+-            buffer: TrackedVec::new(limiter),
++    pub(super) fn new(
++        limiter: Option<crate::limiter::DynFsMemoryLimiter>,
++        spill: Option<Arc<Spill>>,
++    ) -> Self {
++        let file = Self {
++            data: Data::Memory(TrackedVec::new(limiter.clone())),
++            limiter,
++            spill,
++            last_used: AtomicU64::new(0),
++        };
++        file.touch();
++        file
++    }
++
++    fn touch(&self) {
++        if let Some(spill) = &self.spill {
++            self.last_used.store(spill.tick(), Ordering::Relaxed);
++        }
++    }
++
++    /// When it was last used, and how much of it is in memory: what the
++    /// file system needs to pick which files to spill.
++    pub(super) fn in_memory(&self) -> Option<(u64, usize)> {
++        match &self.data {
++            Data::Memory(buffer) if !buffer.is_empty() => {
++                Some((self.last_used.load(Ordering::Relaxed), buffer.len()))
++            }
++            _ => None,
+         }
+     }
+ 
+-    pub(super) fn truncate(&mut self) {
+-        self.buffer.clear();
++    /// Records a change in how long its contents are, wherever they are.
++    fn accounted(&self, before: (u64, u64)) {
++        if let Some(spill) = &self.spill {
++            let after = self.footprint();
++            spill.resident_changed(before.0, after.0);
++            spill.spilled_changed(before.1, after.1);
++        }
+     }
+ 
+-    pub(super) fn len(&self) -> usize {
+-        self.buffer.len()
++    /// Bytes in memory and bytes on disk.
++    fn footprint(&self) -> (u64, u64) {
++        match &self.data {
++            Data::Memory(buffer) => (buffer.len() as u64, 0),
++            Data::Disk { len, .. } => (0, *len),
++        }
++    }
++
++    /// Moves its contents to a new file on disk. A failure leaves it in
++    /// memory, where it was.
++    pub(super) fn spill_to_disk(&mut self) -> io::Result<()> {
++        let Some(spill) = self.spill.clone() else {
++            return Ok(());
++        };
++        let Data::Memory(buffer) = &self.data else {
++            return Ok(());
++        };
++        let before = self.footprint();
++        let file = spill.create()?;
++        write_all_at(&file, buffer, 0)?;
++        self.data = Data::Disk {
++            file,
++            len: buffer.len() as u64,
++        };
++        self.accounted(before);
++        Ok(())
+     }
++
++    pub(super) fn truncate(&mut self) {
++        let before = self.footprint();
++        // Emptied, a file on disk comes back to memory.
++        self.data = Data::Memory(TrackedVec::new(self.limiter.clone()));
++        self.touch();
++        self.accounted(before);
++    }
++
++    pub(super) fn len(&self) -> usize {
++        match &self.data {
++            Data::Memory(buffer) => buffer.len(),
++            Data::Disk { len, .. } => *len as usize,
++        }
++    }
++
++    /// Makes it `new_len` bytes long, cutting it or filling with zeroes.
++    pub(super) fn resize(&mut self, new_len: usize) -> Result<()> {
++        if new_len == 0 {
++            self.truncate();
++            return Ok(());
++        }
++        let before = self.footprint();
++        match &mut self.data {
++            Data::Memory(buffer) => buffer.resize(new_len, 0)?,
++            Data::Disk { file, len } => {
++                file.set_len(new_len as u64).map_err(|_| FsError::IOError)?;
++                *len = new_len as u64;
++            }
++        }
++        self.touch();
++        self.accounted(before);
++        Ok(())
++    }
+ }
+ 
++impl Drop for File {
++    fn drop(&mut self) {
++        if let Some(spill) = &self.spill {
++            let (resident, spilled) = self.footprint();
++            spill.resident_changed(resident, 0);
++            spill.spilled_changed(spilled, 0);
++        }
++    }
++}
++
++#[cfg(unix)]
++fn read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> io::Result<usize> {
++    std::os::unix::fs::FileExt::read_at(file, buf, offset)
++}
++
++#[cfg(unix)]
++fn write_all_at(file: &std::fs::File, buf: &[u8], offset: u64) -> io::Result<()> {
++    std::os::unix::fs::FileExt::write_all_at(file, buf, offset)
++}
++
++#[cfg(windows)]
++fn read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> io::Result<usize> {
++    std::os::windows::fs::FileExt::seek_read(file, buf, offset)
++}
++
++#[cfg(windows)]
++fn write_all_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> io::Result<()> {
++    while !buf.is_empty() {
++        let n = std::os::windows::fs::FileExt::seek_write(file, buf, offset)?;
++        if n == 0 {
++            return Err(io::ErrorKind::WriteZero.into());
++        }
++        buf = &buf[n..];
++        offset += n as u64;
++    }
++    Ok(())
++}
++
+ impl File {
+     pub fn read(&self, buf: &mut [u8], cursor: &mut u64) -> io::Result<usize> {
++        self.touch();
+         let cur_pos = *cursor as usize;
+ 
+         // POSIX regular files return EOF, not an error, when reading at or beyond EOF.
+-        if cur_pos >= self.buffer.len() {
++        if cur_pos >= self.len() {
+             return Ok(0);
+         }
+ 
+-        let max_to_read = cmp::min(self.buffer.len() - cur_pos, buf.len());
+-        let data_to_copy = &self.buffer[cur_pos..][..max_to_read];
++        let max_to_read = cmp::min(self.len() - cur_pos, buf.len());
++        let read = match &self.data {
++            Data::Memory(buffer) => {
++                buf[..max_to_read].copy_from_slice(&buffer[cur_pos..][..max_to_read]);
++                max_to_read
++            }
++            Data::Disk { file, .. } => read_at(file, &mut buf[..max_to_read], cur_pos as u64)?,
++        };
+ 
+-        // SAFETY: `buf[..max_to_read]` and `data_to_copy` have the same size, due to
+-        // how `max_to_read` is computed.
+-        buf[..max_to_read].copy_from_slice(data_to_copy);
++        *cursor += read as u64;
+ 
+-        *cursor += max_to_read as u64;
+-
+-        Ok(max_to_read)
++        Ok(read)
+     }
+ }
+ 
+@@ -1727,9 +1869,9 @@
+             // Calculate from the beginning, so `0 + offset`.
+             io::SeekFrom::Start(offset) => offset.try_into().map_err(to_err)?,
+ 
+-            // Calculate from the end, so `buffer.len() + offset`.
++            // Calculate from the end, so `len + offset`.
+             io::SeekFrom::End(offset) => {
+-                TryInto::<i64>::try_into(self.buffer.len()).map_err(to_err)? + offset
++                TryInto::<i64>::try_into(self.len()).map_err(to_err)? + offset
+             }
+ 
+             // Calculate from the current cursor, so `cursor + offset`.
+@@ -1756,25 +1898,37 @@
+ 
+ impl File {
+     pub fn write(&mut self, buf: &[u8], cursor: &mut u64) -> io::Result<usize> {
++        self.touch();
++        let before = self.footprint();
+         let position = *cursor as usize;
+         let end = position
+             .checked_add(buf.len())
+             .ok_or(io::ErrorKind::InvalidInput)?;
+ 
+-        if position > self.buffer.len() {
+-            // Materialize the sparse gap with zeroes in this contiguous in-memory buffer.
+-            self.buffer.resize(position, 0)?;
+-        }
++        match &mut self.data {
++            Data::Memory(buffer) => {
++                if position > buffer.len() {
++                    // Materialize the sparse gap with zeroes in this contiguous in-memory buffer.
++                    buffer.resize(position, 0)?;
++                }
+ 
+-        if end > self.buffer.len() {
+-            // Writing past the end of the current buffer, must reallocate
+-            let len_after_end = end - self.buffer.len();
+-            let let_to_end = buf.len() - len_after_end;
+-            self.buffer[position..end - len_after_end].copy_from_slice(&buf[0..let_to_end]);
+-            self.buffer.extend_from_slice(&buf[let_to_end..buf.len()])?;
+-        } else {
+-            self.buffer[position..end].copy_from_slice(buf);
++                if end > buffer.len() {
++                    // Writing past the end of the current buffer, must reallocate
++                    let len_after_end = end - buffer.len();
++                    let let_to_end = buf.len() - len_after_end;
++                    buffer[position..end - len_after_end].copy_from_slice(&buf[0..let_to_end]);
++                    buffer.extend_from_slice(&buf[let_to_end..buf.len()])?;
++                } else {
++                    buffer[position..end].copy_from_slice(buf);
++                }
++            }
++            Data::Disk { file, len } => {
++                // A gap past the end reads as zeroes, as the disk file's.
++                write_all_at(file, buf, position as u64)?;
++                *len = (*len).max(end as u64);
++            }
+         }
++        self.accounted(before);
+ 
+         *cursor += buf.len() as u64;
+ 
 --- a/src/mem_fs/file_opener.rs
 +++ b/src/mem_fs/file_opener.rs
 @@ -1,4 +1,4 @@
@@ -324,6 +652,15 @@
                      }
                  };
                  let inode_of_file = fs.storage.vacant_entry().key();
+@@ -518,7 +546,7 @@
+                         })
+                     }
+                     _ => {
+-                        let file = File::new(fs.limiter.clone());
++                        let file = File::new(fs.limiter.clone(), fs.spill.clone());
+                         Node::File(FileNode {
+                             inode: inode_of_file,
+                             name: name_of_file,
 @@ -548,6 +576,7 @@
  
              None => return Err(FsError::EntryNotFound),
@@ -343,10 +680,28 @@
  use std::convert::identity;
  use std::ffi::OsString;
  use std::fmt;
-@@ -51,6 +51,71 @@
-         lock.canonicalize_without_inode(path)
+@@ -27,6 +27,15 @@
+         self.inner.write().unwrap().limiter = Some(limiter);
      }
  
++    /// iwci patch: files made from now on spill to disk past
++    /// `config.resident_max` bytes in memory (`spill.rs`). Returns what
++    /// reports how much is where.
++    pub fn set_spill(&self, config: super::SpillConfig) -> Arc<super::Spill> {
++        let spill = Arc::new(super::Spill::new(config));
++        self.inner.write().unwrap().spill = Some(spill.clone());
++        spill
++    }
++
+     pub fn new_open_options_ext(&self) -> &FileSystem {
+         self
+     }
+@@ -49,6 +58,71 @@
+     pub fn canonicalize_unchecked(&self, path: &Path) -> Result<PathBuf> {
+         let lock = self.inner.read().map_err(|_| FsError::Lock)?;
+         lock.canonicalize_without_inode(path)
++    }
++
 +    /// iwci patch: gives the file at `source` the second name `target`
 +    /// (`link(2)`), and the inode number `ino` if it has none yet, which
 +    /// every name of it then reports in its metadata. A directory is
@@ -410,12 +765,10 @@
 +            (Ok(InodeResolution::Found(a)), Ok(InodeResolution::Found(b))) => a == b,
 +            _ => false,
 +        }
-+    }
-+
+     }
+ 
      /// Merge all items from a given source path (directory) of a different file
-     /// system into this file system.
-     ///
-@@ -239,6 +304,8 @@
+@@ -239,6 +313,8 @@
                          created: time,
                          modified: time,
                          len: 0,
@@ -424,7 +777,7 @@
                      }
                  },
              }));
-@@ -256,20 +323,24 @@
+@@ -256,20 +332,24 @@
      }
  
      pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
@@ -455,7 +808,7 @@
                      if let Some(mem_fs) = fs_ref.downcast_ref::<Self>() {
                          return mem_fs.create_symlink(source, redirected_path.as_path());
                      }
-@@ -279,7 +350,6 @@
+@@ -279,7 +359,6 @@
              (inode_of_parent, name_of_symlink)
          };
  
@@ -463,7 +816,7 @@
          if fs.canonicalize(target).is_ok() {
              return Err(FsError::AlreadyExists);
          }
-@@ -300,6 +370,8 @@
+@@ -300,6 +379,8 @@
                      created: time,
                      modified: time,
                      len: source.as_os_str().len() as u64,
@@ -472,7 +825,7 @@
                  }
              },
          }));
-@@ -365,7 +437,9 @@
+@@ -365,7 +446,9 @@
  
                          entry_path
                      },
@@ -483,7 +836,7 @@
                  })
                  .collect(),
  
-@@ -384,20 +458,21 @@
+@@ -384,20 +467,21 @@
      }
  
      fn create_dir(&self, path: &Path) -> Result<()> {
@@ -515,7 +868,7 @@
  
              // Check the directory name.
              let name_of_directory = path
-@@ -406,26 +481,30 @@
+@@ -406,26 +490,30 @@
                  .to_os_string();
  
              // Find the parent inode.
@@ -560,7 +913,7 @@
              // Creating the directory in the storage.
              let inode_of_directory = fs.storage.vacant_entry().key();
              let real_inode_of_directory = fs.storage.insert(Node::Directory(DirectoryNode {
-@@ -444,6 +523,8 @@
+@@ -444,6 +532,8 @@
                          created: time,
                          modified: time,
                          len: 0,
@@ -569,7 +922,7 @@
                      }
                  },
              }));
-@@ -464,74 +545,73 @@
+@@ -464,74 +554,73 @@
          self.create_symlink(source, target)
      }
  
@@ -693,7 +1046,7 @@
                  let from = fs.canonicalize_without_inode(from)?;
                  let to = fs.canonicalize_without_inode(to)?;
  
-@@ -544,7 +624,7 @@
+@@ -544,7 +633,7 @@
                      .file_name()
                      .ok_or(FsError::InvalidInput)?
                      .to_os_string();
@@ -702,7 +1055,7 @@
  
                  // Find the parent inodes.
                  let inode_of_from_parent = match fs.inode_of_parent(parent_of_from)? {
-@@ -562,96 +642,22 @@
+@@ -562,96 +651,22 @@
                      }
                  };
  
@@ -811,7 +1164,7 @@
                  // Rename within the same mounted FS instance
                  (Either::Right((from_fs, from_path)), Either::Right((to_fs, to_path)))
                      if Arc::ptr_eq(&from_fs, &to_fs) =>
-@@ -670,12 +676,9 @@
+@@ -670,12 +685,9 @@
          // Read lock.
          let guard = self.inner.read().map_err(|_| FsError::Lock)?;
          match guard.inode_of(path)? {
@@ -827,7 +1180,7 @@
              InodeResolution::Redirect(fs, path) => {
                  drop(guard);
                  fs.metadata(path.as_path())
-@@ -687,12 +690,9 @@
+@@ -687,12 +699,9 @@
          // Read lock.
          let guard = self.inner.read().map_err(|_| FsError::Lock)?;
          match guard.inode_of(path)? {
@@ -843,7 +1196,7 @@
              InodeResolution::Redirect(fs, path) => {
                  drop(guard);
                  fs.symlink_metadata(path.as_path())
-@@ -701,55 +701,47 @@
+@@ -701,55 +710,47 @@
      }
  
      fn remove_file(&self, path: &Path) -> Result<()> {
@@ -901,12 +1254,12 @@
 +                return redirect_fs.remove_file(parent_path.as_path());
              }
          };
-+
+ 
 +        // Find the inode of the file if it exists, along with its position.
 +        let (position, inode_of_file) = fs
 +            .as_parent_get_position_and_inode_of_file(inode_of_parent, &name_of_file)?
 +            .ok_or(FsError::EntryNotFound)?;
- 
++
          let inode_of_file = match inode_of_file {
              InodeResolution::Found(a) => a,
 -            InodeResolution::Redirect(fs, path) => {
@@ -928,7 +1281,7 @@
      }
  
      fn new_open_options(&self) -> OpenOptions<'_> {
-@@ -769,6 +761,9 @@
+@@ -769,8 +770,13 @@
  /// indexed by their respective `Inode` in a slab.
  pub(super) struct FileSystemInner {
      pub(super) storage: Slab<Node>,
@@ -937,8 +1290,53 @@
 +    pub(super) links: HashMap<Inode, Vec<Inode>>,
      pub(super) backing_offload: Option<OffloadBackingStore>,
      pub(super) limiter: Option<crate::limiter::DynFsMemoryLimiter>,
++    /// iwci patch: where files spill to, when they do (`spill.rs`).
++    pub(super) spill: Option<Arc<super::Spill>>,
  }
-@@ -798,6 +793,34 @@
+ 
+ #[derive(Debug)]
+@@ -792,12 +798,75 @@
+ }
+ 
+ impl FileSystemInner {
++    /// iwci patch: when the files in memory together pass the spill limit,
++    /// moves the least recently used of them to disk until what is left is
++    /// under three quarters of it (`spill.rs`). A file that cannot be moved
++    /// (the disk is full) stays in memory, and spilling stops there.
++    pub(super) fn spill_over(&mut self) {
++        let Some(spill) = self.spill.clone() else {
++            return;
++        };
++        if !spill.over() {
++            return;
++        }
++        let mut candidates: Vec<(u64, Inode)> = self
++            .storage
++            .iter()
++            .filter_map(|(inode, node)| match node {
++                Node::File(FileNode { file, .. }) => {
++                    file.in_memory().map(|(used, _)| (used, inode))
++                }
++                _ => None,
++            })
++            .collect();
++        candidates.sort_unstable();
++        for (_, inode) in candidates {
++            if spill.settled() {
++                break;
++            }
++            if let Some(Node::File(FileNode { file, .. })) = self.storage.get_mut(inode)
++                && let Err(e) = file.spill_to_disk()
++            {
++                tracing::warn!(error = %e, "could not spill a file to disk");
++                break;
++            }
++        }
++    }
++
+     pub(super) fn unlink_file_inode(
+         &mut self,
+         inode_of_parent: Inode,
          position: usize,
          inode_of_file: Inode,
      ) -> Result<()> {
@@ -973,7 +1371,7 @@
          let remove_storage = match self.storage.get(inode_of_file) {
              Some(node) => {
                  if let Some(lifecycle) = node.file_lifecycle() {
-@@ -815,6 +838,81 @@
+@@ -815,6 +884,81 @@
          }
  
          self.remove_child_from_node(inode_of_parent, position)
@@ -1055,7 +1453,7 @@
      }
  
      /// Get the inode associated to a path if it exists.
-@@ -834,6 +932,7 @@
+@@ -834,6 +978,7 @@
                      .iter()
                      .filter_map(|inode| self.storage.get(*inode))
                      .find(|node| node.name() == component.as_os_str())
@@ -1063,7 +1461,7 @@
                      .ok_or(FsError::EntryNotFound)?,
                  Node::ArcDirectory(ArcDirectoryNode {
                      fs, path: fs_path, ..
-@@ -939,6 +1038,7 @@
+@@ -939,6 +1084,7 @@
                      | Node::CustomFile(CustomFileNode { inode, name, .. })
                      | Node::ArcFile(ArcFileNode { inode, name, .. })
                      | Node::Symlink(SymlinkNode { inode, name, .. })
@@ -1071,7 +1469,7 @@
                          if name.as_os_str() == name_of_file =>
                      {
                          Some(Some((nth, InodeResolution::Found(*inode))))
-@@ -980,6 +1080,7 @@
+@@ -980,6 +1126,7 @@
                      | Node::ReadOnlyFile(ReadOnlyFileNode { inode, name, .. })
                      | Node::CustomFile(CustomFileNode { inode, name, .. })
                      | Node::ArcFile(ArcFileNode { inode, name, .. })
@@ -1079,7 +1477,7 @@
                          if name.as_os_str() == name_of =>
                      {
                          Some(Some((nth, InodeResolution::Found(*inode))))
-@@ -1001,6 +1102,60 @@
+@@ -1001,6 +1148,60 @@
          }
      }
  
@@ -1140,7 +1538,7 @@
      /// Set a new name for the node represented by `inode`.
      pub(super) fn update_node_name(&mut self, inode: Inode, new_name: OsString) -> Result<()> {
          let node = self.storage.get_mut(inode).ok_or(FsError::UnknownError)?;
-@@ -1146,6 +1301,7 @@
+@@ -1146,6 +1347,7 @@
                          Node::Symlink { .. } => "symlink",
                          Node::Directory { .. } => "dir",
                          Node::ArcDirectory { .. } => "arc-dir",
@@ -1148,7 +1546,7 @@
                      },
                      name = node.name().to_string_lossy(),
                      indentation_symbol = " ",
-@@ -1195,11 +1351,14 @@
+@@ -1195,13 +1397,17 @@
                  created: time,
                  modified: time,
                  len: 0,
@@ -1162,11 +1560,18 @@
 +            links: HashMap::new(),
              backing_offload: None,
              limiter: None,
++            spill: None,
          }
-@@ -1656,6 +1815,66 @@
      }
- 
-     #[tokio::test]
+ }
+@@ -1652,7 +1858,67 @@
+                 ),
+                 "`hello2.txt` has been renamed to `world2.txt`",
+             );
++        }
++    }
++
++    #[tokio::test]
 +    async fn test_rename_over_open_file_keeps_the_open_handle() {
 +        use tokio::io::AsyncWriteExt;
 +
@@ -1180,7 +1585,7 @@
 +                .open(path!(path))
 +                .unwrap();
 +            file.write_all(contents).await.unwrap();
-+        }
+         }
 +
 +        let mut replaced = fs
 +            .new_open_options()
@@ -1224,13 +1629,10 @@
 +            3,
 +            "storage drops the replaced file once its last handle closes"
 +        );
-+    }
-+
-+    #[tokio::test]
-     async fn test_metadata() {
-         use std::thread::sleep;
-         use std::time::Duration;
-@@ -1671,6 +1890,8 @@
+     }
+ 
+     #[tokio::test]
+@@ -1671,6 +1937,8 @@
                  created,
                  modified,
                  len: 0
@@ -1239,7 +1641,7 @@
              }) if accessed == created && created == modified && modified > 0
          ));
  
-@@ -1688,6 +1909,8 @@
+@@ -1688,6 +1956,8 @@
                  created,
                  modified,
                  len: 0
@@ -1248,7 +1650,7 @@
              } if accessed == created && created == modified && modified > 0
          ));
  
-@@ -1704,6 +1927,8 @@
+@@ -1704,6 +1974,8 @@
                      created,
                      modified,
                      len: 0
@@ -1257,7 +1659,7 @@
                  }) if
                      accessed == foo_metadata.accessed &&
                      created == foo_metadata.created &&
-@@ -1720,6 +1945,8 @@
+@@ -1720,6 +1992,8 @@
                      created,
                      modified,
                      len: 0
@@ -1266,19 +1668,18 @@
                  }) if
                      accessed <= foo_metadata.accessed &&
                      created <= foo_metadata.created &&
-@@ -1824,9 +2051,8 @@
+@@ -1824,9 +2098,8 @@
  
          drop(file);
  
 -        let fs_inner = fs.inner.read().unwrap();
--        assert_eq!(
+         assert_eq!(
 -            fs_inner.storage.len(),
-+        assert_eq!(
 +            fs.inner.read().unwrap().storage.len(),
              1,
              "storage drops the file once the last open handle closes"
          );
-@@ -2095,5 +2321,169 @@
+@@ -2095,5 +2368,169 @@
          f.read_to_end(&mut buf).await.unwrap();
  
          assert_eq!(buf, b"a");
@@ -1450,7 +1851,21 @@
  }
 --- a/src/mem_fs/mod.rs
 +++ b/src/mem_fs/mod.rs
-@@ -19,7 +19,7 @@
+@@ -2,11 +2,13 @@
+ mod file_opener;
+ mod filesystem;
+ mod offloaded_file;
++mod spill;
+ mod stdio;
+ 
+ use file::{File, FileHandle, ReadOnlyFile};
+ pub use filesystem::FileSystem;
+ pub use offloaded_file::OffloadBackingStore;
++pub use spill::{Spill, SpillConfig};
+ #[cfg(not(feature = "js"))]
+ use std::time::{SystemTime, UNIX_EPOCH};
+ pub use stdio::{Stderr, Stdin, Stdout};
+@@ -19,7 +21,7 @@
      path::PathBuf,
      sync::{
          Arc, Mutex,
@@ -1459,7 +1874,7 @@
      },
  };
  
-@@ -32,6 +32,10 @@
+@@ -32,6 +34,10 @@
  struct FileLifecycle {
      open_handles: AtomicUsize,
      unlinked: AtomicBool,
@@ -1470,7 +1885,7 @@
  }
  
  impl FileLifecycle {
-@@ -60,6 +64,17 @@
+@@ -60,6 +66,17 @@
      fn is_unlinked(&self) -> bool {
          self.unlinked.load(Ordering::Acquire)
      }
@@ -1488,7 +1903,7 @@
  }
  
  #[derive(Debug)]
-@@ -135,7 +150,24 @@
+@@ -135,7 +152,24 @@
      metadata: Metadata,
  }
  
@@ -1513,7 +1928,7 @@
  enum Node {
      File(FileNode),
      OffloadedFile(OffloadedFileNode),
-@@ -145,6 +177,7 @@
+@@ -145,6 +179,7 @@
      Symlink(SymlinkNode),
      Directory(DirectoryNode),
      ArcDirectory(ArcDirectoryNode),
@@ -1521,7 +1936,7 @@
  }
  
  impl Node {
-@@ -158,6 +191,7 @@
+@@ -158,6 +193,7 @@
              Self::Symlink(SymlinkNode { inode, .. }) => inode,
              Self::Directory(DirectoryNode { inode, .. }) => inode,
              Self::ArcDirectory(ArcDirectoryNode { inode, .. }) => inode,
@@ -1529,7 +1944,7 @@
          }
      }
  
-@@ -171,6 +205,7 @@
+@@ -171,6 +207,7 @@
              Self::Symlink(SymlinkNode { name, .. }) => name.as_os_str(),
              Self::Directory(DirectoryNode { name, .. }) => name.as_os_str(),
              Self::ArcDirectory(ArcDirectoryNode { name, .. }) => name.as_os_str(),
@@ -1537,7 +1952,7 @@
          }
      }
  
-@@ -184,6 +219,7 @@
+@@ -184,6 +221,7 @@
              Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
              Self::Directory(DirectoryNode { metadata, .. }) => metadata,
              Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
@@ -1545,7 +1960,7 @@
          }
      }
  
-@@ -208,6 +244,7 @@
+@@ -208,6 +246,7 @@
              Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
              Self::Directory(DirectoryNode { metadata, .. }) => metadata,
              Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
@@ -1553,7 +1968,7 @@
          }
      }
  
-@@ -221,6 +258,7 @@
+@@ -221,6 +260,7 @@
              Self::Symlink(SymlinkNode { name, .. }) => *name = new_name,
              Self::Directory(DirectoryNode { name, .. }) => *name = new_name,
              Self::ArcDirectory(ArcDirectoryNode { name, .. }) => *name = new_name,
@@ -1636,7 +2051,19 @@
  
 --- a/src/tmp_fs.rs
 +++ b/src/tmp_fs.rs
-@@ -38,6 +38,16 @@
+@@ -22,6 +22,11 @@
+         self.fs.set_memory_limiter(limiter);
+     }
+ 
++    /// iwci patch: see [`mem_fs::FileSystem::set_spill`].
++    pub fn set_spill(&self, config: mem_fs::SpillConfig) -> std::sync::Arc<mem_fs::Spill> {
++        self.fs.set_spill(config)
++    }
++
+     pub fn new_open_options_ext(&self) -> &mem_fs::FileSystem {
+         self.fs.new_open_options_ext()
+     }
+@@ -38,6 +43,16 @@
      pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
          self.fs.create_symlink(source, target)
      }
@@ -1653,3 +2080,118 @@
  }
  
  impl FileSystem for TmpFileSystem {
+--- /dev/null
++++ b/src/mem_fs/spill.rs
+@@ -0,0 +1,112 @@
++//! iwci patch: files that outgrow memory move to disk.
++//!
++//! A file system given a [`SpillConfig`] keeps its files' contents in memory
++//! until, together, they pass `resident_max` bytes. Then the files read or
++//! written least recently move, whole, to anonymous files in `dir` (made and
++//! unlinked at once, so nothing is left behind if the process dies) until
++//! what is in memory is back under three quarters of the limit. A file on
++//! disk stays there until it is truncated to nothing, when it comes back to
++//! memory; reads and writes of it go to the disk file, through the host's
++//! page cache. Without a config, nothing changes: every file is in memory.
++
++use std::fs::File as HostFile;
++use std::io;
++use std::path::PathBuf;
++use std::sync::atomic::{AtomicU64, Ordering};
++
++/// Where files spill to, and how much of them may stay in memory.
++#[derive(Debug, Clone)]
++pub struct SpillConfig {
++    /// A directory on the host's disk. Its files are unlinked as soon as
++    /// they are made.
++    pub dir: PathBuf,
++    /// The most bytes of file contents kept in memory before the least
++    /// recently used files move to disk.
++    pub resident_max: u64,
++}
++
++/// What a spilling file system knows across its files.
++#[derive(Debug)]
++pub struct Spill {
++    config: SpillConfig,
++    /// Bytes of file contents in memory now.
++    resident: AtomicU64,
++    /// Bytes of file contents on disk now.
++    spilled: AtomicU64,
++    /// A logical clock: each read or write of a file stamps it.
++    clock: AtomicU64,
++    /// Names the disk files, which are unlinked at once.
++    made: AtomicU64,
++}
++
++impl Spill {
++    pub fn new(config: SpillConfig) -> Self {
++        Self {
++            config,
++            resident: AtomicU64::new(0),
++            spilled: AtomicU64::new(0),
++            clock: AtomicU64::new(0),
++            made: AtomicU64::new(0),
++        }
++    }
++
++    /// The next stamp for a file that was just used.
++    pub(super) fn tick(&self) -> u64 {
++        self.clock.fetch_add(1, Ordering::Relaxed) + 1
++    }
++
++    /// Whether what is in memory is over the limit.
++    pub(super) fn over(&self) -> bool {
++        self.resident.load(Ordering::Relaxed) > self.config.resident_max
++    }
++
++    /// Whether spilling has brought memory back under three quarters of
++    /// the limit, where it stops, so the next few writes do not each spill
++    /// another file.
++    pub(super) fn settled(&self) -> bool {
++        self.resident.load(Ordering::Relaxed) <= self.config.resident_max / 4 * 3
++    }
++
++    pub(super) fn resident_changed(&self, before: u64, after: u64) {
++        change(&self.resident, before, after);
++    }
++
++    pub(super) fn spilled_changed(&self, before: u64, after: u64) {
++        change(&self.spilled, before, after);
++    }
++
++    /// A new, already unlinked file in the spill directory.
++    pub(super) fn create(&self) -> io::Result<HostFile> {
++        let n = self.made.fetch_add(1, Ordering::Relaxed);
++        let path = self
++            .config
++            .dir
++            .join(format!("spill-{}-{:p}-{n}", std::process::id(), self));
++        let file = std::fs::OpenOptions::new()
++            .read(true)
++            .write(true)
++            .create_new(true)
++            .open(&path)?;
++        std::fs::remove_file(&path)?;
++        Ok(file)
++    }
++
++    /// Bytes of file contents in memory and on disk.
++    pub fn usage(&self) -> (u64, u64) {
++        (
++            self.resident.load(Ordering::Relaxed),
++            self.spilled.load(Ordering::Relaxed),
++        )
++    }
++}
++
++fn change(counter: &AtomicU64, before: u64, after: u64) {
++    if after >= before {
++        counter.fetch_add(after - before, Ordering::Relaxed);
++    } else {
++        let less = before - after;
++        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |now| {
++            Some(now.saturating_sub(less))
++        });
++    }
++}

@@ -1947,13 +1947,29 @@ here, in the in-memory file system of the job's own layer:
 `renames_onto_and_of_linked_names` and
 `an_open_linked_file_outlives_its_names` are the checks.
 
+**And: files that outgrow memory spill to disk.** An isolate job's files
+were all in memory, so a large install either fit in the job's `memory:`
+or failed with a full disk. `mem_fs/spill.rs` (new) and `File` in
+`mem_fs/file.rs` let a `mem_fs` file system given a `SpillConfig`
+(`FileSystem::set_spill`, `TmpFileSystem::set_spill`) keep file contents in
+memory up to `resident_max` bytes. Past that, `FileSystemInner::spill_over`,
+called after every write and `set_len`, moves the least recently read or
+written files, whole, to files in the config's directory (unlinked as soon
+as they are made) until under three quarters of the limit. A file on disk
+is read and written there with `pread`/`pwrite`, and comes back to memory
+when it is truncated to nothing; a file that cannot be moved stays where it
+was. Without a config nothing changes. Upstream has nothing like it:
+`OffloadedFile` maps journals, it does not evict. This hunk stays when the
+rest goes; `iwci-vfs`'s `tests/spill.rs` is the check.
+
 **Remove it** when a virtual-fs release after 0.705.0 has #7039, a
 `create_dir` that looks up under its write lock, a `set_len` that copies
 up first, an open file's `unlink` and `create_symlink` that look up
 under their write lock, and hard links in `mem_fs` whose names report one
 number and their count (and a `Deref` impl that forwards `hard_link`):
-delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry. A release
-with only some of them is still worth taking with the other hunks kept.
+delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry, keeping
+the spill hunks (above) as a patch of their own. A release with only some
+of them is still worth taking with the other hunks kept.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

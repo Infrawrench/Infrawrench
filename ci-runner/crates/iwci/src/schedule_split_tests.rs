@@ -329,6 +329,7 @@ fn options(split: Option<Arc<dyn Split>>, parallelism: usize) -> Options {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),

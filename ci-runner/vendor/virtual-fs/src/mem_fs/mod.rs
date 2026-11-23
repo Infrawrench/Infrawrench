@@ -2,11 +2,13 @@ mod file;
 mod file_opener;
 mod filesystem;
 mod offloaded_file;
+mod spill;
 mod stdio;
 
 use file::{File, FileHandle, ReadOnlyFile};
 pub use filesystem::FileSystem;
 pub use offloaded_file::OffloadBackingStore;
+pub use spill::{Spill, SpillConfig};
 #[cfg(not(feature = "js"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use stdio::{Stderr, Stdin, Stdout};

@@ -61,6 +61,9 @@ pub struct Runner {
     /// The virtual machines `platform: linux` jobs run in (`--machines`);
     /// `None` fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
+    /// Where isolate jobs' files spill once they outgrow memory
+    /// (`--spill-disk`); `None` keeps them in memory.
+    pub spill: Option<schedule::Spill>,
 }
 
 impl Runner {
@@ -1037,6 +1040,7 @@ impl Runner {
                 external: None,
             },
             machines: self.machines.clone(),
+            spill: self.spill.clone(),
         };
         let run_info = crate::external::RunInfo {
             run_id: run.as_str().to_string(),

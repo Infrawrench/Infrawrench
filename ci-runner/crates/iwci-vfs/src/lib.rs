@@ -23,6 +23,7 @@ use virtual_fs::{
 };
 
 pub use virtual_fs;
+pub use virtual_fs::mem_fs::SpillConfig;
 
 pub mod archive;
 mod index;
@@ -780,7 +781,7 @@ impl Snapshot {
     /// A writable view for one job: a fresh in-memory layer over this
     /// snapshot. Constant time; nothing is copied until the job writes.
     pub fn fork(&self) -> JobFs {
-        self.fork_with(None)
+        self.fork_with(None, None)
     }
 
     /// [`Snapshot::fork`], with the bytes the job adds held to `budget`: a
@@ -788,11 +789,21 @@ impl Snapshot {
     /// files live in memory, so this is what keeps a job that writes
     /// gigabytes inside its memory limit. See `limit.rs`.
     pub fn fork_limited(&self, budget: Arc<dyn WriteBudget>) -> JobFs {
-        self.fork_with(Some(budget))
+        self.fork_with(Some(budget), None)
     }
 
-    fn fork_with(&self, budget: Option<Arc<dyn WriteBudget>>) -> JobFs {
+    /// [`Snapshot::fork_limited`], with the job's files kept in memory only
+    /// up to `spill.resident_max` bytes: past that, the least recently used
+    /// move to unlinked files in `spill.dir` on the host's disk, so `budget`
+    /// can allow a job more files than its memory holds. See the vendored
+    /// virtual-fs's `mem_fs/spill.rs`.
+    pub fn fork_spilling(&self, budget: Arc<dyn WriteBudget>, spill: SpillConfig) -> JobFs {
+        self.fork_with(Some(budget), Some(spill))
+    }
+
+    fn fork_with(&self, budget: Option<Arc<dyn WriteBudget>>, spill: Option<SpillConfig>) -> JobFs {
         let upper = TmpFileSystem::new();
+        let spill = spill.map(|config| upper.set_spill(config));
         let modes = Modes::over(self.modes.clone());
         modes.numbered_by(Arc::new(upper.clone()));
         let overlay = JobOverlay {
@@ -808,6 +819,7 @@ impl Snapshot {
             overlay: Arc::new(overlay),
             upper,
             base: self.clone(),
+            spill,
         }
     }
 }
@@ -818,6 +830,9 @@ pub struct JobFs {
     overlay: Arc<JobOverlay>,
     upper: TmpFileSystem,
     base: Snapshot,
+    /// How much of the job's files is in memory and on disk, when they
+    /// spill ([`Snapshot::fork_spilling`]).
+    spill: Option<Arc<mem_fs::Spill>>,
 }
 
 /// A path a job changed, relative to nothing: these are absolute guest paths.
@@ -848,6 +863,12 @@ impl JobFs {
     /// What the job's writes are charged to, when it has a limit.
     pub fn budget(&self) -> Option<Arc<dyn WriteBudget>> {
         self.overlay.budget.clone()
+    }
+
+    /// Bytes of the job's files in memory and on disk, when they spill;
+    /// `None` when every file is in memory.
+    pub fn spill_usage(&self) -> Option<(u64, u64)> {
+        self.spill.as_ref().map(|spill| spill.usage())
     }
 
     pub fn modes(&self) -> Modes {
