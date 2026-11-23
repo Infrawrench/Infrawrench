@@ -533,7 +533,8 @@ export NVM_DIR="/root/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 EOF
 
-# Jobs run as root over files the workspace image owns, and use LFS.
+# Jobs use files someone else may own (the workspace, what the runner
+# lends), and LFS.
 in_root git config --system --add safe.directory '*'
 in_root git lfs install --system --skip-repo >/dev/null
 
@@ -548,6 +549,10 @@ cat >"$root/usr/local/bin/iwci-dockerd" <<'EOF'
 set -eu
 if docker info >/dev/null 2>&1; then
   exit 0
+fi
+# The job user starts it through sudo, which it may use without a password.
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo -n "$0" "$@"
 fi
 if ! grep -q '^cgroup2 /sys/fs/cgroup ' /proc/mounts; then
   mount -t cgroup2 cgroup2 /sys/fs/cgroup
@@ -570,6 +575,23 @@ until docker info >/dev/null 2>&1; do
 done
 EOF
 chmod 0755 "$root/usr/local/bin/iwci-dockerd"
+
+# The job user, as on GitHub's hosted runners: `runner`, uid and gid 1001,
+# with passwordless sudo and in the `docker` group. A runner that serves
+# the job's files as this user's says so on the kernel's command line
+# (`iwci.user=1001`), and the agent then runs scripts as it; otherwise they
+# run as root. Its home is /root, which it owns, so every path a pipeline
+# or the runner uses there (the version managers' caches, ~/.cargo,
+# ~/.gitconfig) is the same either way. It also owns where npm and corepack
+# write global commands, which GitHub's toolcache Node lets its user write.
+in_root useradd --no-create-home --home-dir /root --uid 1001 --user-group \
+  --shell /bin/bash runner
+in_root usermod -aG docker runner
+printf 'runner ALL=(ALL) NOPASSWD:ALL\n' >"$root/etc/sudoers.d/runner"
+chmod 0440 "$root/etc/sudoers.d/runner"
+in_root chown -R runner:runner /root /usr/local/lib/node_modules
+in_root chown runner:runner /usr/local/bin
+[[ "$(in_root id -u runner)" == 1001 ]] || die "the job user is not uid 1001"
 
 # shellcheck disable=SC2016 # dpkg-query's format, not the shell's
 in_root dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' >"$stage/packages.lock"
@@ -620,7 +642,7 @@ cat >"$stage/image.json" <<EOF
   "rootfs_sha256": "$rootfs_sha",
   "agent_sha256": "$agent_sha",
   "snapshot": "$snapshot",
-  "features": ["files-virtiofs"],
+  "features": ["files-virtiofs", "job-user"],
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
     { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },

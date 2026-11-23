@@ -299,6 +299,8 @@ pub struct Server {
     modes: Modes,
     /// Nothing may be written ([`Server::read_only`]).
     read_only: bool,
+    /// The uid and gid every file is shown with ([`Server::owned_by`]).
+    owner: (u32, u32),
     tables: Mutex<Tables>,
     /// Requests answered, by opcode, for [`Server::counts`].
     counts: Mutex<std::collections::BTreeMap<u32, u64>>,
@@ -330,6 +332,7 @@ impl Server {
             fs,
             modes,
             read_only: false,
+            owner: (0, 0),
             tables: Mutex::new(tables),
             counts: Mutex::default(),
         }
@@ -350,6 +353,17 @@ impl Server {
         Self {
             read_only: true,
             ..Self::new(fs, modes)
+        }
+    }
+
+    /// Shows every file as owned by `uid` and `gid`, rather than root: the
+    /// job user's, so a job that does not run as root can write its own
+    /// files (a file the overlay copies up keeps the owner it was shown
+    /// with).
+    pub fn owned_by(self, uid: u32, gid: u32) -> Self {
+        Self {
+            owner: (uid, gid),
+            ..self
         }
     }
 
@@ -576,8 +590,8 @@ impl Server {
             .u32(nsec(meta.modified.max(meta.created)))
             .u32(kind | mode.unwrap_or(default) & 0o7777)
             .u32(nlink)
-            .u32(0) // uid
-            .u32(0) // gid
+            .u32(self.owner.0)
+            .u32(self.owner.1)
             .u32(0) // rdev
             .u32(4096) // blksize
             .u32(0); // flags

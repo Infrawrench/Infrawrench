@@ -697,7 +697,13 @@ jobs:
 - **The machine.** QEMU with KVM: on x86_64 the `microvm` machine type
   with the kernel booted directly, on aarch64 `virt`. The job's `memory:`
   is the machine's whole memory, and the runner reserves the emulator's
-  own beside it (160 MiB). Jobs run as root. The agent inside
+  own beside it (160 MiB). Scripts run as `runner` (uid 1001, home
+  `/root`, passwordless `sudo`, in the `docker` group), as on GitHub's
+  hosted runners, so a test that expects `chmod 000` to keep it out passes;
+  the job's files, lent files and caches are its own. A command that needs
+  root (`apt-get install`, `mount`) runs with `sudo`. An image from before
+  the job user, or a runner that cannot stream the job's files, runs them
+  as root. The agent inside
   (`crates/iwci-guest`) talks to the runner over a virtio-serial port
   (`crates/iwci-vm-proto`). A machine answers about 0.36 s after QEMU
   starts (measured on ci-1, from 4.2 s before): its memory is in 2 MiB

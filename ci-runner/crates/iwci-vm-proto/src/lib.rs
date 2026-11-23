@@ -310,6 +310,16 @@ pub const FILES_TAG: &str = "iwci-files";
 /// What `image.json` lists under `features` when its agent mounts
 /// [`FILES_TAG`].
 pub const FILES_FEATURE: &str = "files-virtiofs";
+/// What `image.json` lists under `features` when the image has the job
+/// user ([`JOB_UID`], `runner`, home `/root`) and its agent runs scripts
+/// as that user when the kernel's command line names it ([`USER_ARG`]).
+pub const JOB_USER_FEATURE: &str = "job-user";
+/// The job user's uid and gid, as GitHub's hosted runners have them.
+pub const JOB_UID: u32 = 1001;
+/// The kernel command-line argument (`iwci.user=<uid>`) that tells the
+/// agent to run scripts as that user. The runner sends it only when it also
+/// serves the job's files as that user's, so the job can write them.
+pub const USER_ARG: &str = "iwci.user";
 
 /// A virtio-fs device to mount ([`Setup::scratch`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

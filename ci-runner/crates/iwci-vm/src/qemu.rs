@@ -109,6 +109,9 @@ pub struct Linux<'a> {
     /// Back the machine's shared memory with 2 MiB huge pages (`hugetlb`):
     /// see [`linux_args`].
     pub huge_pages: bool,
+    /// The uid the agent runs scripts as ([`iwci_vm_proto::USER_ARG`]),
+    /// or `None` for root.
+    pub user: Option<u32>,
 }
 
 fn push(args: &mut Vec<OsString>, items: &[&str]) {
@@ -124,7 +127,7 @@ fn path_arg(prefix: &str, path: &Path) -> OsString {
 /// The kernel's command line: the agent is init, the root the read-only
 /// image, and the network (when there is one) configured by the kernel
 /// itself, IPv4 only.
-pub fn kernel_cmdline(network: bool, files: bool) -> String {
+pub fn kernel_cmdline(network: bool, files: bool, user: Option<u32>) -> String {
     let mut line = String::from(
         "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet ipv6.disable=1",
     );
@@ -133,6 +136,9 @@ pub fn kernel_cmdline(network: bool, files: bool) -> String {
     }
     if files {
         line.push_str(&format!(" iwci.files={}", iwci_vm_proto::FILES_TAG));
+    }
+    if let Some(uid) = user {
+        line.push_str(&format!(" {}={uid}", iwci_vm_proto::USER_ARG));
     }
     line
 }
@@ -223,7 +229,7 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     args.push("-kernel".into());
     args.push(m.kernel.into());
     args.push("-append".into());
-    args.push(kernel_cmdline(m.sockets.net.is_some(), m.sockets.files.is_some()).into());
+    args.push(kernel_cmdline(m.sockets.net.is_some(), m.sockets.files.is_some(), m.user).into());
 
     // The console and the agent share one virtio-serial device.
     agent_port(&mut args, m.sockets, "virtio-serial-device");
@@ -402,6 +408,7 @@ mod tests {
             cpus: 1,
             sockets: &s,
             huge_pages,
+            user: None,
         };
         let huge = strings(&linux_args(&linux(true))).join(" ");
         assert!(
@@ -432,6 +439,7 @@ mod tests {
             cpus: 1,
             sockets: &s,
             huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         for want in [
@@ -444,7 +452,9 @@ mod tests {
             assert!(text.contains(want), "{want} not in {text}");
         }
         assert!(!text.contains("iwci-ws"));
-        assert!(!kernel_cmdline(false, false).contains("iwci.files"));
+        assert!(!kernel_cmdline(false, false, None).contains("iwci.files"));
+        assert!(!kernel_cmdline(false, true, None).contains("iwci.user"));
+        assert!(kernel_cmdline(false, true, Some(1001)).ends_with(" iwci.user=1001"));
     }
 
     #[test]
@@ -462,6 +472,7 @@ mod tests {
             cpus: 1,
             sockets: &s,
             huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         for want in [
@@ -483,6 +494,7 @@ mod tests {
             cpus: 1,
             sockets: &sockets(false),
             huge_pages: false,
+            user: None,
         }))
         .join(" ");
         assert!(!plain.contains("memfd") && !plain.contains("vhost-user"));
@@ -500,6 +512,7 @@ mod tests {
             cpus: 2,
             sockets: &s,
             huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M microvm,acpi=off,"), "{text}");
@@ -538,6 +551,7 @@ mod tests {
             cpus: 1,
             sockets: &s,
             huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M virt,gic-version=host"));
