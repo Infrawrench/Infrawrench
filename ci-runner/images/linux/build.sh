@@ -656,7 +656,9 @@ cat >"$stage/image.json" <<EOF
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
     { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
-    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 }
+    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 },
+    { "name": "m2", "path": "/root/.m2/repository", "max-bytes": 2147483648 },
+    { "name": "gradle", "path": "/root/.gradle/caches", "max-bytes": 2147483648 }
   ]
 }
 EOF
