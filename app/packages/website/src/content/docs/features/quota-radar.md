@@ -70,7 +70,7 @@ The weekly digest includes a **Quotas** line with the same count.
 
 Provider quotas aren't the only limits that cause outages. A volume fills, a database reaches its storage cap, a monthly allowance of sends runs out a week before it resets. The **Capacity runway** section below the quotas lists every resource usage Infrawrench tracks against the limit that will stop it, **soonest to run out first**.
 
-<insert [The Capacity runway section of the Quotas page: status counts (1 at the limit, 2 running out, 1 noisy trend), then rows sorted by runway with resource name and account, usage label, a utilisation bar, "9.2 GiB / 10.0 GiB", and a Runway column showing "6 days" and "71% by 12/1/2026"] here>
+![The Capacity runway section of the Quotas page: status counts (1 at the limit, 2 running out, 1 noisy trend, 3 healthy), then rows sorted by runway with resource name and account, usage label, a utilisation bar, used against limit such as "9.2 GB / 10 GB", and a Runway column showing "at the limit", "6 days", "11 days ~" and "71% by 01/12/2026"](https://agent-assets.infrawrench.com/docs-screenshots/features/quota-radar/capacity-runway.png)
 
 ### Where the numbers come from
 
@@ -97,7 +97,7 @@ A few usages come from a metric series rather than a field: Azure database stora
 
 A resource with a tracked usage gets runway charts at the top of its **Metrics** tab: the recorded readings, the limit as a red line and the projection dashed from today to where it meets the limit (or to the end of the cycle).
 
-<insert [A resource's Metrics tab with a runway chart: a rising "Used" line over two weeks, a dashed red "Limit" line near the top, a dashed projection meeting it, and the caption "Runway: 6 days at the current rate."] here>
+![A Railway volume's Metrics tab with a runway chart: a rising used line over two weeks, a dashed red limit line at 10 GB, a dashed projection meeting it, and the caption "Runway: 6 days at the current rate."](https://agent-assets.infrawrench.com/docs-screenshots/features/quota-radar/resource-runway-chart.png)
 
 ### Runway alerts
 
