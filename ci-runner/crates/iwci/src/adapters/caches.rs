@@ -622,6 +622,130 @@ pub fn storage_usage(
     Ok(usage)
 }
 
+/// An owner's storage as last listed, kept so the storage endpoint answers
+/// at once: listing an owner with tens of thousands of entries took 30 s,
+/// longer than the app waits, so its storage was never sampled and every
+/// attempt listed the whole owner again.
+pub struct StorageSamples {
+    store: Arc<dyn ObjectStore>,
+    state: Arc<(
+        std::sync::Mutex<BTreeMap<String, Sample>>,
+        std::sync::Condvar,
+    )>,
+}
+
+#[derive(Default)]
+struct Sample {
+    /// The last listing's usage and when it started, in seconds.
+    usage: Option<(StorageUsage, u64)>,
+    /// A listing is going on.
+    listing: bool,
+    /// Why the last listing failed, while there is no usage to show.
+    error: Option<String>,
+}
+
+/// A listing younger than this is answered as it is.
+const SAMPLE_FRESH_SECS: u64 = 60;
+
+impl StorageSamples {
+    pub fn new(store: Arc<dyn ObjectStore>) -> Self {
+        Self {
+            store,
+            state: Arc::default(),
+        }
+    }
+
+    /// `owner`'s storage. A listing under [`SAMPLE_FRESH_SECS`] old is the
+    /// answer; an older one is too, while the owner is listed again in the
+    /// background. With none yet, the first listing is waited for up to
+    /// `wait`: `Ok(None)` when it is still going, for the caller to ask
+    /// again.
+    pub fn get(
+        &self,
+        owner: &RepoId,
+        quota: Option<u64>,
+        wait: std::time::Duration,
+    ) -> Result<Option<StorageUsage>, String> {
+        let key = owner.as_str().to_string();
+        let (lock, changed) = &*self.state;
+        let mut samples = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let now = crate::runner::now_secs();
+        let sample = samples.entry(key.clone()).or_default();
+        let stale = sample
+            .usage
+            .as_ref()
+            .is_none_or(|(_, at)| now.saturating_sub(*at) >= SAMPLE_FRESH_SECS);
+        if stale && !sample.listing {
+            sample.listing = true;
+            self.list(owner.clone(), now);
+        }
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            let sample = samples.entry(key.clone()).or_default();
+            if let Some((usage, _)) = &sample.usage {
+                let mut usage = usage.clone();
+                usage.quota_bytes = quota;
+                return Ok(Some(usage));
+            }
+            if !sample.listing {
+                return Err(sample
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "the listing ended with nothing".into()));
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Ok(None);
+            }
+            samples = changed
+                .wait_timeout(samples, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+    }
+
+    /// Forgets `owner`'s listing, after its storage changed by more than
+    /// a save (a repository cleared).
+    pub fn forget(&self, owner: &RepoId) {
+        let (lock, _) = &*self.state;
+        let mut samples = lock.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(sample) = samples.get_mut(owner.as_str()) {
+            sample.usage = None;
+        }
+    }
+
+    fn list(&self, owner: RepoId, started: u64) {
+        let key = owner.as_str().to_string();
+        let (store, state) = (self.store.clone(), self.state.clone());
+        let job = move || {
+            let listed = storage_usage(store.as_ref(), &owner, None);
+            let (lock, changed) = &*state;
+            let mut samples = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let sample = samples.entry(owner.as_str().to_string()).or_default();
+            sample.listing = false;
+            match listed {
+                Ok(usage) => {
+                    sample.usage = Some((usage, started));
+                    sample.error = None;
+                }
+                Err(e) => sample.error = Some(e),
+            }
+            changed.notify_all();
+        };
+        if let Err(e) = std::thread::Builder::new()
+            .name("iwci-storage-listing".into())
+            .spawn(job)
+        {
+            let (lock, changed) = &*self.state;
+            let mut samples = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let sample = samples.entry(key).or_default();
+            sample.listing = false;
+            sample.error = Some(e.to_string());
+            changed.notify_all();
+        }
+    }
+}
+
 /// What clearing a repository's caches removed.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Cleared {
@@ -1542,6 +1666,8 @@ mod tests {
     struct Listings {
         inner: iwci_store::LocalStore,
         detailed: std::sync::atomic::AtomicUsize,
+        /// How long a listing of an owner's whole storage takes, in ms.
+        slow: std::sync::atomic::AtomicU64,
     }
 
     impl ObjectStore for Listings {
@@ -1580,6 +1706,10 @@ mod tests {
                 self.detailed
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             }
+            if prefix.starts_with("caches/") && prefix.matches('/').count() == 2 {
+                let ms = self.slow.load(std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
             self.inner.list_detailed(prefix)
         }
     }
@@ -1595,6 +1725,7 @@ mod tests {
         let listings = Arc::new(Listings {
             inner: iwci_store::LocalStore::new(&dir).unwrap(),
             detailed: Default::default(),
+            slow: Default::default(),
         });
         let store: Arc<dyn ObjectStore> = listings.clone();
         let caches = StoreCaches::new(
@@ -1633,6 +1764,7 @@ mod tests {
         let listings = Arc::new(Listings {
             inner: iwci_store::LocalStore::new(&dir).unwrap(),
             detailed: Default::default(),
+            slow: Default::default(),
         });
         let store: Arc<dyn ObjectStore> = listings.clone();
         let owner = "github.com-stale";
@@ -1688,6 +1820,100 @@ mod tests {
         caches.save("four", &[], &big(650 << 10)).unwrap();
         assert!(count() > before);
         assert!(!known().1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The storage endpoint answers from the last listing: the first is
+    /// waited for a while, an old one is answered at once and redone
+    /// behind it. Listing an owner with tens of thousands of entries took
+    /// longer than the app waits, so it was never sampled.
+    #[test]
+    fn storage_samples_answer_from_the_last_listing() {
+        use std::sync::atomic::Ordering::SeqCst;
+        use std::time::Duration;
+        let dir = std::env::temp_dir().join(format!("iwci-caches-samples-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let listings = Arc::new(Listings {
+            inner: iwci_store::LocalStore::new(&dir).unwrap(),
+            detailed: Default::default(),
+            slow: Default::default(),
+        });
+        let store: Arc<dyn ObjectStore> = listings.clone();
+        let owner = RepoId::new("github.com-sampled").unwrap();
+        store
+            .put(
+                "caches/github.com-sampled/web/b-1/entries/a.zst",
+                &[0; 100],
+                "x",
+            )
+            .unwrap();
+        let samples = StorageSamples::new(store.clone());
+        listings.slow.store(400, SeqCst);
+        // The first listing outlasts a short wait: ask again.
+        assert!(
+            samples
+                .get(&owner, None, Duration::from_millis(50))
+                .unwrap()
+                .is_none()
+        );
+        let usage = samples
+            .get(&owner, Some(1000), Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (usage.used_bytes, usage.entries, usage.quota_bytes),
+            (100, 1, Some(1000))
+        );
+        // Fresh: answered without listing, even with more stored since.
+        store
+            .put(
+                "caches/github.com-sampled/web/b-1/entries/b.zst",
+                &[0; 50],
+                "x",
+            )
+            .unwrap();
+        let t = std::time::Instant::now();
+        let usage = samples
+            .get(&owner, None, Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert!(t.elapsed() < Duration::from_millis(200));
+        assert_eq!(usage.used_bytes, 100);
+        // Old: the old answer at once, and a new listing behind it.
+        {
+            let (lock, _) = &*samples.state;
+            let mut s = lock.lock().unwrap();
+            s.get_mut("github.com-sampled")
+                .unwrap()
+                .usage
+                .as_mut()
+                .unwrap()
+                .1 -= SAMPLE_FRESH_SECS;
+        }
+        let t = std::time::Instant::now();
+        let usage = samples
+            .get(&owner, None, Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert!(t.elapsed() < Duration::from_millis(200));
+        assert_eq!(usage.used_bytes, 100);
+        std::thread::sleep(Duration::from_millis(800));
+        let usage = samples
+            .get(&owner, None, Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(usage.used_bytes, 150, "the new listing is the answer now");
+        // Forgotten (a repository cleared): the next ask lists again.
+        samples.forget(&owner);
+        listings.slow.store(0, SeqCst);
+        store
+            .delete("caches/github.com-sampled/web/b-1/entries/a.zst")
+            .unwrap();
+        let usage = samples
+            .get(&owner, None, Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(usage.used_bytes, 50);
         let _ = std::fs::remove_dir_all(dir);
     }
 

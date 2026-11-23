@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tiny_http::{Header, Method, Request, Response};
 
-use crate::adapters::caches::{clear_repository, storage_usage};
+use crate::adapters::caches::clear_repository;
 
 #[path = "server_concurrency.rs"]
 mod concurrency;
@@ -57,6 +57,9 @@ const RETRY_AFTER_SECS: u64 = 10;
 /// Finished runs kept in memory for `GET /v1/runs/{id}`; older ones are
 /// read back from the store with `?owner=`.
 const KEEP_FINISHED: usize = 1000;
+/// How long `GET /v1/storage` waits for an owner's first listing: under
+/// the 20 s the app waits for an answer.
+const STORAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(12);
 /// How long a finished run keeps its report and log in memory. Past it the
 /// report is read back from the store (the run's own owner names it), and
 /// the log is gone, as it is on any other runner. A full Test pipeline's
@@ -101,6 +104,8 @@ pub struct Server {
     /// its limits, take only what its own runs leave, and end with a
     /// drain. How many it has joined is `Runner::helping`'s to say.
     helping: Mutex<std::collections::HashSet<String>>,
+    /// Owners' storage as last listed (`GET /v1/storage`).
+    storage: crate::adapters::caches::StorageSamples,
     /// The most of them at once; 0 helps none.
     max_helping: usize,
     /// The host's memory and what the runner keeps of it outside the job
@@ -248,7 +253,9 @@ impl Server {
         if runner.slots.is_none() {
             return Err("the server needs shared job slots".into());
         }
+        let storage = crate::adapters::caches::StorageSamples::new(runner.store.clone());
         Ok(Self {
+            storage,
             runner: Arc::new(runner),
             warm: Mutex::default(),
             draining: std::sync::atomic::AtomicBool::new(false),
@@ -1041,8 +1048,23 @@ impl Server {
             },
             None => self.runner.default_storage_quota,
         };
-        match storage_usage(self.runner.store.as_ref(), &owner, quota) {
-            Ok(usage) => json_response(200, &serde_json::to_value(usage).unwrap_or_default()),
+        match self.storage.get(&owner, quota, STORAGE_WAIT) {
+            Ok(Some(usage)) => json_response(200, &serde_json::to_value(usage).unwrap_or_default()),
+            // The owner's first listing is still going: asked again, it
+            // answers from that.
+            Ok(None) => Response::from_data(
+                json!({ "error": "listing the owner's storage; ask again shortly" })
+                    .to_string()
+                    .into_bytes(),
+            )
+            .with_status_code(503)
+            .with_header(
+                Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .expect("valid header"),
+            )
+            .with_header(
+                Header::from_bytes(&b"Retry-After"[..], &b"15"[..]).expect("valid header"),
+            ),
             Err(e) => error(502, format!("store: {e}")),
         }
     }
@@ -1051,7 +1073,10 @@ impl Server {
         let (Ok(owner), Ok(repo)) = (RepoId::new(owner), RepoId::new(repo)) else {
             return error(400, "bad owner or repository id");
         };
-        match clear_repository(self.runner.store.as_ref(), &owner, &repo) {
+        let cleared = clear_repository(self.runner.store.as_ref(), &owner, &repo);
+        // Listed again on the next ask, without what went.
+        self.storage.forget(&owner);
+        match cleared {
             Ok(cleared) => json_response(200, &serde_json::to_value(cleared).unwrap_or_default()),
             Err(e) => error(502, format!("store: {e}")),
         }

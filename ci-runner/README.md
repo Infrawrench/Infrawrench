@@ -5292,7 +5292,12 @@ it is masked, and an untrusted run is given none of it:
   its bill. Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
-  the same four per repository under `repos`.
+  the same four per repository under `repos`. It answers from the runner's
+  last listing of the owner: one under a minute old as it is, an older one
+  at once while the owner is listed again behind it (an owner with tens of
+  thousands of entries takes half a minute to list). An owner's first ask
+  waits up to 12 s for its listing and otherwise answers `503` with
+  `Retry-After`; ask again. Clearing a repository drops the listing.
 - **Quotas.** An owner's caches and downloads across all its repositories
   are held to its storage quota: the request's `storage-quota`, else the
   server's `--storage-quota` (default 10 GiB). Only caches are evicted to
