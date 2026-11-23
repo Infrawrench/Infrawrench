@@ -52,7 +52,7 @@ The agent is PID 1. It mounts `/proc`, `/sys` and `/dev`, mounts the writable la
 
 **Caches.** `image.json` lists the directories the runner keeps between runs of a job, as an isolate environment's `caches`: `nvm` (`/root/.nvm/versions`), `rbenv` (`/root/.rbenv`: the rubies, their shims and the global version) and `goenv` (`/root/.goenv`, the same for Go), each at most 2 GiB and a quarter of the job's `memory:`. What a passing job added is saved, restored into the next run's files before the machine starts, scoped like job caches, and keyed by the image's name, so an image rebuilt on the same Ubuntu keeps them; `env-cache: false` turns them off. The runner checks the list as it checks an environment's (up to 8, names `[a-z0-9][a-z0-9_-]*`, absolute paths none inside another, `max-bytes` between 1 MiB and 4 GiB) and refuses an image whose list is wrong. `/etc/resolv.conf` points at the runner's gateway, `10.0.2.2`.
 
-There is no init system, so nothing runs Docker's daemon until a job asks: `iwci-dockerd` mounts the cgroup2 hierarchy if it is missing, puts `/var/lib/docker` and `/var/lib/containerd` on tmpfs (overlay2 cannot put its upper layers on the overlayfs the job's root is), starts `dockerd` and waits until it answers. It does nothing when the daemon is already up.
+There is no init system, so nothing runs Docker's daemon until a job asks: `iwci-dockerd` mounts the cgroup2 hierarchy if it is missing, puts `/var/lib/docker` and `/var/lib/containerd` on the job's scratch disk when the runner attached one, and on tmpfs otherwise (overlay2 cannot put its upper layers on the overlayfs the job's root is), starts `dockerd` and waits until it answers. It does nothing when the daemon is already up.
 
 ### The kernel
 

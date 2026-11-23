@@ -149,12 +149,30 @@ pub fn build_root() -> io::Result<()> {
 
     // The writable layer used to be a tmpfs, so every file a job wrote came
     // out of its memory. When the runner attached a scratch disk, format it
-    // and use that instead; an older runner without one still gets tmpfs.
+    // and use that instead; an older runner without one, or an image
+    // without mkfs.ext4, still gets tmpfs. The disk lives for one job, so it
+    // has no journal, and its inode tables are left for the kernel to
+    // initialise as they are used (`lazy_itable_init` here, `noinit_itable`
+    // at mount), rather than zeroed up front: zeroing 20 GiB worth of
+    // tables would write over a gigabyte to the host for nothing. One inode
+    // per 4 KiB, since node_modules is mostly small files.
     let scratch = disk_by_serial(SCRATCH_SERIAL);
     let formatted = match scratch.as_deref() {
         Some(dev) => {
             let status = Command::new("/usr/sbin/mkfs.ext4")
-                .args(["-q", "-F", "-i", "4096", dev])
+                .args([
+                    "-q",
+                    "-F",
+                    "-O",
+                    "^has_journal",
+                    "-E",
+                    "lazy_itable_init=1,lazy_journal_init=1,nodiscard",
+                    "-m",
+                    "0",
+                    "-i",
+                    "4096",
+                    dev,
+                ])
                 .status();
             match status {
                 Ok(success) if success.success() => true,
@@ -167,7 +185,13 @@ pub fn build_root() -> io::Result<()> {
         None => false,
     };
     if let (Some(dev), true) = (scratch.as_deref(), formatted) {
-        mount(dev, "/.iwci/rw", Some("ext4"), 0, None)?;
+        mount(
+            dev,
+            "/.iwci/rw",
+            Some("ext4"),
+            libc::MS_NOATIME,
+            Some("noinit_itable"),
+        )?;
     } else {
         mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
     }
