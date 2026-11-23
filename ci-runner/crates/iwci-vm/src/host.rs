@@ -359,6 +359,21 @@ impl Host {
         .then_some(iwci_vm_proto::JOB_UID)
     }
 
+    /// Whether a Linux machine whose files are streamed in is also given
+    /// its own files (what it has beyond the workspace: restored caches,
+    /// artifacts, what it is lent) up front: the image keeps its writable
+    /// layer in memory, with swap behind it.
+    fn puts_own_files(&self) -> bool {
+        self.streams_files()
+            && self.linux.as_ref().is_some_and(|image| {
+                image
+                    .info
+                    .features
+                    .iter()
+                    .any(|f| f == iwci_vm_proto::MEMORY_UPPER_FEATURE)
+            })
+    }
+
     /// The kinds of machine it can start.
     pub fn platforms(&self) -> Vec<Os> {
         let mut out = Vec::new();
@@ -572,6 +587,22 @@ impl Host {
         // overlay above them, and what it left is collected as before.
         #[cfg(target_os = "linux")]
         let mut _serving_files: Option<crate::virtiofs::Serving> = None;
+        // A Linux machine whose files are streamed in is given its own
+        // files (restored caches, artifacts, what it is lent) up front when
+        // the image keeps its writable layer in memory: a restored cache is
+        // read whole (a package store is tens of thousands of files), and
+        // over virtio-fs each one is round trips to the runner, so a pnpm
+        // install from a restored store took longer than downloading it.
+        // Up to half the job's memory; more is left to be streamed. Those
+        // put are then not served too, so the agent's read-ahead spends
+        // itself on the workspace.
+        let mut put_own = if job.os == Os::Linux && sockets.files.is_some() && self.puts_own_files()
+        {
+            let own = archive::own(job.fs);
+            (archive::file_bytes(&own) <= job.memory_bytes / 2).then_some(own)
+        } else {
+            None
+        };
         let deadline = started + boot.min(job.timeout + boot);
         let mut fell_back = None;
         let mut launched = None;
@@ -589,14 +620,22 @@ impl Host {
                     )?),
                     _ => None,
                 };
-                _serving_files = match &sockets.files {
-                    Some(path) => Some(crate::virtiofs::Serving::start_read_only(
+                _serving_files = match (&sockets.files, &put_own, job.workspace) {
+                    (Some(path), Some(_), Some((_, workspace))) => {
+                        Some(crate::virtiofs::Serving::start_read_only(
+                            workspace.read_only(),
+                            job.fs.modes(),
+                            owner,
+                            path,
+                        )?)
+                    }
+                    (Some(path), _, _) => Some(crate::virtiofs::Serving::start_read_only(
                         job.fs.as_dyn(),
                         job.fs.modes(),
                         owner,
                         path,
                     )?),
-                    None => None,
+                    (None, _, _) => None,
                 };
             }
             let log = std::fs::File::create(dir.join("qemu.log"))
@@ -709,8 +748,15 @@ impl Host {
         // on Windows everything. The run's scratch either way.
         let transfer = Instant::now();
         let files = match job.os {
-            // Streamed in: there is nothing to send.
-            Os::Linux if sockets.files.is_some() => Vec::new(),
+            // Streamed in: nothing to send but what is put up front.
+            Os::Linux if sockets.files.is_some() => {
+                // Served whole when there is no workspace to serve alone.
+                if job.workspace.is_some() {
+                    put_own.take().unwrap_or_default()
+                } else {
+                    Vec::new()
+                }
+            }
             Os::Linux => archive::own(job.fs),
             Os::Windows => archive::whole(job.fs),
         };

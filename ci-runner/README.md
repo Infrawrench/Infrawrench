@@ -727,13 +727,24 @@ jobs:
   216 MB clone right after boot takes the same time, a second walk of it
   is faster, and no image has to be made for the commit. An older image
   gets the clone as a read-only erofs disk made once per commit, and the
-  rest copied in. Either way, what the job writes goes to a scratch disk
-  of its own, not its memory: the runner attaches a 20 GiB sparse file,
-  which the agent formats as ext4 when the machine starts and uses as the
-  writable layer (and Docker's storage), so a large install no longer
-  fails for want of memory. The file is deleted with the machine, and only
-  what the job wrote takes room on the runner's disk. An image without
-  `mkfs.ext4` keeps the writable layer in memory, as before. Afterwards
+  rest copied in. On an image whose `image.json` lists `memory-upper`, the
+  job's own files (restored caches, the artifacts of the jobs it needs,
+  lent files) are not streamed but written into the machine as it starts,
+  up to half its `memory:`, and only the workspace is served: a cache is
+  read whole, and over virtio-fs each of a package store's tens of
+  thousands of files was round trips to the runner, so a pnpm install from
+  a restored store took 27 s where downloading it took 14 s. What the job
+  writes stays in memory, a tmpfs, where writing and copying up cost
+  memory speed (the bun install cache, 63k files and 814 MB, copied in
+  0.9 s, against 44 s onto an ext4 disk), and the kernel swaps what the
+  job is not using to a scratch disk of its own when its files and
+  processes outgrow its memory, rather than running out of room: the
+  runner attaches a 20 GiB sparse file, which the agent formats as ext4,
+  half of it a swap file and half Docker's storage (overlay2 needs a real
+  file system). The tmpfs holds up to the memory and the swap together.
+  The file is deleted with the machine, and only what the job wrote takes
+  room on the runner's disk. An image without `memory-upper` keeps the
+  whole writable layer on the ext4 disk. Afterwards
   the job sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
   `changes:`, the clone without what its `.gitignore` ignores. A job's

@@ -504,7 +504,7 @@ in_root uv --version >/dev/null || die "uv does not run in the image"
 
 step "agent and machine settings"
 install -D -m 0755 "$agent" "$root/usr/local/sbin/iwci-guest"
-install -d -m 0755 "$root/.iwci" "$root/.iwci/rw" "$root/.iwci/ws" "$root/.iwci/base" "$root/.iwci/root"
+install -d -m 0755 "$root/.iwci" "$root/.iwci/rw" "$root/.iwci/disk" "$root/.iwci/ws" "$root/.iwci/base" "$root/.iwci/root"
 printf '%s' "$IMAGE" >"$root/etc/iwci-image"
 
 # The runner's gateway answers DNS (iwci-vm-proto: GATEWAY_IPV4).
@@ -575,9 +575,9 @@ cat >"$root/usr/local/bin/iwci-dockerd" <<'EOF'
 # Starts the Docker daemon in a job's machine and waits until it answers.
 # The machine has no init system (iwci-guest is PID 1). Docker's storage
 # cannot go on the overlayfs the job's root is (overlay2 cannot put its
-# upper layers there), so it goes on the job's scratch disk, the ext4 under
-# that overlay at /.iwci/rw, when the runner attached one, and on tmpfs,
-# which comes out of the job's memory, when it did not.
+# upper layers there), so it goes on the job's scratch disk, the ext4 at
+# /.iwci/disk, when the runner attached one, and on tmpfs, which comes out
+# of the job's memory, when it did not.
 set -eu
 if docker info >/dev/null 2>&1; then
   exit 0
@@ -590,8 +590,8 @@ if ! grep -q '^cgroup2 /sys/fs/cgroup ' /proc/mounts; then
   mount -t cgroup2 cgroup2 /sys/fs/cgroup
 fi
 scratch=
-if [ "$(stat -f -c %T /.iwci/rw 2>/dev/null)" = ext2/ext3 ]; then
-  scratch=/.iwci/rw
+if [ "$(stat -f -c %T /.iwci/disk 2>/dev/null)" = ext2/ext3 ]; then
+  scratch=/.iwci/disk
 fi
 for dir in /var/lib/docker /var/lib/containerd; do
   mkdir -p "$dir"
@@ -635,6 +635,12 @@ chmod 0440 "$root/etc/sudoers.d/runner"
 in_root chown -R runner:runner /root /usr/local/lib/node_modules
 in_root chown runner:runner /usr/local/bin
 [[ "$(in_root id -u runner)" == 1001 ]] || die "the job user is not uid 1001"
+# systemd's provision.conf makes /root root's again whenever tmpfiles run,
+# which a job's `apt-get install` of anything that pulls systemd in does
+# (Playwright's `install --with-deps chrome`, through dbus): the job user
+# then loses its own home mid-job. Masked, so /root stays the job user's.
+install -d -m 0755 "$root/etc/tmpfiles.d"
+ln -sfn /dev/null "$root/etc/tmpfiles.d/provision.conf"
 
 # shellcheck disable=SC2016 # dpkg-query's format, not the shell's
 in_root dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' >"$stage/packages.lock"
@@ -685,7 +691,7 @@ cat >"$stage/image.json" <<EOF
   "rootfs_sha256": "$rootfs_sha",
   "agent_sha256": "$agent_sha",
   "snapshot": "$snapshot",
-  "features": ["files-virtiofs", "job-user"],
+  "features": ["files-virtiofs", "job-user", "memory-upper"],
   "caches": [
     { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
     { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },

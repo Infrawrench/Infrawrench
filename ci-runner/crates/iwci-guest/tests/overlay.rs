@@ -176,3 +176,49 @@ fn put_refuses_the_agents_own_directory() {
         .unwrap_err();
     assert!(err.to_string().contains("refused"), "{err}");
 }
+
+/// A directory no lower layer has is looked up once, not once per file
+/// below it (each lookup in the top layer is a round trip to the runner);
+/// everything below it is still sent, and a sibling the lower layer does
+/// have is still judged against it.
+#[test]
+fn everything_below_a_new_directory_is_sent() {
+    let dir = TempDir::new("overlay-new-dir");
+    let upper = dir.path().join("upper");
+    let lower = dir.path().join("lower");
+    file(lower.join("root/.cache/kept/x"), b"x");
+    for i in 0..50 {
+        file(
+            upper.join(format!("root/.store/v3/files/{:02}/f", i % 7)),
+            b"f",
+        );
+        file(upper.join(format!("root/.store/v3/index/{i}")), b"i");
+    }
+    fs::create_dir_all(upper.join("root/.cache/kept")).unwrap();
+    file(upper.join("root/.cache/kept/y"), b"y");
+    let tree = Overlay::new(
+        Root::Dir(upper.clone()),
+        upper.clone(),
+        vec![lower.clone()],
+        Box::new(Markers {
+            whiteouts: HashSet::new(),
+            opaque: HashSet::new(),
+        }),
+    );
+    let plan = tree.plan(&["/root".into()], None).unwrap();
+    let sent: HashSet<&str> = plan.items.iter().map(|i| i.unix.as_str()).collect();
+    assert!(sent.contains("/root/.store"));
+    assert!(sent.contains("/root/.store/v3/files/06/f"));
+    assert_eq!(
+        sent.iter()
+            .filter(|p| p.starts_with("/root/.store/v3/index/"))
+            .count(),
+        50
+    );
+    assert!(sent.contains("/root/.cache/kept/y"));
+    assert!(
+        !sent.contains("/root/.cache/kept"),
+        "an unchanged directory"
+    );
+    assert!(plan.deleted.is_empty());
+}

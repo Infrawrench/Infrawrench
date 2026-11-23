@@ -7,7 +7,9 @@
 //! link the archive (or the machine) has where a directory should be.
 //!
 //! Every file gets the archive's modification time, so a later write by the
-//! job, which stamps the time it happens, never looks unchanged.
+//! job, which stamps the time it happens, never looks unchanged. What it
+//! makes belongs to the job user when scripts run as one; a directory that
+//! was already there keeps its owner.
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
@@ -90,6 +92,7 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
                     file.set_permissions(fs::Permissions::from_mode(mode))
                         .map_err(|e| with_path(e, "setting the mode of", &path))?;
                 }
+                give_to_job_user(&path)?;
                 out.bytes += n;
                 out.entries += 1;
                 out.written.insert(unix);
@@ -109,7 +112,8 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
                         ));
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        fs::create_dir(&path).map_err(|e| with_path(e, "making", &path))?
+                        fs::create_dir(&path).map_err(|e| with_path(e, "making", &path))?;
+                        give_to_job_user(&path)?;
                     }
                     Err(e) => return Err(with_path(e, "reading", &path)),
                 }
@@ -139,6 +143,7 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
                 let native_target = root.link_target_to_native(&target);
                 match symlink(&native_target, &path) {
                     Ok(()) => {
+                        give_to_job_user(&path)?;
                         out.entries += 1;
                         out.written.insert(unix);
                     }
@@ -167,6 +172,20 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
     Ok(out)
 }
 
+/// Gives what `extract` made to the job user, when scripts run as one:
+/// the job's own files are its own, as the machine is shown them over
+/// virtio-fs, so a restored package store can be added to.
+fn give_to_job_user(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    if let Some(user) = crate::user::current() {
+        std::os::unix::fs::lchown(path, Some(user.uid), Some(user.gid))
+            .map_err(|e| with_path(e, "giving to the job user", path))?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = path;
+    Ok(())
+}
+
 fn with_path(e: io::Error, doing: &str, path: &Path) -> io::Error {
     io::Error::new(e.kind(), format!("{doing} {}: {e}", path.display()))
 }
@@ -192,6 +211,7 @@ fn ensure_parents(
             Ok(_) => return Err(refused(unix, &format!("{dir} is not a directory"))),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 fs::create_dir(&path).map_err(|e| with_path(e, "making", &path))?;
+                give_to_job_user(&path)?;
                 out.written.insert(dir.to_owned());
             }
             Err(e) => return Err(with_path(e, "reading", &path)),

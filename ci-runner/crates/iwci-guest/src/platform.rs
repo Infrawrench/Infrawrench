@@ -125,6 +125,24 @@ impl Platform for LinuxMachine {
         if !std::path::Path::new("/usr/bin/dockerd").exists() {
             return;
         }
+        // The image's `iwci-dockerd` puts Docker's storage on the scratch
+        // disk (or a tmpfs) before it starts the daemon. Started bare, the
+        // daemon kept its storage on the overlay the job's root is, where
+        // the kernel refuses the whiteouts every image layer has, so no
+        // `docker run` could pull an image; and `iwci-dockerd`, finding it
+        // running, left it so.
+        let wrapper = "/usr/local/bin/iwci-dockerd";
+        if std::path::Path::new(wrapper).exists() {
+            // It logs the daemon itself, and waits for it; nothing waits
+            // for the wrapper.
+            let _ = std::process::Command::new(wrapper)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .process_group(0)
+                .spawn();
+            return;
+        }
         let Ok(log) = std::fs::File::create("/var/log/dockerd.log") else {
             return;
         };
