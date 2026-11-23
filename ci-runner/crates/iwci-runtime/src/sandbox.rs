@@ -748,6 +748,7 @@ impl Runtime {
                 let (gateway, link) = Gateway::start(Network {
                     outside: outside.clone(),
                     services: inv.services.iter().map(|s| s.name.clone()).collect(),
+                    local: self.wasix.local.clone(),
                 })
                 .map_err(setup)?;
                 Some((gateway, link))

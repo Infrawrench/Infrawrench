@@ -129,10 +129,13 @@ fn path_arg(prefix: &str, path: &Path) -> OsString {
 
 /// The kernel's command line: the agent is init, the root the read-only
 /// image, and the network (when there is one) configured by the kernel
-/// itself, IPv4 only.
+/// itself, IPv4 only. IPv6 is on, as on GitHub's runners, so `::1` and
+/// link-local addresses work (Node resolves `localhost` to `::1` first, and
+/// a test of scoped IPv6 addresses needs them); with no IPv6 address or
+/// route outside the machine, nothing leaves it that way.
 pub fn kernel_cmdline(network: bool, files: bool, user: Option<u32>) -> String {
     let mut line = String::from(
-        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet ipv6.disable=1",
+        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet",
     );
     if network {
         line.push_str(" ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off");

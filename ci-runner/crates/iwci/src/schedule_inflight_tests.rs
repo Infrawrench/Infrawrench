@@ -211,6 +211,7 @@ fn options_for(
         inflight: Some(inflight.clone()),
         machines: None,
         spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),

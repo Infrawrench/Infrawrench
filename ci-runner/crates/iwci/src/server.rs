@@ -1406,6 +1406,7 @@ mod tests {
             sandbox: None,
             machines: None,
             spill: None,
+            remote_cache: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()

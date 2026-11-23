@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use iwci_deps::cache::LayerCache;
 use iwci_deps::fetch::Fetcher;
@@ -64,6 +64,9 @@ pub struct Runner {
     /// Where isolate jobs' files spill once they outgrow memory
     /// (`--spill-disk`); `None` keeps them in memory.
     pub spill: Option<schedule::Spill>,
+    /// Turborepo's remote cache, served to the jobs of every run with
+    /// caches ([`crate::turbo`]); `None` serves none.
+    pub remote_cache: Option<Arc<crate::turbo::RemoteCache>>,
 }
 
 impl Runner {
@@ -845,6 +848,7 @@ impl Runner {
         control: Option<Arc<RunControl>>,
     ) -> Result<RunOutput, String> {
         let started_at = now_secs();
+        let clock = Instant::now();
         let run = RepoId::new(run_id).map_err(|e| format!("run id: {e}"))?;
         // A split run's shared state, kept alive from here to the end of
         // the run. A helper reads nothing of the run, not even its commit,
@@ -938,7 +942,13 @@ impl Runner {
         }
         // From here a helper runs the primary's commit, with no secrets.
         let req = as_helper.as_ref().unwrap_or(req);
+        let resolving = Instant::now();
         let r = self.resolve(req)?;
+        // Where a run's time goes outside its jobs, in the runner's log.
+        let mut phases = vec![format!(
+            "commit fetched in {} ms",
+            resolving.elapsed().as_millis()
+        )];
         if let (Some(split), None) = (&split, &helping) {
             // Before any pipeline can ask for help: a helper runs this
             // commit or none.
@@ -977,6 +987,14 @@ impl Runner {
             machines: self.machines.clone(),
             caches: Some(caches.clone()),
             commit: r.sha.clone(),
+        });
+        // Turborepo's artifacts, in the same scopes as the entries, for as
+        // long as the run lasts.
+        let remote_cache = self.remote_cache.as_ref().and_then(|server| {
+            server
+                .register(caches.clone())
+                .map_err(|e| eprintln!("iwci: remote cache: {e}"))
+                .ok()
         });
         // Task cache keys this run computes, and the ones other runs do,
         // in the same scopes as the entries. The runners of a split run
@@ -1041,6 +1059,7 @@ impl Runner {
             },
             machines: self.machines.clone(),
             spill: self.spill.clone(),
+            remote_cache: remote_cache.as_ref().map(|r| r.job_env()),
         };
         let run_info = crate::external::RunInfo {
             run_id: run.as_str().to_string(),
@@ -1137,7 +1156,9 @@ impl Runner {
                     },
                 }) as Arc<dyn crate::external::External>
             });
+            let scheduling = Instant::now();
             let report = schedule::run(&plan, &workspaces, &tools, &executor, &committer, &options);
+            phases.push(format!("{file} in {} ms", scheduling.elapsed().as_millis()));
             passed &= report.passed();
             cancelled |= report
                 .jobs
@@ -1158,6 +1179,13 @@ impl Runner {
             usage = Usage::default();
         }
         drop(joined);
+        eprintln!(
+            "iwci: run {} of {}: {}; {} ms in all",
+            run.as_str(),
+            r.repo_id.as_str(),
+            phases.join(", "),
+            clock.elapsed().as_millis()
+        );
         Ok(RunOutput {
             run_id: run.as_str().to_string(),
             commit: r.sha,

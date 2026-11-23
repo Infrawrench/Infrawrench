@@ -170,10 +170,17 @@ impl Workspaces for GitWorkspaces {
                 )
                 .map_err(|e| format!("fetch: {e}"))?;
             let head = iwci_git::Head::from_ref(self.ref_hint.as_deref());
+            let checking_out = std::time::Instant::now();
             let checkout = self
                 .remote
                 .checkout_repository_into(&self.commit, &builder, &clone.into, &head)
                 .map_err(|e| format!("checkout: {e}"))?;
+            eprintln!(
+                "iwci: workspace {}: checked out {} in {} ms",
+                spec.key,
+                self.commit,
+                checking_out.elapsed().as_millis()
+            );
             for sub in &checkout.submodules {
                 warnings.push(format!(
                     "submodule `{}` was left out of the checkout",
@@ -182,6 +189,7 @@ impl Workspaces for GitWorkspaces {
             }
         }
         for dep in &spec.deps {
+            let installing = std::time::Instant::now();
             let fetcher = self.fetcher.as_ref();
             let threads = self.threads.max(1);
             let (outcome, notes) = match dep.ecosystem {
@@ -345,7 +353,7 @@ impl Workspaces for GitWorkspaces {
                     .into_iter()
                     .filter(|n| !(spec.install_scripts && n.ends_with(iwci_deps::SCRIPTS_NOT_RUN))),
             );
-            installs.push(format!(
+            let line = format!(
                 "{} in {}: {}",
                 dep.ecosystem.name(),
                 dep.dir,
@@ -354,7 +362,13 @@ impl Workspaces for GitWorkspaces {
                     iwci_deps::cache::Outcome::Disk => "cached (disk)",
                     iwci_deps::cache::Outcome::Installed => "installed",
                 }
-            ));
+            );
+            eprintln!(
+                "iwci: workspace {}: {line} in {} ms",
+                spec.key,
+                installing.elapsed().as_millis()
+            );
+            installs.push(line);
         }
         if spec.install_scripts {
             crate::install_scripts::run(self.scripts.as_ref(), &builder, spec, &mut installs)?;

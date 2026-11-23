@@ -76,6 +76,7 @@ fn gateway() -> (Gateway, OwnedFd) {
     Gateway::start(Network {
         outside: Arc::new(Fake { upstreams, names }),
         services: vec!["postgres".into()],
+        local: Vec::new(),
     })
     .unwrap()
 }
@@ -308,4 +309,51 @@ fn a_stopped_gateway_lets_its_thread_go() {
     let (mut gateway, link) = gateway();
     gateway.stop();
     drop(link);
+}
+
+/// One of the gateway's own ports goes to the runner's Unix socket for it,
+/// and only that port, and only on the gateway's address: the same port
+/// anywhere else is the internet's, and the gateway's other ports stay
+/// closed.
+#[test]
+fn the_gateways_own_ports_reach_the_runners_sockets_and_nothing_else() {
+    let dir = std::env::temp_dir().join(format!("iwci-net-local-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cache.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            std::thread::spawn(move || {
+                let mut got = Vec::new();
+                let _ = stream.read_to_end(&mut got);
+                let mut reply = b"local:".to_vec();
+                reply.extend_from_slice(&got);
+                let _ = stream.write_all(&reply);
+            });
+        }
+    });
+    let mut upstreams = HashMap::new();
+    upstreams.insert(UP, shouting_upstream());
+    let (_gateway, link) = Gateway::start(Network {
+        outside: Arc::new(Fake {
+            upstreams,
+            names: HashMap::new(),
+        }),
+        services: Vec::new(),
+        local: vec![(9119, path)],
+    })
+    .unwrap();
+    let mut sandbox = Sandbox::new(link);
+    let own = SocketAddr::new(IpAddr::V4(GATEWAY_V4), 9119);
+    assert_eq!(sandbox.exchange(own, 42000, b"hi").unwrap(), b"local:hi");
+    // Another port of the gateway is closed.
+    let other = SocketAddr::new(IpAddr::V4(GATEWAY_V4), 9120);
+    assert_eq!(sandbox.exchange(other, 42001, b"hi"), None);
+    // The same port elsewhere is refused (not allowed) or the internet's.
+    let elsewhere = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3)), 9119);
+    assert_eq!(sandbox.exchange(elsewhere, 42002, b"hi"), None);
+    assert_eq!(sandbox.exchange(UP, 42003, b"up").unwrap(), b"UP");
+    let _ = std::fs::remove_dir_all(dir);
 }

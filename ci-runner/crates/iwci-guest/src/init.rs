@@ -370,13 +370,50 @@ pub fn build_root() -> io::Result<()> {
         Some("mode=0755"),
     )?;
 
-    std::env::set_current_dir(root)?;
-    let dot = c(".")?;
-    // SAFETY: a plain system call on a NUL-terminated string.
-    if unsafe { libc::chroot(dot.as_ptr()) } != 0 {
-        return Err(io::Error::last_os_error());
+    // Into the job's root with pivot_root, so it is the root of the mount
+    // namespace and not a directory chrooted into: a container runtime in
+    // the job enters a container by joining its mount namespace, which a
+    // chroot does not carry, so `docker exec` (and buildx's
+    // docker-container driver, which execs `buildctl`) ran in the
+    // machine's own root ("executable file not found"). chroot stays the
+    // fallback when pivot_root is refused.
+    if let Err(e) = pivot_into(root) {
+        eprintln!("iwci-guest: pivot_root into {root}: {e}; using chroot");
+        std::env::set_current_dir(root)?;
+        let dot = c(".")?;
+        // SAFETY: a plain system call on a NUL-terminated string.
+        if unsafe { libc::chroot(dot.as_ptr()) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
     }
     std::env::set_current_dir("/")
+}
+
+/// Makes `root` the root of the mount namespace, the old root detached.
+/// Everything the agent needs from the old root is bound into `root`
+/// already.
+fn pivot_into(root: &str) -> io::Result<()> {
+    // pivot_root refuses a shared mount tree.
+    mount("none", "/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
+    let old = format!("{root}/.iwci/old");
+    mkdir(&old)?;
+    let (new_c, old_c) = (c(root)?, c(&old)?);
+    // SAFETY: the pivot_root system call on two NUL-terminated paths that
+    // outlive it.
+    if unsafe { libc::syscall(libc::SYS_pivot_root, new_c.as_ptr(), old_c.as_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    std::env::set_current_dir("/")?;
+    let old_c = c("/.iwci/old")?;
+    // SAFETY: a plain system call on a NUL-terminated string.
+    if unsafe { libc::umount2(old_c.as_ptr(), libc::MNT_DETACH) } != 0 {
+        eprintln!(
+            "iwci-guest: detaching the old root: {}",
+            io::Error::last_os_error()
+        );
+    }
+    let _ = std::fs::remove_dir("/.iwci/old");
+    Ok(())
 }
 
 /// The environment every script starts from, before the image's

@@ -47,6 +47,60 @@ const _: () = assert!(PART_BYTES < iwci_store::MAX_OBJECT_SIZE);
 /// save left, and go; eviction and clearing take the rest.
 const STALE_PARTS_SECS: u64 = 3600;
 
+/// What every entry object's name ends in: a `cache:` or `task-cache:`
+/// entry's (`.zst`) or a Turborepo artifact's. What eviction may delete
+/// and what usage counts as entries; their parts and prefix pointers end
+/// in neither.
+fn is_entry(key: &str) -> bool {
+    key.ends_with(".zst") || key.ends_with(TURBO_SUFFIX)
+}
+
+const TURBO_SUFFIX: &str = ".turbo";
+
+/// The first line of a stored Turborepo artifact; the hash, its duration
+/// and its tag follow, a line each, then the artifact as `turbo` sent it
+/// (compressed already, so kept as it is).
+const TURBO_MAGIC: &str = "iwci-turbo 1";
+
+fn encode_turbo(hash: &str, artifact: &crate::turbo::Artifact) -> Vec<u8> {
+    let mut bytes = format!(
+        "{TURBO_MAGIC}\n{hash}\n{}\n{}\n",
+        artifact.duration_ms,
+        artifact.tag.as_deref().unwrap_or("")
+    )
+    .into_bytes();
+    bytes.extend_from_slice(&artifact.body);
+    bytes
+}
+
+/// The artifact in `bytes` if it is `hash`'s: one written by another
+/// format, or for another hash, is a miss.
+fn decode_turbo(hash: &str, mut bytes: Vec<u8>) -> Option<crate::turbo::Artifact> {
+    let mut lines = Vec::with_capacity(4);
+    let mut at = 0;
+    for _ in 0..4 {
+        let end = at
+            + bytes
+                .get(at..)?
+                .iter()
+                .take(1024)
+                .position(|b| *b == b'\n')?;
+        lines.push(std::str::from_utf8(&bytes[at..end]).ok()?.to_string());
+        at = end + 1;
+    }
+    if lines[0] != TURBO_MAGIC || lines[1] != hash {
+        return None;
+    }
+    let duration_ms = lines[2].parse().ok()?;
+    let tag = (!lines[3].is_empty()).then(|| lines[3].clone());
+    bytes.drain(..at);
+    Some(crate::turbo::Artifact {
+        body: bytes,
+        duration_ms,
+        tag,
+    })
+}
+
 fn short_hash(text: &str) -> String {
     hex::encode(&sha2::Sha256::digest(text.as_bytes())[..16])
 }
@@ -105,6 +159,15 @@ impl StoreCaches {
             self.owner,
             self.repo,
             short_hash(key)
+        )
+    }
+
+    /// Where a Turborepo artifact ([`crate::turbo`]) is kept: an entry of
+    /// its scope like any other, under the hash `turbo` gave it.
+    fn turbo_key(&self, scope: &str, hash: &str) -> String {
+        format!(
+            "caches/{}/{}/{scope}/turbo/{hash}{TURBO_SUFFIX}",
+            self.owner, self.repo
         )
     }
 
@@ -327,7 +390,7 @@ pub fn make_room(
     // pointer is only dropped when nothing else is left to drop. A split
     // entry goes with its parts.
     let (mut candidates, parts): (Vec<_>, Vec<_>) =
-        objects.into_iter().partition(|o| o.key.ends_with(".zst"));
+        objects.into_iter().partition(|o| is_entry(&o.key));
     candidates.sort_by_key(|o| (o.modified.unwrap_or(0), o.key.clone()));
     let mut doomed: Vec<String> = Vec::new();
     for victim in candidates {
@@ -458,7 +521,7 @@ pub fn storage_usage(
             .or_default();
         entry.bytes += object.size;
         usage.used_bytes += object.size;
-        if object.key.ends_with(".zst") {
+        if is_entry(&object.key) {
             entry.entries += 1;
             usage.entries += 1;
         }
@@ -534,7 +597,7 @@ pub fn clear_repository(
                         store.delete(&object.key).map_err(|e| e.to_string())?;
                         done.deleted_objects += 1;
                         done.deleted_bytes += object.size;
-                        if object.key.ends_with(".zst") {
+                        if is_entry(&object.key) {
                             done.deleted_entries += 1;
                         }
                     }
@@ -802,6 +865,38 @@ impl Caches for StoreCaches {
     }
 }
 
+/// A run's Turborepo artifacts ([`crate::turbo`]), where its `cache:`
+/// entries are: read from its own scope, then the default branch's, and
+/// written to its own.
+impl crate::turbo::Artifacts for StoreCaches {
+    fn get(&self, hash: &str) -> Result<Option<crate::turbo::Artifact>, String> {
+        if !crate::turbo::valid_hash(hash) {
+            return Ok(None);
+        }
+        for scope in &self.read_scopes {
+            let object = self.turbo_key(scope, hash);
+            if let Some(bytes) = self.store.get(&object).map_err(|e| e.to_string())?
+                && let Some(artifact) = decode_turbo(hash, bytes)
+            {
+                return Ok(Some(artifact));
+            }
+        }
+        Ok(None)
+    }
+
+    fn put(&self, hash: &str, artifact: &crate::turbo::Artifact) -> Result<(), String> {
+        if !crate::turbo::valid_hash(hash) {
+            return Err("not an artifact hash".into());
+        }
+        let object = self.turbo_key(&self.write_scope, hash);
+        let bytes = encode_turbo(hash, artifact);
+        self.make_room(&object, bytes.len() as u64)?;
+        self.store
+            .put(&object, &bytes, "application/octet-stream")
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// The entries a job of this process is saving now, by object.
 fn saving() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     static SAVING: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
@@ -925,6 +1020,99 @@ mod tests {
             serde_json::to_string(&old).unwrap(),
             r#"{"version":1,"jobs":{"a":5}}"#
         );
+    }
+
+    /// Turborepo's artifacts keep to the cache scopes: a pull request reads
+    /// the default branch's and its own, and nothing it writes reaches the
+    /// default branch. They count as entries, so eviction and clearing
+    /// take them with the rest.
+    #[test]
+    fn turbo_artifacts_follow_the_cache_scopes_and_count_as_entries() {
+        use crate::turbo::{Artifact, Artifacts};
+        let (store, dir) = store();
+        let repo = RepoId::new("repo_1").unwrap();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let at = |branch: &str, event: Event| {
+            StoreCaches::new(store.clone(), &org, &repo, branch, "main", event, None)
+        };
+        let main = at("main", Event::Push);
+        let pr = at("feature", Event::PullRequest);
+        let built = Artifact {
+            body: b"\x28\xb5\x2f\xfd tarball\nwith lines".to_vec(),
+            duration_ms: 4200,
+            tag: Some("c2ln/bmF0+dXJl=".into()),
+        };
+        assert_eq!(Artifacts::get(&main, "abc123").unwrap(), None);
+        Artifacts::put(&main, "abc123", &built).unwrap();
+        assert_eq!(
+            Artifacts::get(&main, "abc123").unwrap(),
+            Some(built.clone())
+        );
+        assert_eq!(Artifacts::get(&pr, "abc123").unwrap(), Some(built.clone()));
+        let planted = Artifact {
+            body: b"planted".to_vec(),
+            duration_ms: 1,
+            tag: None,
+        };
+        Artifacts::put(&pr, "abc123", &planted).unwrap();
+        Artifacts::put(&pr, "def456", &planted).unwrap();
+        assert_eq!(
+            Artifacts::get(&pr, "abc123").unwrap(),
+            Some(planted.clone())
+        );
+        assert_eq!(Artifacts::get(&main, "abc123").unwrap(), Some(built));
+        assert_eq!(Artifacts::get(&main, "def456").unwrap(), None);
+        // Not a hash: never a key.
+        assert!(Artifacts::put(&main, "../x", &planted).is_err());
+        assert_eq!(Artifacts::get(&main, "../x").unwrap(), None);
+
+        let usage = storage_usage(store.as_ref(), &org, None).unwrap();
+        assert_eq!(usage.entries, 3);
+        let cleared = clear_repository(store.as_ref(), &org, &repo).unwrap();
+        assert_eq!(cleared.deleted_entries, 3);
+        assert_eq!(Artifacts::get(&pr, "def456").unwrap(), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// An artifact is evicted like any entry when the owner's quota fills.
+    #[test]
+    fn turbo_artifacts_are_evicted_to_make_room() {
+        use crate::turbo::{Artifact, Artifacts};
+        let (store, dir) = store();
+        let repo = RepoId::new("repo_1").unwrap();
+        let org = RepoId::new("github.com-quota").unwrap();
+        let caches = StoreCaches::new(
+            store.clone(),
+            &org,
+            &repo,
+            "main",
+            "main",
+            Event::Push,
+            Some(3000),
+        );
+        let big = |n: u8| Artifact {
+            body: vec![n; 1200],
+            duration_ms: 0,
+            tag: None,
+        };
+        Artifacts::put(&caches, "aa", &big(1)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        Artifacts::put(&caches, "bb", &big(2)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        // Past the estimate's window, so the third save lists and evicts.
+        owner_lock(store.as_ref(), org.as_str())
+            .lock()
+            .unwrap()
+            .take();
+        Artifacts::put(&caches, "cc", &big(3)).unwrap();
+        assert_eq!(
+            Artifacts::get(&caches, "aa").unwrap(),
+            None,
+            "the oldest went"
+        );
+        assert!(Artifacts::get(&caches, "bb").unwrap().is_some());
+        assert!(Artifacts::get(&caches, "cc").unwrap().is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

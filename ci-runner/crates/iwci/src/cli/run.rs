@@ -215,6 +215,13 @@ pub(super) fn open_runner(
         .with_internet()
         .with_stall_after(limits.stall_after)
         .with_module_limits(limits.modules);
+    let remote_cache = remote_cache(args, &cache)?;
+    let runtime = match &remote_cache {
+        Some(server) => {
+            runtime.with_local_service(crate::turbo::PORT, server.socket().to_path_buf())
+        }
+        None => runtime,
+    };
     // The server shares each vCPU among `--jobs-per-cpu` jobs; `iwci run`
     // runs a job per vCPU, as many at once as `--cpus`. Either way a job
     // with `cpus:` holds that many vCPUs' slots.
@@ -249,7 +256,27 @@ pub(super) fn open_runner(
         sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
         machines,
         spill: spill(args, &cache)?,
+        remote_cache,
     })
+}
+
+/// `--remote-cache on|off` (default `on`): serves Turborepo's remote cache
+/// to every job with a network, on its gateway ([`crate::turbo`]), from a
+/// Unix socket under the cache directory. Only jobs in a sandbox or a
+/// machine reach a gateway, which only a Linux host has.
+fn remote_cache(
+    args: &mut Args,
+    cache: &std::path::Path,
+) -> Result<Option<Arc<crate::turbo::RemoteCache>>, String> {
+    match args.value("--remote-cache")?.as_deref() {
+        None | Some("on") => {}
+        Some("off") => return Ok(None),
+        Some(other) => return Err(format!("--remote-cache takes on or off, not `{other}`")),
+    }
+    if !cfg!(target_os = "linux") {
+        return Ok(None);
+    }
+    crate::turbo::RemoteCache::start(&cache.join("remote-cache.sock")).map(|c| Some(Arc::new(c)))
 }
 
 /// The most of the runner's disk one isolate job's files may take when

@@ -118,6 +118,10 @@ pub(crate) struct WasixShared {
     /// The host network jobs reach the public internet through, when
     /// offered (`Runtime::with_internet`).
     pub(crate) outside: Option<crate::network::Outside>,
+    /// The runner's own services a job with a network reaches on its
+    /// gateway's address (`Runtime::with_local_service`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) local: Vec<(u16, std::path::PathBuf)>,
     /// Edge.js's built-ins cache for each environment (builtins.rs).
     #[cfg_attr(not(feature = "node"), allow(dead_code))]
     pub(crate) builtins: crate::builtins::Builtins,
@@ -141,6 +145,7 @@ impl WasixShared {
             packages: Recent::default(),
             containers: Recent::default(),
             outside: None,
+            local: Vec::new(),
             builtins: Default::default(),
             #[cfg(target_os = "linux")]
             sandbox: None,
