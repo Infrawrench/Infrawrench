@@ -195,7 +195,7 @@ impl Downloads for StoreDownloads {
             return (Vec::new(), problems);
         }
         if let Err(e) = super::caches::make_room(
-            self.store.as_ref(),
+            &self.store,
             &self.owner,
             self.quota,
             "",

@@ -184,7 +184,7 @@ impl StoreCaches {
     /// quota by deleting the owner's least recently saved entries.
     fn make_room(&self, object: &str, incoming: u64) -> Result<(), String> {
         make_room(
-            self.store.as_ref(),
+            &self.store,
             &self.owner,
             self.quota,
             object,
@@ -330,7 +330,7 @@ fn header_frame(header: &[u8]) -> Result<Vec<u8>, String> {
 /// download is kept for as long as its job asked. A download past its
 /// expiry is not counted, whether or not it has been swept yet.
 pub fn make_room(
-    store: &dyn ObjectStore,
+    store: &Arc<dyn ObjectStore>,
     owner: &str,
     quota: Option<u64>,
     object: &str,
@@ -350,20 +350,35 @@ pub fn make_room(
     // One eviction per owner at a time: jobs that finish together would
     // otherwise each list the same oldest entries and delete them all over
     // again, one request at a time. The next finds the room already made.
-    let lock = owner_lock(store, owner);
+    let lock = owner_lock(store.as_ref(), owner);
     let mut estimate = lock.lock().unwrap_or_else(|e| e.into_inner());
     let now = crate::runner::now_secs();
-    // Listing every object an owner keeps (thousands of task cache entries)
-    // for each save took longer than the save: a recent listing's total,
-    // with what was saved since added on, says whether there is room. It
-    // only overcounts on this runner (a replaced entry is not taken off);
-    // another runner's saves since are what [`ESTIMATE_SECS`] bounds.
-    if let Some(known) = estimate.as_mut()
-        && now < known.listed_at.saturating_add(ESTIMATE_SECS)
-        && known.used.saturating_add(incoming) <= quota
-    {
-        known.used += incoming;
-        return Ok(());
+    // Listing every object an owner keeps (tens of thousands of task cache
+    // entries, a request per thousand) took longer than the save: 40 s on
+    // every run's first save, inside its jobs and after its last one. A
+    // listing's total, with what was saved since added on, says whether
+    // there is room. It only overcounts on this runner (a replaced entry
+    // is not taken off); another runner's saves since are what its age
+    // bounds. One under [`ESTIMATE_SECS`] old stands; one under
+    // [`STALE_SECS`] stands while a tenth of the quota is left over, and
+    // the owner is listed again in the background.
+    if let Some(known) = estimate.as_mut() {
+        let age = now.saturating_sub(known.listed_at);
+        let after = known.used.saturating_add(incoming);
+        let fresh = age < ESTIMATE_SECS && after <= quota;
+        let roomy = age < STALE_SECS && after <= quota - quota / HEADROOM;
+        if fresh || roomy {
+            known.used = after;
+            if known.refreshing {
+                known.during = known.during.saturating_add(incoming);
+            } else if age >= ESTIMATE_SECS {
+                // This save lands after the listing may have looked.
+                known.refreshing = true;
+                known.during = incoming;
+                refresh(store.clone(), owner.to_string(), lock.clone(), now);
+            }
+            return Ok(());
+        }
     }
     let mut objects = store
         .list_detailed(&format!("caches/{owner}/"))
@@ -371,19 +386,10 @@ pub fn make_room(
     // The entry being replaced frees its own bytes, its parts' too.
     let own_parts = format!("{object}.");
     objects.retain(|o| o.key != object && !o.key.starts_with(&own_parts));
-    let downloads: u64 = store
-        .list_detailed(&format!("{}/{owner}/", crate::adapters::downloads::PREFIX))
-        .map_err(|e| e.to_string())?
-        .iter()
-        .filter(|o| crate::adapters::downloads::expiry(&o.key).is_none_or(|e| e > now))
-        .map(|o| o.size)
-        .sum();
+    let downloads = live_downloads(store.as_ref(), owner, now)?;
     let mut used: u64 = objects.iter().map(|o| o.size).sum::<u64>() + downloads;
     if used + incoming <= quota {
-        *estimate = Some(Estimate {
-            used: used + incoming,
-            listed_at: now,
-        });
+        *estimate = Some(Estimate::listed(used + incoming, now));
         return Ok(());
     }
     // Oldest first; entries before the small prefix pointers, so a
@@ -411,21 +417,90 @@ pub fn make_room(
     // Small entries (a task cache's) can mean hundreds of deletes, each a
     // round trip: several at once. A part deleted before its entry only
     // makes that entry a miss.
-    delete_all(store, &doomed)?;
-    *estimate = Some(Estimate {
-        used: used + incoming,
-        listed_at: now,
-    });
+    delete_all(store.as_ref(), &doomed)?;
+    *estimate = Some(Estimate::listed(used + incoming, now));
     Ok(())
+}
+
+/// What `owner`'s downloads hold that has not expired.
+fn live_downloads(store: &dyn ObjectStore, owner: &str, now: u64) -> Result<u64, String> {
+    Ok(store
+        .list_detailed(&format!("{}/{owner}/", crate::adapters::downloads::PREFIX))
+        .map_err(|e| e.to_string())?
+        .iter()
+        .filter(|o| crate::adapters::downloads::expiry(&o.key).is_none_or(|e| e > now))
+        .map(|o| o.size)
+        .sum())
+}
+
+/// Lists `owner` again on a thread of its own, the saves going on with
+/// the estimate meanwhile, and puts the total (with what they saved while
+/// it listed) in its place.
+fn refresh(
+    store: Arc<dyn ObjectStore>,
+    owner: String,
+    lock: Arc<std::sync::Mutex<Option<Estimate>>>,
+    started: u64,
+) {
+    let job = {
+        let lock = lock.clone();
+        move || {
+            let listed = store
+                .list_detailed(&format!("caches/{owner}/"))
+                .map_err(|e| e.to_string())
+                .and_then(|objects| {
+                    let downloads = live_downloads(store.as_ref(), &owner, started)?;
+                    Ok(objects.iter().map(|o| o.size).sum::<u64>() + downloads)
+                });
+            let mut estimate = lock.lock().unwrap_or_else(|e| e.into_inner());
+            match (listed, estimate.as_mut()) {
+                (Ok(used), Some(known)) if known.refreshing => {
+                    *known = Estimate::listed(used.saturating_add(known.during), started);
+                }
+                // A save listed in the meantime, which is newer.
+                (Ok(_), _) => {}
+                (Err(_), Some(known)) => known.refreshing = false,
+                (Err(_), None) => {}
+            }
+        }
+    };
+    if std::thread::Builder::new()
+        .name("iwci-quota-listing".into())
+        .spawn(job)
+        .is_err()
+        && let Some(known) = lock.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
+    {
+        known.refreshing = false;
+    }
 }
 
 /// How long a listing of an owner's storage stands in for a new one.
 const ESTIMATE_SECS: u64 = 120;
+/// How long one stands while the owner has room to spare, listed again
+/// in the background meanwhile.
+const STALE_SECS: u64 = 3600;
+/// Room to spare is a tenth of the quota.
+const HEADROOM: u64 = 10;
 
 /// An owner's storage as last listed, with what this process saved since.
 struct Estimate {
     used: u64,
     listed_at: u64,
+    /// A listing is going on in the background ([`refresh`]).
+    refreshing: bool,
+    /// What was saved while it listed, which it may not have seen.
+    during: u64,
+}
+
+impl Estimate {
+    fn listed(used: u64, at: u64) -> Self {
+        Self {
+            used,
+            listed_at: at,
+            refreshing: false,
+            during: 0,
+        }
+    }
 }
 
 /// The lock that keeps one eviction per owner at a time in this process,
@@ -1501,7 +1576,7 @@ mod tests {
             prefix: &str,
         ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
             // The owner's whole storage, not one entry's parts.
-            if prefix == "caches/github.com-listings/" {
+            if prefix == "caches/github.com-listings/" || prefix == "caches/github.com-stale/" {
                 self.detailed
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             }
@@ -1544,6 +1619,75 @@ mod tests {
         assert!(count() > first);
         assert!(caches.restore("one", &[], 1 << 30).unwrap().is_none());
         assert!(caches.restore("three", &[], 1 << 30).unwrap().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A listing a few minutes old stands while the owner has room to
+    /// spare, and the owner is listed again in the background: the first
+    /// save of every run waited 40 s for an owner's listing. Older, or
+    /// without the room, the save lists first, as before.
+    #[test]
+    fn an_older_listing_stands_with_room_to_spare_and_is_redone_in_the_background() {
+        let dir = std::env::temp_dir().join(format!("iwci-caches-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let listings = Arc::new(Listings {
+            inner: iwci_store::LocalStore::new(&dir).unwrap(),
+            detailed: Default::default(),
+        });
+        let store: Arc<dyn ObjectStore> = listings.clone();
+        let owner = "github.com-stale";
+        let caches = StoreCaches::new(
+            store.clone(),
+            &RepoId::new(owner).unwrap(),
+            &RepoId::new("web").unwrap(),
+            "main",
+            "main",
+            Event::Push,
+            Some(1000 << 10),
+        );
+        let count = || listings.detailed.load(std::sync::atomic::Ordering::SeqCst);
+        let age = |secs: u64| {
+            let lock = owner_lock(store.as_ref(), owner);
+            let mut estimate = lock.lock().unwrap();
+            let known = estimate.as_mut().unwrap();
+            known.listed_at = crate::runner::now_secs() - secs;
+        };
+        let known = || {
+            let lock = owner_lock(store.as_ref(), owner);
+            let estimate = lock.lock().unwrap();
+            let known = estimate.as_ref().unwrap();
+            (known.used, known.refreshing, known.listed_at)
+        };
+        caches.save("one", &[], &big(100 << 10)).unwrap();
+        let first = count();
+        assert!(first > 0);
+
+        age(600);
+        caches.save("two", &[], &big(100 << 10)).unwrap();
+        // Saved without waiting for a listing; one goes on behind it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while known().1 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let (used, refreshing, listed_at) = known();
+        assert!(!refreshing);
+        assert!(count() > first, "listed again in the background");
+        assert!(crate::runner::now_secs() - listed_at < ESTIMATE_SECS);
+        assert!(used >= 200 << 10, "both entries counted: {used}");
+
+        // Too old to stand at all: listed before the save.
+        age(STALE_SECS + 1);
+        let before = count();
+        caches.save("three", &[], &big(100 << 10)).unwrap();
+        assert!(count() > before);
+        assert!(!known().1, "no listing in the background");
+
+        // Recent enough, but into the last tenth of the quota: listed first.
+        age(600);
+        let before = count();
+        caches.save("four", &[], &big(650 << 10)).unwrap();
+        assert!(count() > before);
+        assert!(!known().1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

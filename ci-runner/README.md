@@ -4155,7 +4155,12 @@ jobs:
   wins when both have it; `restore-keys` are read one scope after another.
 - **Counted against the owner's storage quota** (see below). A save that
   would pass the quota evicts the owner's oldest caches first; one larger
-  than the whole quota is refused.
+  than the whole quota is refused. Listing an owner's storage takes a
+  request per thousand objects, so a runner counts from its last listing
+  plus what it saved since: one under two minutes old stands, and one
+  under an hour old stands while a tenth of the quota is free, the owner
+  being listed again in the background. Past either, the save lists
+  first.
 - What each cache did is a line in the job's `caches`, with how long a
   restore or a save took (``cache `pnpm-…`: restored in 2.1 s``,
   ``cache `pnpm-…`: saved 412000 KiB in 9.8 s``). The runner's log says
