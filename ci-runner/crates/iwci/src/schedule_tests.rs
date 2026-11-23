@@ -356,9 +356,16 @@ impl Executor<String> for FakeExecutor {
             inv.fs.remove_file("/tmp/two.bin").unwrap();
             peak_memory_bytes = 5 << 20;
         }
+        // `-oom` (outside `hang`) makes a tool end as the runtime ends one it
+        // stopped for running out of memory, after doing its work.
+        let out_of_memory = tool.contains("-oom@");
+        if out_of_memory {
+            exit_code = iwci_runtime::TIMEOUT_EXIT_CODE;
+        }
         Ok(Execution {
             exit_code,
             stdout,
+            out_of_memory,
             peak_memory_bytes,
             // Of its 5 MiB, 3 were room a heap had reserved and not used.
             held_memory_bytes: peak_memory_bytes.saturating_sub(3 << 20),
@@ -1337,8 +1344,9 @@ fn caches_restore_before_a_job_and_save_after_it_passes() {
 }
 
 /// Environment caches through the real store adapter: one cache per job
-/// and environment version, restored on the next run, saved only after a
-/// pass and only when the run changed it.
+/// and environment version, restored on the next run. Environment caches
+/// are saved after a failed job too, since they hold toolchains rather than
+/// test results; only a job that never ran its script saves nothing.
 fn env_cache_store(name: &str) -> (Arc<dyn iwci_store::ObjectStore>, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("iwci-env-cache-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -1399,11 +1407,31 @@ fn environment_caches_come_back_on_the_next_run() {
         ]
     );
 
-    // A failing run saves nothing, even what it changed.
+    // A failing run still saves what it changed in its environment cache:
+    // it holds toolchains and packages keyed by version, not the test
+    // result. The next run starts with what the failing one installed.
     let failing = plan(
         "name: x\njobs:\n  g:\n    using: builtin:envcache-fail@1\n    env: { CACHE_CONTENT: broken }\n",
     );
     let (status, held, lines) = env_cache_run(&failing, &main);
+    assert!(matches!(status, Status::Failed { .. }), "{status:?}");
+    assert_eq!(held, "a=built");
+    assert_eq!(
+        lines,
+        vec![
+            "env cache `build`: restored 1 KiB",
+            "env cache `build`: saved 1 KiB"
+        ]
+    );
+    let (_, held, _) = env_cache_run(&p, &main);
+    assert_eq!(held, "a=broken");
+
+    // A job stopped mid-write (here, out of memory) saves nothing: what it
+    // left may be half an install.
+    let stopped = plan(
+        "name: x\njobs:\n  g:\n    using: builtin:envcache-oom@1\n    env: { CACHE_CONTENT: half }\n",
+    );
+    let (status, held, lines) = env_cache_run(&stopped, &main);
     assert!(matches!(status, Status::Failed { .. }), "{status:?}");
     assert_eq!(held, "a=built");
     assert_eq!(lines, vec!["env cache `build`: restored 1 KiB"]);
