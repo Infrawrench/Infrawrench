@@ -312,7 +312,9 @@ jobs:
 
 `platform:` is `wasm` (the sandbox, the default) or `linux`. The machine is new for each job and is gone when it ends. Its tools are close to GitHub's hosted Ubuntu 24.04 runner, without its largest SDKs (Android, .NET); a job installs anything else in its script, and `cache:` keeps it between runs. It has Bun, `nvm`, `rbenv` (with ruby-build) and `goenv` too, and keeps the Node.js, Ruby and Go versions they install between runs of a job on its own: `nvm install 22`, `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once, and the next run starts with it. `env-cache: false` turns that off. The script runs in `bash`; `shell:` picks `sh` or `pwsh` instead.
 
-A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. Its network reaches the same places as any job's, and `network: false` turns it off.
+A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. What the job writes is kept in that memory, and when its files and programs need more than that, the machine swaps to a disk of its own (up to 10 GiB) rather than running out. Its network reaches the same places as any job's, and `network: false` turns it off.
+
+Google Chrome is installed (x86_64), as on GitHub's runner, so Playwright's `install --with-deps chrome` takes seconds. `apt-get install` uses Ubuntu's live archive. Docker runs, with its storage on the machine's disk.
 
 A machine has no `using:`, `deps:`, `tools:`, `services:` or `task-cache:`: its script installs and starts what it needs (`npm ci`, `docker run -d postgres`).
 
@@ -861,7 +863,7 @@ jobs:
 - **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
 - **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count its programs read (`nproc`, Python's `os.cpu_count()`, Node's `os.availableParallelism()`, `/proc/cpuinfo`). Without `cpus:`, `$IWCI_CPUS` is not set and that count is 1, so a tool that starts a worker per CPU (`pytest -n auto`, Vitest, Jest, cargo) starts one; give the job `cpus:` to run more. Either way the count is all that changes: a job still uses CPU time no other job wants.
 - **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
-- A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
+- A [Linux machine](#linux-machines) holds that many vCPUs. Without `cpus:`, it holds the runner's default for a machine. It is told more, so it can use CPUs no other job wants: up to four times what it holds and one per GiB of its `memory:` (so `nproc` in a 2-CPU, 6 GiB machine says 6). When every job wants more than there is, each gets the share it holds, and it is charged for what it holds either way.
 - A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
 
 ## Usage and billing
