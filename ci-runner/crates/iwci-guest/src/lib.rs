@@ -31,6 +31,8 @@ pub mod put;
 pub mod root;
 pub mod stamp;
 pub mod tree;
+#[cfg(target_os = "linux")]
+pub mod user;
 
 pub use platform::{Local, Platform};
 pub use root::Root;
