@@ -753,8 +753,9 @@ jobs:
   own, as an environment keeps Go's build cache
   ([Environment caches](#environment-caches)): `nvm install 22`,
   `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once,
-  and the next run restores it before the machine starts. `env-cache:`
-  turns them off as it does an environment's.
+  and the next run restores it before the machine starts. uv is there too,
+  with its managed Pythons cached the same way. `env-cache:` turns them off
+  as it does an environment's.
 - **What it cannot have.** Keys that only mean something in an isolate are
   errors: `using`, `args`, `deps`, `tools`, `services` and
   `task-cache` (the script installs and starts what it needs, and `cache:`
@@ -4177,7 +4178,7 @@ false }` turns off the ones it names.
 
 A virtual machine's image declares caches the same way, in its
 `image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`),
-`rbenv` (`/root/.rbenv`), `goenv` (`/root/.goenv`), `m2` (`/root/.m2/repository`) and `gradle` (`/root/.gradle/caches`), keyed by the image's name rather than its
+`rbenv` (`/root/.rbenv`), `goenv` (`/root/.goenv`), `m2` (`/root/.m2/repository`), `gradle` (`/root/.gradle/caches`), `uv-python` (`/root/.local/share/uv/python`) and `uv` (`/root/.cache/uv`), keyed by the image's name rather than its
 version (`machine:ubuntu-24.04`), so a rebuild of the image on the same
 Ubuntu release keeps them. Only what the job added is saved there too:
 the image's own files are its read-only root, never the job's.
