@@ -198,7 +198,9 @@ impl StoreCaches {
     /// a package store) share one read: three jobs reading and unpacking
     /// one 1.1 GiB store at once each took twice as long as one alone.
     fn load(&self, object: &str, key: &str, max_bytes: u64) -> Loaded {
-        let id = (object.to_string(), key.to_string(), max_bytes);
+        // By store too: one process has one, but tests open many.
+        let store = self.store.as_ref() as *const dyn ObjectStore as *const () as usize;
+        let id = (format!("{store:x}/{object}"), key.to_string(), max_bytes);
         let cell = {
             let mut loading = loading().lock().unwrap_or_else(|e| e.into_inner());
             loading.entry(id.clone()).or_default().clone()
@@ -545,6 +547,52 @@ pub fn make_room(
     delete_all(store.as_ref(), &doomed)?;
     *estimate = Some(Estimate::listed(used + incoming, now));
     Ok(())
+}
+
+/// Lists every owner's storage once, in the background, and gives each
+/// owner nobody has counted yet the total as its estimate: a runner that
+/// had just started (every release restarts it) made its first save for an
+/// owner wait for that owner's whole listing, 40 s for one with tens of
+/// thousands of task cache entries.
+pub fn warm_estimates(store: Arc<dyn ObjectStore>) {
+    let job = move || {
+        let started = crate::runner::now_secs();
+        let owner_of = |key: &str, prefix: &str| {
+            key.strip_prefix(prefix)
+                .and_then(|rest| rest.split('/').next())
+                .map(str::to_string)
+        };
+        let mut used: BTreeMap<String, u64> = BTreeMap::new();
+        let Ok(caches) = store.list_detailed("caches/") else {
+            return;
+        };
+        for object in caches {
+            if let Some(owner) = owner_of(&object.key, "caches/") {
+                *used.entry(owner).or_default() += object.size;
+            }
+        }
+        let downloads = format!("{}/", crate::adapters::downloads::PREFIX);
+        let Ok(kept) = store.list_detailed(&downloads) else {
+            return;
+        };
+        for object in kept {
+            let live = crate::adapters::downloads::expiry(&object.key).is_none_or(|e| e > started);
+            if let (true, Some(owner)) = (live, owner_of(&object.key, &downloads)) {
+                *used.entry(owner).or_default() += object.size;
+            }
+        }
+        for (owner, bytes) in used {
+            let lock = owner_lock(store.as_ref(), &owner);
+            let mut estimate = lock.lock().unwrap_or_else(|e| e.into_inner());
+            // A save that listed meanwhile knows better.
+            if estimate.is_none() {
+                *estimate = Some(Estimate::listed(bytes, started));
+            }
+        }
+    };
+    let _ = std::thread::Builder::new()
+        .name("iwci-quota-warm".into())
+        .spawn(job);
 }
 
 /// What `owner`'s downloads hold that has not expired.
@@ -2125,6 +2173,57 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(usage.used_bytes, 50);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A runner that has just started counts every owner in the
+    /// background, so its first save for one does not list it first.
+    #[test]
+    fn warmed_estimates_spare_the_first_save_a_listing() {
+        let dir = std::env::temp_dir().join(format!("iwci-caches-warm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let listings = Arc::new(Listings {
+            inner: iwci_store::LocalStore::new(&dir).unwrap(),
+            detailed: Default::default(),
+            slow: Default::default(),
+        });
+        let store: Arc<dyn ObjectStore> = listings.clone();
+        store
+            .put(
+                "caches/github.com-listings/web/b-1/entries/a.zst",
+                &[0; 100],
+                "x",
+            )
+            .unwrap();
+        warm_estimates(store.clone());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let warmed = || {
+            owner_lock(store.as_ref(), "github.com-listings")
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|e| e.used)
+        };
+        while warmed().is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(warmed(), Some(100));
+        let caches = StoreCaches::new(
+            store.clone(),
+            &RepoId::new("github.com-listings").unwrap(),
+            &RepoId::new("web").unwrap(),
+            "main",
+            "main",
+            Event::Push,
+            Some(1 << 20),
+        );
+        let before = listings.detailed.load(std::sync::atomic::Ordering::SeqCst);
+        caches.save("one", &[], &big(10 << 10)).unwrap();
+        assert_eq!(
+            listings.detailed.load(std::sync::atomic::Ordering::SeqCst),
+            before,
+            "no listing for the first save"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

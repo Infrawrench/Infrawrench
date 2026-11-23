@@ -274,6 +274,11 @@ impl Server {
         })
     }
 
+    /// The object store the runner keeps everything in.
+    pub fn store(&self) -> Arc<dyn iwci_store::ObjectStore> {
+        self.runner.store.clone()
+    }
+
     /// How many runs of other runners this one helps at once; 0 for none.
     pub fn with_helping(mut self, max: usize) -> Self {
         self.max_helping = max;

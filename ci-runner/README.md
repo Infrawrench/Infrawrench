@@ -4160,7 +4160,8 @@ jobs:
   plus what it saved since: one under two minutes old stands, and one
   under an hour old stands while a tenth of the quota is free, the owner
   being listed again in the background. Past either, the save lists
-  first.
+  first. A runner that starts counts every owner in the background, so
+  its first save for one does not wait for a listing either.
 - Jobs that restore the same entry at the same moment (a matrix sharing
   a package store) read and unpack it once between them.
 - What each cache did is a line in the job's `caches`, with how long a
