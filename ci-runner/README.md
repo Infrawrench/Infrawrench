@@ -2964,8 +2964,8 @@ What to know when a job runs Bun:
   `mkdir -p /tmp/bin && ln -s "$(command -v bun)" /tmp/bin/node` with
   `/tmp/bin` first on `PATH`. `env:bash@5` has no `npm` either, so a script
   that runs `npm pack` needs it some other way (`bunx npm@11 pack`).
-- **The checkout is a shallow repository** (see [Git](#git)): `git
-ls-files` and `git status` work without setup.
+- **The checkout is a shallow repository** (see [Git](#git)): `git ls-files`
+  and `git status` work without setup.
 - **Next.js** runs its dev server under Bun with Turbopack and its native
   SWC: `bun --bun next dev --turbopack &` compiles and answers the requests
   the rest of the script makes.
