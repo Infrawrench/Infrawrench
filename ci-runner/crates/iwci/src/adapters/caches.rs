@@ -284,6 +284,11 @@ pub fn make_room(
             quota.div_ceil(1024)
         ));
     }
+    // One eviction per owner at a time: jobs that finish together would
+    // otherwise each list the same oldest entries and delete them all over
+    // again, one request at a time. The next finds the room already made.
+    let lock = owner_lock(owner);
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let mut objects = store
         .list_detailed(&format!("caches/{owner}/"))
         .map_err(|e| e.to_string())?;
@@ -308,22 +313,61 @@ pub fn make_room(
     let (mut candidates, parts): (Vec<_>, Vec<_>) =
         objects.into_iter().partition(|o| o.key.ends_with(".zst"));
     candidates.sort_by_key(|o| (o.modified.unwrap_or(0), o.key.clone()));
+    let mut doomed: Vec<String> = Vec::new();
     for victim in candidates {
         if used + incoming <= quota {
             break;
         }
-        store.delete(&victim.key).map_err(|e| e.to_string())?;
         used = used.saturating_sub(victim.size);
         let its_parts = format!("{}.", victim.key);
         for part in parts.iter().filter(|p| p.key.starts_with(&its_parts)) {
-            store.delete(&part.key).map_err(|e| e.to_string())?;
+            doomed.push(part.key.clone());
             used = used.saturating_sub(part.size);
         }
+        doomed.push(victim.key);
     }
     if used + incoming > quota {
         return Err("the owner's storage quota is full".into());
     }
-    Ok(())
+    // Small entries (a task cache's) can mean hundreds of deletes, each a
+    // round trip: several at once. A part deleted before its entry only
+    // makes that entry a miss.
+    delete_all(store, &doomed)
+}
+
+/// The lock that keeps one eviction per owner at a time in this process.
+fn owner_lock(owner: &str) -> Arc<std::sync::Mutex<()>> {
+    type Locks = std::sync::Mutex<BTreeMap<String, Arc<std::sync::Mutex<()>>>>;
+    static LOCKS: std::sync::OnceLock<Locks> = std::sync::OnceLock::new();
+    let mut locks = LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    locks.entry(owner.to_string()).or_default().clone()
+}
+
+/// Deletes `keys` on [`CLEAR_THREADS`] threads; the first error wins.
+fn delete_all(store: &dyn ObjectStore, keys: &[String]) -> Result<(), String> {
+    if keys.is_empty() {
+        return Ok(());
+    }
+    let chunk = keys.len().div_ceil(CLEAR_THREADS).max(1);
+    std::thread::scope(|threads| {
+        let handles: Vec<_> = keys
+            .chunks(chunk)
+            .map(|part| {
+                threads.spawn(move || {
+                    for key in part {
+                        store.delete(key).map_err(|e| e.to_string())?;
+                    }
+                    Ok::<(), String>(())
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .try_for_each(|h| h.join().unwrap_or_else(|_| Err("a delete panicked".into())))
+    })
 }
 
 /// What an owner stores (its caches and its downloads), for the storage
@@ -611,6 +655,13 @@ impl Caches for StoreCaches {
             .is_ok_and(|meta| meta.is_some())
     }
 
+    fn claim(&self, key: &str) -> bool {
+        saving()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(self.entry_key(&self.write_scope, key))
+    }
+
     fn save_with_modes(
         &self,
         key: &str,
@@ -624,6 +675,8 @@ impl Caches for StoreCaches {
         let body = encoder.finish().map_err(|e| e.to_string())?;
         let scope = &self.write_scope;
         let object = self.entry_key(scope, key);
+        // A claim on the key ([`Caches::claim`]) ends with the save.
+        let _claimed = Claimed(object.clone());
         let part = usize::try_from(self.part_bytes)
             .unwrap_or(usize::MAX)
             .max(1);
@@ -710,6 +763,25 @@ impl Caches for StoreCaches {
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+}
+
+/// The entries a job of this process is saving now, by object.
+fn saving() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static SAVING: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    SAVING.get_or_init(Default::default)
+}
+
+/// Releases a claim on an entry when its save ends, however it ends.
+struct Claimed(String);
+
+impl Drop for Claimed {
+    fn drop(&mut self) {
+        saving()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.0);
     }
 }
 
@@ -1136,6 +1208,34 @@ mod tests {
             big(100 << 10)
         );
         assert_eq!(store.list(&format!("{object}.")).unwrap().len(), 4);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Jobs of one runner that finish together save a shared key once: a
+    /// claim holds the key until that save ends.
+    #[test]
+    fn a_key_being_saved_is_claimed_once() {
+        let (store, dir) = store();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let caches = || {
+            StoreCaches::new(
+                store.clone(),
+                &org,
+                &RepoId::new("claims").unwrap(),
+                "main",
+                "main",
+                Event::Push,
+                None,
+            )
+        };
+        let (a, b) = (caches(), caches());
+        assert!(a.claim("pnpm"));
+        assert!(!b.claim("pnpm"), "another job is saving it");
+        assert!(b.claim("npm"), "another key is free");
+        a.save("pnpm", &[], &entries("x")).unwrap();
+        b.save("npm", &[], &entries("y")).unwrap();
+        assert!(b.claim("pnpm"), "released when the save ended");
+        b.save("pnpm", &[], &entries("x")).unwrap();
         let _ = std::fs::remove_dir_all(dir);
     }
 
