@@ -287,15 +287,27 @@ pub fn make_room(
     // One eviction per owner at a time: jobs that finish together would
     // otherwise each list the same oldest entries and delete them all over
     // again, one request at a time. The next finds the room already made.
-    let lock = owner_lock(owner);
-    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let lock = owner_lock(store, owner);
+    let mut estimate = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let now = crate::runner::now_secs();
+    // Listing every object an owner keeps (thousands of task cache entries)
+    // for each save took longer than the save: a recent listing's total,
+    // with what was saved since added on, says whether there is room. It
+    // only overcounts on this runner (a replaced entry is not taken off);
+    // another runner's saves since are what [`ESTIMATE_SECS`] bounds.
+    if let Some(known) = estimate.as_mut()
+        && now < known.listed_at.saturating_add(ESTIMATE_SECS)
+        && known.used.saturating_add(incoming) <= quota
+    {
+        known.used += incoming;
+        return Ok(());
+    }
     let mut objects = store
         .list_detailed(&format!("caches/{owner}/"))
         .map_err(|e| e.to_string())?;
     // The entry being replaced frees its own bytes, its parts' too.
     let own_parts = format!("{object}.");
     objects.retain(|o| o.key != object && !o.key.starts_with(&own_parts));
-    let now = crate::runner::now_secs();
     let downloads: u64 = store
         .list_detailed(&format!("{}/{owner}/", crate::adapters::downloads::PREFIX))
         .map_err(|e| e.to_string())?
@@ -305,6 +317,10 @@ pub fn make_room(
         .sum();
     let mut used: u64 = objects.iter().map(|o| o.size).sum::<u64>() + downloads;
     if used + incoming <= quota {
+        *estimate = Some(Estimate {
+            used: used + incoming,
+            listed_at: now,
+        });
         return Ok(());
     }
     // Oldest first; entries before the small prefix pointers, so a
@@ -332,18 +348,38 @@ pub fn make_room(
     // Small entries (a task cache's) can mean hundreds of deletes, each a
     // round trip: several at once. A part deleted before its entry only
     // makes that entry a miss.
-    delete_all(store, &doomed)
+    delete_all(store, &doomed)?;
+    *estimate = Some(Estimate {
+        used: used + incoming,
+        listed_at: now,
+    });
+    Ok(())
 }
 
-/// The lock that keeps one eviction per owner at a time in this process.
-fn owner_lock(owner: &str) -> Arc<std::sync::Mutex<()>> {
-    type Locks = std::sync::Mutex<BTreeMap<String, Arc<std::sync::Mutex<()>>>>;
+/// How long a listing of an owner's storage stands in for a new one.
+const ESTIMATE_SECS: u64 = 120;
+
+/// An owner's storage as last listed, with what this process saved since.
+struct Estimate {
+    used: u64,
+    listed_at: u64,
+}
+
+/// The lock that keeps one eviction per owner at a time in this process,
+/// with the owner's [`Estimate`].
+fn owner_lock(store: &dyn ObjectStore, owner: &str) -> Arc<std::sync::Mutex<Option<Estimate>>> {
+    type Locks = std::sync::Mutex<BTreeMap<String, Arc<std::sync::Mutex<Option<Estimate>>>>>;
     static LOCKS: std::sync::OnceLock<Locks> = std::sync::OnceLock::new();
     let mut locks = LOCKS
         .get_or_init(Default::default)
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    locks.entry(owner.to_string()).or_default().clone()
+    // By store too: one process has one, but tests open many.
+    let store = store as *const dyn ObjectStore as *const () as usize;
+    locks
+        .entry(format!("{store:x}/{owner}"))
+        .or_default()
+        .clone()
 }
 
 /// Deletes `keys` on [`CLEAR_THREADS`] threads; the first error wins.
@@ -1236,6 +1272,90 @@ mod tests {
         b.save("npm", &[], &entries("y")).unwrap();
         assert!(b.claim("pnpm"), "released when the save ended");
         b.save("pnpm", &[], &entries("x")).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Counts the listings of an owner's whole storage a store is asked for.
+    struct Listings {
+        inner: iwci_store::LocalStore,
+        detailed: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ObjectStore for Listings {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, iwci_store::StoreError> {
+            self.inner.get(key)
+        }
+        fn head(
+            &self,
+            key: &str,
+        ) -> Result<Option<iwci_store::ObjectMeta>, iwci_store::StoreError> {
+            self.inner.head(key)
+        }
+        fn put(&self, key: &str, bytes: &[u8], kind: &str) -> Result<(), iwci_store::StoreError> {
+            self.inner.put(key, bytes, kind)
+        }
+        fn put_if_absent(
+            &self,
+            key: &str,
+            bytes: &[u8],
+            kind: &str,
+        ) -> Result<bool, iwci_store::StoreError> {
+            self.inner.put_if_absent(key, bytes, kind)
+        }
+        fn list(&self, prefix: &str) -> Result<Vec<String>, iwci_store::StoreError> {
+            self.inner.list(prefix)
+        }
+        fn delete(&self, key: &str) -> Result<(), iwci_store::StoreError> {
+            self.inner.delete(key)
+        }
+        fn list_detailed(
+            &self,
+            prefix: &str,
+        ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
+            // The owner's whole storage, not one entry's parts.
+            if prefix == "caches/github.com-listings/" {
+                self.detailed
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+            self.inner.list_detailed(prefix)
+        }
+    }
+
+    /// Making room listed every object the owner keeps for every save,
+    /// which with thousands of task cache entries took longer than the save.
+    /// A recent listing stands in, with what was saved since added on, until
+    /// it says the quota would be passed.
+    #[test]
+    fn saves_with_room_to_spare_do_not_list_the_owner_again() {
+        let dir = std::env::temp_dir().join(format!("iwci-caches-listings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let listings = Arc::new(Listings {
+            inner: iwci_store::LocalStore::new(&dir).unwrap(),
+            detailed: Default::default(),
+        });
+        let store: Arc<dyn ObjectStore> = listings.clone();
+        let caches = StoreCaches::new(
+            store,
+            &RepoId::new("github.com-listings").unwrap(),
+            &RepoId::new("web").unwrap(),
+            "main",
+            "main",
+            Event::Push,
+            Some(300 << 10),
+        );
+        let count = || listings.detailed.load(std::sync::atomic::Ordering::SeqCst);
+        caches.save("one", &[], &big(100 << 10)).unwrap();
+        let first = count();
+        assert!(first > 0);
+        // Stores keep modification times to the second.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        caches.save("two", &[], &big(100 << 10)).unwrap();
+        assert_eq!(count(), first, "room to spare: no listing");
+        // Past the quota by the estimate: listed again, and the oldest goes.
+        caches.save("three", &[], &big(150 << 10)).unwrap();
+        assert!(count() > first);
+        assert!(caches.restore("one", &[], 1 << 30).unwrap().is_none());
+        assert!(caches.restore("three", &[], 1 << 30).unwrap().is_some());
         let _ = std::fs::remove_dir_all(dir);
     }
 
