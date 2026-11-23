@@ -428,3 +428,19 @@ fn only_a_read_only_server_takes_no_open() {
         NO_OPEN_SUPPORT | NO_OPENDIR_SUPPORT
     );
 }
+
+#[test]
+fn files_are_shown_as_the_owner_it_was_given() {
+    // `fuse_attr`, after `fuse_attr_out`'s 16 bytes: ino, size, blocks,
+    // atime, mtime and ctime (8 bytes each), their three nanosecond parts,
+    // mode and nlink (4 each), then uid and gid.
+    const UID: usize = 16 + 6 * 8 + 5 * 4;
+    let (s, _) = server();
+    let out = ok(&s, GETATTR, ROOT, &[0u8; 16]);
+    assert_eq!((u32_at(&out, UID), u32_at(&out, UID + 4)), (0, 0));
+
+    let fs = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+    let s = Server::read_only(fs.as_dyn(), fs.modes()).owned_by(1001, 1001);
+    let out = ok(&s, GETATTR, ROOT, &[0u8; 16]);
+    assert_eq!((u32_at(&out, UID), u32_at(&out, UID + 4)), (1001, 1001));
+}

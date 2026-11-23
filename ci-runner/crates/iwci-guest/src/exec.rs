@@ -112,6 +112,14 @@ pub fn run<W: Write + Send + 'static>(
     }
     fs::create_dir_all(ctx.run_dir)
         .map_err(|e| Failure::Refused(format!("making {}: {e}", ctx.run_dir.display())))?;
+    // The job user writes `$IWCI_OUTPUT` beside the scripts, in a directory
+    // the agent made as root.
+    #[cfg(target_os = "linux")]
+    if let (Some(user), Some(dir)) = (crate::user::current(), ctx.run_dir.parent()) {
+        std::os::unix::fs::chown(dir, Some(user.uid), Some(user.gid)).map_err(|e| {
+            Failure::Refused(format!("giving {} to the job user: {e}", dir.display()))
+        })?;
+    }
     let n = SCRIPTS.fetch_add(1, Ordering::Relaxed) + 1;
     let (ext, body) = script_file(exec.shell, &exec.script);
     let file: PathBuf = ctx.run_dir.join(format!("script-{n}.{ext}"));
@@ -139,6 +147,11 @@ pub fn run<W: Write + Send + 'static>(
     #[cfg(target_os = "linux")]
     if let Some(group) = &cgroup {
         group.enter_on_exec(&mut cmd);
+    }
+    // After the cgroup, whose file only root may write.
+    #[cfg(target_os = "linux")]
+    if let Some(user) = crate::user::current() {
+        user.apply(&mut cmd);
     }
     #[cfg(not(target_os = "linux"))]
     let _ = ctx.cgroups;

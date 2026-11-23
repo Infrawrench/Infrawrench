@@ -246,14 +246,28 @@ impl Serving {
     /// Starts serving `fs` (its files' modes in `modes`) on a socket at
     /// `socket`, which exists before this returns, so QEMU can be started
     /// at once.
-    pub fn start(fs: DynFs, modes: Modes, socket: &Path) -> Result<Serving, String> {
-        Self::with_server(Server::new(fs, modes), socket)
+    /// Every file is shown as owned by `owner` (uid, gid).
+    pub fn start(
+        fs: DynFs,
+        modes: Modes,
+        owner: (u32, u32),
+        socket: &Path,
+    ) -> Result<Serving, String> {
+        Self::with_server(Server::new(fs, modes).owned_by(owner.0, owner.1), socket)
     }
 
     /// [`Serving::start`] for a file system the machine only reads
     /// ([`Server::read_only`]).
-    pub fn start_read_only(fs: DynFs, modes: Modes, socket: &Path) -> Result<Serving, String> {
-        Self::with_server(Server::read_only(fs, modes), socket)
+    pub fn start_read_only(
+        fs: DynFs,
+        modes: Modes,
+        owner: (u32, u32),
+        socket: &Path,
+    ) -> Result<Serving, String> {
+        Self::with_server(
+            Server::read_only(fs, modes).owned_by(owner.0, owner.1),
+            socket,
+        )
     }
 
     fn with_server(server: Server, socket: &Path) -> Result<Serving, String> {

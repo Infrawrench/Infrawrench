@@ -343,6 +343,22 @@ impl Host {
                 .is_some_and(|image| image.info.features.iter().any(|f| f == FILES_FEATURE))
     }
 
+    /// The uid a Linux machine runs scripts as: the image's job user when
+    /// its agent has one and the job's files are streamed in, since those
+    /// are then served as that user's, so the job can write them. `None`
+    /// (root) otherwise, as with every image before the job user.
+    fn job_user(&self) -> Option<u32> {
+        (self.streams_files()
+            && self.linux.as_ref().is_some_and(|image| {
+                image
+                    .info
+                    .features
+                    .iter()
+                    .any(|f| f == iwci_vm_proto::JOB_USER_FEATURE)
+            }))
+        .then_some(iwci_vm_proto::JOB_UID)
+    }
+
     /// The kinds of machine it can start.
     pub fn platforms(&self) -> Vec<Os> {
         let mut out = Vec::new();
@@ -410,6 +426,15 @@ impl Host {
             }
         };
         let memory_mib = job.memory_bytes.div_ceil(1 << 20);
+        let user = if job.os == Os::Linux {
+            self.job_user()
+        } else {
+            None
+        };
+        // What the machine is shown its files as owned by: the job user's,
+        // or root's.
+        #[cfg(target_os = "linux")]
+        let owner = user.map_or((0, 0), |uid| (uid, uid));
         let sockets = Sockets {
             agent: dir.join("agent.sock"),
             // A Windows machine's saved state has a network device, so it
@@ -483,6 +508,7 @@ impl Host {
                             cpus: job.cpus.unwrap_or(self.config.cpus),
                             sockets: &sockets,
                             huge_pages,
+                            user,
                         });
                         (args, huge_pages)
                     })
@@ -558,6 +584,7 @@ impl Host {
                     (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(
                         fs.clone(),
                         job.scratch.files.modes(),
+                        owner,
                         path,
                     )?),
                     _ => None,
@@ -566,6 +593,7 @@ impl Host {
                     Some(path) => Some(crate::virtiofs::Serving::start_read_only(
                         job.fs.as_dyn(),
                         job.fs.modes(),
+                        owner,
                         path,
                     )?),
                     None => None,
