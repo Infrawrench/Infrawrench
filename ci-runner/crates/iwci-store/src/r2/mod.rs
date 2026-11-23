@@ -348,10 +348,12 @@ impl R2Store {
     /// One signed request, with retries. `label` is the key or prefix used in
     /// error messages, never the URL.
     ///
-    /// `limit` caps a 2xx response's body. It must be positive for anything
-    /// but HEAD (whose body is never read): ureq's limit reader fails the
-    /// first read once nothing is left, so a limit of 0 fails even an empty
-    /// body, such as the 204 that R2 and S3 answer a DELETE with.
+    /// `limit` caps a 2xx response's body: at most that many bytes. It must
+    /// be positive for anything but HEAD (whose body is never read): ureq's
+    /// limit reader fails the first read once nothing is left, so a limit of
+    /// 0 fails even an empty body, such as the 204 that R2 and S3 answer a
+    /// DELETE with, and a body of exactly its limit fails too, which is why
+    /// ureq is given one byte more.
     #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
@@ -472,7 +474,7 @@ impl R2Store {
             match response
                 .into_body()
                 .into_with_config()
-                .limit(body_limit)
+                .limit(body_limit.saturating_add(1))
                 .read_to_vec()
             {
                 Ok(b) => b,

@@ -427,6 +427,28 @@ fn delete_succeeds_on_r2s_empty_204_and_on_a_body() {
     );
 }
 
+/// An object of exactly the cap was written and then never read ("object
+/// larger than 268435456 bytes"): ureq's limit reader fails a body of
+/// exactly its limit. A split cache's first part was that size.
+#[test]
+fn an_object_of_exactly_the_cap_reads_back() {
+    let (state, endpoint) = serve();
+    let store = R2Store::with_endpoint(&endpoint, BUCKET, creds(), fast_options(1000)).unwrap();
+    let cap = usize::try_from(crate::MAX_OBJECT_SIZE).unwrap();
+    let bytes = vec![7u8; cap];
+    store
+        .put("caches/o/r/s/entries/big.zst", &bytes, "application/zstd")
+        .unwrap();
+    assert_eq!(
+        store
+            .get("caches/o/r/s/entries/big.zst")
+            .unwrap()
+            .map(|b| b.len()),
+        Some(cap)
+    );
+    assert_eq!(state.bad_signatures.load(Ordering::SeqCst), 0);
+}
+
 #[test]
 fn retries_server_errors_then_gives_up() {
     let (state, endpoint) = serve();

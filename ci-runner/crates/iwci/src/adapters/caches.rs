@@ -25,13 +25,21 @@ pub struct StoreCaches {
     /// Where it looks, in order: its own scope, then the default branch's.
     read_scopes: Vec<String>,
     /// Largest object an entry is stored in; a bigger entry is split into
-    /// parts (see [`StoreCaches::save_with_modes`]). The store's own cap,
+    /// parts (see [`StoreCaches::save_with_modes`]). [`PART_BYTES`],
     /// smaller in tests.
     part_bytes: u64,
     /// How old another save's parts must be before a save of the same key
     /// removes them ([`STALE_PARTS_SECS`]; 0 in tests).
     stale_parts_secs: u64,
 }
+
+/// The most an entry's object holds before the entry is split. Well under
+/// the store's cap ([`iwci_store::MAX_OBJECT_SIZE`]): R2's reader refuses
+/// a body of exactly the cap, which a part filled to it was, so every split
+/// entry was saved and then never read. Smaller parts also go up and come
+/// down in parallel.
+const PART_BYTES: u64 = 64 << 20;
+const _: () = assert!(PART_BYTES < iwci_store::MAX_OBJECT_SIZE);
 
 /// Parts of another save of the same key younger than this are left: jobs
 /// of one run sharing a key save at the same moment, and the last to
@@ -79,7 +87,7 @@ impl StoreCaches {
             quota,
             write_scope,
             read_scopes,
-            part_bytes: iwci_store::MAX_OBJECT_SIZE,
+            part_bytes: PART_BYTES,
             stale_parts_secs: STALE_PARTS_SECS,
         }
     }
