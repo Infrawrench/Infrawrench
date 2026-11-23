@@ -83,6 +83,7 @@ Every create form shows the monthly price as you fill it in, at the rate for the
 - **SSH** into any running Linode, including through a jumpbox on its private address.
 - **Linode actions** in the header: boot, shut down, reboot, resize with a plan picker, rebuild from an image, enable or cancel backups, take a snapshot and restore a backup.
 - **Security posture** flags Linodes without a Cloud Firewall, Linodes without backups, publicly readable or writable buckets, unencrypted volumes, firewalls that accept all inbound traffic by default and databases open to 0.0.0.0/0.
+- **Capacity runway** tracks each Managed Database's disk use against its size, and the month's network transfer against the account's pool.
 - **Provider status**: incidents on status.linode.com are matched to your resources by product and region.
 - **Domains**: Linode DNS Manager zones and records appear in the cross-provider [Domains](../features/domains.md) view, and records pointing at a bucket or NodeBalancer hostname nobody owns are flagged as dangling.
 - **Export to Terraform** (`linode/linode` provider): Linodes, volumes, NodeBalancers, LKE clusters, buckets, firewalls, domains and records, VPCs, StackScripts, Managed Databases and reserved IPs, each with its import ID.

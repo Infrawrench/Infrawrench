@@ -86,6 +86,13 @@ const list = (value: string[] | string | null | undefined): string =>
 
 const num = (value: number | null | undefined): number => (typeof value === "number" ? value : 0);
 
+/**
+ * The value when Resend sent a number, else nothing: the usages the capacity
+ * runway reads must stay absent when unreported, never a false zero.
+ */
+const reported = (key: string, value: number | null | undefined): Record<string, number> =>
+  typeof value === "number" ? { [key]: value } : {};
+
 // ---------------------------------------------------------------------- mappers
 
 export function mapAccount(accountId: string, usage: ResendUsage | null): ResourceInstance {
@@ -100,20 +107,23 @@ export function mapAccount(accountId: string, usage: ResendUsage | null): Resour
     {
       emailsToday: num(daily?.used),
       dailyLimit: num(daily?.limit),
-      emailsThisPeriod: num(monthly?.used),
-      monthlyLimit: num(monthly?.limit),
+      ...reported("emailsThisPeriod", monthly?.used),
+      ...reported("monthlyLimit", monthly?.limit),
       sentThisPeriod: num(monthly?.sent),
       receivedThisPeriod: num(monthly?.received),
       periodResetsAt: toIso(monthly?.resets_at),
-      contacts: num(usage?.contacts?.used),
-      contactsLimit: num(usage?.contacts?.limit),
-      domains: num(usage?.domains?.used),
-      domainsLimit: num(usage?.domains?.limit),
-      segments: num(usage?.segments?.used),
-      segmentsLimit: num(usage?.segments?.limit),
+      ...reported("contacts", usage?.contacts?.used),
+      ...reported("contactsLimit", usage?.contacts?.limit),
+      ...reported("domains", usage?.domains?.used),
+      ...reported("domainsLimit", usage?.domains?.limit),
+      ...reported("segments", usage?.segments?.used),
+      ...reported("segmentsLimit", usage?.segments?.limit),
       broadcastsSent: num(usage?.broadcasts?.used),
-      automationRuns: num(usage?.automation_runs?.used),
-      automationRunsLimit: num(usage?.automation_runs?.limit),
+      ...reported("automationRuns", usage?.automation_runs?.used),
+      ...reported("automationRunsLimit", usage?.automation_runs?.limit),
+      ...(usage?.automation_runs?.resets_at
+        ? { automationRunsResetAt: toIso(usage.automation_runs.resets_at) }
+        : {}),
       aiCredits: num(usage?.ai_credits?.used),
       aiCreditsLimit: num(usage?.ai_credits?.limit),
       rateLimit: rate?.limit ? `${rate.limit} per ${rate.duration ?? "second"}` : "",

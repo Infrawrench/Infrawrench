@@ -46,7 +46,7 @@ You see Xata's invoices by month, and the upcoming invoice keeps the current mon
 
 ## Quotas
 
-The quota radar tracks projects, active branches, branches per project, members and pending invitations against your organization's limits.
+The quota radar tracks projects, active branches, branches per project, members and pending invitations against your organization's limits. Capacity runway tracks how much of the organization's active credits is spent, and, for branches pinned to a dashboard, the fullest instance's disk against the branch's storage size.
 
 ## Status
 

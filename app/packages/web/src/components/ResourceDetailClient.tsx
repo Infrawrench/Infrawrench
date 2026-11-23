@@ -37,6 +37,8 @@ import {
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
+  ResourceRunwayPanel,
+  type ResourceRunwayResponse,
   CloseIcon,
 } from "@infrawrench/ui";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
@@ -189,6 +191,8 @@ interface Props {
   schedulable?: boolean | undefined;
   /** The type flags the field holding the schedule it runs on: offer the Heartbeat tab. */
   hasSchedule?: boolean | undefined;
+  /** The type declares a usage with a limit: the Metrics tab carries runway charts. */
+  hasCapacityRunway?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -239,6 +243,7 @@ export function ResourceDetailClient({
   supportsMetrics,
   schedulable,
   hasSchedule,
+  hasCapacityRunway,
   resourceFields,
   parentResourceId,
 }: Props) {
@@ -1622,6 +1627,20 @@ export function ResourceDetailClient({
                   }
                 : {})}
               metricSeries={metricSeries}
+              {...(hasCapacityRunway
+                ? {
+                    renderRunway: () => (
+                      <ResourceRunwayPanel
+                        key={resourceId}
+                        load={() =>
+                          apiGet<ResourceRunwayResponse>(
+                            `/api/org/${encodeURIComponent(orgId)}/quotas/runway/resource?resourceId=${encodeURIComponent(resourceId)}`,
+                          )
+                        }
+                      />
+                    ),
+                  }
+                : {})}
               renderChangesTab={() => (
                 <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
               )}

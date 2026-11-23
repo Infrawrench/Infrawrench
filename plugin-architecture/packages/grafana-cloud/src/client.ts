@@ -593,7 +593,7 @@ export class GrafanaCloudClient implements PluginClient {
       }),
     ]);
     const r = mapOrganization(accountId, org, {
-      ...(bill ? { monthToDate: bill.total } : {}),
+      ...(bill ? { monthToDate: bill.total, bill } : {}),
       ...(stacks ? { stackCount: stacks.length } : {}),
     });
     if (withBill && bill) r.resolvedOutputs[BILL_SUMMARY_KEY] = JSON.stringify(bill);

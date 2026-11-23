@@ -336,6 +336,8 @@ export function mapPlatform(
       totalSpace: fs?.totalSpace,
       usedSpace: fs?.usedSpace,
       freeSpace: fs?.freeSpace,
+      fileStoreUsedBytes: parseSize(fs?.usedSpace),
+      fileStoreTotalBytes: parseSize(fs?.totalSpace),
     },
     { resolvedOutputs: { baseUrl, artifactoryUrl: `${baseUrl}/artifactory` } },
   );

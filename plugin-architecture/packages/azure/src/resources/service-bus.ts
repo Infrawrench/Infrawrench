@@ -12,6 +12,22 @@ export const ServiceBusNamespaceResourceType = rt({
     f("provisioningState", "Provisioning State"),
     f("status", "Status", { showcase: true, required: false }),
     f("createdAt", "Created", { required: false }),
+    // Read from the namespace's queue and topic lists (`sizeInBytes` against
+    // `maxSizeInMegabytes`); an entity at its maximum size refuses new messages.
+    // https://learn.microsoft.com/rest/api/servicebus/controlplane-stable/queues/list-by-namespace
+    // (read 2026-11-23)
+    f("fullestEntityPercent", "Fullest Entity Used (%)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "How full the queue or topic closest to its maximum size is",
+      usage: { limit: { constant: 100 }, unit: "%", label: "Fullest queue or topic" },
+    }),
+    f("fullestEntity", "Fullest Entity", {
+      required: false,
+      editable: false,
+      description: "The queue or topic closest to its maximum size",
+    }),
   ],
   outputs: [
     o("serviceBusEndpoint", "Endpoint"),

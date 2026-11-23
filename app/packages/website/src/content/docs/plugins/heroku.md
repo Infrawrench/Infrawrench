@@ -37,6 +37,7 @@ Connect Heroku to scale and roll back apps, manage config vars, add-ons, domains
 - **Promote in a pipeline**: **Promote** copies the source app's current build to every app in the next stage. Config vars stay per app.
 - **Track costs**: invoices are imported per month. Team invoices are split into platform, add-on and data charges, with credits as their own line. The current month shows once Heroku issues its invoice.
 - **Track credits**: unexpired account credits show in credit burndown.
+- **Capacity runway** tracks each app's slug size against the 1000 MB slug limit.
 
 ![Heroku app detail view showing the Restart All Dynos, Run One-Off Dyno and Roll Back header actions, the Formation table and Recent Releases](https://agent-assets.infrawrench.com/docs-screenshots/plugins/heroku/app-detail.png)
 

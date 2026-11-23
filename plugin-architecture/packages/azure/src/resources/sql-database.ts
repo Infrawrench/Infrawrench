@@ -42,6 +42,23 @@ export const SQLDatabaseResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display
+  // name: the "Metric" column for `storage_percent` (unit Percent; not
+  // reported for Hyperscale) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-sql-servers-databases-metrics
+  capacityMetrics: [
+    {
+      seriesLabel: "Data space used percent",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Data space",
+    },
+    // "Sessions percentage" (`sessions_percent`) and "Workers percentage"
+    // (`workers_percent`), both Percent of the service objective's limit; a database
+    // at either limit refuses new sessions or requests. Same page, read 2026-11-23.
+    { seriesLabel: "Sessions percentage", limit: { constant: 100 }, unit: "%", label: "Sessions" },
+    { seriesLabel: "Workers percentage", limit: { constant: 100 }, unit: "%", label: "Workers" },
+  ],
   peerIntegrations: [
     {
       pluginId: "mssql",

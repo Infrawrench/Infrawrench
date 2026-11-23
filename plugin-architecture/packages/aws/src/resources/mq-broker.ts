@@ -38,6 +38,22 @@ export const MQBrokerResourceType = rt({
   iconKey: "queue",
   supportsCreate: true,
   supportsMetrics: true,
+  // `mqBrokerMetrics` charts ActiveMQ's `StorePercentUsage` (the broker
+  // refuses messages at 100) as "Store Used", and RabbitMQ's
+  // `RabbitMQMemUsed` over `RabbitMQMemLimit` (publishers are blocked past
+  // it) as "Memory Used (of limit)":
+  // https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/security-logging-monitoring-cloudwatch.html
+  // and https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/rabbitmq-logging-monitoring.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Store Used", limit: { constant: 100 }, unit: "%", label: "Message Store" },
+    {
+      seriesLabel: "Memory Used (of limit)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "mq-connection",

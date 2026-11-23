@@ -33,6 +33,15 @@ export const PlatformResourceType = rt({
     f("totalSpace", "File Store Capacity", ro),
     f("usedSpace", "File Store Used", ro),
     f("freeSpace", "File Store Free", ro),
+    // `fileStoreSummary.usedSpace` ("32.22 GB (15.77%)") against `totalSpace` ("204.28 GB")
+    // from `GET /artifactory/api/storageinfo`, parsed to bytes
+    // (docs.jfrog.com/artifactory/reference/getStorageSummaryInfo, read 2026-11-23).
+    f("fileStoreUsedBytes", "File Store Used (bytes)", {
+      ...ro,
+      kind: "number",
+      usage: { limit: { field: "fileStoreTotalBytes" }, unit: "bytes", label: "File store" },
+    }),
+    f("fileStoreTotalBytes", "File Store Capacity (bytes)", { ...ro, kind: "number" }),
   ],
   outputs: [o("baseUrl", "Platform URL"), o("artifactoryUrl", "Artifactory URL")],
   supportsMetrics: true,

@@ -267,7 +267,17 @@ interface RegistryCapability {
   }>;
 }
 
-function mapRegistry(r: OvhRegistry, accountId: string): ResourceInstance {
+/** `cloud.containerRegistry.Plan`, as GET /containerRegistry/{id}/plan answers it. */
+interface RegistryPlan {
+  name?: string;
+  registryLimits?: { imageStorage?: number };
+}
+
+function mapRegistry(
+  r: OvhRegistry,
+  accountId: string,
+  plan: RegistryPlan | null = null,
+): ResourceInstance {
   const created = r.createdAt ?? new Date().toISOString();
   return {
     id: `${accountId}:container-registry:${r.id}`,
@@ -280,6 +290,14 @@ function mapRegistry(r: OvhRegistry, accountId: string): ResourceInstance {
       region: r.region ?? "",
       status: r.status ?? "",
       sizeGb: r.size ? Math.round((r.size / 1e9) * 100) / 100 : 0,
+      // `size` ("Current size of the registry (bytes)") against the plan's
+      // `registryLimits.imageStorage` ("Docker image storage limits in
+      // bytes"; https://eu.api.ovh.com/v1/cloud.json, read 2026-11-23).
+      ...(r.size != null ? { usedBytes: r.size } : {}),
+      ...(plan?.name ? { plan: plan.name } : {}),
+      ...(plan?.registryLimits?.imageStorage
+        ? { storageLimitBytes: plan.registryLimits.imageStorage }
+        : {}),
       version: r.version ?? "",
       iamEnabled: r.iamEnabled ?? false,
     },
@@ -293,7 +311,17 @@ function mapRegistry(r: OvhRegistry, accountId: string): ResourceInstance {
 
 export async function listRegistries(api: OvhApi, accountId: string): Promise<ResourceInstance[]> {
   const registries = await api.fetch<OvhRegistry[]>(api.cloudPath("/containerRegistry"));
-  return registries.map((r) => mapRegistry(r, accountId));
+  // The registry object does not name its plan; GET .../plan does. Projects
+  // hold a handful of registries, and a failed read only leaves the plan
+  // fields out.
+  const plans = await Promise.all(
+    registries.map((r) =>
+      api
+        .fetch<RegistryPlan>(api.cloudPath(`/containerRegistry/${enc(r.id)}/plan`))
+        .catch(() => null),
+    ),
+  );
+  return registries.map((r, i) => mapRegistry(r, accountId, plans[i] ?? null));
 }
 
 export async function registryCreateConfig(api: OvhApi): Promise<CreateResourceConfig> {

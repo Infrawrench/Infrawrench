@@ -50,7 +50,10 @@ export function databaseSeries(body: Record<string, Chart>): MetricSeries[] {
     // Prefer the master/primary node's column.
     let idx = cols.findIndex((c, i) => i > 0 && /master|primary/i.test(c.label ?? ""));
     if (idx < 1) idx = 1;
+    // A node with no sample at a timestamp answers `null` there, which is no
+    // reading rather than a zero.
     const points = rows
+      .filter((r) => r[idx] != null)
       .map((r) => ({ timestamp: Date.parse(String(r[0])), value: Number(r[idx]) }))
       .filter((p) => Number.isFinite(p.timestamp) && r0ok(p.value));
     if (points.length) out.push({ label, ...(unit ? { unit } : {}), points });

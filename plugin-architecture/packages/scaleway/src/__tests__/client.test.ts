@@ -1349,6 +1349,34 @@ describe("fetchMetricSeries", () => {
     ).toEqual([]);
   });
 
+  it("emits the RDB usage series the type declares as capacity", async () => {
+    const c = makeClient();
+    rdbMethods.getInstanceMetrics.mockResolvedValue({
+      timeseries: [
+        {
+          name: "disk_usage_percent",
+          metadata: { node: "node-0" },
+          points: [{ timestamp: new Date(1_700_000_000_000), value: 41 }],
+        },
+        {
+          name: "total_connections_percent",
+          metadata: { node: "node-0" },
+          points: [{ timestamp: new Date(1_700_000_000_000), value: 12 }],
+        },
+      ],
+    });
+    const series = await c.fetchMetricSeries(
+      "rdb-instance",
+      `${ACCOUNT}:rdb-instance:fr-par/db1`,
+      ACCOUNT,
+      { startMs: 1000, endMs: 2000 },
+    );
+    const type = plugin.resourceTypes.find((t) => t.id === "rdb-instance")!;
+    const declared = (type.capacityMetrics ?? []).map((m) => m.seriesLabel);
+    expect(declared).toEqual(["Disk Usage", "Connection Usage"]);
+    expect(series.map((s) => s.label)).toEqual(declared);
+  });
+
   it("maps RDB instance metrics without a cockpit token", async () => {
     const c = makeClient();
     rdbMethods.getInstanceMetrics.mockResolvedValue({

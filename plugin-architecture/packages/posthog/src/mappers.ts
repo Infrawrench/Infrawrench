@@ -264,3 +264,35 @@ export function mapMember(accountId: string, m: MemberRow): ResourceInstance {
     joinedAt: m.joined_at,
   });
 }
+
+/**
+ * The billing products whose usage the organization stores against the
+ * quantity at which PostHog stops ingesting, keyed by product `type`.
+ */
+const TRACKED_PRODUCTS: ReadonlyArray<[type: string, usedKey: string, limitKey: string]> = [
+  ["product_analytics", "eventsUsed", "eventsLimit"],
+  ["session_replay", "recordingsUsed", "recordingsLimit"],
+  ["feature_flags", "flagRequestsUsed", "flagRequestsLimit"],
+  ["error_tracking", "exceptionsUsed", "exceptionsLimit"],
+  ["surveys", "surveyResponsesUsed", "surveyResponsesLimit"],
+];
+
+/**
+ * Each tracked product's `current_usage` and `usage_limit` from `GET /api/billing/`
+ * `products` (BillingProductV2Type in github.com/PostHog/posthog
+ * frontend/src/types.ts, read 2026-11-23). `usage_limit` is the quantity at which
+ * PostHog stops ingesting: the free allocation, or what the billing limit buys. A
+ * `null` limit (no cap) or a missing usage leaves the field out, never a zero.
+ */
+export function productUsage(products: ReadonlyArray<Record<string, unknown>> | undefined) {
+  const out: Record<string, number> = {};
+  for (const [type, usedKey, limitKey] of TRACKED_PRODUCTS) {
+    const product = products?.find((p) => p["type"] === type);
+    if (!product) continue;
+    const used = product["current_usage"];
+    const limit = product["usage_limit"];
+    if (typeof used === "number" && Number.isFinite(used)) out[usedKey] = used;
+    if (typeof limit === "number" && Number.isFinite(limit)) out[limitKey] = limit;
+  }
+  return out;
+}

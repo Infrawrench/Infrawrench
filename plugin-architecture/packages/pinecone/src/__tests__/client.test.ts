@@ -10,7 +10,7 @@ import {
   parseTags,
   tagPatch,
 } from "../mappers.js";
-import { parsePrometheusText, prometheusSeries } from "../metrics.js";
+import { parsePrometheusText, prometheusSeries, statsSeries } from "../metrics.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import { pineconeTerraformExport } from "../terraform.js";
@@ -641,6 +641,20 @@ describe("metrics", () => {
       ["Records", 7],
       ["Namespaces", 2],
     ]);
+  });
+
+  it("emits every series the index type declares as a capacity usage", () => {
+    const series = statsSeries(
+      { totalVectorCount: 1, indexFullness: 0.4, memoryFullness: 0.5, storageFullness: 0.25 },
+      1,
+    );
+    const values = new Map(series.map((s) => [s.label, s.points[0]!.value]));
+    const index = RESOURCE_TYPES.find((t) => t.id === "index")!;
+    const declared = (index.capacityMetrics ?? []).map((m) => m.seriesLabel);
+    expect(declared).toHaveLength(3);
+    for (const label of declared) expect(values.has(label)).toBe(true);
+    expect(values.get("Fullness")).toBeCloseTo(40);
+    expect(values.get("Storage Fullness (stats)")).toBeCloseTo(25);
   });
 });
 

@@ -216,6 +216,8 @@ describe("managed kubernetes", () => {
       flavor: "b3-8",
       nextUpgradeVersions: "1.33",
       etcdUsagePercent: 25,
+      etcdUsedBytes: 250,
+      etcdQuotaBytes: 1000,
       updatePolicy: "MINIMAL_DOWNTIME",
     });
   });
@@ -233,7 +235,14 @@ describe("managed kubernetes", () => {
       "GET /kube/k1/metrics/etcdUsage": new Status(code),
     });
     const [k] = await makeClient().listResources("managed-kube", ACCOUNT);
-    for (const key of ["flavor", "nodeCount", "nodePoolCount", "etcdUsagePercent"]) {
+    for (const key of [
+      "flavor",
+      "nodeCount",
+      "nodePoolCount",
+      "etcdUsagePercent",
+      "etcdUsedBytes",
+      "etcdQuotaBytes",
+    ]) {
       expect(k!.fields).not.toHaveProperty(key);
     }
     expect(k!.fields).toMatchObject({ name: "prod", version: "1.32" });
@@ -522,5 +531,36 @@ describe("container registry", () => {
     });
     expect(mutations()[0]!.body).toEqual({ name: "team", region: "BHS", planID: "plan-bhs-s" });
     expect(r.resolvedOutputs["url"]).toBe("https://x");
+  });
+});
+
+describe("container registry capacity", () => {
+  it("stores the registry's size against its plan's image storage limit", async () => {
+    route({
+      "GET /containerRegistry": [
+        { id: "r1", name: "team", region: "GRA", size: 40e9, status: "READY" },
+      ],
+      "GET /containerRegistry/r1/plan": {
+        id: "p1",
+        name: "SMALL",
+        registryLimits: { imageStorage: 200e9, parallelRequest: 15 },
+      },
+    });
+    const [r] = await makeClient().listResources("container-registry", ACCOUNT);
+    expect(r!.fields).toMatchObject({
+      usedBytes: 40e9,
+      storageLimitBytes: 200e9,
+      plan: "SMALL",
+    });
+  });
+
+  it("keeps the registry and leaves the limit out when the plan read fails", async () => {
+    route({
+      "GET /containerRegistry": [{ id: "r1", name: "team", region: "GRA", size: 40e9 }],
+      "GET /containerRegistry/r1/plan": new Status(503),
+    });
+    const [r] = await makeClient().listResources("container-registry", ACCOUNT);
+    expect(r!.fields["usedBytes"]).toBe(40e9);
+    expect(r!.fields).not.toHaveProperty("storageLimitBytes");
   });
 });

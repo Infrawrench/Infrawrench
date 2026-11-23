@@ -72,6 +72,7 @@ export function mapWorkspace(
       ...(customer?.creditBalance !== undefined
         ? { creditBalance: round2(customer.creditBalance) }
         : {}),
+      billingPeriodStart: customer?.billingPeriod?.start ?? "",
       billingPeriodEnd: customer?.billingPeriod?.end ?? "",
       ...(customer?.usageLimit?.softLimit !== undefined
         ? { softLimit: customer.usageLimit.softLimit }

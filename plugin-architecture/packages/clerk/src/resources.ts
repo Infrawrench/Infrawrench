@@ -108,11 +108,15 @@ export const OrganizationResourceType = rt({
       description: "0 means unlimited.",
     }),
     f("adminDeleteEnabled", "Admins Can Delete", { kind: "boolean", required: false }),
+    // `members_count` (listed with `include_members_count`) against `max_allowed_memberships`,
+    // "the maximum number of memberships allowed for this organization", 0 for none
+    // (github.com/clerk/openapi-specs bapi/2026-05-12.yml, read 2026-11-23).
     f("membersCount", "Members", {
       showcase: true,
       kind: "number",
       required: false,
       editable: false,
+      usage: { limit: { field: "maxAllowedMemberships" }, unit: "members", label: "Member limit" },
     }),
     f("pendingInvitations", "Pending Invitations", {
       kind: "number",

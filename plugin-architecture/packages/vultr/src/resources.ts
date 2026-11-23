@@ -520,6 +520,13 @@ export const DatabaseResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // "Disk Used" is `usage.disk.percentage` from GET /v2/databases/{id}/usage
+  // (`current_gb` of `max_gb`; metrics.ts), so the ceiling is 100
+  // (https://github.com/vultr/govultr/blob/master/database.go
+  // `DatabaseDiskUsage`, read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Disk Used", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   carbon: { regionFieldKey: "region", vcpus: { from: "field", fieldKey: "vcpus" } },
   // Vultr backs up every MySQL, PostgreSQL and Valkey cluster daily; Kafka
   // has no backups at all, which the lister records as false.
@@ -974,7 +981,21 @@ export const AccountResourceType = rt({
     f("pendingCharges", "Month-to-date Charges (USD)", { kind: "number", required: false }),
     f("lastPaymentDate", "Last Payment", { required: false }),
     f("lastPaymentAmount", "Last Payment Amount (USD)", { kind: "number", required: false }),
-    f("bandwidthGbOut", "Bandwidth Out This Month (GB)", { kind: "number", required: false }),
+    // `GET /account/bandwidth` `current_month_to_date`: outbound GB against the
+    // pool of instance, free and purchased credits. Only outbound transfer
+    // counts, and the pool resets on the 1st of each calendar month
+    // (https://docs.vultr.com/support/platform/billing/how-are-bandwidth-caps-calculated,
+    // read 2026-11-18).
+    f("bandwidthGbOut", "Bandwidth Out This Month (GB)", {
+      kind: "number",
+      required: false,
+      usage: {
+        limit: { field: "bandwidthCreditsGb" },
+        unit: "GB",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Bandwidth",
+      },
+    }),
     f("bandwidthCreditsGb", "Bandwidth Pool (GB)", { kind: "number", required: false }),
     f("bandwidthProjectedOverage", "Projected Overage (USD)", { kind: "number", required: false }),
   ],

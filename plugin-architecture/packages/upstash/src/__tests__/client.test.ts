@@ -1,6 +1,8 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { UpstashClient, statsPeriod } from "../client.js";
+import { RESOURCE_TYPES, T } from "../resource-types.js";
 import { parseUpstashTime, redisConnectionString } from "../mappers.js";
 import { mapComponent } from "../status-feed.js";
 import { upstashTerraformExport } from "../terraform.js";
@@ -572,5 +574,39 @@ describe("helpers", () => {
       kind: "string",
       value: "eu-west-1",
     });
+  });
+});
+
+describe("capacity runway", () => {
+  const point = (y: number) => [{ x: "2026-11-23 10:00:00.000000000 +0000 UTC", y }];
+  const typeOf = (id: string) => RESOURCE_TYPES.find((t) => t.id === id)!;
+
+  it("names series the metrics emit, against limits the listed rows carry", async () => {
+    mockFetch({
+      [`GET ${API}/redis/stats/db1`]: { connection_count: point(40) },
+      [`GET ${API}/vector/index/v1/stats`]: { vector_count: point(900) },
+      [`GET ${API}/search/s1/stats`]: { vector_count: point(12) },
+      [`GET ${API}/redis/databases`]: [{ database_id: "db1", db_max_clients: 10000 }],
+      [`GET ${API}/vector/index`]: [{ id: "v1", name: "v", max_vector_count: 10000 }],
+    });
+    const client = hostClient(new UpstashClient(creds));
+    const cases: Array<[string, string, string]> = [
+      [T.redis, `${ACC}:${T.redis}:db1`, "Connections"],
+      [T.vector, `${ACC}:${T.vector}:v1`, "Vectors"],
+      [T.search, `${ACC}:${T.search}:s1`, "Documents"],
+    ];
+    for (const [typeId, id, label] of cases) {
+      const series = await client.fetchMetricSeries(typeId, id, ACC);
+      expect(series.map((s) => s.label)).toEqual([label]);
+      expect(typeOf(typeId).capacityMetrics?.map((m) => m.seriesLabel)).toEqual([label]);
+    }
+
+    const [redis] = await client.listResources(T.redis, ACC);
+    const [vector] = await client.listResources(T.vector, ACC);
+    const limitOf = (typeId: string, fields: Record<string, unknown>) =>
+      resolveCapacityLimit(capacityDeclarations(typeOf(typeId))[0]!.declaration.limit, fields)
+        ?.limit;
+    expect(limitOf(T.redis, redis!.fields)).toBe(10000);
+    expect(limitOf(T.vector, vector!.fields)).toBe(10000);
   });
 });

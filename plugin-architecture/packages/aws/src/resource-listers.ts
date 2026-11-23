@@ -472,6 +472,7 @@ export async function listEKSClusters(
       // Fetch managed node groups so we can surface instance type, disk size, and node count
       let nodeGroupCount = 0;
       let totalNodeCount = 0;
+      let maxNodeCount = 0;
       let instanceTypesSet = new Set<string>();
       let diskSizeGb = 0;
       try {
@@ -492,6 +493,7 @@ export async function listEKSClusters(
             const ng = ngDetail.nodegroup;
             const scaling = (ng["scalingConfig"] as Record<string, unknown> | undefined) ?? {};
             totalNodeCount += Number(scaling["desiredSize"] ?? 0);
+            maxNodeCount += Number(scaling["maxSize"] ?? 0);
             const types = (ng["instanceTypes"] as string[] | undefined) ?? [];
             for (const t of types) instanceTypesSet.add(t);
             if (!diskSizeGb) diskSizeGb = Number(ng["diskSize"] ?? 0);
@@ -533,6 +535,17 @@ export async function listEKSClusters(
           roleArn: String(c["roleArn"] ?? ""),
           nodeGroupCount,
           nodeCount: totalNodeCount,
+          // Sum of each managed node group's `scalingConfig.maxSize`: the
+          // most nodes the groups can scale to. Absent when none were read.
+          ...(maxNodeCount > 0 ? { maxNodeCount } : {}),
+          // `controlPlaneScalingConfig.tier`; a cluster that has never opted
+          // into Provisioned Control Plane runs in Standard mode:
+          // https://docs.aws.amazon.com/eks/latest/userguide/eks-provisioned-control-plane.html
+          // (read 2026-11-23).
+          controlPlaneTier: String(
+            (c["controlPlaneScalingConfig"] as Record<string, unknown> | undefined)?.["tier"] ??
+              "standard",
+          ),
           instanceTypes: Array.from(instanceTypesSet).join(", "),
           diskSizeGb,
           vpcId: String(vpcConfig?.["vpcId"] ?? ""),
@@ -615,6 +628,7 @@ export async function listRDSInstances(
         engineLifecycleSupport: String(db["EngineLifecycleSupport"] ?? ""),
         status: String(db["DBInstanceStatus"] ?? ""),
         allocatedStorage: Number(db["AllocatedStorage"] ?? 0),
+        ...rdsStorageLimit(engine, db),
         availabilityZone: String(db["AvailabilityZone"] ?? ""),
         multiAZ: String(db["MultiAZ"]) === "true",
         vpcId: String(subnetGroup?.["VpcId"] ?? ""),
@@ -637,6 +651,29 @@ export async function listRDSInstances(
       updatedAt: ctx.now(),
     };
   });
+}
+
+/**
+ * The size an instance's storage can reach before it is full: the storage
+ * autoscaling ceiling (`MaxAllocatedStorage`, GiB) when autoscaling is on,
+ * else the allocated size (`AllocatedStorage`, GiB), both from
+ * DescribeDBInstances
+ * (https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DBInstance.html,
+ * read 2026-11-23). Aurora instances keep their data on the cluster volume
+ * and report a placeholder size, so they get no limit.
+ */
+export function rdsStorageLimit(
+  engine: string,
+  db: Record<string, unknown>,
+): { storageLimitGb?: number } {
+  if (engine.startsWith("aurora")) return {};
+  const max = Number(db["MaxAllocatedStorage"] ?? 0);
+  const allocated = Number(db["AllocatedStorage"] ?? 0);
+  const limit = Math.max(
+    Number.isFinite(max) ? max : 0,
+    Number.isFinite(allocated) ? allocated : 0,
+  );
+  return limit > 0 ? { storageLimitGb: limit } : {};
 }
 
 function buildRdsConnectionString(

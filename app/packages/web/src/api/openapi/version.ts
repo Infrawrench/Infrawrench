@@ -579,4 +579,9 @@
 // take optional `vars`; a resource description names a by-name reference's
 // `match` and `matches`); `env-files` joins the workspace `TabTarget` enum.
 // Additive.
-export const API_VERSION = "1.124.0";
+// 1.125.0: capacity runway under `/api/org/:orgId/quotas`: `GET /runway` and
+// `GET /runway/resource?resourceId=` with their `Runway*` schemas, and
+// `runwayDays` and `allowanceThreshold` on `QuotaAlertSettings` and its
+// update body; `filestore-instance` joins the `resourceTypeId` enum (the GCP
+// type was implemented but never registered). Additive.
+export const API_VERSION = "1.125.0";

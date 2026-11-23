@@ -40,7 +40,7 @@ Connect Exoscale with an IAM API key to create, edit and run your resources in e
 
 ## Metrics
 
-DBaaS services chart CPU, memory, disk, load, disk I/O and network over the window you pick.
+DBaaS services chart CPU, memory, disk, load, disk I/O and network over the window you pick. Capacity runway tracks the disk use.
 
 ## Status
 

@@ -65,6 +65,16 @@ export const DeploymentResourceType = rt({
     f("alias", "Alias", { required: false, editable: false }),
     f("template", "Hardware Profile", { required: false, editable: false }),
     f("totalMemoryGb", "Total Memory (GB)", { kind: "number", required: false, editable: false }),
+    // Each Elasticsearch instance's `disk.disk_space_used` over `disk.disk_space_available`
+    // ("the amount of total disk space available to the container in MB") from
+    // `GET /api/v1/deployments/{id}` (elastic.co/docs/api/doc/cloud, ClusterInstanceDiskInfo,
+    // checked 2026-11-18); the fullest instance is kept.
+    f("diskUsedPercent", "Disk Used (fullest instance, %)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { constant: 100 }, unit: "%", label: "Disk" },
+    }),
     f("autoscaling", "Autoscaling", { kind: "boolean", required: false, editable: false }),
     f("solution", "Solution", { required: false, editable: false }),
     f("trafficFilterIds", "Traffic Filters", { required: false, editable: false }),

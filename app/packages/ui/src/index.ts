@@ -839,6 +839,41 @@ export type {
   QuotaSnapshot,
   QuotaTrend,
 } from "@infrawrench/client-core";
+/**
+ * Capacity runway: declared resource usages against the limits that stop
+ * them, with the projection. The arithmetic lives in client-core so the poller,
+ * the CLI and both apps agree.
+ */
+export {
+  alertableRunway,
+  forecastAllowance,
+  forecastRunway,
+  formatRunwayAmount,
+  formatRunwayDays,
+  runwayStatus,
+  sortRunwayRows,
+  DEFAULT_ALLOWANCE_THRESHOLD,
+  DEFAULT_RUNWAY_DAYS,
+  RUNWAY_ALERT_LIMITS,
+  RUNWAY_STATUSES,
+  RUNWAY_STATUS_LABELS,
+  RUNWAY_WINDOW_DAYS,
+} from "@infrawrench/client-core";
+export type {
+  ResourceRunwayResponse,
+  ResourceRunwayRow,
+  RunwayCycle,
+  RunwayForecast,
+  RunwayListResponse,
+  RunwayPoint,
+  RunwayRow,
+  RunwayStatus,
+} from "@infrawrench/client-core";
+export { RunwaySection } from "./quotas/RunwaySection.js";
+export type { RunwaySectionProps } from "./quotas/RunwaySection.js";
+export { RunwayChart } from "./capacity/RunwayChart.js";
+export { ResourceRunwayPanel } from "./capacity/ResourceRunwayPanel.js";
+export type { ResourceRunwayPanelProps } from "./capacity/ResourceRunwayPanel.js";
 export { QuotasSection } from "./quotas/QuotasSection.js";
 export { QuotasIcon } from "./components/icons/QuotasIcon.js";
 export type { QuotasSectionProps } from "./quotas/QuotasSection.js";

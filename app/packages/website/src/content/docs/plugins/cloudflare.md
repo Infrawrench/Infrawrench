@@ -264,6 +264,8 @@ Resources with useful traffic or health data get a **Metrics** tab, so you can c
 - **Basin catalog and table**: catalog requests, failures and average latency, maintenance jobs and compaction volume.
 - **Analytics Engine dataset**: data points written and rows stored.
 
+Capacity runway tracks each D1 database's size against the 10 GB per-database limit on Workers Paid (Free caps a database at 500 MB, which the API doesn't reveal), and each queue's backlog against the 25 GB per-queue limit.
+
 The token needs **Account Analytics:Read** for account resources and **Zone Analytics:Read** for zone resources. The "Create a token with these scopes" link includes both. A resource with no traffic in the selected window shows an empty Metrics tab, which is expected.
 
 ## Tips & limits

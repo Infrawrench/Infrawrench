@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { mapBounded, ReadBudget, startingRow } from "../arm-list.js";
+import { mapBounded, ReadBudget, readOptionalArmList, startingRow } from "../arm-list.js";
 import {
   ARM,
   listAllPages,
@@ -221,6 +221,13 @@ export async function listAKSClusters(
     const props = cluster["properties"] as Record<string, unknown> | undefined;
     const agentPools = props?.["agentPoolProfiles"] as Array<Record<string, unknown>> | undefined;
     const totalNodes = agentPools?.reduce((sum, p) => sum + Number(p["count"] ?? 0), 0) ?? 0;
+    // Pools the cluster autoscaler manages: `enableAutoScaling` with a `maxCount`
+    // ("The maximum number of nodes for auto-scaling"), on the agent pool profiles
+    // the list already returns.
+    // https://learn.microsoft.com/rest/api/aks/managed-clusters/list (read 2026-11-23)
+    const autoscaled = (agentPools ?? []).filter(
+      (p) => p["enableAutoScaling"] === true && typeof p["maxCount"] === "number",
+    );
     const firstPool = agentPools?.[0];
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
     const powerState = props?.["powerState"] as Record<string, unknown> | undefined;
@@ -247,6 +254,13 @@ export async function listAKSClusters(
         powerState: String(powerState?.["code"] ?? "Running"),
         nodeCount: totalNodes,
         nodePoolCount: agentPools?.length ?? 0,
+        // Blank, not 0, when no pool autoscales: there is no ceiling to approach.
+        autoscaleNodeCount: autoscaled.length
+          ? autoscaled.reduce((sum, p) => sum + Number(p["count"] ?? 0), 0)
+          : "",
+        autoscaleMaxNodes: autoscaled.length
+          ? autoscaled.reduce((sum, p) => sum + Number(p["maxCount"]), 0)
+          : "",
         vmSize: String(firstPool?.["vmSize"] ?? ""),
         // Every pool's VM size, so a GPU user pool is priced as well as the
         // system pool. Read by the Kubernetes peer's node-rate lookup.
@@ -395,55 +409,94 @@ export async function listAppServices(
  *
  * The subscription-scope list returns a subset of the plan properties unless
  * `detailed=true` is passed; everything surfaced here (sku, status, worker and
- * site counts, `reserved`) is in that default subset, so the type costs exactly
- * one request and no extra latency.
+ * site counts, `reserved`) is in that default subset. The one extra read per plan
+ * is its file system storage usage, which only adds fields.
  */
 export async function listAppServicePlans(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
   const items = await listAllPages(
-    ctx,
+    reader,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/serverfarms?api-version=2023-01-01`,
   );
-  return items.map((plan) => {
-    const name = String(plan["name"] ?? "");
-    const azureId = String(plan["id"] ?? "");
-    const rg = extractResourceGroup(azureId);
-    const props = plan["properties"] as Record<string, unknown> | undefined;
-    const sku = plan["sku"] as Record<string, unknown> | undefined;
+  return mapBounded(
+    items,
+    async (plan) => {
+      const name = String(plan["name"] ?? "");
+      const azureId = String(plan["id"] ?? "");
+      const rg = extractResourceGroup(azureId);
+      const props = plan["properties"] as Record<string, unknown> | undefined;
+      const sku = plan["sku"] as Record<string, unknown> | undefined;
+      const fileSystem = azureId
+        ? await readPlanFileSystemUsage(reader, budget, azureId)
+        : undefined;
 
-    return {
-      id: ctx.id(accountId, "azure-app-service-plan", `${rg}/${name}`),
-      pluginId: "azure",
-      resourceTypeId: "azure-app-service-plan",
-      accountId,
-      displayName: name,
-      fields: {
-        name,
-        resourceGroup: rg,
-        location: String(plan["location"] ?? ""),
-        kind: String(plan["kind"] ?? ""),
-        sku: String(sku?.["name"] ?? ""),
-        tier: String(sku?.["tier"] ?? ""),
-        size: String(sku?.["size"] ?? ""),
-        capacity: Number(sku?.["capacity"] ?? 0),
-        workerCount: Number(props?.["numberOfWorkers"] ?? 0),
-        maximumWorkers: Number(props?.["maximumNumberOfWorkers"] ?? 0),
-        // `reserved` is ARM's Linux flag on a server farm: true means Linux
-        // workers, false (the default) means Windows.
-        operatingSystem: props?.["reserved"] === true ? "Linux" : "Windows",
-        siteCount: Number(props?.["numberOfSites"] ?? 0),
-        status: String(props?.["status"] ?? ""),
-        provisioningState: String(props?.["provisioningState"] ?? ""),
-      },
-      resolvedOutputs: { resourceId: azureId },
-      secretStates: [],
-      externalId: `${rg}/${name}`,
-      createdAt: ctx.now(),
-      updatedAt: ctx.now(),
-    };
-  });
+      return {
+        id: ctx.id(accountId, "azure-app-service-plan", `${rg}/${name}`),
+        pluginId: "azure",
+        resourceTypeId: "azure-app-service-plan",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          resourceGroup: rg,
+          location: String(plan["location"] ?? ""),
+          kind: String(plan["kind"] ?? ""),
+          sku: String(sku?.["name"] ?? ""),
+          tier: String(sku?.["tier"] ?? ""),
+          size: String(sku?.["size"] ?? ""),
+          capacity: Number(sku?.["capacity"] ?? 0),
+          workerCount: Number(props?.["numberOfWorkers"] ?? 0),
+          maximumWorkers: Number(props?.["maximumNumberOfWorkers"] ?? 0),
+          // `reserved` is ARM's Linux flag on a server farm: true means Linux
+          // workers, false (the default) means Windows.
+          operatingSystem: props?.["reserved"] === true ? "Linux" : "Windows",
+          siteCount: Number(props?.["numberOfSites"] ?? 0),
+          status: String(props?.["status"] ?? ""),
+          provisioningState: String(props?.["provisioningState"] ?? ""),
+          ...fileSystem,
+        },
+        resolvedOutputs: { resourceId: azureId },
+        secretStates: [],
+        externalId: `${rg}/${name}`,
+        createdAt: ctx.now(),
+        updatedAt: ctx.now(),
+      };
+    },
+    { from: startingRow(items) },
+  );
+}
+
+/**
+ * The plan's file system storage: the `FileSystemStorage` entry (unit Bytes) of
+ * `GET .../serverfarms/{name}/usages`, a `CsmUsageQuota` with `currentValue` and
+ * `limit`. App Service counts storage per plan: "the total content size across all
+ * apps in the same App service plan" (Free 1 GB up to Isolated 1 TB). One request
+ * per plan, filtered to that one entry; a failed or unreadable answer leaves both
+ * fields out, and the sync keeps what it last read.
+ * https://learn.microsoft.com/rest/api/appservice/app-service-plans/list-usages
+ * https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-app-service-limits
+ * (read 2026-11-23)
+ */
+async function readPlanFileSystemUsage(
+  reader: Pick<ListerContext, "get">,
+  budget: ReadBudget,
+  planId: string,
+): Promise<{ fileSystemUsedBytes: number; fileSystemLimitBytes: number } | undefined> {
+  const filter = encodeURIComponent("name.value eq 'FileSystemStorage'");
+  const usages = await budget.hydrate(() =>
+    readOptionalArmList(reader, `${ARM}${planId}/usages?api-version=2023-01-01&$filter=${filter}`),
+  );
+  const entry = usages?.find(
+    (u) => (u["name"] as Record<string, unknown> | undefined)?.["value"] === "FileSystemStorage",
+  );
+  const used = entry?.["currentValue"];
+  const limit = entry?.["limit"];
+  if (typeof used !== "number" || typeof limit !== "number" || limit <= 0) return undefined;
+  return { fileSystemUsedBytes: used, fileSystemLimitBytes: limit };
 }
 
 export async function listContainerInstances(
@@ -515,39 +568,82 @@ export async function listContainerRegistries(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
   const items = await listAllPages(
-    ctx,
+    reader,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerRegistry/registries?api-version=2023-07-01`,
   );
-  return items.map((reg) => {
-    const name = String(reg["name"] ?? "");
-    const azureId = String(reg["id"] ?? "");
-    const rg = extractResourceGroup(azureId);
-    const props = reg["properties"] as Record<string, unknown> | undefined;
-    const sku = reg["sku"] as Record<string, unknown> | undefined;
+  return mapBounded(
+    items,
+    async (reg) => {
+      const name = String(reg["name"] ?? "");
+      const azureId = String(reg["id"] ?? "");
+      const rg = extractResourceGroup(azureId);
+      const props = reg["properties"] as Record<string, unknown> | undefined;
+      const sku = reg["sku"] as Record<string, unknown> | undefined;
+      const usages = azureId ? await readRegistryUsages(reader, budget, azureId) : undefined;
 
-    return {
-      id: ctx.id(accountId, "azure-container-registry", `${rg}/${name}`),
-      pluginId: "azure",
-      resourceTypeId: "azure-container-registry",
-      accountId,
-      displayName: name,
-      fields: {
-        name,
-        resourceGroup: rg,
-        location: String(reg["location"] ?? ""),
-        sku: String(sku?.["name"] ?? ""),
-        provisioningState: String(props?.["provisioningState"] ?? ""),
-        adminEnabled: (props?.["adminUserEnabled"] as boolean) ?? false,
-        publicNetworkAccess: String(props?.["publicNetworkAccess"] ?? "Enabled"),
-      },
-      resolvedOutputs: {
-        loginServer: String(props?.["loginServer"] ?? ""),
-      },
-      secretStates: [],
-      externalId: `${rg}/${name}`,
-      createdAt: String(props?.["creationDate"] ?? ctx.now()),
-      updatedAt: ctx.now(),
-    };
-  });
+      return {
+        id: ctx.id(accountId, "azure-container-registry", `${rg}/${name}`),
+        pluginId: "azure",
+        resourceTypeId: "azure-container-registry",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          resourceGroup: rg,
+          location: String(reg["location"] ?? ""),
+          sku: String(sku?.["name"] ?? ""),
+          provisioningState: String(props?.["provisioningState"] ?? ""),
+          adminEnabled: (props?.["adminUserEnabled"] as boolean) ?? false,
+          publicNetworkAccess: String(props?.["publicNetworkAccess"] ?? "Enabled"),
+          ...usages,
+        },
+        resolvedOutputs: {
+          loginServer: String(props?.["loginServer"] ?? ""),
+        },
+        secretStates: [],
+        externalId: `${rg}/${name}`,
+        createdAt: String(props?.["creationDate"] ?? ctx.now()),
+        updatedAt: ctx.now(),
+      };
+    },
+    { from: startingRow(items) },
+  );
+}
+
+/**
+ * A registry's quota usages from `GET .../registries/{name}/listUsages`: `value` is a
+ * list of `{ name, limit, currentValue, unit }`, documented with `Size` (Bytes; the
+ * example's limit is 100 GiB, the Standard tier's included storage) and `Webhooks`
+ * (Count). One request per registry; an entry that is missing or has no positive
+ * limit leaves its two fields out, and the sync keeps what it last read.
+ * https://learn.microsoft.com/rest/api/container-registry/registries/list-usages
+ * (read 2026-11-23)
+ */
+async function readRegistryUsages(
+  reader: Pick<ListerContext, "get">,
+  budget: ReadBudget,
+  registryId: string,
+): Promise<Record<string, number> | undefined> {
+  const body = await budget.hydrate(() =>
+    reader.get<{ value?: unknown }>(`${ARM}${registryId}/listUsages?api-version=2023-07-01`),
+  );
+  if (!body || !Array.isArray(body.value)) return undefined;
+  const entries = body.value as Array<Record<string, unknown>>;
+  const pick = (usageName: string) => {
+    const entry = entries.find((u) => u["name"] === usageName);
+    const used = entry?.["currentValue"];
+    const limit = entry?.["limit"];
+    return typeof used === "number" && typeof limit === "number" && limit > 0
+      ? { used, limit }
+      : undefined;
+  };
+  const size = pick("Size");
+  const webhooks = pick("Webhooks");
+  return {
+    ...(size ? { storageUsedBytes: size.used, storageQuotaBytes: size.limit } : {}),
+    ...(webhooks ? { webhookCount: webhooks.used, webhookLimit: webhooks.limit } : {}),
+  };
 }

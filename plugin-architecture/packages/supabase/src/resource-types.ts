@@ -169,6 +169,23 @@ export const ProjectType = rt({
       required: false,
       editable: false,
     }),
+    f("organizationPlan", "Organization Plan", { required: false, editable: false }),
+    // GET /v1/projects/{ref}/functions counted, against the per-project cap on
+    // Edge Functions: Free 100, Pro 1000, Team 2000, Enterprise unlimited
+    // (https://supabase.com/docs/guides/functions/limits, read 2026-11-23). The
+    // organization's entitlements (`function.max_count`) state the same number,
+    // but that route is not in this plugin's generated types yet.
+    f("functionCount", "Edge Functions", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: {
+          plan: { field: "organizationPlan", allowances: { free: 100, pro: 1000, team: 2000 } },
+        },
+        unit: "functions",
+      },
+    }),
     f("createdAt", "Created At", { required: false, editable: false }),
   ],
   outputs: [

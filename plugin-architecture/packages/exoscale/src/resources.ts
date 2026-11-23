@@ -580,6 +580,14 @@ export const DbaasResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // The first node's `disk_usage` chart from POST /v2/dbaas-service-metrics/{name}
+  // (metrics.ts; https://openapi-v2.exoscale.com/source.yaml types the body
+  // only as `metrics`). The services are Aiven-run, and the chart is Aiven's
+  // "Disk space usage" percentage (https://aiven.io/docs/tools/cli/service-cli,
+  // read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Disk Used", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   backupPolicy: { protectedBy: [], automatedBackupFieldKey: "backupCount" },
   postureChecks: [
     {

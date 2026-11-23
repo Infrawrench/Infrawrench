@@ -118,6 +118,12 @@ const RedisType = rt({
     f("owner", "Owner", { required: false, editable: false }),
     f("createdAt", "Created", { required: false, editable: false }),
   ],
+  // `connection_count` from GET /v2/redis/stats/{id} (charted as "Connections")
+  // against the database's `db_max_clients` (Upstash Developer API, read
+  // 2026-11-23). Past it Upstash refuses new connections.
+  capacityMetrics: [
+    { seriesLabel: "Connections", limit: { field: "maxClients" }, unit: "connections" },
+  ],
   outputs: [
     o("host", "Host"),
     o("port", "Port"),
@@ -202,6 +208,10 @@ const VectorType = rt({
     f("owner", "Owner", { required: false, editable: false }),
     f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
+  // `vector_count` from GET /v2/vector/index/{id}/stats (charted as "Vectors")
+  // against the index's `max_vector_count` (Upstash Developer API, read
+  // 2026-11-23).
+  capacityMetrics: [{ seriesLabel: "Vectors", limit: { field: "maxVectors" }, unit: "vectors" }],
   outputs: [
     o("restUrl", "REST URL"),
     o("token", "Token", { sensitive: true }),
@@ -240,6 +250,12 @@ const SearchType = rt({
     f("inputEnrichment", "Input Enrichment", { kind: "boolean", required: false, editable: false }),
     f("owner", "Owner", { required: false, editable: false }),
     f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+  ],
+  // The document count from GET /v2/search/{id}/stats (`vector_count`, charted
+  // as "Documents") against the index's `max_vector_count` (Upstash Developer
+  // API, read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Documents", limit: { field: "maxDocuments" }, unit: "documents" },
   ],
   outputs: [
     o("restUrl", "REST URL"),

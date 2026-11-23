@@ -68,7 +68,14 @@ export const AppResourceType = rt({
     f("webUrl", "URL", ro),
     f("gitUrl", "Git URL", ro),
     f("buildpack", "Buildpack", ro),
-    f("slugSizeMb", "Slug Size (MB)", { kind: "number", ...ro }),
+    // `slug_size` (bytes, here in MB) on GET /apps. A build whose compressed
+    // slug passes 1000 MB is rejected unless support has raised the limit
+    // (https://devcenter.heroku.com/articles/limits#slug-size, read 2026-11-23).
+    f("slugSizeMb", "Slug Size (MB)", {
+      kind: "number",
+      ...ro,
+      usage: { limit: { constant: 1000 }, unit: "MB", label: "Slug Size" },
+    }),
     f("repoSizeMb", "Repo Size (MB)", { kind: "number", ...ro }),
     f("releasedAt", "Last Release", ro),
     f("createdAt", "Created", { ...ro, showcase: true }),

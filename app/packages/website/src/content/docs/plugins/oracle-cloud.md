@@ -51,7 +51,7 @@ Metrics tabs show data from OCI Monitoring:
 - Block volumes: read and write throughput and operations, throttled I/Os.
 - Load balancers: HTTP requests, active connections, bytes in and out, peak bandwidth, unhealthy backends.
 - Buckets: stored bytes and object count (hourly).
-- Autonomous Databases: CPU and storage utilisation, sessions, allocated ECPUs, executions, query latency, failed connections.
+- Autonomous Databases: CPU and storage utilisation, sessions, allocated ECPUs, executions, query latency, failed connections. Capacity runway tracks storage in use against the reserved size, unless storage auto scaling is on.
 - OKE clusters: API server requests and unschedulable pods.
 
 ## Costs

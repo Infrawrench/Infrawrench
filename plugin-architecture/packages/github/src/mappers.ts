@@ -341,6 +341,14 @@ export function mapBudget(
       ? b.consumed_amount
       : spentThisMonth;
   const amount = b.budget_amount;
+  // A budget that stops usage is a hard monthly cap on a metered product; one that only
+  // alerts is not a limit, and a licence SKU counts licences rather than dollars.
+  const stopsAt =
+    b.prevent_further_usage === true &&
+    typeof amount === "number" &&
+    !(b.budget_product_sku ?? "").endsWith("_licenses")
+      ? amount
+      : undefined;
   return instance(
     accountId,
     "budget",
@@ -360,6 +368,7 @@ export function mapBudget(
       entity,
       user: b.user,
       spentThisMonth: spent !== undefined ? Math.round(spent * 100) / 100 : undefined,
+      stopsAt,
       percentUsed:
         spent !== undefined && amount ? Math.round((spent / amount) * 1000) / 10 : undefined,
     },

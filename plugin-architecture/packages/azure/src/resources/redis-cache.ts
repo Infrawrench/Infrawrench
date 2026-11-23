@@ -28,6 +28,18 @@ export const RedisCacheResourceType = rt({
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display name:
+  // "Used Memory Percentage" for `usedmemorypercentage` (Percent) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-cache-redis-metrics
+  // (read 2026-11-23)
+  capacityMetrics: [
+    {
+      seriesLabel: "Used Memory Percentage",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "redis",

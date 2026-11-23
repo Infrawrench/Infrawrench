@@ -59,6 +59,71 @@ function measuredSeries(window: AgentUsageWindow | undefined, prefix = ""): Metr
   }));
 }
 
+/** The label of the root filesystem's used-percent series, which `capacityMetrics` names. */
+export const FILESYSTEM_USED_LABEL = "Filesystem Used";
+
+type PromResult = NonNullable<NonNullable<MonitoringResponse["data"]>["result"]>[number];
+
+/**
+ * The root filesystem's series out of a `filesystem_size` / `filesystem_free`
+ * answer, which has one result per device, labelled with its `mountpoint`
+ * (`droplet_filesystem` example, DigitalOcean public API spec, read
+ * 2026-11-23). Falls back to the first result when none is labelled `/`.
+ */
+function rootFilesystem(resp: MonitoringResponse | null): Map<number, number> | null {
+  const results: PromResult[] = resp?.data?.result ?? [];
+  const root = results.find((r) => r.metric?.["mountpoint"] === "/") ?? results[0];
+  const values = root?.values ?? [];
+  if (values.length === 0) return null;
+  const points = new Map<number, number>();
+  for (const [ts, val] of values) {
+    const value = Number(val);
+    if (Number.isFinite(value)) points.set(Number(ts) * 1000, value);
+  }
+  return points.size > 0 ? points : null;
+}
+
+/**
+ * Filesystem size and free bytes for the Droplet's root filesystem, plus the
+ * share of it in use, `(size - free) / size` as a percent at each timestamp
+ * both report. DO reports free space, not used, so the used series is derived
+ * here; it is what capacity runway projects against 100%. Both endpoints need
+ * the Metrics Agent and 404 without it, which leaves all three out.
+ */
+async function fetchFilesystemSeries(
+  ctx: DoMetricContext,
+  hostId: string,
+  start: string,
+  end: string,
+): Promise<MetricSeries[]> {
+  const read = (name: "filesystem_size" | "filesystem_free") =>
+    ctx.api
+      .get(`/monitoring/metrics/droplet/${name}`, { query: { host_id: hostId, start, end } })
+      .catch(() => null);
+  const [sizeResp, freeResp] = await Promise.all([
+    read("filesystem_size"),
+    read("filesystem_free"),
+  ]);
+  const size = rootFilesystem(sizeResp);
+  const free = rootFilesystem(freeResp);
+  const toPoints = (m: Map<number, number>) =>
+    [...m].sort(([a], [b]) => a - b).map(([timestamp, value]) => ({ timestamp, value }));
+  const out: MetricSeries[] = [];
+  if (size) out.push({ label: "Filesystem Size", unit: "bytes", points: toPoints(size) });
+  if (free) out.push({ label: "Filesystem Free", unit: "bytes", points: toPoints(free) });
+  if (size && free) {
+    const used = new Map<number, number>();
+    for (const [ts, total] of size) {
+      const left = free.get(ts);
+      if (left === undefined || total <= 0) continue;
+      used.set(ts, ((total - left) / total) * 100);
+    }
+    if (used.size > 0)
+      out.push({ label: FILESYSTEM_USED_LABEL, unit: "%", points: toPoints(used) });
+  }
+  return out;
+}
+
 /** The slice of `DigitalOceanClient` the metric fetchers need. */
 export interface DoMetricContext {
   api: DoApi;
@@ -124,8 +189,6 @@ export async function fetchDoMetricSeries(
       { name: "memory_cached", label: "Memory Cached", unit: "bytes" },
       { name: "disk_read", label: "Disk Read", unit: "bytes/s" },
       { name: "disk_write", label: "Disk Write", unit: "bytes/s" },
-      { name: "filesystem_size", label: "Filesystem Size", unit: "bytes" },
-      { name: "filesystem_free", label: "Filesystem Free", unit: "bytes" },
     ] as const;
     const bandwidth = [
       { label: "Public In", iface: "public", direction: "inbound" },
@@ -134,6 +197,7 @@ export async function fetchDoMetricSeries(
       { label: "Private Out", iface: "private", direction: "outbound" },
     ] as const;
     // Fan out in parallel: 16 metrics serially racks up real wall time.
+    const filesystem = fetchFilesystemSeries(ctx, hostId, start, end);
     const series = await Promise.all([
       ...plain.map((m) =>
         fetchPromMetric(
@@ -156,7 +220,7 @@ export async function fetchDoMetricSeries(
         ),
       ),
     ]);
-    return series.filter((s): s is MetricSeries => s != null);
+    return [...series.filter((s): s is MetricSeries => s != null), ...(await filesystem)];
   }
 
   if (resourceTypeId === "doks-cluster") {

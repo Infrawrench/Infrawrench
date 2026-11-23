@@ -258,11 +258,22 @@ export const BudgetResourceType = rt({
     f("scope", "Scope", { required: false, editable: false }),
     f("entity", "Applies To", { required: false, editable: false }),
     f("user", "User", { required: false, editable: false }),
+    // With "Stop usage when budget limit is reached", usage of a metered product stops at
+    // the budget until the next billing cycle (docs.github.com/en/billing/concepts/
+    // budgets-and-alerts, read 2026-11-23). `stopsAt` is set only for those budgets, so an
+    // alert-only budget, which stops nothing, has no runway.
     f("spentThisMonth", "Spent This Month (USD)", {
       kind: "number",
       required: false,
       editable: false,
+      usage: {
+        limit: { field: "stopsAt" },
+        unit: "USD",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Budget",
+      },
     }),
+    f("stopsAt", "Usage Stops At (USD)", { kind: "number", required: false, editable: false }),
     f("percentUsed", "Used (%)", { kind: "number", required: false, editable: false }),
   ],
   outputs: [o("budgetId", "Budget ID")],

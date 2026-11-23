@@ -19,8 +19,19 @@ import {
 
 const { Server: SshServer, utils } = ssh2;
 
-const hostKey = utils.generateKeyPairSync("ed25519").private;
-const clientKey = utils.generateKeyPairSync("ed25519").private;
+// ssh2 1.17's ed25519 generator strips every leading zero byte from the public
+// key's DER bit string, not just the unused-bits byte, so a public key that
+// starts with 0x00 (about 1 in 256) is written 31 bytes long and its own
+// `parseKey` (and `new Server`) refuses the result. Draw again until it parses.
+function ed25519Key(): string {
+  for (;;) {
+    const key = utils.generateKeyPairSync("ed25519").private;
+    if (!(utils.parseKey(key) instanceof Error)) return key;
+  }
+}
+
+const hostKey = ed25519Key();
+const clientKey = ed25519Key();
 
 function listen(server: net.Server | InstanceType<typeof SshServer>, port = 0): Promise<number> {
   return new Promise((resolve, reject) => {

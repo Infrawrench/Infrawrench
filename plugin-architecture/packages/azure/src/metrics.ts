@@ -56,7 +56,8 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
   "azure-aks-cluster": [
     { name: "node_cpu_usage_percentage", label: "Node CPU" },
     { name: "node_memory_working_set_percentage", label: "Node memory" },
-    { name: "node_disk_usage_percentage", label: "Node disk" },
+    // Maximum across nodes: the fullest node's disk, which is what runs out.
+    { name: "node_disk_usage_percentage", label: "Node disk", agg: MAX },
     { name: "node_network_in_bytes", label: "Node network in" },
     { name: "node_network_out_bytes", label: "Node network out" },
     { name: "kube_pod_status_ready", label: "Ready pods", agg: TOTAL },
@@ -162,7 +163,7 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
   "azure-redis-cache": [
     { name: "percentProcessorTime", label: "CPU" },
     { name: "serverLoad", label: "Server load" },
-    { name: "usedmemorypercentage", label: "Used memory %" },
+    { name: "usedmemorypercentage", label: "Used memory %", agg: MAX },
     { name: "usedmemory", label: "Used memory" },
     { name: "operationsPerSecond", label: "Operations/sec", agg: MAX },
     { name: "cachehits", label: "Cache hits", agg: TOTAL },
@@ -361,7 +362,7 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
   "azure-managed-redis": [
     { name: "percentProcessorTime", label: "CPU" },
     { name: "serverLoad", label: "Server load" },
-    { name: "usedmemorypercentage", label: "Used memory %" },
+    { name: "usedmemorypercentage", label: "Used memory %", agg: MAX },
     { name: "usedmemory", label: "Used memory" },
     { name: "operationsPerSecond", label: "Operations/sec" },
     { name: "cachehits", label: "Cache hits" },

@@ -132,6 +132,8 @@ const TEMPLATE_PERMISSIONS: Record<string, string[]> = {
     "cloudtasks.queues.list",
     "composer.environments.list",
     "compute.addresses.list",
+    // The instance-group lister reads each group's autoscaler maximum.
+    "compute.autoscalers.list",
     "compute.backendServices.list",
     "compute.disks.list",
     "compute.firewalls.list",

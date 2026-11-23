@@ -34,7 +34,15 @@ export const StorageBoxResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("usedGb", "Used (GB)", { kind: "number", required: false, editable: false }),
+    // `stats.size` (bytes used, snapshots included) against the type's
+    // `storage_box_type.size`, both on GET /storage_boxes
+    // (https://docs.hetzner.cloud/hetzner.spec.json, read 2026-11-23).
+    f("usedGb", "Used (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "sizeGb" }, unit: "GB", label: "Storage" },
+    }),
     f("snapshotsGb", "Snapshots (GB)", { kind: "number", required: false, editable: false }),
     f("sshEnabled", "SSH", { kind: "boolean", required: false }),
     f("sambaEnabled", "Samba", { kind: "boolean", required: false }),

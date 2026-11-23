@@ -30,6 +30,7 @@ import {
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
+  ResourceRunwayPanel,
   BlastRadiusPanel,
   RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
@@ -48,6 +49,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { PeerPaneView } from "../../components/PeerPaneView";
 import { FirestoreMongoPeerBrowser } from "../../components/FirestoreMongoPeerBrowser";
 import { getPlugin } from "../../plugins/loader";
+import { typeHasCapacity } from "@infrawrench/plugin-base";
+import { fetchDesktopResourceRunway } from "../../lib/runway-client";
 import { createDesktopSchedulesClient } from "../../lib/schedules-client";
 import { createDesktopLeasesClient } from "../../lib/leases-client";
 import { createDesktopOwnershipClient } from "../../lib/ownership-client";
@@ -228,6 +231,9 @@ export function DetailViewContainer({
   // Heartbeat tab: cloud mode only, for types whose plugin flags the field
   // holding the schedule the resource runs on (`schedule: "cron"`).
   const [hasSchedule, setHasSchedule] = useState(false);
+  // Capacity runway charts on the Metrics tab: cloud mode only (the cloud
+  // sync records the readings), and only for types that declare a usage.
+  const [hasCapacityRunway, setHasCapacityRunway] = useState(false);
   // Depend on the two identifying strings rather than the resource object:
   // a refetched (new-identity) resource of the same type must not re-run the
   // plugin load.
@@ -237,6 +243,7 @@ export function DetailViewContainer({
     let cancelled = false;
     setSchedulable(false);
     setHasSchedule(false);
+    setHasCapacityRunway(false);
     if (!activeCloudOrgId || !resourcePluginId || !resourceTypeId) return undefined;
     getPlugin(resourcePluginId)
       .then((loaded) => {
@@ -247,9 +254,14 @@ export function DetailViewContainer({
           typeDef?.fields?.some((f) => f.schedule === "cron") === true ||
             typeDef?.outputs?.some((o) => o.schedule === "cron") === true,
         );
+        setHasCapacityRunway(!!typeDef && typeHasCapacity(typeDef));
       })
       .catch(() => {
-        if (!cancelled) setSchedulable(false);
+        if (!cancelled) {
+          setSchedulable(false);
+          setHasSchedule(false);
+          setHasCapacityRunway(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -522,6 +534,16 @@ export function DetailViewContainer({
             }
           : {})}
         metricSeries={metricSeries}
+        {...(hasCapacityRunway && activeCloudOrgId
+          ? {
+              renderRunway: () => (
+                <ResourceRunwayPanel
+                  key={decodedResourceId}
+                  load={() => fetchDesktopResourceRunway(activeCloudOrgId, decodedResourceId)}
+                />
+              ),
+            }
+          : {})}
       />
     </div>
   );

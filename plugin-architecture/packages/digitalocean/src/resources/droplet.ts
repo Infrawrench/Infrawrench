@@ -84,6 +84,13 @@ export const DropletResourceType = rt({
   parentTypeId: "project",
   showInSidebar: true,
   supportsMetrics: true,
+  // Derived in `fetchDoMetricSeries` as (size - free) / size of the root
+  // filesystem from `/v2/monitoring/metrics/droplet/filesystem_size` and
+  // `filesystem_free` (DigitalOcean public API spec, read 2026-11-23). Needs
+  // the Metrics Agent on the Droplet.
+  capacityMetrics: [
+    { seriesLabel: "Filesystem Used", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   iconKey: "droplet",
   sshEndpoint: {
     hostOutputKey: "ipv4",

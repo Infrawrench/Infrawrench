@@ -79,6 +79,9 @@ export const OrganizationResourceType = rt({
       kind: "number",
       required: false,
       editable: false,
+      // "Projects per Atlas Organization: 250" under Organization and Project
+      // Limits (www.mongodb.com/docs/atlas/reference/atlas-limits/, read 2026-11-23).
+      usage: { limit: { constant: 250 }, unit: "projects" },
     }),
   ],
   outputs: [o("orgId", "Organization ID")],
@@ -100,6 +103,9 @@ export const ProjectResourceType = rt({
       kind: "number",
       required: false,
       editable: false,
+      // The group's `clusterCount` against "Clusters per Atlas Project: 25"
+      // (www.mongodb.com/docs/atlas/reference/atlas-limits/, read 2026-11-23).
+      usage: { limit: { constant: 25 }, unit: "clusters" },
     }),
     f("created", "Created", { showcase: true, required: false, editable: false }),
     f("tags", "Tags", { required: false, editable: false }),
@@ -218,6 +224,43 @@ export const ClusterResourceType = rt({
     resizeNote:
       "Atlas resizes one node at a time with no downtime. Savings are per node, at the hourly rates on this organization's recent invoices; tiers the organization has not been billed for have no rate and are not suggested.",
   },
+  capacityMetrics: [
+    // Process measurement `STORAGE_SPACE_PERCENT_USED`, fullest node (metrics.ts).
+    {
+      seriesLabel: "Disk used (max node)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Disk",
+    },
+    // Open connections on the busiest node against Atlas's per-node limit for
+    // the tier. Published in "Connection Limits and Cluster Tier"
+    // (www.mongodb.com/docs/atlas/reference/atlas-limits/, read 2026-11-23).
+    // Only tiers whose limit is the same on AWS, Azure and Google Cloud are
+    // listed (M80 is 96000 on AWS and 64000 elsewhere, so it is left out).
+    {
+      seriesLabel: "Connections (max node)",
+      limit: {
+        plan: {
+          field: "instanceSize",
+          allowances: {
+            M10: 1500,
+            M20: 3000,
+            M30: 3000,
+            M40: 6000,
+            M50: 16000,
+            M60: 32000,
+            M140: 96000,
+            M200: 128000,
+            M300: 128000,
+            M400: 128000,
+            M600: 128000,
+          },
+        },
+      },
+      unit: "connections",
+      label: "Connections",
+    },
+  ],
   carbon: {
     regionFieldKey: "cloudRegion",
     grid: "auto",

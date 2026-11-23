@@ -115,4 +115,11 @@ export const ContainerAppResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display name:
+  // "Replica Count" for `Replicas` (Count) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-app-containerapps-metrics
+  // (read 2026-11-23). At `maxReplicas` the app stops scaling out.
+  capacityMetrics: [
+    { seriesLabel: "Replica Count", limit: { field: "maxReplicas" }, unit: "replicas" },
+  ],
 });

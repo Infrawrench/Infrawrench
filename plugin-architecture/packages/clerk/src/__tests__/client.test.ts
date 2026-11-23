@@ -1,10 +1,11 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import type { HostedMethods } from "@infrawrench/plugin-base";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices, SettingDescriptor } from "@infrawrench/plugin-base";
 import { ClerkClient } from "../client.js";
 import { API_VERSION } from "../api.js";
-import { OAuthApplicationResourceType } from "../resources.js";
+import { OAuthApplicationResourceType, OrganizationResourceType } from "../resources.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 const ACCOUNT = "acct";
@@ -556,5 +557,34 @@ describe("status feed", () => {
       ],
     });
     expect(parseStatusFeed(body).map((i) => i.externalId)).toEqual(["b"]);
+  });
+});
+
+describe("organization member limit", () => {
+  const org = (max: number) => ({
+    object: "organization",
+    id: "org_1",
+    name: "Acme",
+    slug: "acme",
+    max_allowed_memberships: max,
+    members_count: 8,
+    admin_delete_enabled: true,
+    created_at: 1_700_000_000_000,
+  });
+
+  it("measures the member count against the organization's limit", async () => {
+    const c = client(() => ({ body: { data: [org(10)], total_count: 1 } }));
+    const [o] = await c.listResources("organization", ACCOUNT);
+    const [decl] = capacityDeclarations(OrganizationResourceType);
+    expect(decl!.valueKey).toBe("membersCount");
+    expect(o!.fields["membersCount"]).toBe(8);
+    expect(resolveCapacityLimit(decl!.declaration.limit, o!.fields)?.limit).toBe(10);
+  });
+
+  it("states no limit for an unlimited organization", async () => {
+    const c = client(() => ({ body: { data: [org(0)], total_count: 1 } }));
+    const [o] = await c.listResources("organization", ACCOUNT);
+    const [decl] = capacityDeclarations(OrganizationResourceType);
+    expect(resolveCapacityLimit(decl!.declaration.limit, o!.fields)).toBeNull();
   });
 });

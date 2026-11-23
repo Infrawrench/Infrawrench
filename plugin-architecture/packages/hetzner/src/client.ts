@@ -1871,6 +1871,7 @@ export class HetznerClient implements PluginClient {
         backupWindow: s.backup_window ?? "",
         deleteProtection: s.protection?.delete ?? false,
         rescueEnabled: s.rescue_enabled ?? false,
+        ...trafficFields(s),
       },
       resolvedOutputs: {
         ipv4: publicIpv4,
@@ -2046,6 +2047,13 @@ export class HetznerClient implements PluginClient {
         serviceCount: (lb.services ?? []).length,
         targetServerIds: [...targetServerIds].join(", "),
         networkIds: networkIds.join(", "),
+        ...(lb.load_balancer_type?.max_targets != null
+          ? { maxTargets: lb.load_balancer_type.max_targets }
+          : {}),
+        ...(lb.load_balancer_type?.max_services != null
+          ? { maxServices: lb.load_balancer_type.max_services }
+          : {}),
+        ...trafficFields(lb),
       },
       resolvedOutputs: {
         loadBalancerId: String(lb.id),
@@ -2391,6 +2399,21 @@ interface LegacyDatacenter {
 interface LegacyDeprecated {
   /** Removed from the API on 2026-11-02; superseded by `deprecation`. */
   deprecated?: string | boolean | null;
+}
+
+/**
+ * The month's outbound traffic and free allowance, both in bytes, as servers
+ * and load balancers report them. Either is null when Hetzner has no reading
+ * (a server still initializing): no field then, never a zero.
+ */
+export function trafficFields(r: {
+  outgoing_traffic?: number | null;
+  included_traffic?: number | null;
+}): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (r.outgoing_traffic != null) out["outgoingTrafficBytes"] = r.outgoing_traffic;
+  if (r.included_traffic != null) out["includedTrafficBytes"] = r.included_traffic;
+  return out;
 }
 
 type HetznerServer = CloudResponse<"list_servers">["servers"][number] & LegacyDatacenter;

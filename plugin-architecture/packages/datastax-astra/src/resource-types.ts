@@ -39,7 +39,17 @@ const DatabaseType = rt({
       editable: false,
     }),
     f("totalStorageGb", "Storage Limit (GB)", { kind: "number", required: false, editable: false }),
-    f("usedStorageGb", "Storage Used (GB)", { kind: "number", required: false, editable: false }),
+    // `storage.usedStorage` against `storage.totalStorage`, both GB in the
+    // DevOps API v2 database response ("Used storage of the cluster in GB",
+    // "Total storage of the cluster in GB": docs.datastax.com/en/astra/docs/_attachments/devopsv2.html
+    // and the client's DatabaseStorageInfo, read 2026-11-23). The mapper
+    // converts a byte value to GB, so both fields share a unit.
+    f("usedStorageGb", "Storage Used (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "totalStorageGb" }, unit: "GB", label: "Storage" },
+    }),
     f("accessListEnabled", "Access List Enforced", {
       kind: "boolean",
       required: false,

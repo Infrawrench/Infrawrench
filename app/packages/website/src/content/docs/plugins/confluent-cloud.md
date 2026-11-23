@@ -56,6 +56,7 @@ Confluent keeps a year of cost history, and data can take up to 72 hours to arri
 
 - **Idle resources**: the [orphan finder](../features/orphan-finder.md) flags Kafka clusters with no bytes produced or consumed in 7 days, connectors that moved no records in 7 days (they bill per task-hour regardless), and networks Confluent reports as idle. Without MetricsViewer nothing is flagged.
 - **Oversized Dedicated clusters**: [right-sizing](../features/right-sizing.md) compares p95 CKU utilization with the cluster's CKU count and suggests fewer CKUs when the load would still fit with headroom. The saving is priced from what your organization actually paid per CKU-hour at that cloud, region and availability over the last month, so it needs BillingAdmin too. Applying it resizes the cluster online.
+- **Capacity runway**: tracks each Flink compute pool's current CFUs against its max CFUs, and each Kafka cluster's partitions against the partition limit for its type and eCKUs or CKUs. For resources pinned to a dashboard it also tracks an elastic cluster's eCKUs against its eCKU limit, a Dedicated cluster's CKU utilization, a ksqlDB cluster's storage utilization, and the schemas in an Advanced Schema Registry against its 20,000 cap.
 
 ## More
 

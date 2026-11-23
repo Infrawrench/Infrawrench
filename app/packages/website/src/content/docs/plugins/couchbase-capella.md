@@ -15,7 +15,7 @@ Connect one Capella organization with one API key to manage its clusters, bucket
   - **On/off schedule**: Capella's own weekly schedule, with a timezone, the days the cluster runs and its hours. **Remove schedule** deletes it.
   - **Audit logging** on or off, and **Load sample data**.
 - **App Services**: create on a cluster, edit node count and size, turn on and off, delete.
-- **Buckets**: create (type, storage backend, memory quota, replicas, durability, max TTL, flush), edit, delete, **Back up now**, set the weekly **Backup schedule**, and **Flush** when flush is enabled. Each bucket shows items, ops/sec, disk and memory used.
+- **Buckets**: create (type, storage backend, memory quota, replicas, durability, max TTL, flush), edit, delete, **Back up now**, set the weekly **Backup schedule**, and **Flush** when flush is enabled. Each bucket shows items, ops/sec, disk and memory used, and capacity runway tracks its memory used against its memory quota.
 - **Scopes and collections**: create and delete, and edit a collection's max TTL.
 - **Database credentials**: create with read or read-write access to all or picked buckets. Infrawrench keeps the password (generated or yours), so the credential's connection string output works. **Reset password** sets a new one.
 - **Allowed CIDRs**: add a permanent or expiring range, delete.

@@ -119,6 +119,26 @@ export function deploymentStatus(d: EcDeployment): string {
   return es?.status ?? (d.healthy === false ? "unhealthy" : "");
 }
 
+/**
+ * Disk use of the fullest Elasticsearch instance, in percent: `disk_space_used`
+ * over `disk_space_available` (both MB; the latter is the instance's total disk
+ * when Elastic knows it). The fullest node is the one that stops writes first.
+ * Undefined when no instance reports both.
+ */
+export function fullestDiskPercent(
+  instances: ReadonlyArray<{ disk?: { disk_space_used?: number; disk_space_available?: number } }>,
+): number | undefined {
+  let max: number | undefined;
+  for (const i of instances) {
+    const used = i.disk?.disk_space_used;
+    const total = i.disk?.disk_space_available;
+    if (typeof used !== "number" || typeof total !== "number" || total <= 0) continue;
+    const pct = (used / total) * 100;
+    if (max === undefined || pct > max) max = pct;
+  }
+  return max === undefined ? undefined : round2(max);
+}
+
 export function mapDeployment(accountId: string, d: EcDeployment): ResourceInstance {
   const id = d.id ?? "";
   const es = d.resources?.elasticsearch?.[0];
@@ -157,6 +177,7 @@ export function mapDeployment(accountId: string, d: EcDeployment): ResourceInsta
       alias: d.alias,
       template: plan?.deployment_template?.id,
       totalMemoryGb: totalMb > 0 ? round2(totalMb / 1024) : undefined,
+      diskUsedPercent: fullestDiskPercent(es?.info?.topology?.instances ?? []),
       autoscaling: d.settings?.autoscaling_enabled ?? plan?.autoscaling_enabled,
       solution: d.settings?.solution_type,
       trafficFilterIds: join(d.settings?.traffic_filter_settings?.rulesets),

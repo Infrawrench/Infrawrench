@@ -498,6 +498,13 @@ export const DatabaseResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // The primary node's `disk_usage` chart from GET /1.3/database/{uuid}/metrics,
+  // titled "Disk space usage %" by the API (metrics.ts;
+  // https://github.com/UpCloudLtd/upcloud-go-api/blob/main/upcloud/service/fixtures/getmanageddatabasemetrics.yaml,
+  // read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Disk Used", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   lifecycle: {
     startActionId: "power-on",
     stopActionId: "power-off",

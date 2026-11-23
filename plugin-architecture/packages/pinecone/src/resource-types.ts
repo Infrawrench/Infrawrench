@@ -191,6 +191,25 @@ export const IndexResourceType = rt({
         "Anyone with a control-plane key can delete this index and every record in it in one call. Enable deletion protection on indexes you would not want to rebuild.",
     },
   ],
+  // Series `statsSeries` emits from `describe_index_stats`: `indexFullness` for pod-based
+  // indexes, `memoryFullness` and `storageFullness` for dedicated read nodes, each a 0 to 1
+  // fraction charted as a percentage (docs.pinecone.io/reference/api/latest/data-plane/
+  // describeindexstats, checked 2026-11-18).
+  capacityMetrics: [
+    { seriesLabel: "Fullness", limit: { constant: 100 }, unit: "%", label: "Index fullness" },
+    {
+      seriesLabel: "Storage Fullness (stats)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Storage fullness",
+    },
+    {
+      seriesLabel: "Memory Fullness (stats)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory fullness",
+    },
+  ],
   iconKey: "index",
   supportsCreate: true,
   supportsUpdate: true,

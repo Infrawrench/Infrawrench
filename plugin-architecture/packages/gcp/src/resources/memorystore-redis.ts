@@ -42,6 +42,12 @@ export const MemorystoreRedisResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
+  // `stats/memory/usage_ratio` ("Memory usage as a ratio of maximum memory"),
+  // charted as 0..100 under this label (busiest node role):
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+  capacityMetrics: [
+    { seriesLabel: "Memory Usage", limit: { constant: 100 }, unit: "%", label: "Memory" },
+  ],
   secretExportTemplates: [
     {
       id: "redis-credentials",
