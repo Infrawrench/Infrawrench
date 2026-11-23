@@ -1,17 +1,24 @@
-//! A minimal, read-only `.git` written into the snapshot after checkout.
+//! A shallow `.git` written into a job's checkout.
 //!
 //! A checkout is only a tree of files, but pipelines ported from GitHub
-//! Actions assume `actions/checkout` left a repository behind: the failing
-//! email-sdk job runs `git ls-files --cached --others --exclude-standard`.
-//! This module gives those jobs just enough of a repository for `ls-files`,
-//! `rev-parse HEAD` and `describe --always` to work. It is written into the
-//! frozen snapshot, so every job sees the same bytes through the lower layer
-//! and its own writes still go to the fork's overlay.
+//! Actions assume `actions/checkout` left a repository behind: they run
+//! `git ls-files`, `git rev-parse HEAD`, `git describe --always`, and Go
+//! stamps binaries from `git status`. This writes enough of a repository
+//! for those to work, and for `git status` to call the checkout clean.
 //!
-//! The object database holds only the checked-out commit and its root tree
-//! as loose objects. `shallow` marks the commit as the end of history, so no
-//! parent objects are needed. The index lists every checked-out file with
-//! its real blob id and size.
+//! What it holds: the commit and every tree under it as loose objects,
+//! `shallow` naming the commit (so its parents are not needed), `HEAD` on
+//! the run's branch (or detached on the commit when the run is not on a
+//! branch, as `actions/checkout` leaves a pull request), and an index of
+//! every file, symlink and submodule with its real object id and size. Blobs
+//! are not copied: the files themselves are in the checkout, and the index
+//! names their ids. A command that needs a blob's old content (`git diff`
+//! on a file the job changed, `git show HEAD:file`) says it is missing.
+//!
+//! It is written into the frozen snapshot, so every job sees the same bytes
+//! through the lower layer, and what git writes (a refreshed index) goes to
+//! the job's own overlay. The scheduler leaves `.git` out of a job's changes
+//! and out of `hashFiles`.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -23,16 +30,37 @@ use sha1::Digest;
 
 use crate::{GitError, Result};
 
-/// The checked-out commit has no branch attached to it in the cache. Any
-/// branch name works for the commands this supports; `main` is the one the
-/// benchmarks use.
-const BRANCH: &str = "main";
+/// What `HEAD` points at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Head {
+    /// `refs/heads/<name>`, holding the commit.
+    Branch(String),
+    /// The commit itself, as a detached `HEAD`.
+    Detached,
+}
 
-/// One checked-out file, as the index needs it.
+impl Head {
+    /// The branch a ref names (`refs/heads/main` is `main`), or a detached
+    /// `HEAD` for anything else (`refs/pull/1/head`, a tag, nothing).
+    pub fn from_ref(git_ref: Option<&str>) -> Head {
+        git_ref
+            .and_then(|r| r.strip_prefix("refs/heads/"))
+            .filter(|name| {
+                gix::validate::reference::name_partial(gix::bstr::BStr::new(name)).is_ok()
+            })
+            .map_or(Head::Detached, |name| Head::Branch(name.to_string()))
+    }
+}
+
+/// Git's mode for a symlink.
+pub(crate) const SYMLINK_MODE: u32 = 0o120000;
+
+/// One index entry: a file, a symlink or a submodule.
 pub(crate) struct IndexEntry {
     pub path: Vec<u8>,
     pub id: ObjectId,
-    pub executable: bool,
+    /// Git's mode: `100644`, `100755`, `120000` or `160000`.
+    pub mode: u32,
     pub size: u64,
 }
 
@@ -40,40 +68,52 @@ pub(crate) fn write(
     repo: &gix::Repository,
     builder: &iwci_vfs::SnapshotBuilder,
     root: &Path,
+    head: &Head,
     commit: ObjectId,
-    tree: ObjectId,
+    trees: &[ObjectId],
     files: &[IndexEntry],
 ) -> Result<()> {
     let git = root.join(".git");
+    let fs = builder.fs();
 
+    for dir in ["objects/info", "objects/pack", "refs/heads", "refs/tags"] {
+        iwci_vfs::create_dir_all(fs, git.join(dir))?;
+    }
+    match head {
+        Head::Branch(name) => {
+            iwci_vfs::write_file(
+                fs,
+                git.join("HEAD"),
+                format!("ref: refs/heads/{name}\n").as_bytes(),
+            )?;
+            iwci_vfs::write_file(
+                fs,
+                git.join("refs/heads").join(name),
+                format!("{commit}\n").as_bytes(),
+            )?;
+        }
+        Head::Detached => {
+            iwci_vfs::write_file(fs, git.join("HEAD"), format!("{commit}\n").as_bytes())?;
+        }
+    }
+    iwci_vfs::write_file(fs, git.join("shallow"), format!("{commit}\n").as_bytes())?;
     iwci_vfs::write_file(
-        builder.fs(),
-        git.join("HEAD"),
-        format!("ref: refs/heads/{BRANCH}\n").as_bytes(),
-    )?;
-    iwci_vfs::write_file(
-        builder.fs(),
-        git.join("refs/heads/main"),
-        format!("{commit}\n").as_bytes(),
-    )?;
-    iwci_vfs::write_file(
-        builder.fs(),
-        git.join("shallow"),
-        format!("{commit}\n").as_bytes(),
-    )?;
-    iwci_vfs::write_file(
-        builder.fs(),
+        fs,
         git.join("config"),
         b"[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n",
     )?;
-    for dir in ["objects/info", "objects/pack", "refs/tags"] {
-        iwci_vfs::create_dir_all(builder.fs(), git.join(dir))?;
-    }
 
     write_loose(repo, builder, &git, commit, gix::objs::Kind::Commit)?;
-    write_loose(repo, builder, &git, tree, gix::objs::Kind::Tree)?;
+    for tree in trees {
+        write_loose(repo, builder, &git, *tree, gix::objs::Kind::Tree)?;
+    }
+    // git compares a file with its index entry by hashing the file, but a
+    // symlink by reading the entry's blob, so those few blobs are needed.
+    for link in files.iter().filter(|f| f.mode == SYMLINK_MODE) {
+        write_loose(repo, builder, &git, link.id, gix::objs::Kind::Blob)?;
+    }
 
-    iwci_vfs::write_file(builder.fs(), git.join("index"), &build_index(files))?;
+    iwci_vfs::write_file(fs, git.join("index"), &build_index(files))?;
     Ok(())
 }
 
@@ -87,12 +127,18 @@ fn write_loose(
     id: ObjectId,
     kind: gix::objs::Kind,
 ) -> Result<()> {
+    let hex = id.to_string();
+    let path: PathBuf = git.join("objects").join(&hex[..2]).join(&hex[2..]);
+    // Two directories with the same content share one tree object.
+    if builder.read(&path).is_ok() {
+        return Ok(());
+    }
     let object = repo
         .try_find_object(id)?
-        .ok_or_else(|| GitError::NotFetched(id.to_string()))?;
+        .ok_or_else(|| GitError::NotFetched(hex.clone()))?;
     if object.kind != kind {
         return Err(GitError::WrongObjectKind {
-            id: id.to_string(),
+            id: hex,
             expected: kind.to_string(),
             actual: object.kind.to_string(),
         });
@@ -100,27 +146,21 @@ fn write_loose(
     let mut raw = Vec::with_capacity(object.data.len() + 32);
     raw.extend_from_slice(kind.as_bytes());
     raw.push(b' ');
-    write!(raw, "{}\0", object.data.len()).map_err(|e| io_err(Path::new("object"), e))?;
+    write!(raw, "{}\0", object.data.len()).map_err(|e| io_err(&path, e))?;
     raw.extend_from_slice(&object.data);
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(&raw)
-        .map_err(|e| io_err(Path::new("object"), e))?;
-    let compressed = encoder
-        .finish()
-        .map_err(|e| io_err(Path::new("object"), e))?;
-
-    let hex = id.to_string();
-    let path: PathBuf = git.join("objects").join(&hex[..2]).join(&hex[2..]);
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(&raw).map_err(|e| io_err(&path, e))?;
+    let compressed = encoder.finish().map_err(|e| io_err(&path, e))?;
     iwci_vfs::write_file(builder.fs(), path, &compressed)?;
     Ok(())
 }
 
-/// Git's index version 2: a 12-byte header, one entry per file sorted by
-/// path bytes, then a SHA-1 of everything written so far. Timestamps and
-/// device/inode/owner fields are zero; `ls-files` does not read them, and a
-/// job that needs a usable `status` can refresh the index itself.
+/// Git's index version 2: a 12-byte header, one entry per path sorted by
+/// its bytes, then a SHA-1 of everything before it. Timestamps and the
+/// device, inode and owner fields are zero, so the first `git status`
+/// hashes each file to compare it with its id rather than trusting a stat,
+/// and finds the checkout clean.
 fn build_index(files: &[IndexEntry]) -> Vec<u8> {
     let mut sorted: Vec<&IndexEntry> = files.iter().collect();
     sorted.sort_by(|a, b| a.path.cmp(&b.path));
@@ -131,38 +171,23 @@ fn build_index(files: &[IndexEntry]) -> Vec<u8> {
     out.extend_from_slice(&(sorted.len() as u32).to_be_bytes());
 
     for entry in sorted {
-        // ctime and mtime, four bytes each for seconds and nanoseconds.
-        out.extend_from_slice(&[0; 16]);
-        out.extend_from_slice(&0u32.to_be_bytes()); // dev
-        out.extend_from_slice(&0u32.to_be_bytes()); // ino
-        let mode = if entry.executable {
-            0o100755u32
-        } else {
-            0o100644u32
-        };
-        out.extend_from_slice(&mode.to_be_bytes());
+        // ctime and mtime (seconds and nanoseconds each), dev and ino.
+        out.extend_from_slice(&[0; 24]);
+        out.extend_from_slice(&entry.mode.to_be_bytes());
         out.extend_from_slice(&0u32.to_be_bytes()); // uid
         out.extend_from_slice(&0u32.to_be_bytes()); // gid
+        // The size is stored truncated to 32 bits, as git stores it.
         out.extend_from_slice(&(entry.size as u32).to_be_bytes());
         out.extend_from_slice(entry.id.as_bytes());
-
-        let len = entry.path.len();
-        let extended = len >= 0xfff;
-        let flags = if extended {
-            0x4000u16 | 0x0fff
-        } else {
-            len as u16
-        };
+        // Version 2 has no extended flags: a name of 0xfff bytes or more
+        // stores 0xfff and is found by its NUL.
+        let flags = entry.path.len().min(0xfff) as u16;
         out.extend_from_slice(&flags.to_be_bytes());
-        if extended {
-            out.extend_from_slice(&(len.min(0xffff) as u16).to_be_bytes());
-        }
         out.extend_from_slice(&entry.path);
-        out.push(0);
-
-        let header = if extended { 64 } else { 62 };
-        let used = header + len + 1;
-        let padding = (8 - (used % 8)) % 8;
+        // One to eight NULs: the entry, from its ctime, ends on a multiple
+        // of eight bytes.
+        let used = 62 + entry.path.len();
+        let padding = 8 - used % 8;
         out.extend(std::iter::repeat_n(0, padding));
     }
 
@@ -186,7 +211,7 @@ mod tests {
         IndexEntry {
             path: name.as_bytes().to_vec(),
             id: format!("{last:040x}").parse().unwrap(),
-            executable: false,
+            mode: 0o100644,
             size,
         }
     }
@@ -198,7 +223,6 @@ mod tests {
         assert_eq!(&index[..4], b"DIRC");
         assert_eq!(&index[4..8], &2u32.to_be_bytes());
         assert_eq!(&index[8..12], &2u32.to_be_bytes());
-        assert_eq!(&index[12..16], &[0; 4]); // a.txt's ctime
         let mut blob = [0u8; 20];
         blob[19] = 1;
         assert_eq!(&index[12 + 40..12 + 60], &blob); // a.txt's blob id
@@ -210,20 +234,25 @@ mod tests {
     }
 
     #[test]
-    fn index_pads_each_entry_to_eight_bytes() {
-        let entries = [entry("x", 1, 1), entry("longer-name.txt", 2, 1)];
-        let index = build_index(&entries);
-        // Two entries, a 12-byte header and a 20-byte checksum: all a
-        // multiple of eight, so the padded entries must be too.
-        assert_eq!((index.len() - 12 - 20) % 8, 0);
+    fn each_entry_ends_on_eight_bytes_with_at_least_one_nul() {
+        // 62 + 2 = 64 is already a multiple of eight: git still writes
+        // eight NULs there, since the name must end in one.
+        for name in ["ab", "x", "longer-name.txt"] {
+            let index = build_index(&[entry(name, 1, 1)]);
+            let len = index.len() - 12 - 20;
+            assert_eq!(len % 8, 0, "{name}");
+            assert!(len > 62 + name.len(), "{name}");
+        }
     }
 
     #[test]
-    fn long_paths_use_the_extended_flag() {
-        let name = "a".repeat(4100);
-        let entries = [entry(&name, 1, 1)];
-        let index = build_index(&entries);
-        assert_eq!(&index[12 + 60..12 + 62], &0x4fffu16.to_be_bytes());
-        assert_eq!(&index[12 + 62..12 + 64], &4100u16.to_be_bytes());
+    fn a_ref_on_a_branch_names_it_and_anything_else_detaches() {
+        assert_eq!(
+            Head::from_ref(Some("refs/heads/feat/x")),
+            Head::Branch("feat/x".into())
+        );
+        assert_eq!(Head::from_ref(Some("refs/pull/7/head")), Head::Detached);
+        assert_eq!(Head::from_ref(None), Head::Detached);
+        assert_eq!(Head::from_ref(Some("refs/heads/a..b")), Head::Detached);
     }
 }

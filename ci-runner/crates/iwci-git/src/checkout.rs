@@ -63,7 +63,7 @@ pub(crate) fn checkout(
     commit: ObjectId,
     builder: &iwci_vfs::SnapshotBuilder,
     into: &str,
-    with_git: bool,
+    git: Option<&git_dir::Head>,
 ) -> Result<Checkout> {
     let fs = builder.fs();
     let tree = find_commit(repo, commit)?.tree_id()?.detach();
@@ -82,6 +82,8 @@ pub(crate) fn checkout(
         blob: Vec::new(),
         tree_bufs: Vec::new(),
         files: Vec::new(),
+        trees: Vec::new(),
+        links: Vec::new(),
         out: Checkout {
             commit: commit.to_string(),
             tree: tree.to_string(),
@@ -90,30 +92,54 @@ pub(crate) fn checkout(
     };
     walker.tree(tree, 0)?;
     let Walker {
-        mut files, mut out, ..
+        mut files,
+        trees,
+        links,
+        mut out,
+        ..
     } = walker;
     out.files = files.len();
     out.bytes = write_files(repo, fs, &mut files)?;
     for job in files.iter().filter(|job| job.executable) {
         builder.set_mode(&job.path, iwci_vfs::modes::EXECUTABLE_MODE)?;
     }
-    if with_git {
-        let entries = files
+    if let Some(head) = git {
+        let relative = |path: &Path| {
+            path.strip_prefix(&root)
+                .unwrap_or(path)
+                .as_os_str()
+                .as_bytes()
+                .to_vec()
+        };
+        let mut entries: Vec<git_dir::IndexEntry> = files
             .iter()
             .map(|job| git_dir::IndexEntry {
-                path: job
-                    .path
-                    .strip_prefix(&root)
-                    .unwrap_or(&job.path)
-                    .as_os_str()
-                    .as_bytes()
-                    .to_vec(),
+                path: relative(&job.path),
                 id: job.id,
-                executable: job.executable,
+                mode: if job.executable { 0o100755 } else { 0o100644 },
                 size: job.size,
             })
-            .collect::<Vec<_>>();
-        git_dir::write(repo, builder, &root, commit, tree, &entries)?;
+            .collect();
+        entries.extend(links.iter().map(|(path, id, size)| git_dir::IndexEntry {
+            path: relative(path),
+            id: *id,
+            mode: git_dir::SYMLINK_MODE,
+            size: *size,
+        }));
+        // A submodule is a gitlink in the index over an empty directory,
+        // as `git clone` leaves one it was not told to fetch.
+        for sub in &out.submodules {
+            let path = root.join(&sub.path);
+            iwci_vfs::create_dir_all(fs, &path)?;
+            entries.push(git_dir::IndexEntry {
+                path: sub.path.as_bytes().to_vec(),
+                id: ObjectId::from_hex(sub.commit.as_bytes())
+                    .map_err(|_| GitError::BadObjectId(sub.commit.clone()))?,
+                mode: 0o160000,
+                size: 0,
+            });
+        }
+        git_dir::write(repo, builder, &root, head, commit, &trees, &entries)?;
     }
     Ok(out)
 }
@@ -236,6 +262,11 @@ struct Walker<'a> {
     /// while its subtrees are read.
     tree_bufs: Vec<Vec<u8>>,
     files: Vec<FileJob>,
+    /// Every tree visited, root first: a `.git` needs them all for
+    /// `git status` to compare the index with `HEAD`.
+    trees: Vec<ObjectId>,
+    /// Symlinks, with their blob and the target's length, for the index.
+    links: Vec<(PathBuf, ObjectId, u64)>,
     out: Checkout,
 }
 
@@ -246,6 +277,7 @@ impl Walker<'_> {
                 self.unsafe_entry(b"".as_bstr(), "trees nest deeper than any checkout allows")
             );
         }
+        self.trees.push(id);
         if self.tree_bufs.len() <= depth {
             self.tree_bufs.push(Vec::new());
         }
@@ -335,6 +367,8 @@ impl Walker<'_> {
         if let Err(e) = self.fs.create_symlink(&target, &self.path) {
             return Err(self.duplicate_or(e));
         }
+        self.links
+            .push((self.path.clone(), id.to_owned(), raw.len() as u64));
         self.out.symlinks += 1;
         Ok(())
     }

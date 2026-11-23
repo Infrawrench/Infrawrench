@@ -57,7 +57,7 @@ impl iwci_deps::git::GitTrees for CachedGitTrees {
             .map_err(|e| format!("fetch: {e}"))?;
         let scratch = SnapshotBuilder::new();
         remote
-            .checkout_bare_into(commit, &scratch, "/tree")
+            .checkout_into(commit, &scratch, "/tree")
             .map_err(|e| format!("checkout: {e}"))?;
         let tree = scratch.freeze();
         let mut files = Vec::new();
@@ -169,9 +169,10 @@ impl Workspaces for GitWorkspaces {
                     self.ref_hint.as_deref(),
                 )
                 .map_err(|e| format!("fetch: {e}"))?;
+            let head = iwci_git::Head::from_ref(self.ref_hint.as_deref());
             let checkout = self
                 .remote
-                .checkout_into(&self.commit, &builder, &clone.into)
+                .checkout_repository_into(&self.commit, &builder, &clone.into, &head)
                 .map_err(|e| format!("checkout: {e}"))?;
             for sub in &checkout.submodules {
                 warnings.push(format!(

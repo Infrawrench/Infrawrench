@@ -1419,7 +1419,7 @@ fn read_commit(
 ) -> Result<(Vec<(String, String)>, iwci_spec::PackagesSource), String> {
     let scratch = SnapshotBuilder::new();
     remote
-        .checkout_bare_into(sha, &scratch, "/src")
+        .checkout_into(sha, &scratch, "/src")
         .map_err(|e| format!("checkout: {e}"))?;
     let snapshot = scratch.freeze();
     let packages = iwci_spec::PackagesSource::from_discovery(iwci_spec::workspace::discover(

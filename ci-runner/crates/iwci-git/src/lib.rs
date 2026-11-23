@@ -27,6 +27,7 @@ mod commit;
 mod diff;
 mod fetch;
 mod git_dir;
+pub use git_dir::Head;
 mod lock;
 mod url;
 
@@ -300,19 +301,20 @@ impl RemoteCache {
         builder: &iwci_vfs::SnapshotBuilder,
         into: &str,
     ) -> Result<Checkout> {
-        self.checkout(commit_sha, builder, into, true)
+        self.checkout(commit_sha, builder, into, None)
     }
 
-    /// Checkout a commit's tree without the minimal `.git` a job snapshot
-    /// gets. Dependency trees and scratch workspaces only want the files;
-    /// a `.git` there would end up inside a vendored package or a cache key.
-    pub fn checkout_bare_into(
+    /// [`Self::checkout_into`], plus a shallow `.git` beside the files, with
+    /// `HEAD` at `head`: what a job's clone gets, so `git ls-files`,
+    /// `git rev-parse HEAD` and `git status` work in it (see `git_dir`).
+    pub fn checkout_repository_into(
         &self,
         commit_sha: &str,
         builder: &iwci_vfs::SnapshotBuilder,
         into: &str,
+        head: &Head,
     ) -> Result<Checkout> {
-        self.checkout(commit_sha, builder, into, false)
+        self.checkout(commit_sha, builder, into, Some(head))
     }
 
     fn checkout(
@@ -320,12 +322,12 @@ impl RemoteCache {
         commit_sha: &str,
         builder: &iwci_vfs::SnapshotBuilder,
         into: &str,
-        with_git: bool,
+        head: Option<&Head>,
     ) -> Result<Checkout> {
         let id = parse_oid(commit_sha)?;
         let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Shared)?;
         let repo = self.open_or_not_fetched(commit_sha)?;
-        checkout::checkout(&repo, id, builder, into, with_git)
+        checkout::checkout(&repo, id, builder, into, head)
     }
 
     /// Paths (relative to the repository root, `/`-separated, sorted) whose

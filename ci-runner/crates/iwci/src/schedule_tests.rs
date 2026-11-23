@@ -156,6 +156,10 @@ impl Executor<String> for FakeExecutor {
         if tool.contains(":write@") {
             inv.fs.write("/app/src/a.ts", b"formatted").unwrap();
         }
+        // What `git status` does to the clone's `.git`: refreshes its index.
+        if tool.contains(":git-index@") {
+            inv.fs.write("/app/.git/index", b"refreshed").unwrap();
+        }
         if tool.contains(":slow@") {
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -580,6 +584,28 @@ fn change_policies() {
     assert_eq!(
         commits.0.lock().unwrap().clone(),
         vec![("/app".to_string(), 1, "style: format".to_string())]
+    );
+}
+
+#[test]
+fn what_git_writes_in_the_clones_git_dir_is_no_change() {
+    let p = plan("name: x\njobs:\n  status:\n    using: builtin:git-index@1\n    changes: fail\n");
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert_eq!(status(&report, "status"), &Status::Passed);
+}
+
+#[test]
+fn hash_files_never_reads_the_clones_git_dir() {
+    let with = SnapshotBuilder::new();
+    let without = SnapshotBuilder::new();
+    for b in [&with, &without] {
+        b.write("/app/src/a.ts", b"a").unwrap();
+    }
+    with.write("/app/.git/HEAD", b"c0ffee\n").unwrap();
+    let globs = ["**".to_string()];
+    assert_eq!(
+        hash_files(&with.freeze(), Some("/app"), &globs),
+        hash_files(&without.freeze(), Some("/app"), &globs)
     );
 }
 
