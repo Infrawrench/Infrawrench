@@ -25,6 +25,7 @@
 //! | `caches/<repo_id>/<scope>/entries/<hash>.zst` | a job cache: zstd stream of `iwci_vfs::archive` entries | yes, by the runner |
 //! | `caches/<repo_id>/<scope>/entries/<hash>.zst.<nonce>-<n>` | part `n` of a job cache too big for one object; the `.zst` object's header names its parts | yes, by the runner |
 //! | `caches/<repo_id>/<scope>/prefixes/<hash>` | the newest key saved under a `restore-keys` prefix | yes, by the runner |
+//! | `caches/<repo_id>/<scope>/turbo/<hash>.turbo` | a Turborepo artifact: a short text header (format, hash, duration, tag), then the artifact as `turbo` sent it | yes, by the runner |
 //! | `releases/iwci/<version>/<target>` | an `iwci` binary (`iwci release`) | never |
 //! | `releases/iwci/channels/<channel>.json` | a signed release manifest that servers update from | yes, by `iwci release` |
 //!

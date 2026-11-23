@@ -667,6 +667,7 @@ fn fake_internet() -> Network {
             upstream: http_upstream("hello from upstream\n"),
         }),
         services: vec!["postgres".into()],
+        local: Vec::new(),
     }
 }
 

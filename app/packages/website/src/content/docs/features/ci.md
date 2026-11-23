@@ -838,6 +838,14 @@ Everyone who can see runs can see the card; clearing a cache takes `ci:write` an
 
 ![The "Clear the cache of acme/web?" dialog open over the CI page's Caches card, saying it deletes 214 cache entries (6.00 GiB)](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/caches-clear-dialog.png)
 
+### Turborepo's remote cache
+
+A repository built with Turborepo gets a remote cache with nothing to set up. Every job with a network is given `TURBO_API`, `TURBO_TOKEN` and `TURBO_TEAM`, which point `turbo` at a cache the runner keeps for you, so a task an earlier run already built with the same inputs is restored instead of run again, on whichever runner picks the run up.
+
+The cache follows the same rules as the rest of your caches: a pull request reads what the default branch saved and saves its own, which nothing on the default branch ever reads; what it keeps counts against your storage quota, shows on the **Caches** card and goes when you clear the repository's cache. The token is masked in logs and stops working when its run ends. Artifacts over 200 MiB are not kept (`turbo` says so and carries on), and signed artifacts (`remoteCache.signature` in `turbo.json`) keep their signature.
+
+To keep a remote cache of your own, set any of `TURBO_API`, `TURBO_TOKEN`, `TURBO_TEAM` or `TURBO_TEAMID` in the job's `env:` (from a secret for the token) and the job is given none of these. A job with `network: false` cannot reach the cache and is not given them either.
+
 ### Runs shared between runners
 
 A run goes to the runner where it is expected to finish soonest, which is usually the largest one free, and stays there while that runner has room. When it has more ready jobs than it can start, another runner takes the ones that have waited. There is nothing to turn on; a pipeline that still says `split:` is read as if it did not.

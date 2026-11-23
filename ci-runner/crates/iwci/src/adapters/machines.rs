@@ -258,6 +258,8 @@ pub fn open(
         burst,
         #[cfg(target_os = "linux")]
         outside: runtime.outside(),
+        #[cfg(target_os = "linux")]
+        local: runtime.local_services(),
     });
     for problem in host.problems() {
         eprintln!("iwci: machines: {problem}");

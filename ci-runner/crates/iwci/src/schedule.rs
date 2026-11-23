@@ -202,7 +202,18 @@ impl LockIndexes {
 
 impl LazyWorkspace<'_> {
     fn built(&self) -> &Result<BuiltWorkspace, String> {
-        self.built.get_or_init(|| self.workspaces.build(self.spec))
+        self.built.get_or_init(|| {
+            let started = Instant::now();
+            let built = self.workspaces.build(self.spec);
+            // Every job of the workspace waits for this, in the runner's
+            // log so a slow one is seen.
+            eprintln!(
+                "iwci: workspace {} built in {} ms",
+                self.spec.key,
+                started.elapsed().as_millis()
+            );
+            built
+        })
     }
 
     fn files(&self) -> &Result<Snapshot, String> {
@@ -793,6 +804,11 @@ pub struct Options {
     /// Where an isolate job's files go once they outgrow its memory
     /// (`--spill-disk`); `None` keeps them all in memory, held to `memory:`.
     pub spill: Option<Spill>,
+    /// What points a job's build tools at the runner's remote cache for
+    /// this run ([`crate::turbo`]), when it serves one: given to every job
+    /// with a network that does not name a remote cache of its own, the
+    /// token masked like a secret.
+    pub remote_cache: Option<crate::turbo::JobEnv>,
 }
 
 impl Options {
@@ -2261,7 +2277,11 @@ pub fn run<T: Tools>(
     );
     let lent_values = options.access.lent.secret_values();
     let mask = Arc::new(Masker::new(
-        options.secrets.values().chain(lent_values.iter()),
+        options
+            .secrets
+            .values()
+            .chain(lent_values.iter())
+            .chain(options.remote_cache.iter().map(|r| &r.token)),
     ));
     let artifact_bytes = AtomicU64::new(0);
     let measured = Mutex::new(History::default());
@@ -3515,6 +3535,7 @@ fn run_job<T: Tools>(
             Err(e) => return errored(job, format!("cache restore-keys: {e}"), started.elapsed()),
         };
         let mut exact = false;
+        let restoring = Instant::now();
         match options
             .caches
             .as_ref()
@@ -3525,10 +3546,11 @@ fn run_job<T: Tools>(
                 Ok(()) => {
                     fs.apply_modes(&restored.modes);
                     exact = restored.exact;
+                    let took = seconds(restoring.elapsed());
                     cache_lines.push(if restored.exact {
-                        format!("cache `{key}`: restored")
+                        format!("cache `{key}`: restored in {took}")
                     } else {
-                        format!("cache `{key}`: restored `{}`", restored.key)
+                        format!("cache `{key}`: restored `{}` in {took}", restored.key)
                     });
                 }
                 Err(e) => cache_lines.push(format!(
@@ -3605,6 +3627,12 @@ fn run_job<T: Tools>(
         secret_vars.push((entry.key.clone(), value));
     }
     merge_env(&mut env, &secret_vars);
+    // The runner's remote cache, which only a job with a network reaches.
+    if let Some(cache) = &options.remote_cache
+        && job.network
+    {
+        cache.add_to(&mut env);
+    }
 
     // A service gets the runner's variables and its own, never the job's:
     // its secrets are its own `env:`'s, masked like the job's.
@@ -3967,10 +3995,13 @@ fn run_job<T: Tools>(
                 cache_lines.push(format!("cache `{key}`: being saved by another job"));
                 continue;
             }
+            let saving = Instant::now();
             match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
-                Ok(()) => {
-                    cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
-                }
+                Ok(()) => cache_lines.push(format!(
+                    "cache `{key}`: saved {} KiB in {}",
+                    bytes.div_ceil(1024),
+                    seconds(saving.elapsed())
+                )),
                 Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
             }
         }
@@ -5007,6 +5038,11 @@ fn stalled_reason(secs: u64, timeout: u64) -> String {
 }
 
 /// Later entries replace earlier ones with the same key, keeping order.
+/// A duration as a job's report gives one: `0.4 s`, `12.3 s`.
+fn seconds(d: Duration) -> String {
+    format!("{:.1} s", d.as_secs_f64())
+}
+
 fn merge_env(into: &mut Vec<(String, String)>, from: &[(String, String)]) {
     for (k, v) in from {
         into.retain(|(existing, _)| existing != k);

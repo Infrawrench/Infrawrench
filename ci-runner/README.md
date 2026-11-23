@@ -4156,9 +4156,44 @@ jobs:
 - **Counted against the owner's storage quota** (see below). A save that
   would pass the quota evicts the owner's oldest caches first; one larger
   than the whole quota is refused.
+- What each cache did is a line in the job's `caches`, with how long a
+  restore or a save took (``cache `pnpm-…`: restored in 2.1 s``,
+  ``cache `pnpm-…`: saved 412000 KiB in 9.8 s``). The runner's log says
+  how long each workspace's checkout and installs took, and where each
+  run's time went outside its jobs.
 
 Caches live in the object store beside the tools, so on R2 every runner
 shares them.
+
+### Turborepo's remote cache
+
+A repository built with Turborepo gets a remote cache without configuring
+one: every job with a network is given `TURBO_API`, `TURBO_TOKEN` and
+`TURBO_TEAM`, which point `turbo` at a cache the runner serves, so a task
+whose inputs an earlier run built already is restored rather than run
+again, and on every runner (the artifacts are in the object store).
+
+- `TURBO_API` is `http://10.0.2.2:7410`, port 7410 of the job's gateway
+  (the address its network's default route goes to), which the runner
+  answers from a Unix socket of its own (`--remote-cache on|off`, default
+  on). No host port is opened and nothing else reaches it. Jobs in a
+  sandbox (native programs) and in machines reach it; a `network: false`
+  job has no gateway and is given none of the variables.
+- `TURBO_TOKEN` is the run's own, masked in logs like a secret, and
+  refused once the run ends. `TURBO_TEAM` is `iwci`.
+- A job that sets any of `TURBO_API`, `TURBO_TOKEN`, `TURBO_TEAM`,
+  `TURBO_TEAMID` or `TURBO_LOGIN` itself (in `env:` or from a secret) is
+  given none of them, so a remote cache of the repository's own keeps
+  working.
+- Artifacts are kept like [job caches](#job-caches): scoped by branch, so
+  a pull request reads the default branch's and writes its own, which no
+  push to the default branch reads; counted against the owner's storage
+  quota and evicted with the rest, oldest first; cleared with the
+  repository's caches. One over 200 MiB is refused, which `turbo` warns
+  about and carries on. Signed artifacts (`remoteCache.signature`) keep
+  their signature.
+- The API served is Turborepo's (`/v8/artifacts/...`: `GET`, `HEAD`,
+  `PUT`, the `POST` query and events, and `status`).
 
 ### Environment caches
 
@@ -4266,7 +4301,9 @@ documentation or reserved ranges, in IPv4, IPv6 or IPv4 inside IPv6, nor the hos
 answers that point inside are dropped. UDP is not offered.
 
 `network: false` on a job keeps it off the internet, leaving only its
-loopback. The `iwci` command turns the internet on for its jobs; the
+loopback. A job with a network also reaches the runner's own
+[remote cache](#turborepos-remote-cache), on port 7410 of its gateway
+(`10.0.2.2`), and no other port there. The `iwci` command turns the internet on for its jobs; the
 runtime's own tests never use it.
 
 ### Background services
@@ -4520,7 +4557,7 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
          [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d] \
-         [--spill-disk 20GiB]
+         [--spill-disk 20GiB] [--remote-cache on|off]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
          [--machines <dir>] [--machine-cpus 2] [--machine-burst on|off]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output

@@ -78,6 +78,10 @@ pub struct Config {
     /// through; `None` gives machines no network at all.
     #[cfg(target_os = "linux")]
     pub outside: Option<Arc<dyn iwci_sandbox::net::Outside>>,
+    /// The runner's own services a machine with a network reaches on its
+    /// gateway's address, by port (`iwci_sandbox::net::Network::local`).
+    #[cfg(target_os = "linux")]
+    pub local: Vec<(u16, PathBuf)>,
 }
 
 /// How a Linux machine uses CPUs no job is using. It gets more vCPUs than
@@ -1023,6 +1027,7 @@ impl Host {
                     iwci_sandbox::net::Gateway::start(iwci_sandbox::net::Network {
                         outside: outside.clone(),
                         services: Vec::new(),
+                        local: self.config.local.clone(),
                     })
                     .map_err(|e| format!("the machine's network: {e}"))?;
                 machine.gateway = Some(gateway);
@@ -1286,6 +1291,8 @@ mod tests {
             burst: None,
             #[cfg(target_os = "linux")]
             outside: None,
+            #[cfg(target_os = "linux")]
+            local: Vec::new(),
         });
         if std::path::Path::new("/dev/kvm").exists() {
             // A host with KVM still has no images under /nonexistent.

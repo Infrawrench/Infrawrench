@@ -27,6 +27,12 @@
 //! the job's services are the loopback. No other UDP, and no ICMP, is
 //! offered, as WASIX jobs get none.
 //!
+//! A TCP connection to one of the gateway's own ports in
+//! [`Network::local`] goes to a Unix socket of the runner's instead (the
+//! runner's caches for the job, say) and never to the host's network: the
+//! gateway's address is not one [`Outside::allows`], and nothing else
+//! reaches those sockets.
+//!
 //! Everything runs on one thread per sandbox, plus a short-lived one per
 //! connection being opened and per name being resolved, so a slow host
 //! never holds the others up.
@@ -40,6 +46,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpStream};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -93,6 +101,9 @@ pub struct Network {
     pub outside: Arc<dyn Outside>,
     /// The job's services' names, which resolve to the IPv4 loopback.
     pub services: Vec<String>,
+    /// The gateway's own ports: a connection to the gateway's address on
+    /// one of these goes to the Unix socket beside it, in the runner.
+    pub local: Vec<(u16, PathBuf)>,
 }
 
 /// A running gateway. Stopping it (or dropping it) ends every connection.
@@ -145,12 +156,68 @@ impl Drop for Gateway {
 type Key = (SocketAddr, SocketAddr);
 
 enum Event {
-    Connected(Key, io::Result<TcpStream>),
+    Connected(Key, io::Result<Host>),
     Resolved(IpEndpoint, Vec<u8>),
 }
 
+/// The runner's end of a connection: a host socket, or a Unix socket of
+/// the runner's for one of the gateway's own ports.
+enum Host {
+    Tcp(TcpStream),
+    Unix(UnixStream),
+}
+
+impl Host {
+    fn set_nonblocking(&self) -> io::Result<()> {
+        match self {
+            Host::Tcp(s) => {
+                let _ = s.set_nodelay(true);
+                s.set_nonblocking(true)
+            }
+            Host::Unix(s) => s.set_nonblocking(true),
+        }
+    }
+
+    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        match self {
+            Host::Tcp(s) => s.shutdown(how),
+            Host::Unix(s) => s.shutdown(how),
+        }
+    }
+}
+
+impl AsRawFd for Host {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            Host::Tcp(s) => s.as_raw_fd(),
+            Host::Unix(s) => s.as_raw_fd(),
+        }
+    }
+}
+
+impl Read for Host {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Host::Tcp(s) => s.read(buf),
+            Host::Unix(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for Host {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Host::Tcp(s) => s.write(buf),
+            Host::Unix(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 struct Conn {
-    host: TcpStream,
+    host: Host,
     /// Read from the sandbox, not yet written to the host.
     to_host: Vec<u8>,
     host_eof: bool,
@@ -178,7 +245,7 @@ struct State {
     /// SYNs held while their host connection is opened.
     held: HashMap<Key, Vec<u8>>,
     /// Host connections opened, waiting for `smoltcp` to accept.
-    ready: HashMap<Key, TcpStream>,
+    ready: HashMap<Key, Host>,
     listeners: Vec<Listener>,
     conns: HashMap<SocketHandle, Conn>,
     /// Every connection with a socket of its own (listening or past it).
@@ -346,7 +413,17 @@ impl State {
             return;
         }
         let dst = key.1;
-        let refused = !self.network.outside.allows(dst.ip())
+        // One of the gateway's own ports: the runner's socket for it.
+        let local = (dst.ip() == IpAddr::V4(GATEWAY_V4) || dst.ip() == IpAddr::V6(GATEWAY_V6))
+            .then(|| {
+                self.network
+                    .local
+                    .iter()
+                    .find(|(port, _)| *port == dst.port())
+                    .map(|(_, path)| path.clone())
+            })
+            .flatten();
+        let refused = (local.is_none() && !self.network.outside.allows(dst.ip()))
             || self.held.len() >= MAX_CONNECTING
             || self.conns.len() + self.listeners.len() >= MAX_CONNECTIONS;
         if refused {
@@ -361,7 +438,10 @@ impl State {
         let spawned = std::thread::Builder::new()
             .name("iwci-sandbox-connect".into())
             .spawn(move || {
-                let result = outside.connect(dst);
+                let result = match local {
+                    Some(path) => UnixStream::connect(path).map(Host::Unix),
+                    None => outside.connect(dst).map(Host::Tcp),
+                };
                 let _ = send.send(Event::Connected(key, result));
                 poke(&wake);
             });
@@ -379,9 +459,8 @@ impl State {
                     return;
                 };
                 if let Ok(stream) = result
-                    && stream.set_nonblocking(true).is_ok()
+                    && stream.set_nonblocking().is_ok()
                 {
-                    let _ = stream.set_nodelay(true);
                     let mut socket = tcp::Socket::new(
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
