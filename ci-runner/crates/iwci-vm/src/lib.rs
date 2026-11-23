@@ -28,5 +28,7 @@ pub mod qemu;
 #[cfg(target_os = "linux")]
 pub mod virtiofs;
 
-pub use host::{Collected, Config, Host, Job, Os, Outcome, Scratch, windows_env};
+pub use host::{
+    Burst, Collected, Config, Host, Job, Os, Outcome, Scratch, burst_vcpus, windows_env,
+};
 pub use iwci_vm_proto::Shell;

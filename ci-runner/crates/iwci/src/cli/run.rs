@@ -219,7 +219,7 @@ pub(super) fn open_runner(
     // runs a job per vCPU, as many at once as `--cpus`. Either way a job
     // with `cpus:` holds that many vCPUs' slots.
     let per_cpu = if shared_slots { limits.jobs_per_cpu } else { 1 };
-    let machines = machines(args, &cache, limits.stall_after, &runtime)?;
+    let machines = machines(args, &cache, limits, &runtime)?;
     Ok(Runner {
         runtime: Arc::new(runtime),
         store,
@@ -279,12 +279,26 @@ fn spill(args: &mut Args, cache: &std::path::Path) -> Result<Option<schedule::Sp
 /// `platform: linux` jobs run in, as
 /// `ci-runner/images/` builds them. `--machine-cpus <n>` (default 2) is
 /// what each machine gets. Off by default: such jobs then fail, saying so.
+///
+/// `--machine-burst on|off` (default `on`): a Linux machine gets more
+/// vCPUs than its `cpus:` (`iwci_vm::burst_vcpus`) in a cgroup of its own
+/// among the sandboxes, weighted by its `cpus:`, so it uses idle CPUs and
+/// keeps to its share when there are none. It needs the delegated cgroup
+/// subtree the sandboxes use; without one machines keep to their `cpus:`.
 fn machines(
     args: &mut Args,
     cache: &std::path::Path,
-    stall_after: Option<Duration>,
+    limits: &Limits,
     runtime: &iwci_runtime::Runtime,
 ) -> Result<Option<Arc<dyn crate::machines::Machines>>, String> {
+    let burst = match args.value("--machine-burst")?.as_deref() {
+        None | Some("on") => Some(iwci_vm::Burst {
+            host_cpus: u32::try_from(limits.cpus).unwrap_or(u32::MAX),
+            weight_per_cpu: 100 * u64::try_from(limits.jobs_per_cpu).unwrap_or(1),
+        }),
+        Some("off") => None,
+        Some(other) => return Err(format!("--machine-burst takes on or off, not `{other}`")),
+    };
     let cpus = match args.value("--machine-cpus")? {
         None => 2,
         Some(text) => text
@@ -304,7 +318,8 @@ fn machines(
         dir.into(),
         cache.join("machines"),
         cpus,
-        stall_after,
+        burst,
+        limits.stall_after,
         runtime,
     ))
 }

@@ -172,6 +172,23 @@ impl Jobs {
     }
 }
 
+impl Jobs {
+    /// A cgroup for one virtual machine, `name` unique among those alive,
+    /// with CPU weight `weight` and no limits of its own: the machine's
+    /// memory is fixed when it starts, and outside the memory controller
+    /// in huge pages.
+    pub fn create_weighted(&self, name: &str, weight: u64) -> io::Result<Cgroup> {
+        if name.is_empty() || name.contains('/') || name.starts_with('.') {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        let path = self.dir.join(name);
+        mkdir(&path)?;
+        let cgroup = Cgroup { path };
+        cgroup.set_cpu_weight(weight)?;
+        Ok(cgroup)
+    }
+}
+
 /// One sandbox's cgroup. Dropping it kills what is left in it and removes
 /// it.
 #[derive(Debug)]

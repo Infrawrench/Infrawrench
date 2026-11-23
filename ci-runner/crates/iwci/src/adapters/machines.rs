@@ -241,6 +241,7 @@ pub fn open(
     dir: std::path::PathBuf,
     cache: std::path::PathBuf,
     cpus: u32,
+    burst: Option<iwci_vm::Burst>,
     stall_after: Option<Duration>,
     runtime: &iwci_runtime::Runtime,
 ) -> Option<Arc<dyn Machines>> {
@@ -254,6 +255,7 @@ pub fn open(
         mkfs_erofs: std::env::var_os("IWCI_MKFS_EROFS").map(Into::into),
         cpus,
         workspace_cache_bytes: 16 << 30,
+        burst,
         #[cfg(target_os = "linux")]
         outside: runtime.outside(),
     });
