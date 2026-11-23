@@ -128,3 +128,78 @@ fn a_disk_that_cannot_take_the_files_keeps_them_in_memory() {
         assert_eq!(job.read(format!("/f{n}")).unwrap(), content(n, 16 * KIB));
     }
 }
+
+/// Descriptors this process holds, where the platform lists them.
+fn open_descriptors() -> Option<usize> {
+    ["/proc/self/fd", "/dev/fd"]
+        .iter()
+        .find_map(|d| std::fs::read_dir(d).ok())
+        .map(|entries| entries.count())
+}
+
+/// A restored package store is tens of thousands of small files. With a
+/// disk file each, spilling them ran the runner out of descriptors ("Too
+/// many open files"); they share one now, each in a region of it, and a
+/// file that outgrows its region, shrinks and grows again, or is written
+/// past its end reads back exactly what was written.
+#[test]
+fn many_spilled_files_share_one_disk_file() {
+    let dir = spill_dir("arena");
+    let b = SnapshotBuilder::new();
+    b.mkdir_all("/store").unwrap();
+    let job = b.freeze().fork_spilling(
+        Arc::new(Unlimited),
+        SpillConfig {
+            dir: dir.clone(),
+            resident_max: (64 * KIB) as u64,
+        },
+    );
+    let before = open_descriptors();
+    for n in 0..3000 {
+        job.write(format!("/store/f{n}"), &content(n, 1000))
+            .unwrap();
+    }
+    let (resident, spilled) = job.spill_usage().unwrap();
+    assert!(
+        spilled > (2000 * 1000) as u64,
+        "{spilled} on disk, {resident} in memory"
+    );
+    if let (Some(before), Some(after)) = (before, open_descriptors()) {
+        assert!(after <= before + 4, "{before} descriptors, then {after}");
+    }
+    for n in (0..3000).step_by(97) {
+        assert_eq!(job.read(format!("/store/f{n}")).unwrap(), content(n, 1000));
+    }
+
+    futures::executor::block_on(async {
+        let mut f = job
+            .as_dyn()
+            .new_open_options()
+            .read(true)
+            .write(true)
+            .open(std::path::Path::new("/store/f1"))
+            .unwrap();
+        // Past its region: it moves, and keeps what it had.
+        let big = content(9, 40 * KIB);
+        f.seek(std::io::SeekFrom::Start(1000)).await.unwrap();
+        f.write_all(&big).await.unwrap();
+        // Cut short, then written past the end: the gap reads as zeroes,
+        // not as what was there before the cut.
+        f.set_len(500).unwrap();
+        f.seek(std::io::SeekFrom::Start(2000)).await.unwrap();
+        f.write_all(b"end").await.unwrap();
+        f.flush().await.unwrap();
+        let mut all = Vec::new();
+        f.seek(std::io::SeekFrom::Start(0)).await.unwrap();
+        f.read_to_end(&mut all).await.unwrap();
+        let mut want = content(1, 500);
+        want.resize(2000, 0);
+        want.extend_from_slice(b"end");
+        assert_eq!(all, want);
+    });
+    // Its neighbours in the disk file are untouched.
+    assert_eq!(job.read("/store/f0").unwrap(), content(0, 1000));
+    assert_eq!(job.read("/store/f2").unwrap(), content(2, 1000));
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -1690,7 +1690,13 @@ pub(super) struct File {
 #[derive(Debug)]
 enum Data {
     Memory(TrackedVec),
-    Disk { file: std::fs::File, len: u64 },
+    /// `len` bytes at `offset` of the spill file, in a region of `cap`.
+    Disk {
+        file: Arc<std::fs::File>,
+        offset: u64,
+        cap: u64,
+        len: u64,
+    },
 }
 
 impl File {
@@ -1752,13 +1758,47 @@ impl File {
             return Ok(());
         };
         let before = self.footprint();
-        let file = spill.create()?;
-        write_all_at(&file, buffer, 0)?;
+        let (file, offset, cap) = spill.region(buffer.len() as u64)?;
+        write_all_at(&file, buffer, offset)?;
         self.data = Data::Disk {
             file,
+            offset,
+            cap,
             len: buffer.len() as u64,
         };
         self.accounted(before);
+        Ok(())
+    }
+
+    /// Makes room for `want` bytes in its region, moving to a new one at
+    /// least twice the size when it does not fit. Bytes between its length
+    /// and `want` read as zeroes afterwards.
+    fn disk_room(&mut self, want: u64) -> io::Result<()> {
+        let Data::Disk {
+            file,
+            offset,
+            cap,
+            len,
+        } = &mut self.data
+        else {
+            return Ok(());
+        };
+        if want <= *cap {
+            if want > *len {
+                // A region is zeroes only until it is first written: a file
+                // cut shorter left its old bytes past the new end.
+                zero_at(file, *offset + *len, want - *len)?;
+            }
+            return Ok(());
+        }
+        let Some(spill) = self.spill.clone() else {
+            return Err(io::ErrorKind::Unsupported.into());
+        };
+        let (new_file, new_offset, new_cap) = spill.region(want.max(*cap * 2))?;
+        copy_within(file, *offset, &new_file, new_offset, *len)?;
+        *file = new_file;
+        *offset = new_offset;
+        *cap = new_cap;
         Ok(())
     }
 
@@ -1784,12 +1824,13 @@ impl File {
             return Ok(());
         }
         let before = self.footprint();
+        if matches!(self.data, Data::Disk { .. }) {
+            self.disk_room(new_len as u64)
+                .map_err(|_| FsError::IOError)?;
+        }
         match &mut self.data {
             Data::Memory(buffer) => buffer.resize(new_len, 0)?,
-            Data::Disk { file, len } => {
-                file.set_len(new_len as u64).map_err(|_| FsError::IOError)?;
-                *len = new_len as u64;
-            }
+            Data::Disk { len, .. } => *len = new_len as u64,
         }
         self.touch();
         self.accounted(before);
@@ -1815,6 +1856,41 @@ fn read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> io::Result<usiz
 #[cfg(unix)]
 fn write_all_at(file: &std::fs::File, buf: &[u8], offset: u64) -> io::Result<()> {
     std::os::unix::fs::FileExt::write_all_at(file, buf, offset)
+}
+
+/// Writes `n` zero bytes at `offset`.
+fn zero_at(file: &std::fs::File, mut offset: u64, mut n: u64) -> io::Result<()> {
+    let zeroes = [0u8; 64 << 10];
+    while n > 0 {
+        let chunk = n.min(zeroes.len() as u64) as usize;
+        write_all_at(file, &zeroes[..chunk], offset)?;
+        offset += chunk as u64;
+        n -= chunk as u64;
+    }
+    Ok(())
+}
+
+/// Copies `n` bytes from `from` at `src` to `to` at `dst`.
+fn copy_within(
+    from: &std::fs::File,
+    mut src: u64,
+    to: &std::fs::File,
+    mut dst: u64,
+    mut n: u64,
+) -> io::Result<()> {
+    let mut buf = vec![0u8; 1 << 20];
+    while n > 0 {
+        let want = n.min(buf.len() as u64) as usize;
+        let got = read_at(from, &mut buf[..want], src)?;
+        if got == 0 {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        write_all_at(to, &buf[..got], dst)?;
+        src += got as u64;
+        dst += got as u64;
+        n -= got as u64;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -1851,7 +1927,9 @@ impl File {
                 buf[..max_to_read].copy_from_slice(&buffer[cur_pos..][..max_to_read]);
                 max_to_read
             }
-            Data::Disk { file, .. } => read_at(file, &mut buf[..max_to_read], cur_pos as u64)?,
+            Data::Disk { file, offset, .. } => {
+                read_at(file, &mut buf[..max_to_read], offset + cur_pos as u64)?
+            }
         };
 
         *cursor += read as u64;
@@ -1922,9 +2000,16 @@ impl File {
                     buffer[position..end].copy_from_slice(buf);
                 }
             }
-            Data::Disk { file, len } => {
-                // A gap past the end reads as zeroes, as the disk file's.
-                write_all_at(file, buf, position as u64)?;
+            Data::Disk { .. } => {
+                // Room up to the end, a gap past the length zeroed.
+                self.disk_room(end as u64)?;
+                let Data::Disk {
+                    file, offset, len, ..
+                } = &mut self.data
+                else {
+                    unreachable!("still on disk");
+                };
+                write_all_at(file, buf, *offset + position as u64)?;
                 *len = (*len).max(end as u64);
             }
         }
