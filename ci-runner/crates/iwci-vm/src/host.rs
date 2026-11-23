@@ -41,6 +41,12 @@ use crate::archive::{self, Moded};
 use crate::images::{LinuxImage, WindowsImage, Workspaces};
 use crate::qemu::{self, Arch, Sockets};
 
+/// How big a Linux job's writable disk is. Sparse on the host, so only the
+/// sectors the job touches cost anything; the rest is a hole. This replaces
+/// the tmpfs writable layer, which used to charge a big install against the
+/// job's memory.
+const SCRATCH_DISK_BYTES: u64 = 20 << 30;
+
 /// The kind of machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Os {
@@ -418,6 +424,18 @@ impl Host {
             files: (cfg!(target_os = "linux") && job.os == Os::Linux && self.streams_files())
                 .then(|| dir.join("files.sock")),
         };
+        // A sparse file per job becomes the guest's ext4 writable layer.
+        // `run` removes the machine's directory, and the disk with it.
+        let scratch_disk = if cfg!(target_os = "linux") && job.os == Os::Linux {
+            let path = dir.join("scratch.img");
+            let file =
+                std::fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            file.set_len(SCRATCH_DISK_BYTES)
+                .map_err(|e| format!("resizing {}: {e}", path.display()))?;
+            Some(path)
+        } else {
+            None
+        };
         let agent_listener = listen(&sockets.agent)?;
         let net_listener = sockets.net.as_deref().map(listen).transpose()?;
         // Shared memory in huge pages when the host lends them, else in
@@ -455,6 +473,7 @@ impl Host {
                             kernel: &image.kernel,
                             rootfs: &image.rootfs,
                             workspace: workspace.as_deref(),
+                            scratch_disk: scratch_disk.as_deref(),
                             // Huge pages come whole.
                             memory_mib: if huge_pages {
                                 memory_mib.div_ceil(2) * 2

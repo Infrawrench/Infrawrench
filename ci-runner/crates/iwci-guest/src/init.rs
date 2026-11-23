@@ -18,6 +18,9 @@
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
+use std::process::Command;
+
+use iwci_vm_proto::SCRATCH_SERIAL;
 
 use crate::platform::LinuxMachine;
 use crate::port::{open_linux, serve_port};
@@ -85,24 +88,28 @@ fn bind_read_only(source: &str, target: &str) -> io::Result<()> {
 /// The serial the runner gives the workspace image's disk.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
 
-/// The workspace image's disk (`/dev/vdX`), found by its serial rather
-/// than its name: virtio-mmio devices are numbered in the reverse of the
-/// order QEMU is given them, so only the root disk's name is fixed (the
-/// runner puts it last, which makes it `vda`).
-fn workspace_disk() -> Option<String> {
+/// A disk (`/dev/vdX`), found by its serial rather than its name:
+/// virtio-mmio devices are numbered in the reverse of the order QEMU is
+/// given them, so only the root disk's name is fixed (the runner puts it
+/// last, which makes it `vda`).
+fn disk_by_serial(serial: &str) -> Option<String> {
     let entries = std::fs::read_dir("/sys/block").ok()?;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.starts_with("vd") {
             continue;
         }
-        let serial = std::fs::read_to_string(entry.path().join("serial")).unwrap_or_default();
-        if serial.trim() == WORKSPACE_SERIAL {
+        let found = std::fs::read_to_string(entry.path().join("serial")).unwrap_or_default();
+        if found.trim() == serial {
             let dev = format!("/dev/{name}");
             return Path::new(&dev).exists().then_some(dev);
         }
     }
     None
+}
+
+fn workspace_disk() -> Option<String> {
+    disk_by_serial(WORKSPACE_SERIAL)
 }
 
 /// The tag of the virtio-fs device the job's own files are served on,
@@ -140,7 +147,54 @@ pub fn build_root() -> io::Result<()> {
         other => other?,
     }
 
-    mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
+    // The writable layer used to be a tmpfs, so every file a job wrote came
+    // out of its memory. When the runner attached a scratch disk, format it
+    // and use that instead; an older runner without one, or an image
+    // without mkfs.ext4, still gets tmpfs. The disk lives for one job, so it
+    // has no journal, and its inode tables are left for the kernel to
+    // initialise as they are used (`lazy_itable_init` here, `noinit_itable`
+    // at mount), rather than zeroed up front: zeroing 20 GiB worth of
+    // tables would write over a gigabyte to the host for nothing. One inode
+    // per 4 KiB, since node_modules is mostly small files.
+    let scratch = disk_by_serial(SCRATCH_SERIAL);
+    let formatted = match scratch.as_deref() {
+        Some(dev) => {
+            let status = Command::new("/usr/sbin/mkfs.ext4")
+                .args([
+                    "-q",
+                    "-F",
+                    "-O",
+                    "^has_journal",
+                    "-E",
+                    "lazy_itable_init=1,lazy_journal_init=1,nodiscard",
+                    "-m",
+                    "0",
+                    "-i",
+                    "4096",
+                    dev,
+                ])
+                .status();
+            match status {
+                Ok(success) if success.success() => true,
+                other => {
+                    eprintln!("iwci-guest: mkfs.ext4 on {dev}: {other:?}; using tmpfs");
+                    false
+                }
+            }
+        }
+        None => false,
+    };
+    if let (Some(dev), true) = (scratch.as_deref(), formatted) {
+        mount(
+            dev,
+            "/.iwci/rw",
+            Some("ext4"),
+            libc::MS_NOATIME,
+            Some("noinit_itable"),
+        )?;
+    } else {
+        mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
+    }
     mkdir("/.iwci/rw/upper")?;
     mkdir("/.iwci/rw/work")?;
     // The job's files: streamed in over virtio-fs, read only, or a disk

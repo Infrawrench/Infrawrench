@@ -562,8 +562,10 @@ cat >"$root/usr/local/bin/iwci-dockerd" <<'EOF'
 #!/bin/sh
 # Starts the Docker daemon in a job's machine and waits until it answers.
 # The machine has no init system (iwci-guest is PID 1). Docker's storage
-# goes on tmpfs: overlay2 cannot put its upper layers on the overlayfs the
-# job's root is.
+# cannot go on the overlayfs the job's root is (overlay2 cannot put its
+# upper layers there), so it goes on the job's scratch disk, the ext4 under
+# that overlay at /.iwci/rw, when the runner attached one, and on tmpfs,
+# which comes out of the job's memory, when it did not.
 set -eu
 if docker info >/dev/null 2>&1; then
   exit 0
@@ -571,9 +573,20 @@ fi
 if ! grep -q '^cgroup2 /sys/fs/cgroup ' /proc/mounts; then
   mount -t cgroup2 cgroup2 /sys/fs/cgroup
 fi
+scratch=
+if [ "$(stat -f -c %T /.iwci/rw 2>/dev/null)" = ext2/ext3 ]; then
+  scratch=/.iwci/rw
+fi
 for dir in /var/lib/docker /var/lib/containerd; do
   mkdir -p "$dir"
-  mountpoint -q "$dir" || mount -t tmpfs -o mode=0710 tmpfs "$dir"
+  mountpoint -q "$dir" && continue
+  if [ -n "$scratch" ]; then
+    mkdir -p "$scratch/${dir##*/}"
+    chmod 0710 "$scratch/${dir##*/}"
+    mount --bind "$scratch/${dir##*/}" "$dir"
+  else
+    mount -t tmpfs -o mode=0710 tmpfs "$dir"
+  fi
 done
 mkdir -p /var/log
 nohup dockerd >/var/log/dockerd.log 2>&1 &

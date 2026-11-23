@@ -721,8 +721,14 @@ jobs:
   216 MB clone right after boot takes the same time, a second walk of it
   is faster, and no image has to be made for the commit. An older image
   gets the clone as a read-only erofs disk made once per commit, and the
-  rest copied in. Either way, what the job writes stays in the machine's
-  own memory, and afterwards it sends back what the scheduler reads:
+  rest copied in. Either way, what the job writes goes to a scratch disk
+  of its own, not its memory: the runner attaches a 20 GiB sparse file,
+  which the agent formats as ext4 when the machine starts and uses as the
+  writable layer (and Docker's storage), so a large install no longer
+  fails for want of memory. The file is deleted with the machine, and only
+  what the job wrote takes room on the runner's disk. An image without
+  `mkfs.ext4` keeps the writable layer in memory, as before. Afterwards
+  the job sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
   `changes:`, the clone without what its `.gitignore` ignores. A job's
   `npm ci` stays in the machine, and artifacts in ignored directories
