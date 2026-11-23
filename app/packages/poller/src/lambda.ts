@@ -45,8 +45,14 @@ interface LambdaContext {
 }
 
 // Init phase: configuration, then the plugins and the pass registry, once per
-// execution environment.
-await prepareLambdaProcess();
+// execution environment. The pool has a connection per account poll running
+// at once and some for the passes on loops of their own beside them: with
+// the web's two, CI's status pass (due every second) shared them with every
+// account poll, passes of up to 80 s were logged, and finished runs were
+// noticed that much later.
+await prepareLambdaProcess({
+  connections: envInt("POLLER_CONCURRENCY", DEFAULT_CONCURRENCY) + 4,
+});
 const [{ loadPlugins }, { PollerLoop }, { parsePollScope }] = await Promise.all([
   import("@infrawrench/server-core/plugin-loader"),
   import("./loop"),
