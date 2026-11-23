@@ -412,11 +412,19 @@ ln -sf ../go/bin/go "$root/usr/local/bin/go"
 ln -sf ../go/bin/gofmt "$root/usr/local/bin/gofmt"
 
 # goenv's binary on the PATH and GOENV_ROOT, where the Go versions and their
-# shims go, in /root/.goenv, as for rbenv: shims for `go` and `gofmt` from
-# the start (a stand-in version lends the names), which run the Go above
-# until a version is chosen. goenv 3 installs gopls, golangci-lint,
-# staticcheck and delve after every `goenv install` unless told not to:
-# 51 s and 150 MB more a version, measured on ci-1, so it is told not to.
+# shims go, in /root/.goenv, as for rbenv. goenv 3 installs gopls,
+# golangci-lint, staticcheck and delve after every `goenv install` unless
+# told not to: 51 s and 150 MB more a version, measured on ci-1, so it is
+# told not to.
+#
+# The Go above is also a goenv version. goenv reads a project's go.mod (its
+# `go` and `toolchain` lines) as the least version it needs, and with no
+# version installed it refuses every module ("version '1.27.4' is not
+# installed (set by /app/go.mod)") instead of running the Go on the PATH.
+# Registered, it satisfies every go.mod up to its own version. goenv only
+# lists a real directory under versions/ (a symlink to /usr/local/go is
+# skipped), so the version is a directory of links to the install's entries.
+# That also makes the `go` and `gofmt` shims at rehash.
 read -r v s < <(release_line goenv)
 fetch "https://github.com/go-nv/goenv/releases/download/$v/goenv_${v}_linux_$goarch.tar.gz" "$s" "goenv.tar.gz"
 rm -rf "$work/goenv"
@@ -425,14 +433,25 @@ tar -C "$work/goenv" -xzf "$dl/goenv.tar.gz" --no-same-owner goenv
 install -m 0755 "$work/goenv/goenv" "$root/usr/local/bin/goenv"
 install -d "$root/root/.goenv/versions" "$root/root/.goenv/shims"
 printf 'enabled: false\ntools: []\n' >"$root/root/.goenv/default-tools.yaml"
-stand_in="$root/root/.goenv/versions/iwci-shim-names/bin"
-install -d "$stand_in"
-for name in go gofmt; do
-  install -m 0755 /dev/null "$stand_in/$name"
+read -r gov _ < <(release_line go)
+install -d "$root/root/.goenv/versions/$gov"
+for entry in "$root/usr/local/go/"*; do
+  ln -s "/usr/local/go/${entry##*/}" "$root/root/.goenv/versions/$gov/"
 done
 in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
-rm -rf "$root/root/.goenv/versions/iwci-shim-names"
 [[ -x "$root/root/.goenv/shims/go" ]] || die "goenv rehash made no shims"
+# The failure this guards against: a module whose go.mod names the bundled
+# Go, built through the shim, as a job would.
+probe="$root/tmp/goenv-probe"
+rm -rf "$probe"
+install -d "$probe"
+printf 'module probe\n\ngo %s\n' "$gov" >"$probe/go.mod"
+printf 'package main\n\nfunc main() {}\n' >"$probe/main.go"
+in_root env GOENV_ROOT=/root/.goenv GOENV_DISABLE_GOPATH=1 GOENV_DISABLE_GOCACHE=1 \
+  GOTOOLCHAIN=local GOCACHE=/tmp/goenv-probe/cache GOPATH=/tmp/goenv-probe/gopath \
+  sh -c 'cd /tmp/goenv-probe && /root/.goenv/shims/go build -o /dev/null .' ||
+  die "goenv's go shim cannot build a module whose go.mod says go $gov"
+rm -rf "$probe"
 
 read -r v s < <(release_line rustup)
 fetch "https://static.rust-lang.org/rustup/archive/$v/$rusttriple/rustup-init" "$s" "rustup-init"
