@@ -2723,10 +2723,12 @@ pub fn run<T: Tools>(
                                 + Duration::from_secs(60),
                         ),
                     );
+                    let began = millis(started.elapsed());
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
                         &inherited, lookup, cancel, &mut kept, &mut saved, &view,
                     );
+                    let ran = millis(started.elapsed());
                     report.queued_ms = queued_ms;
                     report.cpus = job.cpus;
                     if let Some(sharing) = sharing {
@@ -2784,6 +2786,14 @@ pub fn run<T: Tools>(
                             scratch,
                         );
                     }
+                    // Where a pipeline's time goes around its jobs, in the
+                    // runner's log: from the pipeline's start.
+                    eprintln!(
+                        "iwci: pipeline {}: job {} queued {queued_ms} ms, ran from {began} to {ran} ms, reported at {} ms",
+                        plan.name,
+                        report.id,
+                        millis(started.elapsed())
+                    );
                     complete(&state, &wake, plan, options, template, report, kept);
                     // After its entry was saved, if it was, and after the
                     // jobs that need it here are on their way: a run
@@ -2797,6 +2807,7 @@ pub fn run<T: Tools>(
         }
     });
 
+    let jobs_done = millis(started.elapsed());
     let mut state = state.into_inner().unwrap();
     let mut warnings: Vec<String> = Vec::new();
     let mut installs: Vec<String> = Vec::new();
@@ -2815,6 +2826,11 @@ pub fn run<T: Tools>(
             durations.save_history(&plan.name, &kept);
         }
     }
+    eprintln!(
+        "iwci: pipeline {}: every job done at {jobs_done} ms, finished at {} ms",
+        plan.name,
+        millis(started.elapsed())
+    );
     RunReport {
         pipeline: plan.name.clone(),
         jobs,
