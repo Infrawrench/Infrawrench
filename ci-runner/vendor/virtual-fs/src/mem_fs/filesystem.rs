@@ -27,6 +27,15 @@ impl FileSystem {
         self.inner.write().unwrap().limiter = Some(limiter);
     }
 
+    /// iwci patch: files made from now on spill to disk past
+    /// `config.resident_max` bytes in memory (`spill.rs`). Returns what
+    /// reports how much is where.
+    pub fn set_spill(&self, config: super::SpillConfig) -> Arc<super::Spill> {
+        let spill = Arc::new(super::Spill::new(config));
+        self.inner.write().unwrap().spill = Some(spill.clone());
+        spill
+    }
+
     pub fn new_open_options_ext(&self) -> &FileSystem {
         self
     }
@@ -766,6 +775,8 @@ pub(super) struct FileSystemInner {
     pub(super) links: HashMap<Inode, Vec<Inode>>,
     pub(super) backing_offload: Option<OffloadBackingStore>,
     pub(super) limiter: Option<crate::limiter::DynFsMemoryLimiter>,
+    /// iwci patch: where files spill to, when they do (`spill.rs`).
+    pub(super) spill: Option<Arc<super::Spill>>,
 }
 
 #[derive(Debug)]
@@ -787,6 +798,41 @@ impl InodeResolution {
 }
 
 impl FileSystemInner {
+    /// iwci patch: when the files in memory together pass the spill limit,
+    /// moves the least recently used of them to disk until what is left is
+    /// under three quarters of it (`spill.rs`). A file that cannot be moved
+    /// (the disk is full) stays in memory, and spilling stops there.
+    pub(super) fn spill_over(&mut self) {
+        let Some(spill) = self.spill.clone() else {
+            return;
+        };
+        if !spill.over() {
+            return;
+        }
+        let mut candidates: Vec<(u64, Inode)> = self
+            .storage
+            .iter()
+            .filter_map(|(inode, node)| match node {
+                Node::File(FileNode { file, .. }) => {
+                    file.in_memory().map(|(used, _)| (used, inode))
+                }
+                _ => None,
+            })
+            .collect();
+        candidates.sort_unstable();
+        for (_, inode) in candidates {
+            if spill.settled() {
+                break;
+            }
+            if let Some(Node::File(FileNode { file, .. })) = self.storage.get_mut(inode)
+                && let Err(e) = file.spill_to_disk()
+            {
+                tracing::warn!(error = %e, "could not spill a file to disk");
+                break;
+            }
+        }
+    }
+
     pub(super) fn unlink_file_inode(
         &mut self,
         inode_of_parent: Inode,
@@ -1361,6 +1407,7 @@ impl Default for FileSystemInner {
             links: HashMap::new(),
             backing_offload: None,
             limiter: None,
+            spill: None,
         }
     }
 }

@@ -17,7 +17,10 @@ use std::convert::TryInto;
 use std::fmt;
 use std::io;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
+
+use super::spill::Spill;
 
 /// A file handle. The file system doesn't return the [`File`] type
 /// directly, but rather this `FileHandle` type, which contains the
@@ -215,9 +218,9 @@ impl VirtualFile for FileHandle {
         let inode = fs.storage.get_mut(self.inode);
         match inode {
             Some(Node::File(FileNode { file, metadata, .. })) => {
-                file.buffer
-                    .resize(new_size.try_into().map_err(|_| FsError::UnknownError)?, 0)?;
+                file.resize(new_size.try_into().map_err(|_| FsError::UnknownError)?)?;
                 metadata.len = new_size;
+                fs.spill_over();
             }
             Some(Node::OffloadedFile(OffloadedFileNode { file, metadata, .. })) => {
                 file.resize(new_size, 0);
@@ -401,7 +404,7 @@ impl VirtualFile for FileHandle {
         let inode = fs.storage.get_mut(self.inode);
         match inode {
             Some(Node::File(node)) => {
-                let remaining = node.file.buffer.len() - (self.cursor as usize);
+                let remaining = node.file.len() - (self.cursor as usize);
                 Poll::Ready(Ok(remaining))
             }
             Some(Node::OffloadedFile(node)) => {
@@ -1073,6 +1076,7 @@ impl AsyncWrite for FileHandle {
                     cursor = self.write_cursor(node.file.len() as u64);
                     let bytes_written = node.file.write(buf, &mut cursor)?;
                     node.metadata.len = node.file.len().try_into().unwrap();
+                    fs.spill_over();
                     bytes_written
                 }
                 Some(Node::OffloadedFile(node)) => {
@@ -1158,7 +1162,8 @@ impl AsyncWrite for FileHandle {
                         .find(|b| !b.is_empty())
                         .map_or(&[][..], |b| &**b);
                     let bytes_written = node.file.write(buf, &mut cursor)?;
-                    node.metadata.len = node.file.buffer.len() as u64;
+                    node.metadata.len = node.file.len() as u64;
+                    fs.spill_over();
                     Poll::Ready(Ok(bytes_written))
                 }
                 Some(Node::OffloadedFile(node)) => {
@@ -1412,7 +1417,7 @@ mod test_read_write_seek {
             assert_eq!(buf[0..expected.len()], *expected);
         }
 
-        let mut file = File::new(None);
+        let mut file = File::new(None, None);
 
         let mut cursor = 0;
 
@@ -1670,46 +1675,188 @@ impl Drop for FileHandle {
 
 /// The real file! It is simply a buffer of bytes with a cursor that
 /// represents a read/write position in the buffer.
+///
+/// iwci patch: a file's contents are in memory, as published, or, when
+/// its file system spills (`spill.rs`), possibly in a file on disk.
 #[derive(Debug)]
 pub(super) struct File {
-    buffer: TrackedVec,
+    data: Data,
+    limiter: Option<crate::limiter::DynFsMemoryLimiter>,
+    spill: Option<Arc<Spill>>,
+    /// When it was last read or written, on `spill`'s clock.
+    last_used: AtomicU64,
+}
+
+#[derive(Debug)]
+enum Data {
+    Memory(TrackedVec),
+    Disk { file: std::fs::File, len: u64 },
 }
 
 impl File {
-    pub(super) fn new(limiter: Option<crate::limiter::DynFsMemoryLimiter>) -> Self {
-        Self {
-            buffer: TrackedVec::new(limiter),
+    pub(super) fn new(
+        limiter: Option<crate::limiter::DynFsMemoryLimiter>,
+        spill: Option<Arc<Spill>>,
+    ) -> Self {
+        let file = Self {
+            data: Data::Memory(TrackedVec::new(limiter.clone())),
+            limiter,
+            spill,
+            last_used: AtomicU64::new(0),
+        };
+        file.touch();
+        file
+    }
+
+    fn touch(&self) {
+        if let Some(spill) = &self.spill {
+            self.last_used.store(spill.tick(), Ordering::Relaxed);
         }
     }
 
+    /// When it was last used, and how much of it is in memory: what the
+    /// file system needs to pick which files to spill.
+    pub(super) fn in_memory(&self) -> Option<(u64, usize)> {
+        match &self.data {
+            Data::Memory(buffer) if !buffer.is_empty() => {
+                Some((self.last_used.load(Ordering::Relaxed), buffer.len()))
+            }
+            _ => None,
+        }
+    }
+
+    /// Records a change in how long its contents are, wherever they are.
+    fn accounted(&self, before: (u64, u64)) {
+        if let Some(spill) = &self.spill {
+            let after = self.footprint();
+            spill.resident_changed(before.0, after.0);
+            spill.spilled_changed(before.1, after.1);
+        }
+    }
+
+    /// Bytes in memory and bytes on disk.
+    fn footprint(&self) -> (u64, u64) {
+        match &self.data {
+            Data::Memory(buffer) => (buffer.len() as u64, 0),
+            Data::Disk { len, .. } => (0, *len),
+        }
+    }
+
+    /// Moves its contents to a new file on disk. A failure leaves it in
+    /// memory, where it was.
+    pub(super) fn spill_to_disk(&mut self) -> io::Result<()> {
+        let Some(spill) = self.spill.clone() else {
+            return Ok(());
+        };
+        let Data::Memory(buffer) = &self.data else {
+            return Ok(());
+        };
+        let before = self.footprint();
+        let file = spill.create()?;
+        write_all_at(&file, buffer, 0)?;
+        self.data = Data::Disk {
+            file,
+            len: buffer.len() as u64,
+        };
+        self.accounted(before);
+        Ok(())
+    }
+
     pub(super) fn truncate(&mut self) {
-        self.buffer.clear();
+        let before = self.footprint();
+        // Emptied, a file on disk comes back to memory.
+        self.data = Data::Memory(TrackedVec::new(self.limiter.clone()));
+        self.touch();
+        self.accounted(before);
     }
 
     pub(super) fn len(&self) -> usize {
-        self.buffer.len()
+        match &self.data {
+            Data::Memory(buffer) => buffer.len(),
+            Data::Disk { len, .. } => *len as usize,
+        }
     }
+
+    /// Makes it `new_len` bytes long, cutting it or filling with zeroes.
+    pub(super) fn resize(&mut self, new_len: usize) -> Result<()> {
+        if new_len == 0 {
+            self.truncate();
+            return Ok(());
+        }
+        let before = self.footprint();
+        match &mut self.data {
+            Data::Memory(buffer) => buffer.resize(new_len, 0)?,
+            Data::Disk { file, len } => {
+                file.set_len(new_len as u64).map_err(|_| FsError::IOError)?;
+                *len = new_len as u64;
+            }
+        }
+        self.touch();
+        self.accounted(before);
+        Ok(())
+    }
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        if let Some(spill) = &self.spill {
+            let (resident, spilled) = self.footprint();
+            spill.resident_changed(resident, 0);
+            spill.spilled_changed(spilled, 0);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+    std::os::unix::fs::FileExt::read_at(file, buf, offset)
+}
+
+#[cfg(unix)]
+fn write_all_at(file: &std::fs::File, buf: &[u8], offset: u64) -> io::Result<()> {
+    std::os::unix::fs::FileExt::write_all_at(file, buf, offset)
+}
+
+#[cfg(windows)]
+fn read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+    std::os::windows::fs::FileExt::seek_read(file, buf, offset)
+}
+
+#[cfg(windows)]
+fn write_all_at(file: &std::fs::File, mut buf: &[u8], mut offset: u64) -> io::Result<()> {
+    while !buf.is_empty() {
+        let n = std::os::windows::fs::FileExt::seek_write(file, buf, offset)?;
+        if n == 0 {
+            return Err(io::ErrorKind::WriteZero.into());
+        }
+        buf = &buf[n..];
+        offset += n as u64;
+    }
+    Ok(())
 }
 
 impl File {
     pub fn read(&self, buf: &mut [u8], cursor: &mut u64) -> io::Result<usize> {
+        self.touch();
         let cur_pos = *cursor as usize;
 
         // POSIX regular files return EOF, not an error, when reading at or beyond EOF.
-        if cur_pos >= self.buffer.len() {
+        if cur_pos >= self.len() {
             return Ok(0);
         }
 
-        let max_to_read = cmp::min(self.buffer.len() - cur_pos, buf.len());
-        let data_to_copy = &self.buffer[cur_pos..][..max_to_read];
+        let max_to_read = cmp::min(self.len() - cur_pos, buf.len());
+        let read = match &self.data {
+            Data::Memory(buffer) => {
+                buf[..max_to_read].copy_from_slice(&buffer[cur_pos..][..max_to_read]);
+                max_to_read
+            }
+            Data::Disk { file, .. } => read_at(file, &mut buf[..max_to_read], cur_pos as u64)?,
+        };
 
-        // SAFETY: `buf[..max_to_read]` and `data_to_copy` have the same size, due to
-        // how `max_to_read` is computed.
-        buf[..max_to_read].copy_from_slice(data_to_copy);
+        *cursor += read as u64;
 
-        *cursor += max_to_read as u64;
-
-        Ok(max_to_read)
+        Ok(read)
     }
 }
 
@@ -1722,9 +1869,9 @@ impl File {
             // Calculate from the beginning, so `0 + offset`.
             io::SeekFrom::Start(offset) => offset.try_into().map_err(to_err)?,
 
-            // Calculate from the end, so `buffer.len() + offset`.
+            // Calculate from the end, so `len + offset`.
             io::SeekFrom::End(offset) => {
-                TryInto::<i64>::try_into(self.buffer.len()).map_err(to_err)? + offset
+                TryInto::<i64>::try_into(self.len()).map_err(to_err)? + offset
             }
 
             // Calculate from the current cursor, so `cursor + offset`.
@@ -1751,25 +1898,37 @@ impl File {
 
 impl File {
     pub fn write(&mut self, buf: &[u8], cursor: &mut u64) -> io::Result<usize> {
+        self.touch();
+        let before = self.footprint();
         let position = *cursor as usize;
         let end = position
             .checked_add(buf.len())
             .ok_or(io::ErrorKind::InvalidInput)?;
 
-        if position > self.buffer.len() {
-            // Materialize the sparse gap with zeroes in this contiguous in-memory buffer.
-            self.buffer.resize(position, 0)?;
-        }
+        match &mut self.data {
+            Data::Memory(buffer) => {
+                if position > buffer.len() {
+                    // Materialize the sparse gap with zeroes in this contiguous in-memory buffer.
+                    buffer.resize(position, 0)?;
+                }
 
-        if end > self.buffer.len() {
-            // Writing past the end of the current buffer, must reallocate
-            let len_after_end = end - self.buffer.len();
-            let let_to_end = buf.len() - len_after_end;
-            self.buffer[position..end - len_after_end].copy_from_slice(&buf[0..let_to_end]);
-            self.buffer.extend_from_slice(&buf[let_to_end..buf.len()])?;
-        } else {
-            self.buffer[position..end].copy_from_slice(buf);
+                if end > buffer.len() {
+                    // Writing past the end of the current buffer, must reallocate
+                    let len_after_end = end - buffer.len();
+                    let let_to_end = buf.len() - len_after_end;
+                    buffer[position..end - len_after_end].copy_from_slice(&buf[0..let_to_end]);
+                    buffer.extend_from_slice(&buf[let_to_end..buf.len()])?;
+                } else {
+                    buffer[position..end].copy_from_slice(buf);
+                }
+            }
+            Data::Disk { file, len } => {
+                // A gap past the end reads as zeroes, as the disk file's.
+                write_all_at(file, buf, position as u64)?;
+                *len = (*len).max(end as u64);
+            }
         }
+        self.accounted(before);
 
         *cursor += buf.len() as u64;
 

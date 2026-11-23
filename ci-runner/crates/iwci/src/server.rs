@@ -1405,6 +1405,7 @@ mod tests {
             #[cfg(target_os = "linux")]
             sandbox: None,
             machines: None,
+            spill: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()

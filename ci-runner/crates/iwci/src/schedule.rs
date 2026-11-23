@@ -729,6 +729,14 @@ impl RunReport {
     }
 }
 
+/// Where isolate jobs' files spill to: a directory on the runner's disk,
+/// and how much of it one job may fill (`--spill-disk`).
+#[derive(Debug, Clone)]
+pub struct Spill {
+    pub dir: std::path::PathBuf,
+    pub disk_bytes: u64,
+}
+
 pub struct Options {
     /// Jobs running at once. Each is single-threaded wasm, so the host's
     /// core count is the natural ceiling.
@@ -782,6 +790,9 @@ pub struct Options {
     /// The runner's virtual machines, for `platform: linux` jobs; `None`
     /// fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
+    /// Where an isolate job's files go once they outgrow its memory
+    /// (`--spill-disk`); `None` keeps them all in memory, held to `memory:`.
+    pub spill: Option<Spill>,
 }
 
 impl Options {
@@ -1695,6 +1706,16 @@ struct JobBudget {
     /// Told what the job's files come to, when its reservation follows
     /// what it holds.
     gauge: Option<Arc<Gauge>>,
+    /// The most of the job's files kept in memory, when the rest spill to
+    /// disk ([`Spill`]): what of `used` counts as memory.
+    resident_cap: Option<u64>,
+}
+
+impl JobBudget {
+    /// What of `bytes` of files is in memory.
+    fn in_memory(&self, bytes: u64) -> u64 {
+        self.resident_cap.map_or(bytes, |cap| bytes.min(cap))
+    }
 }
 
 impl WriteBudget for JobBudget {
@@ -1707,7 +1728,7 @@ impl WriteBudget for JobBudget {
         if let Ok(before) = taken {
             self.peak.fetch_max(before + bytes, Ordering::SeqCst);
             if let Some(gauge) = &self.gauge {
-                gauge.files(before + bytes);
+                gauge.files(self.in_memory(before + bytes));
             }
         }
         let ok = taken.is_ok();
@@ -2222,6 +2243,7 @@ pub fn run<T: Tools>(
                 peak: AtomicU64::new(0),
                 refused: AtomicBool::new(false),
                 gauge: None,
+                resident_cap: None,
             })),
         sharing.is_some(),
     );
@@ -3356,15 +3378,31 @@ fn run_job<T: Tools>(
 
     // The job's files live in memory, so its writes are held to its
     // `memory:` too (and to the runner's budget), or a job could write its
-    // way past any limit.
+    // way past any limit. With a spill directory (`--spill-disk`), only half
+    // its `memory:` of them stays in memory, the least recently used
+    // beyond that move to the runner's disk, and what it writes is held to
+    // the disk allowance instead.
+    let resident_cap = options.spill.as_ref().map(|_| job.memory_bytes / 2);
     let write_budget = Arc::new(JobBudget {
-        cap: job.memory_bytes,
+        cap: options.spill.as_ref().map_or(job.memory_bytes, |spill| {
+            spill.disk_bytes.max(job.memory_bytes)
+        }),
         used: AtomicU64::new(0),
         peak: AtomicU64::new(0),
         refused: AtomicBool::new(false),
         gauge: gauge.clone(),
+        resident_cap,
     });
-    let fs = workspace.snapshot.fork_limited(write_budget.clone());
+    let fs = match (&options.spill, resident_cap) {
+        (Some(spill), Some(resident_max)) => workspace.snapshot.fork_spilling(
+            write_budget.clone(),
+            iwci_vfs::SpillConfig {
+                dir: spill.dir.clone(),
+                resident_max,
+            },
+        ),
+        _ => workspace.snapshot.fork_limited(write_budget.clone()),
+    };
     if let Err(e) = fs.create_for_job(OUTPUT_PATH) {
         return errored(
             job,
@@ -3755,11 +3793,18 @@ fn run_job<T: Tools>(
         Status::Failed { reason: memory }
     } else if execution.exit_code != 0 && write_budget.refused.load(Ordering::SeqCst) {
         Status::Failed {
-            reason: format!(
-                "exited with {} after a write was refused: the files it wrote used up its {} MiB memory limit",
-                execution.exit_code,
-                job.memory_bytes >> 20
-            ),
+            reason: match &options.spill {
+                Some(_) => format!(
+                    "exited with {} after a write was refused: the files it wrote used up its {} MiB of disk",
+                    execution.exit_code,
+                    write_budget.cap >> 20
+                ),
+                None => format!(
+                    "exited with {} after a write was refused: the files it wrote used up its {} MiB memory limit",
+                    execution.exit_code,
+                    job.memory_bytes >> 20
+                ),
+            },
         }
     } else if execution.exit_code != 0 {
         Status::Failed {
@@ -3902,7 +3947,8 @@ fn run_job<T: Tools>(
     // How long it took, for the next run's order and for the task cache's
     // record, which a hit then counts as: the same number in both.
     let ran_ms = millis(started.elapsed());
-    let files_peak = write_budget.peak.load(Ordering::SeqCst);
+    // Only what of its files was in memory counts toward what it held.
+    let files_peak = write_budget.in_memory(write_budget.peak.load(Ordering::SeqCst));
     let peak_memory_mib = execution
         .peak_memory_bytes
         .saturating_add(files_peak)

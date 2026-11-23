@@ -13,7 +13,7 @@
 //!          [--keep-installs-unpacked 24h] [--var NAME=value]...
 //!          [--no-task-cache]
 //!          [--download-max-file 256MiB] [--download-max-run 1GiB]
-//!          [--download-max-retention 90d]
+//!          [--download-max-retention 90d] [--spill-disk 20GiB]
 //! ```
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
@@ -248,7 +248,31 @@ pub(super) fn open_runner(
         #[cfg(target_os = "linux")]
         sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
         machines,
+        spill: spill(args, &cache)?,
     })
+}
+
+/// The most of the runner's disk one isolate job's files may take when
+/// they outgrow memory, as a machine's scratch disk is.
+pub const DEFAULT_SPILL_DISK: u64 = 20 << 30;
+
+/// `--spill-disk <size>` (default 20GiB): an isolate job keeps half its
+/// `memory:` of files in memory and moves the least recently used beyond
+/// that to unlinked files under the cache directory's `spill/`, up to this
+/// much. `--spill-disk 0` keeps every file in memory, held to `memory:`.
+fn spill(args: &mut Args, cache: &std::path::Path) -> Result<Option<schedule::Spill>, String> {
+    let disk_bytes = match args.value("--spill-disk")? {
+        None => DEFAULT_SPILL_DISK,
+        Some(text) => iwci_spec::parse_size(&text).ok_or_else(|| {
+            format!("--spill-disk takes a size such as `20GiB` or `0`, not `{text}`")
+        })?,
+    };
+    if disk_bytes == 0 {
+        return Ok(None);
+    }
+    let dir = cache.join("spill");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Ok(Some(schedule::Spill { dir, disk_bytes }))
 }
 
 /// `--machines <dir>` (or `IWCI_MACHINES`): the virtual machine images

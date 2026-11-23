@@ -421,6 +421,18 @@ fn run_full(
     caches: Option<Arc<dyn Caches>>,
     secrets: BTreeMap<String, String>,
 ) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
+    run_spilling(plan, changed, fail_ws, memory, caches, secrets, None)
+}
+
+fn run_spilling(
+    plan: &Plan,
+    changed: Option<Vec<String>>,
+    fail_ws: bool,
+    memory: Option<Arc<MemoryBudget>>,
+    caches: Option<Arc<dyn Caches>>,
+    secrets: BTreeMap<String, String>,
+    spill: Option<Spill>,
+) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -453,6 +465,7 @@ fn run_full(
         helping: None,
         inflight: None,
         machines: None,
+        spill,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -971,6 +984,7 @@ fn run_sharing_with(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1111,6 +1125,7 @@ fn a_cancelled_run_leaves_nothing_waiting() {
                 helping: None,
                 inflight: None,
                 machines: None,
+                spill: None,
                 downloads: None,
                 cancel: Some(cancel.clone()),
                 access: Default::default(),
@@ -1226,6 +1241,40 @@ fn a_job_cannot_write_past_its_memory_and_its_bytes_are_given_back() {
     assert!(
         matches!(status(&report, "w"), Status::Failed { reason } if reason.contains("its 16 MiB memory limit"))
     );
+}
+
+#[test]
+fn with_a_spill_disk_a_job_writes_past_its_memory_and_only_part_counts_as_held() {
+    let dir = std::env::temp_dir().join(format!("iwci-sched-spill-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // `bigwrite` writes one byte more than the job's memory.
+    let p = plan("name: x\njobs:\n  w:\n    using: builtin:bigwrite@1\n    memory: 16MiB\n");
+    let spill = Spill {
+        dir: dir.clone(),
+        disk_bytes: 64 << 20,
+    };
+    let (report, _, _, _) = run_spilling(&p, None, false, None, None, BTreeMap::new(), Some(spill));
+    assert_eq!(status(&report, "w"), &Status::Passed);
+    // What it held in memory counts half its `memory:` of files at most.
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    let held = job.peak_memory_mib;
+    assert!(held <= 8 + 1, "{held} MiB");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+
+    // Past the disk allowance a write is still refused, and says so.
+    let p = plan("name: x\njobs:\n  w:\n    using: builtin:bigwrite@1\n    memory: 64MiB\n");
+    let spill = Spill {
+        dir: dir.clone(),
+        disk_bytes: 32 << 20,
+    };
+    let (report, _, _, _) = run_spilling(&p, None, false, None, None, BTreeMap::new(), Some(spill));
+    assert!(
+        matches!(status(&report, "w"), Status::Failed { reason } if reason.contains("MiB of disk")),
+        "{:?}",
+        status(&report, "w")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Caches in memory: key to entries and their modes, plus what was saved,
@@ -1517,6 +1566,7 @@ fn runs_share_the_runners_slots() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1567,6 +1617,7 @@ fn run_on_slots(p: &Plan, slots: &Arc<Slots>) -> (RunReport, FakeExecutor) {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1680,6 +1731,7 @@ fn logs_stream_lines_and_job_events_in_order() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1952,6 +2004,7 @@ fn run_cached_on(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2298,6 +2351,7 @@ fn run_looked_up(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2677,6 +2731,7 @@ fn run_downloads(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
         cancel: None,
         access: Default::default(),
@@ -2829,6 +2884,7 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2910,6 +2966,7 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2991,6 +3048,7 @@ fn a_run_on_a_held_budget_starts_nothing_and_says_why_when_cancelled() {
             helping: None,
             inflight: None,
             machines: None,
+            spill: None,
             downloads: None,
             cancel,
             access: Default::default(),
@@ -3049,6 +3107,7 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: Some(cancel),
         access: Default::default(),
@@ -3116,6 +3175,7 @@ fn run_access(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel,
         access,
@@ -3838,6 +3898,7 @@ fn run_ordered(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -4628,6 +4689,7 @@ fn artifacts_carry_their_modes() {
             peak: AtomicU64::new(0),
             refused: AtomicBool::new(false),
             gauge: None,
+            resident_cap: None,
         }));
     fs.write("/out/app", b"\x7fELF").unwrap();
     fs.write("/out/notes.txt", b"hi").unwrap();
