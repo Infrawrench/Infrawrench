@@ -4124,6 +4124,10 @@ jobs:
 - Files and directories keep their modes, so a program saved executable
   comes back executable. A cache saved by a runner from before modes were
   kept is a miss, and the next pass saves over it.
+- A cache bigger than one object (256 MiB compressed, a pnpm or Gradle
+  store easily is) is split into parts beside it, written in parallel and
+  read back in parallel; eviction and clearing take the parts with it.
+  A runner from before split caches reads one as a miss.
 - **Scoped by branch, so a pull request cannot poison the default
   branch.** A push saves into its branch's scope and reads that, then the
   default branch's (`--default-branch`, default `main`). A pull request

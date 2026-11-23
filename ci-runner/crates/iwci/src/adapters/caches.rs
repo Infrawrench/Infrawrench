@@ -24,6 +24,10 @@ pub struct StoreCaches {
     write_scope: String,
     /// Where it looks, in order: its own scope, then the default branch's.
     read_scopes: Vec<String>,
+    /// Largest object an entry is stored in; a bigger entry is split into
+    /// parts (see [`StoreCaches::save_with_modes`]). The store's own cap,
+    /// smaller in tests.
+    part_bytes: u64,
 }
 
 fn short_hash(text: &str) -> String {
@@ -66,6 +70,7 @@ impl StoreCaches {
             quota,
             write_scope,
             read_scopes,
+            part_bytes: iwci_store::MAX_OBJECT_SIZE,
         }
     }
 
@@ -108,7 +113,8 @@ impl StoreCaches {
     }
 
     /// The entry at `object` if it is `key`'s, with its modes. One a runner
-    /// of another archive format wrote is a miss: the next save replaces it.
+    /// of another archive format wrote is a miss: the next save replaces it,
+    /// and so is one whose parts are not all there.
     fn load(
         &self,
         object: &str,
@@ -118,23 +124,123 @@ impl StoreCaches {
         let Some(bytes) = self.store.get(object).map_err(|e| e.to_string())? else {
             return Ok(None);
         };
-        let mut decoder =
-            zstd::stream::Decoder::new(bytes.as_slice()).map_err(|e| e.to_string())?;
         // The stored key comes first, so a hash collision (or a stale
         // pointer) is noticed rather than restoring the wrong cache.
-        let mut len = [0u8; 4];
-        decoder.read_exact(&mut len).map_err(|e| e.to_string())?;
-        let mut stored = vec![0u8; u32::from_le_bytes(len) as usize];
-        decoder.read_exact(&mut stored).map_err(|e| e.to_string())?;
-        if stored != key.as_bytes() {
+        let stored = read_header(&bytes)?;
+        let bytes = if stored == key.as_bytes() {
+            bytes
+        } else if let Some((nonce, parts)) = parts_of(&stored, key) {
+            // Not more parts than `max_bytes` could fill, whatever the
+            // header says.
+            let most = max_bytes.div_ceil(self.part_bytes.max(1)) + 2;
+            if parts as u64 > most {
+                return Ok(None);
+            }
+            match self.load_parts(object, nonce, parts, bytes)? {
+                Some(all) => all,
+                None => return Ok(None),
+            }
+        } else {
             return Ok(None);
-        }
+        };
+        let mut decoder =
+            zstd::stream::Decoder::new(bytes.as_slice()).map_err(|e| e.to_string())?;
+        skip_header(&mut decoder)?;
         match archive::decode_with_modes(&mut decoder, max_bytes) {
             Ok(found) => Ok(Some(found)),
             Err(e) if archive::is_other_format(&e) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }
+
+    /// The first part of a split entry followed by the rest, read at once.
+    /// `None` when one is missing: evicted, or replaced by another save.
+    fn load_parts(
+        &self,
+        object: &str,
+        nonce: &str,
+        parts: usize,
+        first: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let rest: Vec<Result<Option<Vec<u8>>, String>> = std::thread::scope(|threads| {
+            let reads: Vec<_> = (1..parts)
+                .map(|i| {
+                    let key = part_key(object, nonce, i);
+                    threads.spawn(move || self.store.get(&key).map_err(|e| e.to_string()))
+                })
+                .collect();
+            reads
+                .into_iter()
+                .map(|r| {
+                    r.join()
+                        .unwrap_or_else(|_| Err("a cache read panicked".into()))
+                })
+                .collect()
+        });
+        let mut all = first;
+        for part in rest {
+            match part? {
+                Some(bytes) => all.extend_from_slice(&bytes),
+                None => return Ok(None),
+            }
+        }
+        Ok(Some(all))
+    }
+}
+
+/// The key an entry was saved under, from the start of its first object.
+fn read_header(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut decoder = zstd::stream::Decoder::new(bytes).map_err(|e| e.to_string())?;
+    let mut len = [0u8; 4];
+    decoder.read_exact(&mut len).map_err(|e| e.to_string())?;
+    let mut stored = vec![0u8; u32::from_le_bytes(len) as usize];
+    decoder.read_exact(&mut stored).map_err(|e| e.to_string())?;
+    Ok(stored)
+}
+
+fn skip_header(decoder: &mut impl Read) -> Result<(), String> {
+    let mut len = [0u8; 4];
+    decoder.read_exact(&mut len).map_err(|e| e.to_string())?;
+    let len = u64::from(u32::from_le_bytes(len));
+    let skipped =
+        std::io::copy(&mut decoder.take(len), &mut std::io::sink()).map_err(|e| e.to_string())?;
+    if skipped != len {
+        return Err("cache entry ends inside its header".into());
+    }
+    Ok(())
+}
+
+/// A split entry's header is its key, a NUL, the save's nonce, a NUL and
+/// how many objects it spans. A runner from before split entries reads
+/// that as another key, a clean miss, rather than a truncated archive.
+fn split_header(key: &str, nonce: &str, parts: usize) -> Vec<u8> {
+    format!("{key}\0{nonce}\0{parts}").into_bytes()
+}
+
+fn parts_of<'a>(stored: &'a [u8], key: &str) -> Option<(&'a str, usize)> {
+    let rest = stored.strip_prefix(key.as_bytes())?.strip_prefix(b"\0")?;
+    let rest = std::str::from_utf8(rest).ok()?;
+    let (nonce, parts) = rest.split_once('\0')?;
+    let valid = nonce.len() == 16 && nonce.bytes().all(|b| b.is_ascii_hexdigit());
+    let parts: usize = parts.parse().ok()?;
+    (valid && parts >= 2).then_some((nonce, parts))
+}
+
+/// Where part `i` (from 1; part 0 is the entry object itself) of a split
+/// entry lives: beside it, under a name that does not end in `.zst`, so
+/// it is never counted as an entry of its own.
+fn part_key(object: &str, nonce: &str, i: usize) -> String {
+    format!("{object}.{nonce}-{i}")
+}
+
+/// One zstd frame holding `header` with its length before it.
+fn header_frame(header: &[u8]) -> Result<Vec<u8>, String> {
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
+    encoder.include_checksum(true).map_err(|e| e.to_string())?;
+    let len = u32::try_from(header.len()).map_err(|_| "key too long".to_string())?;
+    std::io::Write::write_all(&mut encoder, &len.to_le_bytes()).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut encoder, header).map_err(|e| e.to_string())?;
+    encoder.finish().map_err(|e| e.to_string())
 }
 
 /// Makes room for `incoming` bytes (`what`, at `object`) within `owner`'s
@@ -163,8 +269,9 @@ pub fn make_room(
     let mut objects = store
         .list_detailed(&format!("caches/{owner}/"))
         .map_err(|e| e.to_string())?;
-    // The entry being replaced frees its own bytes.
-    objects.retain(|o| o.key != object);
+    // The entry being replaced frees its own bytes, its parts' too.
+    let own_parts = format!("{object}.");
+    objects.retain(|o| o.key != object && !o.key.starts_with(&own_parts));
     let now = crate::runner::now_secs();
     let downloads: u64 = store
         .list_detailed(&format!("{}/{owner}/", crate::adapters::downloads::PREFIX))
@@ -178,11 +285,10 @@ pub fn make_room(
         return Ok(());
     }
     // Oldest first; entries before the small prefix pointers, so a
-    // pointer is only dropped when nothing else is left to drop.
-    let mut candidates: Vec<_> = objects
-        .into_iter()
-        .filter(|o| o.key.ends_with(".zst"))
-        .collect();
+    // pointer is only dropped when nothing else is left to drop. A split
+    // entry goes with its parts.
+    let (mut candidates, parts): (Vec<_>, Vec<_>) =
+        objects.into_iter().partition(|o| o.key.ends_with(".zst"));
     candidates.sort_by_key(|o| (o.modified.unwrap_or(0), o.key.clone()));
     for victim in candidates {
         if used + incoming <= quota {
@@ -190,6 +296,11 @@ pub fn make_room(
         }
         store.delete(&victim.key).map_err(|e| e.to_string())?;
         used = used.saturating_sub(victim.size);
+        let its_parts = format!("{}.", victim.key);
+        for part in parts.iter().filter(|p| p.key.starts_with(&its_parts)) {
+            store.delete(&part.key).map_err(|e| e.to_string())?;
+            used = used.saturating_sub(part.size);
+        }
     }
     if used + incoming > quota {
         return Err("the owner's storage quota is full".into());
@@ -470,6 +581,12 @@ impl Caches for StoreCaches {
         Ok(None)
     }
 
+    /// Saves an entry as a header frame (its key) followed by the archive.
+    /// One bigger than an object may be is split: the first object keeps
+    /// the entry's key and says how many parts follow, and the parts sit
+    /// beside it, written before it so a reader that sees the new header
+    /// finds them. A save's parts carry a nonce, so two runners saving the
+    /// same key never mix theirs, and the last save's parts are the ones kept.
     fn save_with_modes(
         &self,
         key: &str,
@@ -479,18 +596,79 @@ impl Caches for StoreCaches {
     ) -> Result<(), String> {
         let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
         encoder.include_checksum(true).map_err(|e| e.to_string())?;
-        let header = u32::try_from(key.len()).map_err(|_| "key too long".to_string())?;
-        std::io::Write::write_all(&mut encoder, &header.to_le_bytes())
-            .map_err(|e| e.to_string())?;
-        std::io::Write::write_all(&mut encoder, key.as_bytes()).map_err(|e| e.to_string())?;
         archive::encode_with_modes(&mut encoder, entries, modes).map_err(|e| e.to_string())?;
-        let bytes = encoder.finish().map_err(|e| e.to_string())?;
+        let body = encoder.finish().map_err(|e| e.to_string())?;
         let scope = &self.write_scope;
         let object = self.entry_key(scope, key);
-        self.make_room(&object, bytes.len() as u64)?;
+        let part = usize::try_from(self.part_bytes)
+            .unwrap_or(usize::MAX)
+            .max(1);
+
+        let mut header = header_frame(key.as_bytes())?;
+        let mut nonce = None;
+        if header.len() + body.len() > part {
+            let mut bytes = [0u8; 8];
+            getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
+            let fresh = hex::encode(bytes);
+            // The part count is in the header, whose length changes the
+            // count: settle on one that holds both.
+            let mut parts = 2;
+            loop {
+                header = header_frame(&split_header(key, &fresh, parts))?;
+                let need = (header.len() + body.len()).div_ceil(part);
+                if need <= parts {
+                    break;
+                }
+                parts = need;
+            }
+            nonce = Some(fresh);
+        }
+        let total = (header.len() + body.len()) as u64;
+        self.make_room(&object, total)?;
+
+        // The first object is the header and as much body as fits.
+        let first_body = part.saturating_sub(header.len()).min(body.len());
+        let (head, tail) = body.split_at(first_body);
+        if let Some(nonce) = &nonce {
+            let chunks: Vec<&[u8]> = tail.chunks(part).collect();
+            let written: Vec<Result<(), String>> = std::thread::scope(|threads| {
+                let puts: Vec<_> = chunks
+                    .iter()
+                    .enumerate()
+                    .map(|(i, chunk)| {
+                        let key = part_key(&object, nonce, i + 1);
+                        threads.spawn(move || {
+                            self.store
+                                .put(&key, chunk, "application/octet-stream")
+                                .map_err(|e| e.to_string())
+                        })
+                    })
+                    .collect();
+                puts.into_iter()
+                    .map(|p| {
+                        p.join()
+                            .unwrap_or_else(|_| Err("a cache write panicked".into()))
+                    })
+                    .collect()
+            });
+            written.into_iter().collect::<Result<(), String>>()?;
+        }
+        let mut first = header;
+        first.extend_from_slice(head);
         self.store
-            .put(&object, &bytes, "application/zstd")
+            .put(&object, &first, "application/zstd")
             .map_err(|e| e.to_string())?;
+        // Parts an earlier save of this key left: replaced now.
+        let mine = nonce.as_deref().map(|n| format!("{object}.{n}-"));
+        let stale = self
+            .store
+            .list(&format!("{object}."))
+            .map_err(|e| e.to_string())?;
+        for old in stale {
+            if mine.as_deref().is_none_or(|m| !old.starts_with(m)) {
+                self.store.delete(&old).map_err(|e| e.to_string())?;
+            }
+        }
         // Point each prefix this key falls under at it, so the next run's
         // `restore-keys` finds the newest without listing anything.
         for prefix in restore_keys.iter().filter(|p| key.starts_with(p.as_str())) {
@@ -815,6 +993,88 @@ mod tests {
             path: "/app/blob".into(),
             data: data.into(),
         }]
+    }
+
+    /// A pnpm store compresses to more than an object may be, so its
+    /// entry never saved and every run downloaded every package. An entry
+    /// that big is split into parts; a part gone is a miss, a save of the
+    /// same key replaces the parts, and eviction takes them with it.
+    #[test]
+    fn an_entry_bigger_than_an_object_is_split_into_parts() {
+        let (store, dir) = store();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let caches = |quota| {
+            let mut c = StoreCaches::new(
+                store.clone(),
+                &org,
+                &RepoId::new("web").unwrap(),
+                "main",
+                "main",
+                Event::Push,
+                quota,
+            );
+            c.part_bytes = 40 << 10;
+            c
+        };
+        let parts = |c: &StoreCaches, key: &str| {
+            let object = c.entry_key(&c.write_scope, key);
+            let mut found = store.list(&format!("{object}.")).unwrap();
+            found.sort();
+            found
+        };
+        let c = caches(None);
+        c.save("pnpm", &[], &big(100 << 10)).unwrap();
+        assert_eq!(parts(&c, "pnpm").len(), 2, "100 KiB over 40 KiB objects");
+        let hit = c.restore("pnpm", &[], 1 << 20).unwrap().unwrap();
+        assert_eq!(hit.entries, big(100 << 10));
+        assert_eq!(
+            storage_usage(store.as_ref(), &org, None).unwrap().entries,
+            1,
+            "parts are not entries"
+        );
+
+        // A runner from before parts reads the header as another key.
+        let object = c.entry_key(&c.write_scope, "pnpm");
+        let first = store.get(&object).unwrap().unwrap();
+        assert_ne!(read_header(&first).unwrap(), b"pnpm");
+
+        // Saved again: the new parts replace the old.
+        let before = parts(&c, "pnpm");
+        c.save("pnpm", &[], &big(90 << 10)).unwrap();
+        let after = parts(&c, "pnpm");
+        assert_eq!(after.len(), 2);
+        assert!(
+            before.iter().all(|p| !after.contains(p)),
+            "{before:?} {after:?}"
+        );
+        assert_eq!(
+            c.restore("pnpm", &[], 1 << 20).unwrap().unwrap().entries,
+            big(90 << 10)
+        );
+
+        // Shrunk below one object: no parts left behind.
+        c.save("pnpm", &[], &entries("small")).unwrap();
+        assert!(parts(&c, "pnpm").is_empty());
+        assert_eq!(
+            c.restore("pnpm", &[], 1 << 20).unwrap().unwrap().entries,
+            entries("small")
+        );
+
+        // A part gone is a miss, not an error.
+        c.save("pnpm", &[], &big(100 << 10)).unwrap();
+        store.delete(&parts(&c, "pnpm")[0]).unwrap();
+        assert!(c.restore("pnpm", &[], 1 << 20).unwrap().is_none());
+
+        // Evicting a split entry frees its parts too.
+        c.save("pnpm", &[], &big(100 << 10)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let tight = caches(Some(150 << 10));
+        tight.save("next", &[], &big(100 << 10)).unwrap();
+        assert!(tight.restore("pnpm", &[], 1 << 20).unwrap().is_none());
+        assert!(parts(&tight, "pnpm").is_empty());
+        let usage = storage_usage(store.as_ref(), &org, None).unwrap();
+        assert!(usage.used_bytes <= 150 << 10, "{usage:?}");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
