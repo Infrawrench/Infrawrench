@@ -68,7 +68,7 @@ cargo build --release -p iwci-guest --target x86_64-unknown-linux-musl   # or aa
 sudo images/linux/build.sh --agent target/x86_64-unknown-linux-musl/release/iwci-guest --out <vm-dir>/linux
 ```
 
-It installs from the Ubuntu archive as `snapshot.ubuntu.com` had it at the pinned instant (`--snapshot <id>` picks another, `--snapshot none` uses the live archive), so a rebuild gets the same package versions. It cannot cross-build: installers run in a chroot.
+It installs from the Ubuntu archive as `snapshot.ubuntu.com` had it at the pinned instant (`--snapshot <id>` picks another, `--snapshot none` uses the live archive), so a rebuild gets the same package versions. The image it ships points `apt` at the live archive (`archive.ubuntu.com`, `ports.ubuntu.com` on aarch64), as GitHub's images do: a job's own `apt-get install` gets current packages, and the snapshot server is slow to answer (on ci-2, `apt-get update` took 125 s from it and 3.5 s from the live archive). It cannot cross-build: installers run in a chroot.
 
 ## `windows-11-arm`
 
@@ -155,6 +155,7 @@ images/windows/build.sh --iso Win11_25H2_English_Arm64.iso --iso-sha256 <from th
 | PowerShell               | 7.6.10 LTS (GitHub release)                                                                 | 7.6.10 LTS (GitHub release MSI)                                                 |
 | GitHub CLI               | 2.104.0 (GitHub release)                                                                    | 2.104.0 (winget)                                                                |
 | kubectl                  | 1.37.2 (dl.k8s.io)                                                                          | 1.37.2 (winget)                                                                 |
+| Google Chrome            | 158.0.8127.36 stable, x86_64 only (Google's apt pool)                                       | none                                                                            |
 | Docker                   | Engine 29.10.0, containerd 2.4.2, buildx 0.39.0, Compose 5.7.1 (Docker's apt repository)    | none (below)                                                                    |
 | OpenSSH client           | Ubuntu                                                                                      | Windows                                                                         |
 | SQLite                   | 3.45 (Ubuntu)                                                                               | 3.54.1 (winget)                                                                 |
@@ -164,7 +165,7 @@ images/windows/build.sh --iso Win11_25H2_English_Arm64.iso --iso-sha256 <from th
 ### Left out, compared with GitHub's images
 
 - **Large SDKs and toolchains**: the Android SDK and NDK, Visual Studio and the Windows SDK, .NET SDKs, Swift, Haskell (GHC, Cabal, Stack), Julia, Kotlin, PHP, R, Miniconda, Homebrew, MSYS2, vcpkg, extra GCC, Clang and JDK versions, and the tool caches of older Node, Python, Go and Ruby versions. Each is gigabytes, and a job that needs one installs it; the Linux machine's root is a shared read-only erofs image, so its size is paid once per host, but every byte also lengthens builds and the Windows golden disk.
-- **Browsers and drivers** (Chrome, Edge's drivers, Firefox, Selenium): large, and updated so often that a pinned copy is stale within weeks.
+- **Browsers and drivers other than Chrome** (Edge and its driver, Firefox, Selenium, ChromeDriver): large, and updated so often that a pinned copy is stale within weeks. Chrome is in for its dependencies: Playwright's `install --with-deps chrome` reinstalls Chrome under `CI=true` either way, and with its sixty libraries already installed that takes seconds rather than minutes.
 - **Cloud CLIs** (AWS, Azure, Google Cloud, Alibaba), Terraform, Packer, Pulumi, Helm, Kind, Minikube, Ansible, Bazel: each pins its own version, and the runner's builtins and `tools:` cover the common ones.
 - **Gradle, Maven, Ant, sbt**: projects use their wrappers (`./gradlew`, `./mvnw`).
 - **Windows without Docker**: there is no Docker Engine for Windows on Arm containers; Linux containers belong in `platform: linux` jobs.

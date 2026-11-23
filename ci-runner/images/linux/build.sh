@@ -491,6 +491,22 @@ read -r v s < <(release_line yq)
 fetch "https://github.com/mikefarah/yq/releases/download/v$v/yq_linux_$goarch" "$s" "yq"
 install -m 0755 "$dl/yq" "$root/usr/local/bin/yq"
 
+# Google Chrome on x86_64, with the libraries it needs from the pinned
+# Ubuntu snapshot. Playwright's `install --with-deps chrome` reinstalls it
+# under CI=true whatever is there, but with its dependencies already in
+# place that is one package rather than sixty (2.5 minutes of every trpc
+# e2e job on ci-2). Its package adds Google's apt source and a cron job to
+# keep it; the image keeps to its pins, so both go.
+if [[ "$karch" == x86_64 ]]; then
+  read -r v s < <(release_line google-chrome)
+  fetch "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${v}_amd64.deb" "$s" "google-chrome.deb"
+  cp "$dl/google-chrome.deb" "$root/tmp/google-chrome.deb"
+  in_root apt-get -y install --no-install-recommends /tmp/google-chrome.deb
+  rm -f "$root/tmp/google-chrome.deb" "$root/etc/apt/sources.list.d/google-chrome.list" \
+    "$root/etc/apt/sources.list.d/google-chrome.sources" "$root/etc/cron.daily/google-chrome"
+  [[ -x "$root/opt/google/chrome/chrome" ]] || die "Chrome did not install"
+fi
+
 # uv, from Astral's GitHub release: uv and uvx into /usr/local/bin.
 case "$karch" in x86_64) uvarch=x86_64 ;; arm64) uvarch=aarch64 ;; *) die "no uv for $karch" ;; esac
 read -r v s < <(release_line uv)
@@ -645,6 +661,20 @@ ln -sfn /dev/null "$root/etc/tmpfiles.d/provision.conf"
 # shellcheck disable=SC2016 # dpkg-query's format, not the shell's
 in_root dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' >"$stage/packages.lock"
 awk '$1 == "release" || $1 == "rust" { print $2 "\t" $3 "\t" "release" }' "$self/packages.txt" >>"$stage/packages.lock"
+
+# Jobs' own `apt-get install`s go to the live archive, as on GitHub's
+# images: the snapshot pins what the image is built from, but it answers
+# slowly (on ci-2, `apt-get update` took 125 s from it and 3.5 s from
+# archive.ubuntu.com, and Chrome's 92 MB of libraries did not arrive in
+# four minutes, against 2 s), which made every trpc e2e job's Playwright
+# install take minutes.
+cat >"$root/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+Types: deb
+URIs: $live_mirror
+Suites: $SUITE $SUITE-updates $SUITE-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
 
 step "cleaning up"
 in_root apt-get clean
