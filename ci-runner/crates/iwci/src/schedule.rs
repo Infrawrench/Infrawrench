@@ -1032,6 +1032,12 @@ pub trait Caches: Send + Sync {
     fn has(&self, _key: &str) -> bool {
         false
     }
+    /// Claims `key` for a save this job is about to make: `false` while
+    /// another job of this runner is saving it, so the same files are not
+    /// compressed and uploaded twice at once. The save releases it.
+    fn claim(&self, _key: &str) -> bool {
+        true
+    }
     /// Saves `entries` with no modes (the durations record, tests).
     fn save(
         &self,
@@ -3957,6 +3963,10 @@ fn run_job<T: Tools>(
                     _ => 0,
                 })
                 .sum();
+            if !store.claim(key) {
+                cache_lines.push(format!("cache `{key}`: being saved by another job"));
+                continue;
+            }
             match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
                 Ok(()) => {
                     cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
