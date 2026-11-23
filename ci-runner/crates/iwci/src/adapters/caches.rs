@@ -193,15 +193,31 @@ impl StoreCaches {
         )
     }
 
-    /// The entry at `object` if it is `key`'s, with its modes. One a runner
-    /// of another archive format wrote is a miss: the next save replaces it,
-    /// and so is one whose parts are not all there.
-    fn load(
-        &self,
-        object: &str,
-        key: &str,
-        max_bytes: u64,
-    ) -> Result<Option<(Vec<Entry>, archive::ModeList)>, String> {
+    /// The entry at `object` if it is `key`'s, with its modes. Jobs of a
+    /// run that restore the same entry at the same moment (a matrix sharing
+    /// a package store) share one read: three jobs reading and unpacking
+    /// one 1.1 GiB store at once each took twice as long as one alone.
+    fn load(&self, object: &str, key: &str, max_bytes: u64) -> Loaded {
+        let id = (object.to_string(), key.to_string(), max_bytes);
+        let cell = {
+            let mut loading = loading().lock().unwrap_or_else(|e| e.into_inner());
+            loading.entry(id.clone()).or_default().clone()
+        };
+        // The first caller reads; the others wait for its answer.
+        let loaded = cell
+            .get_or_init(|| self.load_now(object, key, max_bytes))
+            .clone();
+        let mut loading = loading().lock().unwrap_or_else(|e| e.into_inner());
+        if loading.get(&id).is_some_and(|c| Arc::ptr_eq(c, &cell)) {
+            loading.remove(&id);
+        }
+        loaded
+    }
+
+    /// [`StoreCaches::load`], read now. One a runner of another archive
+    /// format wrote is a miss: the next save replaces it, and so is one
+    /// whose parts are not all there.
+    fn load_now(&self, object: &str, key: &str, max_bytes: u64) -> Loaded {
         let Some(bytes) = self.store.get(object).map_err(|e| e.to_string())? else {
             return Ok(None);
         };
@@ -224,13 +240,61 @@ impl StoreCaches {
         } else {
             return Ok(None);
         };
-        let mut decoder =
-            zstd::stream::Decoder::new(bytes.as_slice()).map_err(|e| e.to_string())?;
-        skip_header(&mut decoder)?;
-        match archive::decode_with_modes(&mut decoder, max_bytes) {
+        // Decompressed on a thread of its own while this one parses what
+        // comes out, rather than the two taking turns.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<std::io::Result<Vec<u8>>>(DECODE_AHEAD);
+        let bytes = Arc::new(bytes);
+        let source = bytes.clone();
+        let decoding = std::thread::Builder::new()
+            .name("iwci-cache-decode".into())
+            .spawn(move || {
+                let mut decoder = match zstd::stream::Decoder::new(source.as_slice()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                };
+                loop {
+                    let mut chunk = vec![0u8; DECODE_CHUNK];
+                    match read_full(&mut decoder, &mut chunk) {
+                        Ok(0) => return,
+                        Ok(n) => {
+                            chunk.truncate(n);
+                            // The reader stopped early (an error, or an
+                            // archive over `max_bytes`): stop too.
+                            if tx.send(Ok(chunk)).is_err() {
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(e));
+                            return;
+                        }
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        let mut reader = Chunks {
+            rx,
+            chunk: Vec::new(),
+            at: 0,
+        };
+        let parsed = skip_header(&mut reader).and_then(|()| {
+            archive::decode_with_modes(&mut reader, max_bytes).map_err(|e| {
+                if archive::is_other_format(&e) {
+                    OTHER_FORMAT.to_string()
+                } else {
+                    e.to_string()
+                }
+            })
+        });
+        drop(reader);
+        let _ = decoding.join();
+        match parsed {
             Ok(found) => Ok(Some(found)),
-            Err(e) if archive::is_other_format(&e) => Ok(None),
-            Err(e) => Err(e.to_string()),
+            Err(e) if e == OTHER_FORMAT => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
@@ -266,6 +330,67 @@ impl StoreCaches {
             }
         }
         Ok(Some(all))
+    }
+}
+
+/// What a load of an entry answers.
+type Loaded = Result<Option<(Vec<Entry>, archive::ModeList)>, String>;
+
+/// Loads in progress, by object, key and size limit ([`StoreCaches::load`]).
+#[allow(clippy::type_complexity)]
+fn loading()
+-> &'static std::sync::Mutex<BTreeMap<(String, String, u64), Arc<std::sync::OnceLock<Loaded>>>> {
+    static LOADING: std::sync::OnceLock<
+        std::sync::Mutex<BTreeMap<(String, String, u64), Arc<std::sync::OnceLock<Loaded>>>>,
+    > = std::sync::OnceLock::new();
+    LOADING.get_or_init(Default::default)
+}
+
+/// How much decompressed archive is handed over at a time, and how many
+/// such pieces may wait for the parser.
+const DECODE_CHUNK: usize = 1 << 20;
+const DECODE_AHEAD: usize = 8;
+/// Stands for an archive another runner's format wrote, a miss.
+const OTHER_FORMAT: &str = "\0other format";
+
+/// Reads until `buf` is full or the stream ends.
+fn read_full(r: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut n = 0;
+    while n < buf.len() {
+        match r.read(&mut buf[n..]) {
+            Ok(0) => break,
+            Ok(m) => n += m,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(n)
+}
+
+/// The decompressed archive as it arrives from the decoding thread.
+struct Chunks {
+    rx: std::sync::mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    chunk: Vec<u8>,
+    at: usize,
+}
+
+impl Read for Chunks {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while self.at == self.chunk.len() {
+            match self.rx.recv() {
+                Ok(Ok(chunk)) => {
+                    self.chunk = chunk;
+                    self.at = 0;
+                }
+                Ok(Err(e)) => return Err(e),
+                // The decoder is done.
+                Err(_) => return Ok(0),
+            }
+        }
+        let n = buf.len().min(self.chunk.len() - self.at);
+        buf[..n].copy_from_slice(&self.chunk[self.at..self.at + n]);
+        self.at += n;
+        Ok(n)
     }
 }
 
@@ -1668,6 +1793,92 @@ mod tests {
         detailed: std::sync::atomic::AtomicUsize,
         /// How long a listing of an owner's whole storage takes, in ms.
         slow: std::sync::atomic::AtomicU64,
+    }
+
+    /// Reads of entry objects, slowed so concurrent ones overlap.
+    struct SlowGets {
+        inner: iwci_store::LocalStore,
+        gets: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ObjectStore for SlowGets {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, iwci_store::StoreError> {
+            if key.ends_with(".zst") {
+                self.gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+            self.inner.get(key)
+        }
+        fn head(
+            &self,
+            key: &str,
+        ) -> Result<Option<iwci_store::ObjectMeta>, iwci_store::StoreError> {
+            self.inner.head(key)
+        }
+        fn put(&self, key: &str, bytes: &[u8], kind: &str) -> Result<(), iwci_store::StoreError> {
+            self.inner.put(key, bytes, kind)
+        }
+        fn put_if_absent(
+            &self,
+            key: &str,
+            bytes: &[u8],
+            kind: &str,
+        ) -> Result<bool, iwci_store::StoreError> {
+            self.inner.put_if_absent(key, bytes, kind)
+        }
+        fn list(&self, prefix: &str) -> Result<Vec<String>, iwci_store::StoreError> {
+            self.inner.list(prefix)
+        }
+        fn delete(&self, key: &str) -> Result<(), iwci_store::StoreError> {
+            self.inner.delete(key)
+        }
+        fn list_detailed(
+            &self,
+            prefix: &str,
+        ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
+            self.inner.list_detailed(prefix)
+        }
+    }
+
+    /// Jobs restoring one entry at the same moment read and unpack it
+    /// once; one that comes after reads it again.
+    #[test]
+    fn concurrent_restores_of_one_entry_share_a_read() {
+        let dir = std::env::temp_dir().join(format!("iwci-caches-shared-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let gets = Arc::new(SlowGets {
+            inner: iwci_store::LocalStore::new(&dir).unwrap(),
+            gets: Default::default(),
+        });
+        let store: Arc<dyn ObjectStore> = gets.clone();
+        let caches = Arc::new(StoreCaches::new(
+            store,
+            &RepoId::new("github.com-shared").unwrap(),
+            &RepoId::new("web").unwrap(),
+            "main",
+            "main",
+            Event::Push,
+            None,
+        ));
+        caches.save("store", &[], &entries("packages")).unwrap();
+        let count = || gets.gets.load(std::sync::atomic::Ordering::SeqCst);
+        let restored: Vec<_> = (0..3)
+            .map(|_| {
+                let caches = caches.clone();
+                std::thread::spawn(move || caches.restore("store", &[], 1 << 30).unwrap().unwrap())
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        assert_eq!(count(), 1, "one read for three restores");
+        for r in &restored {
+            assert!(r.exact);
+            assert_eq!(r.entries, entries("packages"));
+        }
+        caches.restore("store", &[], 1 << 30).unwrap().unwrap();
+        assert_eq!(count(), 2, "a later restore reads again");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     impl ObjectStore for Listings {

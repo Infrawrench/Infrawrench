@@ -4161,6 +4161,8 @@ jobs:
   under an hour old stands while a tenth of the quota is free, the owner
   being listed again in the background. Past either, the save lists
   first.
+- Jobs that restore the same entry at the same moment (a matrix sharing
+  a package store) read and unpack it once between them.
 - What each cache did is a line in the job's `caches`, with how long a
   restore or a save took (``cache `pnpm-…`: restored in 2.1 s``,
   ``cache `pnpm-…`: saved 412000 KiB in 9.8 s``). The runner's log says

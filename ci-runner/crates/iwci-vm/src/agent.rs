@@ -155,23 +155,30 @@ impl Agent {
     pub fn put(&mut self, parts: &[(&str, &[Moded])], within: Duration) -> Result<Done, Failed> {
         self.send(&HostMsg::Put)?;
         let gone = |e: io::Error| Failed::Gone(e.to_string());
-        {
-            let mut data = DataWriter::new(&mut self.writer);
-            // One archive with every part: the tar writer's end-of-archive
-            // blocks come once, after the last.
-            let mut tar = Vec::new();
-            for (prefix, entries) in parts {
-                let mut part = Vec::new();
-                archive::write(&mut part, prefix, entries).map_err(gone)?;
-                // Drop each part's two zero blocks but the last part's.
-                part.truncate(part.len().saturating_sub(1024));
-                tar.extend_from_slice(&part);
-            }
-            tar.extend_from_slice(&[0u8; 1024]);
-            data.write_all(&tar).map_err(gone)?;
-            data.finish().map_err(gone)?;
+        let started = Instant::now();
+        let (sent, bytes) = {
+            let mut data = Counting {
+                inner: DataWriter::new(&mut self.writer),
+                bytes: 0,
+            };
+            // Written as it is made, so sending starts with the first
+            // entry rather than after the whole archive.
+            archive::write_parts(&mut data, parts).map_err(gone)?;
+            let bytes = data.bytes;
+            data.inner.finish().map_err(gone)?;
+            (started.elapsed(), bytes)
+        };
+        let answer = self.message(Instant::now() + within, "write the job's files")?;
+        // `IWCI_BOOT_TIMES=1`: where a put's time goes, on stderr.
+        if std::env::var_os("IWCI_BOOT_TIMES").is_some() {
+            eprintln!(
+                "iwci: put {} MiB: archived and sent in {} ms, written by {} ms",
+                bytes >> 20,
+                sent.as_millis(),
+                started.elapsed().as_millis()
+            );
         }
-        match self.message(Instant::now() + within, "write the job's files")? {
+        match answer {
             GuestMsg::Done(done) => Ok(done),
             other => Err(Failed::Confused(format!("{other:?} for put"))),
         }
@@ -313,5 +320,22 @@ impl Read for Frames<'_> {
         out[..n].copy_from_slice(&self.buf[self.at..self.at + n]);
         self.at += n;
         Ok(n)
+    }
+}
+
+/// A writer that counts what goes through it.
+struct Counting<W> {
+    inner: W,
+    bytes: usize,
+}
+
+impl<W: Write> Write for Counting<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.bytes += n;
+        Ok(n)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
     }
 }
