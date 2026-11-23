@@ -71,6 +71,17 @@ pub fn own(fs: &JobFs) -> Vec<Moded> {
     with_modes(fs.own_entries(), &fs.modes())
 }
 
+/// How many bytes of file contents `entries` hold.
+pub fn file_bytes(entries: &[Moded]) -> u64 {
+    entries
+        .iter()
+        .map(|(e, _)| match e {
+            Entry::File { data, .. } => data.len() as u64,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// Everything the job sees, snapshot included, with modes: what a machine
 /// without the workspace image (Windows) is given.
 pub fn whole(fs: &JobFs) -> Vec<Moded> {

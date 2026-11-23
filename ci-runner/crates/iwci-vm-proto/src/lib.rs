@@ -317,6 +317,12 @@ pub const FILES_FEATURE: &str = "files-virtiofs";
 /// user ([`JOB_UID`], `runner`, home `/root`) and its agent runs scripts
 /// as that user when the kernel's command line names it ([`USER_ARG`]).
 pub const JOB_USER_FEATURE: &str = "job-user";
+/// What `image.json` lists under `features` when its agent keeps the
+/// writable layer in memory and swaps to the scratch disk: files written in
+/// at the start cost memory speed there, so the runner puts the job's own
+/// files (the caches it restored) in rather than serving them over
+/// virtio-fs, where each file read is a round trip to the runner.
+pub const MEMORY_UPPER_FEATURE: &str = "memory-upper";
 /// The job user's uid and gid, as GitHub's hosted runners have them.
 pub const JOB_UID: u32 = 1001;
 /// The kernel command-line argument (`iwci.user=<uid>`) that tells the

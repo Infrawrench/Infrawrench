@@ -2,10 +2,12 @@
 //! and powers the machine off when the agent is done.
 //!
 //! The machine image is read-only and has the directories this needs:
-//! `/.iwci/rw`, `/.iwci/ws`, `/.iwci/base` and `/.iwci/root`. The job's
+//! `/.iwci/rw`, `/.iwci/disk`, `/.iwci/ws`, `/.iwci/base` and `/.iwci/root`. The job's
 //! root is an overlay file system on `/.iwci/root`:
 //!
-//! - upper: `/.iwci/rw/upper` on a tmpfs, so it holds exactly what changed;
+//! - upper: `/.iwci/rw/upper` on a tmpfs, so it holds exactly what changed
+//!   (the machine swaps to its scratch disk, on `/.iwci/disk`, when the
+//!   job outgrows its memory);
 //! - lower: the workspace image (the disk whose serial is `iwci-ws`, erofs,
 //!   on `/.iwci/ws`) when the machine has one, over the machine image
 //!   itself (`/` bound on `/.iwci/base`).
@@ -85,6 +87,61 @@ fn bind_read_only(source: &str, target: &str) -> io::Result<()> {
     )
 }
 
+/// Swap is used in whole pages; sizes are rounded down to a MiB.
+const SWAP_ALIGN: u64 = 1 << 20;
+
+/// A block device's size in bytes, from sysfs (in 512-byte sectors).
+fn disk_bytes(dev: &str) -> u64 {
+    let name = dev.trim_start_matches("/dev/");
+    std::fs::read_to_string(format!("/sys/block/{name}/size"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map_or(0, |sectors| sectors * 512)
+}
+
+/// The machine's memory in bytes (`MemTotal`).
+fn memory_bytes() -> u64 {
+    let text = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    text.lines()
+        .find_map(|l| l.strip_prefix("MemTotal:"))
+        .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        .map_or(0, |kib| kib * 1024)
+}
+
+/// Makes `path` a swap file of `bytes` and turns it on. The file is
+/// allocated, not written: on a disk that lives for one job, nothing
+/// reads a page of it before the kernel has written that page.
+fn swap_on(path: &str, bytes: u64) -> io::Result<()> {
+    if bytes < 16 * SWAP_ALIGN {
+        return Err(io::Error::other("the disk is too small for swap"));
+    }
+    use std::os::unix::fs::OpenOptionsExt as _;
+    use std::os::unix::io::AsRawFd as _;
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    let len = libc::off_t::try_from(bytes).map_err(io::Error::other)?;
+    // SAFETY: a valid descriptor, offset 0 and a positive length.
+    if unsafe { libc::fallocate(file.as_raw_fd(), 0, 0, len) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    drop(file);
+    let status = Command::new("/usr/sbin/mkswap")
+        .args(["-q", path])
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("mkswap: {status}")));
+    }
+    let path_c = c(path)?;
+    // SAFETY: a NUL-terminated path that outlives the call.
+    if unsafe { libc::swapon(path_c.as_ptr(), 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// The serial the runner gives the workspace image's disk.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
 
@@ -147,15 +204,23 @@ pub fn build_root() -> io::Result<()> {
         other => other?,
     }
 
-    // The writable layer used to be a tmpfs, so every file a job wrote came
-    // out of its memory. When the runner attached a scratch disk, format it
-    // and use that instead; an older runner without one, or an image
-    // without mkfs.ext4, still gets tmpfs. The disk lives for one job, so it
-    // has no journal, and its inode tables are left for the kernel to
-    // initialise as they are used (`lazy_itable_init` here, `noinit_itable`
-    // at mount), rather than zeroed up front: zeroing 20 GiB worth of
-    // tables would write over a gigabyte to the host for nothing. One inode
-    // per 4 KiB, since node_modules is mostly small files.
+    // The writable layer is a tmpfs: what a job writes stays in memory,
+    // where it is fastest to write and to copy up into. A scratch disk,
+    // when the runner attached one, is formatted ext4 and mounted on
+    // `/.iwci/disk`, and holds a swap file of half of it, so a job whose
+    // files and processes outgrow its memory has the kernel move what it
+    // is not using out to the disk rather than run out of space; the
+    // tmpfs may hold up to the memory and the swap together. The other
+    // half is for Docker, whose overlay2 storage wants a real file system
+    // (`iwci-dockerd`). Writing every file to the ext4 instead was slower
+    // than memory by a lot: the bun install cache (63k files, 814 MB)
+    // took 44 s to copy onto it in a 2-CPU, 6 GiB machine, and 0.6 s onto
+    // a tmpfs.
+    //
+    // The disk lives for one job, so it has no journal, and its inode
+    // tables are left for the kernel to initialise as they are used
+    // (`lazy_itable_init` here, `noinit_itable` at mount), rather than
+    // zeroed up front.
     let scratch = disk_by_serial(SCRATCH_SERIAL);
     let formatted = match scratch.as_deref() {
         Some(dev) => {
@@ -169,32 +234,42 @@ pub fn build_root() -> io::Result<()> {
                     "lazy_itable_init=1,lazy_journal_init=1,nodiscard",
                     "-m",
                     "0",
-                    "-i",
-                    "4096",
                     dev,
                 ])
                 .status();
             match status {
                 Ok(success) if success.success() => true,
                 other => {
-                    eprintln!("iwci-guest: mkfs.ext4 on {dev}: {other:?}; using tmpfs");
+                    eprintln!("iwci-guest: mkfs.ext4 on {dev}: {other:?}; no scratch disk");
                     false
                 }
             }
         }
         None => false,
     };
+    let mut swap_bytes = 0;
     if let (Some(dev), true) = (scratch.as_deref(), formatted) {
         mount(
             dev,
-            "/.iwci/rw",
+            "/.iwci/disk",
             Some("ext4"),
             libc::MS_NOATIME,
             Some("noinit_itable"),
         )?;
-    } else {
-        mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
+        swap_bytes = disk_bytes(dev) / 2 / SWAP_ALIGN * SWAP_ALIGN;
+        if let Err(e) = swap_on("/.iwci/disk/swap", swap_bytes) {
+            eprintln!("iwci-guest: swap on the scratch disk: {e}; none");
+            let _ = std::fs::remove_file("/.iwci/disk/swap");
+            swap_bytes = 0;
+        }
     }
+    let size = memory_bytes() + swap_bytes;
+    let options = if size > 0 {
+        format!("mode=0755,size={size}")
+    } else {
+        "mode=0755".to_string()
+    };
+    mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some(&options))?;
     mkdir("/.iwci/rw/upper")?;
     mkdir("/.iwci/rw/work")?;
     // The job's files: streamed in over virtio-fs, read only, or a disk
@@ -235,6 +310,15 @@ pub fn build_root() -> io::Result<()> {
     )?;
     if workspace {
         bind_read_only("/.iwci/ws", &format!("{root}/.iwci/ws"))?;
+    }
+    if formatted {
+        mount(
+            "/.iwci/disk",
+            &format!("{root}/.iwci/disk"),
+            None,
+            libc::MS_BIND,
+            None,
+        )?;
     }
     bind_read_only("/.iwci/base", &format!("{root}/.iwci/base"))?;
     mount("proc", &format!("{root}/proc"), Some("proc"), nosuid, None)?;
