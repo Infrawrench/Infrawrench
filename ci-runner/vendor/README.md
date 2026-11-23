@@ -1954,11 +1954,14 @@ or failed with a full disk. `mem_fs/spill.rs` (new) and `File` in
 (`FileSystem::set_spill`, `TmpFileSystem::set_spill`) keep file contents in
 memory up to `resident_max` bytes. Past that, `FileSystemInner::spill_over`,
 called after every write and `set_len`, moves the least recently read or
-written files, whole, to files in the config's directory (unlinked as soon
-as they are made) until under three quarters of the limit. A file on disk
-is read and written there with `pread`/`pwrite`, and comes back to memory
-when it is truncated to nothing; a file that cannot be moved stays where it
-was. Without a config nothing changes. Upstream has nothing like it:
+written files, whole, to regions of one file in the config's directory
+(unlinked as soon as it is made) until under three quarters of the limit.
+One file for all of them: with one each, a restored package store spilled
+tens of thousands and the runner ran out of descriptors. A file on disk is
+read and written in its region with `pread`/`pwrite`, moves to a new region
+twice the size when it outgrows its own (regions are not reused; the file
+goes with the file system), and comes back to memory when it is truncated
+to nothing; a file that cannot be moved stays where it was. Without a config nothing changes. Upstream has nothing like it:
 `OffloadedFile` maps journals, it does not evict. This hunk stays when the
 rest goes; `iwci-vfs`'s `tests/spill.rs` is the check.
 
