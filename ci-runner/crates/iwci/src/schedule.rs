@@ -1094,7 +1094,9 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
             .map(|g| g.compile_matcher())
             .collect();
         let prefix = format!("{}/", root.trim_end_matches('/'));
-        for path in snapshot.list_files(root) {
+        // The clone's `.git` names the commit, so any glob that reached it
+        // would change the key on every commit.
+        for path in snapshot.list_files_skipping(root, |name| name == ".git") {
             let text = path.display().to_string();
             let Some(rel) = text.strip_prefix(&prefix) else {
                 continue;
@@ -3690,9 +3692,17 @@ fn run_job<T: Tools>(
                 matches!(c, Change::Added { .. })
                     && c.path().to_str().is_some_and(|p| rules.ignored(p, false))
             };
+            // The clone's `.git` is the runner's, not the repository's: a
+            // `git status` that refreshes its index changed nothing.
+            let git_dir = std::path::Path::new(root).join(".git");
             fs.changes(root)
                 .into_iter()
-                .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()) && !ignored(c))
+                .filter(|c| {
+                    !under_cache(c.path())
+                        && !restored.contains(c.path())
+                        && !ignored(c)
+                        && !c.path().starts_with(&git_dir)
+                })
                 .collect()
         }
         _ => Vec::new(),

@@ -169,9 +169,10 @@ impl Workspaces for GitWorkspaces {
                     self.ref_hint.as_deref(),
                 )
                 .map_err(|e| format!("fetch: {e}"))?;
+            let head = iwci_git::Head::from_ref(self.ref_hint.as_deref());
             let checkout = self
                 .remote
-                .checkout_into(&self.commit, &builder, &clone.into)
+                .checkout_repository_into(&self.commit, &builder, &clone.into, &head)
                 .map_err(|e| format!("checkout: {e}"))?;
             for sub in &checkout.submodules {
                 warnings.push(format!(

@@ -466,7 +466,7 @@ is an error when the file is parsed.
   the same permissions share one; nothing else in the run sees it.
 - **What the job gets.** `GH_TOKEN` and `GITHUB_TOKEN` (gh and most API
   clients read one of them), `GH_REPO` (`acme/web`, so gh needs no
-  checkout, which has no `.git`), and Git's global configuration
+  checkout), and Git's global configuration
   (`GIT_CONFIG_GLOBAL=/root/.gitconfig`) with the token as an
   `Authorization` header for `https://github.com/acme/web` and
   `https://github.com/acme/web.git`, so `git push`, `git fetch` and
@@ -611,11 +611,11 @@ runs on the GKE cluster granted as `gke-prod`, through its cloud connection. `ma
   `env-from`. It starts from the commit, in the directory `workspace.clone`
   says (`into`, `/app` by default).
 - **The commit is a source archive**, not a clone: the files of the commit
-  and nothing else. As on the runner the checkout is not a repository (no
-  `.git`), so there is no history whatever `clone: { depth }` says;
-  submodules are not fetched, and a file kept in Git LFS is its pointer. A
-  job that needs any of those fetches it in its own script, with a token of
-  its own. A workspace with `clone: false` starts in an empty `cwd`.
+  and nothing else. Unlike a runner job's clone it has no `.git`, so
+  there is no history whatever `clone: { depth }` says; submodules are not
+  fetched, and a file kept in Git LFS is its pointer. A job that needs any
+  of those fetches it in its own script, with a token of its own. A
+  workspace with `clone: false` starts in an empty `cwd`.
 - **What the machine needs:** `bash`, `curl`, `tar`, `gzip` and `base64`.
   Where one is missing and the job is root on fresh compute, it is installed
   first with the image's package manager (apt, apk, dnf, yum, zypper or
@@ -2678,8 +2678,9 @@ release:
 
 What to know:
 
-- **It needs no checkout.** The clone has no `.git`, so gh finds the
-  repository in `GH_REPO`, which the lent token sets; `gh pr create`
+- **It needs no checkout.** The clone's `.git` names no remote, so gh
+  finds the repository in `GH_REPO`, which the lent token sets;
+  `gh pr create`
   takes `--head` (a branch the job pushed) and `--base`.
 - **No terminal, no prompts.** The package sets `GH_PROMPT_DISABLED`,
   so a command that would ask fails and says which flag it wants, as gh
@@ -2760,9 +2761,18 @@ What to know:
   [Tools and environments](#tools-and-environments)) Git's HTTP helper
   waited for the answer on the pipe from Git instead, until the job's
   timeout.
-- **The checkout is not a repository.** The runner writes the commit's
-  tree into the job's file system without a `.git`, so `git log` or `git
-describe` in `/app` fails; clone what a job needs to inspect.
+- **The checkout is a shallow repository.** Beside the commit's files the
+  runner writes a `.git` holding the commit and every tree under it, with
+  `shallow` marking the end of history and `HEAD` on the run's branch
+  (detached on the commit for a pull request or another ref, as
+  `actions/checkout` leaves one), and an index of every file. So
+  `git ls-files`, `git rev-parse HEAD`, `git describe --always`,
+  `git status` and Go's version stamping work in `/app`, and the clean
+  checkout reads as clean. `git log` has the one commit, and the files'
+  old contents are not there: `git diff` on a file the job changed, or
+  `git show HEAD:<path>`, says the object is missing. Clone what a job
+  needs for history. What git writes in `.git` stays in the job: it is
+  never one of its `changes:`, and `hashFiles` does not read it.
 - **No identity and no `HOME`.** A commit needs `user.name` and
   `user.email` (`-c`, `GIT_AUTHOR_*` and `GIT_COMMITTER_*`, or `git config`
   in the repository), and `git config --global` needs `HOME` set, which a
@@ -2954,8 +2964,8 @@ What to know when a job runs Bun:
   `mkdir -p /tmp/bin && ln -s "$(command -v bun)" /tmp/bin/node` with
   `/tmp/bin` first on `PATH`. `env:bash@5` has no `npm` either, so a script
   that runs `npm pack` needs it some other way (`bunx npm@11 pack`).
-- **The checkout has no `.git`** (see [Git](#git)): a script that runs
-  `git ls-files` wants a `git init -q` first.
+- **The checkout is a shallow repository** (see [Git](#git)): `git ls-files`
+  and `git status` work without setup.
 - **Next.js** runs its dev server under Bun with Turbopack and its native
   SWC: `bun --bun next dev --turbopack &` compiles and answers the requests
   the rest of the script makes.
