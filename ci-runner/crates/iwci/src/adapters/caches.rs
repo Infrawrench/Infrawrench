@@ -1961,7 +1961,15 @@ mod tests {
             prefix: &str,
         ) -> Result<Vec<iwci_store::ObjectInfo>, iwci_store::StoreError> {
             // The owner's whole storage, not one entry's parts.
-            if prefix == "caches/github.com-listings/" || prefix == "caches/github.com-stale/" {
+            // Owners of their own per test: the estimates are kept by store
+            // address, which a later test's store can reuse.
+            if [
+                "caches/github.com-listings/",
+                "caches/github.com-stale/",
+                "caches/github.com-warmed/",
+            ]
+            .contains(&prefix)
+            {
                 self.detailed
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             }
@@ -2190,7 +2198,7 @@ mod tests {
         let store: Arc<dyn ObjectStore> = listings.clone();
         store
             .put(
-                "caches/github.com-listings/web/b-1/entries/a.zst",
+                "caches/github.com-warmed/web/b-1/entries/a.zst",
                 &[0; 100],
                 "x",
             )
@@ -2198,7 +2206,7 @@ mod tests {
         warm_estimates(store.clone());
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let warmed = || {
-            owner_lock(store.as_ref(), "github.com-listings")
+            owner_lock(store.as_ref(), "github.com-warmed")
                 .lock()
                 .unwrap()
                 .as_ref()
@@ -2210,7 +2218,7 @@ mod tests {
         assert_eq!(warmed(), Some(100));
         let caches = StoreCaches::new(
             store.clone(),
-            &RepoId::new("github.com-listings").unwrap(),
+            &RepoId::new("github.com-warmed").unwrap(),
             &RepoId::new("web").unwrap(),
             "main",
             "main",
