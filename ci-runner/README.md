@@ -4229,6 +4229,14 @@ again, and on every runner (the artifacts are in the object store).
   their signature.
 - The API served is Turborepo's (`/v8/artifacts/...`: `GET`, `HEAD`,
   `PUT`, the `POST` query and events, and `status`).
+- Every connection is served on a thread of its own for as long as it is
+  open (up to 512 at once, each closed after 5 minutes without a request).
+  `turbo` opens several keep-alive connections together and keeps them
+  open; on tiny_http's connection pool, which this replaced, one of them
+  could go unread until another closed, which `turbo` does only at its
+  30 s timeout, so a lookup that hung rebuilt its task and an upload that
+  hung was never kept (tRPC's `pnpm build` took 31 s for 3 s of work, cold
+  and warm alike).
 
 ### Environment caches
 
