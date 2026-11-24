@@ -30,8 +30,10 @@
 # has a call for them that upstream WASIX defines).
 #
 # The result goes to dist/package/python/<version>/, and is the same bytes
-# on every host it runs on: `environments/build.sh` pins its hash. Needs
-# python3, and what `patch-module.sh` needs.
+# on every host it runs on: `environments/build.sh` pins its hash. That
+# needs the package unpacked on a case-sensitive file system, since its
+# terminfo has names that differ only in case; `patch-module.sh` sees to it
+# (#1335). Needs python3, and what `patch-module.sh` needs.
 # shellcheck source=builtins/lib.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 # shellcheck source=builtins/environments/patch-module.sh
