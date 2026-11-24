@@ -24,7 +24,9 @@ terraform apply
   must not undo that;
 - writes `iwci.service`: runs as `iwci`, `ProtectSystem=strict` with only
   its binary directory and cache writable, restarts on failure, and stops
-  with SIGTERM and a 65-minute timeout;
+  with SIGTERM to the runner alone (`KillMode=mixed`, so the machines and
+  sandboxes in its cgroup keep running while it drains) and a timeout of 6
+  hours and 5 minutes, the longest job's;
 - keeps core dumps: installs `systemd-coredump` and `gdb` (with apt),
   turns off Ubuntu's apport so it cannot take the kernel's core pattern back
   at boot, and the unit sets `LimitCORE=infinity`. Every Node job runs in
