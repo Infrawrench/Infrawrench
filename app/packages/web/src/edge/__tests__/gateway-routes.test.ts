@@ -43,6 +43,12 @@ describe("routeRequest", () => {
     }
   });
 
+  it("answers the MCP server card on the edge, and the endpoint itself on the session gateway", () => {
+    expect(routeRequest("GET", "/api/mcp/server-card", null)).toEqual({ target: "edge" });
+    expect(routeRequest("GET", "/api/mcp/server-cards", null)).toMatchObject({ tier: "session" });
+    expect(routeRequest("POST", "/api/mcp/", null)).toMatchObject({ tier: "session" });
+  });
+
   it("runs export job creation and downloads on the session gateway, and polls on the edge", () => {
     expect(routeRequest("POST", "/api/org/org_1/costs/exports/jobs", null)).toMatchObject({
       tier: "session",

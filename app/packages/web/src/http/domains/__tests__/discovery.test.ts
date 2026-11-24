@@ -126,6 +126,7 @@ describe("discovery responses", () => {
         '"scopes_supported":["openid","profile","email","offline_access"],' +
         '"bearer_methods_supported":["header"],' +
         '"resource_documentation":"https://iw.test/docs/features/mcp",' +
+        '"resource_name":"Infrawrench","resource_policy_uri":"https://infrawrench.com/privacy",' +
         '"agent_auth":{"identity_endpoint":"https://iw.test/api/agent/identity",' +
         '"claim_endpoint":"https://iw.test/api/agent/identity/claim",' +
         '"verification_uri":"https://iw.test/claim","identity_types_supported":["anonymous"],' +
@@ -157,5 +158,77 @@ describe("discovery responses", () => {
     expect(text).toContain("It is **deleted 24 hours after it is created**");
     expect(text).toContain("Registration is limited to 5 workspaces per hour per address.");
     expect(text).toContain("for 15 minutes: anyone who has it can take the workspace.");
+  });
+});
+
+describe("MCP server card and AI catalog", () => {
+  beforeEach(() => {
+    delete process.env["PUBLIC_BASE_URL"];
+    delete process.env["APP_URL"];
+  });
+
+  it("serves the SEP-2127 card at <mcp-url>/server-card, on the public origin", async () => {
+    process.env["PUBLIC_BASE_URL"] = "https://app.infrawrench.test";
+
+    const res = await root.request("/api/mcp/server-card");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/mcp-server-card+json");
+    const card = await res.json();
+    expect(card.$schema).toBe(
+      "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+    );
+    expect(card.name).toBe("test.infrawrench.app/infrawrench");
+    expect(card.name).toMatch(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
+    expect(card.version).toBe("0.1.0");
+    expect(card.remotes).toEqual([
+      { type: "streamable-http", url: "https://app.infrawrench.test/api/mcp" },
+    ]);
+    expect(card._meta["app.mcpnow/provider"]).toEqual({
+      privacyPolicyUrl: "https://infrawrench.com/privacy",
+      supportEmail: "astrid@infrawrench.com",
+      documentationUrl: "https://app.infrawrench.test/docs/features/mcp",
+    });
+  });
+
+  it("lists the card in /.well-known/ai-catalog.json", async () => {
+    process.env["PUBLIC_BASE_URL"] = "https://app.infrawrench.test";
+
+    const res = await wellKnown.request("/ai-catalog.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/ai-catalog+json");
+    expect(await res.json()).toEqual({
+      specVersion: "1.0",
+      entries: [
+        {
+          identifier: "urn:air:app.infrawrench.test:mcp:infrawrench",
+          type: "application/mcp-server-card+json",
+          url: "https://app.infrawrench.test/api/mcp/server-card",
+        },
+      ],
+    });
+  });
+
+  it("is readable cross-origin and cacheable, and answers a matching If-None-Match with 304", async () => {
+    const first = await root.request("http://iw.test/api/mcp/server-card", {
+      headers: { "x-forwarded-proto": "https" },
+    });
+    expect(first.headers.get("access-control-allow-origin")).toBe("*");
+    expect(first.headers.get("access-control-expose-headers")).toBe("ETag");
+    expect(first.headers.get("cache-control")).toBe("public, max-age=3600");
+    const etag = first.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]+-[0-9a-f]+"$/);
+    expect((await first.json()).remotes[0].url).toBe("https://iw.test/api/mcp");
+
+    const again = await root.request("http://iw.test/api/mcp/server-card", {
+      headers: { "x-forwarded-proto": "https", "if-none-match": `W/${etag}` },
+    });
+    expect(again.status).toBe(304);
+    expect(again.headers.get("etag")).toBe(etag);
+    expect(await again.text()).toBe("");
+
+    const stale = await root.request("http://iw.test/api/mcp/server-card", {
+      headers: { "x-forwarded-proto": "https", "if-none-match": '"stale"' },
+    });
+    expect(stale.status).toBe(200);
   });
 });

@@ -40,7 +40,9 @@ const SESSION_ROUTES: readonly RegExp[] = [
   /^\/api\/bastions\/agent$/,
   // Node HTTP handler, not part of the API router; its app tools reach Linux
   // app sessions through the cross-replica relay, which needs a pod address.
-  /^\/api\/mcp(\/|$)/,
+  // Its server card is a static document of the discovery domain, so the edge
+  // answers that itself.
+  /^\/api\/mcp(?!\/server-card$)(\/|$)/,
   // Agent VM bootstrap and the cross-replica relay: process-local state.
   /^\/api\/agent(\/|$)/,
   // Agent link requests: the approval half throttles code attempts in process

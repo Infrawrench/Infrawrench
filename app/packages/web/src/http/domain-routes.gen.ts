@@ -953,6 +953,8 @@ export const DOMAIN_ROUTES: readonly DomainRoute[] = [
   ["discovery","GET","/.well-known/oauth-protected-resource"],
   ["discovery","GET","/.well-known/oauth-protected-resource/api/mcp"],
   ["discovery","GET","/.well-known/oauth-authorization-server"],
+  ["discovery","GET","/.well-known/ai-catalog.json"],
+  ["discovery","GET","/api/mcp/server-card"],
   ["discovery","GET","/auth.md"],
   ["api-docs","GET","/openapi.json"],
   ["api-docs","GET","/docs"],
