@@ -19,13 +19,23 @@
 //! branch's artifacts and writes its own, which no push to the default
 //! branch reads, and they count against the owner's quota and are evicted
 //! with the rest.
+//!
+//! Every connection has a thread of its own for as long as it is open.
+//! `turbo` opens several keep-alive connections at once and leaves them
+//! open between requests; on tiny_http's connection pool, which only
+//! starts a thread when it sees none waiting, a connection accepted just
+//! after another could go unread until some other connection closed,
+//! which `turbo` only does at its 30 s timeout. A task whose lookup hung
+//! like that was built again, and a build whose upload hung was never
+//! kept, so the next run missed it too.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-
-use tiny_http::{Header, Method, Request, Response, Server};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 /// The gateway port a job reaches the cache on.
 pub const PORT: u16 = 7410;
@@ -40,8 +50,29 @@ pub const MAX_ARTIFACT: u64 = 200 << 20;
 /// A tag (`x-artifact-tag`, the artifact's signature) is at most this long
 /// in Turborepo's API.
 const MAX_TAG: usize = 600;
-/// Requests served at once: `turbo` uploads and downloads in parallel.
-const WORKERS: usize = 16;
+/// Connections open at once; one past this is closed as it comes. Each
+/// holds a thread, and a job's `turbo` opens a handful.
+const MAX_CONNECTIONS: usize = 512;
+/// Connections one run's token may hold open at once, so one job cannot
+/// take every connection from the others. A request on one more is
+/// answered 429.
+const MAX_PER_TOKEN: usize = 64;
+/// Bytes of artifacts held at once across every connection: request bodies
+/// as they are read and kept, and artifacts read for an answer until it is
+/// sent. A request waits [`BODY_WAIT`] for room, then is answered 503.
+const BODY_BUDGET: u64 = 2 << 30;
+const BODY_WAIT: Duration = Duration::from_secs(10);
+/// Requests answered at once (the store's reads and writes), as the 16
+/// workers of the tiny_http pool this replaced were.
+const ANSWERING: u64 = 16;
+/// A client that reads none of an answer for this long is let go.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+/// The longest request line and headers together.
+const MAX_HEAD: u64 = 16 << 10;
+/// The largest body of anything but an artifact (a query, events).
+const MAX_SMALL_BODY: u64 = 1 << 20;
+/// A connection that sends nothing for this long is closed.
+const IDLE: Duration = Duration::from_secs(300);
 /// Hashes one `POST /v8/artifacts` may ask about.
 const MAX_QUERY: usize = 256;
 
@@ -84,44 +115,213 @@ fn valid_tag(tag: &str) -> bool {
 
 type Runs = Mutex<HashMap<String, Arc<dyn Artifacts>>>;
 
+/// The bounds the server keeps to; [`Limits::default`] in the runner,
+/// smaller in tests.
+#[derive(Debug, Clone, Copy)]
+struct Limits {
+    connections: usize,
+    per_token: usize,
+    body_budget: u64,
+    body_wait: Duration,
+    answering: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            connections: MAX_CONNECTIONS,
+            per_token: MAX_PER_TOKEN,
+            body_budget: BODY_BUDGET,
+            body_wait: BODY_WAIT,
+            answering: ANSWERING,
+        }
+    }
+}
+
+/// What every connection shares.
+struct Shared {
+    runs: Arc<Runs>,
+    limits: Limits,
+    /// Artifact bytes held ([`Limits::body_budget`]).
+    bytes: Budget,
+    /// Requests being answered ([`Limits::answering`]).
+    answering: Budget,
+    /// Open connections by the token they last carried.
+    tokens: Mutex<HashMap<String, usize>>,
+}
+
+/// A count of something there is only so much of, taken and given back.
+struct Budget {
+    limit: u64,
+    state: Mutex<Taken>,
+    freed: Condvar,
+}
+
+#[derive(Default)]
+struct Taken {
+    held: u64,
+    /// The most ever held at once, for the tests.
+    peak: u64,
+}
+
+impl Budget {
+    fn new(limit: u64) -> Self {
+        Self {
+            limit,
+            state: Mutex::default(),
+            freed: Condvar::new(),
+        }
+    }
+
+    /// Takes `n` once there is room, waiting up to `wait`: false if there
+    /// was none by then, or never could be.
+    fn take(&self, n: u64, wait: Duration) -> bool {
+        if n > self.limit {
+            return false;
+        }
+        let deadline = Instant::now() + wait;
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        while state.held + n > self.limit {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            state = self
+                .freed
+                .wait_timeout(state, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        state.held += n;
+        state.peak = state.peak.max(state.held);
+        true
+    }
+
+    fn give(&self, n: u64) {
+        if n == 0 {
+            return;
+        }
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.held = state.held.saturating_sub(n);
+        drop(state);
+        self.freed.notify_all();
+    }
+
+    #[cfg(test)]
+    fn peak(&self) -> u64 {
+        self.state.lock().unwrap().peak
+    }
+}
+
+/// What a request holds of a [`Budget`], given back when it is dropped.
+struct Held<'a> {
+    budget: &'a Budget,
+    n: u64,
+}
+
+impl<'a> Held<'a> {
+    fn none(budget: &'a Budget) -> Self {
+        Self { budget, n: 0 }
+    }
+
+    /// Takes `n` more ([`Budget::take`]).
+    fn grow(&mut self, n: u64, wait: Duration) -> bool {
+        let taken = self.budget.take(n, wait);
+        if taken {
+            self.n += n;
+        }
+        taken
+    }
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.budget.give(self.n);
+    }
+}
+
+/// One of a token's connections ([`Limits::per_token`]), given back when
+/// the connection ends or carries another token.
+struct Slot<'a> {
+    shared: &'a Shared,
+    token: String,
+}
+
+impl<'a> Slot<'a> {
+    fn claim(shared: &'a Shared, token: &str) -> Option<Self> {
+        let mut tokens = shared.tokens.lock().unwrap_or_else(|e| e.into_inner());
+        let open = tokens.entry(token.to_string()).or_insert(0);
+        if *open >= shared.limits.per_token {
+            if *open == 0 {
+                tokens.remove(token);
+            }
+            return None;
+        }
+        *open += 1;
+        Some(Self {
+            shared,
+            token: token.to_string(),
+        })
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        let mut tokens = self.shared.tokens.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(open) = tokens.get_mut(&self.token) {
+            *open = open.saturating_sub(1);
+            if *open == 0 {
+                tokens.remove(&self.token);
+            }
+        }
+    }
+}
+
 /// The runner's remote cache server, on its Unix socket.
 pub struct RemoteCache {
-    server: Arc<Server>,
     runs: Arc<Runs>,
     socket: PathBuf,
+    stop: Arc<AtomicBool>,
+    #[cfg(test)]
+    shared: Arc<Shared>,
 }
 
 impl RemoteCache {
     /// Serves the cache on a Unix socket at `socket`, replacing what an
     /// earlier runner left there. Only the runner's own user may connect.
     pub fn start(socket: &Path) -> Result<Self, String> {
+        Self::start_with(socket, Limits::default())
+    }
+
+    fn start_with(socket: &Path, limits: Limits) -> Result<Self, String> {
         let _ = std::fs::remove_file(socket);
-        let server = Arc::new(
-            Server::http_unix(socket)
-                .map_err(|e| format!("the remote cache at {}: {e}", socket.display()))?,
-        );
-        #[cfg(unix)]
+        let listener = UnixListener::bind(socket)
+            .map_err(|e| format!("the remote cache at {}: {e}", socket.display()))?;
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))
                 .map_err(|e| format!("the remote cache at {}: {e}", socket.display()))?;
         }
         let runs: Arc<Runs> = Arc::default();
-        for _ in 0..WORKERS {
-            let (server, runs) = (server.clone(), runs.clone());
-            std::thread::Builder::new()
-                .name("iwci-remote-cache".into())
-                .spawn(move || {
-                    while let Ok(request) = server.recv() {
-                        serve(&runs, request);
-                    }
-                })
-                .map_err(|e| format!("the remote cache: {e}"))?;
-        }
+        let stop = Arc::new(AtomicBool::new(false));
+        let shared = Arc::new(Shared {
+            runs: runs.clone(),
+            limits,
+            bytes: Budget::new(limits.body_budget),
+            answering: Budget::new(limits.answering),
+            tokens: Mutex::default(),
+        });
+        let (accepting, stopping) = (shared.clone(), stop.clone());
+        std::thread::Builder::new()
+            .name("iwci-remote-cache".into())
+            .spawn(move || accept(&listener, &accepting, &stopping))
+            .map_err(|e| format!("the remote cache: {e}"))?;
         Ok(Self {
-            server,
             runs,
             socket: socket.to_path_buf(),
+            stop,
+            #[cfg(test)]
+            shared,
         })
     }
 
@@ -149,10 +349,40 @@ impl RemoteCache {
 
 impl Drop for RemoteCache {
     fn drop(&mut self) {
-        for _ in 0..WORKERS {
-            self.server.unblock();
-        }
+        self.stop.store(true, Ordering::SeqCst);
+        // Wakes the accepting thread, which then sees `stop`.
+        let _ = UnixStream::connect(&self.socket);
         let _ = std::fs::remove_file(&self.socket);
+    }
+}
+
+/// Gives every connection a thread of its own, up to
+/// [`Limits::connections`].
+fn accept(listener: &UnixListener, shared: &Arc<Shared>, stop: &AtomicBool) {
+    let open = Arc::new(AtomicUsize::new(0));
+    for stream in listener.incoming() {
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        let Ok(stream) = stream else {
+            // Out of descriptors, say: not a spin while it lasts.
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        };
+        if open.fetch_add(1, Ordering::SeqCst) >= shared.limits.connections {
+            open.fetch_sub(1, Ordering::SeqCst);
+            continue;
+        }
+        let (shared, held) = (shared.clone(), open.clone());
+        let spawned = std::thread::Builder::new()
+            .name("iwci-remote-cache-conn".into())
+            .spawn(move || {
+                connection(&shared, stream);
+                held.fetch_sub(1, Ordering::SeqCst);
+            });
+        if spawned.is_err() {
+            open.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 }
 
@@ -215,39 +445,343 @@ impl JobEnv {
     }
 }
 
-fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
-    request
-        .headers()
+/// One request, its body read whole.
+struct Request {
+    method: String,
+    /// The path, without the query.
+    path: String,
+    /// Names lowercased.
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+impl Request {
+    fn header(&self, name: &str) -> Option<&str> {
+        header_in(&self.headers, name)
+    }
+}
+
+fn header_in<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
         .iter()
-        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
-        .map(|h| h.value.as_str())
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.as_str())
 }
 
-fn h(name: &str, value: &str) -> Header {
-    Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("a valid header")
+/// What is sent back.
+struct Reply {
+    status: u16,
+    headers: Vec<(&'static str, String)>,
+    body: Vec<u8>,
 }
 
-fn json(status: u16, body: serde_json::Value) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_data(body.to_string().into_bytes())
-        .with_status_code(status)
-        .with_header(h("Content-Type", "application/json"))
+impl Reply {
+    fn with(mut self, name: &'static str, value: impl Into<String>) -> Self {
+        self.headers.push((name, value.into()));
+        self
+    }
+}
+
+fn json(status: u16, body: serde_json::Value) -> Reply {
+    Reply {
+        status,
+        headers: vec![("Content-Type", "application/json".into())],
+        body: body.to_string().into_bytes(),
+    }
 }
 
 /// An error in the shape Turborepo's API gives one.
-fn error(status: u16, code: &str, message: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn error(status: u16, code: &str, message: &str) -> Reply {
     json(
         status,
         serde_json::json!({ "code": code, "message": message }),
     )
 }
 
-fn serve(runs: &Runs, mut request: Request) {
-    let response = answer(runs, &mut request);
-    let _ = request.respond(response);
+/// No room in a budget within [`Limits::body_wait`].
+fn busy() -> Reply {
+    error(
+        503,
+        "service_unavailable",
+        "the remote cache is busy; try again",
+    )
+    .with("Retry-After", "1")
 }
 
-fn answer(runs: &Runs, request: &mut Request) -> Response<std::io::Cursor<Vec<u8>>> {
-    let token = header(request, "Authorization")
+fn too_big() -> Reply {
+    error(
+        413,
+        "payload_too_large",
+        &format!("artifacts over {} MiB are not kept", MAX_ARTIFACT >> 20),
+    )
+}
+
+fn reason(status: u16) -> &'static str {
+    match status {
+        100 => "Continue",
+        200 => "OK",
+        202 => "Accepted",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        413 => "Payload Too Large",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        503 => "Service Unavailable",
+        505 => "HTTP Version Not Supported",
+        _ => "",
+    }
+}
+
+/// Writes `reply`, its body left out for a `HEAD` (its length still
+/// given), saying `Connection: close` when the connection ends after it.
+fn send(out: &mut impl Write, reply: &Reply, head_only: bool, close: bool) -> std::io::Result<()> {
+    let mut text = format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n",
+        reply.status,
+        reason(reply.status),
+        reply.body.len()
+    );
+    for (name, value) in &reply.headers {
+        text.push_str(&format!("{name}: {value}\r\n"));
+    }
+    if close {
+        text.push_str("Connection: close\r\n");
+    }
+    text.push_str("\r\n");
+    let mut bytes = text.into_bytes();
+    if !head_only {
+        bytes.extend_from_slice(&reply.body);
+    }
+    out.write_all(&bytes)?;
+    out.flush()
+}
+
+/// A request line and its headers, before the body.
+struct Head {
+    method: String,
+    target: String,
+    keep_alive: bool,
+    headers: Vec<(String, String)>,
+}
+
+/// Why a request could not be read; the connection ends either way.
+enum Unread {
+    /// The client closed or went quiet: nothing to answer.
+    Gone,
+    /// Malformed, with what to answer.
+    Bad(Reply),
+    /// Read to its end, but with no room to keep it: answered 503, and
+    /// the connection carries on.
+    Busy,
+}
+
+/// Reads one request head, `None` at a clean end of the connection.
+fn read_head(reader: &mut impl BufRead) -> Result<Option<Head>, Unread> {
+    let mut lines = Vec::new();
+    let mut read = 0u64;
+    loop {
+        let mut line = Vec::new();
+        let n = reader
+            .by_ref()
+            .take(MAX_HEAD - read)
+            .read_until(b'\n', &mut line)
+            .map_err(|_| Unread::Gone)?;
+        if n == 0 {
+            return if lines.is_empty() && read == 0 {
+                Ok(None)
+            } else {
+                Err(Unread::Gone)
+            };
+        }
+        read += n as u64;
+        if !line.ends_with(b"\n") {
+            return Err(Unread::Bad(error(
+                400,
+                "bad_request",
+                "the request head is too long",
+            )));
+        }
+        let line = String::from_utf8(line)
+            .map_err(|_| Unread::Bad(error(400, "bad_request", "not a request")))?;
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.is_empty() {
+            // Blank lines before a request line are allowed (RFC 9112 2.2).
+            if lines.is_empty() {
+                continue;
+            }
+            break;
+        }
+        lines.push(line.to_string());
+    }
+    let bad = || Unread::Bad(error(400, "bad_request", "not a request"));
+    let mut request_line = lines[0].split(' ');
+    let (Some(method), Some(target), Some(version), None) = (
+        request_line.next(),
+        request_line.next(),
+        request_line.next(),
+        request_line.next(),
+    ) else {
+        return Err(bad());
+    };
+    let mut headers = Vec::with_capacity(lines.len() - 1);
+    for line in &lines[1..] {
+        let (name, value) = line.split_once(':').ok_or_else(bad)?;
+        if name.is_empty() || name.contains(char::is_whitespace) {
+            return Err(bad());
+        }
+        headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
+    }
+    let connection = header_in(&headers, "connection")
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let keep_alive = match version {
+        "HTTP/1.1" => !connection.contains("close"),
+        "HTTP/1.0" => connection.contains("keep-alive"),
+        _ => {
+            return Err(Unread::Bad(error(
+                505,
+                "http_version_not_supported",
+                "only HTTP/1.0 and 1.1",
+            )));
+        }
+    };
+    Ok(Some(Head {
+        method: method.to_string(),
+        target: target.to_string(),
+        keep_alive,
+        headers,
+    }))
+}
+
+/// Reads a body sent in chunks, refusing one of more than `limit` bytes,
+/// taking each chunk's room in `held` before reading it.
+fn read_chunked(
+    reader: &mut impl BufRead,
+    limit: u64,
+    held: &mut Held<'_>,
+    wait: Duration,
+) -> Result<Vec<u8>, Unread> {
+    let mut body = Vec::new();
+    let mut refused = false;
+    loop {
+        let mut line = Vec::new();
+        reader
+            .by_ref()
+            .take(1024)
+            .read_until(b'\n', &mut line)
+            .map_err(|_| Unread::Gone)?;
+        let text = std::str::from_utf8(&line).map_err(|_| Unread::Gone)?;
+        let size = text
+            .trim_end_matches(['\r', '\n'])
+            .split(';')
+            .next()
+            .and_then(|n| u64::from_str_radix(n.trim(), 16).ok())
+            .ok_or(Unread::Bad(error(400, "bad_request", "not a chunk")))?;
+        if size == 0 {
+            // Trailers, up to the blank line.
+            loop {
+                let mut trailer = Vec::new();
+                let n = reader
+                    .by_ref()
+                    .take(MAX_HEAD)
+                    .read_until(b'\n', &mut trailer)
+                    .map_err(|_| Unread::Gone)?;
+                if n == 0 || trailer == b"\r\n" || trailer == b"\n" {
+                    return if refused { Err(Unread::Busy) } else { Ok(body) };
+                }
+            }
+        }
+        if body.len() as u64 + size > limit {
+            return Err(Unread::Bad(too_big()));
+        }
+        if refused || !held.grow(size, wait) {
+            // Read and let go, so the client still gets its answer.
+            refused = true;
+            discard(reader, size + 2)?;
+            continue;
+        }
+        let at = body.len();
+        body.resize(at + size as usize, 0);
+        reader
+            .read_exact(&mut body[at..])
+            .map_err(|_| Unread::Gone)?;
+        let mut end = [0u8; 2];
+        reader.read_exact(&mut end).map_err(|_| Unread::Gone)?;
+        if &end != b"\r\n" {
+            return Err(Unread::Bad(error(400, "bad_request", "not a chunk")));
+        }
+    }
+}
+
+/// Reads `n` bytes and keeps none of them.
+fn discard(reader: &mut impl BufRead, n: u64) -> Result<(), Unread> {
+    let read = std::io::copy(&mut reader.by_ref().take(n), &mut std::io::sink())
+        .map_err(|_| Unread::Gone)?;
+    if read == n { Ok(()) } else { Err(Unread::Gone) }
+}
+
+/// Serves one connection until the client closes it, asks to, goes quiet
+/// for [`IDLE`], or sends what cannot be followed by another request.
+fn connection(shared: &Shared, stream: UnixStream) {
+    let _ = stream.set_read_timeout(Some(IDLE));
+    let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
+    let Ok(mut out) = stream.try_clone() else {
+        return;
+    };
+    let mut reader = BufReader::new(stream);
+    // The token this connection counts against.
+    let mut slot = None;
+    loop {
+        let head = match read_head(&mut reader) {
+            Ok(Some(head)) => head,
+            Ok(None) | Err(Unread::Gone | Unread::Busy) => return,
+            Err(Unread::Bad(reply)) => {
+                let _ = send(&mut out, &reply, false, true);
+                return;
+            }
+        };
+        let head_only = head.method == "HEAD";
+        let reply = match answer_head(shared, head, &mut reader, &mut out, &mut slot) {
+            Ok((reply, keep_alive, held)) => {
+                let sent = send(&mut out, &reply, head_only, !keep_alive);
+                drop(held);
+                if sent.is_err() || !keep_alive {
+                    return;
+                }
+                continue;
+            }
+            Err(Unread::Gone) => return,
+            Err(Unread::Bad(reply)) => reply,
+            // Never left by `answer_head`, which answers it.
+            Err(Unread::Busy) => busy(),
+        };
+        // The body was not read, so the next request's start is unknown.
+        let _ = send(&mut out, &reply, head_only, true);
+        return;
+    }
+}
+
+/// Reads the body of the request `head` begins and answers it, with
+/// whether the connection may carry another request and the room the
+/// answer's body holds until it is sent.
+fn answer_head<'a>(
+    shared: &'a Shared,
+    head: Head,
+    reader: &mut impl BufRead,
+    out: &mut impl Write,
+    slot: &mut Option<Slot<'a>>,
+) -> Result<(Reply, bool, Held<'a>), Unread> {
+    let runs = &shared.runs;
+    let wait = shared.limits.body_wait;
+    let path = head
+        .target
+        .split_once('?')
+        .map_or(head.target.as_str(), |(p, _)| p)
+        .to_string();
+    // The token first, so nobody else's body is read at all.
+    let token = header_in(&head.headers, "authorization")
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(str::trim);
     let artifacts = token.and_then(|t| {
@@ -256,42 +790,142 @@ fn answer(runs: &Runs, request: &mut Request) -> Response<std::io::Cursor<Vec<u8
             .get(t)
             .cloned()
     });
-    let Some(artifacts) = artifacts else {
-        return error(
+    let (Some(artifacts), Some(token)) = (artifacts, token) else {
+        return Err(Unread::Bad(error(
             401,
             "unauthorized",
             "not a token of a run on this runner, or its run has ended",
-        );
+        )));
     };
-    let url = request.url().to_string();
-    let path = url.split_once('?').map_or(url.as_str(), |(p, _)| p);
-    let method = request.method().clone();
-    match (&method, path) {
-        (Method::Get, "/v8/artifacts/status") => {
-            json(200, serde_json::json!({ "status": "enabled" }))
+    if slot.as_ref().is_none_or(|s| s.token != token) {
+        // Given back before the next is claimed, so a connection that
+        // changes token never holds two.
+        *slot = None;
+        *slot = Slot::claim(shared, token);
+        if slot.is_none() {
+            return Err(Unread::Bad(
+                error(
+                    429,
+                    "too_many_connections",
+                    &format!(
+                        "a run may hold {} connections to the remote cache at once",
+                        shared.limits.per_token
+                    ),
+                )
+                .with("Retry-After", "1"),
+            ));
         }
-        (Method::Post, "/v8/artifacts/events") => {
-            // Hit and miss events, which nothing here records.
-            let _ = std::io::copy(&mut request.as_reader().take(1 << 20), &mut std::io::sink());
-            Response::from_data(Vec::new()).with_status_code(200)
+    }
+    let limit = if head.method == "PUT" {
+        MAX_ARTIFACT
+    } else {
+        MAX_SMALL_BODY
+    };
+    let chunked = header_in(&head.headers, "transfer-encoding")
+        .is_some_and(|v| v.to_ascii_lowercase().contains("chunked"));
+    let length = match header_in(&head.headers, "content-length") {
+        _ if chunked => None,
+        None => Some(0),
+        Some(n) => Some(
+            n.parse::<u64>()
+                .map_err(|_| Unread::Bad(error(400, "bad_request", "not a length")))?,
+        ),
+    };
+    if length.is_some_and(|n| n > limit) {
+        // Refused by its stated length, before any of it is read.
+        return Err(Unread::Bad(if head.method == "PUT" {
+            too_big()
+        } else {
+            error(413, "payload_too_large", "the request is too large")
+        }));
+    }
+    // The body's room first, so no more is read than the budget holds.
+    let mut held = Held::none(&shared.bytes);
+    let room = length.is_none_or(|n| held.grow(n, wait));
+    let wants_body = chunked || length.is_some_and(|n| n > 0);
+    let expects =
+        header_in(&head.headers, "expect").is_some_and(|v| v.eq_ignore_ascii_case("100-continue"));
+    if wants_body && expects && !room {
+        // It waits to be told to send, so it need not send at all.
+        return Err(Unread::Bad(busy()));
+    }
+    if wants_body && expects {
+        out.write_all(b"HTTP/1.1 100 Continue\r\n\r\n")
+            .map_err(|_| Unread::Gone)?;
+    }
+    let body = match length {
+        None => match read_chunked(reader, limit, &mut held, wait) {
+            Ok(body) => body,
+            Err(Unread::Busy) => return Ok((busy(), head.keep_alive, held)),
+            Err(e) => return Err(e),
+        },
+        Some(n) if !room => {
+            // No room for it: read and let go, so the client still gets
+            // its answer and the connection its next request.
+            discard(reader, n)?;
+            return Ok((busy(), head.keep_alive, held));
         }
-        (Method::Post, "/v8/artifacts") => query(artifacts.as_ref(), request),
+        Some(n) => {
+            let mut body = vec![0u8; n as usize];
+            reader.read_exact(&mut body).map_err(|_| Unread::Gone)?;
+            body
+        }
+    };
+    let request = Request {
+        method: head.method,
+        path,
+        headers: head.headers,
+        body,
+    };
+    let mut answering = Held::none(&shared.answering);
+    if !answering.grow(1, wait) {
+        return Ok((busy(), head.keep_alive, Held::none(&shared.bytes)));
+    }
+    let reply = answer(artifacts.as_ref(), request);
+    // The request's body is gone; the answer's (an artifact read) holds
+    // room until it is sent.
+    drop(held);
+    let mut sending = Held::none(&shared.bytes);
+    let reply = if sending.grow(reply.body.len() as u64, wait) {
+        reply
+    } else {
+        busy()
+    };
+    drop(answering);
+    Ok((reply, head.keep_alive, sending))
+}
+
+fn answer(artifacts: &dyn Artifacts, mut request: Request) -> Reply {
+    let (method, path) = (request.method.clone(), request.path.clone());
+    let method = method.as_str();
+    match (method, path.as_str()) {
+        ("GET", "/v8/artifacts/status") => json(200, serde_json::json!({ "status": "enabled" })),
+        // Hit and miss events, which nothing here records.
+        ("POST", "/v8/artifacts/events") => Reply {
+            status: 200,
+            headers: Vec::new(),
+            body: Vec::new(),
+        },
+        ("POST", "/v8/artifacts") => query(artifacts, &request),
         (_, p) if p.starts_with("/v8/artifacts/") => {
             let hash = &p["/v8/artifacts/".len()..];
             if !valid_hash(hash) {
                 return error(400, "bad_request", "not an artifact hash");
             }
             match method {
-                Method::Get | Method::Head => match artifacts.get(hash) {
+                "GET" | "HEAD" => match artifacts.get(hash) {
                     Ok(Some(a)) => {
-                        let mut response = Response::from_data(a.body)
-                            .with_status_code(200)
-                            .with_header(h("Content-Type", "application/octet-stream"))
-                            .with_header(h("x-artifact-duration", &a.duration_ms.to_string()));
-                        if let Some(tag) = &a.tag {
-                            response = response.with_header(h("x-artifact-tag", tag));
+                        let mut reply = Reply {
+                            status: 200,
+                            headers: Vec::new(),
+                            body: a.body,
                         }
-                        response
+                        .with("Content-Type", "application/octet-stream")
+                        .with("x-artifact-duration", a.duration_ms.to_string());
+                        if let Some(tag) = a.tag {
+                            reply = reply.with("x-artifact-tag", tag);
+                        }
+                        reply
                     }
                     Ok(None) => error(404, "not_found", "no such artifact"),
                     Err(e) => {
@@ -299,7 +933,7 @@ fn answer(runs: &Runs, request: &mut Request) -> Response<std::io::Cursor<Vec<u8
                         error(500, "internal_error", "the artifact could not be read")
                     }
                 },
-                Method::Put => put(artifacts.as_ref(), hash, request),
+                "PUT" => put(artifacts, hash, &mut request),
                 _ => error(405, "method_not_allowed", "not a method of this path"),
             }
         }
@@ -307,45 +941,17 @@ fn answer(runs: &Runs, request: &mut Request) -> Response<std::io::Cursor<Vec<u8
     }
 }
 
-fn put(
-    artifacts: &dyn Artifacts,
-    hash: &str,
-    request: &mut Request,
-) -> Response<std::io::Cursor<Vec<u8>>> {
-    let too_big = || {
-        error(
-            413,
-            "payload_too_large",
-            &format!("artifacts over {} MiB are not kept", MAX_ARTIFACT >> 20),
-        )
-    };
-    if request
-        .body_length()
-        .is_some_and(|n| n as u64 > MAX_ARTIFACT)
-    {
-        return too_big();
-    }
-    let duration_ms = header(request, "x-artifact-duration")
+fn put(artifacts: &dyn Artifacts, hash: &str, request: &mut Request) -> Reply {
+    let duration_ms = request
+        .header("x-artifact-duration")
         .and_then(|d| d.trim().parse().ok())
         .unwrap_or(0);
-    let tag = header(request, "x-artifact-tag").map(str::to_string);
+    let tag = request.header("x-artifact-tag").map(str::to_string);
     if tag.as_deref().is_some_and(|t| !valid_tag(t)) {
         return error(400, "bad_request", "not an artifact tag");
     }
-    let mut body = Vec::new();
-    if request
-        .as_reader()
-        .take(MAX_ARTIFACT + 1)
-        .read_to_end(&mut body)
-        .is_err()
-    {
-        return error(400, "bad_request", "the artifact did not arrive whole");
-    }
-    if body.len() as u64 > MAX_ARTIFACT {
-        return too_big();
-    }
     let artifact = Artifact {
-        body,
+        body: std::mem::take(&mut request.body),
         duration_ms,
         tag,
     };
@@ -359,21 +965,12 @@ fn put(
 }
 
 /// `POST /v8/artifacts`: what is known of each of a list of hashes.
-fn query(artifacts: &dyn Artifacts, request: &mut Request) -> Response<std::io::Cursor<Vec<u8>>> {
+fn query(artifacts: &dyn Artifacts, request: &Request) -> Reply {
     #[derive(serde::Deserialize)]
     struct Query {
         hashes: Vec<String>,
     }
-    let mut text = Vec::new();
-    if request
-        .as_reader()
-        .take(1 << 20)
-        .read_to_end(&mut text)
-        .is_err()
-    {
-        return error(400, "bad_request", "the request did not arrive whole");
-    }
-    let Ok(asked) = serde_json::from_slice::<Query>(&text) else {
+    let Ok(asked) = serde_json::from_slice::<Query>(&request.body) else {
         return error(400, "bad_request", "expected {\"hashes\": [...]}");
     };
     if asked.hashes.len() > MAX_QUERY {
@@ -635,5 +1232,298 @@ mod tests {
         let mut own = vec![("TURBO_TOKEN".to_string(), "vercel".to_string())];
         env.add_to(&mut own);
         assert_eq!(own, vec![("TURBO_TOKEN".to_string(), "vercel".to_string())]);
+    }
+
+    /// `turbo` opens several keep-alive connections at once and leaves
+    /// them open between requests. Each must be answered while the others
+    /// stay open: on tiny_http's own connection pool, a connection accepted
+    /// just after another could wait, unread, until some other connection
+    /// closed, which `turbo` only does after its 30 s timeout.
+    #[test]
+    fn connections_opened_together_are_all_answered_while_they_stay_open() {
+        use std::io::BufRead;
+        for round in 0..20 {
+            let socket = socket_path(&format!("together-{round}"));
+            let cache = RemoteCache::start(&socket).unwrap();
+            let run = cache.register(Arc::new(Memory::default())).unwrap();
+            let token = run.job_env().token;
+            let barrier = Arc::new(std::sync::Barrier::new(12));
+            let threads: Vec<_> = (0..12)
+                .map(|_| {
+                    let (socket, token, barrier) = (socket.clone(), token.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        let stream = UnixStream::connect(&socket).unwrap();
+                        stream
+                            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                            .unwrap();
+                        let mut writer = stream.try_clone().unwrap();
+                        write!(
+                            writer,
+                            "GET /v8/artifacts/status HTTP/1.1\r\nHost: c\r\nAuthorization: Bearer {token}\r\n\r\n"
+                        )
+                        .unwrap();
+                        let mut status = String::new();
+                        let answered = std::io::BufReader::new(stream)
+                            .read_line(&mut status)
+                            .is_ok_and(|n| n > 0);
+                        // Kept open until every connection has its answer,
+                        // as a client's pool keeps them.
+                        barrier.wait();
+                        drop(writer);
+                        answered
+                    })
+                })
+                .collect();
+            let answered = threads
+                .into_iter()
+                .map(|t| t.join().unwrap())
+                .filter(|a| *a)
+                .count();
+            assert_eq!(answered, 12, "round {round}: a connection was never read");
+            drop(run);
+            drop(cache);
+        }
+    }
+
+    /// What `turbo`'s client does on one connection: several requests in
+    /// turn, a `HEAD` (no body, its length still given), an upload sent in
+    /// chunks after `Expect: 100-continue`, and the artifact read back.
+    #[test]
+    fn one_connection_carries_requests_in_turn_heads_and_chunked_uploads() {
+        let socket = socket_path("keepalive");
+        let cache = RemoteCache::start(&socket).unwrap();
+        let store = Arc::new(Memory::default());
+        let run = cache.register(store.clone()).unwrap();
+        let token = run.job_env().token;
+        let mut stream = UnixStream::connect(&socket).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        // A response: its status line, headers and the body its length gives.
+        let reply = |reader: &mut std::io::BufReader<UnixStream>, head_only: bool| {
+            use std::io::BufRead;
+            let mut status = String::new();
+            reader.read_line(&mut status).unwrap();
+            let mut length = 0usize;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = v.trim().parse().unwrap();
+                }
+            }
+            let mut body = vec![0u8; if head_only { 0 } else { length }];
+            reader.read_exact(&mut body).unwrap();
+            (status.split(' ').nth(1).unwrap().to_string(), length, body)
+        };
+        let auth = format!("Authorization: Bearer {token}\r\n");
+
+        write!(
+            stream,
+            "HEAD /v8/artifacts/ab HTTP/1.1\r\nHost: c\r\n{auth}\r\n"
+        )
+        .unwrap();
+        assert_eq!(reply(&mut reader, true).0, "404");
+
+        write!(
+            stream,
+            "PUT /v8/artifacts/ab HTTP/1.1\r\nHost: c\r\n{auth}x-artifact-duration: 7\r\nTransfer-Encoding: chunked\r\nExpect: 100-continue\r\n\r\n"
+        )
+        .unwrap();
+        let (status, _, _) = reply(&mut reader, false);
+        assert_eq!(status, "100");
+        stream
+            .write_all(b"3\r\ntar\r\n4;x=y\r\nball\r\n0\r\n\r\n")
+            .unwrap();
+        assert_eq!(reply(&mut reader, false).0, "202");
+        assert_eq!(store.0.lock().unwrap()["ab"].body, b"tarball");
+
+        write!(
+            stream,
+            "HEAD /v8/artifacts/ab HTTP/1.1\r\nHost: c\r\n{auth}\r\n"
+        )
+        .unwrap();
+        assert_eq!(reply(&mut reader, true), ("200".to_string(), 7, Vec::new()));
+        write!(
+            stream,
+            "GET /v8/artifacts/ab HTTP/1.1\r\nHost: c\r\n{auth}\r\n"
+        )
+        .unwrap();
+        assert_eq!(
+            reply(&mut reader, false),
+            ("200".to_string(), 7, b"tarball".to_vec())
+        );
+    }
+
+    /// A store whose writes take `delay`, so uploads overlap.
+    struct Slow(Memory, std::time::Duration);
+
+    impl Artifacts for Slow {
+        fn get(&self, hash: &str) -> Result<Option<Artifact>, String> {
+            self.0.get(hash)
+        }
+        fn put(&self, hash: &str, artifact: &Artifact) -> Result<(), String> {
+            std::thread::sleep(self.1);
+            self.0.put(hash, artifact)
+        }
+    }
+
+    fn put_body(
+        socket: &Path,
+        token: &str,
+        hash: &str,
+        len: usize,
+    ) -> (u16, Vec<(String, String)>) {
+        let (status, headers, _) = request(
+            socket,
+            "PUT",
+            &format!("/v8/artifacts/{hash}"),
+            Some(token),
+            &[],
+            &vec![7u8; len],
+        );
+        (status, headers)
+    }
+
+    /// Jobs are not trusted with the runner's memory: however many
+    /// uploads arrive at once, what is held of them stays in the budget,
+    /// and each waits its turn rather than failing.
+    #[test]
+    fn concurrent_large_uploads_stay_within_the_body_budget() {
+        let socket = socket_path("budget");
+        let limits = Limits {
+            body_budget: 1 << 20,
+            body_wait: std::time::Duration::from_secs(20),
+            ..Limits::default()
+        };
+        let cache = RemoteCache::start_with(&socket, limits).unwrap();
+        let store = Arc::new(Slow(
+            Memory::default(),
+            std::time::Duration::from_millis(30),
+        ));
+        let run = cache.register(store.clone()).unwrap();
+        let token = run.job_env().token;
+        let threads: Vec<_> = (0..12)
+            .map(|i| {
+                let (socket, token) = (socket.clone(), token.clone());
+                std::thread::spawn(move || put_body(&socket, &token, &format!("a{i}"), 300 << 10).0)
+            })
+            .collect();
+        for t in threads {
+            assert_eq!(t.join().unwrap(), 202);
+        }
+        assert_eq!(store.0.0.lock().unwrap().len(), 12);
+        let peak = cache.shared.bytes.peak();
+        assert!(peak <= 1 << 20, "held {peak} bytes at once");
+        assert!(peak >= 300 << 10, "held {peak} bytes at once");
+    }
+
+    #[test]
+    fn an_upload_with_no_room_in_time_is_answered_503() {
+        let socket = socket_path("busy");
+        let limits = Limits {
+            body_budget: 1 << 20,
+            body_wait: std::time::Duration::from_millis(100),
+            ..Limits::default()
+        };
+        let cache = RemoteCache::start_with(&socket, limits).unwrap();
+        let store = Arc::new(Slow(
+            Memory::default(),
+            std::time::Duration::from_millis(1500),
+        ));
+        let run = cache.register(store.clone()).unwrap();
+        let token = run.job_env().token;
+        let first = {
+            let (socket, token) = (socket.clone(), token.clone());
+            std::thread::spawn(move || put_body(&socket, &token, "first", 800 << 10).0)
+        };
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let (status, headers) = put_body(&socket, &token, "second", 800 << 10);
+        assert_eq!(status, 503);
+        assert_eq!(header_of(&headers, "retry-after"), Some("1"));
+        assert_eq!(first.join().unwrap(), 202);
+        // Room again once the first is kept.
+        assert_eq!(put_body(&socket, &token, "second", 800 << 10).0, 202);
+    }
+
+    /// One request and its answer on an open connection: the status.
+    fn exchange(
+        stream: &mut UnixStream,
+        reader: &mut std::io::BufReader<UnixStream>,
+        token: &str,
+    ) -> String {
+        use std::io::BufRead;
+        write!(
+            stream,
+            "GET /v8/artifacts/status HTTP/1.1\r\nHost: c\r\nAuthorization: Bearer {token}\r\n\r\n"
+        )
+        .unwrap();
+        let mut status = String::new();
+        reader.read_line(&mut status).unwrap();
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0u8; length];
+        reader.read_exact(&mut body).unwrap();
+        status.split(' ').nth(1).unwrap_or_default().to_string()
+    }
+
+    fn open(socket: &Path) -> (UnixStream, std::io::BufReader<UnixStream>) {
+        let stream = UnixStream::connect(socket).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        (stream, reader)
+    }
+
+    #[test]
+    fn a_token_past_its_connection_cap_is_refused_while_another_gets_through() {
+        let socket = socket_path("per-token");
+        let limits = Limits {
+            per_token: 2,
+            ..Limits::default()
+        };
+        let cache = RemoteCache::start_with(&socket, limits).unwrap();
+        let a = cache.register(Arc::new(Memory::default())).unwrap();
+        let b = cache.register(Arc::new(Memory::default())).unwrap();
+        let (ta, tb) = (a.job_env().token, b.job_env().token);
+        let (mut a1, mut r1) = open(&socket);
+        let (mut a2, mut r2) = open(&socket);
+        assert_eq!(exchange(&mut a1, &mut r1, &ta), "200");
+        assert_eq!(exchange(&mut a2, &mut r2, &ta), "200");
+        // Both still open: a third of the same run's is refused.
+        let (mut a3, mut r3) = open(&socket);
+        assert_eq!(exchange(&mut a3, &mut r3, &ta), "429");
+        // Another run's still gets through, and so do the first two again.
+        let (mut b1, mut rb) = open(&socket);
+        assert_eq!(exchange(&mut b1, &mut rb, &tb), "200");
+        assert_eq!(exchange(&mut a1, &mut r1, &ta), "200");
+        // Once one closes, its place is the run's again.
+        drop((a2, r2));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let (mut a4, mut r4) = open(&socket);
+            if exchange(&mut a4, &mut r4, &ta) == "200" {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the closed connection's place never came back"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 }
