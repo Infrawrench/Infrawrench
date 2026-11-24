@@ -153,7 +153,13 @@ pub fn restore(
 /// a quarter of the job's memory), only what this run wrote is kept, so a cache that has grown with files
 /// no build uses any more starts again from what the last build needed;
 /// when even that is too big, nothing is saved.
-pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<String>) {
+pub fn save(
+    store: &dyn Caches,
+    active: &Active,
+    fs: &JobFs,
+    lines: &mut Vec<String>,
+    saves: &mut crate::saves::Saves,
+) {
     let name = &active.decl.name;
     let entries = fs.entries_under(&[&active.decl.path]);
     let now: BTreeMap<PathBuf, Kind> = entries.iter().map(kind).collect();
@@ -169,10 +175,19 @@ pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<Str
         // would come back next run.
         let emptied = active.restored.values().any(|k| !matches!(k, Kind::Dir));
         if emptied {
-            match store.save(&active.key, &[], &entries) {
-                Ok(()) => lines.push(format!("env cache `{name}`: emptied")),
-                Err(e) => lines.push(format!("env cache `{name}`: could not save ({e})")),
-            }
+            let shown = name.clone();
+            queue(
+                store,
+                active,
+                entries,
+                Vec::new(),
+                lines,
+                saves,
+                Box::new(move |saved| match saved {
+                    Ok(_) => format!("env cache `{shown}`: emptied"),
+                    Err(e) => format!("env cache `{shown}`: could not save ({e})"),
+                }),
+            );
         } else {
             lines.push(format!("env cache `{name}`: nothing to save"));
         }
@@ -224,11 +239,52 @@ pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<Str
             ),
         )
     };
-    match store.save_with_modes(&active.key, &[], &kept, &fs.modes_of(&kept)) {
-        Ok(()) => lines.push(format!(
-            "env cache `{name}`: saved {}{note}",
-            kib(file_bytes(&kept))
-        )),
-        Err(e) => lines.push(format!("env cache `{name}`: could not save ({e})")),
+    let modes = fs.modes_of(&kept);
+    let shown = name.clone();
+    let size = kib(file_bytes(&kept));
+    queue(
+        store,
+        active,
+        kept,
+        modes,
+        lines,
+        saves,
+        Box::new(move |saved| match saved {
+            Ok(_) => format!("env cache `{shown}`: saved {size}{note}"),
+            Err(e) => format!("env cache `{shown}`: could not save ({e})"),
+        }),
+    );
+}
+
+/// Saves `entries` under the cache's key now, or after the job
+/// ([`crate::saves`]). One made after the job claims its key first, as a
+/// job cache's save does, so a restore of it waits for the upload; a key
+/// another job of this runner is saving is left to that save.
+#[allow(clippy::too_many_arguments)]
+fn queue(
+    store: &dyn Caches,
+    active: &Active,
+    entries: Vec<Entry>,
+    modes: Vec<(PathBuf, u32)>,
+    lines: &mut Vec<String>,
+    saves: &mut crate::saves::Saves,
+    line: Box<dyn FnOnce(Result<std::time::Duration, String>) -> String + Send>,
+) {
+    let name = &active.decl.name;
+    if saves.is_deferred() && !store.claim(&active.key) {
+        lines.push(format!("env cache `{name}`: being saved by another job"));
+        return;
     }
+    let save = crate::saves::Save {
+        key: active.key.clone(),
+        restore_keys: Vec::new(),
+        pending: format!(
+            "env cache `{name}`: saving {} after the job",
+            kib(file_bytes(&entries))
+        ),
+        entries,
+        modes,
+        line,
+    };
+    saves.save(store, save, lines);
 }

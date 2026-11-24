@@ -1492,6 +1492,27 @@ impl MemoryBudget {
         self.wake_all();
     }
 
+    /// Lowers a lease to `bytes` once its job has ended but still holds
+    /// that much (its cache saves, [`crate::saves`]), giving the rest back
+    /// and waking every run waiting. [`MemoryBudget::release`] gives back
+    /// what is left.
+    fn shrink(&self, lease: &Lease, bytes: u64) {
+        {
+            let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(running) = leases.running.iter_mut().find(|r| r.id == lease.id) else {
+                return;
+            };
+            let reserved = lease.bytes.load(Ordering::SeqCst);
+            if bytes >= reserved {
+                return;
+            }
+            lease.bytes.store(bytes, Ordering::SeqCst);
+            running.bytes = bytes;
+            self.take_back(reserved - bytes);
+        }
+        self.wake_all();
+    }
+
     /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
         self.take_back(bytes);
@@ -1986,6 +2007,31 @@ struct State<'p> {
     /// Task-cached jobs that missed while another run computes the same
     /// key, waiting for its entry; counted in `running`.
     awaiting: Vec<inflight::Awaiting<'p>>,
+    /// Finished jobs' cache saves, for the savers to make.
+    saves: Vec<QueuedSaves>,
+    /// Jobs whose saves are queued or being made, or about to be queued:
+    /// the run does not end while there are any.
+    saves_outstanding: usize,
+}
+
+/// A finished job's cache saves ([`crate::saves`]), with the memory they
+/// hold of its reservation.
+struct QueuedSaves {
+    key: String,
+    job_id: String,
+    saves: Vec<crate::saves::Save>,
+    lease: Option<Arc<Lease>>,
+}
+
+/// Threads making finished jobs' cache saves, per run.
+const SAVERS: usize = 4;
+
+/// Hands a finished job's saves to the savers.
+fn queue_saves(state: &Mutex<State<'_>>, wake: &Wake, queued: Option<QueuedSaves>) {
+    if let Some(queued) = queued {
+        state.lock().unwrap().saves.push(queued);
+        wake.notify_all();
+    }
 }
 
 /// A job on its way to a task cache lookup.
@@ -2243,6 +2289,8 @@ pub fn run<T: Tools>(
         arrived: Vec::new(),
         secretive: HashSet::new(),
         awaiting: Vec::new(),
+        saves: Vec::new(),
+        saves_outstanding: 0,
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -2456,6 +2504,57 @@ pub fn run<T: Tools>(
                         run_external(&job, plan, options, &shared, inherited, &mut kept)
                     };
                     complete(&state, &wake, plan, options, template, report, kept);
+                }
+            });
+        }
+        // Jobs' cache saves, made after the jobs are reported: the run
+        // ends once they have ([`crate::saves`]). A helper makes its own
+        // before its job ends.
+        for _ in 0..if options.caches.is_some() && !helper {
+            SAVERS
+        } else {
+            0
+        } {
+            scope.spawn(|| {
+                loop {
+                    let queued = {
+                        let mut s = state.lock().unwrap();
+                        loop {
+                            let seen = wake.seen();
+                            if let Some(queued) = s.saves.pop() {
+                                break queued;
+                            }
+                            if s.done && s.saves_outstanding == 0 {
+                                return;
+                            }
+                            s = wake.wait(s, &state, seen);
+                        }
+                    };
+                    let store = options.caches.as_ref().expect("savers need a cache store");
+                    for save in queued.saves {
+                        let pending = save.pending.clone();
+                        // A save that panics is a line, as a failed one is,
+                        // not a run that never ends.
+                        let line = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            save.run(store.as_ref())
+                        }))
+                        .unwrap_or_else(|_| {
+                            let subject = pending.split(": saving").next().unwrap_or_default();
+                            format!("{subject}: could not save (the save panicked)")
+                        });
+                        amend_cache_line(&state, &queued.key, &queued.job_id, &pending, line);
+                    }
+                    if let (Some(lease), Some(budget)) = (&queued.lease, &options.memory) {
+                        budget.release(lease);
+                    }
+                    eprintln!(
+                        "iwci: pipeline {}: job {}'s caches saved at {} ms",
+                        plan.name,
+                        queued.job_id,
+                        millis(started.elapsed())
+                    );
+                    state.lock().unwrap().saves_outstanding -= 1;
+                    wake.notify_all();
                 }
             });
         }
@@ -2724,9 +2823,15 @@ pub fn run<T: Tools>(
                         ),
                     );
                     let began = millis(started.elapsed());
+                    // A helper saves before its job ends ([`crate::saves`]).
+                    let mut saves = if helper {
+                        crate::saves::Saves::now()
+                    } else {
+                        crate::saves::Saves::deferred()
+                    };
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
-                        &inherited, lookup, cancel, &mut kept, &mut saved, &view,
+                        &inherited, lookup, cancel, &mut kept, &mut saved, &view, &mut saves,
                     );
                     let ran = millis(started.elapsed());
                     report.queued_ms = queued_ms;
@@ -2736,9 +2841,29 @@ pub fn run<T: Tools>(
                     }
                     drop(helped);
                     drop(slot);
+                    // Its cache saves are made after it is reported, on a
+                    // thread of the run's own: until they end, it holds
+                    // what they hold of its memory, and the run does not
+                    // end (the scope waits for them).
+                    let queued_saves = saves.take();
                     if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
-                        budget.release(lease);
+                        if queued_saves.is_empty() {
+                            budget.release(lease);
+                        } else {
+                            budget.shrink(lease, crate::saves::held_bytes(&queued_saves));
+                        }
                     }
+                    let mut after = (!queued_saves.is_empty()).then(|| {
+                        // Counted before the job completes, so the run
+                        // cannot end between that and the saves' queueing.
+                        state.lock().unwrap().saves_outstanding += 1;
+                        QueuedSaves {
+                            key: template.key.clone(),
+                            job_id: job.id.clone(),
+                            saves: queued_saves,
+                            lease: reserved.clone(),
+                        }
+                    });
                     // After its entry was saved, if it was: a run waiting
                     // for it reads the entry as soon as the marker goes.
                     let ended = inflight::ended(&report, saved.as_deref());
@@ -2761,6 +2886,7 @@ pub fn run<T: Tools>(
                             }
                             // Stopped, or not run at all: the primary
                             // takes it, and this run waits for its word.
+                            queue_saves(&state, &wake, after.take());
                             sharing.hand_back(&job.id);
                             let mut s = state.lock().unwrap();
                             s.remote.insert(
@@ -2795,6 +2921,7 @@ pub fn run<T: Tools>(
                         millis(started.elapsed())
                     );
                     complete(&state, &wake, plan, options, template, report, kept);
+                    queue_saves(&state, &wake, after.take());
                     // After its entry was saved, if it was, and after the
                     // jobs that need it here are on their way: a run
                     // waiting for it reads the entry once the marker goes,
@@ -2920,6 +3047,33 @@ fn complete<'p>(
     }
     drop(s);
     wake.notify_all();
+}
+
+/// Replaces job `job_id`'s `caches` line `pending` with `line`, once the
+/// save it stood for is made ([`crate::saves`]): in the key's reports
+/// still open (a matrix not all finished) or finished.
+fn amend_cache_line(
+    state: &Mutex<State<'_>>,
+    key: &str,
+    job_id: &str,
+    pending: &str,
+    line: String,
+) {
+    let mut s = state.lock().unwrap();
+    let s = &mut *s;
+    let reports = s
+        .open
+        .get_mut(key)
+        .map(|open| &mut open.reports)
+        .into_iter()
+        .chain(s.reports.get_mut(key))
+        .flat_map(|reports| reports.iter_mut());
+    for report in reports.filter(|r| r.id == job_id) {
+        if let Some(at) = report.caches.iter().position(|l| l == pending) {
+            report.caches[at] = line;
+            return;
+        }
+    }
 }
 
 /// Moves every waiting key whose needs have all finished to the queue, or
@@ -3340,6 +3494,7 @@ fn run_job<T: Tools>(
     kept: &mut Vec<Entry>,
     saved_key: &mut Option<String>,
     scratch: &ScratchView,
+    saves: &mut crate::saves::Saves,
 ) -> JobReport {
     let started = Instant::now();
     // The task cache was looked up before the job was queued (`look_up`);
@@ -4022,15 +4177,26 @@ fn run_job<T: Tools>(
                 cache_lines.push(format!("cache `{key}`: being saved by another job"));
                 continue;
             }
-            let saving = Instant::now();
-            match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
-                Ok(()) => cache_lines.push(format!(
-                    "cache `{key}`: saved {} KiB in {}",
-                    bytes.div_ceil(1024),
-                    seconds(saving.elapsed())
-                )),
-                Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
-            }
+            let kib = bytes.div_ceil(1024);
+            let shown = key.clone();
+            let modes = fs.modes_of(&entries);
+            saves.save(
+                store.as_ref(),
+                crate::saves::Save {
+                    key: key.clone(),
+                    restore_keys: restore_keys.clone(),
+                    entries,
+                    modes,
+                    pending: format!("cache `{key}`: saving {kib} KiB after the job"),
+                    line: Box::new(move |saved| match saved {
+                        Ok(took) => {
+                            format!("cache `{shown}`: saved {kib} KiB in {}", seconds(took))
+                        }
+                        Err(e) => format!("cache `{shown}`: could not save ({e})"),
+                    }),
+                },
+                &mut cache_lines,
+            );
         }
     }
 
@@ -4051,7 +4217,7 @@ fn run_job<T: Tools>(
         && let Some(store) = &options.caches
     {
         for active in &env_caches {
-            crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines);
+            crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines, saves);
         }
     }
 

@@ -4835,3 +4835,136 @@ fn artifacts_carry_their_modes() {
     assert_eq!(plain.len(), files.len());
     assert!(none.is_empty());
 }
+
+/// [`MemoryCaches`] whose saves wait until `b` has finished (or 5 s), and
+/// say whether it had.
+#[derive(Default)]
+struct GatedCaches {
+    inner: MemoryCaches,
+    b_finished: Arc<AtomicBool>,
+    saved_after_b: AtomicBool,
+}
+
+impl Caches for GatedCaches {
+    fn restore(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        max: u64,
+    ) -> Result<Option<Restored>, String> {
+        self.inner.restore(key, restore_keys, max)
+    }
+    fn save_with_modes(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
+    ) -> Result<(), String> {
+        let until = Instant::now() + Duration::from_secs(5);
+        while !self.b_finished.load(Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        self.saved_after_b
+            .store(self.b_finished.load(Ordering::SeqCst), Ordering::SeqCst);
+        self.inner
+            .save_with_modes(key, restore_keys, entries, modes)
+    }
+}
+
+/// A job's cache save is made after the job is reported: the job that
+/// needs it runs while the upload is still going, and the run ends only
+/// once the save has, with the save's line in the job's report.
+#[test]
+fn a_cache_save_does_not_hold_up_the_jobs_that_need_it() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:write@1\n    cache: { key: store, paths: [src] }\n  b:\n    using: builtin:ok@1\n    needs: [a]\n",
+    );
+    let caches = Arc::new(GatedCaches::default());
+    let finished = caches.b_finished.clone();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let budget = Arc::new(MemoryBudget::new(64 << 30));
+    let options = Options {
+        parallelism: 4,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory: Some(budget.clone()),
+        caches: Some(caches.clone()),
+        logs: Some(Arc::new(move |event| {
+            if let LogEvent::JobFinished { job, .. } = event
+                && job == "b"
+            {
+                finished.store(true, Ordering::SeqCst);
+            }
+        })),
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: None,
+        split: None,
+        helping: None,
+        inflight: None,
+        machines: None,
+        spill: None,
+        remote_cache: None,
+        downloads: None,
+        cancel: None,
+        access: Default::default(),
+    };
+    let report = run(
+        &p,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert!(
+        caches.saved_after_b.load(Ordering::SeqCst),
+        "the save held up the job that needs it"
+    );
+    assert_eq!(*caches.inner.saved.lock().unwrap(), ["store"]);
+    let a = report.jobs.iter().find(|j| j.id == "a").unwrap();
+    assert!(
+        a.caches
+            .iter()
+            .any(|l| l.starts_with("cache `store`: saved ") && l.ends_with(" s")),
+        "{:?}",
+        a.caches
+    );
+    // Every reservation, the save's included, was given back.
+    assert_eq!(budget.used(), 0);
+}
+
+/// A job whose cache saves are still being made keeps what they hold of
+/// its reservation and gives the rest back at once; the rest goes when
+/// they end.
+#[test]
+fn a_job_saving_its_caches_holds_only_what_the_saves_hold() {
+    let budget = MemoryBudget::new(10 * GIB);
+    let lease = started(budget.admit([ask(8, 60)]), 0);
+    assert_eq!(budget.used(), 8 * GIB);
+    budget.shrink(&lease, GIB);
+    assert_eq!(budget.used(), GIB);
+    // Never raised by it.
+    budget.shrink(&lease, 4 * GIB);
+    assert_eq!(budget.used(), GIB);
+    // Room for a job that would not have fitted beside the whole lease.
+    let next = started(budget.admit([ask(8, 60)]), 0);
+    budget.release(&lease);
+    budget.release(&next);
+    assert_eq!(budget.used(), 0);
+}

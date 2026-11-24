@@ -4191,6 +4191,23 @@ jobs:
   its first save for one does not wait for a listing either.
 - Jobs that restore the same entry at the same moment (a matrix sharing
   a package store) read and unpack it once between them.
+- **Saved after the job, not as part of it.** A save compresses and
+  uploads (a pnpm store of 3.6 GB took 22 s to R2), and the job's result
+  does not depend on it, so the job is reported done first: the jobs that
+  need it start, and its line in `caches` reads
+  ``cache `pnpm-…`: saving 1117709 KiB after the job`` while the upload
+  goes on. The run is not finished until every save has landed or
+  failed, and the line is then the one it always was (`saved … in …`, or
+  `could not save (…)`: a warning, never a failure). Until its saves end
+  the job keeps that much of its memory reservation: the files and half
+  as much again for their compressed copy. A save claims its key, so a
+  restore of it on this runner, or of a `restore-keys` prefix it falls
+  under, waits for the upload (at most ten minutes) instead of missing it
+  or reading an older entry: a run started straight after this one reads
+  what it saved. A drain waits for its runs, so for their saves.
+  Environment caches are saved the same way. A helper in a
+  [split run](#split-runs) still saves before its job ends, since it
+  gives back everything the moment its own runner wants it.
 - What each cache did is a line in the job's `caches`, with how long a
   restore or a save took (``cache `pnpm-…`: restored in 2.1 s``,
   ``cache `pnpm-…`: saved 412000 KiB in 9.8 s``). The runner's log says

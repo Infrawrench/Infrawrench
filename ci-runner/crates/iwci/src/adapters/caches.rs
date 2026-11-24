@@ -171,6 +171,49 @@ impl StoreCaches {
         )
     }
 
+    /// Where a scope's entries and prefixes live, in this process's saves
+    /// in flight ([`saving`]).
+    fn scope_dir(&self, scope: &str) -> String {
+        self.claim_key(&format!("caches/{}/{}/{scope}", self.owner, self.repo))
+    }
+
+    /// `object` among this process's saves in flight ([`saving`]): in the
+    /// store's own namespace, since two stores (a test's) may hold the
+    /// same names. A runner has one store, which every run shares.
+    fn claim_key(&self, object: &str) -> String {
+        format!(
+            "{:x}/{object}",
+            Arc::as_ptr(&self.store) as *const () as usize
+        )
+    }
+
+    /// Waits while this process saves an entry a restore of `key`, or of
+    /// a `restore_keys` prefix, would read: a job's saves are made after
+    /// it is reported ([`crate::saves`]), so the next job or run that wants
+    /// the cache can start before its upload ends, and reading then would
+    /// miss it or take an older entry.
+    fn wait_for_saves(&self, key: &str, restore_keys: &[String]) {
+        let dirs: Vec<String> = self.read_scopes.iter().map(|s| self.scope_dir(s)).collect();
+        let wanted = |(dir, saved): &(String, String)| {
+            dirs.contains(dir)
+                && (saved == key || restore_keys.iter().any(|p| saved.starts_with(p.as_str())))
+        };
+        let saving = saving();
+        let deadline = std::time::Instant::now() + SAVE_WAIT;
+        let mut entries = saving.entries.lock().unwrap_or_else(|e| e.into_inner());
+        while entries.values().any(wanted) {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return;
+            }
+            entries = saving
+                .ended
+                .wait_timeout(entries, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+    }
+
     fn prefix_key(&self, scope: &str, prefix: &str) -> String {
         format!(
             "caches/{}/{}/{scope}/prefixes/{}",
@@ -1076,6 +1119,7 @@ impl Caches for StoreCaches {
         restore_keys: &[String],
         max_bytes: u64,
     ) -> Result<Option<Restored>, String> {
+        self.wait_for_saves(key, restore_keys);
         // The exact key is read in every scope at once (a pull request has
         // two: its own, then the default branch's), so an entry the default
         // branch saved does not cost a miss in the other first. The answer
@@ -1154,10 +1198,13 @@ impl Caches for StoreCaches {
     }
 
     fn claim(&self, key: &str) -> bool {
-        saving()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(self.entry_key(&self.write_scope, key))
+        let object = self.claim_key(&self.entry_key(&self.write_scope, key));
+        let mut saving = saving().entries.lock().unwrap_or_else(|e| e.into_inner());
+        if saving.contains_key(&object) {
+            return false;
+        }
+        saving.insert(object, (self.scope_dir(&self.write_scope), key.to_string()));
+        true
     }
 
     fn save_with_modes(
@@ -1167,6 +1214,11 @@ impl Caches for StoreCaches {
         entries: &[Entry],
         modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String> {
+        let scope = &self.write_scope;
+        let object = self.entry_key(scope, key);
+        // A claim on the key ([`Caches::claim`]) ends with the save,
+        // however it ends.
+        let _claimed = Claimed(self.claim_key(&object));
         let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
         encoder.include_checksum(true).map_err(|e| e.to_string())?;
         let workers = compress_workers(entries);
@@ -1175,10 +1227,6 @@ impl Caches for StoreCaches {
         }
         archive::encode_with_modes(&mut encoder, entries, modes).map_err(|e| e.to_string())?;
         let body = encoder.finish().map_err(|e| e.to_string())?;
-        let scope = &self.write_scope;
-        let object = self.entry_key(scope, key);
-        // A claim on the key ([`Caches::claim`]) ends with the save.
-        let _claimed = Claimed(object.clone());
         let part = usize::try_from(self.part_bytes)
             .unwrap_or(usize::MAX)
             .max(1);
@@ -1300,22 +1348,38 @@ impl crate::turbo::Artifacts for StoreCaches {
     }
 }
 
-/// The entries a job of this process is saving now, by object.
-fn saving() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static SAVING: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-        std::sync::OnceLock::new();
+/// The entries jobs of this process are saving now ([`Caches::claim`]).
+#[derive(Default)]
+struct Saving {
+    /// By object: the scope's directory and the key.
+    entries: std::sync::Mutex<BTreeMap<String, (String, String)>>,
+    /// Signalled when a save ends.
+    ended: std::sync::Condvar,
+}
+
+fn saving() -> &'static Saving {
+    static SAVING: std::sync::OnceLock<Saving> = std::sync::OnceLock::new();
     SAVING.get_or_init(Default::default)
 }
 
-/// Releases a claim on an entry when its save ends, however it ends.
+/// The longest a restore waits for saves in flight before it reads what
+/// is there without them. Saves end by themselves, so this only bounds a
+/// store that hangs.
+const SAVE_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Releases a claim on an entry when its save ends, however it ends, and
+/// wakes the restores waiting for it.
 struct Claimed(String);
 
 impl Drop for Claimed {
     fn drop(&mut self) {
-        saving()
+        let saving = saving();
+        saving
+            .entries
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&self.0);
+        saving.ended.notify_all();
     }
 }
 
@@ -1863,6 +1927,51 @@ mod tests {
         b.save("npm", &[], &entries("y")).unwrap();
         assert!(b.claim("pnpm"), "released when the save ended");
         b.save("pnpm", &[], &entries("x")).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A job's saves are made after it is reported, so the next job can
+    /// ask for the cache while the upload is still going: a restore of
+    /// the key, or of a prefix it falls under, waits for the save rather
+    /// than missing it, and one of another key does not wait.
+    #[test]
+    fn a_restore_waits_for_a_save_of_its_key_in_flight() {
+        let (store, dir) = store();
+        let org = RepoId::new("github.com-acme").unwrap();
+        let caches = || {
+            StoreCaches::new(
+                store.clone(),
+                &org,
+                &RepoId::new("in-flight").unwrap(),
+                "main",
+                "main",
+                Event::Push,
+                None,
+            )
+        };
+        for (saved, asked, prefixes) in [
+            ("pnpm-abc", "pnpm-abc", vec![]),
+            ("yarn-abc", "yarn-def", vec!["yarn-".to_string()]),
+        ] {
+            let saver = caches();
+            assert!(saver.claim(saved));
+            let keys = prefixes.clone();
+            let saving = std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                saver.save(saved, &keys, &entries("x")).unwrap();
+            });
+            let started = std::time::Instant::now();
+            // Another key is read at once.
+            assert!(caches().restore("npm", &[], 1 << 20).unwrap().is_none());
+            assert!(started.elapsed() < std::time::Duration::from_millis(250));
+            let restored = caches()
+                .restore(asked, &prefixes, 1 << 20)
+                .unwrap()
+                .expect("the save it waited for");
+            assert_eq!(restored.key, saved);
+            assert!(started.elapsed() >= std::time::Duration::from_millis(300));
+            saving.join().unwrap();
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 
