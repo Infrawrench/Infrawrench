@@ -9,9 +9,11 @@
 # `edgejs/build.sh` does it, which records each file's hash for the
 # runtime's module cache, so a webc is never edited in place. Linux (x86_64
 # or arm64) or macOS on arm64: the Wasmer CLI's release archives. The result
-# is the same bytes on each, which `environments/build.sh` pins.
+# is the same bytes on each, which `environments/build.sh` pins, as long as
+# the package is unpacked on a case-sensitive file system
+# (`case_sensitive_dir`, which on macOS mounts one for the run).
 #
-# Needs: bash, curl, tar, sha256sum or shasum, od, dd.
+# Needs: bash, curl, tar, sha256sum or shasum, od, dd; on macOS, hdiutil.
 
 PATCH_WASMER_VERSION="v7.4.2"
 
@@ -121,7 +123,8 @@ rewrite_package() {
     "$asset_sha" "$asset")" -C "$wasmer"
   export WASMER_DIR="$work/wasmer-home"
 
-  local package="$work/package"
+  case_sensitive_dir "$work"
+  local package="$CASE_SENSITIVE_DIR/package"
   rm -rf "$package"
   "$wasmer/bin/wasmer" package unpack --quiet -o "$package" \
     "$(download "$work/dl" "https://cdn.wasmer.io/webcimages/$webc_sha.webc" "$webc_sha" "$name.webc")"
@@ -149,4 +152,56 @@ rewrite_package() {
   echo "built $out/$name.webc"
   echo "  module  $built"
   echo "  package $(sha256 "$out/$name.webc")"
+}
+
+# case_sensitive_dir <work>: sets CASE_SENSITIVE_DIR to <work>, or a directory
+# under it, where names that differ only in case are different files.
+#
+# Wasmer's packages have such names (python/python's terminfo has `a/` and
+# `A/`, `2621a` and `2621A`: 66 paths), and a case-insensitive file system
+# (macOS's default, or a macOS directory mounted into a Linux container)
+# folds each pair into one while the package is unpacked. The package then
+# packs with fewer files and other bytes, and nothing fails until the hash
+# check (#1335). On macOS this attaches a case-sensitive APFS disk image
+# under <work> for the rest of the run; anywhere else a case-insensitive
+# <work> is an error.
+case_sensitive_dir() {
+  local work="$1"
+  if is_case_sensitive "$work"; then
+    CASE_SENSITIVE_DIR="$work"
+    return
+  fi
+  if [[ "$(uname -s)" != Darwin ]]; then
+    echo "error: $work is on a case-insensitive file system, which would drop files from the package; build somewhere case-sensitive (not a macOS directory mounted into a container)" >&2
+    exit 1
+  fi
+  local image="$work/case-sensitive.sparseimage" mount="$work/case-sensitive"
+  # A run that was killed can leave the last one attached.
+  hdiutil detach -quiet -force "$mount" 2>/dev/null || true
+  rm -rf "$image" "$mount"
+  mkdir -p "$mount"
+  # Sparse: it takes only what the package does, up to the size given.
+  hdiutil create -quiet -size 8g -type SPARSE -fs "Case-sensitive APFS" \
+    -volname iwci-package "$image"
+  hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$mount" "$image"
+  CASE_SENSITIVE_MOUNT="$mount" CASE_SENSITIVE_IMAGE="$image"
+  # Detached and removed at exit, then lib.sh's scratch directory (as
+  # clickhouse/build.sh adds to that trap).
+  trap 'hdiutil detach -quiet -force "$CASE_SENSITIVE_MOUNT" || true
+    rm -rf "$CASE_SENSITIVE_MOUNT" "$CASE_SENSITIVE_IMAGE" "$SCRATCH"' EXIT
+  if ! is_case_sensitive "$mount"; then
+    echo "error: the disk image at $mount is not case-sensitive" >&2
+    exit 1
+  fi
+  CASE_SENSITIVE_DIR="$mount"
+}
+
+# is_case_sensitive <dir>: whether <dir> tells `x` from `X`.
+is_case_sensitive() {
+  local lower="$1/.iwci-case-probe" upper="$1/.IWCI-CASE-PROBE" sensitive=0
+  rm -f "$lower" "$upper"
+  : >"$lower"
+  [[ -e "$upper" ]] && sensitive=1
+  rm -f "$lower" "$upper"
+  ((sensitive == 0))
 }
