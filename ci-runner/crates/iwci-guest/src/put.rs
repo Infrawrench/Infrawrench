@@ -9,7 +9,7 @@
 //! Every file gets the archive's modification time, so a later write by the
 //! job, which stamps the time it happens, never looks unchanged. What it
 //! makes belongs to the job user when scripts run as one; a directory that
-//! was already there keeps its owner.
+//! was already there keeps its owner and its mode.
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
@@ -103,8 +103,12 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
                 }
                 ensure_parents(root, &unix, &mut known_dirs, &mut out)?;
                 let path = root.native(&unix);
-                match fs::symlink_metadata(&path) {
-                    Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+                // A directory the machine has already keeps its mode as well
+                // as its owner: a cache restored under `/tmp` came with a
+                // `/tmp` entry of 0755, which took the image's 1777 away, and
+                // the job user could no longer make anything there.
+                let made = match fs::symlink_metadata(&path) {
+                    Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => false,
                     Ok(_) => {
                         return Err(refused(
                             name,
@@ -114,16 +118,19 @@ pub fn extract(archive: &mut dyn Read, root: &Root, reserved: &[&str]) -> io::Re
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
                         fs::create_dir(&path).map_err(|e| with_path(e, "making", &path))?;
                         give_to_job_user(&path)?;
+                        true
                     }
                     Err(e) => return Err(with_path(e, "reading", &path)),
-                }
+                };
                 known_dirs.insert(unix.clone());
                 // Applied once everything is written, deepest first, so a
                 // read-only directory still gets its contents.
-                dir_modes.push((
-                    unix.clone(),
-                    entry.header().mode().unwrap_or(0o755) & 0o7777,
-                ));
+                if made {
+                    dir_modes.push((
+                        unix.clone(),
+                        entry.header().mode().unwrap_or(0o755) & 0o7777,
+                    ));
+                }
                 out.entries += 1;
                 out.written.insert(unix);
             }

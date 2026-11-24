@@ -142,6 +142,36 @@ fn put_writes_files_with_their_modes_and_times() {
     host.shutdown();
 }
 
+/// A directory the machine already has keeps its mode: a cache restored
+/// under `/tmp` came with a `/tmp` entry of 0755, which made the image's
+/// world-writable `/tmp` the job user's no more. One the put makes gets the
+/// archive's.
+#[cfg(unix)]
+#[test]
+fn a_put_keeps_the_mode_of_a_directory_already_there() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new("keep-mode");
+    fs::create_dir(dir.path().join("tmp")).unwrap();
+    fs::set_permissions(dir.path().join("tmp"), fs::Permissions::from_mode(0o1777)).unwrap();
+    let mut host = Host::start(dir.path(), Arc::new(Local));
+    let archive = Archive::new()
+        .dir("tmp", 0o755)
+        .dir("tmp/cache", 0o700)
+        .file("tmp/cache/blob", b"x", 0o644)
+        .build();
+    host.put_ok(&archive);
+    let mode = |p: &str| {
+        fs::metadata(dir.path().join(p))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777
+    };
+    assert_eq!(mode("tmp"), 0o1777);
+    assert_eq!(mode("tmp/cache"), 0o700);
+    host.shutdown();
+}
+
 #[test]
 fn refused_entries_fail_the_put_and_nothing_else() {
     let dir = TempDir::new("refused");
