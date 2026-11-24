@@ -1,8 +1,8 @@
 /**
  * Discovery documents at the domain root, the endpoint definitions: the OAuth
- * metadata MCP clients read before they authenticate (`/.well-known/*`) and
- * the agent registration skill document (`/auth.md`) its `agent_auth` block
- * points at.
+ * metadata MCP clients read before they authenticate (`/.well-known/*`), the
+ * MCP Server Card and the AI Catalog that lists it (SEP-2127), and the agent
+ * registration skill document (`/auth.md`) its `agent_auth` block points at.
  *
  * Public, read by clients that hold no credential yet, and never in the API
  * document: they describe how to reach the API, not part of it.
@@ -14,6 +14,9 @@ import { withApiDefaults } from "../http/api-defaults";
 
 /** RFC 9728 metadata, or the `server_error` 500 while discovery is unconfigured. */
 const DiscoveryDocument = Schema.Unknown;
+
+/** A server card or catalog, or the 304 a matching `If-None-Match` gets. */
+const CachedDocument = Schema.Unknown;
 
 export class WellKnownGroup extends HttpApiGroup.make("wellKnown")
   .add(
@@ -33,8 +36,21 @@ export class WellKnownGroup extends HttpApiGroup.make("wellKnown")
     })
       .annotate(OpenApi.Summary, "Redirect to the authorization server's metadata")
       .annotate(Security, []),
+    HttpApiEndpoint.get("aiCatalog", "/ai-catalog.json", { success: CachedDocument })
+      .annotate(OpenApi.Summary, "AI Catalog listing the MCP server card")
+      .annotate(Security, []),
   )
   .prefix("/.well-known")
+  .annotate(OpenApi.Title, "MCP")
+  .annotate(OpenApi.Exclude, true) {}
+
+/** SEP-2127's reserved card location, `<streamable-http-url>/server-card`. */
+export class ServerCardGroup extends HttpApiGroup.make("serverCard")
+  .add(
+    HttpApiEndpoint.get("card", "/api/mcp/server-card", { success: CachedDocument })
+      .annotate(OpenApi.Summary, "MCP Server Card")
+      .annotate(Security, []),
+  )
   .annotate(OpenApi.Title, "MCP")
   .annotate(OpenApi.Exclude, true) {}
 
@@ -50,5 +66,5 @@ export class AuthMdGroup extends HttpApiGroup.make("authMd")
   .annotate(OpenApi.Exclude, true) {}
 
 export class DiscoveryApi extends withApiDefaults(
-  HttpApi.make("discovery").add(WellKnownGroup).add(AuthMdGroup),
+  HttpApi.make("discovery").add(WellKnownGroup).add(ServerCardGroup).add(AuthMdGroup),
 ) {}

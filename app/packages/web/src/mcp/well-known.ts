@@ -4,6 +4,7 @@
  * module holds the documents, and {@link buildResourceMetadataUrl} for the
  * `WWW-Authenticate` challenge `mcp/http-handler.ts` sends.
  */
+import { mcpEndpointUrl, resourceDescription } from "./server-card";
 
 /**
  * The AuthKit authorization server URL used for OAuth discovery. This must be
@@ -60,7 +61,7 @@ export const DISCOVERY_UNCONFIGURED = {
  */
 export function protectedResourceMetadata(baseUrl: string, authServer: string) {
   return {
-    resource: `${baseUrl}/api/mcp`,
+    resource: mcpEndpointUrl(baseUrl),
     authorization_servers: [authServer],
     // Must be scopes the AuthKit authorization server actually grants:
     // advertising anything else makes the client's authorize call fail with
@@ -68,6 +69,7 @@ export function protectedResourceMetadata(baseUrl: string, authServer: string) {
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${baseUrl}/docs/features/mcp`,
+    ...resourceDescription,
     // The auth.md agent-registration block. Advertised beside the OAuth
     // metadata rather than instead of it: an agent with a human at the keyboard
     // should still use the interactive flow above, and this is for the one that
