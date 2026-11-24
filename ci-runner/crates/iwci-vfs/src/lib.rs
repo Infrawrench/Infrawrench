@@ -1060,6 +1060,17 @@ impl JobFs {
         out
     }
 
+    /// How many bytes of file contents [`JobFs::own_entries`] would hold,
+    /// read from their metadata alone: what deciding where they go costs,
+    /// without copying them.
+    pub fn own_file_bytes(&self) -> u64 {
+        walk_no_follow(&self.upper, Path::new("/"))
+            .into_iter()
+            .filter(|(path, meta)| whiteout_target(path).is_none() && meta.file_type().is_file())
+            .map(|(_, meta)| meta.len())
+            .sum()
+    }
+
     /// Every file the job added, changed or deleted under `root`, sorted by
     /// path. A file rewritten with the bytes it already had is not a change,
     /// so a formatter that rewrites everything still reports only what moved.
@@ -1811,6 +1822,9 @@ mod tests {
             })
             .collect();
         seen.sort();
+        // Their size, read without copying them, is the files' and no
+        // more: not the deletion marker's.
+        assert_eq!(job.own_file_bytes(), 5);
         assert!(
             seen.contains(&"file /app/src/new.ts 4".to_string()),
             "{seen:?}"
