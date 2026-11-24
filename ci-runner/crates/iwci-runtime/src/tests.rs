@@ -1152,6 +1152,190 @@ fn no_descriptor_is_a_terminal() {
     assert_eq!(String::from_utf8_lossy(&outcome.stdout), "4442062");
 }
 
+/// Run with no arguments, the parent: makes descriptors that are
+/// close-on-exec, then ones that are not, prints `P`, the first, `|`, the
+/// second and a newline, then spawns itself from `/work/cloexec.wasm` with
+/// an argument (`proc_spawn3`, as `posix_spawn` does) and exits with the
+/// child's status. The child prints `C`, every descriptor from 3 to 63 it
+/// has open that is not a preopen, and a newline. A descriptor is printed
+/// as the character `'0' + fd`.
+///
+/// Close-on-exec are a socket pair asked for as wasix-libc before
+/// v2026-10-02.1 asks for one given `SOCK_STREAM | SOCK_CLOEXEC` (the
+/// flag in the type, 0x2000), one given `SOCK_NONBLOCK` (0x4000) too, which
+/// must also be non-blocking, and a socket pair and a pipe marked with
+/// `fd_fdflags_set` (as later releases, `fcntl(F_SETFD)` and `pipe2` do).
+/// Not close-on-exec are a socket pair given `SOCK_NONBLOCK` alone, which
+/// must still be non-blocking, and a plain one. Exit codes 10 to 29 are the
+/// parent's step that failed.
+const CLOEXEC_SPAWN: &str = r#"
+(module
+  (import "wasi_snapshot_preview1" "args_sizes_get" (func $args_sizes (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $fdstat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_prestat_get" (func $prestat (param i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (import "wasix_32v1" "fd_pipe" (func $pipe (param i32 i32) (result i32)))
+  (import "wasix_32v1" "sock_pair" (func $sock_pair (param i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "fd_fdflags_set" (func $fdflags_set (param i32 i32) (result i32)))
+  (import "wasix_32v1" "fd_fdflags_get" (func $fdflags_get (param i32 i32) (result i32)))
+  (import "wasix_32v1" "proc_spawn3" (func $spawn
+    (param i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "wasix_32v1" "proc_join" (func $join (param i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  ;; 100: the path, 120 and 130: argv's strings, 200: argv, 300: output,
+  ;; 1024 to 1071: the descriptors, two by two, 1100: the child's pid,
+  ;; 1104: the `OptionPid` to join, 1120: the `JoinStatus`, 1200: flags,
+  ;; 1280: scratch for `fd_prestat_get` and `fd_fdstat_get`
+  (data (i32.const 100) "/work/cloexec.wasm")
+  (data (i32.const 120) "cloexec\00")
+  (data (i32.const 130) "child\00")
+  (global $out (mut i32) (i32.const 300))
+  (func $expect (param $got i32) (param $want i32) (param $code i32)
+    (if (i32.ne (local.get $got) (local.get $want)) (then (call $exit (local.get $code)))))
+  (func $put (param $c i32)
+    (i32.store8 (global.get $out) (local.get $c))
+    (global.set $out (i32.add (global.get $out) (i32.const 1))))
+  (func $flush
+    (call $put (i32.const 10))
+    (i32.store (i32.const 0) (i32.const 300))
+    (i32.store (i32.const 4) (i32.sub (global.get $out) (i32.const 300)))
+    (drop (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8)))
+    (global.set $out (i32.const 300)))
+  ;; Checks the descriptor at `at` reads back as close-on-exec (`want` 1)
+  ;; or not (0), and prints it.
+  (func $check (param $at i32) (param $want i32) (param $code i32)
+    (call $expect (call $fdflags_get (i32.load (local.get $at)) (i32.const 1200))
+      (i32.const 0) (local.get $code))
+    (call $expect (i32.load16_u (i32.const 1200)) (local.get $want) (local.get $code))
+    (call $put (i32.add (i32.const 48) (i32.load (local.get $at)))))
+  (func $mark (param $at i32) (param $code i32)
+    (call $expect (call $fdflags_set (i32.load (local.get $at)) (i32.const 1))
+      (i32.const 0) (local.get $code))
+    (call $check (local.get $at) (i32.const 1) (local.get $code)))
+  ;; Checks the descriptor at `at` is non-blocking (`fs_flags` 4).
+  (func $nonblocking (param $at i32) (param $code i32)
+    (call $expect (call $fdstat (i32.load (local.get $at)) (i32.const 1280))
+      (i32.const 0) (local.get $code))
+    (call $expect (i32.and (i32.load16_u (i32.const 1282)) (i32.const 4)) (i32.const 4)
+      (local.get $code)))
+  ;; An AF_UNIX socket pair of type `ty`, at `at` and `at` + 4.
+  (func $pair (param $ty i32) (param $at i32) (param $code i32)
+    (call $expect
+      (call $sock_pair (i32.const 3) (local.get $ty) (i32.const 0)
+        (local.get $at) (i32.add (local.get $at) (i32.const 4)))
+      (i32.const 0) (local.get $code)))
+  (func $child
+    (local $fd i32)
+    (call $put (i32.const 67))
+    (local.set $fd (i32.const 3))
+    (loop $next
+      (if (i32.and
+            (i32.ne (call $prestat (local.get $fd) (i32.const 1280)) (i32.const 0))
+            (i32.eqz (call $fdstat (local.get $fd) (i32.const 1280))))
+        (then (call $put (i32.add (i32.const 48) (local.get $fd)))))
+      (local.set $fd (i32.add (local.get $fd) (i32.const 1)))
+      (br_if $next (i32.lt_u (local.get $fd) (i32.const 64))))
+    (call $flush)
+    (call $exit (i32.const 0)))
+  (func (export "_start")
+    (call $expect (call $args_sizes (i32.const 16) (i32.const 20)) (i32.const 0) (i32.const 10))
+    (if (i32.ge_u (i32.load (i32.const 16)) (i32.const 2)) (then (call $child)))
+    (call $put (i32.const 80))
+    ;; SOCK_STREAM | SOCK_CLOEXEC
+    (call $pair (i32.const 0x2001) (i32.const 1024) (i32.const 11))
+    (call $check (i32.const 1024) (i32.const 1) (i32.const 12))
+    (call $check (i32.const 1028) (i32.const 1) (i32.const 12))
+    ;; SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK
+    (call $pair (i32.const 0x6001) (i32.const 1032) (i32.const 13))
+    (call $check (i32.const 1032) (i32.const 1) (i32.const 14))
+    (call $check (i32.const 1036) (i32.const 1) (i32.const 14))
+    (call $nonblocking (i32.const 1032) (i32.const 15))
+    (call $nonblocking (i32.const 1036) (i32.const 15))
+    ;; SOCK_STREAM, then `fd_fdflags_set`
+    (call $pair (i32.const 1) (i32.const 1040) (i32.const 16))
+    (call $mark (i32.const 1040) (i32.const 17))
+    (call $mark (i32.const 1044) (i32.const 17))
+    (call $expect (call $pipe (i32.const 1048) (i32.const 1052)) (i32.const 0) (i32.const 18))
+    (call $mark (i32.const 1048) (i32.const 19))
+    (call $mark (i32.const 1052) (i32.const 19))
+    (call $put (i32.const 124))
+    ;; SOCK_STREAM | SOCK_NONBLOCK
+    (call $pair (i32.const 0x4001) (i32.const 1056) (i32.const 20))
+    (call $check (i32.const 1056) (i32.const 0) (i32.const 21))
+    (call $check (i32.const 1060) (i32.const 0) (i32.const 21))
+    (call $nonblocking (i32.const 1056) (i32.const 22))
+    (call $nonblocking (i32.const 1060) (i32.const 22))
+    ;; SOCK_STREAM
+    (call $pair (i32.const 1) (i32.const 1064) (i32.const 23))
+    (call $check (i32.const 1064) (i32.const 0) (i32.const 24))
+    (call $check (i32.const 1068) (i32.const 0) (i32.const 24))
+    (call $flush)
+    (i32.store (i32.const 200) (i32.const 120))
+    (i32.store (i32.const 204) (i32.const 130))
+    (call $expect
+      (call $spawn (i32.const 100) (i32.const 18) (i32.const 200) (i32.const 2)
+        (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 0)
+        (i32.const 0) (i32.const 0) (i32.const 0) (i32.const 1100))
+      (i32.const 0) (i32.const 25))
+    ;; `OptionPid`: tag 1 (some), then the pid
+    (i32.store8 (i32.const 1104) (i32.const 1))
+    (i32.store (i32.const 1108) (i32.load (i32.const 1100)))
+    (call $expect (call $join (i32.const 1104) (i32.const 0) (i32.const 1120)) (i32.const 0) (i32.const 26))
+    ;; `JoinStatus`: tag 1 (exited), then the status
+    (call $expect (i32.load8_u (i32.const 1120)) (i32.const 1) (i32.const 27))
+    (call $exit (i32.load16_u (i32.const 1122)))))
+"#;
+
+/// A spawned child does not get the descriptors its parent made
+/// close-on-exec, however it asked (#1377). It gets the parent's others,
+/// which is what shows the child looked. libuv makes a child's stdio pipes
+/// with `socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, ...)`, and the C
+/// library Edge.js links passes the flag to `sock_pair` in the type, where
+/// it was taken for an unknown type and dropped: every Node child got the
+/// parent's ends of every earlier child's stdio pipes, and a child holding
+/// a copy of another's pipe kept it open after the parent closed its end,
+/// so the other child never saw EOF (vendor/README.md).
+#[test]
+fn a_child_does_not_inherit_descriptors_made_close_on_exec() {
+    let rt = runtime();
+    let module = wat::parse_str(CLOEXEC_SPAWN).unwrap();
+    let builder = SnapshotBuilder::new();
+    builder.mkdir_all("/work").unwrap();
+    builder.write("/work/cloexec.wasm", &module).unwrap();
+    let job = builder.freeze().fork();
+    let outcome = rt
+        .run_command(
+            &WasmModule::new("cloexec", module),
+            invocation(job.as_dyn(), &[]),
+        )
+        .unwrap();
+    assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+    let stdout = String::from_utf8_lossy(&outcome.stdout).into_owned();
+    let fds = |line: &str| -> Vec<u32> { line.chars().map(|c| c as u32 - '0' as u32).collect() };
+    let lines: Vec<&str> = stdout.lines().collect();
+    let [parent, child] = lines[..] else {
+        panic!("{stdout:?} {outcome:?}");
+    };
+    let (cloexec, inherited) = parent
+        .strip_prefix('P')
+        .and_then(|rest| rest.split_once('|'))
+        .unwrap_or_else(|| panic!("{stdout:?}"));
+    let (cloexec, inherited) = (fds(cloexec), fds(inherited));
+    let child = fds(child
+        .strip_prefix('C')
+        .unwrap_or_else(|| panic!("{stdout:?}")));
+    for fd in &inherited {
+        assert!(child.contains(fd), "inheritable {fd} missing: {stdout:?}");
+    }
+    for fd in &cloexec {
+        assert!(
+            !child.contains(fd),
+            "close-on-exec {fd} inherited: {stdout:?}"
+        );
+    }
+}
+
 /// Writes `ab`, nothing and `cd` to a pipe in one `fd_write` and reads it
 /// back with one read, then closes the read end and writes one empty
 /// segment and no segments at all. Exits with the step that went wrong.
