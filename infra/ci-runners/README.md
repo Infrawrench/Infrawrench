@@ -217,6 +217,17 @@ can run:
   one leaves the rest idle. The account's us-east-1 spot vCPU quota was
   raised from 32 for it.
 
+The fleet is of type `maintain`: when AWS takes an instance back, the fleet
+launches another from launch template version 3, whose image is a snapshot
+of a provisioned ci-2 (runner, tunnel token, zram, machine image), so the
+replacement serves CI as soon as it boots, with no `terraform apply`. The
+first us-east-1 host came from a one-off launch instead, was reclaimed 26
+minutes later, and CI was down for eight hours. Bake a new image (`aws ec2
+create-image --no-reboot` of a provisioned host, then a launch template
+version with its `ImageId`, made the default) whenever the install script,
+the tunnel or the machine image changes, or a replacement boots the old
+one. The runner updates itself from its release channel either way.
+
 A new instance has a new address: put it in the host's `ssh_host` before
 `terraform apply`. One that replaces a host this state already has is a new
 machine, not a reprovision: `terraform state rm 'terraform_data.host["ci-2"]'`
