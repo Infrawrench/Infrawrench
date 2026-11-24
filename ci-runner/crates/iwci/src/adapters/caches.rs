@@ -441,6 +441,33 @@ fn part_key(object: &str, nonce: &str, i: usize) -> String {
     format!("{object}.{nonce}-{i}")
 }
 
+/// Contents past which a cache is compressed on several threads.
+const MULTITHREAD_BYTES: u64 = 16 << 20;
+/// The most threads one save compresses on.
+const MAX_COMPRESS_WORKERS: u32 = 8;
+
+/// How many threads compress `entries` (0: the caller's own). A save runs
+/// after its job and before the job is done, so it is on the run's
+/// critical path: a package store of a gigabyte took 3 to 4 s on one
+/// thread and well under one on eight. The output is the one zstd frame
+/// it always was, which any runner reads, one thread at a time.
+fn compress_workers(entries: &[Entry]) -> u32 {
+    let bytes: u64 = entries
+        .iter()
+        .map(|e| match e {
+            Entry::File { data, .. } => data.len() as u64,
+            _ => 0,
+        })
+        .sum();
+    if bytes < MULTITHREAD_BYTES {
+        return 0;
+    }
+    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
+    u32::try_from(cpus)
+        .unwrap_or(u32::MAX)
+        .min(MAX_COMPRESS_WORKERS)
+}
+
 /// One zstd frame holding `header` with its length before it.
 fn header_frame(header: &[u8]) -> Result<Vec<u8>, String> {
     let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
@@ -1142,6 +1169,10 @@ impl Caches for StoreCaches {
     ) -> Result<(), String> {
         let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).map_err(|e| e.to_string())?;
         encoder.include_checksum(true).map_err(|e| e.to_string())?;
+        let workers = compress_workers(entries);
+        if workers > 0 {
+            encoder.multithread(workers).map_err(|e| e.to_string())?;
+        }
         archive::encode_with_modes(&mut encoder, entries, modes).map_err(|e| e.to_string())?;
         let body = encoder.finish().map_err(|e| e.to_string())?;
         let scope = &self.write_scope;

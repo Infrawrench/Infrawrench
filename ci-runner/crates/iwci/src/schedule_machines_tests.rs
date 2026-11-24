@@ -129,6 +129,7 @@ impl Machines for FakeMachines {
                         stdout.push_str("installed node 22\n");
                     }
                 }
+                "store" => back.entries.push(file("/root/.store/pkg", b"package")),
                 "fail" => exit_code = 2,
                 _ => {}
             }
@@ -557,5 +558,52 @@ fn a_machine_images_caches_come_back_on_the_next_run() {
         (stdout.as_str(), lines.len()),
         ("ran nvm\ninstalled node 22\n", 0)
     );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_cache_that_restored_its_exact_key_is_not_sent_back() {
+    let dir = std::env::temp_dir().join(format!("iwci-machine-job-cache-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let caches: Arc<dyn Caches> = Arc::new(crate::adapters::caches::StoreCaches::new(
+        store,
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        "main",
+        "main",
+        iwci_spec::Event::Push,
+        None,
+    ));
+    let machines = Arc::new(FakeMachines::new());
+    let go = |key: &str| {
+        let p = plan(&format!(
+            "name: t\njobs:\n  a:\n    platform: linux\n    run: store\n    cache: {{ key: {key}, restore-keys: [store-], paths: [/root/.store] }}\n"
+        ));
+        let (report, _) = run_machines_full(&p, Some(machines.clone()), None, Some(caches.clone()));
+        let a = job(&report, "a").clone();
+        let collect = machines.seen.lock().unwrap().collect["a"].clone();
+        (a.status, a.caches, collect.paths)
+    };
+
+    // A miss is saved, so the machine sends the store back.
+    let (status, lines, paths) = go("store-1");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("saved")), "{lines:?}");
+    assert!(paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // Its exact key restored, it is not saved again, and not asked for.
+    let (status, lines, paths) = go("store-1");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines, vec!["cache `store-1`: restored in 0.0 s"]);
+    assert!(!paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // Restored from a `restore-keys` prefix, it is saved under the new
+    // key, so it comes back.
+    let (status, lines, paths) = go("store-2");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("saved")), "{lines:?}");
+    assert!(paths.contains(&"/root/.store".to_string()), "{paths:?}");
     let _ = std::fs::remove_dir_all(dir);
 }

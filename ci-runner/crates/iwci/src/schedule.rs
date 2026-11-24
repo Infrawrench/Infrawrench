@@ -3701,6 +3701,16 @@ fn run_job<T: Tools>(
         let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
         sink
     });
+    // The paths of the caches this job may save, the only ones a machine
+    // sends back: one that restored its exact key is not saved again.
+    let saved_cache_paths: Vec<String> = match &options.caches {
+        Some(_) => cache_keys
+            .iter()
+            .filter(|(_, _, exact, _, _)| !*exact)
+            .flat_map(|(_, _, _, _, paths)| paths.iter().cloned())
+            .collect(),
+        None => Vec::new(),
+    };
     let executed = match (&job.vm, &tool, &options.machines) {
         (Some(vm), _, Some(machines)) => machines.run(crate::machines::MachineRun {
             job,
@@ -3719,7 +3729,7 @@ fn run_job<T: Tools>(
                 job,
                 root.as_deref(),
                 OUTPUT_PATH,
-                options.caches.is_some(),
+                &saved_cache_paths,
                 &env_caches.iter().map(|c| c.path()).collect::<Vec<_>>(),
             ),
             log,

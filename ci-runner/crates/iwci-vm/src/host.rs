@@ -668,13 +668,22 @@ impl Host {
         // Up to half the job's memory; more is left to be streamed. Those
         // put are then not served too, so the agent's read-ahead spends
         // itself on the workspace.
-        let mut put_own = if job.os == Os::Linux && sockets.files.is_some() && self.puts_own_files()
-        {
-            let own = archive::own(job.fs);
-            (archive::file_bytes(&own) <= job.memory_bytes / 2).then_some(own)
-        } else {
-            None
-        };
+        //
+        // Whether they fit is read from their sizes; the files themselves
+        // are copied out of the job's file system while the machine boots,
+        // which for a restored package store (1.4 GB in 60,000 files) took
+        // as long as the boot itself, and are wanted only once it is up.
+        let puts_own = job.os == Os::Linux
+            && sockets.files.is_some()
+            && job.workspace.is_some()
+            && self.puts_own_files()
+            && job.fs.own_file_bytes() <= job.memory_bytes / 2;
+        let mut put_own = puts_own.then(|| {
+            let fs = job.fs.clone();
+            std::thread::Builder::new()
+                .name("iwci-vm-own".into())
+                .spawn(move || archive::own(&fs))
+        });
         let deadline = started + boot.min(job.timeout + boot);
         let mut fell_back = None;
         let mut launched = None;
@@ -692,8 +701,8 @@ impl Host {
                     )?),
                     _ => None,
                 };
-                _serving_files = match (&sockets.files, &put_own, job.workspace) {
-                    (Some(path), Some(_), Some((_, workspace))) => {
+                _serving_files = match (&sockets.files, puts_own, job.workspace) {
+                    (Some(path), true, Some((_, workspace))) => {
                         Some(crate::virtiofs::Serving::start_read_only(
                             workspace.read_only(),
                             job.fs.modes(),
@@ -851,7 +860,15 @@ impl Host {
             Os::Linux if sockets.files.is_some() => {
                 // Served whole when there is no workspace to serve alone.
                 if job.workspace.is_some() {
-                    put_own.take().unwrap_or_default()
+                    let own = match put_own.take() {
+                        Some(listing) => listing
+                            .map_err(|e| format!("listing the job's own files: {e}"))?
+                            .join()
+                            .map_err(|_| "listing the job's own files failed".to_string())?,
+                        None => Vec::new(),
+                    };
+                    mark("listed its own files");
+                    own
                 } else {
                     Vec::new()
                 }

@@ -145,12 +145,18 @@ impl Collecting {
     }
 }
 
-/// What a job's machine sends back (see [`Collecting`]).
+/// What a job's machine sends back (see [`Collecting`]). `caches` are the
+/// paths of the job's `cache:` entries it may save: not those that
+/// restored their exact key, which are never saved again, so nothing reads
+/// them after the job. Package managers hard-link a restored store into
+/// the project (pnpm, Bun, uv), which changes every file's change time, so
+/// asking for them anyway sent the whole store back after each warm run:
+/// gigabytes through the runner for nothing.
 pub fn collect_paths(
     job: &PlannedJob,
     root: Option<&str>,
     output: &str,
-    caches: bool,
+    caches: &[String],
     env_caches: &[&str],
 ) -> Collecting {
     let repository = root
@@ -161,11 +167,7 @@ pub fn collect_paths(
     if let Some(downloads) = &job.downloads {
         paths.extend(downloads.paths.iter().cloned());
     }
-    if caches {
-        for cache in &job.caches {
-            paths.extend(cache.paths.iter().cloned());
-        }
-    }
+    paths.extend(caches.iter().cloned());
     paths.extend(env_caches.iter().map(|p| p.to_string()));
     paths.sort();
     paths.dedup();
@@ -306,7 +308,7 @@ jobs:
                 &job,
                 Some("/app"),
                 "/iwci/output",
-                true,
+                &job.caches[0].paths,
                 &["/root/.nvm/versions"]
             ),
             Collecting {
@@ -324,13 +326,14 @@ jobs:
                 repository: Some("/app".into()),
             }
         );
-        // Without `changes:` the clone itself is not read, and without a
-        // cache store neither are the cache paths.
+        // Without `changes:` the clone itself is not read, and the paths
+        // of a cache the job will not save (no cache store, or its exact
+        // key restored) are not either.
         let job = super::tests::job(
             "name: t\njobs:\n  a:\n    platform: linux\n    run: make\n    artifacts: [out]\n    cache: { key: k, paths: [/root/.cache] }\n",
         );
         assert_eq!(
-            collect_paths(&job, Some("/app"), "/iwci/output", false, &[]),
+            collect_paths(&job, Some("/app"), "/iwci/output", &[], &[]),
             Collecting {
                 paths: vec!["/app/out".into(), "/iwci/output".into()],
                 repository: None,

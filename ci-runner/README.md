@@ -741,7 +741,10 @@ jobs:
   up to half its `memory:`, and only the workspace is served: a cache is
   read whole, and over virtio-fs each of a package store's tens of
   thousands of files was round trips to the runner, so a pnpm install from
-  a restored store took 27 s where downloading it took 14 s. What the job
+  a restored store took 27 s where downloading it took 14 s. Whether they
+  fit is read from their sizes, and the files are gathered while the
+  machine boots (a 1.4 GB store took 0.9 s, which used to come before
+  QEMU started). What the job
   writes stays in memory, a tmpfs, where writing and copying up cost
   memory speed (the bun install cache, 63k files and 814 MB, copied in
   0.9 s, against 44 s onto an ext4 disk), and the kernel swaps what the
@@ -754,8 +757,13 @@ jobs:
   room on the runner's disk. An image without `memory-upper` keeps the
   whole writable layer on the ext4 disk. Afterwards
   the job sends back what the scheduler reads:
-  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, and, for
-  `changes:`, the clone without what its `.gitignore` ignores. A job's
+  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, the paths of the `cache:`
+  entries it will save, and, for `changes:`, the clone without what its
+  `.gitignore` ignores. A cache that restored its exact key is not saved,
+  so its paths stay in the machine: pnpm, Bun and uv hard-link a restored
+  store into the project, which touches every file in it, and sending it
+  back cost a warm create-t3-turbo job 1.2 s of its 16 (and the runner
+  the store's size in memory). A job's
   `npm ci` stays in the machine, and artifacts in ignored directories
   (`dist`) still come back. All of it is at most twice the job's
   `memory:`.
@@ -4163,6 +4171,9 @@ jobs:
   is) is split into 64 MiB parts beside it, written in parallel and read
   back in parallel; eviction and clearing take the parts with it.
   A runner from before split caches reads one as a miss.
+- A save is on the job's time, so one over 16 MiB is compressed on up to
+  eight threads, into the same single zstd stream any runner reads: a
+  1.1 GB pnpm store took 4.9 s to save on one thread and 1.0 s on eight.
 - **Scoped by branch, so a pull request cannot poison the default
   branch.** A push saves into its branch's scope and reads that, then the
   default branch's (`--default-branch`, default `main`). A pull request
