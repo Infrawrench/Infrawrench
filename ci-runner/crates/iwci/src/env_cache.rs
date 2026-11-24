@@ -124,6 +124,7 @@ pub fn restore(
         Ok(Some(found)) => match fs.apply(&found.entries) {
             Ok(()) => {
                 fs.apply_modes(&found.modes);
+                fs.set_restored_times(&found.entries);
                 lines.push(format!(
                     "env cache `{name}`: restored {}",
                     kib(file_bytes(&found.entries))

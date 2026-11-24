@@ -4140,6 +4140,10 @@ jobs:
   `changes: fail` or `changes: commit`.
 - Restored files count against the job's `memory:` like any other write
   (and spill to disk with the rest, past half of it).
+- Restored files have the Unix epoch as their modification time, in a
+  machine and in an isolate alike: older than anything the job writes, so
+  a tool that trusts times (pnpm's store, checked again when a file looks
+  newer than its last check) does not take a restore for a change.
 - Files and directories keep their modes, so a program saved executable
   comes back executable. A cache saved by a runner from before modes were
   kept is a miss, and the next pass saves over it.

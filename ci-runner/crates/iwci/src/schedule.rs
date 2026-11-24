@@ -3561,6 +3561,7 @@ fn run_job<T: Tools>(
             Some(Ok(Some(restored))) => match fs.apply(&restored.entries) {
                 Ok(()) => {
                     fs.apply_modes(&restored.modes);
+                    fs.set_restored_times(&restored.entries);
                     exact = restored.exact;
                     let took = seconds(restoring.elapsed());
                     cache_lines.push(if restored.exact {

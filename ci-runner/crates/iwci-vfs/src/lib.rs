@@ -997,6 +997,23 @@ impl JobFs {
             .collect()
     }
 
+    /// Gives the files among `entries`, which [`JobFs::apply`] wrote, the
+    /// modification time of the Unix epoch, as a machine's put gives them:
+    /// a cache's files are older than anything the job writes. Stamped with
+    /// the time of the restore instead, a restored pnpm store looked
+    /// changed since pnpm last checked it, and pnpm hashed every file of it
+    /// again (161,102 files, 55 s, in one job).
+    pub fn set_restored_times(&self, entries: &[Entry]) {
+        for entry in entries {
+            if let Entry::File { path, .. } = entry
+                && let Ok(path) = normalise(path)
+                && let Ok(mut file) = self.upper.new_open_options().read(true).open(&path)
+            {
+                let _ = file.set_times(None, Some(0));
+            }
+        }
+    }
+
     /// Records `modes` (what [`JobFs::modes_of`] kept) for paths
     /// [`JobFs::apply`] wrote, as `chmod` would.
     pub fn apply_modes(&self, modes: &[(PathBuf, u32)]) {
