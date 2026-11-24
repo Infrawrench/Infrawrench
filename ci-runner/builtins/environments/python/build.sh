@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # CPython for env:python and the cloud CLI environments: Wasmer's
 # `python/python` 3.13.20 (CPython 3.13.15) with file locks (#1216), which
-# keeps its own PYTHONEXECUTABLE to itself (#1310; keep_executable_to_itself).
+# keeps its own PYTHONEXECUTABLE to itself (#1310; keep_executable_to_itself)
+# and finds itself on PATH when started by a bare name (#1334).
 #
 # Its C library has no file locking. `flock` does nothing and answers 0;
 # `fcntl` answers ENOSYS for F_GETLK, F_SETLK and F_SETLKW without asking
@@ -23,6 +24,15 @@
 # module's hash is checked before and after, so a different input fails
 # here rather than building something nobody looked at.
 #
+# `path-search.py` then edits the same text so that a regular file counts as
+# executable when CPython looks for itself on PATH (`isxfile` in getpath).
+# The C library's `stat` gives no mode, so that search never found anything:
+# after a venv's `activate`, a bare `python` (which bash finds in the venv)
+# came up with an empty `sys.executable`, never read the venv's
+# `pyvenv.cfg`, and ran as the base interpreter. Now it finds the file bash
+# found, as CPython does on Linux. Keep it as long as the C library's `stat`
+# has no execute bits.
+#
 # The module goes back into the published package with the Wasmer CLI
 # (`patch-module.sh`, as bash/build.sh and sed/build.sh do it). Drop this
 # directory, and pin Wasmer's package again, once a `python/python` release
@@ -38,10 +48,10 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/../../lib.sh"
 source "$here/environments/patch-module.sh"
 
 # Our build of 3.13.20. A changed build is a new number after `iwci.`.
-VERSION="3.13.20-iwci.2"
+VERSION="3.13.20-iwci.3"
 WEBC_SHA256="a9fa8202f1bf6a4eca8d31ee5f2b1970c8f45af5c5520cc954d28a133333d8e7"
 MODULE_SHA256="3fc48792e8f667333a6397fd9ce6961a5a76cd69160c5af6af074a32c0baf3f4"
-REWRITTEN_SHA256="15b5dc8fb3b40ee15a36ab1e5dd9df55b8130d81ea564a1994a85fce2e17f12c"
+REWRITTEN_SHA256="ed0ec4d8ddbca8e5c57abe26d8b0931d0608441f83639f03aef7f4c97efcd9d4"
 # The time every file in the package is said to have been modified: the
 # day this build was first made.
 BUILT_ON="202611150000.00" # touch -t, in UTC
@@ -77,8 +87,9 @@ rewrite_python() {
   local tools="$work/$name/wasm-tools"
   "$tools" print "$module" -o "$work/python.wat"
   python3 "$here/environments/python/file-locks.py" "$work/python.wat" "$work/python-locks.wat"
-  "$tools" parse "$work/python-locks.wat" -o "$module"
-  rm -f "$work/python.wat" "$work/python-locks.wat"
+  python3 "$here/environments/python/path-search.py" "$work/python-locks.wat" "$work/python-path.wat"
+  "$tools" parse "$work/python-path.wat" -o "$module"
+  rm -f "$work/python.wat" "$work/python-locks.wat" "$work/python-path.wat"
   keep_executable_to_itself "${module%/modules/*}"
 }
 

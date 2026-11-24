@@ -5686,6 +5686,27 @@ jobs:
       # Not the interpreter's own: outside the venv it is not there.
       deactivate
       if python -c 'import iwci_hello' 2>/dev/null; then exit 1; fi
+  # After `activate`, a bare `python` is the venv's (#1334): bash starts
+  # /tmp/venv/bin/python as `python`, and the interpreter has to find itself
+  # on PATH, as on Linux, to see the venv. It came up with no
+  # `sys.executable` and ran as the base interpreter, so `python -m pip`
+  # installed outside the venv.
+  venv-activate-passes:
+    using: env:python@3.13
+    network: false
+    timeout: 5m
+    env: { PIP_NO_INDEX: "1", PIP_FIND_LINKS: /app/py/wheels }
+    run: |
+      python -m venv --copies /tmp/venv
+      source /tmp/venv/bin/activate
+      python -c 'import sys; assert sys.prefix == "/tmp/venv", sys.prefix; assert sys.executable == "/tmp/venv/bin/python", sys.executable'
+      python3 -c 'import sys; assert sys.prefix == "/tmp/venv", sys.prefix'
+      python -m pip install iwci-hello
+      test "$(/tmp/venv/bin/python -c 'import iwci_hello, sys; print(iwci_hello.__file__.startswith(sys.prefix))')" = True
+      test "$(command -v iwci-hello)" = /tmp/venv/bin/iwci-hello
+      deactivate
+      if python -c 'import iwci_hello' 2>/dev/null; then exit 1; fi
+      test "$(python -c 'import sys; print(sys.executable)')" = /bin/python3.13
   # Git is on PATH here too, and Python can run it.
   git-passes:
     using: env:python@3.13
