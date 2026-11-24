@@ -235,9 +235,12 @@ impl Server {
         }
     }
 
-    /// The runs this runner has, and the offers to help it still holds.
+    /// The runs this runner has, the offers to help it still holds, and
+    /// the runs whose end has not been told yet (`notify`).
     pub(crate) fn busy(&self) -> usize {
-        self.active.load(Ordering::SeqCst) + self.helping.lock().unwrap().len()
+        self.active.load(Ordering::SeqCst)
+            + self.helping.lock().unwrap().len()
+            + self.notifying.load(Ordering::SeqCst)
     }
 
     /// Drains to restart, which this process needs to work well again

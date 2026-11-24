@@ -210,6 +210,21 @@ What a runner does for other runners' runs is in none of the numbers
 placement reads: it gives a helper job's slot and memory to its own run
 the moment one wants them.
 
+## Run notices
+
+A run request may carry `"notify": { "url": "https://...", "token": "..." }`:
+where the runner that has the run posts each change of its state (the
+runner's README, "HTTP API"). The app sends it so it hears of a finished
+run at once rather than on its next poll. The proxy takes it out of the
+request (`takeNotify` in `src/app.ts`) and puts it back only for the runner
+the run lands on, when that runner says `"notify": true` in
+`/v1/capacity`; a runner from before notices would refuse the request for
+it, and is followed by polling instead. A helper is never sent it, and
+neither is a prepare or a concurrency read. Anything but an `https` URL of
+up to 2048 characters and a token of 1 to 512 is a `400`; the runner
+checks the URL further. `GET /v1/capacity` passes each runner's `notify`
+on. The proxy keeps nothing about it and decides nothing.
+
 ## Secrets and variables
 
 Set per organisation (`/v1/orgs/{owner}/...`) or per repository

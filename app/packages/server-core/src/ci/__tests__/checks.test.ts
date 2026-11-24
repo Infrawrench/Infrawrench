@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The database, GitHub and the proxy are stubbed: these tests pin what a
-// finished run shows on GitHub.
+// finished run shows on GitHub. `claimed: false` is another caller (the
+// poller, or a runner's notice) having recorded the run's end first.
+const dbState = vi.hoisted(() => ({ claimed: true }));
 vi.mock("../../db/client.js", () => {
-  const where = () => Promise.resolve();
+  const where = () =>
+    Object.assign(Promise.resolve(), {
+      returning: async () => (dbState.claimed ? [{ id: "run-1" }] : []),
+    });
   const set = () => ({ where });
   return { db: { update: () => ({ set }) } };
 });
@@ -67,7 +72,10 @@ const finished = (jobs: Array<{ id: string; status: string; cached?: boolean }>)
   },
 });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  dbState.claimed = true;
+});
 
 describe("CI checks on GitHub", () => {
   it("names a check after its event, so a push run cannot hide a pull request's", () => {
@@ -269,7 +277,54 @@ describe("CI checks on GitHub", () => {
 
   it("waits out a 404 just after the run started", async () => {
     mockProxyJson.mockRejectedValue(new CiProxyError("no such run", 404));
-    await syncRun(row("pull-request"));
+    expect(await syncRun(row("pull-request"))).toBe("unread");
     expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("says how following a run went", async () => {
+    mockProxyJson.mockResolvedValueOnce({ id: "ci-1.abc", state: "running" });
+    expect(await syncRun(row("push"))).toBe("running");
+    mockProxyJson.mockResolvedValueOnce(finished([{ id: "build", status: "passed" }]));
+    expect(await syncRun({ ...row("push"), jobChecks: {} } as never)).toBe("ended");
+    mockProxyJson.mockRejectedValueOnce(new Error("the proxy did not answer"));
+    expect(await syncRun(row("push"))).toBe("unread");
+    expect(await syncRun({ ...row("push"), status: "passed" } as never)).toBe("settled");
+  });
+
+  it("posts nothing for a run another caller has already ended", async () => {
+    // The poller and the runner's notice read the same finished run: only
+    // the one whose update ends it posts its checks.
+    dbState.claimed = false;
+    for (const run of [
+      finished([{ id: "build", status: "passed" }]),
+      finished([]),
+      { id: "ci-1.abc", state: "error", error: "refused" },
+    ]) {
+      mockProxyJson.mockResolvedValueOnce(run);
+      expect(await syncRun({ ...row("pull-request"), jobChecks: {} } as never)).toBe("settled");
+    }
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(vi.mocked(githubInstallationFetch)).not.toHaveBeenCalled();
+  });
+
+  it("does not end a run before its dispatcher has said on GitHub that it started", async () => {
+    // A run that ends within its first moments, told by its runner's
+    // notice while the dispatcher still holds its claim: ending it now
+    // would let the dispatcher's "in progress" land after the result.
+    mockProxyJson.mockResolvedValue(finished([{ id: "build", status: "passed" }]));
+    const dispatching = {
+      ...row("push"),
+      jobChecks: {},
+      nextAttemptAt: new Date(Date.now() + 110_000),
+    } as never;
+    expect(await syncRun(dispatching)).toBe("announcing");
+    expect(mockUpsert).not.toHaveBeenCalled();
+    // Once it has, or its claim has lapsed, the run ends as usual.
+    const announced = { ...row("push"), jobChecks: {}, nextAttemptAt: new Date() } as never;
+    expect(await syncRun(announced)).toBe("ended");
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "completed", conclusion: "success" }),
+    );
   });
 });

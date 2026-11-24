@@ -118,6 +118,11 @@ describe("routeRequest", () => {
       expect(routeRequest(method, path, null)).toMatchObject({ target: "gateway", tier: "node" });
     }
     expect(routeRequest("GET", "/api/org/org_1/ci/access", null).target).toBe("edge");
+    // A runner's notice that a run changed is Postgres, the CI proxy and
+    // GitHub, like the status pass: the edge answers it without a cold start.
+    expect(
+      routeRequest("POST", "/api/ci-notify/runs/4a0e3c52-6c1f-4f5e-9d0c-2b8f6f1d7a10", null).target,
+    ).toBe("edge");
   });
 
   it("computes the org grade on the gateway but serves its history at the edge", () => {

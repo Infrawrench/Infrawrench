@@ -121,6 +121,7 @@ import { starredDomain } from "./domains/starred/index";
 import { productsDomain } from "./domains/products/index";
 import { ciDomain } from "./domains/ci/index";
 import { ciJobsDomain } from "./domains/ci-jobs/index";
+import { ciNotifyDomain } from "./domains/ci-notify/index";
 import { orgConfigDomain } from "./domains/org-config/index";
 import { costVisibilityDomain } from "./domains/cost-visibility/index";
 import { sharingDomain } from "./domains/sharing/index";
@@ -324,6 +325,7 @@ export const DOMAINS: readonly Domain[] = [
   workflowGitWebhookDomain,
   issueWebhooksDomain,
   ciJobsDomain,
+  ciNotifyDomain,
   internalRelayDomain,
   callbackDomain,
   slackOAuthDomain,

@@ -2906,6 +2906,7 @@ dependencies = [
  "signal-hook-registry",
  "tar",
  "tiny_http",
+ "ureq",
  "zstd 0.13.4",
 ]
 

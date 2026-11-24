@@ -7,7 +7,7 @@
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots, job memory and platforms, and the pool's total slots |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); its `notify` goes to the runner that has it when that runner takes the field (`takeNotify`), never to a helper; a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
 // | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
@@ -139,6 +139,51 @@ export function takePlatforms(request: Record<string, unknown>): string[] | Resp
   return [...new Set(value as string[])];
 }
 
+/** Where a runner tells the caller that a run changed (`notify` in a run request). */
+export interface NotifyTarget {
+  url: string;
+  token: string;
+}
+
+/** The longest `notify.url` and `notify.token` the runners take. */
+const MAX_NOTIFY_URL = 2048;
+const MAX_NOTIFY_TOKEN = 512;
+
+/**
+ * Takes `notify` out of a run request: where the runner that has the run
+ * posts each change of its state (the runner's README, "HTTP API"). It is
+ * sent on only to that runner, and only when it says `"notify": true` in
+ * `/v1/capacity`, since an older runner refuses a request with a field it
+ * does not know; a runner that does not take it is followed by polling as
+ * before. Never to a helper, whose run nobody follows. The runner checks
+ * the URL itself (`https` to a name); anything but a URL and a token of
+ * the sizes it takes is a 400 here.
+ */
+export function takeNotify(request: Record<string, unknown>): NotifyTarget | null | Response {
+  const value = request.notify;
+  delete request.notify;
+  if (value === undefined || value === null) return null;
+  const { url, token } = (typeof value === "object" && !Array.isArray(value) ? value : {}) as {
+    url?: unknown;
+    token?: unknown;
+  };
+  if (
+    typeof url !== "string" ||
+    !url.startsWith("https://") ||
+    url.length > MAX_NOTIFY_URL ||
+    typeof token !== "string" ||
+    token.length === 0 ||
+    token.length > MAX_NOTIFY_TOKEN ||
+    Object.keys(value as object).length !== 2
+  ) {
+    return error(
+      400,
+      `\`notify\` is { "url": an https URL of up to ${MAX_NOTIFY_URL} characters, "token": up to ${MAX_NOTIFY_TOKEN} characters }`,
+    );
+  }
+  return { url, token };
+}
+
 /**
  * The platforms a registered schedule's pipeline needs, as the runner read
  * it: the names it lists other than `wasm`, as `takePlatforms` would take
@@ -191,15 +236,18 @@ const HELP_TIMEOUT_MS = 5000;
  *
  * `platforms` (from `takePlatforms`) narrows where the run is placed, not
  * who is offered it: which jobs a helper may take is the runners' to say.
+ * `notify` (from `takeNotify`) goes to the runner that has the run when it
+ * takes the field, and to no helper: the caller follows the one run.
  */
 async function placeRun(
   deps: Deps,
   search: string,
   request: Record<string, unknown>,
   platforms: readonly string[] = [],
+  notify: NotifyTarget | null = null,
 ): Promise<Placed | null> {
   // `platforms` is the proxy's alone: no runner is ever sent it.
-  const { split: _split, platforms: _platforms, ...rest } = request;
+  const { split: _split, platforms: _platforms, notify: _notify, ...rest } = request;
   // What a helper is sent: nothing secret but the token to fetch with.
   const { secrets: _secrets, lent: _lent, ...offer } = rest;
   const waits = new URLSearchParams(search).get("wait") === "true";
@@ -208,9 +256,11 @@ async function placeRun(
   const placed = await deps.pool.place(
     `/v1/runs${search}`,
     (runner, others) =>
-      JSON.stringify(
-        helpers(runner, others).length > 0 ? { ...rest, split: { runner: runner.name } } : rest,
-      ),
+      JSON.stringify({
+        ...rest,
+        ...(helpers(runner, others).length > 0 ? { split: { runner: runner.name } } : {}),
+        ...(notify && runner.notify ? { notify } : {}),
+      }),
     platforms,
   );
   if (!placed?.response.ok) return placed;
@@ -459,6 +509,8 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         // Whether it can share a run or help one, and how many it helps.
         split: r.split,
         runs_helping: r.runsHelping,
+        // Whether it takes `notify`, to tell the caller as a run changes.
+        notify: r.notify,
         // What it runs jobs on (`wasm`, and `linux` with VMs).
         platforms: r.platforms,
         // What placement ranks by: the cores a new run could expect here,
@@ -476,19 +528,22 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     const body = await readBody(request);
     if (body instanceof Response) return body;
     let text = body.text;
-    const named = "platforms" in body.value;
+    const named = "platforms" in body.value || "notify" in body.value;
     const platforms = takePlatforms(body.value);
     if (platforms instanceof Response) return platforms;
+    const notify = takeNotify(body.value);
+    if (notify instanceof Response) return notify;
     if (path === "/v1/runs") {
       const withValues = await withStoredValues(deps, body.value);
       if (withValues instanceof Response) return withValues;
-      const placed = await placeRun(deps, url.search, withValues, platforms);
+      const placed = await placeRun(deps, url.search, withValues, platforms, notify);
       if (!placed) return full();
       return relay(placed.runner, placed.response);
     }
     if (named || "trusted" in body.value || "lent" in body.value) {
-      // Preparing runs no job, so it needs neither `trusted` nor `lent`;
-      // `platforms` was the proxy's and is already out.
+      // Preparing runs no job, so it needs neither `trusted` nor `lent`,
+      // and nobody follows it, so no `notify`; `platforms` was the proxy's.
+      // Both are already out.
       const { trusted: _, lent: _lent, ...rest } = body.value;
       text = JSON.stringify(rest);
     }
@@ -506,12 +561,14 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     // read variables, never secrets, so only variables are added.
     const body = await readBody(request);
     if (body instanceof Response) return body;
-    // They place nothing, so `platforms` is dropped too.
+    // They place nothing and start no run, so `platforms` and `notify` are
+    // dropped too.
     const {
       trusted: _trusted,
       secrets: _secrets,
       lent: _lent,
       platforms: _platforms,
+      notify: _notify,
       ...rest
     } = body.value;
     const { owner, repoId } = identify(rest);

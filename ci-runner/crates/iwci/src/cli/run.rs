@@ -535,6 +535,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             vars
         },
         split: None,
+        notify: None,
     };
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());

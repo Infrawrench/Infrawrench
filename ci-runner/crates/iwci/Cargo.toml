@@ -53,6 +53,9 @@ tar = { version = "0.4.46", default-features = false }
 # already in the tree.
 bytes = "1.9"
 shared-buffer = "0.1.4"
+# Telling the caller a run's state changed (`notify.rs`). Already in the
+# tree through iwci-deps and iwci-store.
+ureq = { version = "3.3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 # The gem builds' tests write a gzipped archive. Already in the tree through

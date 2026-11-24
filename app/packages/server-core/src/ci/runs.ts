@@ -23,7 +23,9 @@
  *   as the branch's head has it, with the inputs they gave.
  *
  * Dispatch claims the row first (one UPDATE that only one caller can win),
- * because both the webhook and the poller pass dispatch.
+ * because both the webhook and the poller pass dispatch. Finishing claims
+ * it too: the poller and the runner's notice (`notify.ts`) both follow a
+ * running run, and only the one that records its end posts its checks.
  */
 import { and, desc, eq, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import {
@@ -77,6 +79,7 @@ import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
+import { noticeTokenValid, withNotify } from "./notify.js";
 
 export type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -245,17 +248,28 @@ async function load(id: string): Promise<CiRunRow | null> {
   return row ?? null;
 }
 
+/**
+ * Records how a run ended. With `from`, only a run still in that status:
+ * `false` when another caller ended it first, which then posts nothing.
+ */
 async function finish(
   row: CiRunRow,
   status: "passed" | "failed" | "error" | "rejected" | "cancelled" | "skipped",
   reason: string | null,
   extra: Partial<typeof ciRuns.$inferInsert> = {},
-): Promise<void> {
+  from?: CiRunStatus,
+): Promise<boolean> {
   const now = new Date();
-  await db
+  const ended = await db
     .update(ciRuns)
     .set({ status, statusReason: reason, finishedAt: now, updatedAt: now, ...extra })
-    .where(eq(ciRuns.id, row.id));
+    .where(
+      from === undefined
+        ? eq(ciRuns.id, row.id)
+        : and(eq(ciRuns.id, row.id), eq(ciRuns.status, from)),
+    )
+    .returning({ id: ciRuns.id });
+  if (ended.length === 0) return false;
   // Its cloud jobs' machines go with it: the executor's pass tears them down.
   await db
     .update(ciCloudJobs)
@@ -270,6 +284,7 @@ async function finish(
       updatedAt: now,
     })
     .where(and(eq(ciCloudJobs.runId, row.id), inArray(ciCloudJobs.state, ["starting", "running"])));
+  return true;
 }
 
 /** Shows a fork's run on GitHub as waiting for a maintainer. */
@@ -439,9 +454,12 @@ export async function dispatchRun(id: string): Promise<void> {
       await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
     }
   }
-  // The platforms its pipelines need, for the proxy to place it by; counted
+  // The platforms its pipelines need, for the proxy to place it by, and
+  // where the runner tells the app the run changed, so it is read then
+  // rather than on the poller's next pass (`notify.ts`). Both counted
   // before anything is lent, so the body's size includes them.
   withPlatforms(body, concurrency);
+  const notified = withNotify(body, row.id);
 
   // Connections, SSH keys, resources and environment files its jobs name,
   // checked and read now (never for a fork's run). Reading them calls
@@ -481,6 +499,13 @@ export async function dispatchRun(id: string): Promise<void> {
   let res: Response;
   try {
     res = await proxyFetch("/v1/runs", { method: "POST", body: JSON.stringify(body) });
+    if (notified && (await refusesNotify(res))) {
+      // A proxy from before notices passes `notify` on, and a runner from
+      // before them refuses the request for it, before it starts anything:
+      // sent again without it, the run is followed by polling as before.
+      delete body["notify"];
+      res = await proxyFetch("/v1/runs", { method: "POST", body: JSON.stringify(body) });
+    }
   } catch (err) {
     await retryLater(row, `The CI proxy did not answer: ${String(err)}`);
     return;
@@ -519,12 +544,53 @@ export async function dispatchRun(id: string): Promise<void> {
   // A run the runners listed no pipeline for (one from before they could
   // say a file is broken) most likely runs nothing: its check waits for the
   // result, so a push that runs nothing shows nothing on GitHub.
-  if (skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0) return;
-  await upsertCheck(row, {
-    status: "in_progress",
-    title: "Running",
-    summary: runningSummary(row),
-  });
+  if (!(skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0)) {
+    await upsertCheck(row, {
+      status: "in_progress",
+      title: "Running",
+      summary: runningSummary(row),
+    });
+  }
+  // Its start is on GitHub: from now on its end may be (`startAnnounced`).
+  await db.update(ciRuns).set({ nextAttemptAt: dbNow }).where(eq(ciRuns.id, row.id));
+}
+
+/**
+ * Whether the proxy's answer to `POST /v1/runs` is a runner refusing the
+ * request for its `notify` field (a runner from before notices, behind a
+ * proxy from before them). Reads the body only for a 400.
+ */
+export async function refusesNotify(res: Response): Promise<boolean> {
+  if (res.status !== 400) return false;
+  const text = await res
+    .clone()
+    .text()
+    .catch(() => "");
+  const refused = /unknown field `notify`/.test(text);
+  if (refused) await res.body?.cancel();
+  return refused;
+}
+
+/**
+ * How long past its start a running run's `next_attempt_at` still stands
+ * for the dispatcher's claim (`CLAIM_MS` from the claim), which it moves
+ * to now once the run's check says "in progress".
+ */
+const ANNOUNCING_MS = 30_000;
+
+/**
+ * Whether the run's start has been announced on GitHub. Until the process
+ * that dispatched it has posted its "in progress" check, a finished run is
+ * not ended: that post would land after the result and leave the check
+ * running for good. A run whose dispatcher died is announced once its
+ * claim lapses.
+ */
+export function startAnnounced(
+  row: Pick<CiRunRow, "nextAttemptAt">,
+  now: number = Date.now(),
+): boolean {
+  const at = row.nextAttemptAt?.getTime();
+  return at === undefined || at <= now + ANNOUNCING_MS;
 }
 
 /**
@@ -566,16 +632,28 @@ export function skippedReason(row: Pick<CiRunRow, "event">): string {
  * check the run already has (a runner that could not say beforehand, a
  * fork's approval) is closed as skipped either way.
  */
-async function skipRun(row: CiRunRow, extra: Partial<typeof ciRuns.$inferInsert> = {}) {
+async function skipRun(
+  row: CiRunRow,
+  extra: Partial<typeof ciRuns.$inferInsert> = {},
+  from?: CiRunStatus,
+): Promise<boolean> {
   const reason = skippedReason(row);
-  await finish(row, "skipped", reason, { concurrency: [], access: [], jobs: [], ...extra });
-  if (row.event !== "pull-request" && row.checkRunId === null) return;
+  const skipped = await finish(
+    row,
+    "skipped",
+    reason,
+    { concurrency: [], access: [], jobs: [], ...extra },
+    from,
+  );
+  if (!skipped) return false;
+  if (row.event !== "pull-request" && row.checkRunId === null) return true;
   await upsertCheck(row, {
     status: "completed",
     conclusion: "skipped",
     title: reason.replace(/\.$/, ""),
     summary: reason.replace(/^No pipeline/, "No pipeline in `.infrawrench/ci`"),
   });
+  return true;
 }
 
 /** Leaves a run for the gateway's `ci-cloud` pass, without counting an attempt. */
@@ -768,13 +846,29 @@ export function checkSummary(jobs: CiJobSummary[]): string {
 }
 
 /**
+ * What following a run came to:
+ * - `running`: it is still going.
+ * - `ended`: this call recorded its end and posted its checks.
+ * - `settled`: nothing to do; it is not running here, or another caller
+ *   recorded its end first.
+ * - `announcing`: it has ended, but its start is not on GitHub yet
+ *   (`startAnnounced`); try again in a moment.
+ * - `unread`: the proxy could not be read; try again.
+ */
+export type SyncOutcome = "running" | "ended" | "settled" | "announcing" | "unread";
+
+/**
  * Brings a running run up to date from the proxy. `jobChecks: false` skips
  * the job checks of a run that is still going (the pass follows a run more
  * often than it writes its jobs to GitHub); a finished run's are always
- * written.
+ * written. Ending it is a claim, so the poller and a runner's notice never
+ * both post its checks.
  */
-export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {}): Promise<void> {
-  if (row.status !== "running" || !row.proxyRunId) return;
+export async function syncRun(
+  row: CiRunRow,
+  opts: { jobChecks?: boolean } = {},
+): Promise<SyncOutcome> {
+  if (row.status !== "running" || !row.proxyRunId) return "settled";
   await resendCancels(row);
   let run: ProxyRun;
   try {
@@ -788,12 +882,14 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     const gone = err instanceof CiProxyError && err.status === 404;
     if (gone && row.cancelRequestedAt && Date.now() - started > GONE_AFTER_MS) {
       // Asked to stop, and gone: nothing is left to cancel.
-      await finish(row, "cancelled", CANCELLED_BY_PERSON);
+      if (!(await finish(row, "cancelled", CANCELLED_BY_PERSON, {}, "running"))) return "settled";
       await abandonJobChecks(row, CANCELLED_BY_PERSON);
       await upsertCheck(row, cancelledCheck(CANCELLED_BY_PERSON));
-    } else if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
+      return "ended";
+    }
+    if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
       const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
-      await finish(row, "error", reason);
+      if (!(await finish(row, "error", reason, {}, "running"))) return "settled";
       // Its jobs' checks would otherwise say "in progress" for good.
       await abandonJobChecks(row, reason);
       await upsertCheck(row, {
@@ -802,10 +898,10 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
         title: "Lost",
         summary: reason,
       });
-    } else if (!gone) {
-      console.warn(`[ci] could not read run ${row.id}:`, err);
+      return "ended";
     }
-    return;
+    if (!gone) console.warn(`[ci] could not read run ${row.id}:`, err);
+    return "unread";
   }
   if (run.state === "running") {
     if (Date.now() - row.updatedAt.getTime() > SEEN_EVERY_MS) {
@@ -815,20 +911,21 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     if (run.progress && opts.jobChecks !== false) {
       await syncJobChecks(row, groupsFromProgress(run.progress));
     }
-    return;
+    return "running";
   }
+  if (!startAnnounced(row)) return "announcing";
   if (run.state !== "finished") {
     // The runner reports this as `error`. It used to be read as a finished
     // run with no jobs, so a refused clone showed "No pipeline ran".
     const reason = run.error ?? "The runner could not run this commit.";
-    await finish(row, "error", reason);
+    if (!(await finish(row, "error", reason, {}, "running"))) return "settled";
     await upsertCheck(row, {
       status: "completed",
       conclusion: "failure",
       title: "Could not run",
       summary: reason,
     });
-    return;
+    return "ended";
   }
   const jobs = jobsOf(run, false);
   const passed = run.result?.passed === true;
@@ -841,18 +938,59 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
   const cancelReason = cancelled ? cancelledReason(row) : null;
   if (passed && jobs.length === 0 && skipsWhenEmpty(row)) {
     // Ran, and nothing in it did: a runner that could not say beforehand.
-    await skipRun(row, runUsage(run));
-    return;
+    return (await skipRun(row, runUsage(run), "running")) ? "ended" : "settled";
   }
-  await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
-    jobs,
-    ...runUsage(run),
-  });
+  const ended = await finish(
+    row,
+    passed ? "passed" : cancelled ? "cancelled" : "failed",
+    cancelReason,
+    { jobs, ...runUsage(run) },
+    "running",
+  );
+  if (!ended) return "settled";
   // The run's own check first: it is the one a branch protection rule
   // waits for, and each job check after it is a GitHub call of its own.
   await upsertCheck(row, finishedCheck(row, jobs, passed, failedCount, cancelReason));
   // Every job's check finished, including any no poll saw running.
   await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
+  return "ended";
+}
+
+/** Why a runner's notice was not taken; the status is the answer it gets. */
+export class CiNoticeError extends Error {
+  constructor(
+    message: string,
+    readonly status: 401 | 404 | 409 | 503,
+  ) {
+    super(message);
+    this.name = "CiNoticeError";
+  }
+}
+
+/**
+ * A runner's notice that run `id` changed (`notify.ts`): follows the run now,
+ * as the poller's pass would, job checks included. The token is checked
+ * before anything is read. A `409` or `503` is what the runner tries again
+ * on, for the notice of a run's end: the run is not recorded as started yet
+ * (the dispatcher's answer from the proxy is still on its way), its start
+ * is not on GitHub yet, or the proxy could not be read. Notices of one run
+ * come one at a time, each after the last was answered.
+ */
+export async function acceptRunNotice(id: string, token: string): Promise<SyncOutcome> {
+  if (!noticeTokenValid(id, token)) {
+    throw new CiNoticeError("That is not this run's notice token.", 401);
+  }
+  const row = await load(id);
+  if (!row) throw new CiNoticeError("No such run.", 404);
+  if (row.status === "queued" || row.status === "pending") {
+    throw new CiNoticeError("The run is not recorded as started yet; try again.", 409);
+  }
+  const outcome = await syncRun(row, { jobChecks: true });
+  if (outcome === "announcing") {
+    throw new CiNoticeError("The run's start is not on GitHub yet; try again.", 409);
+  }
+  if (outcome === "unread") throw new CiNoticeError("The CI proxy could not be read.", 503);
+  return outcome;
 }
 
 /** What a finished run's own check says. */

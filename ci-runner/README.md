@@ -5074,7 +5074,7 @@ answer for any owner, and a full runner says so instead of queueing.
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
 | `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), V8's out-of-memory losses (below), and the `platforms` it runs.     |
-| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
+| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done. With `notify`, posts each change of the run's state to the caller (below).          |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
 | `POST /v1/runs/{id}/cancel`             | Cancels a run on this runner, or only some of its pipelines (below).                                                                                                    |
@@ -5115,7 +5115,8 @@ A request body (for `runs` and `prepare`):
   "no-task-cache": "optional: true runs every task-cache: job; passes still save",
   "trusted": "optional: false for a pull request from a fork; default false for a pull request, true otherwise",
   "lent": "optional: connections, SSH keys and resource outputs lent to the jobs, by name (below)",
-  "split": "optional: { \"runner\": \"ci-1\" } shares the run; { \"of\": \"<run id>\", \"runner\": \"ci-2\" } helps another runner's run (below)"
+  "split": "optional: { \"runner\": \"ci-1\" } shares the run; { \"of\": \"<run id>\", \"runner\": \"ci-2\" } helps another runner's run (below)",
+  "notify": "optional, runs only: { \"url\": \"https://app.example/api/ci-notify/runs/<id>\", \"token\": \"<bearer>\" }; where to post each change of the run's state (below)"
 }
 ```
 
@@ -5232,6 +5233,26 @@ it is masked, and an untrusted run is given none of it:
   after it gets a note in its report.
 - Up to 64 entries of each kind; the whole body is at most 1 MiB.
 
+- **Notices.** With `notify`, the runner posts
+  `{ "run": "<its id>", "state": "running" }` to `url`, with
+  `Authorization: Bearer <token>`, as each pipeline and each job starts
+  and ends (never for output), at most once a second, changes in between
+  being one notice; and `{ "run": ..., "state": "finished" }` (or
+  `"error"`) once the run has ended and its entry and report are recorded,
+  so a `GET /v1/runs/{id}` that follows finds it ended. Notices of a run go
+  one at a time, each after the caller answered the last (or 30 s passed).
+  A notice while it runs is tried once. The last is tried again for two
+  minutes while the caller cannot be reached or answers `409`, `425`,
+  `429` or `5xx`, then left to the caller's polling; any other answer ends
+  it. A drain waits for it (`/v1/capacity` does not count it as a run).
+  Redirects are not followed. `url` must be `https` to a host name, never
+  an IP address or `localhost` (`400` otherwise, before the run starts);
+  `token` is 1 to 512 printable characters without spaces, and is never
+  stored, echoed or logged. A notice carries nothing the caller has to
+  trust: it reads the run as it always does. An offer to help (`split.of`)
+  ignores `notify`. `/v1/capacity` says `"notify": true` on a runner that
+  takes the field; a runner from before refuses a request with it, so send
+  it to no other.
 - **Capacity.** A run is admitted when a slot is free and fewer runs are
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
