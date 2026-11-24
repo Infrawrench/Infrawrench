@@ -4230,7 +4230,13 @@ again, and on every runner (the artifacts are in the object store).
 - The API served is Turborepo's (`/v8/artifacts/...`: `GET`, `HEAD`,
   `PUT`, the `POST` query and events, and `status`).
 - Every connection is served on a thread of its own for as long as it is
-  open (up to 512 at once, each closed after 5 minutes without a request).
+  open (up to 512 at once, each closed after 5 minutes without a request,
+  at most 64 of them a run's; a request on one more is answered 429).
+  Artifacts in the runner's memory, uploads as they are read and
+  downloads until they are sent, are held to 2 GiB across every run, and
+  16 requests are answered at once: one that finds no room within 10 s
+  is answered 503 with `Retry-After` (an upload is read and let go
+  first), which `turbo` takes as a miss or a failed upload and carries on.
   `turbo` opens several keep-alive connections together and keeps them
   open; on tiny_http's connection pool, which this replaced, one of them
   could go unread until another closed, which `turbo` does only at its
