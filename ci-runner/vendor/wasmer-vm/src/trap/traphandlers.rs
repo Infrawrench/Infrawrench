@@ -263,9 +263,10 @@ cfg_select! {
         static mut PREV_SIGUSR1: MaybeUninit<libc::sigaction> = MaybeUninit::uninit();
 
         /// The executable segments of every object loaded when the handlers
-        /// are installed (the program, libc, the vDSO), as start and end
-        /// addresses. Compiled Wasm is mapped anonymously, so an interrupt
-        /// whose pc is in one of these landed in host code.
+        /// are installed (the program, libc, the vDSO; on macOS also every
+        /// image loaded later), as start and end addresses. Compiled Wasm is
+        /// mapped anonymously, so an interrupt whose pc is in one of these
+        /// landed in host code.
         #[cfg(feature = "experimental-host-interrupt")]
         const HOST_CODE_RANGES: usize = 128;
         #[cfg(feature = "experimental-host-interrupt")]
@@ -273,6 +274,26 @@ cfg_select! {
             [const { (AtomicUsize::new(0), AtomicUsize::new(0)) }; HOST_CODE_RANGES];
         #[cfg(feature = "experimental-host-interrupt")]
         static HOST_CODE_LEN: AtomicUsize = AtomicUsize::new(0);
+
+        /// Appends a range to [`HOST_CODE`]; false once it is full. On macOS
+        /// dyld reports an image loaded later from whichever thread loads
+        /// it, so a slot is claimed before it is written. A reader that
+        /// sees a slot's end sees its start; one that sees neither, or only
+        /// the start, sees a range with nothing in it.
+        #[cfg(all(
+            feature = "experimental-host-interrupt",
+            any(target_os = "linux", target_os = "android", target_vendor = "apple")
+        ))]
+        fn push_host_code(start: usize, end: usize) -> bool {
+            let Ok(n) = HOST_CODE_LEN.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n < HOST_CODE_RANGES).then_some(n + 1)
+            }) else {
+                return false;
+            };
+            HOST_CODE[n].0.store(start, Ordering::Relaxed);
+            HOST_CODE[n].1.store(end, Ordering::Release);
+            true
+        }
 
         #[cfg(all(
             feature = "experimental-host-interrupt",
@@ -291,14 +312,10 @@ cfg_select! {
                         if phdr.p_type != libc::PT_LOAD || phdr.p_flags & libc::PF_X == 0 {
                             continue;
                         }
-                        let n = HOST_CODE_LEN.load(Ordering::Relaxed);
-                        if n == HOST_CODE_RANGES {
+                        let start = (info.dlpi_addr as usize).wrapping_add(phdr.p_vaddr as usize);
+                        if !push_host_code(start, start + phdr.p_memsz as usize) {
                             return 1;
                         }
-                        let start = (info.dlpi_addr as usize).wrapping_add(phdr.p_vaddr as usize);
-                        HOST_CODE[n].0.store(start, Ordering::Relaxed);
-                        HOST_CODE[n].1.store(start + phdr.p_memsz as usize, Ordering::Relaxed);
-                        HOST_CODE_LEN.store(n + 1, Ordering::Release);
                     }
                     0
                 }
@@ -308,9 +325,104 @@ cfg_select! {
             }
         }
 
+        /// The span from the lowest to the highest executable segment of
+        /// the images in dyld's shared cache, which is every system library
+        /// (several hundred once Security.framework is linked, too many for
+        /// [`HOST_CODE`]). The cache is mapped into the shared region, an
+        /// address range the kernel reserves for it, so nothing anonymous,
+        /// such as compiled Wasm, is ever mapped between two of them.
+        #[cfg(all(feature = "experimental-host-interrupt", target_vendor = "apple"))]
+        static SHARED_CACHE_CODE: (AtomicUsize, AtomicUsize) =
+            (AtomicUsize::new(usize::MAX), AtomicUsize::new(0));
+
+        /// macOS has no `dl_iterate_phdr`; dyld calls `each` for every image
+        /// it has loaded, and again for every image loaded after (#1332).
+        /// Without this the handler trapped host code on the Wasm stack
+        /// here as it did on Linux before, and abandoned the locks it held:
+        /// a host function's return path that found its store interrupted
+        /// was trapped inside `Trap::lib`'s backtrace, leaving the
+        /// `backtrace` crate's mutex or libunwind's FDE cache lock taken,
+        /// and every later trap and module compile in the process waited
+        /// on them for good.
+        #[cfg(all(feature = "experimental-host-interrupt", target_vendor = "apple"))]
+        unsafe fn record_host_code() {
+            // <mach-o/loader.h>, whose structs the libc crate deprecates.
+            const MH_MAGIC_64: u32 = 0xfeed_facf;
+            const MH_DYLIB_IN_CACHE: u32 = 0x8000_0000;
+            const LC_SEGMENT_64: u32 = 0x19;
+            const VM_PROT_EXECUTE: i32 = 0x4;
+            #[repr(C)]
+            struct MachHeader64 {
+                magic: u32,
+                cputype: i32,
+                cpusubtype: i32,
+                filetype: u32,
+                ncmds: u32,
+                sizeofcmds: u32,
+                flags: u32,
+                reserved: u32,
+            }
+            #[repr(C)]
+            struct LoadCommand {
+                cmd: u32,
+                cmdsize: u32,
+            }
+            #[repr(C)]
+            struct SegmentCommand64 {
+                cmd: u32,
+                cmdsize: u32,
+                segname: [u8; 16],
+                vmaddr: u64,
+                vmsize: u64,
+                fileoff: u64,
+                filesize: u64,
+                maxprot: i32,
+                initprot: i32,
+                nsects: u32,
+                flags: u32,
+            }
+            unsafe extern "C" {
+                fn _dyld_register_func_for_add_image(
+                    func: unsafe extern "C" fn(*const MachHeader64, libc::intptr_t),
+                );
+            }
+            unsafe extern "C" fn each(header: *const MachHeader64, slide: libc::intptr_t) {
+                unsafe {
+                    let header = &*header;
+                    if header.magic != MH_MAGIC_64 {
+                        return;
+                    }
+                    let in_cache = header.flags & MH_DYLIB_IN_CACHE != 0;
+                    let mut command = (header as *const MachHeader64).add(1).cast::<LoadCommand>();
+                    for _ in 0..header.ncmds {
+                        if (*command).cmd == LC_SEGMENT_64 {
+                            let segment = &*command.cast::<SegmentCommand64>();
+                            if segment.initprot & VM_PROT_EXECUTE != 0 {
+                                let start = (segment.vmaddr as usize).wrapping_add(slide as usize);
+                                let end = start + segment.vmsize as usize;
+                                if in_cache {
+                                    SHARED_CACHE_CODE.0.fetch_min(start, Ordering::Relaxed);
+                                    SHARED_CACHE_CODE.1.fetch_max(end, Ordering::Relaxed);
+                                } else if !push_host_code(start, end) {
+                                    return;
+                                }
+                            }
+                        }
+                        command = command
+                            .cast::<u8>()
+                            .add((*command).cmdsize as usize)
+                            .cast::<LoadCommand>();
+                    }
+                }
+            }
+            unsafe {
+                _dyld_register_func_for_add_image(each);
+            }
+        }
+
         #[cfg(all(
             feature = "experimental-host-interrupt",
-            not(any(target_os = "linux", target_os = "android"))
+            not(any(target_os = "linux", target_os = "android", target_vendor = "apple"))
         ))]
         unsafe fn record_host_code() {}
 
@@ -318,9 +430,16 @@ cfg_select! {
         /// the signal handler.
         #[cfg(feature = "experimental-host-interrupt")]
         fn in_host_code(pc: usize) -> bool {
+            #[cfg(target_vendor = "apple")]
+            if pc >= SHARED_CACHE_CODE.0.load(Ordering::Relaxed)
+                && pc < SHARED_CACHE_CODE.1.load(Ordering::Relaxed)
+            {
+                return true;
+            }
             let n = HOST_CODE_LEN.load(Ordering::Acquire);
             HOST_CODE[..n].iter().any(|(start, end)| {
-                pc >= start.load(Ordering::Relaxed) && pc < end.load(Ordering::Relaxed)
+                let end = end.load(Ordering::Acquire);
+                pc >= start.load(Ordering::Relaxed) && pc < end
             })
         }
 
