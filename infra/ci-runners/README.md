@@ -33,6 +33,9 @@ terraform apply
   the runner's own process, so a fault in one crashes the runner;
   `coredumpctl list iwci` and `coredumpctl gdb iwci` read what it left
   (#947);
+- installs `/usr/local/sbin/iwci-size`, which holds the huge page rule
+  (machines, below) and, with `size = "auto"` on the host, sizes it from
+  its hardware at every boot (below);
 - optionally sets up compressed swap in RAM (`zram` on the host, below);
 - optionally installs `cloudflared` with a tunnel token (Debian or Ubuntu,
   from Cloudflare's signed apt repository), so the runner needs no open port;
@@ -79,6 +82,49 @@ the last times they ran and half as much again instead; `ci-runner/README.md`
 
 Both settings re-provision the host, which restarts `iwci` and therefore
 drains it first, like any other change here.
+
+## Sizing from the hardware
+
+`cpus`, `memory` and `zram` are fixed numbers, which suit a host that is
+always the same machine. A host whose image boots on whatever instance type
+a fleet launches (ci-2, below) sets `size = "auto"` instead, leaves `cpus`
+and `memory` unset, and sets `zram = "auto"` if it wants zram. The install
+script then installs `iwci-size.service`, a oneshot ordered before
+`iwci-zram.service` and `iwci.service`, which runs `iwci-size boot` at
+every boot, and runs it once itself. From `nproc` and `MemTotal` it sets:
+
+| What                         | Where                                                        | Rule                                                                          |
+| ---------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `IWCI_CPUS`                  | `/etc/iwci/iwci.env`                                         | every online CPU                                                              |
+| `IWCI_MEMORY`                | `/etc/iwci/iwci.env`                                         | 81% of `MemTotal`, whole GiB rounded down                                     |
+| `IWCI_ZRAM_SIZE`             | `/etc/iwci/zram.env`, read by `iwci-zram.service`            | a fifth of `IWCI_MEMORY`, 1 to 128 GiB                                        |
+| `vm.nr_overcommit_hugepages` | `/etc/sysctl.d/60-iwci-machines.conf`, where machines are on | the smaller of `IWCI_MEMORY` and three quarters of `MemTotal`, in 2 MiB pages |
+
+The constants come from ci-2 on an m8i.16xlarge (64 vCPUs, 247.7 GiB
+`MemTotal`), which ran with `cpus = 64`, `memory = "200GiB"` and
+`zram = "40GiB"`; the rule gives that host the same three. What `boot`
+writes for other machines:
+
+| Host                                 | `IWCI_CPUS` | `IWCI_MEMORY` | zram   | huge pages         |
+| ------------------------------------ | ----------- | ------------- | ------ | ------------------ |
+| 64 vCPUs, 256 GiB (247.7 `MemTotal`) | 64          | 200GiB        | 40GiB  | 95116 (185.8 GiB)  |
+| 96 cores, 384 GiB                    | 96          | 300GiB        | 60GiB  | 142675 (278.7 GiB) |
+| 192 cores, 384 GiB                   | 192         | 300GiB        | 60GiB  | 142675 (278.7 GiB) |
+| 192 cores, 768 GiB                   | 192         | 601GiB        | 120GiB | 285350 (557.3 GiB) |
+
+(`MemTotal` for the larger ones taken in ci-2's proportion of the nominal
+memory, 247.7 of 256 GiB; a real host's differs a little.)
+
+`iwci-size` rewrites only those two lines of the env file, which holds the
+server key and the R2 credentials: it writes a copy with the same owner and
+mode, renames it over the original only when something changed, and never
+prints it. `iwci-size show` prints what `boot` would set without changing
+anything, and `journalctl -u iwci-size` has what it set at the last boot.
+The rule is a few named constants at the top of `files/iwci-size`; its
+tests run with `bash infra/ci-runners/tests/iwci-size.sh` (fake hosts in a
+temporary directory, nothing applied to the machine running them), and
+`.github/workflows/ci-runner-hosts.yml` runs them and shellcheck on every
+change here.
 
 ## Restarts and updates never kill a job
 
@@ -172,10 +218,11 @@ install script then:
   `SupplementaryGroups=kvm`;
 - makes `/var/lib/iwci/machines` (root, group `iwci`, 0750) and sets
   `IWCI_MACHINES` in the unit to it;
-- lets the kernel make 2 MiB huge pages on demand, up to the memory jobs
-  may reserve (`memory`, or three quarters of the host without one;
-  `vm.nr_overcommit_hugepages` in
-  `/etc/sysctl.d/60-iwci-machines.conf`). Huge pages are never swapped,
+- lets the kernel make 2 MiB huge pages on demand, up to the smaller of
+  the memory jobs may reserve (`memory`) and three quarters of the host
+  (`vm.nr_overcommit_hugepages` in
+  `/etc/sysctl.d/60-iwci-machines.conf`, set by `iwci-size huge-pages`;
+  with `size = "auto"`, again at every boot). Huge pages are never swapped,
   so a larger cap let machines admitted by estimate take the host's last
   page (ci-1 stopped answering with eleven running); past the cap a
   machine gets 4 KiB pages instead. A machine's memory goes in them,
@@ -214,10 +261,16 @@ can run:
   times a day in us-east-2 (AWS's spot placement score for one m8i.16xlarge
   there is 1 of 10). The fleet takes m8i.16xlarge, r8i.16xlarge,
   m8i.24xlarge or r8i.24xlarge in any us-east-1 zone, most capacity first
-  (`capacity-optimized-prioritized`), which scores 9 of 10. All four have
-  the 64 vCPUs and 200 GiB the host's `cpus` and `memory` assume; a larger
-  one leaves the rest idle. The account's us-east-1 spot vCPU quota was
-  raised from 32 for it.
+  (`capacity-optimized-prioritized`), which scores 9 of 10. The account's
+  us-east-1 spot vCPU quota was raised from 32 for it.
+- **Sizing.** ci-2 is a `size = "auto"` host with `zram = "auto"` (above),
+  so its image sizes itself at every boot and the runner uses all of
+  whichever type the fleet launched: 64 vCPUs and 200 GiB on an
+  m8i.16xlarge, 96 vCPUs and more memory on a 24xlarge. With the fixed
+  `cpus = 64` and `memory = "200GiB"` it had before, every type ran as an
+  m8i.16xlarge and a larger one left the rest idle. Only an image baked
+  from a host provisioned with `size = "auto"` does this; one baked
+  earlier boots with the fixed sizes it was baked with.
 
 The fleet is of type `maintain`: when AWS takes an instance back, the fleet
 launches another from launch template version 3, whose image is a snapshot

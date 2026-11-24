@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Sizes a CI runner host from its hardware. Installed as
+# /usr/local/sbin/iwci-size by the install script (infra/ci-runners) on every
+# host, and run at every boot, before iwci-zram.service and iwci.service, by
+# iwci-size.service on a host with `size = "auto"`: one baked image then
+# serves whatever instance type it boots on.
+#
+#   iwci-size boot        set IWCI_CPUS and IWCI_MEMORY in
+#                         /etc/iwci/iwci.env, the zram size in
+#                         /etc/iwci/zram.env, and the huge page cap where
+#                         machines are on (60-iwci-machines.conf exists)
+#   iwci-size huge-pages  only the huge page cap, from the IWCI_MEMORY the
+#                         env file has (the install script, on every host
+#                         with machines)
+#   iwci-size show        print what `boot` would set, and change nothing
+#
+# The env file holds the server key and the R2 credentials: nothing here
+# prints it. It is replaced whole (a copy with the same owner and mode,
+# renamed over it), with every line but those two kept as it was.
+#
+# For tests: IWCI_SIZE_ROOT is put before every path (and no sysctl is
+# applied when it is set), and IWCI_SIZE_CPUS stands in for nproc
+# (tests/iwci-size.sh).
+set -euo pipefail
+
+# The rule, from ci-2 (an m8i.16xlarge: 64 vCPUs, 247.7 GiB MemTotal), which
+# ran well with cpus = 64, memory = "200GiB" and zram = "40GiB" set by hand:
+#
+# - Jobs get 81% of MemTotal, in whole GiB rounded down (200 of 247.7 GiB is
+#   80.7%; 81% keeps that host at 200). The rest is the host's: the runner's
+#   own process, where every Node job runs, the kernel, the page cache, and
+#   zram's compressed pages.
+# - zram is a fifth of the jobs' memory (40 of 200 GiB): full, a device holds
+#   about a third of its size in RAM, so that is a fifteenth, well inside the
+#   host's share. At least 1 GiB, and at most 128 GiB (a host of about
+#   800 GiB): the device's table takes RAM even when empty, and an estimate
+#   wrong by more than that is the runner's pressure check's to catch.
+# - Every CPU that is online.
+# - Huge pages: at most the smaller of the jobs' memory and three quarters
+#   of MemTotal, in 2 MiB pages. Huge pages are never swapped or reclaimed,
+#   so machines admitted past what they hold could otherwise take every page
+#   the host has (ci-1, 31 GiB, stopped answering with eleven running).
+JOB_MEMORY_PERCENT=81
+ZRAM_DIVISOR=5
+ZRAM_MIN_GIB=1
+ZRAM_MAX_GIB=128
+HUGE_PAGES_HOST_QUARTERS=3
+
+root="${IWCI_SIZE_ROOT:-}"
+env_file="$root/etc/iwci/iwci.env"
+zram_env="$root/etc/iwci/zram.env"
+meminfo="$root/proc/meminfo"
+huge_conf="$root/etc/sysctl.d/60-iwci-machines.conf"
+
+die() {
+  echo "iwci-size: $*" >&2
+  exit 1
+}
+
+host_kib() {
+  local kib
+  kib=$(awk '/^MemTotal:/ { print $2 }' "$meminfo")
+  [[ $kib =~ ^[1-9][0-9]*$ ]] || die "no MemTotal in $meminfo"
+  echo "$kib"
+}
+
+cpus() {
+  local n="${IWCI_SIZE_CPUS:-$(nproc)}"
+  [[ $n =~ ^[1-9][0-9]*$ ]] || die "not a CPU count: $n"
+  echo "$n"
+}
+
+job_memory_gib() {
+  local gib=$(($1 * JOB_MEMORY_PERCENT / 100 / 1048576))
+  ((gib >= 1)) || gib=1
+  echo "$gib"
+}
+
+zram_gib() {
+  local gib=$(($1 / ZRAM_DIVISOR))
+  ((gib >= ZRAM_MIN_GIB)) || gib=$ZRAM_MIN_GIB
+  ((gib <= ZRAM_MAX_GIB)) || gib=$ZRAM_MAX_GIB
+  echo "$gib"
+}
+
+# A runner memory size (`200GiB`, `24576MiB`, bytes) in KiB; nothing for
+# anything else.
+size_kib() {
+  [[ $1 =~ ^([0-9]+)(B|KiB|MiB|GiB|TiB)?$ ]] || return 0
+  local n=${BASH_REMATCH[1]}
+  case ${BASH_REMATCH[2]} in
+  TiB) echo $((n << 30)) ;;
+  GiB) echo $((n << 20)) ;;
+  MiB) echo $((n << 10)) ;;
+  KiB) echo "$n" ;;
+  *) echo $((n >> 10)) ;;
+  esac
+}
+
+# The huge page cap for a host of $1 KiB whose jobs may hold $2 KiB (empty
+# when the runner has no IWCI_MEMORY, so it takes the machine's).
+huge_pages() {
+  local cap=$(($1 * HUGE_PAGES_HOST_QUARTERS / 4))
+  if [[ -n ${2:-} ]] && (($2 < cap)); then
+    cap=$2
+  fi
+  echo $((cap / 2048))
+}
+
+# The IWCI_MEMORY the env file has now, quoted or not.
+env_memory() {
+  awk '/^IWCI_MEMORY=/ { sub(/^IWCI_MEMORY=/, ""); gsub(/"/, ""); print; exit }' "$env_file"
+}
+
+tmp=""
+trap 'if [[ -n $tmp ]]; then rm -f "$tmp"; fi' EXIT
+
+# Replaces $1 with what the rest of the arguments, a command, print: they
+# are written into a copy of it (same owner and mode, so the secrets in it
+# are never readable by anyone the original is not), which is renamed over
+# the original only if something changed. Not a pipe, which would run this
+# in a subshell the trap above does not cover.
+replace() {
+  local file=$1
+  shift
+  tmp=$(mktemp "$(dirname "$file")/.$(basename "$file").XXXXXX")
+  if [[ -e $file ]]; then
+    cp -p "$file" "$tmp"
+  fi
+  "$@" >"$tmp"
+  if [[ -e $file ]] && cmp -s "$tmp" "$file"; then
+    rm -f "$tmp"
+  else
+    mv -f "$tmp" "$file"
+  fi
+  tmp=""
+}
+
+set_huge_pages() {
+  local pages=$1
+  replace "$huge_conf" printf '%s\n' \
+    "# Written by iwci-size (infra/ci-runners): 2 MiB huge pages for machines." \
+    "vm.nr_overcommit_hugepages = $pages"
+  chmod 0644 "$huge_conf"
+  if [[ -z $root ]]; then
+    sysctl -q -p "$huge_conf"
+  fi
+  echo "iwci-size: at most $pages huge pages ($(awk -v p="$pages" 'BEGIN { printf "%.1f", p / 512 }') GiB)"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+boot | show)
+  kib=$(host_kib)
+  n=$(cpus)
+  memory=$(job_memory_gib "$kib")
+  zram=$(zram_gib "$memory")
+  pages=$(huge_pages "$kib" $((memory << 20)))
+  host=$(awk -v kib="$kib" 'BEGIN { printf "%.1f", kib / 1048576 }')
+  if [[ $cmd == show ]]; then
+    echo "host: $n CPUs, $host GiB"
+    echo "IWCI_CPUS=$n"
+    echo "IWCI_MEMORY=${memory}GiB"
+    echo "IWCI_ZRAM_SIZE=${zram}GiB"
+    echo "vm.nr_overcommit_hugepages=$pages"
+    exit 0
+  fi
+  [[ -f $env_file ]] || die "no $env_file"
+  # The two lines in place (the first of each; a second goes), added at the
+  # end when missing, and every other line as it was.
+  replace "$env_file" awk -v cpus="IWCI_CPUS=\"$n\"" -v memory="IWCI_MEMORY=\"${memory}GiB\"" '
+    /^IWCI_CPUS=/ { if (!c++) print cpus; next }
+    /^IWCI_MEMORY=/ { if (!m++) print memory; next }
+    { print }
+    END { if (!c) print cpus; if (!m) print memory }
+  ' "$env_file"
+  replace "$zram_env" printf '%s\n' \
+    "# Written by iwci-size at boot (infra/ci-runners): read by iwci-zram.service." \
+    "IWCI_ZRAM_SIZE=${zram}GiB"
+  chmod 0644 "$zram_env"
+  echo "iwci-size: $n CPUs and $host GiB: IWCI_CPUS=$n, IWCI_MEMORY=${memory}GiB, zram ${zram}GiB"
+  if [[ -f $huge_conf ]]; then
+    set_huge_pages "$pages"
+  fi
+  ;;
+huge-pages)
+  [[ -f $env_file ]] || die "no $env_file"
+  set_huge_pages "$(huge_pages "$(host_kib)" "$(size_kib "$(env_memory)")")"
+  ;;
+*)
+  echo "usage: iwci-size boot|huge-pages|show" >&2
+  exit 2
+  ;;
+esac

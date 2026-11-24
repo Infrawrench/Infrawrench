@@ -11,12 +11,18 @@ variable "hosts" {
     - url: how the proxy reaches it (https, through a tunnel or a TLS
       front). Leave `listen` on loopback when a tunnel carries the traffic.
     - cpus / memory: the runner's limits (default: the machine's).
+    - size: `auto` to size the host from its hardware at every boot
+      instead (files/iwci-size): every CPU, 81% of the memory for jobs,
+      and the huge page cap and, with `zram = "auto"`, the zram device to
+      match. For an image that boots on more than one instance type (ci-2's
+      fleet). Leave `cpus` and `memory` unset with it. Off by default.
     - memory_admission: what a job reserves of `memory`: `limit`, its own
       `memory:` (the default), or `estimate`, what it held the last times
       it ran, so that more jobs run at once. Set `zram` with `estimate`.
     - zram: the size of a compressed swap device in RAM, such as `12GiB`
       (about 4 GiB of RAM when full); none by default. The net under
-      `memory_admission = "estimate"`: see files/install.sh.
+      `memory_admission = "estimate"`: see files/install.sh. `auto` (with
+      `size = "auto"`) sizes it at every boot, a fifth of the jobs' memory.
     - iwci_binary_path: this host's first binary, when its architecture
       differs from `iwci_binary_path`'s (an ARM64 host beside x86_64 ones).
     - native_sandbox: prepare the host for native jobs (Bun) in gVisor
@@ -51,6 +57,7 @@ variable "hosts" {
     listen       = optional(string, "127.0.0.1:8547")
     cpus         = optional(number)
     memory       = optional(string)
+    size         = optional(string)
     tunnel_token = optional(string)
     # What a job reserves of `memory` (`limit` or `estimate`), and the
     # compressed swap in RAM that backs `estimate`.
@@ -80,8 +87,22 @@ variable "hosts" {
     error_message = "memory_admission is `limit` or `estimate`."
   }
   validation {
-    condition     = alltrue([for h in var.hosts : h.zram == null || can(regex("^[1-9][0-9]*(MiB|GiB)$", coalesce(h.zram, "1GiB")))])
-    error_message = "zram is a size in MiB or GiB, such as `12GiB`."
+    condition     = alltrue([for h in var.hosts : h.zram == null || can(regex("^([1-9][0-9]*(MiB|GiB)|auto)$", coalesce(h.zram, "1GiB")))])
+    error_message = "zram is a size in MiB or GiB, such as `12GiB`, or `auto`."
+  }
+  validation {
+    condition     = alltrue([for h in var.hosts : h.size == null || h.size == "auto"])
+    error_message = "size is `auto` or unset."
+  }
+  validation {
+    condition = alltrue([for h in var.hosts : h.size != "auto" || (
+      h.cpus == null && h.memory == null && (h.zram == null || h.zram == "auto")
+    )])
+    error_message = "A host with size = \"auto\" takes its cpus and memory from the hardware: leave them unset, and set zram to \"auto\" or not at all."
+  }
+  validation {
+    condition     = alltrue([for h in var.hosts : h.zram != "auto" || h.size == "auto"])
+    error_message = "zram = \"auto\" needs size = \"auto\"."
   }
   validation {
     condition     = length(distinct([for h in var.hosts : h.name])) == length(var.hosts)

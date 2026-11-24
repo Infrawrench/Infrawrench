@@ -21,6 +21,41 @@ install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
 install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
 rm -f /tmp/iwci.env /tmp/iwci.service
 
+# The sizing script (files/iwci-size) goes on every host: it holds the one
+# rule for the huge page cap (machines, below). With `size = "auto"` it
+# also runs at every boot, from iwci-size.service, before zram and the
+# runner, and sets the runner's CPUs and memory (IWCI_CPUS and IWCI_MEMORY
+# above, which Terraform leaves out), the zram size and that cap from the
+# hardware: an image of this host then serves any instance type it boots
+# on. It runs here too, so the runner started below has them now.
+install -o root -g root -m 0755 /tmp/iwci-size.upload /usr/local/sbin/iwci-size
+size="$(cat /tmp/iwci-size 2>/dev/null || true)"
+rm -f /tmp/iwci-size /tmp/iwci-size.upload
+if [[ "$size" == "auto" ]]; then
+  cat >/etc/systemd/system/iwci-size.service <<'UNIT'
+# Written by the iwci install script (infra/ci-runners); edits here are overwritten.
+[Unit]
+Description=Size the CI runner from this machine's CPUs and memory
+Before=iwci-zram.service iwci.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/iwci-size boot
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable iwci-size >/dev/null
+  /usr/local/sbin/iwci-size boot
+elif [[ -f /etc/systemd/system/iwci-size.service ]]; then
+  systemctl disable iwci-size >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/iwci-size.service /etc/iwci/zram.env
+  systemctl daemon-reload
+  echo "sizing at boot removed: the host's cpus and memory apply"
+fi
+
 # Native jobs (Bun) run in a gVisor sandbox per job (crates/iwci-sandbox):
 # off unless the host's `native_sandbox` is set. It needs the pinned gVisor
 # release, a cgroup subtree of the runner's own for each sandbox's memory,
@@ -147,30 +182,11 @@ if [[ "$machines" == "true" ]]; then
   # with a virtio-fs device has its memory in a shared memfd, which in
   # 4 KiB pages costs its boot 0.5 s at 2 GiB and 1.7 s at 8 GiB (measured
   # on ci-1); the runner falls back to them when the pages are not there.
-  #
-  # At most the memory jobs may reserve (`IWCI_MEMORY`), or three quarters
-  # of the host without one: huge pages are never swapped or reclaimed, so
-  # machines admitted past what they hold (`memory_admission = "estimate"`)
-  # could take every page the host has. ci-1 (31 GiB) stopped answering
-  # with eleven machines running. Past the cap a machine gets 4 KiB pages,
-  # a slower boot, and the host keeps its own memory.
-  host_kib=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
-  cap_kib=$((host_kib * 3 / 4))
-  job_memory=$(sed -n 's/^IWCI_MEMORY="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /etc/iwci/iwci.env)
-  if [[ $job_memory =~ ^([0-9]+)(B|KiB|MiB|GiB|TiB)?$ ]]; then
-    n=${BASH_REMATCH[1]}
-    case ${BASH_REMATCH[2]} in
-      TiB) kib=$((n << 30)) ;;
-      GiB) kib=$((n << 20)) ;;
-      MiB) kib=$((n << 10)) ;;
-      KiB) kib=$n ;;
-      *) kib=$((n >> 10)) ;;
-    esac
-    ((kib < cap_kib)) && cap_kib=$kib
-  fi
-  huge_pages=$((cap_kib / 2048))
-  echo "vm.nr_overcommit_hugepages = $huge_pages" >/etc/sysctl.d/60-iwci-machines.conf
-  sysctl -q -p /etc/sysctl.d/60-iwci-machines.conf
+  # The cap (vm.nr_overcommit_hugepages, in 60-iwci-machines.conf) is the
+  # smaller of the memory jobs may reserve and three quarters of the host:
+  # iwci-size has the rule and why, and sets it again at every boot on a
+  # host with `size = "auto"`.
+  /usr/local/sbin/iwci-size huge-pages
   if [[ ! -e /dev/kvm ]]; then
     echo "warning: no /dev/kvm: the runner will run no virtual machines here (x86_64 needs VT-x or AMD-V, Graviton a .metal instance)" >&2
   fi
@@ -237,8 +253,20 @@ fi
 #   the kernel's, not the unit's: `MemoryMax` plus a third of the zram size
 #   has to stay under the host's memory, and `MemorySwapMax=0` would take
 #   the net away.
+#
+# `zram = "auto"` (with `size = "auto"`) leaves the size to iwci-size, which
+# writes it to /etc/iwci/zram.env at every boot, before the unit starts.
 zram_size="$(cat /tmp/iwci-zram 2>/dev/null || true)"
 rm -f /tmp/iwci-zram
+if [[ "$zram_size" == "auto" && "$size" != "auto" ]]; then
+  echo "error: zram = \"auto\" needs size = \"auto\"" >&2
+  exit 1
+fi
+if [[ "$zram_size" == "auto" ]]; then
+  zram_environment="EnvironmentFile=/etc/iwci/zram.env"
+else
+  zram_environment="Environment=IWCI_ZRAM_SIZE=$zram_size"
+fi
 if [[ -n "$zram_size" ]]; then
   if ! modinfo zram >/dev/null 2>&1; then
     # Ubuntu's cloud kernels keep zram in the extra modules package.
@@ -303,7 +331,7 @@ Before=iwci.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment=IWCI_ZRAM_SIZE=$zram_size
+$zram_environment
 ExecStart=/usr/local/sbin/iwci-zram start
 ExecStop=/usr/local/sbin/iwci-zram stop
 
