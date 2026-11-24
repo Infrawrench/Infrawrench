@@ -772,6 +772,14 @@ jobs:
 - **Network.** The machine's traffic goes through the runner's own gateway
   under the same policy as an isolate's ([Networking](#networking)):
   public addresses only, never the host. `network: false` cuts it off.
+  Its `eth0` has a 65,000-byte MTU, the gateway's, offered by the network
+  device (`host_mtu`): the link is a socket on the runner, so nothing on it
+  fragments, and a download takes a fortieth of the frames 1,500 bytes
+  would. With the gateway's 256 KiB windows a machine downloads at about
+  what the host does (an image's layers from `ghcr.io`, three at a time,
+  at 370 to 400 MB/s on a c8i where 1,500 bytes and 64 KiB windows gave
+  230 to 250), and the runner and the emulator spend a third less CPU time
+  per byte. Docker's own bridge inside the machine keeps 1,500 bytes.
 - **Version managers, cached.** The image has `nvm`, rbenv (with
   ruby-build), goenv and Bun beside its default Node.js, Ruby and Go, and
   keeps what nvm, rbenv and goenv install between runs of a job on its
