@@ -5087,6 +5087,18 @@ otherwise. Runners are meant to sit behind a plain load balancer: reports,
 billing records and caches go to the shared object store, so any runner can
 answer for any owner, and a full runner says so instead of queueing.
 
+Each connection is served on a thread of its own for as long as it is open,
+its requests in turn (a `?wait=true` run holds its connection until the run
+ends), so a client's keep-alive connections are each answered at once (on
+tiny_http's connection pool, which this replaced, one could go unread until
+another closed). Up to 1,024 connections are open at once. A cloud job's
+machine, known by its claim token, holds at most 16 of them, and requests
+without a credential 64 between them; a request on one more is answered
+`429` with `Retry-After`. The JSON bodies the routes read (each at most
+1 MiB) are held to 256 MiB across every connection, and one that finds no
+room within 10 s is answered `503` with `Retry-After`; an artifact upload
+streams through and holds none. A connection idle for 5 minutes is closed.
+
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |

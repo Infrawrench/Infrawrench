@@ -21,8 +21,9 @@ use std::io::Read;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
-use tiny_http::{Header, Method, Request, Response, ResponseBox};
+use tiny_http::{Header, Method, Response, ResponseBox};
 
+use super::http::Request;
 use super::{MAX_BODY, Server, error, json_response};
 use crate::external::{Finish, Refusal, percent_decode};
 
