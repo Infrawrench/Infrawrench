@@ -240,6 +240,10 @@ app_env = {
   # org on a paid plan. The GitHub App's webhook must subscribe to "Push",
   # "Pull request", "Check run" and "Check suite", with "Checks: write".
   # Without the two check events GitHub's Re-run buttons do nothing.
+  # CI_PROXY_KEY also keys the tokens runners send with a run's notices
+  # (APP_URL/api/ci-notify/runs/<id>, on the edge), which bring a finished run
+  # into the app and onto GitHub within a second; rotating it leaves the runs
+  # going at the time to the poller.
   CI_PROXY_URL = "https://ci-proxy.example.com"
   CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
   # Optional: signs the links a CI run's downloads (`downloads:`) are fetched

@@ -9,6 +9,7 @@ pub mod install_scripts;
 pub mod lent;
 pub mod machines;
 pub mod memory;
+pub mod notify;
 pub mod runner;
 pub mod schedule;
 pub mod sealed;

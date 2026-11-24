@@ -125,6 +125,7 @@ export * from "./domains/invitations";
 export * from "./domains/invoices";
 export * from "./domains/issue-webhooks";
 export * from "./domains/ci-jobs";
+export * from "./domains/ci-notify";
 export * from "./domains/jira";
 export * from "./domains/jit-access";
 export * from "./domains/k8s-efficiency-reports";
@@ -287,6 +288,7 @@ import { InvitationsApi } from "./domains/invitations";
 import { InvoicesApi } from "./domains/invoices";
 import { IssueWebhooksApi } from "./domains/issue-webhooks";
 import { CiJobsApi } from "./domains/ci-jobs";
+import { CiNotifyApi } from "./domains/ci-notify";
 import { JiraApi } from "./domains/jira";
 import { JitAccessApi } from "./domains/jit-access";
 import { KubernetesEfficiencyReportsApi } from "./domains/k8s-efficiency-reports";
@@ -456,6 +458,7 @@ export const API_DEFINITIONS = {
   invoices: InvoicesApi,
   "issue-webhooks": IssueWebhooksApi,
   "ci-jobs": CiJobsApi,
+  "ci-notify": CiNotifyApi,
   jira: JiraApi,
   "jit-access": JitAccessApi,
   "k8s-efficiency-reports": KubernetesEfficiencyReportsApi,

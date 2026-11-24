@@ -42,6 +42,8 @@ class FakeRunner {
   jobCalls: Array<{ method: string; path: string; body: string }> = [];
   /** Whether it says it can share a run (a runner from before does not). */
   split = false;
+  /** Whether it says it takes `notify` (a runner from before does not). */
+  notify = false;
   /** The offers to help another runner's run it took. */
   helps: Array<Record<string, unknown>> = [];
   /** Answers an offer to help with 429, as a runner helping enough does. */
@@ -76,6 +78,7 @@ class FakeRunner {
         slots_free: this.slotsFree,
         runs_active: this.runs.length,
         ...(this.split ? { split: true, runs_helping: this.helps.length } : {}),
+        ...(this.notify ? { notify: true } : {}),
         ...(this.platforms === null ? {} : { platforms: this.platforms }),
       });
     }
@@ -927,6 +930,65 @@ describe("split runs", () => {
       of: primary.runs[0]?.id,
       runner: helper === a ? "0" : "1",
     });
+  });
+});
+
+describe("notify", () => {
+  const request = { repo: "https://github.com/acme/web", branch: "main" };
+  const notify = { url: "https://app.example/api/ci-notify/runs/r1", token: "not-a-real-token" };
+
+  it("sends `notify` to the runner that has the run when it takes the field, and never to a helper", async () => {
+    const a = new FakeRunner("http://a.test", 8, 2);
+    const b = new FakeRunner("http://b.test", 8, 6);
+    a.split = true;
+    b.split = true;
+    b.notify = true;
+    a.notify = true;
+    const { call } = await setup([a, b]);
+    expect((await call("POST", "/v1/runs", { ...request, notify })).status).toBe(202);
+    expect(b.runs[0]?.body).toEqual({ ...request, split: { runner: "1" }, notify });
+    expect(a.helps).toEqual([{ ...request, split: { of: b.runs[0]?.id, runner: "0" } }]);
+    const cap = (await (await call("GET", "/v1/capacity")).json()) as {
+      runners: Array<{ name: string; notify: boolean }>;
+    };
+    expect(cap.runners.map((r) => [r.name, r.notify])).toEqual([
+      ["0", true],
+      ["1", true],
+    ]);
+  });
+
+  it("leaves `notify` out for a runner that does not take it, which is then followed by polling", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const { call } = await setup([runner]);
+    expect((await call("POST", "/v1/runs", { ...request, notify })).status).toBe(202);
+    expect(runner.runs[0]?.body).toEqual(request);
+  });
+
+  it("sends `notify` with no prepare or concurrency read", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    runner.notify = true;
+    const { call } = await setup([runner]);
+    expect((await call("POST", "/v1/prepare", { ...request, notify })).status).toBe(202);
+    expect(runner.prepares).toEqual([request]);
+    expect((await call("POST", "/v1/concurrency", { ...request, notify })).status).toBe(200);
+    expect(runner.resolved[0]).not.toHaveProperty("notify");
+  });
+
+  it("refuses a `notify` that is not an https URL and a token", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    runner.notify = true;
+    const { call } = await setup([runner]);
+    for (const bad of [
+      "https://app.example/x",
+      { url: "http://app.example/x", token: "t" },
+      { url: "https://app.example/x", token: "" },
+      { url: "https://app.example/x", token: "t".repeat(513) },
+      { url: "https://app.example/x", token: "t", extra: 1 },
+      { url: "https://app.example/x" },
+    ]) {
+      expect((await call("POST", "/v1/runs", { ...request, notify: bad })).status).toBe(400);
+    }
+    expect(runner.runs).toEqual([]);
   });
 });
 

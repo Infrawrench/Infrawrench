@@ -12,7 +12,7 @@
 //! |-------|------|
 //! | `GET /healthz` | `200 ok`, unauthenticated, for load balancers |
 //! | `GET /v1/capacity` | slots, memory (reserved by jobs, and the process's own), active runs, and what V8 out-of-memory has cost the process |
-//! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting |
+//! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting; with `notify`, posts each change of the run's state there (`crate::notify`) |
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
 //! | `POST /v1/runs/{id}/cancel` | cancels a run on this runner, or some of its pipelines (`{ "pipelines": [file, ...] }`) |
@@ -108,6 +108,11 @@ pub struct Server {
     storage: crate::adapters::caches::StorageSamples,
     /// The most of them at once; 0 helps none.
     max_helping: usize,
+    /// Runs whose last notice (`notify`) has not gone yet: a drain waits
+    /// for them, so a run's end is told before the runner restarts.
+    notifying: Arc<AtomicUsize>,
+    /// What sends notices: HTTPS, or a recorder in tests.
+    notices: crate::notify::Sender,
     /// The host's memory and what the runner keeps of it outside the job
     /// budget, for `/v1/capacity` and the memory log (`crate::memory`).
     memory_host: Option<u64>,
@@ -271,7 +276,15 @@ impl Server {
             max_helping: DEFAULT_HELPING,
             memory_host: None,
             memory_reserve: None,
+            notifying: Arc::new(AtomicUsize::new(0)),
+            notices: crate::notify::http_sender(),
         })
+    }
+
+    /// Sends notices with `send` instead of over HTTPS (tests).
+    pub fn with_notices(mut self, send: crate::notify::Sender) -> Self {
+        self.notices = send;
+        self
     }
 
     /// The object store the runner keeps everything in.
@@ -522,6 +535,8 @@ impl Server {
             // A run may be shared with this runner (`split` in a run
             // request), and what it does for other runners' runs now.
             "split": true,
+            // It takes `notify` in a run request (`crate::notify`).
+            "notify": true,
             "runs_helping": self.runner.helping.as_ref().map_or(0, |h| h.runs()),
             // Every offer it holds: those, and the ones not asked yet.
             "runs_offered": self.helping.lock().unwrap().len(),
@@ -710,6 +725,9 @@ impl Server {
         if let Err(e) = req.inputs() {
             return error(400, e);
         }
+        if let Some(Err(e)) = req.notify.as_ref().map(|n| n.check()) {
+            return error(400, e);
+        }
         // Helping another runner's run is not a run of this runner's: it
         // is admitted by a count of its own and takes none of the others.
         let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
@@ -780,17 +798,39 @@ impl Server {
         if late_offer && self.draining.load(Ordering::SeqCst) {
             control.cancel(None);
         }
+        // Whoever started it is told as it changes and when it ends; nobody
+        // is told of a helper's run, which the run it helps reports.
+        let notifier = req.notify.clone().filter(|_| !helper).map(|target| {
+            self.notifying.fetch_add(1, Ordering::SeqCst);
+            let notifying = self.notifying.clone();
+            crate::notify::Notifier::start(target, id.clone(), self.notices.clone(), move || {
+                notifying.fetch_sub(1, Ordering::SeqCst);
+            })
+        });
+        let watcher = notifier.as_ref().map(|n| n.watcher());
         let runner = self.runner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let id_for_thread = id.clone();
         let this = self.clone();
         std::thread::spawn(move || {
             let sink = hub.clone();
-            let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
+            let logs: crate::schedule::LogFn = Arc::new(move |event: crate::schedule::LogEvent| {
+                // A pipeline or a job starting or ending; never output.
+                if let Some(w) = &watcher
+                    && !matches!(event, crate::schedule::LogEvent::Output { .. })
+                {
+                    w.changed();
+                }
+                sink.push(&event);
+            });
             // Nobody follows a helper's run: the run it helps has the log.
             let logs = (!helper).then_some(logs);
             let outcome = runner.run_with_logs(&req, &id_for_thread, logs, Some(control));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
+            // Recorded, so a read that follows the notice finds it ended.
+            if let Some(notifier) = notifier {
+                notifier.ended(entry.state);
+            }
             if let Some(jobs) = &this.runner.external {
                 jobs.forget_run(&id_for_thread);
             }
@@ -1408,6 +1448,15 @@ mod tests {
     /// A server over a store in a directory of its own, with 4 slots and
     /// 8 GiB for jobs, that helps at most `helping` runs.
     fn server(name: &str, helping: usize) -> (Arc<Server>, std::path::PathBuf) {
+        server_with(name, helping, |s| s)
+    }
+
+    /// [`server`], changed by `with` before it starts.
+    fn server_with(
+        name: &str,
+        helping: usize,
+        with: impl FnOnce(Server) -> Server,
+    ) -> (Arc<Server>, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("iwci-server-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let runner = Runner {
@@ -1441,7 +1490,7 @@ mod tests {
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()
             .with_helping(helping);
-        (Arc::new(server), dir)
+        (Arc::new(with(server)), dir)
     }
 
     /// An offer to help run `of`, which is another runner's.
@@ -1602,6 +1651,92 @@ mod tests {
             429
         );
         assert_eq!(server.capacity()["runs_offered"], 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A sender that keeps every notice it is given.
+    fn notice_recorder() -> (
+        crate::notify::Sender,
+        Arc<Mutex<Vec<(String, crate::notify::Notice)>>>,
+    ) {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let kept = sent.clone();
+        let send: crate::notify::Sender = Arc::new(
+            move |target: &crate::notify::NotifyRequest, notice: &crate::notify::Notice| {
+                kept.lock()
+                    .unwrap()
+                    .push((target.url.clone(), notice.clone()));
+                crate::notify::Answer::Done
+            },
+        );
+        (send, sent)
+    }
+
+    #[test]
+    fn a_run_that_names_notify_tells_it_how_the_run_ended_once_it_is_recorded() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify", 0, |s| s.with_notices(send));
+        assert_eq!(server.capacity()["notify"], true);
+        // A repository that is not there: the run ends at once, as an error.
+        let req: RunRequest = serde_json::from_value(json!({
+            "repo": dir.join("no-such-repository").to_string_lossy(),
+            "owner": "acme",
+            "repo-id": "app",
+            "branch": "main",
+            "notify": { "url": "https://app.example.com/api/ci-notify/runs/r1", "token": "t0ken" },
+        }))
+        .unwrap();
+        let reply = server.start_run(req, false);
+        assert_eq!(reply.status_code().0, 202);
+        let id = server.order.lock().unwrap().last().cloned().unwrap();
+        wait_for("the run to end and be told", || {
+            sent.lock()
+                .unwrap()
+                .iter()
+                .any(|(_, n)| n.state != "running")
+        });
+        let sent = sent.lock().unwrap().clone();
+        let (url, last) = sent.last().unwrap();
+        assert_eq!(url, "https://app.example.com/api/ci-notify/runs/r1");
+        assert_eq!(last.run, id);
+        assert_ne!(last.state, "running");
+        // Told only once it was recorded: the entry says so too.
+        assert_eq!(server.runs.lock().unwrap()[&id].state, last.state);
+        wait_for("the notice thread to end", || server.busy() == 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_notify_that_is_not_https_to_a_name_is_refused_before_the_run_starts() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify-refused", 0, |s| s.with_notices(send));
+        let req: RunRequest = serde_json::from_value(json!({
+            "repo": "/nowhere",
+            "owner": "acme",
+            "repo-id": "app",
+            "branch": "main",
+            "notify": { "url": "https://127.0.0.1:8547/v1/drain", "token": "t0ken" },
+        }))
+        .unwrap();
+        assert_eq!(server.start_run(req, false).status_code().0, 400);
+        assert_eq!(server.capacity()["runs_active"], 0);
+        assert!(sent.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_offer_to_help_tells_nobody() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify-offer", 1, |s| s.with_notices(send));
+        let mut req = offer(&"d".repeat(32));
+        req.notify = Some(crate::notify::NotifyRequest {
+            url: "https://app.example.com/x".into(),
+            token: "t0ken".into(),
+        });
+        assert_eq!(server.start_run(req, false).status_code().0, 202);
+        server.begin_drain("test");
+        wait_for("the drain to end the offer", || server.busy() == 0);
+        assert!(sent.lock().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

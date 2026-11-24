@@ -34,6 +34,7 @@ function capacity(c: Partial<Capacity> & { name: string }): Capacity {
     v8LostHeap: null,
     split: false,
     runsHelping: 0,
+    notify: false,
     platforms: ["wasm"],
     ...c,
   };

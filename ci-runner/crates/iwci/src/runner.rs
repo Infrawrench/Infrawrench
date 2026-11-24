@@ -163,6 +163,11 @@ pub struct RunRequest {
     /// `split.of` naming this run. See [`SplitRequest`].
     #[serde(default)]
     pub split: Option<SplitRequest>,
+    /// Where to tell the caller that the run's state changed, so it reads
+    /// the run then rather than on its next poll. See [`crate::notify`].
+    /// Its token is never stored or echoed. A helper's run ignores it.
+    #[serde(default)]
+    pub notify: Option<crate::notify::NotifyRequest>,
 }
 
 /// How a run is shared with other runners (`RunRequest::split`).
@@ -516,12 +521,14 @@ const SECRETS_WAIT: Duration = Duration::from_secs(10);
 /// otherwise run whatever that branch's head is by the time the helper
 /// joins), and with no secrets and nothing lent, whatever was sent: the
 /// secrets come sealed from the primary once the helper joins, and a
-/// helper never runs a job that is lent anything.
+/// helper never runs a job that is lent anything. Nor is the caller told
+/// of it: the primary's run is the one it follows.
 pub fn helper_request(req: &RunRequest, commit: &str) -> RunRequest {
     RunRequest {
         sha: Some(commit.to_string()),
         secrets: Secrets::default(),
         lent: Default::default(),
+        notify: None,
         ..req.clone()
     }
 }
