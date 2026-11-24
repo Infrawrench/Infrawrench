@@ -19,6 +19,12 @@ RestartSec=5
 # longest a job may run is 6 hours (`MAX_TIMEOUT_SECS` in iwci-spec).
 KillSignal=SIGTERM
 TimeoutStopSec=365min
+# The signal goes to the runner alone. Machines (QEMU) and sandboxes (the
+# gVisor Sentry) run in jobs/ of this unit's cgroup, and the default
+# (control-group) sends it to every process there at once, so a stop or a
+# restart killed each one mid-job while the runner drained. Whatever is left
+# once the runner exits is killed (SIGKILL), as before.
+KillMode=mixed
 # An update replaces /opt/iwci/bin/iwci in place and execs it, so that
 # directory is writable; nothing else outside the cache is.
 NoNewPrivileges=yes

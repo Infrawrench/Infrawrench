@@ -6,7 +6,9 @@
 //!   the proxy reads to send work elsewhere) and lets running ones finish.
 //! - **SIGTERM / SIGINT** drain, then exit 0, so `systemctl restart` or a
 //!   config change never kills a job. The unit's stop timeout has to cover
-//!   the longest job (`TimeoutStopSec`, see `deploy/`).
+//!   the longest job, and the signal has to reach the runner alone, not
+//!   the machines and sandboxes in its cgroup (`TimeoutStopSec` and
+//!   `KillMode=mixed` in `infra/ci-runners/files/iwci.service.tftpl`).
 //! - **Updates.** With `--update-channel`, the server reads
 //!   `releases/iwci/channels/<channel>.json` from its store every
 //!   `--update-every`. A manifest is only believed if it is signed by the
@@ -471,6 +473,36 @@ fn exec(exe: &Path) -> Result<std::convert::Infallible, String> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+
+    /// A drain only keeps jobs alive if the unit that stops the runner
+    /// signals the runner alone: machines and sandboxes live in its cgroup,
+    /// and systemd's default sends SIGTERM to all of them at once, which
+    /// killed every machine job of a "draining" restart.
+    #[test]
+    fn the_runners_unit_signals_the_runner_alone_and_waits_for_the_longest_job() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../infra/ci-runners/files/iwci.service.tftpl");
+        let Ok(unit) = std::fs::read_to_string(&path) else {
+            eprintln!("skipping: infra/ci-runners not present");
+            return;
+        };
+        let setting = |key: &str| {
+            let prefix = format!("{key}=");
+            let values: Vec<&str> = unit
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix(prefix.as_str()))
+                .collect();
+            assert_eq!(values.len(), 1, "{key} is set once in the unit");
+            values[0]
+        };
+        assert_eq!(setting("KillSignal"), "SIGTERM");
+        assert_eq!(setting("KillMode"), "mixed");
+        let minutes: u64 = setting("TimeoutStopSec")
+            .strip_suffix("min")
+            .and_then(|m| m.parse().ok())
+            .expect("TimeoutStopSec in minutes");
+        assert!(minutes * 60 > iwci_spec::MAX_TIMEOUT_SECS);
+    }
 
     #[test]
     fn a_restart_cancels_runs_still_going_after_its_grace() {
