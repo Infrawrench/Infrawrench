@@ -1539,6 +1539,25 @@ does. bash searches PATH itself and is not helped (README, "Known
 limitations"). `builtins/test.sh`'s `bash-node/path-dir-passes` is the
 check.
 
+**A socket pair asked for close-on-exec is close-on-exec (#1377).**
+wasix-libc before v2026-10-02.1 (wasix-org/wasix-libc#143) hands
+`sock_pair` the type `socketpair` is given, `SOCK_CLOEXEC` (0x2000) and
+`SOCK_NONBLOCK` (0x4000) included, and applies neither, and `sock_pair`
+took such a type for an unknown one and made a plain pair. libuv makes a
+child's stdio pipes with `socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC,
+...)`, so every child a Node process spawned got the parent's ends of every
+earlier child's stdio pipes, and a child holding a copy of another child's
+pipe kept it open after the parent closed it or exited: the other child saw
+EOF only when every holder had gone. `sock_pair` now takes the two bits out
+of the type and gives both ends what they ask for as it makes them, so no
+spawn on another thread finds them without it. A later C library clears
+the bits and sets the flags itself, which comes to the same. Edge.js links
+v2026-07-30.1, and the fix in the runtime covers whatever else links an
+older release too. That release also made `fcntl(F_SETFD, 0)` clear the
+flag, which older ones set instead; nothing tells that call apart from one
+that asks for the flag, so it is left alone. `iwci-runtime`'s
+`a_child_does_not_inherit_descriptors_made_close_on_exec` is the check.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1567,7 +1586,7 @@ stack before its side modules' TLS is set up, the closure calls and
 `call_dynamic` answer bad input with an errno, one write to a pipe is one
 send, a passed environment replaces the inherited one, a command's environment is defaults for every spawn, dead inodes are
 swept in proportion to the table, a link under a moved directory resolves
-from its new place, inode numbers are exact as JavaScript numbers, AF_UNIX stream sockets work on a path, `getcwd` leaves room for the NUL, a PATH search passes over a directory, a blocking read of a pipe or socket pair ends for a signal (the
+from its new place, inode numbers are exact as JavaScript numbers, AF_UNIX stream sockets work on a path, `getcwd` leaves room for the NUL, a PATH search passes over a directory, a socket pair's type can carry `SOCK_CLOEXEC` and `SOCK_NONBLOCK` (or every environment links wasix-libc v2026-10-02.1 or later), a blocking read of a pipe or socket pair ends for a signal (the
 linker's `Sigwakeup` included) and starts over, and such a wait (and a
 socket's) also ends for a pending link operation, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
@@ -1620,6 +1639,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe`,
 `a_variable_removed_from_the_environment_is_not_set_in_a_child`,
 `a_thread_blocked_reading_a_pipe_lets_another_thread_dlopen`,
+`a_child_does_not_inherit_descriptors_made_close_on_exec`,
 `a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 

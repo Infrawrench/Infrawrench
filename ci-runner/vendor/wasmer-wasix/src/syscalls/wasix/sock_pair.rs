@@ -1,10 +1,24 @@
 use virtual_fs::Pipe;
+use wasmer::FromToNativeWasmType;
 
 use super::*;
 use crate::{
     net::socket::{self, SocketProperties},
     syscalls::*,
 };
+
+/// `SOCK_NONBLOCK`, as wasix-libc's `<sys/socket.h>` defines it.
+const SOCK_NONBLOCK: i32 = 0x4000;
+/// `SOCK_CLOEXEC`, as wasix-libc's `<sys/socket.h>` defines it.
+///
+/// wasix-libc before v2026-10-02.1 (wasix-org/wasix-libc#143) passes the
+/// type `socketpair` is given straight through, these bits included, and
+/// applies neither: libuv's `socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC,
+/// ...)` read as an unknown type and made a pair any child inherited, so a
+/// Node child held every earlier child's stdio pipes open (#1377). Later
+/// releases clear the bits and set the flags themselves, which this leaves
+/// as they were.
+const SOCK_CLOEXEC: i32 = 0x2000;
 
 // FIXME
 /// ### `sock_pair()`
@@ -26,7 +40,8 @@ use crate::{
 /// ## Parameters
 ///
 /// * `af` - Address family
-/// * `socktype` - Socket type, either datagram or stream
+/// * `socktype` - Socket type, either datagram or stream, possibly with
+///   `SOCK_NONBLOCK` and `SOCK_CLOEXEC` set (see [`SOCK_CLOEXEC`])
 /// * `sock_proto` - Socket protocol
 ///
 /// ## Return
@@ -36,12 +51,24 @@ use crate::{
 pub fn sock_pair<M: MemorySize>(
     mut ctx: FunctionEnvMut<'_, WasiEnv>,
     af: Addressfamily,
-    ty: Socktype,
+    ty: i32,
     pt: SockProto,
     ro_sock1: WasmPtr<WasiFd, M>,
     ro_sock2: WasmPtr<WasiFd, M>,
 ) -> Result<Errno, WasiError> {
     WasiEnv::do_pending_operations(&mut ctx)?;
+
+    let fs_flags = if ty & SOCK_NONBLOCK != 0 {
+        Fdflags::NONBLOCK
+    } else {
+        Fdflags::empty()
+    };
+    let fd_flags = if ty & SOCK_CLOEXEC != 0 {
+        Fdflagsext::CLOEXEC
+    } else {
+        Fdflagsext::empty()
+    };
+    let ty = Socktype::from_native(ty & !(SOCK_NONBLOCK | SOCK_CLOEXEC));
 
     // only certain combinations are supported
     match pt {
@@ -56,7 +83,9 @@ pub fn sock_pair<M: MemorySize>(
 
     // FIXME: currently, socket properties are ignored outright, since they
     // make no sense for the underlying pipe
-    let (fd1, fd2) = wasi_try_ok!(sock_pair_internal(&mut ctx, None, None));
+    let (fd1, fd2) = wasi_try_ok!(sock_pair_internal(
+        &mut ctx, None, None, fs_flags, fd_flags
+    ));
 
     #[cfg(feature = "journal")]
     if ctx.data().enable_journal {
@@ -64,6 +93,22 @@ pub fn sock_pair<M: MemorySize>(
             tracing::error!("failed to save sock_pair event - {}", err);
             WasiError::Exit(ExitCode::from(Errno::Fault))
         })?;
+        // The journal's entry has no flags, so they follow as the calls a
+        // C library that applies them itself makes.
+        for fd in [fd1, fd2] {
+            if !fs_flags.is_empty() {
+                JournalEffector::save_fd_set_flags(&mut ctx, fd, fs_flags).map_err(|err| {
+                    tracing::error!("failed to save file set flags event - {}", err);
+                    WasiError::Exit(ExitCode::from(Errno::Fault))
+                })?;
+            }
+            if !fd_flags.is_empty() {
+                JournalEffector::save_fd_set_fdflags(&mut ctx, fd, fd_flags).map_err(|err| {
+                    tracing::error!("failed to save file set fd flags event - {}", err);
+                    WasiError::Exit(ExitCode::from(Errno::Fault))
+                })?;
+            }
+        }
     }
 
     let env = ctx.data();
@@ -78,6 +123,8 @@ pub(crate) fn sock_pair_internal(
     ctx: &mut FunctionEnvMut<'_, WasiEnv>,
     with_fd1: Option<WasiFd>,
     with_fd2: Option<WasiFd>,
+    fs_flags: Fdflags,
+    fd_flags: Fdflagsext,
 ) -> Result<(WasiFd, WasiFd), Errno> {
     let env = ctx.data();
     let (memory, state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
@@ -112,8 +159,8 @@ pub(crate) fn sock_pair_internal(
             .with_fd(
                 rights,
                 rights,
-                Fdflags::empty(),
-                Fdflagsext::empty(),
+                fs_flags,
+                fd_flags,
                 0,
                 inode1,
                 fd,
@@ -123,8 +170,8 @@ pub(crate) fn sock_pair_internal(
         state.fs.create_fd(
             rights,
             rights,
-            Fdflags::empty(),
-            Fdflagsext::empty(),
+            fs_flags,
+            fd_flags,
             0,
             inode1,
         )?
@@ -135,8 +182,8 @@ pub(crate) fn sock_pair_internal(
             .with_fd(
                 rights,
                 rights,
-                Fdflags::empty(),
-                Fdflagsext::empty(),
+                fs_flags,
+                fd_flags,
                 0,
                 inode2,
                 fd,
@@ -146,8 +193,8 @@ pub(crate) fn sock_pair_internal(
         state.fs.create_fd(
             rights,
             rights,
-            Fdflags::empty(),
-            Fdflagsext::empty(),
+            fs_flags,
+            fd_flags,
             0,
             inode2,
         )?
