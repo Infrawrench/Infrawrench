@@ -196,6 +196,35 @@ AWS CLI before about 2.32 does not know; boto3 1.44 does); ci-2 is an
 machines:` names anything missing, and `curl` of `/v1/capacity` on the
 listen address lists the platforms.
 
+## ci-2: AWS spot in us-east-1
+
+ci-2 is an AWS spot instance in us-east-1, launched by an EC2 fleet from the
+launch template `ci-2` (Ubuntu 24.04, 200 GB gp3, security group `ci-2`
+with SSH from the operator only, key `pogair`). Two things decide where it
+can run:
+
+- **Nested virtualization.** Machines need `/dev/kvm`, which an 8th
+  generation Intel instance only has when it is launched with
+  `CpuOptions.NestedVirtualization = enabled` (launch template version 2;
+  AWS CLI 2.31 cannot set it, boto3 1.44 can). Without it the runner offers
+  no `linux` platform.
+- **Spot capacity.** A single type in a single zone was reclaimed about five
+  times a day in us-east-2 (AWS's spot placement score for one m8i.16xlarge
+  there is 1 of 10). The fleet takes m8i.16xlarge, r8i.16xlarge,
+  m8i.24xlarge or r8i.24xlarge in any us-east-1 zone, most capacity first
+  (`capacity-optimized-prioritized`), which scores 9 of 10. All four have
+  the 64 vCPUs and 200 GiB the host's `cpus` and `memory` assume; a larger
+  one leaves the rest idle. The account's us-east-1 spot vCPU quota was
+  raised from 32 for it.
+
+A new instance has a new address: put it in the host's `ssh_host` before
+`terraform apply`. One that replaces a host this state already has is a new
+machine, not a reprovision: `terraform state rm 'terraform_data.host["ci-2"]'`
+first, or the destroy provisioner waits on the old address. Build the
+machine image on the new host (see above) before it takes `platform: linux`
+runs; until then it lists only `wasm`. Only one host may run with a
+tunnel's token at a time, or the proxy's requests are shared between them.
+
 ## Not covered
 
 TLS and reachability are yours: a tunnel token, or a TLS front that the
