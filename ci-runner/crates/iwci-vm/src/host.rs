@@ -41,11 +41,16 @@ use crate::archive::{self, Moded};
 use crate::images::{LinuxImage, WindowsImage, Workspaces};
 use crate::qemu::{self, Arch, Sockets};
 
-/// How big a Linux job's writable disk is. Sparse on the host, so only the
-/// sectors the job touches cost anything; the rest is a hole. This replaces
-/// the tmpfs writable layer, which used to charge a big install against the
-/// job's memory.
-const SCRATCH_DISK_BYTES: u64 = 20 << 30;
+/// How big a Linux job's scratch disk is. Sparse on the host, so only the
+/// sectors the job touches cost anything; the rest is a hole. The agent
+/// makes half of it swap, which the job's in-memory files and processes
+/// spill to past its `memory:`, and half Docker's storage, so a machine's
+/// writes may go 20 GiB past its memory, as an isolate's may go 20 GiB to
+/// disk (`--spill-disk`). At 20 GiB (10 of swap) shadcn/ui's `pnpm test`,
+/// whose CLI tests install a project after project into its tree, peaked at
+/// 10.0 GiB of swap in an 8 GiB machine and was killed out of memory once
+/// its restored pnpm store added the rest.
+const SCRATCH_DISK_BYTES: u64 = 40 << 30;
 
 /// The kind of machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

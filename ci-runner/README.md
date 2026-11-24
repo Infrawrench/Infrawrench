@@ -750,9 +750,12 @@ jobs:
   0.9 s, against 44 s onto an ext4 disk), and the kernel swaps what the
   job is not using to a scratch disk of its own when its files and
   processes outgrow its memory, rather than running out of room: the
-  runner attaches a 20 GiB sparse file, which the agent formats as ext4,
+  runner attaches a 40 GiB sparse file, which the agent formats as ext4,
   half of it a swap file and half Docker's storage (overlay2 needs a real
-  file system). The tmpfs holds up to the memory and the swap together.
+  file system). The tmpfs holds up to the memory and the swap together,
+  so a machine's files may go 20 GiB past its `memory:`, as an isolate's
+  may go 20 GiB to disk (`--spill-disk`); at 10 GiB of swap shadcn/ui's
+  `pnpm test` in 8 GiB swapped all of it and was killed out of memory.
   The file is deleted with the machine, and only what the job wrote takes
   room on the runner's disk. An image without `memory-upper` keeps the
   whole writable layer on the ext4 disk. Afterwards
