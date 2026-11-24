@@ -884,16 +884,20 @@ impl FileSystem for ViewFs {
     }
 
     fn read_dir(&self, path: &Path) -> virtual_fs::Result<ReadDir> {
+        // Listed under the lock a fetcher holds while it puts a file in
+        // place and stops it pending, so the two halves agree: listed
+        // first and the lock taken after, a file that arrived in between
+        // was in neither.
+        let s = self.scratch.lock();
         let listed = self.inner().read_dir(path)?;
-        let coming: Vec<(PathBuf, u64)> = {
-            let s = self.scratch.lock();
-            s.pending
-                .range(path.to_path_buf()..)
-                .take_while(|(p, _)| p.starts_with(path))
-                .filter(|(p, _)| p.parent() == Some(path))
-                .map(|(p, pending)| (p.clone(), pending.size()))
-                .collect()
-        };
+        let coming: Vec<(PathBuf, u64)> = s
+            .pending
+            .range(path.to_path_buf()..)
+            .take_while(|(p, _)| p.starts_with(path))
+            .filter(|(p, _)| p.parent() == Some(path))
+            .map(|(p, pending)| (p.clone(), pending.size()))
+            .collect();
+        drop(s);
         if coming.is_empty() {
             return Ok(listed);
         }
