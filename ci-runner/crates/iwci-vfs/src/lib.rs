@@ -101,10 +101,13 @@ pub fn create_dir_all(fs: &(impl FileSystem + ?Sized), path: impl AsRef<Path>) -
     let mut current = PathBuf::from("/");
     for component in path.components().skip(1) {
         current.push(component);
-        // Looked up first: the in-memory file system's `create_dir` lists
-        // the whole directory to find out whether it exists, which made
+        // Looked up first: the in-memory file system's `create_dir` listed
+        // the whole directory to find out whether it existed, which made
         // every file written under a `node_modules/.pnpm` of thousands of
-        // packages cost a listing of all of them (#998).
+        // packages cost a listing of all of them (#998). It looks the name
+        // up in the directory's index now (#1408), but an existing
+        // directory is still the common case, and other file systems may
+        // still list.
         if fs.metadata(&current).is_ok_and(|m| m.is_dir()) {
             continue;
         }
@@ -1646,10 +1649,11 @@ impl JobOverlay {
 
 /// What a file the job makes is charged beside its bytes: the upper layer's
 /// node for it and its write account (`accounts.rs`), its name included.
-/// Measured at about 350 bytes counted by the allocator, which keeps a
-/// little more of its own (`tests/accounts_memory.rs` holds the job to
-/// paying at least what it holds), so a job of tiny files cannot hold more
-/// of the runner's memory than its budget says, however deep they are.
+/// Measured at about 460 bytes counted by the allocator (60 of them its
+/// directory's name index, #1408), which keeps a little more of its own
+/// (`tests/accounts_memory.rs` holds the job to paying at least what it
+/// holds), so a job of tiny files cannot hold more of the runner's memory
+/// than its budget says, however deep they are.
 pub const ENTRY_COST: u64 = 512;
 
 fn entry_cost(path: &Path) -> u64 {

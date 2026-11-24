@@ -102,7 +102,7 @@
              }
              Some(Node::OffloadedFile(OffloadedFileNode { file, metadata, .. })) => {
                  file.resize(new_size, 0);
-@@ -244,45 +247,36 @@
+@@ -244,45 +247,39 @@
  
      fn unlink(&mut self) -> Result<()> {
          let filesystem = self.filesystem.clone();
@@ -152,30 +152,33 @@
 -        }
 +        // Find the position of the file in the parent, and the
 +        // inode of the parent.
++        //
++        // iwci patch (#1408): by its name, in each directory's index, rather
++        // than by reading every entry of every directory.
++        let name_of_file = fs
++            .storage
++            .get(inode_of_file)
++            .ok_or(FsError::BaseNotDirectory)?
++            .name()
++            .to_os_string();
 +        let (position, inode_of_parent) = fs
 +            .storage
 +            .iter()
 +            .find_map(|(inode_of_parent, node)| match node {
-+                Node::Directory(DirectoryNode { children, .. }) => {
-+                    children.iter().enumerate().find_map(|(nth, inode)| {
-+                        if inode == &inode_of_file {
-+                            Some((nth, inode_of_parent))
-+                        } else {
-+                            None
-+                        }
-+                    })
-+                }
++                Node::Directory(DirectoryNode { children, .. }) => children
++                    .position_of(&name_of_file, inode_of_file)
++                    .map(|position| (position, inode_of_parent)),
  
 -        Ok(())
 +                _ => None,
 +            })
 +            .ok_or(FsError::BaseNotDirectory)?;
 +
-+        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
++        fs.unlink_file_inode(inode_of_parent, &name_of_file, position, inode_of_file)
      }
  
      fn get_special_fd(&self) -> Option<u32> {
-@@ -337,6 +331,8 @@
+@@ -337,6 +334,8 @@
                          created: src.created_time(),
                          modified: src.last_modified(),
                          len: src.size(),
@@ -184,7 +187,7 @@
                      };
  
                      *inode = Node::CustomFile(CustomFileNode {
-@@ -370,6 +366,8 @@
+@@ -370,6 +369,8 @@
                          created: 1,
                          modified: 1,
                          len: src.len() as u64,
@@ -193,7 +196,7 @@
                      };
  
                      *inode = Node::ReadOnlyFile(ReadOnlyFileNode {
-@@ -406,7 +404,7 @@
+@@ -406,7 +407,7 @@
          let inode = fs.storage.get_mut(self.inode);
          match inode {
              Some(Node::File(node)) => {
@@ -202,7 +205,7 @@
                  Poll::Ready(Ok(remaining))
              }
              Some(Node::OffloadedFile(node)) => {
-@@ -1078,6 +1076,7 @@
+@@ -1078,6 +1079,7 @@
                      cursor = self.write_cursor(node.file.len() as u64);
                      let bytes_written = node.file.write(buf, &mut cursor)?;
                      node.metadata.len = node.file.len().try_into().unwrap();
@@ -210,7 +213,7 @@
                      bytes_written
                  }
                  Some(Node::OffloadedFile(node)) => {
-@@ -1163,7 +1162,8 @@
+@@ -1163,7 +1165,8 @@
                          .find(|b| !b.is_empty())
                          .map_or(&[][..], |b| &**b);
                      let bytes_written = node.file.write(buf, &mut cursor)?;
@@ -220,7 +223,7 @@
                      Poll::Ready(Ok(bytes_written))
                  }
                  Some(Node::OffloadedFile(node)) => {
-@@ -1417,7 +1417,7 @@
+@@ -1417,7 +1420,7 @@
              assert_eq!(buf[0..expected.len()], *expected);
          }
  
@@ -229,7 +232,7 @@
  
          let mut cursor = 0;
  
-@@ -1675,46 +1675,266 @@
+@@ -1675,46 +1678,266 @@
  
  /// The real file! It is simply a buffer of bytes with a cursor that
  /// represents a read/write position in the buffer.
@@ -304,7 +307,7 @@
 +            spill.resident_changed(before.0, after.0);
 +            spill.spilled_changed(before.1, after.1);
 +        }
-     }
++    }
 +
 +    /// Bytes in memory and bytes on disk.
 +    fn footprint(&self) -> (u64, u64) {
@@ -366,7 +369,7 @@
 +        *offset = new_offset;
 +        *cap = new_cap;
 +        Ok(())
-+    }
+     }
 +
 +    pub(super) fn truncate(&mut self) {
 +        let before = self.footprint();
@@ -513,7 +516,7 @@
      }
  }
  
-@@ -1727,9 +1947,9 @@
+@@ -1727,9 +1950,9 @@
              // Calculate from the beginning, so `0 + offset`.
              io::SeekFrom::Start(offset) => offset.try_into().map_err(to_err)?,
  
@@ -525,7 +528,7 @@
              }
  
              // Calculate from the current cursor, so `cursor + offset`.
-@@ -1756,25 +1976,44 @@
+@@ -1756,25 +1979,44 @@
  
  impl File {
      pub fn write(&mut self, buf: &[u8], cursor: &mut u64) -> io::Result<usize> {
@@ -782,12 +785,10 @@
      pub fn new_open_options_ext(&self) -> &FileSystem {
          self
      }
-@@ -49,6 +58,71 @@
-     pub fn canonicalize_unchecked(&self, path: &Path) -> Result<PathBuf> {
-         let lock = self.inner.read().map_err(|_| FsError::Lock)?;
+@@ -51,6 +60,71 @@
          lock.canonicalize_without_inode(path)
-+    }
-+
+     }
+ 
 +    /// iwci patch: gives the file at `source` the second name `target`
 +    /// (`link(2)`), and the inode number `ino` if it has none yet, which
 +    /// every name of it then reports in its metadata. A directory is
@@ -851,9 +852,11 @@
 +            (Ok(InodeResolution::Found(a)), Ok(InodeResolution::Found(b))) => a == b,
 +            _ => false,
 +        }
-     }
- 
++    }
++
      /// Merge all items from a given source path (directory) of a different file
+     /// system into this file system.
+     ///
 @@ -239,6 +313,8 @@
                          created: time,
                          modified: time,
@@ -911,7 +914,19 @@
                  }
              },
          }));
-@@ -365,7 +446,9 @@
+@@ -356,8 +437,9 @@
+         let inode = guard.storage.get(inode_of_directory);
+         let children = match inode {
+             Some(Node::Directory(DirectoryNode { children, .. })) => children
+-                .iter()
+-                .filter_map(|inode| guard.storage.get(*inode))
++                .in_order()
++                .into_iter()
++                .filter_map(|inode| guard.storage.get(inode))
+                 .map(|node| DirEntry {
+                     path: {
+                         let mut entry_path = path.to_path_buf();
+@@ -365,7 +447,9 @@
  
                          entry_path
                      },
@@ -922,7 +937,7 @@
                  })
                  .collect(),
  
-@@ -384,20 +467,21 @@
+@@ -384,20 +468,21 @@
      }
  
      fn create_dir(&self, path: &Path) -> Result<()> {
@@ -954,7 +969,7 @@
  
              // Check the directory name.
              let name_of_directory = path
-@@ -406,26 +490,30 @@
+@@ -406,32 +491,36 @@
                  .to_os_string();
  
              // Find the parent inode.
@@ -975,13 +990,13 @@
 -        };
 +            // Anything of that name, a directory or not, is in the way.
 +            let taken = match fs.storage.get(inode_of_parent) {
-+                Some(Node::Directory(DirectoryNode { children, .. })) => {
-+                    children.iter().any(|child| {
++                Some(Node::Directory(DirectoryNode { children, .. })) => children
++                    .named(&name_of_directory)
++                    .any(|(_, child)| {
 +                        fs.storage
-+                            .get(*child)
++                            .get(child)
 +                            .is_some_and(|node| node.name() == name_of_directory.as_os_str())
-+                    })
-+                }
++                    }),
 +                _ => false,
 +            };
 +            if taken {
@@ -999,7 +1014,14 @@
              // Creating the directory in the storage.
              let inode_of_directory = fs.storage.vacant_entry().key();
              let real_inode_of_directory = fs.storage.insert(Node::Directory(DirectoryNode {
-@@ -444,6 +532,8 @@
+                 inode: inode_of_directory,
+                 name: name_of_directory,
+-                children: Vec::new(),
++                children: Children::default(),
+                 metadata: {
+                     let time = time();
+ 
+@@ -444,6 +533,8 @@
                          created: time,
                          modified: time,
                          len: 0,
@@ -1008,7 +1030,7 @@
                      }
                  },
              }));
-@@ -464,74 +554,73 @@
+@@ -464,74 +555,73 @@
          self.create_symlink(source, target)
      }
  
@@ -1101,19 +1123,19 @@
 -        {
 -            // Write lock.
 -            let mut fs = self.inner.write().map_err(|_| FsError::Lock)?;
-+        // Remove the directory from the storage.
-+        fs.storage.remove(inode_of_directory);
- 
+-
 -            // Remove the directory from the storage.
 -            fs.storage.remove(inode_of_directory);
 -
 -            // Remove the child from the parent directory.
 -            fs.remove_child_from_node(inode_of_parent, position)?;
 -        }
--
++        // Remove the directory from the storage.
++        fs.storage.remove(inode_of_directory);
+ 
 -        Ok(())
 +        // Remove the child from the parent directory.
-+        fs.remove_child_from_node(inode_of_parent, position)
++        fs.remove_child_from_node(inode_of_parent, &name_of_directory, position)
      }
  
      fn rename<'a>(&'a self, from: &'a Path, to: &'a Path) -> BoxFuture<'a, Result<()>> {
@@ -1132,7 +1154,7 @@
                  let from = fs.canonicalize_without_inode(from)?;
                  let to = fs.canonicalize_without_inode(to)?;
  
-@@ -544,7 +633,7 @@
+@@ -544,7 +634,7 @@
                      .file_name()
                      .ok_or(FsError::InvalidInput)?
                      .to_os_string();
@@ -1141,7 +1163,7 @@
  
                  // Find the parent inodes.
                  let inode_of_from_parent = match fs.inode_of_parent(parent_of_from)? {
-@@ -562,96 +651,22 @@
+@@ -562,96 +652,22 @@
                      }
                  };
  
@@ -1250,7 +1272,7 @@
                  // Rename within the same mounted FS instance
                  (Either::Right((from_fs, from_path)), Either::Right((to_fs, to_path)))
                      if Arc::ptr_eq(&from_fs, &to_fs) =>
-@@ -670,12 +685,9 @@
+@@ -670,12 +686,9 @@
          // Read lock.
          let guard = self.inner.read().map_err(|_| FsError::Lock)?;
          match guard.inode_of(path)? {
@@ -1266,7 +1288,7 @@
              InodeResolution::Redirect(fs, path) => {
                  drop(guard);
                  fs.metadata(path.as_path())
-@@ -687,12 +699,9 @@
+@@ -687,12 +700,9 @@
          // Read lock.
          let guard = self.inner.read().map_err(|_| FsError::Lock)?;
          match guard.inode_of(path)? {
@@ -1282,7 +1304,7 @@
              InodeResolution::Redirect(fs, path) => {
                  drop(guard);
                  fs.symlink_metadata(path.as_path())
-@@ -701,55 +710,47 @@
+@@ -701,55 +711,47 @@
      }
  
      fn remove_file(&self, path: &Path) -> Result<()> {
@@ -1363,11 +1385,11 @@
 -        }
 -
 -        Ok(())
-+        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
++        fs.unlink_file_inode(inode_of_parent, &name_of_file, position, inode_of_file)
      }
  
      fn new_open_options(&self) -> OpenOptions<'_> {
-@@ -769,8 +770,13 @@
+@@ -769,8 +771,13 @@
  /// indexed by their respective `Inode` in a slab.
  pub(super) struct FileSystemInner {
      pub(super) storage: Slab<Node>,
@@ -1381,7 +1403,7 @@
  }
  
  #[derive(Debug)]
-@@ -792,12 +798,75 @@
+@@ -792,12 +799,76 @@
  }
  
  impl FileSystemInner {
@@ -1423,6 +1445,7 @@
      pub(super) fn unlink_file_inode(
          &mut self,
          inode_of_parent: Inode,
++        name_of_file: &OsStr,
          position: usize,
          inode_of_file: Inode,
      ) -> Result<()> {
@@ -1435,19 +1458,19 @@
 +            let body = link.target;
 +            self.storage.remove(inode_of_file);
 +            self.forget_link(body, inode_of_file);
-+            return self.remove_child_from_node(inode_of_parent, position);
++            return self.remove_child_from_node(inode_of_parent, name_of_file, position);
 +        }
 +        if let Some(&link) = self.links.get(&inode_of_file).and_then(|l| l.last()) {
 +            self.forget_link(inode_of_file, link);
-+            self.remove_child_from_node(inode_of_parent, position)?;
++            self.remove_child_from_node(inode_of_parent, name_of_file, position)?;
 +            let Node::HardLink(link) = self.storage.remove(link) else {
 +                return Err(FsError::UnknownError);
 +            };
 +            if let Some(Node::Directory(DirectoryNode { children, .. })) =
 +                self.storage.get_mut(link.parent)
-+                && let Some(entry) = children.iter_mut().find(|c| **c == link.inode)
++                && let Some(position) = children.position_of(&link.name, link.inode)
 +            {
-+                *entry = inode_of_file;
++                children.replace(&link.name, position, inode_of_file);
 +            }
 +            if let Some(node) = self.storage.get_mut(inode_of_file) {
 +                node.set_name(link.name);
@@ -1457,12 +1480,14 @@
          let remove_storage = match self.storage.get(inode_of_file) {
              Some(node) => {
                  if let Some(lifecycle) = node.file_lifecycle() {
-@@ -815,6 +884,81 @@
+@@ -814,9 +885,94 @@
+             self.storage.remove(inode_of_file);
          }
  
-         self.remove_child_from_node(inode_of_parent, position)
-+    }
-+
+-        self.remove_child_from_node(inode_of_parent, position)
++        self.remove_child_from_node(inode_of_parent, name_of_file, position)
+     }
+ 
 +    /// Renames the child `name_of_from` of `inode_of_from_parent` to
 +    /// `name_of_to` in `inode_of_to_parent`, replacing an existing file there.
 +    fn rename_child(
@@ -1501,7 +1526,12 @@
 +                    return Ok(());
 +                }
 +                InodeResolution::Found(inode_of_file) => {
-+                    self.unlink_file_inode(inode_of_to_parent, position, inode_of_file)?;
++                    self.unlink_file_inode(
++                        inode_of_to_parent,
++                        &name_of_to,
++                        position,
++                        inode_of_file,
++                    )?;
 +                }
 +                InodeResolution::Redirect(..) => {
 +                    return Err(FsError::InvalidInput);
@@ -1510,13 +1540,13 @@
 +        }
 +
 +        // Update the file name, and update the modified time.
-+        self.update_node_name(inode, name_of_to)?;
++        self.update_node_name(inode, name_of_to.clone())?;
 +
 +        // The parents are different. Let's update them.
 +        if inode_of_from_parent != inode_of_to_parent {
 +            // Remove the file from its parent, and update the
 +            // modified time.
-+            self.remove_child_from_node(inode_of_from_parent, position_of_from)?;
++            self.remove_child_from_node(inode_of_from_parent, name_of_from, position_of_from)?;
 +
 +            // Add the file to its new parent, and update the modified
 +            // time.
@@ -1529,25 +1559,61 @@
 +        else {
 +            let mut inode = self.storage.get_mut(inode_of_from_parent);
 +            match inode.as_mut() {
-+                Some(Node::Directory(node)) => node.metadata.modified = time(),
++                // iwci patch (#1408): and its index of names. The entry
++                // keeps its place.
++                Some(Node::Directory(node)) => {
++                    node.children.rename(name_of_from, position_of_from, &name_of_to);
++                    node.metadata.modified = time();
++                }
 +                Some(Node::ArcDirectory(node)) => node.metadata.modified = time(),
 +                _ => return Err(FsError::UnknownError),
 +            }
 +        }
 +
 +        Ok(())
-     }
- 
++    }
++
      /// Get the inode associated to a path if it exists.
-@@ -834,6 +978,7 @@
-                     .iter()
-                     .filter_map(|inode| self.storage.get(*inode))
+     pub(super) fn inode_of(&self, path: &Path) -> Result<InodeResolution> {
+         // SAFETY: The root node always exists, so it's safe to unwrap here.
+@@ -831,9 +987,10 @@
+         while let Some(component) = components.next() {
+             node = match node {
+                 Node::Directory(DirectoryNode { children, .. }) => children
+-                    .iter()
+-                    .filter_map(|inode| self.storage.get(*inode))
++                    .named(component.as_os_str())
++                    .filter_map(|(_, inode)| self.storage.get(inode))
                      .find(|node| node.name() == component.as_os_str())
 +                    .map(|node| self.follow(node))
                      .ok_or(FsError::EntryNotFound)?,
                  Node::ArcDirectory(ArcDirectoryNode {
                      fs, path: fs_path, ..
-@@ -939,6 +1084,7 @@
+@@ -882,9 +1039,8 @@
+     ) -> Result<(usize, InodeResolution)> {
+         match self.storage.get(inode_of_parent) {
+             Some(Node::Directory(DirectoryNode { children, .. })) => children
+-                .iter()
+-                .enumerate()
+-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
++                .named(name_of_directory)
++                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
+                 .find_map(|(nth, node)| match node {
+                     Node::Directory(DirectoryNode {
+                         inode,
+@@ -929,9 +1085,8 @@
+     ) -> Result<Option<(usize, InodeResolution)>> {
+         match self.storage.get(inode_of_parent) {
+             Some(Node::Directory(DirectoryNode { children, .. })) => children
+-                .iter()
+-                .enumerate()
+-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
++                .named(name_of_file)
++                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
+                 .find_map(|(nth, node)| match node {
+                     Node::File(FileNode { inode, name, .. })
+                     | Node::OffloadedFile(OffloadedFileNode { inode, name, .. })
+@@ -939,6 +1094,7 @@
                      | Node::CustomFile(CustomFileNode { inode, name, .. })
                      | Node::ArcFile(ArcFileNode { inode, name, .. })
                      | Node::Symlink(SymlinkNode { inode, name, .. })
@@ -1555,7 +1621,19 @@
                          if name.as_os_str() == name_of_file =>
                      {
                          Some(Some((nth, InodeResolution::Found(*inode))))
-@@ -980,6 +1126,7 @@
+@@ -970,9 +1126,8 @@
+     ) -> Result<Option<(usize, InodeResolution)>> {
+         match self.storage.get(inode_of_parent) {
+             Some(Node::Directory(DirectoryNode { children, .. })) => children
+-                .iter()
+-                .enumerate()
+-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
++                .named(name_of)
++                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
+                 .find_map(|(nth, node)| match node {
+                     Node::File(FileNode { inode, name, .. })
+                     | Node::OffloadedFile(OffloadedFileNode { inode, name, .. })
+@@ -980,6 +1135,7 @@
                      | Node::ReadOnlyFile(ReadOnlyFileNode { inode, name, .. })
                      | Node::CustomFile(CustomFileNode { inode, name, .. })
                      | Node::ArcFile(ArcFileNode { inode, name, .. })
@@ -1563,10 +1641,13 @@
                          if name.as_os_str() == name_of =>
                      {
                          Some(Some((nth, InodeResolution::Found(*inode))))
-@@ -1001,6 +1148,60 @@
-         }
-     }
+@@ -998,9 +1154,63 @@
+             }
  
+             _ => Err(FsError::BaseNotDirectory),
++        }
++    }
++
 +    /// iwci patch: the node a name stands for: the file a hard link
 +    /// names, any other node itself.
 +    fn follow<'a>(&'a self, node: &'a Node) -> &'a Node {
@@ -1591,8 +1672,8 @@
 +    fn child_named(&self, parent: Inode, name: &OsString) -> Option<Inode> {
 +        match self.storage.get(parent) {
 +            Some(Node::Directory(DirectoryNode { children, .. })) => children
-+                .iter()
-+                .copied()
++                .named(name)
++                .map(|(_, c)| c)
 +                .find(|c| self.storage.get(*c).is_some_and(|n| n.name() == name)),
 +            _ => None,
 +        }
@@ -1605,9 +1686,9 @@
 +            if links.is_empty() {
 +                self.links.remove(&body);
 +            }
-+        }
-+    }
-+
+         }
+     }
+ 
 +    /// iwci patch: the metadata a name reports: its file's (a hard link
 +    /// reports the file it names), with the file's inode number, if it has
 +    /// one of its own, and its count of names.
@@ -1624,7 +1705,57 @@
      /// Set a new name for the node represented by `inode`.
      pub(super) fn update_node_name(&mut self, inode: Inode, new_name: OsString) -> Result<()> {
          let node = self.storage.get_mut(inode).ok_or(FsError::UnknownError)?;
-@@ -1146,6 +1347,7 @@
+@@ -1019,13 +1229,21 @@
+     ///
+     /// `inode` must represents an existing directory.
+     pub(super) fn add_child_to_node(&mut self, inode: Inode, new_child: Inode) -> Result<()> {
++        // iwci patch (#1408): the child goes in its directory's index under
++        // its name, so it must be in the storage already.
++        let name = self
++            .storage
++            .get(new_child)
++            .ok_or(FsError::UnknownError)?
++            .name()
++            .to_os_string();
+         match self.storage.get_mut(inode) {
+             Some(Node::Directory(DirectoryNode {
+                 children,
+                 metadata: Metadata { modified, .. },
+                 ..
+             })) => {
+-                children.push(new_child);
++                children.push(&name, new_child);
+                 *modified = time();
+ 
+                 Ok(())
+@@ -1042,14 +1260,24 @@
+     /// # Safety
+     ///
+     /// `inode` must represents an existing directory.
+-    pub(super) fn remove_child_from_node(&mut self, inode: Inode, position: usize) -> Result<()> {
++    ///
++    /// iwci patch (#1408): `position` is the entry's in `Children`, and
++    /// `name` its name there.
++    pub(super) fn remove_child_from_node(
++        &mut self,
++        inode: Inode,
++        name: &OsStr,
++        position: usize,
++    ) -> Result<()> {
+         match self.storage.get_mut(inode) {
+             Some(Node::Directory(DirectoryNode {
+                 children,
+                 metadata: Metadata { modified, .. },
+                 ..
+             })) => {
+-                children.remove(position);
++                children
++                    .remove(name, position)
++                    .ok_or(FsError::EntryNotFound)?;
+                 *modified = time();
+ 
+                 Ok(())
+@@ -1146,6 +1374,7 @@
                          Node::Symlink { .. } => "symlink",
                          Node::Directory { .. } => "dir",
                          Node::ArcDirectory { .. } => "arc-dir",
@@ -1632,7 +1763,28 @@
                      },
                      name = node.name().to_string_lossy(),
                      indentation_symbol = " ",
-@@ -1195,13 +1397,17 @@
+@@ -1155,8 +1384,9 @@
+                 if let Node::Directory(DirectoryNode { children, .. }) = node {
+                     debug(
+                         children
+-                            .iter()
+-                            .filter_map(|inode| slf.storage.get(*inode))
++                            .in_order()
++                            .into_iter()
++                            .filter_map(|inode| slf.storage.get(inode))
+                             .collect(),
+                         slf,
+                         formatter,
+@@ -1185,7 +1415,7 @@
+         slab.insert(Node::Directory(DirectoryNode {
+             inode: ROOT_INODE,
+             name: OsString::from("/"),
+-            children: Vec::new(),
++            children: Children::default(),
+             metadata: Metadata {
+                 ft: FileType {
+                     dir: true,
+@@ -1195,13 +1425,17 @@
                  created: time,
                  modified: time,
                  len: 0,
@@ -1650,7 +1802,7 @@
          }
      }
  }
-@@ -1652,7 +1858,67 @@
+@@ -1652,7 +1886,67 @@
                  ),
                  "`hello2.txt` has been renamed to `world2.txt`",
              );
@@ -1718,43 +1870,51 @@
      }
  
      #[tokio::test]
-@@ -1671,6 +1937,8 @@
+@@ -1670,7 +1964,9 @@
+                 accessed,
                  created,
                  modified,
-                 len: 0
+-                len: 0
++                len: 0,
 +                ino: 0,
 +                nlink: 0,
              }) if accessed == created && created == modified && modified > 0
          ));
  
-@@ -1688,6 +1956,8 @@
+@@ -1687,7 +1983,9 @@
+                 accessed,
                  created,
                  modified,
-                 len: 0
+-                len: 0
++                len: 0,
 +                ino: 0,
 +                nlink: 0,
              } if accessed == created && created == modified && modified > 0
          ));
  
-@@ -1704,6 +1974,8 @@
+@@ -1703,7 +2001,9 @@
+                     accessed,
                      created,
                      modified,
-                     len: 0
+-                    len: 0
++                    len: 0,
 +                    ino: 0,
 +                    nlink: 0,
                  }) if
                      accessed == foo_metadata.accessed &&
                      created == foo_metadata.created &&
-@@ -1720,6 +1992,8 @@
+@@ -1719,7 +2019,9 @@
+                     accessed,
                      created,
                      modified,
-                     len: 0
+-                    len: 0
++                    len: 0,
 +                    ino: 0,
 +                    nlink: 0,
                  }) if
                      accessed <= foo_metadata.accessed &&
                      created <= foo_metadata.created &&
-@@ -1824,9 +2098,8 @@
+@@ -1824,9 +2126,8 @@
  
          drop(file);
  
@@ -1765,7 +1925,7 @@
              1,
              "storage drops the file once the last open handle closes"
          );
-@@ -2095,5 +2368,169 @@
+@@ -2095,5 +2396,169 @@
          f.read_to_end(&mut buf).await.unwrap();
  
          assert_eq!(buf, b"a");
@@ -1951,16 +2111,24 @@
  #[cfg(not(feature = "js"))]
  use std::time::{SystemTime, UNIX_EPOCH};
  pub use stdio::{Stderr, Stdin, Stdout};
-@@ -19,7 +21,7 @@
+@@ -15,11 +17,14 @@
+ 
+ use crate::Metadata;
+ use std::{
++    collections::{HashMap, hash_map},
+     ffi::{OsStr, OsString},
++    fmt,
++    hash::{BuildHasher, BuildHasherDefault, Hasher, RandomState},
      path::PathBuf,
      sync::{
-         Arc, Mutex,
+-        Arc, Mutex,
 -        atomic::{AtomicBool, AtomicUsize, Ordering},
++        Arc, Mutex, OnceLock,
 +        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
      },
  };
  
-@@ -32,6 +34,10 @@
+@@ -32,6 +37,10 @@
  struct FileLifecycle {
      open_handles: AtomicUsize,
      unlinked: AtomicBool,
@@ -1971,7 +2139,7 @@
  }
  
  impl FileLifecycle {
-@@ -60,6 +66,17 @@
+@@ -60,6 +69,17 @@
      fn is_unlinked(&self) -> bool {
          self.unlinked.load(Ordering::Acquire)
      }
@@ -1989,7 +2157,219 @@
  }
  
  #[derive(Debug)]
-@@ -135,7 +152,24 @@
+@@ -114,10 +134,210 @@
+ struct DirectoryNode {
+     inode: Inode,
+     name: OsString,
+-    children: Vec<Inode>,
++    children: Children,
+     metadata: Metadata,
++}
++
++/// iwci patch (#1408): a directory's entries, with an index by name.
++/// Upstream keeps a `Vec<Inode>` and finds a name by reading every entry's
++/// node, so a directory of n files took time in n² to fill or walk (40,000
++/// files: 13 s to write, 10 s to walk).
++///
++/// Each entry is filed under a hash of its name, with a position: a number
++/// it is given when it is added, larger than every earlier one. The
++/// position is the handle `remove`, `rename` and `replace` take, and does
++/// not change when other entries come or go; listing sorts by it, so a
++/// directory lists in the order upstream lists in: the order entries were
++/// added, an entry renamed in place where it was, one moved in from another
++/// directory at the end.
++///
++/// Names are not stored here (the nodes have them), so two names with one
++/// hash share a list, and `named` gives the entries that may have a name:
++/// the caller compares the node's. One name has one entry unless something
++/// gave a second entry a name that was taken (upstream lets a rename of a
++/// file onto a directory's name do that); both are kept, and the earlier
++/// comes first, as a search from the start found it.
++#[derive(Default)]
++pub(super) struct Children {
++    entries: HashMap<u64, Named, BuildHasherDefault<NameHasher>>,
++    next: usize,
++}
++
++/// The entries under one hash, as (position, inode), by position.
++enum Named {
++    One((usize, Inode)),
++    Many(Vec<(usize, Inode)>),
++}
++
++impl Named {
++    fn entries(&self) -> &[(usize, Inode)] {
++        match self {
++            Self::One(entry) => std::slice::from_ref(entry),
++            Self::Many(entries) => entries,
++        }
++    }
++}
++
++/// A name's hash, keyed at random once per process, so names a job picks
++/// cannot be made to collide.
++fn name_hash(name: &OsStr) -> u64 {
++    static STATE: OnceLock<RandomState> = OnceLock::new();
++    STATE.get_or_init(RandomState::new).hash_one(name)
++}
++
++/// The keys of `Children::entries` are hashes already.
++#[derive(Default)]
++struct NameHasher(u64);
++
++impl Hasher for NameHasher {
++    fn write(&mut self, bytes: &[u8]) {
++        for byte in bytes {
++            self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
++        }
++    }
++
++    fn write_u64(&mut self, hash: u64) {
++        self.0 = hash;
++    }
++
++    fn finish(&self) -> u64 {
++        self.0
++    }
++}
++
++impl Children {
++    pub(super) fn is_empty(&self) -> bool {
++        self.entries.is_empty()
++    }
++
++    /// Every entry, in position order.
++    pub(super) fn in_order(&self) -> Vec<Inode> {
++        let mut all: Vec<(usize, Inode)> = self
++            .entries
++            .values()
++            .flat_map(|named| named.entries().iter().copied())
++            .collect();
++        all.sort_unstable();
++        all.into_iter().map(|(_, inode)| inode).collect()
++    }
++
++    /// The entries that may be named `name`, as (position, inode), in
++    /// position order. The caller compares the node's name.
++    pub(super) fn named(&self, name: &OsStr) -> impl Iterator<Item = (usize, Inode)> + '_ {
++        self.entries
++            .get(&name_hash(name))
++            .map_or(&[][..], Named::entries)
++            .iter()
++            .copied()
++    }
++
++    /// The position of the entry `inode`, which is named `name`.
++    pub(super) fn position_of(&self, name: &OsStr, inode: Inode) -> Option<usize> {
++        self.named(name)
++            .find(|&(_, entry)| entry == inode)
++            .map(|(position, _)| position)
++    }
++
++    /// Adds `inode`, named `name`, after every other entry.
++    pub(super) fn push(&mut self, name: &OsStr, inode: Inode) -> usize {
++        let position = self.next;
++        self.next += 1;
++        self.file(name_hash(name), position, inode);
++        position
++    }
++
++    /// Removes the entry at `position`, which is named `name`.
++    pub(super) fn remove(&mut self, name: &OsStr, position: usize) -> Option<Inode> {
++        self.unfile(name_hash(name), position)
++    }
++
++    /// Names the entry at `position` `to` rather than `from`. It keeps its
++    /// position.
++    pub(super) fn rename(&mut self, from: &OsStr, position: usize, to: &OsStr) -> bool {
++        match self.unfile(name_hash(from), position) {
++            Some(inode) => {
++                self.file(name_hash(to), position, inode);
++                true
++            }
++            None => false,
++        }
++    }
++
++    /// Puts `inode` in the place of the entry at `position`, which is
++    /// named `name`.
++    pub(super) fn replace(&mut self, name: &OsStr, position: usize, inode: Inode) -> bool {
++        let entry = match self.entries.get_mut(&name_hash(name)) {
++            Some(Named::One(entry)) => Some(entry).filter(|e| e.0 == position),
++            Some(Named::Many(entries)) => entries.iter_mut().find(|e| e.0 == position),
++            None => None,
++        };
++        match entry {
++            Some(entry) => {
++                entry.1 = inode;
++                true
++            }
++            None => false,
++        }
++    }
++
++    fn file(&mut self, hash: u64, position: usize, inode: Inode) {
++        match self.entries.entry(hash) {
++            hash_map::Entry::Vacant(vacant) => {
++                vacant.insert(Named::One((position, inode)));
++            }
++            hash_map::Entry::Occupied(mut occupied) => {
++                let named = occupied.get_mut();
++                let mut entries = match std::mem::replace(named, Named::Many(Vec::new())) {
++                    Named::One(entry) => vec![entry],
++                    Named::Many(entries) => entries,
++                };
++                let at = entries.partition_point(|e| e.0 < position);
++                entries.insert(at, (position, inode));
++                *named = Named::Many(entries);
++            }
++        }
++    }
++
++    fn unfile(&mut self, hash: u64, position: usize) -> Option<Inode> {
++        let named = self.entries.get_mut(&hash)?;
++        let inode = match named {
++            Named::One((at, inode)) if *at == position => {
++                let inode = *inode;
++                self.entries.remove(&hash);
++                return Some(inode);
++            }
++            Named::One(_) => return None,
++            Named::Many(entries) => {
++                let at = entries.iter().position(|e| e.0 == position)?;
++                entries.remove(at).1
++            }
++        };
++        if let Named::Many(entries) = named {
++            match entries[..] {
++                [] => {
++                    self.entries.remove(&hash);
++                }
++                [entry] => *named = Named::One(entry),
++                _ => {}
++            }
++        }
++        Some(inode)
++    }
+ }
+ 
++impl fmt::Debug for Children {
++    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
++        formatter.debug_list().entries(self.in_order()).finish()
++    }
++}
++
++/// Compares the entries, in order, as upstream's tests compare its `Vec`.
++impl<const N: usize> PartialEq<[Inode; N]> for Children {
++    fn eq(&self, other: &[Inode; N]) -> bool {
++        self.in_order() == other
++    }
++}
++
+ #[derive(Debug)]
+ struct ArcDirectoryNode {
+     inode: Inode,
+@@ -135,7 +355,24 @@
      metadata: Metadata,
  }
  
@@ -2014,7 +2394,7 @@
  enum Node {
      File(FileNode),
      OffloadedFile(OffloadedFileNode),
-@@ -145,6 +179,7 @@
+@@ -145,6 +382,7 @@
      Symlink(SymlinkNode),
      Directory(DirectoryNode),
      ArcDirectory(ArcDirectoryNode),
@@ -2022,7 +2402,7 @@
  }
  
  impl Node {
-@@ -158,6 +193,7 @@
+@@ -158,6 +396,7 @@
              Self::Symlink(SymlinkNode { inode, .. }) => inode,
              Self::Directory(DirectoryNode { inode, .. }) => inode,
              Self::ArcDirectory(ArcDirectoryNode { inode, .. }) => inode,
@@ -2030,7 +2410,7 @@
          }
      }
  
-@@ -171,6 +207,7 @@
+@@ -171,6 +410,7 @@
              Self::Symlink(SymlinkNode { name, .. }) => name.as_os_str(),
              Self::Directory(DirectoryNode { name, .. }) => name.as_os_str(),
              Self::ArcDirectory(ArcDirectoryNode { name, .. }) => name.as_os_str(),
@@ -2038,7 +2418,7 @@
          }
      }
  
-@@ -184,6 +221,7 @@
+@@ -184,6 +424,7 @@
              Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
              Self::Directory(DirectoryNode { metadata, .. }) => metadata,
              Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
@@ -2046,7 +2426,7 @@
          }
      }
  
-@@ -208,6 +246,7 @@
+@@ -208,6 +449,7 @@
              Self::Symlink(SymlinkNode { metadata, .. }) => metadata,
              Self::Directory(DirectoryNode { metadata, .. }) => metadata,
              Self::ArcDirectory(ArcDirectoryNode { metadata, .. }) => metadata,
@@ -2054,7 +2434,7 @@
          }
      }
  
-@@ -221,6 +260,7 @@
+@@ -221,6 +463,7 @@
              Self::Symlink(SymlinkNode { name, .. }) => *name = new_name,
              Self::Directory(DirectoryNode { name, .. }) => *name = new_name,
              Self::ArcDirectory(ArcDirectoryNode { name, .. }) => *name = new_name,
@@ -2062,6 +2442,51 @@
          }
      }
  }
+@@ -233,3 +476,44 @@
+         .unwrap()
+         .as_nanos() as u64
+ }
++
++/// iwci patch (#1408).
++#[cfg(test)]
++mod test_children {
++    use super::Children;
++    use std::ffi::OsStr;
++
++    fn named(children: &Children, name: &str) -> Vec<(usize, usize)> {
++        children.named(OsStr::new(name)).collect()
++    }
++
++    #[test]
++    fn names_are_found_in_place_order_and_a_taken_name_keeps_both_entries() {
++        let mut c = Children::default();
++        let a = c.push(OsStr::new("a"), 10);
++        let b = c.push(OsStr::new("b"), 11);
++        let a2 = c.push(OsStr::new("a"), 12);
++        assert_eq!(named(&c, "a"), [(a, 10), (a2, 12)]);
++        assert!(c.rename(OsStr::new("b"), b, OsStr::new("a")));
++        assert_eq!(named(&c, "a"), [(a, 10), (b, 11), (a2, 12)]);
++        assert!(named(&c, "b").is_empty());
++        assert_eq!(c, [10, 11, 12]);
++
++        assert_eq!(c.remove(OsStr::new("a"), a), Some(10));
++        assert_eq!(c.position_of(OsStr::new("a"), 12), Some(a2));
++        assert!(c.replace(OsStr::new("a"), a2, 13));
++        assert_eq!(c, [11, 13]);
++        assert_eq!(c.remove(OsStr::new("a"), b), Some(11));
++        assert_eq!(named(&c, "a"), [(a2, 13)]);
++        assert_eq!(c.remove(OsStr::new("a"), a2), Some(13));
++        assert!(c.is_empty());
++        assert!(named(&c, "a").is_empty());
++        assert_eq!(c.remove(OsStr::new("a"), a2), None);
++        assert!(!c.rename(OsStr::new("a"), a2, OsStr::new("z")));
++
++        // Positions only grow, so what is added later lists later.
++        let z = c.push(OsStr::new("z"), 20);
++        assert!(z > a2);
++        assert_eq!(c, [20]);
++    }
++}
 --- a/src/mount_fs.rs
 +++ b/src/mount_fs.rs
 @@ -212,6 +212,8 @@

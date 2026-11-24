@@ -1947,6 +1947,42 @@ here, in the in-memory file system of the job's own layer:
 `renames_onto_and_of_linked_names` and
 `an_open_linked_file_outlives_its_names` are the checks.
 
+**Why (#1408).** `mem_fs` kept a directory's entries in a `Vec` and found a
+name by reading the node of every entry in turn, so filling, walking,
+renaming in or emptying a directory of n entries took time in n². Applying
+what a machine sent back (`machines::apply`) and walking it again
+(`JobFs::entries_under`) took 12.9 s and 9.6 s for 40,000 files of 16 KiB in
+one directory, and a machine job that wrote 51,200 files into one
+directory spent about 170 s in the runner after its script ended. A
+directory's entries are now `Children` (`mem_fs/mod.rs`), a hash map from
+a hash of each entry's name (keyed at random once per process, so a job
+cannot pick names that collide) to the entries under it, each with a
+position: a number it is given when added, which only grows. Names are not
+stored twice: entries whose names share a hash share a list, and the
+lookups compare the node's name as they did. Listing sorts by position, so
+a directory lists in the order upstream's `Vec` had it (a renamed entry
+keeps its place). Lookups, creates, removes and renames go through the
+index. The position `remove_child_from_node` and `unlink_file_inode` take
+is that number rather than an index into the `Vec`, so they take the
+entry's name too, and an open file's `unlink` asks each directory's index
+for the file's name rather than reading every entry of every directory.
+Upstream lets a rename of a file onto a directory's name leave two entries
+of one name; both are kept, and a lookup takes the earlier, as the search
+did. An entry costs about 60 bytes more (`iwci-vfs`'s
+`tests/accounts_memory.rs`: 401 bytes a file before, 460 after, under
+the 520 a job is charged). Upstream `main` still searches (checked November
+2026, at 29e67da7ca). `iwci-vfs`'s
+`tests/directory_index.rs` is the check: 50,000 files in one directory
+applied, walked, half renamed and all removed took 240 s in a release build
+on the build host before and take 0.4 s after (1 s in a debug build), and
+its other tests look names up after renames, removals, unlinks through a
+handle and hard links. The crate's own `mem_fs` tests pass too (the patch
+also adds the commas four patterns in `test_metadata` lacked since the hard
+link hunks): with an empty file at
+`ci-runner/wasmer-test-files/examples/python--python@3.13.5.webc`, which
+`webc_volume_fs.rs` includes, `cargo test --lib` in `vendor/virtual-fs`
+passes everything but the seven tests that read that file.
+
 **And: files that outgrow memory spill to disk.** An isolate job's files
 were all in memory, so a large install either fit in the job's `memory:`
 or failed with a full disk. `mem_fs/spill.rs` (new) and `File` in
@@ -1968,8 +2004,9 @@ rest goes; `iwci-vfs`'s `tests/spill.rs` is the check.
 **Remove it** when a virtual-fs release after 0.705.0 has #7039, a
 `create_dir` that looks up under its write lock, a `set_len` that copies
 up first, an open file's `unlink` and `create_symlink` that look up
-under their write lock, and hard links in `mem_fs` whose names report one
-number and their count (and a `Deref` impl that forwards `hard_link`):
+under their write lock, hard links in `mem_fs` whose names report one
+number and their count (and a `Deref` impl that forwards `hard_link`),
+and directories in `mem_fs` that find a name without reading every entry:
 delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry, keeping
 the spill hunks (above) as a patch of their own. A release with only some
 of them is still worth taking with the other hunks kept.
