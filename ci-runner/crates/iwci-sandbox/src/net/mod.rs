@@ -85,8 +85,21 @@ pub const PREFIX_V6: u8 = 64;
 /// The link's MTU: large, since the link is a socket pair in memory.
 pub const MTU: usize = 65_000;
 
-/// Each TCP connection's buffers, both ways.
-const TCP_BUFFER: usize = 64 * 1024;
+/// Each TCP connection's buffers, both ways, which are also its window.
+/// They span several segments of the link's MTU: a window of one or two
+/// segments makes every segment wait for the other side's (delayed)
+/// acknowledgement. At 64 KiB a machine on a 65,000-byte link downloaded
+/// at a few MB/s, and one on a 1,500-byte link at 230 to 250 MB/s over
+/// three connections; at 256 KiB on the large MTU, 370 to 400 MB/s, about
+/// what the host itself gets from the same registry (measured on a c8i, a
+/// machine of 8 vCPUs, pulling an image's layers from `ghcr.io`).
+/// That is 512 KiB of the runner's memory a connection, so at most
+/// 128 MiB for a job at [`MAX_CONNECTIONS`]; a job opens a few dozen.
+const TCP_BUFFER: usize = 256 * 1024;
+const _: () = assert!(
+    TCP_BUFFER >= 4 * MTU,
+    "the window must span several segments"
+);
 /// At most this many connections at once, and this many being opened.
 /// They hold memory and descriptors in the runner, not in the sandbox.
 const MAX_CONNECTIONS: usize = 256;
@@ -251,6 +264,9 @@ struct State {
     /// Every connection with a socket of its own (listening or past it).
     known: HashSet<Key>,
     resolving: Arc<AtomicUsize>,
+    /// What `pump` moves bytes through, kept rather than allocated (and
+    /// zeroed) on every pass of the loop.
+    pump_buf: Vec<u8>,
 }
 
 impl State {
@@ -303,6 +319,7 @@ impl State {
             conns: HashMap::new(),
             known: HashSet::new(),
             resolving: Arc::new(AtomicUsize::new(0)),
+            pump_buf: vec![0; TCP_BUFFER],
         }
     }
 
@@ -465,6 +482,13 @@ impl State {
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
                     );
+                    // The gateway relays a stream someone else wrote, so it
+                    // neither holds small segments back (Nagle) nor delays
+                    // its acknowledgements: the host end already did what
+                    // batching there is to do, and a delayed acknowledgement
+                    // holds the sandbox's next window for 10 ms.
+                    socket.set_nagle_enabled(false);
+                    socket.set_ack_delay(None);
                     if socket
                         .listen(IpListenEndpoint {
                             addr: Some(key.1.ip().into()),
@@ -538,7 +562,7 @@ impl State {
 
     /// Moves bytes both ways on every connection, and retires finished ones.
     fn pump(&mut self) {
-        let mut buf = vec![0u8; TCP_BUFFER];
+        let buf = &mut self.pump_buf;
         let mut done = Vec::new();
         for (handle, conn) in &mut self.conns {
             let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
@@ -548,7 +572,7 @@ impl State {
             }
             // Sandbox to host.
             while conn.to_host.len() < TCP_BUFFER && socket.can_recv() {
-                match socket.recv_slice(&mut buf) {
+                match socket.recv_slice(buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => conn.to_host.extend_from_slice(&buf[..n]),
                 }

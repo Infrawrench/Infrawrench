@@ -228,7 +228,7 @@ fn an_allowed_connection_carries_bytes_both_ways_and_closes() {
     let mut sandbox = Sandbox::new(link);
     let got = sandbox.exchange(UP, 40000, b"hello, upstream").unwrap();
     assert_eq!(got, b"HELLO, UPSTREAM");
-    // A lot of data, both ways, through the 64 KiB buffers.
+    // A lot of data, both ways, through several windows of the buffers.
     let big: Vec<u8> = (0..2_000_000u32).map(|i| b'a' + (i % 26) as u8).collect();
     let got = sandbox.exchange(UP, 40001, &big).unwrap();
     assert_eq!(got.len(), big.len());

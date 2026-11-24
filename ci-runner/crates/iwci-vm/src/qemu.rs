@@ -44,6 +44,15 @@ use iwci_vm_proto::{AGENT_PORT, GUEST_MAC, SCRATCH_SERIAL};
 
 /// The serial the workspace disk carries, which the guest looks for.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
+/// The MTU a Linux machine's network device offers (virtio-net's
+/// `VIRTIO_NET_F_MTU`, which the guest's driver takes as the interface's):
+/// the gateway's (`iwci_sandbox::net::MTU`), as a sandbox's link has. The
+/// link never leaves the host, so nothing on it fragments, and a large
+/// frame carries a download in a fortieth of the frames 1,500 bytes take:
+/// on a c8i, 2 GB downloaded through the gateway cost the runner half the
+/// CPU time (2.3 s against 4.9 s) and the runner and the emulator together
+/// a fifth less.
+pub const GUEST_MTU: u16 = 65_000;
 
 /// The host's architecture, which is the machine's (KVM runs only the
 /// host's own).
@@ -181,7 +190,10 @@ fn agent_port(args: &mut Vec<OsString>, sockets: &Sockets, bus: &str) {
     args.push(format!("virtserialport,chardev=agent,name={AGENT_PORT}").into());
 }
 
-fn net(args: &mut Vec<OsString>, path: &Path, device: &str) {
+/// The network device and its link to the runner. `mtu` is offered to the
+/// guest; a Windows machine gets none, since its saved states were made
+/// with the device as it is.
+fn net(args: &mut Vec<OsString>, path: &Path, device: &str, mtu: Option<u16>) {
     args.push("-netdev".into());
     args.push(path_arg(
         "stream,id=net0,server=off,addr.type=unix,addr.path=",
@@ -189,7 +201,8 @@ fn net(args: &mut Vec<OsString>, path: &Path, device: &str) {
     ));
     let mac = GUEST_MAC.map(|b| format!("{b:02x}")).join(":");
     args.push("-device".into());
-    args.push(format!("{device},netdev=net0,mac={mac}").into());
+    let mtu = mtu.map(|m| format!(",host_mtu={m}")).unwrap_or_default();
+    args.push(format!("{device},netdev=net0,mac={mac}{mtu}").into());
 }
 
 /// The arguments for a Linux machine.
@@ -244,7 +257,7 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     push(&mut args, &["-device", "virtconsole,chardev=console"]);
 
     if let Some(path) = &m.sockets.net {
-        net(&mut args, path, "virtio-net-device");
+        net(&mut args, path, "virtio-net-device", Some(GUEST_MTU));
     }
     push(&mut args, &["-device", "virtio-rng-device"]);
     if let Some(path) = &m.sockets.files {
@@ -351,7 +364,7 @@ pub fn windows_args(m: &Windows<'_>) -> Vec<OsString> {
         .net
         .as_deref()
         .expect("a Windows machine always has its network device");
-    net(&mut args, net_path, "virtio-net-pci");
+    net(&mut args, net_path, "virtio-net-pci", None);
     agent_port(&mut args, m.sockets, "virtio-serial-pci");
     push(
         &mut args,
@@ -545,7 +558,7 @@ mod tests {
             "socket,id=agent,server=off,path=/m/agent.sock",
             "virtserialport,chardev=agent,name=org.infrawrench.iwci.agent",
             "stream,id=net0,server=off,addr.type=unix,addr.path=/m/net.sock",
-            "virtio-net-device,netdev=net0,mac=52:54:00:12:34:56",
+            "virtio-net-device,netdev=net0,mac=52:54:00:12:34:56,host_mtu=65000",
             "virtio-blk-device,drive=ws,serial=iwci-ws",
         ] {
             assert!(text.contains(want), "{want} not in {text}");
@@ -670,6 +683,14 @@ mod tests {
             assert!(text.contains(want), "{want} not in {text}");
         }
         assert!(!text.contains("-kernel"));
+        // The saved states were made with the device as it was.
+        assert!(!text.contains("host_mtu"), "{text}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_machine_link_has_the_gateway_mtu() {
+        assert_eq!(usize::from(GUEST_MTU), iwci_sandbox::net::MTU);
     }
 
     #[test]
