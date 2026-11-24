@@ -147,7 +147,28 @@ if [[ "$machines" == "true" ]]; then
   # with a virtio-fs device has its memory in a shared memfd, which in
   # 4 KiB pages costs its boot 0.5 s at 2 GiB and 1.7 s at 8 GiB (measured
   # on ci-1); the runner falls back to them when the pages are not there.
-  huge_pages=$(($(awk '/^MemTotal:/ { print $2 }' /proc/meminfo) / 2048))
+  #
+  # At most the memory jobs may reserve (`IWCI_MEMORY`), or three quarters
+  # of the host without one: huge pages are never swapped or reclaimed, so
+  # machines admitted past what they hold (`memory_admission = "estimate"`)
+  # could take every page the host has. ci-1 (31 GiB) stopped answering
+  # with eleven machines running. Past the cap a machine gets 4 KiB pages,
+  # a slower boot, and the host keeps its own memory.
+  host_kib=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
+  cap_kib=$((host_kib * 3 / 4))
+  job_memory=$(sed -n 's/^IWCI_MEMORY="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /etc/iwci/iwci.env)
+  if [[ $job_memory =~ ^([0-9]+)(B|KiB|MiB|GiB|TiB)?$ ]]; then
+    n=${BASH_REMATCH[1]}
+    case ${BASH_REMATCH[2]} in
+      TiB) kib=$((n << 30)) ;;
+      GiB) kib=$((n << 20)) ;;
+      MiB) kib=$((n << 10)) ;;
+      KiB) kib=$n ;;
+      *) kib=$((n >> 10)) ;;
+    esac
+    ((kib < cap_kib)) && cap_kib=$kib
+  fi
+  huge_pages=$((cap_kib / 2048))
   echo "vm.nr_overcommit_hugepages = $huge_pages" >/etc/sysctl.d/60-iwci-machines.conf
   sysctl -q -p /etc/sysctl.d/60-iwci-machines.conf
   if [[ ! -e /dev/kvm ]]; then

@@ -170,9 +170,13 @@ install script then:
   `SupplementaryGroups=kvm`;
 - makes `/var/lib/iwci/machines` (root, group `iwci`, 0750) and sets
   `IWCI_MACHINES` in the unit to it;
-- lets the kernel make 2 MiB huge pages on demand, up to the host's
-  memory (`vm.nr_overcommit_hugepages` in
-  `/etc/sysctl.d/60-iwci-machines.conf`): a machine's memory goes in them,
+- lets the kernel make 2 MiB huge pages on demand, up to the memory jobs
+  may reserve (`memory`, or three quarters of the host without one;
+  `vm.nr_overcommit_hugepages` in
+  `/etc/sysctl.d/60-iwci-machines.conf`). Huge pages are never swapped,
+  so a larger cap let machines admitted by estimate take the host's last
+  page (ci-1 stopped answering with eleven running); past the cap a
+  machine gets 4 KiB pages instead. A machine's memory goes in them,
   which cuts its boot from about 0.85 s to 0.36 s at 2 GiB; nothing is
   reserved until a machine starts, and its pages go back when it stops.
   A pool (`vm.nr_hugepages`) would save another 0.1 s a boot, but pins
