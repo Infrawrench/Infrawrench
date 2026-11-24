@@ -1,11 +1,13 @@
 //! Name lookups in a frozen snapshot that do not scan directories (#995).
 //!
-//! Wasmer's in-memory file system keeps a directory's children in a list and
-//! finds a path by checking each child of each directory along it in turn,
+//! Wasmer's in-memory file system kept a directory's children in a list and
+//! found a path by checking each child of each directory along it in turn,
 //! so every lookup through `node_modules/.pnpm` (thousands of packages)
 //! compared names with most of them. Module resolution stats the same few
 //! directories constantly: `ui`'s Vitest job used about 5% more runner CPU
-//! than it does with this index.
+//! than it does with this index. The vendored file system has a name index
+//! of its own since #1408; this one still answers a lookup without walking
+//! the path a component at a time.
 //!
 //! A snapshot never changes once frozen, so [`Index`] lists each directory
 //! once, the first time a lookup goes through it, and answers from a hash

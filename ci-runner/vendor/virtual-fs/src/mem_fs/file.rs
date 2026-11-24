@@ -258,25 +258,28 @@ impl VirtualFile for FileHandle {
 
         // Find the position of the file in the parent, and the
         // inode of the parent.
+        //
+        // iwci patch (#1408): by its name, in each directory's index, rather
+        // than by reading every entry of every directory.
+        let name_of_file = fs
+            .storage
+            .get(inode_of_file)
+            .ok_or(FsError::BaseNotDirectory)?
+            .name()
+            .to_os_string();
         let (position, inode_of_parent) = fs
             .storage
             .iter()
             .find_map(|(inode_of_parent, node)| match node {
-                Node::Directory(DirectoryNode { children, .. }) => {
-                    children.iter().enumerate().find_map(|(nth, inode)| {
-                        if inode == &inode_of_file {
-                            Some((nth, inode_of_parent))
-                        } else {
-                            None
-                        }
-                    })
-                }
+                Node::Directory(DirectoryNode { children, .. }) => children
+                    .position_of(&name_of_file, inode_of_file)
+                    .map(|position| (position, inode_of_parent)),
 
                 _ => None,
             })
             .ok_or(FsError::BaseNotDirectory)?;
 
-        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
+        fs.unlink_file_inode(inode_of_parent, &name_of_file, position, inode_of_file)
     }
 
     fn get_special_fd(&self) -> Option<u32> {
