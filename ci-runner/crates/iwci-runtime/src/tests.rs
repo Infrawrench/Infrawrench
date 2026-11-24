@@ -2412,8 +2412,9 @@ fn a_spinning_bash_script_is_stopped_by_the_timeout() {
 /// on syscalls. Here a fresh thread calls a host function in a loop while
 /// another interrupts its store as fast as it can, and is then joined: it
 /// must have been trapped each time, and exit whole. Before the vendored
-/// wasmer-vm patch this aborted, segfaulted or deadlocked every time.
-#[cfg(target_os = "linux")]
+/// wasmer-vm patch this aborted, segfaulted or deadlocked every time, on
+/// macOS too until the patch read its host code from dyld (#1332).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn killing_a_syscall_spinner_leaves_its_threads_whole() {
     use std::sync::atomic::AtomicBool;
@@ -2461,6 +2462,125 @@ fn killing_a_syscall_spinner_leaves_its_threads_whole() {
         })
         .join()
         .unwrap();
+    }
+}
+
+/// An interrupt never abandons a lock that traps and compiles need
+/// (#1332). On macOS the handler used to trap host code on the Wasm stack,
+/// as it had on Linux before #968: a host function returning to a store
+/// that was interrupted builds its trap there (`Trap::lib`, which captures
+/// a backtrace), and a second interrupt landing in the middle left the
+/// `backtrace` crate's mutex or libunwind's lock on its unwind tables taken
+/// for good. Every later trap waited on the first, every module compile on
+/// the second (it registers unwind tables, and holds the frame-info lock a
+/// trap's trace takes too), and the test binary hung at 0% CPU. Here stores
+/// that call a host function in a loop are interrupted as fast as possible
+/// while other threads compile modules, and afterwards a fresh thread must
+/// still be able to compile a module and trap in it.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn interrupts_beside_compiles_leave_no_lock_taken() {
+    use std::sync::atomic::AtomicBool;
+    use wasmer::{Function, Instance, Store, imports};
+
+    let engine = crate::cache::build_engine();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let work = std::thread::spawn(move || {
+        let wasm = wat::parse_str(
+            r#"(module
+  (import "host" "call" (func $call))
+  (func (export "spin") (loop $l (call $call) (br $l))))"#,
+        )
+        .unwrap();
+        let module = wasmer::Module::new(&engine, wasm).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let compilers: Vec<_> = (0..4)
+            .map(|i| {
+                let (engine, stop) = (engine.clone(), stop.clone());
+                std::thread::spawn(move || {
+                    let mut n = 0u32;
+                    while !stop.load(Ordering::Relaxed) {
+                        let wat =
+                            format!("(module (func (export \"f{i}\") (result i32) i32.const {n}))");
+                        wasmer::Module::new(&engine, wat::parse_str(&wat).unwrap()).unwrap();
+                        n += 1;
+                    }
+                })
+            })
+            .collect();
+        for _ in 0..4 {
+            let spinners: Vec<_> = (0..8)
+                .map(|_| {
+                    let (engine, module) = (engine.clone(), module.clone());
+                    std::thread::spawn(move || {
+                        let mut store = Store::new(engine);
+                        let call = Function::new_typed(&mut store, || {});
+                        let imports = imports! { "host" => { "call" => call } };
+                        let instance = Instance::new(&mut store, &module, &imports).unwrap();
+                        let spin = instance
+                            .exports
+                            .get_typed_function::<(), ()>(&store, "spin")
+                            .unwrap();
+                        let interrupter = store.interrupter();
+                        let stop = Arc::new(AtomicBool::new(false));
+                        let hammer = {
+                            let stop = stop.clone();
+                            std::thread::spawn(move || {
+                                while !stop.load(Ordering::Relaxed) {
+                                    interrupter.interrupt();
+                                }
+                            })
+                        };
+                        for _ in 0..20 {
+                            let err = spin.call(&mut store).unwrap_err();
+                            assert_eq!(
+                                err.clone().to_trap(),
+                                Some(wasmer_types::TrapCode::HostInterrupt),
+                                "{err}"
+                            );
+                        }
+                        stop.store(true, Ordering::Relaxed);
+                        hammer.join().unwrap();
+                    })
+                })
+                .collect();
+            for spinner in spinners {
+                spinner.join().unwrap();
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        for compiler in compilers {
+            compiler.join().unwrap();
+        }
+        // A trap's trace takes the frame-info lock and the backtrace mutex;
+        // compiling takes the frame-info lock and libunwind's.
+        let module = wasmer::Module::new(
+            &engine,
+            wat::parse_str(r#"(module (func (export "trap") unreachable))"#).unwrap(),
+        )
+        .unwrap();
+        let mut store = Store::new(engine);
+        let instance = Instance::new(&mut store, &module, &imports! {}).unwrap();
+        let trap = instance
+            .exports
+            .get_typed_function::<(), ()>(&store, "trap")
+            .unwrap();
+        let err = trap.call(&mut store).unwrap_err();
+        assert_eq!(
+            err.to_trap(),
+            Some(wasmer_types::TrapCode::UnreachableCodeReached)
+        );
+        done_tx.send(()).unwrap();
+    });
+    match done_rx.recv_timeout(Duration::from_secs(120)) {
+        Ok(()) => work.join().unwrap(),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            // The work panicked; report its panic.
+            work.join().unwrap();
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("interrupting host calls left a lock taken: traps and compiles hang")
+        }
     }
 }
 

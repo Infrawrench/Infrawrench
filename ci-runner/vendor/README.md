@@ -1668,13 +1668,34 @@ half done. A store spinning in Wasm is trapped by the next interrupt the
 runner sends. One thing this gives up: a guest blocked in a
 `memory.atomic.wait` libcall is no longer trapped out of it (which left its
 lock taken), so it waits until it is notified; no guest the runner ships
-waits that way (WASIX's futexes are syscalls). Linux only: elsewhere no
-segment is recorded and the handler behaves as before.
+waits that way (WASIX's futexes are syscalls).
 
 `crates/iwci-runtime`'s `killing_a_syscall_spinner_leaves_its_threads_whole`
 is the check: without this patch it failed ten runs in ten (aborts on a null
 pointer dereference, a segfault, `RefCell already borrowed`, deadlocks), and
 with it ten in ten pass.
+
+**And: the same on macOS (#1332).** The segments above were recorded on
+Linux only, so on macOS the handler still trapped host code on the Wasm
+stack. The test binary hung there once at 0% CPU, its compiles waiting on
+the frame-info lock and its traps on the `backtrace` crate's mutex, with no
+thread holding either: a host function returning to an interrupted store
+builds its `Trap::lib` on the Wasm stack, which captures a backtrace, and
+a second interrupt landing inside that abandoned the mutex (or libunwind's
+lock on its unwind tables, which every compile takes to register its own)
+in a coroutine stack that was then reset. A thread whose trace held the
+frame-info lock while it waited for the mutex then stopped every compile
+in the process. On macOS `record_host_code` now asks dyld for the
+executable segments of every image (`_dyld_register_func_for_add_image`,
+which also reports the ones loaded later). The system libraries all come
+from dyld's shared cache, several hundred of them once Security.framework
+is linked, so those are kept as one span from the lowest to the highest:
+the cache lives in the shared region, which the kernel reserves for it, so
+no compiled Wasm is mapped inside that span. A reproduction (the spinner
+test with compiles beside it) failed every run on macOS before, mostly
+with `RefCell already borrowed` and sometimes hanging exactly as described,
+and passes every run with it; `interrupts_beside_compiles_leave_no_lock_taken`
+and the spinner test now run on macOS too.
 
 **And: a host call takes no process-wide lock on its way back (#994).**
 Every host function's return path asks `interrupt_registry::is_interrupted`
