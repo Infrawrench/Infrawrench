@@ -1654,11 +1654,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The notices a [`notice_recorder`] was given, with the URL of each.
+    type Sent = Arc<Mutex<Vec<(String, crate::notify::Notice)>>>;
+
     /// A sender that keeps every notice it is given.
-    fn notice_recorder() -> (
-        crate::notify::Sender,
-        Arc<Mutex<Vec<(String, crate::notify::Notice)>>>,
-    ) {
+    fn notice_recorder() -> (crate::notify::Sender, Sent) {
         let sent = Arc::new(Mutex::new(Vec::new()));
         let kept = sent.clone();
         let send: crate::notify::Sender = Arc::new(
