@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use iwci_store::RepoId;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tiny_http::{Header, Method, Request, Response};
+use tiny_http::{Header, Method, Response};
 
 use crate::adapters::caches::clear_repository;
 
@@ -42,6 +42,9 @@ use crate::adapters::caches::clear_repository;
 mod concurrency;
 #[path = "server_external.rs"]
 mod external;
+#[path = "server_http.rs"]
+mod http;
+use http::Request;
 #[path = "server_lifecycle.rs"]
 pub(crate) mod lifecycle;
 #[path = "server_schedules.rs"]
@@ -117,6 +120,8 @@ pub struct Server {
     /// budget, for `/v1/capacity` and the memory log (`crate::memory`).
     memory_host: Option<u64>,
     memory_reserve: Option<u64>,
+    /// What its connections share ([`http`]).
+    bounds: http::Bounds,
 }
 
 /// How often the server checks its own memory, and how often it logs it
@@ -278,6 +283,7 @@ impl Server {
             memory_reserve: None,
             notifying: Arc::new(AtomicUsize::new(0)),
             notices: crate::notify::http_sender(),
+            bounds: http::Bounds::new(),
         })
     }
 
@@ -395,15 +401,13 @@ impl Server {
             .expect("spawning the memory thread");
     }
 
-    /// Serves until the process ends; one thread per request, because a
-    /// `?wait=true` run holds its request for as long as the run takes.
+    /// Serves until the process ends; one thread per connection
+    /// ([`http`]), which also holds a `?wait=true` run's request for as
+    /// long as the run takes.
     pub fn serve(self: Arc<Self>, listen: &str) -> Result<(), String> {
-        let http = tiny_http::Server::http(listen).map_err(|e| format!("{listen}: {e}"))?;
+        let listener = std::net::TcpListener::bind(listen).map_err(|e| format!("{listen}: {e}"))?;
         eprintln!("iwci serve: listening on {listen}");
-        for request in http.incoming_requests() {
-            let this = self.clone();
-            std::thread::spawn(move || this.handle(request));
-        }
+        self.serve_on(listener);
         Ok(())
     }
 
@@ -417,7 +421,8 @@ impl Server {
         })
     }
 
-    fn handle(self: &Arc<Self>, mut request: Request) {
+    /// Answers one request ([`http`] sends the answer).
+    fn handle(self: &Arc<Self>, request: &mut Request) -> tiny_http::ResponseBox {
         let url = request.url().to_string();
         let (path, query) = url.split_once('?').unwrap_or((&url, ""));
         let path = path.trim_end_matches('/').to_string();
@@ -428,19 +433,19 @@ impl Server {
             .collect();
         let method = request.method().clone();
 
-        let response = if method == Method::Get && path == "/healthz" {
+        let response: tiny_http::ResponseBox = if method == Method::Get && path == "/healthz" {
             Response::from_string("ok").with_status_code(200).boxed()
-        } else if let Some(reply) = self.claim_route(&mut request, &method, &path, &query) {
+        } else if let Some(reply) = self.claim_route(request, &method, &path, &query) {
             // A cloud job's machine fetches and uploads its artifacts with
             // its claim's token, never the runner's key.
             reply
-        } else if !self.authorised(&request) {
+        } else if !self.authorised(request) {
             error(401, "missing or wrong bearer key").boxed()
         } else {
             let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
             match (&method, segments.as_slice()) {
                 (Method::Get, ["v1", "capacity"]) => json_response(200, &self.capacity()).boxed(),
-                (Method::Post, ["v1", "runs"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "runs"]) => match read_request(request) {
                     Ok(req) => self
                         .start_run(req, query.get("wait").is_some_and(|w| w == "true"))
                         .boxed(),
@@ -472,13 +477,13 @@ impl Server {
                     }
                 }
                 (_, ["v1", "runs", id, "jobs", ..]) => {
-                    self.external_route(&mut request, &method, id, &segments[4..])
+                    self.external_route(request, &method, id, &segments[4..])
                 }
-                (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(&mut request) {
+                (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(request) {
                     Ok(files) => self.cancel_run(id, files.as_deref()).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
-                (Method::Post, ["v1", "concurrency"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "concurrency"]) => match read_request(request) {
                     Ok(req) => self.concurrency(&req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
@@ -486,7 +491,7 @@ impl Server {
                     self.begin_drain("asked to by POST /v1/drain");
                     json_response(202, &self.capacity()).boxed()
                 }
-                (Method::Post, ["v1", "prepare"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "prepare"]) => match read_request(request) {
                     Ok(req) => self.prepare(&req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
@@ -499,15 +504,14 @@ impl Server {
                 (Method::Get, ["v1", "usage", owner]) => {
                     self.usage(owner, query.get("month")).boxed()
                 }
-                (Method::Post, ["v1", "schedules", "read"]) => match read_request_any(&mut request)
-                {
+                (Method::Post, ["v1", "schedules", "read"]) => match read_request_any(request) {
                     Ok(req) => self.read_schedules(req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
                 _ => error(404, format!("no route {method} {path}")).boxed(),
             }
         };
-        let _ = request.respond(response);
+        response
     }
 
     fn capacity(&self) -> serde_json::Value {
@@ -1864,5 +1868,121 @@ mod tests {
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"abd"));
         assert!(!constant_time_eq(b"abc", b"abcd"));
+    }
+
+    /// Serves `server` on a port of its own, in the background.
+    fn listening(server: Arc<Server>) -> std::net::SocketAddr {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || server.serve_on(listener));
+        addr
+    }
+
+    /// One request on an open connection and its answer's status, the
+    /// body read by its length.
+    fn ask(
+        stream: &mut std::net::TcpStream,
+        reader: &mut std::io::BufReader<std::net::TcpStream>,
+        request: &str,
+    ) -> u16 {
+        use std::io::{BufRead, Write};
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut status = String::new();
+        reader.read_line(&mut status).unwrap();
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0u8; length];
+        std::io::Read::read_exact(reader, &mut body).unwrap();
+        status.split(' ').nth(1).unwrap_or("0").parse().unwrap()
+    }
+
+    fn connect(
+        addr: std::net::SocketAddr,
+    ) -> (std::net::TcpStream, std::io::BufReader<std::net::TcpStream>) {
+        let stream = std::net::TcpStream::connect(addr).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        (stream, reader)
+    }
+
+    /// The proxy keeps keep-alive connections open to the runner, and
+    /// opens several at once. On tiny_http's pool one of them could go
+    /// unread until another closed; each must be answered at once while
+    /// the others stay open, and carry its next request too.
+    #[test]
+    fn keep_alive_connections_opened_together_are_all_answered_promptly() {
+        let (server, dir) = server("burst", 0);
+        let addr = listening(server);
+        let key = "k".repeat(32);
+        let barrier = Arc::new(std::sync::Barrier::new(32));
+        let threads: Vec<_> = (0..32)
+            .map(|_| {
+                let (barrier, key) = (barrier.clone(), key.clone());
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    let (mut stream, mut reader) = connect(addr);
+                    let first = ask(&mut stream, &mut reader, "GET /healthz HTTP/1.1\r\nHost: r\r\n\r\n");
+                    let waited = started.elapsed();
+                    // Held open until every connection has its answer.
+                    barrier.wait();
+                    let second = ask(
+                        &mut stream,
+                        &mut reader,
+                        &format!("GET /v1/capacity HTTP/1.1\r\nHost: r\r\nAuthorization: Bearer {key}\r\n\r\n"),
+                    );
+                    (first, second, waited)
+                })
+            })
+            .collect();
+        for t in threads {
+            let (first, second, waited) = t.join().unwrap();
+            assert_eq!((first, second), (200, 200));
+            assert!(
+                waited < std::time::Duration::from_secs(2),
+                "answered after {waited:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_claim_past_its_connection_cap_is_refused_while_the_key_gets_through() {
+        let (mut server, dir) = server("claims", 0);
+        Arc::get_mut(&mut server).unwrap().bounds =
+            http::Bounds::with(2, http::PER_ANONYMOUS, http::BUFFERED_BODIES);
+        let addr = listening(server);
+        let claim = "GET /v1/runs/r/jobs/j/inputs?claim=t HTTP/1.1\r\nHost: r\r\n\r\n";
+        let (mut c1, mut r1) = connect(addr);
+        let (mut c2, mut r2) = connect(addr);
+        // No cloud jobs here: the key is asked for, and the connection
+        // stays open, holding its place.
+        assert_eq!(ask(&mut c1, &mut r1, claim), 401);
+        assert_eq!(ask(&mut c2, &mut r2, claim), 401);
+        let (mut c3, mut r3) = connect(addr);
+        assert_eq!(ask(&mut c3, &mut r3, claim), 429);
+        let (mut k, mut rk) = connect(addr);
+        let key = "k".repeat(32);
+        assert_eq!(
+            ask(
+                &mut k,
+                &mut rk,
+                &format!(
+                    "GET /v1/capacity HTTP/1.1\r\nHost: r\r\nAuthorization: Bearer {key}\r\n\r\n"
+                ),
+            ),
+            200
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

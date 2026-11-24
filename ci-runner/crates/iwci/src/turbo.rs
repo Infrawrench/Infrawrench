@@ -33,9 +33,13 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crate::http1::{
+    Budget, HeadError, Held, MAX_HEAD, Slot, Slots, accept_each, header_in, read_head,
+};
 
 /// The gateway port a job reaches the cache on.
 pub const PORT: u16 = 7410;
@@ -67,8 +71,6 @@ const BODY_WAIT: Duration = Duration::from_secs(10);
 const ANSWERING: u64 = 16;
 /// A client that reads none of an answer for this long is let go.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
-/// The longest request line and headers together.
-const MAX_HEAD: u64 = 16 << 10;
 /// The largest body of anything but an artifact (a query, events).
 const MAX_SMALL_BODY: u64 = 1 << 20;
 /// A connection that sends nothing for this long is closed.
@@ -147,134 +149,7 @@ struct Shared {
     /// Requests being answered ([`Limits::answering`]).
     answering: Budget,
     /// Open connections by the token they last carried.
-    tokens: Mutex<HashMap<String, usize>>,
-}
-
-/// A count of something there is only so much of, taken and given back.
-struct Budget {
-    limit: u64,
-    state: Mutex<Taken>,
-    freed: Condvar,
-}
-
-#[derive(Default)]
-struct Taken {
-    held: u64,
-    /// The most ever held at once, for the tests.
-    peak: u64,
-}
-
-impl Budget {
-    fn new(limit: u64) -> Self {
-        Self {
-            limit,
-            state: Mutex::default(),
-            freed: Condvar::new(),
-        }
-    }
-
-    /// Takes `n` once there is room, waiting up to `wait`: false if there
-    /// was none by then, or never could be.
-    fn take(&self, n: u64, wait: Duration) -> bool {
-        if n > self.limit {
-            return false;
-        }
-        let deadline = Instant::now() + wait;
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        while state.held + n > self.limit {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                return false;
-            }
-            state = self
-                .freed
-                .wait_timeout(state, left)
-                .unwrap_or_else(|e| e.into_inner())
-                .0;
-        }
-        state.held += n;
-        state.peak = state.peak.max(state.held);
-        true
-    }
-
-    fn give(&self, n: u64) {
-        if n == 0 {
-            return;
-        }
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.held = state.held.saturating_sub(n);
-        drop(state);
-        self.freed.notify_all();
-    }
-
-    #[cfg(test)]
-    fn peak(&self) -> u64 {
-        self.state.lock().unwrap().peak
-    }
-}
-
-/// What a request holds of a [`Budget`], given back when it is dropped.
-struct Held<'a> {
-    budget: &'a Budget,
-    n: u64,
-}
-
-impl<'a> Held<'a> {
-    fn none(budget: &'a Budget) -> Self {
-        Self { budget, n: 0 }
-    }
-
-    /// Takes `n` more ([`Budget::take`]).
-    fn grow(&mut self, n: u64, wait: Duration) -> bool {
-        let taken = self.budget.take(n, wait);
-        if taken {
-            self.n += n;
-        }
-        taken
-    }
-}
-
-impl Drop for Held<'_> {
-    fn drop(&mut self) {
-        self.budget.give(self.n);
-    }
-}
-
-/// One of a token's connections ([`Limits::per_token`]), given back when
-/// the connection ends or carries another token.
-struct Slot<'a> {
-    shared: &'a Shared,
-    token: String,
-}
-
-impl<'a> Slot<'a> {
-    fn claim(shared: &'a Shared, token: &str) -> Option<Self> {
-        let mut tokens = shared.tokens.lock().unwrap_or_else(|e| e.into_inner());
-        let open = tokens.entry(token.to_string()).or_insert(0);
-        if *open >= shared.limits.per_token {
-            if *open == 0 {
-                tokens.remove(token);
-            }
-            return None;
-        }
-        *open += 1;
-        Some(Self {
-            shared,
-            token: token.to_string(),
-        })
-    }
-}
-
-impl Drop for Slot<'_> {
-    fn drop(&mut self) {
-        let mut tokens = self.shared.tokens.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(open) = tokens.get_mut(&self.token) {
-            *open = open.saturating_sub(1);
-            if *open == 0 {
-                tokens.remove(&self.token);
-            }
-        }
-    }
+    tokens: Slots,
 }
 
 /// The runner's remote cache server, on its Unix socket.
@@ -309,12 +184,22 @@ impl RemoteCache {
             limits,
             bytes: Budget::new(limits.body_budget),
             answering: Budget::new(limits.answering),
-            tokens: Mutex::default(),
+            tokens: Slots::new(limits.per_token),
         });
         let (accepting, stopping) = (shared.clone(), stop.clone());
         std::thread::Builder::new()
             .name("iwci-remote-cache".into())
-            .spawn(move || accept(&listener, &accepting, &stopping))
+            .spawn(move || {
+                let serve: Arc<dyn Fn(UnixStream) + Send + Sync> =
+                    Arc::new(move |stream| connection(&accepting, stream));
+                accept_each(
+                    listener.incoming(),
+                    limits.connections,
+                    &stopping,
+                    "iwci-remote-cache-conn",
+                    serve,
+                );
+            })
             .map_err(|e| format!("the remote cache: {e}"))?;
         Ok(Self {
             runs,
@@ -353,36 +238,6 @@ impl Drop for RemoteCache {
         // Wakes the accepting thread, which then sees `stop`.
         let _ = UnixStream::connect(&self.socket);
         let _ = std::fs::remove_file(&self.socket);
-    }
-}
-
-/// Gives every connection a thread of its own, up to
-/// [`Limits::connections`].
-fn accept(listener: &UnixListener, shared: &Arc<Shared>, stop: &AtomicBool) {
-    let open = Arc::new(AtomicUsize::new(0));
-    for stream in listener.incoming() {
-        if stop.load(Ordering::SeqCst) {
-            return;
-        }
-        let Ok(stream) = stream else {
-            // Out of descriptors, say: not a spin while it lasts.
-            std::thread::sleep(Duration::from_millis(50));
-            continue;
-        };
-        if open.fetch_add(1, Ordering::SeqCst) >= shared.limits.connections {
-            open.fetch_sub(1, Ordering::SeqCst);
-            continue;
-        }
-        let (shared, held) = (shared.clone(), open.clone());
-        let spawned = std::thread::Builder::new()
-            .name("iwci-remote-cache-conn".into())
-            .spawn(move || {
-                connection(&shared, stream);
-                held.fetch_sub(1, Ordering::SeqCst);
-            });
-        if spawned.is_err() {
-            open.fetch_sub(1, Ordering::SeqCst);
-        }
     }
 }
 
@@ -459,13 +314,6 @@ impl Request {
     fn header(&self, name: &str) -> Option<&str> {
         header_in(&self.headers, name)
     }
-}
-
-fn header_in<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(name))
-        .map(|(_, v)| v.as_str())
 }
 
 /// What is sent back.
@@ -558,14 +406,6 @@ fn send(out: &mut impl Write, reply: &Reply, head_only: bool, close: bool) -> st
     out.flush()
 }
 
-/// A request line and its headers, before the body.
-struct Head {
-    method: String,
-    target: String,
-    keep_alive: bool,
-    headers: Vec<(String, String)>,
-}
-
 /// Why a request could not be read; the connection ends either way.
 enum Unread {
     /// The client closed or went quiet: nothing to answer.
@@ -575,84 +415,6 @@ enum Unread {
     /// Read to its end, but with no room to keep it: answered 503, and
     /// the connection carries on.
     Busy,
-}
-
-/// Reads one request head, `None` at a clean end of the connection.
-fn read_head(reader: &mut impl BufRead) -> Result<Option<Head>, Unread> {
-    let mut lines = Vec::new();
-    let mut read = 0u64;
-    loop {
-        let mut line = Vec::new();
-        let n = reader
-            .by_ref()
-            .take(MAX_HEAD - read)
-            .read_until(b'\n', &mut line)
-            .map_err(|_| Unread::Gone)?;
-        if n == 0 {
-            return if lines.is_empty() && read == 0 {
-                Ok(None)
-            } else {
-                Err(Unread::Gone)
-            };
-        }
-        read += n as u64;
-        if !line.ends_with(b"\n") {
-            return Err(Unread::Bad(error(
-                400,
-                "bad_request",
-                "the request head is too long",
-            )));
-        }
-        let line = String::from_utf8(line)
-            .map_err(|_| Unread::Bad(error(400, "bad_request", "not a request")))?;
-        let line = line.trim_end_matches(['\r', '\n']);
-        if line.is_empty() {
-            // Blank lines before a request line are allowed (RFC 9112 2.2).
-            if lines.is_empty() {
-                continue;
-            }
-            break;
-        }
-        lines.push(line.to_string());
-    }
-    let bad = || Unread::Bad(error(400, "bad_request", "not a request"));
-    let mut request_line = lines[0].split(' ');
-    let (Some(method), Some(target), Some(version), None) = (
-        request_line.next(),
-        request_line.next(),
-        request_line.next(),
-        request_line.next(),
-    ) else {
-        return Err(bad());
-    };
-    let mut headers = Vec::with_capacity(lines.len() - 1);
-    for line in &lines[1..] {
-        let (name, value) = line.split_once(':').ok_or_else(bad)?;
-        if name.is_empty() || name.contains(char::is_whitespace) {
-            return Err(bad());
-        }
-        headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
-    }
-    let connection = header_in(&headers, "connection")
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let keep_alive = match version {
-        "HTTP/1.1" => !connection.contains("close"),
-        "HTTP/1.0" => connection.contains("keep-alive"),
-        _ => {
-            return Err(Unread::Bad(error(
-                505,
-                "http_version_not_supported",
-                "only HTTP/1.0 and 1.1",
-            )));
-        }
-    };
-    Ok(Some(Head {
-        method: method.to_string(),
-        target: target.to_string(),
-        keep_alive,
-        headers,
-    }))
 }
 
 /// Reads a body sent in chunks, refusing one of more than `limit` bytes,
@@ -699,7 +461,7 @@ fn read_chunked(
         if refused || !held.grow(size, wait) {
             // Read and let go, so the client still gets its answer.
             refused = true;
-            discard(reader, size + 2)?;
+            crate::http1::discard(reader, size + 2).map_err(|_| Unread::Gone)?;
             continue;
         }
         let at = body.len();
@@ -713,13 +475,6 @@ fn read_chunked(
             return Err(Unread::Bad(error(400, "bad_request", "not a chunk")));
         }
     }
-}
-
-/// Reads `n` bytes and keeps none of them.
-fn discard(reader: &mut impl BufRead, n: u64) -> Result<(), Unread> {
-    let read = std::io::copy(&mut reader.by_ref().take(n), &mut std::io::sink())
-        .map_err(|_| Unread::Gone)?;
-    if read == n { Ok(()) } else { Err(Unread::Gone) }
 }
 
 /// Serves one connection until the client closes it, asks to, goes quiet
@@ -736,9 +491,14 @@ fn connection(shared: &Shared, stream: UnixStream) {
     loop {
         let head = match read_head(&mut reader) {
             Ok(Some(head)) => head,
-            Ok(None) | Err(Unread::Gone | Unread::Busy) => return,
-            Err(Unread::Bad(reply)) => {
-                let _ = send(&mut out, &reply, false, true);
+            Ok(None) | Err(HeadError::Gone) => return,
+            Err(HeadError::Bad(status, message)) => {
+                let code = if status == 505 {
+                    "http_version_not_supported"
+                } else {
+                    "bad_request"
+                };
+                let _ = send(&mut out, &error(status, code, message), false, true);
                 return;
             }
         };
@@ -768,7 +528,7 @@ fn connection(shared: &Shared, stream: UnixStream) {
 /// answer's body holds until it is sent.
 fn answer_head<'a>(
     shared: &'a Shared,
-    head: Head,
+    head: crate::http1::Head,
     reader: &mut impl BufRead,
     out: &mut impl Write,
     slot: &mut Option<Slot<'a>>,
@@ -797,11 +557,11 @@ fn answer_head<'a>(
             "not a token of a run on this runner, or its run has ended",
         )));
     };
-    if slot.as_ref().is_none_or(|s| s.token != token) {
+    if slot.as_ref().is_none_or(|s| s.client() != token) {
         // Given back before the next is claimed, so a connection that
         // changes token never holds two.
         *slot = None;
-        *slot = Slot::claim(shared, token);
+        *slot = shared.tokens.claim(token);
         if slot.is_none() {
             return Err(Unread::Bad(
                 error(
@@ -809,7 +569,7 @@ fn answer_head<'a>(
                     "too_many_connections",
                     &format!(
                         "a run may hold {} connections to the remote cache at once",
-                        shared.limits.per_token
+                        shared.tokens.per()
                     ),
                 )
                 .with("Retry-After", "1"),
@@ -862,7 +622,7 @@ fn answer_head<'a>(
         Some(n) if !room => {
             // No room for it: read and let go, so the client still gets
             // its answer and the connection its next request.
-            discard(reader, n)?;
+            crate::http1::discard(reader, n).map_err(|_| Unread::Gone)?;
             return Ok((busy(), head.keep_alive, held));
         }
         Some(n) => {
