@@ -3176,7 +3176,11 @@ job's own copy. To keep a set apart:
 - **A virtual environment of copies**: `python -m venv --copies .venv`
   works, with pip in it, and its `activate` script (#1310; before, venv's
   ensurepip ran as the base interpreter, which kept pip out of the venv,
-  so it had to be followed by `.venv/bin/python -m ensurepip`). Without
+  so it had to be followed by `.venv/bin/python -m ensurepip`). After
+  `activate`, a bare `python` or `python3` is the venv's, and
+  `python -m pip install` installs into it (#1334; before, the interpreter
+  bash started by that name could not find itself on `PATH` and ran as the
+  base one). Without
   `--copies` it fails: venv links the interpreter, and a command run
   through a symbolic link fails here (#1199). virtualenv works as well
   (`pip install virtualenv`, then `virtualenv .venv`).
