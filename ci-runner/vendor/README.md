@@ -1777,6 +1777,17 @@ throws through modules loaded and freed in turn, in engines of their own.
 The same sequence, run as a program of its own against the unpatched
 crate on Ubuntu 24.04, lost an exception at step 1144.
 
+**And: one of the crate's own tests holds its lock (#1333).**
+`tls_stack_returns_to_pool_on_thread_exit` let go of the test suite's
+`GLOBAL_STATE` while its worker thread ran, so another test could drain
+`STACK_POOL` before the worker's thread exit put its stack there and the
+test's pop found nothing (about half of `cargo test --lib` runs on an
+M-series Mac), or the push landed in another test's checks; the panic,
+under the lock, then poisoned it for the tests after. The test now holds
+the lock from start to end, as upstream's does since wasmerio/wasmer#7086
+(a6e75eb4e0, after 7.5.0 and in no release yet); it goes with the rest of
+this patch.
+
 **Remove it** when a wasmer-vm release has the interrupt handler leave host
 code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
 of November 2026), reads the interrupted flag without a write lock
