@@ -9,7 +9,7 @@
  */
 import type { ExecutionContext, MessageBatch, Socket } from "@cloudflare/workers-types/index";
 import type { Env, GitEvent } from "./env";
-import { type Routes, serve } from "./http/router";
+import { type Ctx, type Routes, serve } from "./http/router";
 
 const lazy = <T>(load: () => Promise<T>): (() => Promise<T>) => {
   let loaded: Promise<T> | undefined;
@@ -20,7 +20,7 @@ const api = lazy(async () => (await import("./api/server")).makeGitApi());
 const transport = lazy(() => import("./transport/mount"));
 
 /** Smart HTTP and the raw and archive routes: `transport/http/routes.ts` matches them again itself. */
-const git = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> =>
+const git = async (request: Request, env: Env, ctx: Ctx): Promise<Response> =>
   (await (await transport()).gitFetch(request, env, ctx)) ??
   new Response("Not Found", { status: 404 });
 const database = lazy(() => import("./db/client"));
