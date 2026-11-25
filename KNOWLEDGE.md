@@ -3730,7 +3730,7 @@ Break-glass's sibling for roles inside the customer's clouds: an admin-written p
 - **Access review** attaches `jitGrantIssues` (revoke failed, still present after revoke, held >10 min past window) to the feed response, `.catch`-guarded; rendered as an undismissable banner at the top of the shared section.
 - **Surfaces**: shared `ui/src/jit-access/JitAccessPanel.tsx` (the tab; transport is a `SettingsApi`, so desktop reuses the settings client with `jit-access` on the Settings allowlist rather than a client of its own) and `ui/src/settings/JitAccessPoliciesSection.tsx` (scope/role pickers via the plugin, members, roles, rotations). Plugin labels go through `useDataString` and `generate-plugin-strings` extracts them. Mobile `features/jit-access/` raises and decides (raising works here, unlike break-glass, because every choice comes from a policy). CLI `infrawrench jit` (zero deps, `--json`). Not exposed as MCP or chat tools yet.
 
-### Offboarding sweeps (cloud-only; migration `0192_offboarding`, API `1.118.0`)
+### Offboarding sweeps (cloud-only; migration `0195_offboarding`, API `1.126.0`)
 
 One saved checklist per person leaving: everything tied to them across connected providers and Infrawrench, lined up by person, with an action per row. Nothing new is collected; the feature is a join over what other features already sync. Docs: `features/offboarding.md`.
 
