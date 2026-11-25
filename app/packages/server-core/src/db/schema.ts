@@ -6196,5 +6196,6 @@ export * from "./offboarding-schema.js";
 export * from "./idle-finding-schema.js";
 export * from "./starred-schema.js";
 export * from "./ci-schema.js";
+export * from "./git-schema.js";
 export * from "./analytics-schema.js";
 export * from "./terraform-schema.js";
