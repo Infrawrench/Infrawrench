@@ -180,6 +180,8 @@ impl Sandbox {
             matches!(s.state(), tcp::State::Closed | tcp::State::TimeWait)
         });
         assert!(ok, "the connection to {to} never finished");
+        // A socket in TIME-WAIT would take the next connection from its port.
+        self.sockets.remove(h);
         established.then_some(got)
     }
 
@@ -249,6 +251,41 @@ fn refused_addresses_and_closed_ports_are_reset() {
     assert_eq!(sandbox.exchange(closed, 40012, b"x"), None);
     // And the allowed one still works afterwards.
     assert_eq!(sandbox.exchange(UP, 40013, b"ok").unwrap(), b"OK");
+}
+
+#[test]
+fn a_port_is_used_again_once_its_connection_is_closed() {
+    let (_gateway, link) = gateway();
+    let mut sandbox = Sandbox::new(link);
+    // The sandbox closes first, so the gateway's socket ends in CLOSED,
+    // whose endpoints `smoltcp` forgets: the connection was still counted
+    // as open, and the port's next SYN was taken for a repeat and reset.
+    for round in 0..3 {
+        let got = sandbox.exchange(UP, 40020, format!("round {round}").as_bytes());
+        assert_eq!(got.unwrap(), format!("ROUND {round}").as_bytes());
+    }
+}
+
+#[test]
+fn a_handshake_the_sandbox_resets_does_not_take_the_next_connection() {
+    let (_gateway, link) = gateway();
+    let mut sandbox = Sandbox::new(link);
+    // A SYN, and the socket gone before the SYN-ACK comes: the sandbox
+    // answers that with a reset, which sends the gateway's socket back to
+    // listening on the upstream's address.
+    let h = sandbox.connect(UP, 40030);
+    // One pass: the SYN is sent, and nothing read back yet.
+    sandbox.run_until(|_| true);
+    sandbox.sockets.remove(h);
+    let quiet = std::time::Instant::now() + Duration::from_millis(300);
+    sandbox.run_until(|_| std::time::Instant::now() > quiet);
+    // Every later connection to that address still reaches an upstream
+    // of its own, rather than the reset one's (whose upstream has seen
+    // its end and answers nothing).
+    for port in 40031..40036 {
+        let got = sandbox.exchange(UP, port, b"after").unwrap();
+        assert_eq!(got, b"AFTER");
+    }
 }
 
 #[test]
