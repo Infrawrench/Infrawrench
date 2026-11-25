@@ -1,0 +1,168 @@
+/**
+ * The frame of a pull request's pages: its title and state, the line that
+ * names the branches, and the tabs. The tabs read the pull request with
+ * `usePull()` rather than fetching it again.
+ */
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { PullRequest } from "@infrawrench/git-contract";
+import { api, isNotFound } from "../../api/client";
+import { invalidate, queries } from "../../api/queries";
+import { AppLink, useGo } from "../../components/AppLink";
+import { CopyButton, LinkTabs } from "../../components/controls";
+import { DiffStat } from "../../components/DiffView";
+import { Icon } from "../../components/icons";
+import { Page } from "../../components/Panel";
+import { RelativeTime, UserLink } from "../../components/people";
+import { ErrorState, Loading } from "../../components/states";
+import { pullKind } from "../../components/StatusIcons";
+import { useRepoRef } from "../../layout/RepoLayout";
+import { plural } from "../../lib/format";
+import { paths } from "../../lib/paths";
+import { ThreadHeader } from "../issues/ThreadHeader";
+import { deriveMergeBox } from "./merge-box";
+
+const PullContext = createContext<PullRequest | null>(null);
+
+/** The pull request of the current page. Only under `PullLayout`. */
+export function usePull(): PullRequest {
+  const pull = useContext(PullContext);
+  if (pull === null) throw new Error("usePull outside the pull request layout");
+  return pull;
+}
+
+/** Refetches everything a change to a pull request can show up in. */
+export function refreshPull(): void {
+  void invalidate("pulls");
+  void invalidate("issues");
+  void invalidate("repositories", "get");
+}
+
+const branch =
+  "inline-flex max-w-64 items-center rounded bg-surface-sunken px-1.5 py-px font-mono text-[11px] text-on-surface";
+
+export function PullLayout({ number, children }: { number: number; children: ReactNode }) {
+  const repo = useRepoRef();
+  const go = useGo();
+  const request = { params: { ...repo, number } };
+  const pull = useQuery({
+    ...queries.pulls.get(request),
+    // While a trial merge or a check runs, the merge box asks again.
+    refetchInterval: (query) =>
+      query.state.data !== undefined &&
+      query.state.data.state === "open" &&
+      deriveMergeBox(query.state.data.mergeability, query.state.data.baseRef).poll
+        ? 4000
+        : false,
+  });
+
+  // The number may be an issue's: the two share one sequence.
+  const missing = isNotFound(pull.error);
+  const asIssue = useQuery({ ...queries.issues.get(request), enabled: missing, retry: false });
+  const isIssue = asIssue.data !== undefined;
+  useEffect(() => {
+    if (isIssue) go(paths.issue(repo, number), { replace: true });
+  }, [isIssue, go, repo, number]);
+
+  const rename = useMutation({
+    mutationFn: (title: string) => api.pulls.update({ ...request, payload: { title } }),
+    onSuccess: refreshPull,
+  });
+
+  if (pull.data === undefined) {
+    if (pull.error && (!missing || asIssue.error)) {
+      return (
+        <Page>
+          <ErrorState error={pull.error} onRetry={() => void pull.refetch()} />
+        </Page>
+      );
+    }
+    return <Loading />;
+  }
+  const data = pull.data;
+  const merged = data.state === "merged";
+
+  return (
+    <PullContext.Provider value={data}>
+      <Page>
+        <ThreadHeader
+          title={data.title}
+          number={number}
+          kind={pullKind(data.state, data.draft)}
+          canEdit={data.viewer.canEdit}
+          onRename={(title) => rename.mutateAsync(title)}
+        >
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            {merged && data.mergedBy !== null ? (
+              <UserLink user={data.mergedBy} />
+            ) : data.author !== null ? (
+              <UserLink user={data.author} />
+            ) : (
+              "Someone"
+            )}
+            <span>
+              {merged ? "merged" : "wants to merge"} {plural(data.commitCount, "commit")} into
+            </span>
+            <AppLink href={paths.tree(repo, data.baseRef)} className={`${branch} hover:underline`}>
+              <span className="truncate">{data.baseRef}</span>
+            </AppLink>
+            <span>from</span>
+            {data.headRefExists ? (
+              <AppLink
+                href={paths.tree(repo, data.headRef)}
+                className={`${branch} hover:underline`}
+              >
+                <span className="truncate">{data.headRef}</span>
+              </AppLink>
+            ) : (
+              <span className={`${branch} line-through`} title="This branch was deleted">
+                <span className="truncate">{data.headRef}</span>
+              </span>
+            )}
+            <CopyButton text={data.headRef} label="Copy branch name" />
+            {merged && data.mergedAt !== null ? <RelativeTime iso={data.mergedAt} /> : null}
+            {data.locked ? (
+              <span className="inline-flex items-center gap-1">
+                · <Icon name="lock" size={11} /> Locked
+              </span>
+            ) : null}
+          </span>
+        </ThreadHeader>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border">
+          <LinkTabs
+            label="Pull request"
+            tabs={[
+              {
+                label: "Conversation",
+                href: paths.pull(repo, number),
+                icon: <Icon name="messageSquare" />,
+                count: data.commentCount,
+                match: (pathname) => pathname === paths.pull(repo, number),
+              },
+              {
+                label: "Commits",
+                href: paths.pullTab(repo, number, "commits"),
+                icon: <Icon name="gitCommit" />,
+                count: data.commitCount,
+              },
+              {
+                label: "Checks",
+                href: paths.pullTab(repo, number, "checks"),
+                icon: <Icon name="listChecks" />,
+                count: data.mergeability.checks.statuses.length,
+              },
+              {
+                label: "Files changed",
+                href: paths.pullTab(repo, number, "files"),
+                icon: <Icon name="fileDiff" />,
+                count: data.stats.filesChanged,
+              },
+            ]}
+          />
+          <DiffStat additions={data.stats.additions} deletions={data.stats.deletions} />
+        </div>
+        {children}
+      </Page>
+    </PullContext.Provider>
+  );
+}

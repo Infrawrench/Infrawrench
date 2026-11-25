@@ -70,6 +70,26 @@ export const paths = {
   infrastructure: (repo: RepoRef) => `${repositoryPath(repo)}/infrastructure`,
   repoSettings: (repo: RepoRef, section?: string) =>
     `${repositoryPath(repo)}/settings${section === undefined ? "" : `/${seg(section)}`}`,
+
+  /** The issue list with its search box filled (`is:open label:bug`). */
+  issueSearch: (repo: RepoRef, q?: string) => `${repositoryPath(repo)}/issues${search({ q })}`,
+  pullSearch: (repo: RepoRef, q?: string) => `${repositoryPath(repo)}/pulls${search({ q })}`,
+  /** A pull request's other tabs; the conversation is `paths.pull`. */
+  pullTab: (repo: RepoRef, number: number, tab: "commits" | "checks" | "files") =>
+    `${repositoryPath(repo)}/pulls/${number}/${tab}`,
+  /** Under `/issues` so the Issues tab stays the active one. */
+  labels: (repo: RepoRef) => `${repositoryPath(repo)}/issues/labels`,
+  milestones: (repo: RepoRef) => `${repositoryPath(repo)}/issues/milestones`,
+  milestone: (repo: RepoRef, number: number) =>
+    `${repositoryPath(repo)}/issues/milestones/${number}`,
+  ciRuns: (repo: RepoRef, query: { branch?: string; status?: string } = {}) =>
+    `${repositoryPath(repo)}/ci${search(query)}`,
+  ciRun: (repo: RepoRef, runId: string, job?: string) =>
+    `${repositoryPath(repo)}/ci/runs/${seg(runId)}${search({ job })}`,
+  workspace: (repo: RepoRef, workspace: string, tab?: "state" | "resources" | "settings") =>
+    `${repositoryPath(repo)}/infrastructure/${seg(workspace)}${tab === undefined ? "" : `/${tab}`}`,
+  terraformRun: (repo: RepoRef, workspace: string, runId: string) =>
+    `${repositoryPath(repo)}/infrastructure/${seg(workspace)}/runs/${seg(runId)}`,
 };
 
 export type { RepoRef };
