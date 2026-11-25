@@ -106,6 +106,23 @@ export interface PrincipalRoleDeclaration {
    * to withdraw access, not to destroy records an auditor may still need.
    */
   revokeActionId?: string;
+  /**
+   * When the person this principal belongs to leaves, **deleting** it is the
+   * right way to take their access away: an organization membership, a member
+   * of a group or project, a personal API token. The offboarding sweep then
+   * offers a Remove button that calls the plugin's `deleteResource` for the
+   * type (so the plugin must implement deletion for it).
+   *
+   * Separate from `revokeActionId` on purpose. The access review withdraws
+   * access without destroying records an auditor may still need, so it never
+   * deletes; offboarding is the moment a departed person's membership is meant
+   * to go. Where both are declared, offboarding prefers the revoke action.
+   *
+   * Only set it where the provider's delete removes the person's access and
+   * nothing else: never on a type whose delete also destroys data the
+   * organization owns (a user account whose deletion takes their projects).
+   */
+  offboardByDelete?: boolean;
 }
 
 /** Field key used for `lastUsedKey` when a declaration omits it. */
@@ -127,6 +144,7 @@ export interface ResolvedPrincipalKeys {
   parentKey: string | null;
   mfaKey: string | null;
   revokeActionId: string | null;
+  offboardByDelete: boolean;
 }
 
 /** Apply the documented defaults to a `PrincipalRoleDeclaration`. */
@@ -140,5 +158,6 @@ export function resolvePrincipalKeys(declaration: PrincipalRoleDeclaration): Res
     parentKey: declaration.parentKey ?? null,
     mfaKey: declaration.mfaKey ?? null,
     revokeActionId: declaration.revokeActionId ?? null,
+    offboardByDelete: declaration.offboardByDelete === true,
   };
 }

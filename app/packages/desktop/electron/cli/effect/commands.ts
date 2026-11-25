@@ -41,6 +41,7 @@ export const COMMAND_LOADERS = {
   estimate: () => import("../commands/estimate").then((m) => m.estimate),
   "migrate-estimate": () => import("../commands/migrate-estimate").then((m) => m.migrateEstimate),
   orphans: () => import("../commands/orphans").then((m) => m.orphans),
+  offboard: () => import("../commands/offboard").then((m) => m.offboard),
   "extended-support": () => import("../commands/extended-support").then((m) => m.extendedSupport),
   probes: () => import("../commands/probes").then((m) => m.probes),
   heartbeats: () => import("../commands/heartbeats").then((m) => m.heartbeats),

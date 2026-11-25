@@ -43,6 +43,7 @@ import {
   costCanvasesTabTarget,
   k8sEfficiencyTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   slosTabTarget,
   ciTabTarget,
   servicesTabTarget,
@@ -121,6 +122,9 @@ const WebAccessReviewPanel = lazyPanel(() =>
 );
 const WebJitAccessPanel = lazyPanel(() =>
   import("./WebJitAccessPanel").then((m) => m.WebJitAccessPanel),
+);
+const WebOffboardingPanel = lazyPanel(() =>
+  import("./WebOffboardingPanel").then((m) => m.WebOffboardingPanel),
 );
 const WebBackupsPanel = lazyPanel(() => import("./WebBackupsPanel").then((m) => m.WebBackupsPanel));
 const WebHomePanel = lazyPanel(() => import("./WebHomePanel").then((m) => m.WebHomePanel));
@@ -760,6 +764,31 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               params: { orgId },
             })
           }
+        />
+      );
+    case "offboarding":
+      return (
+        <WebOffboardingPanel
+          key={orgId}
+          orgId={orgId}
+          offboardingId={t.offboardingId}
+          // The URL owns which checklist is open, the incidents rule.
+          onSelect={(offboardingId) =>
+            void navigate(getWorkspaceNavigateArgs(offboardingTabTarget(offboardingId)))
+          }
+          openResource={(item) => {
+            if (!item.accountId || !item.resourceId) return;
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  item.accountId,
+                  item.resourceId,
+                  item.pluginId ?? undefined,
+                  item.resourceTypeId ?? undefined,
+                ),
+              ),
+            );
+          }}
         />
       );
     case "access-review":

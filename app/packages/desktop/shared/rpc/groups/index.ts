@@ -3,6 +3,7 @@
  * into the one group the server and client are built from. One line per group.
  */
 import { AppShellRpcs } from "./app-shell";
+import { CallToActionRpcs } from "./calls-to-action";
 import { K8sLocalRpcs } from "./k8s-local";
 import { LocalCredentialRpcs } from "./local-credentials";
 import { LocalDatabaseRpcs } from "./local-database";
@@ -31,6 +32,7 @@ import { WorkflowRpcs } from "./workflows";
 
 export class DesktopRpcs extends ShellCommandRpcs.merge(
   AppShellRpcs,
+  CallToActionRpcs,
   K8sLocalRpcs,
   LocalCredentialRpcs,
   LocalDatabaseRpcs,

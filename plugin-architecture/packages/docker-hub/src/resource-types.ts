@@ -232,6 +232,9 @@ export const MemberResourceType = rt({
     adminIndicatorKey: "role",
     adminValues: ["owner"],
     parentKey: "organization",
+    // DELETE /v2/orgs/{org}/members/{username} removes the member from the
+    // organization and its teams; their personal repositories stay theirs.
+    offboardByDelete: true,
   },
   supportsUpdate: true,
   supportsDelete: true,

@@ -915,6 +915,35 @@ describe("principalRole declarations", () => {
   });
 
   /**
+   * `offboardByDelete` puts a Remove button on a departing person's
+   * offboarding checklist that calls the plugin's `deleteResource`. Pinned so
+   * a new declaration is a reviewed decision (a delete that also destroys data
+   * the organization owns must never be offered as offboarding), and each
+   * must be on a type the host can delete.
+   */
+  it("offer offboarding removal only on deletable membership and key types", async () => {
+    const loaded = await loader.loadPlugins();
+    const declared: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        if (!type.principalRole?.offboardByDelete) continue;
+        declared.push(`${plugin.manifest.id}/${type.id}`);
+        expect(type.supportsDelete, `${plugin.manifest.id}/${type.id}`).not.toBe(false);
+      }
+    }
+    expect(declared.sort()).toEqual([
+      "anthropic/organization-user",
+      "anthropic/workspace-member",
+      "docker-hub/dockerhub-member",
+      "gitlab/group-member",
+      "gitlab/project-member",
+      "openai/organization-user",
+      "openai/project-user",
+      "turso/turso-organization-member",
+    ]);
+  });
+
+  /**
    * Access-review findings and posture findings share one dismissal store
    * (`posture_dismissals`), keyed on `(organizationId, resourceId, ruleId)`.
    * The namespaces stay disjoint because the review's rule ids all start

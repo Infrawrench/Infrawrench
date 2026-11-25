@@ -39,6 +39,7 @@ import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MigrationEstimatesRouteImport } from './routes/migration-estimates'
 import { Route as MomentRouteImport } from './routes/moment'
+import { Route as OffboardingRouteImport } from './routes/offboarding'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as PriceCatalogRouteImport } from './routes/price-catalog'
 import { Route as ProbesRouteImport } from './routes/probes'
@@ -209,6 +210,11 @@ const MomentRoute = MomentRouteImport.update({
   path: '/moment',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OffboardingRoute = OffboardingRouteImport.update({
+  id: '/offboarding',
+  path: '/offboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PostureRoute = PostureRouteImport.update({
   id: '/posture',
   path: '/posture',
@@ -337,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/metric-alerts': typeof MetricAlertsRoute
   '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
+  '/offboarding': typeof OffboardingRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
@@ -388,6 +395,7 @@ export interface FileRoutesByTo {
   '/metric-alerts': typeof MetricAlertsRoute
   '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
+  '/offboarding': typeof OffboardingRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
@@ -440,6 +448,7 @@ export interface FileRoutesById {
   '/metric-alerts': typeof MetricAlertsRoute
   '/migration-estimates': typeof MigrationEstimatesRoute
   '/moment': typeof MomentRoute
+  '/offboarding': typeof OffboardingRoute
   '/posture': typeof PostureRoute
   '/price-catalog': typeof PriceCatalogRoute
   '/probes': typeof ProbesRoute
@@ -493,6 +502,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/migration-estimates'
     | '/moment'
+    | '/offboarding'
     | '/posture'
     | '/price-catalog'
     | '/probes'
@@ -544,6 +554,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/migration-estimates'
     | '/moment'
+    | '/offboarding'
     | '/posture'
     | '/price-catalog'
     | '/probes'
@@ -595,6 +606,7 @@ export interface FileRouteTypes {
     | '/metric-alerts'
     | '/migration-estimates'
     | '/moment'
+    | '/offboarding'
     | '/posture'
     | '/price-catalog'
     | '/probes'
@@ -647,6 +659,7 @@ export interface RootRouteChildren {
   MetricAlertsRoute: typeof MetricAlertsRoute
   MigrationEstimatesRoute: typeof MigrationEstimatesRoute
   MomentRoute: typeof MomentRoute
+  OffboardingRoute: typeof OffboardingRoute
   PostureRoute: typeof PostureRoute
   PriceCatalogRoute: typeof PriceCatalogRoute
   ProbesRoute: typeof ProbesRoute
@@ -880,6 +893,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MomentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/offboarding': {
+      id: '/offboarding'
+      path: '/offboarding'
+      fullPath: '/offboarding'
+      preLoaderRoute: typeof OffboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/posture': {
       id: '/posture'
       path: '/posture'
@@ -1047,6 +1067,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetricAlertsRoute: MetricAlertsRoute,
   MigrationEstimatesRoute: MigrationEstimatesRoute,
   MomentRoute: MomentRoute,
+  OffboardingRoute: OffboardingRoute,
   PostureRoute: PostureRoute,
   PriceCatalogRoute: PriceCatalogRoute,
   ProbesRoute: ProbesRoute,

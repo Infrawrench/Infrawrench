@@ -48,6 +48,9 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
+  // Team: "Start offboarding" on a member starts their checklist (the tab
+  // itself reaches the `offboarding` domain through the contract).
+  { methods: ["POST"], pattern: new RegExp(`${ORG}/offboardings$`) },
   // SSH Keys: which keys are lent to CI jobs, and lending one's own (also on
   // the `ci` domain's derived surface; listed so the section's calls are
   // written out here like the rest).

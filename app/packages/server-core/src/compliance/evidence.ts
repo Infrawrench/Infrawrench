@@ -48,6 +48,8 @@ import {
   incidents,
   jitAccessPolicies,
   jitAccessRequests,
+  offboardingItems,
+  offboardings,
   resourceChanges,
   restoreDrills,
   sshSessionRecordings,
@@ -1227,6 +1229,122 @@ const leakedCredentials: EvidenceEvaluator = async (ctx) => {
  * Registry
  * ------------------------------------------------------------------ */
 
+/**
+ * Offboardings started during the period, every row of each checklist, and
+ * what became of it. A gap is access still open a week after somebody's
+ * offboarding started: that is the window an auditor asks about.
+ */
+const offboardingSource: EvidenceEvaluator = async (ctx) => {
+  const started = await db
+    .select()
+    .from(offboardings)
+    .where(
+      and(
+        eq(offboardings.organizationId, ctx.organizationId),
+        inPeriod(offboardings.createdAt, ctx),
+      ),
+    )
+    .orderBy(desc(offboardings.createdAt))
+    .limit(MAX_EVIDENCE_ROWS);
+  const items =
+    started.length === 0
+      ? []
+      : await db
+          .select()
+          .from(offboardingItems)
+          .where(
+            inArray(
+              offboardingItems.offboardingId,
+              started.map((o) => o.id),
+            ),
+          )
+          .limit(MAX_EVIDENCE_ROWS);
+  const live = items.filter((i) => i.matchState !== "rejected");
+  const openStatuses = new Set(["open", "failed"]);
+  const weekAgo = ctx.now.getTime() - 7 * 86_400_000;
+  const lingering = new Set(
+    live
+      .filter((i) => openStatuses.has(i.status) && i.matchState !== "unconfirmed")
+      .map((i) => i.offboardingId),
+  );
+  const late = started.filter(
+    (o) => o.status === "open" && lingering.has(o.id) && o.createdAt.getTime() < weekAgo,
+  );
+  const gaps =
+    late.length > 0
+      ? [`${late.length} offboarding(s) still had access open a week after they started`]
+      : [];
+  const byId = new Map(started.map((o) => [o.id, o]));
+  const count = (pred: (i: (typeof live)[number]) => boolean) => live.filter(pred).length;
+  return build(
+    "offboarding",
+    started.length === 0 ? "no-data" : gaps.length > 0 ? "gap" : "present",
+    started.length === 0
+      ? "Nobody was offboarded during the period."
+      : `${started.length} offboarding(s) during the period: ${
+          started.filter((o) => o.status === "completed").length
+        } completed, ${count((i) => i.status === "done")} item(s) revoked or handed over.`,
+    [
+      m("offboardings", "Offboardings started", started.length),
+      m("completed", "Completed", started.filter((o) => o.status === "completed").length),
+      m(
+        "fromDirectory",
+        "Started by the directory",
+        started.filter((o) => o.source === "directory").length,
+      ),
+      m("items", "Items found", live.length),
+      m(
+        "done",
+        "Revoked, removed or handed over",
+        count((i) => i.status === "done"),
+      ),
+      m(
+        "stillOpen",
+        "Still open",
+        count((i) => openStatuses.has(i.status)),
+      ),
+    ],
+    gaps,
+    items.length,
+    toComplianceCsv(
+      [
+        "Person",
+        "Offboarding started",
+        "Offboarding status",
+        "Item",
+        "Kind",
+        "Provider",
+        "Account",
+        "Match",
+        "Confirmation",
+        "Status",
+        "Resolution",
+        "Resolved by",
+        "Resolved at",
+      ],
+      items.map((i) => {
+        const o = byId.get(i.offboardingId);
+        return [
+          o?.email ?? null,
+          iso(o?.createdAt),
+          o?.status ?? null,
+          i.title,
+          i.kind,
+          i.providerName ?? "Infrawrench",
+          i.accountName,
+          i.confidence,
+          i.matchState,
+          i.status,
+          i.resolution,
+          i.resolvedByName,
+          iso(i.resolvedAt),
+        ];
+      }),
+    ),
+    { offboardings: started, items },
+  );
+};
+
 const evaluators = new Map<EvidenceSourceId, EvidenceEvaluator>([
   ["access-review", accessReview],
   ["jit-access", jitAccess],
@@ -1241,6 +1359,7 @@ const evaluators = new Map<EvidenceSourceId, EvidenceEvaluator>([
   ["incidents", incidentsSource],
   ["scorecards", scorecardsSource],
   ["leaked-credentials", leakedCredentials],
+  ["offboarding", offboardingSource],
 ]);
 
 /**

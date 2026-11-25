@@ -355,6 +355,9 @@ COMMANDS
   jit cancel <id>     withdraw your pending request
   jit extend <id>     lengthen an active grant, within the policy maximum   --by 30m
   jit revoke <id>     end a grant now and remove it from the provider
+  offboard            every offboarding checklist, with progress (cloud only)
+  offboard <email>    their checklist, or what a sweep finds for them (not saved)
+                      [--start] [--alias <handle>]...
   cost-visibility     cost visibility scopes on roles, members & API keys
   cost-visibility me  whether your own cost figures are scoped
   recordings          recorded SSH sessions: who connected, to what, for how long

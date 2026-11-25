@@ -7,6 +7,10 @@ export const TELEMETRY_URL: string = "";
 // one is configured in WorkOS (Dashboard > Domains): production uses
 // https://auth-api.infrawrench.com.
 export const WORKOS_API_URL = "https://api.workos.com";
+// Calls to action shown over the window (KNOWLEDGE.md "Calls to action").
+// Production reads https://infrawrench.com/desktop/calls-to-action/index.json.
+// Empty disables them.
+export const CALLS_TO_ACTION_URL: string = "";
 export const SHOW_SIGN_IN_BUTTON = true;
 export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [];
 

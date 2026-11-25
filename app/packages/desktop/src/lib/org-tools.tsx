@@ -18,6 +18,7 @@ import {
   IacIcon,
   IncidentsIcon,
   JitAccessIcon,
+  OffboardingIcon,
   LogsIcon,
   MetricAlertIcon,
   PostureIcon,
@@ -61,6 +62,7 @@ import {
   iacTabTarget,
   invoicesTabTarget,
   jitAccessTabTarget,
+  offboardingTabTarget,
   k8sEfficiencyTabTarget,
   migrationEstimatesTabTarget,
   logsTabTarget,
@@ -212,6 +214,20 @@ export function useOrgTools(): SidebarToolDef[] {
               void navigateToWorkspaceTarget(navigate, jitAccessTabTarget(), {
                 label: gt("Just-in-time access"),
               }),
+          },
+          // Cloud-only: the checklist, the seats and the ownership records it
+          // lines up all live in the cloud.
+          {
+            key: "offboarding",
+            label: gt("Offboarding"),
+            icon: <OffboardingIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(
+                navigate,
+                useUIStore.getState().workspaceTabs.find((tab) => tab.target.kind === "offboarding")
+                  ?.target ?? offboardingTabTarget(),
+                { label: gt("Offboarding") },
+              ),
           },
           // Cloud-only: reconciliation classifies the org's *synced*
           // inventory against an uploaded Terraform state, and local-only mode

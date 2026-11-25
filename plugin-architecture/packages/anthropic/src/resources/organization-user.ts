@@ -44,6 +44,9 @@ export const OrganizationUserResourceType = rt({
     createdKey: "addedAt",
     adminIndicatorKey: "role",
     adminValues: ["admin", "membership_admin", "owner", "primary_owner"],
+    // DELETE /v1/organizations/users/{user_id} removes the member and returns
+    // their seat; admins and owners have to be demoted first.
+    offboardByDelete: true,
   },
   supportsCreate: false,
   supportsUpdate: true,

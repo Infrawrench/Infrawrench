@@ -138,6 +138,7 @@ export * from "./domains/metric-alerts";
 export * from "./domains/moment";
 export * from "./domains/msteams";
 export * from "./domains/network-flows";
+export * from "./domains/offboarding";
 export * from "./domains/on-call";
 export * from "./domains/org-config";
 export * from "./domains/orgs";
@@ -301,6 +302,7 @@ import { MetricAlertsApi } from "./domains/metric-alerts";
 import { MomentApi } from "./domains/moment";
 import { MsTeamsApi } from "./domains/msteams";
 import { NetworkFlowsApi } from "./domains/network-flows";
+import { OffboardingApi } from "./domains/offboarding";
 import { OnCallApi } from "./domains/on-call";
 import { OrgConfigApi } from "./domains/org-config";
 import { OrgsApi } from "./domains/orgs";
@@ -472,6 +474,7 @@ export const API_DEFINITIONS = {
   moment: MomentApi,
   msteams: MsTeamsApi,
   "network-flows": NetworkFlowsApi,
+  offboarding: OffboardingApi,
   "on-call": OnCallApi,
   "org-config": OrgConfigApi,
   orgs: OrgsApi,

@@ -11,6 +11,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { DesktopRpcs } from "../../shared/rpc/groups";
 import { layerIpcSocketServer } from "./ipc-socket-server";
 import { AppShellHandlers } from "./handlers/app-shell";
+import { CallToActionHandlers } from "./handlers/calls-to-action";
 import { K8sLocalHandlers } from "./handlers/k8s-local";
 import { LocalDatabaseHandlers } from "./handlers/local-database";
 import { LocalCredentialHandlers, LocalSecretHandlers } from "./handlers/local-secrets";
@@ -38,6 +39,7 @@ import { WorkflowHandlers } from "./handlers/workflows";
 const DesktopRpcHandlers = Layer.mergeAll(
   ShellCommandHandlers,
   AppShellHandlers,
+  CallToActionHandlers,
   K8sLocalHandlers,
   LocalCredentialHandlers,
   LocalDatabaseHandlers,

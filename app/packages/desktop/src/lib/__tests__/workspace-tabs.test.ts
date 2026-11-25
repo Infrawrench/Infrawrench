@@ -118,6 +118,15 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(detail.search).toEqual({ incident: "inc-1" });
   });
 
+  it("returns offboarding route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs({ kind: "offboarding" });
+    expect(list.to).toBe("/offboarding");
+    expect(list.search).toEqual({});
+    const detail = getWorkspaceNavigateArgs({ kind: "offboarding", offboardingId: "off-1" });
+    expect(detail.to).toBe("/offboarding");
+    expect(detail.search).toEqual({ offboarding: "off-1" });
+  });
+
   it("returns resource-reports route args, clearing the param for the list view", () => {
     const list = getWorkspaceNavigateArgs(resourceReportsTabTarget());
     expect(list.to).toBe("/resource-reports");
@@ -558,6 +567,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/incidents", undefined, "?incident=inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the offboarding path, with and without a checklist", () => {
+    expect(syncWorkspaceRouteFromPath("/offboarding")).toEqual({ kind: "offboarding" });
+    expect(syncWorkspaceRouteFromPath("/offboarding", undefined, "?offboarding=off-1")).toEqual({
+      kind: "offboarding",
+      offboardingId: "off-1",
     });
   });
 

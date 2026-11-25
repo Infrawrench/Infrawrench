@@ -584,4 +584,8 @@
 // `runwayDays` and `allowanceThreshold` on `QuotaAlertSettings` and its
 // update body; `filestore-instance` joins the `resourceTypeId` enum (the GCP
 // type was implemented but never registered). Additive.
-export const API_VERSION = "1.125.0";
+// 1.126.0: offboarding sweeps under `/api/org/:orgId/offboardings`: list,
+// start, preview, members, get, edit, rescan, export, confirm or mark a row,
+// and act on a row, with their `Offboarding*` schemas; `offboarding` joins the
+// TabTarget kind enum. Additive.
+export const API_VERSION = "1.126.0";
