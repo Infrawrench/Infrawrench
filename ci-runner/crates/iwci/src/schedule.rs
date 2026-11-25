@@ -3747,10 +3747,27 @@ fn run_job<T: Tools>(
         (None, _, Some(tool)) => tools.env_caches(tool),
         _ => Vec::new(),
     };
+    // One whose directory a `cache:` entry of the job's covers, or lies
+    // under, is left to that entry: the job keys it itself.
+    let env_decls: Vec<_> = env_decls
+        .into_iter()
+        .filter(|c| job.env_cache.keeps(&c.name))
+        .filter(
+            |c| match crate::env_cache::cached_by_job(&c.path, &job.caches) {
+                Some(path) if options.caches.is_some() => {
+                    cache_lines.push(format!(
+                        "env cache `{}`: left to the job's cache of `{path}`",
+                        c.name
+                    ));
+                    false
+                }
+                _ => true,
+            },
+        )
+        .collect();
     let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
         Some(store) => env_decls
             .into_iter()
-            .filter(|c| job.env_cache.keeps(&c.name))
             .map(|c| {
                 crate::env_cache::restore(
                     store.as_ref(),
