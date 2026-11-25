@@ -131,8 +131,44 @@ describe.skipIf(MISSING_TOOLS.length > 0)("OpenSSH client interop", () => {
       expect(result.stdout.toString()).toBe(`${name}\n`);
       expect(result.code).toBe(0);
       const ended = await summary;
-      expect(ended).toMatchObject({ authenticated: true, strictKex: true, error: null });
+      expect(ended).toMatchObject({
+        authenticated: true,
+        strictKex: true,
+        // What a current OpenSSH prefers, and the server has it.
+        keyExchange: "mlkem768x25519-sha256",
+        error: null,
+      });
       expect(ended.clientVersion).toMatch(/^SSH-2\.0-OpenSSH/);
+    },
+  );
+
+  it("does not make the client warn about a key exchange that is not post-quantum", async () => {
+    // At the default log level, where OpenSSH 10 prints that warning.
+    const child = spawn("ssh", [
+      ...sshOptions(server.port, key("ed25519").path, ["-o", "LogLevel=INFO"]),
+      "git@127.0.0.1",
+      "whoami",
+    ]);
+    const result = await collect(child);
+    expect(result.stdout.toString()).toBe("ed25519\n");
+    expect(result.stderr).not.toMatch(/post-quantum/);
+  });
+
+  it.each(["curve25519-sha256", "curve25519-sha256@libssh.org", "mlkem768x25519-sha256"])(
+    "exchanges keys with %s, and again on every re-key",
+    async (kex) => {
+      const summary = server.nextSummary();
+      const payload = randomBytes(4 * 1024 * 1024);
+      const result = await ssh(
+        server.port,
+        key("ed25519").path,
+        ["-o", `KexAlgorithms=${kex}`, "-o", "RekeyLimit=1M", "echo"],
+        payload,
+      );
+      expect(result.stdout.equals(payload)).toBe(true);
+      const ended = await summary;
+      expect(ended.keyExchange).toBe(kex);
+      expect(ended.keyExchanges).toBeGreaterThan(3);
     },
   );
 

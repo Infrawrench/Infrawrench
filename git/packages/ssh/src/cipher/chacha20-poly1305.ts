@@ -20,7 +20,7 @@ const ZERO_BLOCK = new Uint8Array(32);
 /**
  * The sequence number as the last state word. It goes into the eight nonce
  * bytes big-endian and the cipher reads those as little-endian words, so the
- * low half of the nonce (word 14) is zero and word 15 is the byte-swapped
+ * first half of the nonce (word 14) is zero and word 15 is the byte-swapped
  * number.
  */
 function nonceWord(sequence: number): number {

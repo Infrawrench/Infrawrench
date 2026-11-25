@@ -14,7 +14,7 @@ import type { PacketCipher } from "../cipher/cipher";
 import { cleartext } from "../cipher/none";
 import { DisconnectReason, SshError, protocolError } from "../errors";
 import type { HostKey } from "../hostkey";
-import { deriveKey, exchange, exchangeHash } from "../kex/curve25519";
+import { deriveKey, exchangeHash, type KexMethod } from "../kex/method";
 import { encodeServerKexInit, negotiate, parseKexInit, type Negotiated } from "../kex/negotiate";
 import { SIGNATURE_ALGORITHMS } from "../keys/verify";
 import { Msg } from "../messages";
@@ -30,6 +30,8 @@ export interface DuplexStream {
 
 export interface TransportOptions {
   readonly hostKeys: readonly HostKey[];
+  /** In the server's order of preference. */
+  readonly kexMethods: readonly KexMethod[];
   /** The identification line, without its line ending. */
   readonly serverVersion: string;
   /** Start a new key exchange once this many bytes have crossed under one set of keys. */
@@ -100,6 +102,8 @@ export class Transport implements PacketSink {
   bytesOut = 0;
   cipherIn: string | null = null;
   cipherOut: string | null = null;
+  /** The key exchange method of the latest completed exchange. */
+  kexName: string | null = null;
 
   private readonly bytes: ByteReader;
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -125,7 +129,7 @@ export class Transport implements PacketSink {
   private negotiated: Negotiated | null = null;
   private discardGuess = false;
   private sendExtInfo = false;
-  private pendingOpen: { cipher: PacketCipher; name: string } | null = null;
+  private pendingOpen: { cipher: PacketCipher; name: string; kex: string } | null = null;
   private bytesSinceKex = 0;
   private packetsSinceKex = 0;
   private kexTimer: ReturnType<typeof setTimeout> | null = null;
@@ -335,6 +339,7 @@ export class Transport implements PacketSink {
     this.state = "sent-init";
     this.blocked = true;
     const kexInit = encodeServerKexInit(
+      this.options.kexMethods,
       this.options.hostKeys.map((key) => key.algorithm),
       this.initial,
     );
@@ -353,6 +358,7 @@ export class Transport implements PacketSink {
 
     const negotiated = negotiate(
       parseKexInit(packet.payload),
+      this.options.kexMethods,
       this.options.hostKeys.map((key) => key.algorithm),
     );
     if (this.initial) {
@@ -384,27 +390,27 @@ export class Transport implements PacketSink {
     }
     const negotiated = this.negotiated!;
     const reader = new WireReader(payload, 1);
-    const clientPublic = reader.string();
+    const clientInit = reader.string();
     reader.end();
 
     const hostKey = this.options.hostKeys.find((key) => key.algorithm === negotiated.hostKey)!;
-    const { serverPublic, secret } = await exchange(clientPublic);
+    const { reply: serverReply, encodedSecret } = await negotiated.kex.respond(clientInit);
     const hash = await exchangeHash({
       clientVersion: this.clientVersion!,
       serverVersion: this.options.serverVersion,
       clientKexInit: this.clientKexInit!,
       serverKexInit: this.serverKexInit!,
       hostKeyBlob: hostKey.publicKey.blob,
-      clientPublic,
-      serverPublic,
-      secret,
+      clientInit,
+      serverReply,
+      encodedSecret,
     });
     const sessionId = (this.sessionId ??= hash);
     const signature = await hostKey.sign(hash);
 
     const { cipherIn, cipherOut } = negotiated;
     const derive = (letter: string, length: number) =>
-      deriveKey(secret, hash, sessionId, letter, length);
+      deriveKey(encodedSecret, hash, sessionId, letter, length);
     const open = await cipherIn.create(
       await derive("C", cipherIn.keyLength),
       await derive("A", cipherIn.ivLength),
@@ -415,12 +421,12 @@ export class Transport implements PacketSink {
       await derive("B", cipherOut.ivLength),
       "seal",
     );
-    secret.fill(0);
+    encodedSecret.fill(0);
 
     const reply = new WireWriter()
       .byte(Msg.KEX_ECDH_REPLY)
       .string(hostKey.publicKey.blob)
-      .string(serverPublic)
+      .string(serverReply)
       .string(signature)
       .finish();
     const first = this.initial;
@@ -447,7 +453,7 @@ export class Transport implements PacketSink {
         .finish();
       sent.push(this.enqueue(() => this.writePacket(extInfo)));
     }
-    this.pendingOpen = { cipher: open, name: cipherIn.name };
+    this.pendingOpen = { cipher: open, name: cipherIn.name, kex: negotiated.kexName };
     this.state = "await-newkeys";
 
     // The server's side of the exchange is done, so what the layers above
@@ -469,6 +475,7 @@ export class Transport implements PacketSink {
     const pending = this.pendingOpen!;
     this.open = pending.cipher;
     this.cipherIn = pending.name;
+    this.kexName = pending.kex;
     this.pendingOpen = null;
     if (this.strictKex) this.sequenceIn = 0;
     this.state = "idle";

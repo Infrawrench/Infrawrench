@@ -6,6 +6,7 @@
  * those are right.
  */
 import {
+  createHash,
   createPublicKey,
   generateKeyPairSync,
   sign as nodeSign,
@@ -15,7 +16,7 @@ import { connect, type Socket } from "node:net";
 import { source } from "../src/bytes";
 import type { PacketCipher } from "../src/cipher/cipher";
 import { cleartext } from "../src/cipher/none";
-import { deriveKey, exchangeHash } from "../src/kex/curve25519";
+import { deriveKey, exchangeHash } from "../src/kex/method";
 import { CIPHERS } from "../src/kex/negotiate";
 import { Msg } from "../src/messages";
 import { framePacket, unframePacket } from "../src/transport/packet";
@@ -28,6 +29,8 @@ export interface ClientOptions {
   readonly extInfo?: boolean;
   /** Default: AES-256-GCM. */
   readonly cipher?: string;
+  /** Default: `curve25519-sha256`. The hybrid `mlkem768x25519-sha256` is the other one it can do. */
+  readonly kex?: string;
   /** Payloads sent before the client's KEXINIT. */
   readonly beforeKexInit?: readonly Uint8Array[];
   /** Payloads sent between the client's KEXINIT and its ECDH init. */
@@ -243,7 +246,9 @@ export class TestClient {
     for (const payload of options.beforeKexInit ?? []) await this.send(payload);
     await beforeReply?.();
 
-    const kex = ["curve25519-sha256"];
+    const method = this.options.kex ?? "curve25519-sha256";
+    const hybrid = method === "mlkem768x25519-sha256";
+    const kex = [method];
     if (options.wrongGuess) kex.unshift("diffie-hellman-group14-sha256");
     if (first && (this.options.extInfo ?? true)) kex.push("ext-info-c");
     if (first && wantStrict) kex.push("kex-strict-c-v00@openssh.com");
@@ -281,34 +286,58 @@ export class TestClient {
     const pair = (await crypto.subtle.generateKey({ name: "X25519" }, false, [
       "deriveBits",
     ])) as CryptoKeyPair;
-    const clientPublic =
-      options.ecdhPublic ?? new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
-    await this.send(new WireWriter().byte(Msg.KEX_ECDH_INIT).string(clientPublic).finish());
+    const x25519Public = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+    // The post-quantum half, through the same WebCrypto API the server uses.
+    const subtle = crypto.subtle as unknown as {
+      generateKey(a: object, e: boolean, u: string[]): Promise<CryptoKeyPair>;
+      exportKey(f: string, k: CryptoKey): Promise<ArrayBuffer>;
+      decapsulateBits(a: object, k: CryptoKey, c: Uint8Array): Promise<ArrayBuffer>;
+    };
+    const kemPair = hybrid
+      ? await subtle.generateKey({ name: "ML-KEM-768" }, false, ["decapsulateBits"])
+      : null;
+    const kemPublic = kemPair
+      ? new Uint8Array(await subtle.exportKey("raw-public", kemPair.publicKey))
+      : new Uint8Array(0);
+    const clientInit = options.ecdhPublic ?? Buffer.concat([kemPublic, x25519Public]);
+    await this.send(new WireWriter().byte(Msg.KEX_ECDH_INIT).string(clientInit).finish());
 
     const reply = new WireReader(await this.readKex(Msg.KEX_ECDH_REPLY), 1);
     const hostKeyBlob = reply.string();
-    const serverPublic = reply.string();
+    const serverReply = reply.string();
     const signature = reply.string();
+    const serverPublic = serverReply.subarray(serverReply.length - 32);
     const peer = await crypto.subtle.importKey("raw", source(serverPublic), "X25519", false, []);
-    const secret = new Uint8Array(
+    const shared = new Uint8Array(
       await crypto.subtle.deriveBits({ name: "X25519", public: peer }, pair.privateKey, 256),
     );
+    let encodedSecret: Uint8Array;
+    if (kemPair) {
+      const ciphertext = serverReply.subarray(0, serverReply.length - 32);
+      const kemShared = new Uint8Array(
+        await subtle.decapsulateBits({ name: "ML-KEM-768" }, kemPair.privateKey, ciphertext),
+      );
+      const combined = createHash("sha256").update(kemShared).update(shared).digest();
+      encodedSecret = new WireWriter().string(combined).finish();
+    } else {
+      encodedSecret = new WireWriter().mpint(shared).finish();
+    }
     const hash = await exchangeHash({
       clientVersion: this.version,
       serverVersion: this.serverVersion,
       clientKexInit: this.clientKexInit,
       serverKexInit,
       hostKeyBlob,
-      clientPublic,
-      serverPublic,
-      secret,
+      clientInit,
+      serverReply,
+      encodedSecret,
     });
     await this.checkHostSignature(hostKeyBlob, signature, hash);
     if (first) this.sessionId = hash;
 
     const algorithm = CIPHERS.find((candidate) => candidate.name === cipher[0])!;
     const derive = (letter: string, length: number) =>
-      deriveKey(secret, hash, this.sessionId, letter, length);
+      deriveKey(encodedSecret, hash, this.sessionId, letter, length);
     const seal = await algorithm.create(
       await derive("C", algorithm.keyLength),
       await derive("A", algorithm.ivLength),

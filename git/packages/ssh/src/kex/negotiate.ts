@@ -7,9 +7,8 @@ import { chacha20Poly1305 } from "../cipher/chacha20-poly1305";
 import type { CipherAlgorithm } from "../cipher/cipher";
 import { DisconnectReason, SshError } from "../errors";
 import { Msg } from "../messages";
+import type { KexMethod } from "./method";
 import { WireReader, WireWriter } from "../wire";
-
-export const KEX_ALGORITHMS = ["curve25519-sha256", "curve25519-sha256@libssh.org"] as const;
 
 /** A client that lists this wants the server's extension message (RFC 8308). */
 const EXT_INFO_CLIENT = "ext-info-c";
@@ -42,15 +41,17 @@ export interface KexInit {
 
 /** The server's KEXINIT payload. The markers only mean something in a connection's first exchange. */
 export function encodeServerKexInit(
+  kexMethods: readonly KexMethod[],
   hostKeyAlgorithms: readonly string[],
   initial: boolean,
 ): Uint8Array {
+  const kex = kexMethods.flatMap((method) => method.names);
   const ciphers = CIPHERS.map((cipher) => cipher.name);
   const cookie = crypto.getRandomValues(new Uint8Array(16));
   return new WireWriter()
     .byte(Msg.KEXINIT)
     .raw(cookie)
-    .nameList(initial ? [...KEX_ALGORITHMS, STRICT_SERVER] : KEX_ALGORITHMS)
+    .nameList(initial ? [...kex, STRICT_SERVER] : kex)
     .nameList(hostKeyAlgorithms)
     .nameList(ciphers)
     .nameList(ciphers)
@@ -92,7 +93,9 @@ export function parseKexInit(payload: Uint8Array): KexInit {
 }
 
 export interface Negotiated {
-  readonly kex: string;
+  readonly kex: KexMethod;
+  /** The name the method was chosen under. */
+  readonly kexName: string;
   readonly hostKey: string;
   /** Protects what the client sends. */
   readonly cipherIn: CipherAlgorithm;
@@ -113,11 +116,19 @@ function choose(what: string, client: readonly string[], server: readonly string
   return chosen;
 }
 
-export function negotiate(client: KexInit, hostKeyAlgorithms: readonly string[]): Negotiated {
+export function negotiate(
+  client: KexInit,
+  kexMethods: readonly KexMethod[],
+  hostKeyAlgorithms: readonly string[],
+): Negotiated {
   const cipherNames = CIPHERS.map((cipher) => cipher.name);
   const cipherByName = (name: string) => CIPHERS.find((cipher) => cipher.name === name)!;
 
-  const kex = choose("key exchange method", client.kex, KEX_ALGORITHMS);
+  const kexName = choose(
+    "key exchange method",
+    client.kex,
+    kexMethods.flatMap((method) => method.names),
+  );
   const hostKey = choose("host key type", client.hostKey, hostKeyAlgorithms);
   const cipherIn = choose("cipher", client.cipherClientToServer, cipherNames);
   const cipherOut = choose("cipher", client.cipherServerToClient, cipherNames);
@@ -125,13 +136,14 @@ export function negotiate(client: KexInit, hostKeyAlgorithms: readonly string[])
   choose("compression", client.compressionServerToClient, ["none"]);
 
   return {
-    kex,
+    kex: kexMethods.find((method) => method.names.includes(kexName))!,
+    kexName,
     hostKey,
     cipherIn: cipherByName(cipherIn),
     cipherOut: cipherByName(cipherOut),
     clientWantsStrictKex: client.kex.includes(STRICT_CLIENT),
     clientWantsExtInfo: client.kex.includes(EXT_INFO_CLIENT),
     discardGuess:
-      client.firstKexPacketFollows && (client.kex[0] !== kex || client.hostKey[0] !== hostKey),
+      client.firstKexPacketFollows && (client.kex[0] !== kexName || client.hostKey[0] !== hostKey),
   };
 }

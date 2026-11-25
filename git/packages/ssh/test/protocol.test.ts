@@ -159,6 +159,38 @@ describe.skipIf(MISSING_TOOLS.length > 0)("protocol", () => {
       },
     );
 
+    it.each(["curve25519-sha256", "mlkem768x25519-sha256"])(
+      "exchanges keys with %s, strict or not, and when the server re-keys",
+      async (kex) => {
+        const eager = await start({ rekeyAfterBytes: 64 * 1024 });
+        for (const strict of [true, false]) {
+          const summary = eager.nextSummary();
+          const client = await session({ kex, strict }, eager);
+          const { id } = await client.openSession(1 << 30);
+          await client.exec(id, "produce 2000000");
+          let received = 0;
+          for (;;) {
+            const payload = await client.read();
+            if (payload[0] !== Msg.CHANNEL_DATA) break;
+            received += payload.length - 9;
+          }
+          expect(received).toBe(2_000_000);
+          expect(client.keyExchanges).toBeGreaterThan(1);
+          client.close();
+          expect((await summary).keyExchange).toBe(kex);
+        }
+      },
+    );
+
+    it("refuses a hybrid key exchange value of the wrong size, or with a low-order point", async () => {
+      for (const ecdhPublic of [new Uint8Array(32), new Uint8Array(1184 + 32), new Uint8Array(5)]) {
+        const connecting = dial({ kex: "mlkem768x25519-sha256", ecdhPublic });
+        await expect(connecting).rejects.toMatchObject({
+          reason: DisconnectReason.KEY_EXCHANGE_FAILED,
+        });
+      }
+    });
+
     it("works with a client that does not know strict key exchange", async () => {
       const summary = server.nextSummary();
       const client = await session({

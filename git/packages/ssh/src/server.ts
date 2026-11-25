@@ -10,6 +10,8 @@ import type { ExecChannel } from "./channel";
 import { Connection } from "./connection";
 import { DisconnectReason, SshError, protocolError } from "./errors";
 import { loadHostKey, type HostKey } from "./hostkey";
+import { curve25519Sha256 } from "./kex/curve25519";
+import { mlkem768x25519Sha256, mlkemAvailable } from "./kex/mlkem768x25519";
 import type { SshPublicKey } from "./keys/public";
 import { Msg } from "./messages";
 import { Transport, type DuplexStream } from "./transport/transport";
@@ -47,6 +49,8 @@ export interface SshConnectionSummary {
   /** The client's identification line, e.g. `SSH-2.0-OpenSSH_10.3`; null if it never sent one. */
   readonly clientVersion: string | null;
   readonly authenticated: boolean;
+  /** The key exchange method, e.g. `mlkem768x25519-sha256`, once one completed. */
+  readonly keyExchange: string | null;
   /** The cipher protecting what the client sent, once keys were in place. */
   readonly cipher: string | null;
   /** Whether strict key exchange (the Terrapin countermeasure) was in effect. */
@@ -178,6 +182,11 @@ export async function serveConnection<Principal>(
     throw error;
   }
   const limits = resolveLimits(options.limits);
+  // The post-quantum hybrid first, where this runtime has ML-KEM; the
+  // client's own order decides between the two.
+  const kexMethods = (await mlkemAvailable())
+    ? [mlkem768x25519Sha256, curve25519Sha256]
+    : [curve25519Sha256];
 
   const report = (error: unknown): void => {
     try {
@@ -205,6 +214,7 @@ export async function serveConnection<Principal>(
 
   const transport = new Transport(stream, {
     hostKeys,
+    kexMethods,
     serverVersion: version,
     rekeyAfterBytes: limits.rekeyAfterBytes,
     kexTimeoutMs: limits.authTimeoutMs,
@@ -322,6 +332,7 @@ export async function serveConnection<Principal>(
     options.onClose?.({
       clientVersion: transport.clientVersion,
       authenticated: state.connection !== null,
+      keyExchange: transport.kexName,
       cipher: transport.cipherIn,
       strictKex: transport.strictKex,
       keyExchanges: transport.keyExchanges,
