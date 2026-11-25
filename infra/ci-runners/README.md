@@ -248,7 +248,7 @@ listen address lists the platforms.
 ## ci-2: AWS spot in us-east-1
 
 ci-2 is an AWS spot instance in us-east-1, launched by an EC2 fleet from the
-launch template `ci-2` (Ubuntu 24.04, 200 GB gp3, security group `ci-2`
+launch template `ci-2` (Ubuntu 24.04, 400 GB gp3, security group `ci-2`
 with SSH from the operator only, key `pogair`). Two things decide where it
 can run:
 
@@ -273,9 +273,14 @@ can run:
   earlier boots with the fixed sizes it was baked with.
 
 The fleet is of type `maintain`: when AWS takes an instance back, the fleet
-launches another from launch template version 3, whose image is a snapshot
-of a provisioned ci-2 (runner, tunnel token, zram, machine image), so the
-replacement serves CI as soon as it boots, with no `terraform apply`. The
+launches another from the launch template's default version (4 since
+2026-11-25: an image of ci-2 on runner 0.3.67 with `KillMode=mixed`, and a
+400 GB disk), whose image is a snapshot of a provisioned ci-2 (runner,
+tunnel token, zram, machine image), so the replacement serves CI as soon as
+it boots, with no `terraform apply`. That image was baked before
+`size = "auto"` and keeps the fixed sizes; a host change made by hand (as
+`KillMode=mixed` was on the 2026-11-24 host) is lost on the next
+replacement unless it is baked in. The
 first us-east-1 host came from a one-off launch instead, was reclaimed 26
 minutes later, and CI was down for eight hours. Bake a new image (`aws ec2
 create-image --no-reboot` of a provisioned host, then a launch template
