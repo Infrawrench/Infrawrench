@@ -8,3 +8,8 @@ export * from "./diff/tree-diff";
 export * from "./diff/renames";
 export * from "./diff/diff";
 export * from "./diff/patch";
+export * from "./history/merge-base";
+export * from "./history/range";
+export * from "./history/log";
+export * from "./tree/path";
+export * from "./tree/last-commits";
