@@ -29,6 +29,7 @@ import {
   catFileBatch,
   chunked,
   cleanupTempDirs,
+  describeGit,
   fileRangeReader,
   git,
   gitObjectReader,
@@ -160,10 +161,12 @@ describe("entry headers", () => {
     expect(() => decodeEntryHeader(header, 0, 400)).toThrow(GitError);
     expect(() => decodeEntryHeader(header, 0, 505)).toThrow(GitError);
     expect(() => decodeEntryHeader(new Uint8Array([0x50]), 0, 12)).toThrow(GitError);
+    expect(() => encodeEntryHeader("ref-delta", 10, { oid: "abcd" })).toThrow(GitError);
+    expect(() => encodeEntryHeader("ofs-delta", 10)).toThrow(GitError);
   });
 });
 
-describe("packs written by git", () => {
+describeGit("packs written by git", () => {
   let repo = "";
   let all: ReturnType<typeof listObjects> = [];
 
@@ -472,7 +475,7 @@ describe("packs written by git", () => {
   });
 });
 
-describe("damaged and hostile packs", () => {
+describeGit("damaged and hostile packs", () => {
   let pack: Uint8Array = new Uint8Array(0);
 
   beforeAll(() => {
@@ -582,7 +585,7 @@ describe("damaged and hostile packs", () => {
   });
 });
 
-describe("pack index edge cases", () => {
+describeGit("pack index edge cases", () => {
   it("writes and reads 64-bit offsets", () => {
     const records = [
       { oid: "ff00000000000000000000000000000000000001", offset: 12, crc32: 1 },
@@ -634,7 +637,7 @@ describe("pack index edge cases", () => {
   });
 });
 
-describe("memory", () => {
+describeGit("memory", () => {
   it("indexes a pack of more than 50 MiB without holding it", async () => {
     const repo = tempDir("big");
     git(["init", "-q", "-b", "main"], { cwd: repo });

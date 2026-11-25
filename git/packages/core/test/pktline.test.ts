@@ -26,6 +26,7 @@ import {
 import {
   chunked,
   cleanupTempDirs,
+  describeGit,
   git,
   gitRaw,
   makeFixtureRepo,
@@ -175,7 +176,7 @@ describe("side-band", () => {
   });
 });
 
-describe("against git upload-pack", () => {
+describeGit("against git upload-pack", () => {
   let repo = "";
   beforeAll(() => {
     repo = makeFixtureRepo({ commits: 30, largeBytes: 200_000 });

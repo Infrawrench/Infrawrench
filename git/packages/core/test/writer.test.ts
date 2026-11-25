@@ -21,6 +21,7 @@ import {
 import {
   catFileBatch,
   cleanupTempDirs,
+  describeGit,
   git,
   gitRaw,
   listObjects,
@@ -141,7 +142,7 @@ describe("createDelta", () => {
   });
 });
 
-describe("packs written here", () => {
+describeGit("packs written here", () => {
   let repo = "";
   let objects: Array<GitObject & { oid: ObjectId }> = [];
 

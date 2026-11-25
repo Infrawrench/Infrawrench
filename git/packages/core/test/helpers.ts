@@ -12,9 +12,21 @@ import {
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, it } from "vitest";
 import type { ObjectId, ObjectType } from "../src";
 
 const roots: string[] = [];
+
+/**
+ * Whether there is a `git` to test against. Where there is none (a sandbox
+ * without the binary) the interop suites skip and say so, and the suites
+ * that need nothing but this package still run.
+ */
+export const hasGit = spawnSync("git", ["--version"]).status === 0;
+if (!hasGit) console.warn("git-core: no git binary on PATH, interop tests are skipped");
+
+export const describeGit = describe.skipIf(!hasGit) as typeof describe;
+export const itGit = it.skipIf(!hasGit) as typeof it;
 
 export function tempDir(label: string): string {
   const dir = mkdtempSync(join(tmpdir(), `git-core-${label}-`));

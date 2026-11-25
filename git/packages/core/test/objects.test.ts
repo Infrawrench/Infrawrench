@@ -22,8 +22,10 @@ import {
 import {
   catFileBatch,
   cleanupTempDirs,
+  describeGit,
   git,
   gitRaw,
+  itGit,
   listObjects,
   makeFixtureRepo,
 } from "./helpers";
@@ -168,7 +170,7 @@ describe("commits", () => {
     expect(Buffer.compare(serializeCommit(parsed), utf8)).toBe(0);
   });
 
-  it("serialises a commit built in code so git reads it back", () => {
+  itGit("serialises a commit built in code so git reads it back", () => {
     const repo = makeFixtureRepo({ commits: 2, largeBytes: 1000 });
     const head = git(["rev-parse", "HEAD"], { cwd: repo });
     const headTree = git(["rev-parse", "HEAD^{tree}"], { cwd: repo });
@@ -256,7 +258,7 @@ describe("trees", () => {
     expect(compareTreeEntries(entry("100644", "a"), entry("100644", "a.b"))).toBeLessThan(0);
   });
 
-  it("agrees with git on the order of awkward names", () => {
+  itGit("agrees with git on the order of awkward names", () => {
     const repo = makeFixtureRepo({ commits: 1, largeBytes: 100 });
     const blob = git(["hash-object", "-w", "--stdin"], { cwd: repo, input: "x" });
     const subtree = git(["mktree", "--missing"], {
@@ -354,7 +356,7 @@ describe("trees", () => {
   });
 });
 
-describe("a real history", () => {
+describeGit("a real history", () => {
   let repo = "";
   beforeAll(() => {
     repo = makeFixtureRepo();

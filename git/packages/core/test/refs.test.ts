@@ -23,7 +23,16 @@ import {
   shortRefName,
   tagRef,
 } from "../src";
-import { cleanupTempDirs, git, gitObjectReader, gitRaw, makeFixtureRepo, prng } from "./helpers";
+import {
+  cleanupTempDirs,
+  git,
+  gitObjectReader,
+  gitRaw,
+  hasGit,
+  itGit,
+  makeFixtureRepo,
+  prng,
+} from "./helpers";
 
 afterAll(cleanupTempDirs);
 
@@ -143,7 +152,7 @@ function candidates(): string[] {
 }
 
 describe("ref names", () => {
-  it("agrees with git check-ref-format on every candidate", () => {
+  itGit("agrees with git check-ref-format on every candidate", () => {
     const disagreements: string[] = [];
     for (const name of candidates()) {
       // The command line would take a leading dash as an option, which says nothing about the name.
@@ -164,7 +173,7 @@ describe("ref names", () => {
     expect(disagreements).toEqual([]);
   });
 
-  it("agrees with git on branch names", () => {
+  itGit("agrees with git on branch names", () => {
     const disagreements: string[] = [];
     for (const name of candidates().slice(0, 150)) {
       // `--branch` also expands `@{-1}`-style shorthands, which are not names at all.
@@ -229,7 +238,7 @@ describe("symbolic refs", () => {
     expect(() => formatSymbolicRef("refs/heads/a b")).toThrow(GitError);
   });
 
-  it("reads the HEAD git writes", () => {
+  itGit("reads the HEAD git writes", () => {
     const repo = makeFixtureRepo({ commits: 1, largeBytes: 10 });
     const gitDir = git(["rev-parse", "--absolute-git-dir"], { cwd: repo });
     const content = gitRaw(["-C", gitDir, "symbolic-ref", "HEAD"]).stdout.toString();
@@ -264,11 +273,12 @@ describe("peeling", () => {
   let repo = "";
   let reader: ObjectReader;
   beforeAll(() => {
+    if (!hasGit) return;
     repo = makeFixtureRepo({ commits: 30, largeBytes: 1000 });
     reader = gitObjectReader(repo);
   });
 
-  it("peels what git peels", async () => {
+  itGit("peels what git peels", async () => {
     const rev = (name: string): string => git(["rev-parse", name], { cwd: repo });
     const tag = rev("refs/tags/v1.0");
     expect(await peelTags(reader, tag)).toEqual({ oid: rev("v1.0^{}"), type: "commit" });

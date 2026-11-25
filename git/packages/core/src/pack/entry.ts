@@ -1,6 +1,6 @@
 /** The pack container: its 12-byte header and the variable-length header before each entry. */
 import { GitError } from "../errors";
-import { oidFromBytes, writeHex } from "../hex";
+import { isObjectId, oidFromBytes, writeHex } from "../hex";
 import type { ObjectId, ObjectType } from "../types";
 
 export type PackEntryType = ObjectType | "ofs-delta" | "ref-delta";
@@ -180,7 +180,9 @@ export function encodeEntryHeader(type: PackEntryType, size: number, base?: Entr
     }
     for (let i = digits.length - 1; i >= 0; i--) out[at++] = digits[i]!;
   } else if (type === "ref-delta") {
-    if (base?.oid === undefined) throw new GitError("bad-pack", "a ref-delta needs its base id");
+    if (base?.oid === undefined || !isObjectId(base.oid)) {
+      throw new GitError("bad-pack", "a ref-delta needs its base id");
+    }
     writeHex(base.oid, out, at);
     at += 20;
   }

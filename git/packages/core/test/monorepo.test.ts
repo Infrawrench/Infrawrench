@@ -25,6 +25,7 @@ import {
   cleanupTempDirs,
   fileRangeReader,
   git,
+  hasGit,
   listObjects,
   packFiles,
   prng,
@@ -34,9 +35,9 @@ import {
 
 afterAll(cleanupTempDirs);
 
-const source = git(["rev-parse", "--show-toplevel"]);
+const source = hasGit ? git(["rev-parse", "--show-toplevel"]) : "";
 // A shallow CI checkout has too little history to say anything; the fixture suites cover it there.
-const enough = Number(git(["rev-list", "--count", "HEAD"])) >= 200;
+const enough = hasGit && Number(git(["rev-list", "--count", "HEAD"])) >= 200;
 
 describe.skipIf(!enough)("this repository's history", () => {
   let clone = "";
