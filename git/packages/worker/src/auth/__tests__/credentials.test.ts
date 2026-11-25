@@ -267,7 +267,7 @@ describe("CI job tokens", () => {
 
   it("refuses to work with a short key", async () => {
     await expect(mintJobToken("short", { repositoryId: "repo_1", write: false })).rejects.toThrow(
-      /JOB_TOKEN_KEY/,
+      /job token key/,
     );
   });
 });

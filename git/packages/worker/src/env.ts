@@ -70,7 +70,7 @@ export interface Env {
   /** The SSH host key, an OpenSSH private key in PEM (ed25519). */
   readonly SSH_HOST_KEY: string;
   /** HMAC key for CI job tokens. At least 32 bytes of entropy, base64 or hex. */
-  readonly JOB_TOKEN_KEY: string;
+  readonly GIT_JOB_TOKEN_KEY: string;
   /**
    * The app's master key, base64 of 32 bytes. Only `iwk_` API keys need it:
    * their stored hash is an HMAC under a key derived from it. Server-core

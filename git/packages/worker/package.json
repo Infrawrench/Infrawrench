@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
     "@infrawrench/git-contract": "workspace:*",
     "@infrawrench/git-core": "workspace:*",
     "@infrawrench/git-ops": "workspace:*",

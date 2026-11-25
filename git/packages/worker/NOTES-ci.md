@@ -77,14 +77,14 @@ The format has one definition, which both sides import:
 ```ts
 import { isGitJobToken, verifyGitJobToken } from "@infrawrench/client-core";
 
-const checked = await verifyGitJobToken(env.JOB_TOKEN_KEY, token, {
+const checked = await verifyGitJobToken(env.GIT_JOB_TOKEN_KEY, token, {
   repositoryId: repo.id,
   access: "read", // "write" for receive-pack
 });
 if (!checked.ok) return unauthorized(); // checked.reason: malformed | signature | expired | repository | access
 ```
 
-- `JOB_TOKEN_KEY` (Worker secret) is the app's `GIT_JOB_TOKEN_KEY`: the same value, at least 32 characters.
+- `GIT_JOB_TOKEN_KEY` is a secret of both the Worker and the app, with the same value, at least 32 characters.
 - A token is `iwj_<payload>.<signature>`, HMAC-SHA256, and names one repository **by id**, `read` or `write`, what it was minted for (a run's id, or `schedules` / `manual` / `env-file`) and an expiry at most an hour off. Nothing is stored; there is nothing to revoke.
 - In the credential resolver: a Basic password (any user name; the runner sends `x-access-token`) or a Bearer token starting `iwj_` is a job token. Resolve the repository from the URL **first**, then verify against its id, and map the result to `repoAccess` of `read` (or `write`) for that repository and nothing else. A job token is never a user: no API access, no other repository.
 - The app only mints `read` tokens today. `write` exists in the format for a later `changes: commit` push; refuse it on `git-receive-pack` unless the claim says `write`.
@@ -112,7 +112,7 @@ Both take a `read` job token for that repository.
 The archive needs the query form because the app answers a cloud job's machine with a redirect to this URL, and the machine follows it sending no header of its own. A link is seen by more than a header is, so that token is minted for ten minutes and **bound to the commit** (a `commit` claim): `verifyGitJobToken` passes it only when the caller says which commit it is serving, and refuses it everywhere else. So on this route, and only on this route, verify with the commit from the URL:
 
 ```ts
-await verifyGitJobToken(env.JOB_TOKEN_KEY, token, {
+await verifyGitJobToken(env.GIT_JOB_TOKEN_KEY, token, {
   repositoryId: repo.id,
   access: "read",
   commit: sha,

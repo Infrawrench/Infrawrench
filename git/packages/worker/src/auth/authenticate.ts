@@ -97,7 +97,7 @@ const fromAuthorization = async (header: string, env: Env): Promise<Authenticate
       };
     }
     case "job-token": {
-      const claims = await verifyJobToken(env.JOB_TOKEN_KEY, credential.secret);
+      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret);
       if (!claims) return anonymous(true);
       return {
         principal: {

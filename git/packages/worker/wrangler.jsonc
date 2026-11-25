@@ -25,7 +25,7 @@
   //   WORKOS_API_KEY, WORKOS_CLIENT_ID   the app's WorkOS client
   //   WORKOS_COOKIE_PASSWORD             this host's own, 32+ characters
   //   SSH_HOST_KEY                       OpenSSH private key (ed25519), PEM
-  //   JOB_TOKEN_KEY                      HMAC key for CI job tokens, 32+ characters
+  //   GIT_JOB_TOKEN_KEY                      HMAC key for CI job tokens, 32+ characters
   //   ENCRYPTION_MASTER_KEY              the app's, for `iwk_` API key hashes
   "secrets": {
     "required": [
@@ -33,7 +33,7 @@
       "WORKOS_CLIENT_ID",
       "WORKOS_COOKIE_PASSWORD",
       "SSH_HOST_KEY",
-      "JOB_TOKEN_KEY",
+      "GIT_JOB_TOKEN_KEY",
       "ENCRYPTION_MASTER_KEY",
     ],
   },
