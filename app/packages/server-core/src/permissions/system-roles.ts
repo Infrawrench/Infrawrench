@@ -60,6 +60,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Members watch CI runs. Choosing which GitHub accounts run CI and
       // approving forks' pull requests stay with admins and owners.
       "ci:read",
+      // Members read and push to the organisation's repositories on
+      // git.infrawrench.com and create new ones, the way they write
+      // dashboards and workflows. What a push may change is the repository's
+      // own business (protected branches, required reviews). Settings,
+      // deletion and the namespace itself (`git:admin`) stay with admins and
+      // owners.
+      "git:read",
+      "git:write",
       // Both halves, for members. See the note in the catalog: an incident is
       // declared by whoever noticed, and gating that on admin is how orgs end
       // up with a Slack thread instead of a record. The governance side effects

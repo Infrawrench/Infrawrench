@@ -593,4 +593,7 @@
 // pull request on that forge; `githubUrl` stays and carries the same link.
 // Schedules, manual pipelines and `startRun` name a git.infrawrench.com
 // repository with `installationId` 0. Additive.
-export const API_VERSION = "1.127.0";
+// 1.128.0: the `git:read`, `git:write` and `git:admin` permissions join the
+// `Permission` enum, for the organization's namespace on git.infrawrench.com
+// (the forge's own API is not part of this document). Additive.
+export const API_VERSION = "1.128.0";
