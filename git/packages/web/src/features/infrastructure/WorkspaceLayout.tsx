@@ -13,7 +13,7 @@ import { RelativeTime } from "../../components/people";
 import { ErrorState, Loading } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
-import type { TerraformWorkspace } from "../../lib/models";
+import type { TerraformWorkspace } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { accountLabel } from "./AccountsPicker";
 

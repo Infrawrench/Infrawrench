@@ -13,7 +13,7 @@ import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { formatDate } from "../../lib/format";
-import type { AccessToken } from "../../lib/models";
+import type { AccessToken } from "@infrawrench/git-contract";
 import { expiryOf } from "./keys";
 
 const SCOPE_LABEL: Record<TokenScope, string> = {

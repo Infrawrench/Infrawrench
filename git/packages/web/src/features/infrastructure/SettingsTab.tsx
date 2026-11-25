@@ -10,10 +10,10 @@ import { Panel } from "../../components/Panel";
 import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import type { TerraformAccount } from "../../lib/models";
+import type { TerraformAccount } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { AccountsPicker } from "./AccountsPicker";
-import { WORKSPACE_NAME } from "./backend-snippet";
+import { WORKSPACE_NAME, WORKSPACE_NAME_RULE } from "./backend-snippet";
 import { useWorkspace } from "./WorkspaceLayout";
 
 export function SettingsTab() {
@@ -63,9 +63,7 @@ export function SettingsTab() {
     );
   }
 
-  const nameProblem = WORKSPACE_NAME.test(name)
-    ? null
-    : "Letters, digits, dots, dashes and underscores, starting with a letter or digit";
+  const nameProblem = WORKSPACE_NAME.test(name) ? null : WORKSPACE_NAME_RULE;
   const dirty =
     name !== workspace.name ||
     branch !== workspace.branch ||

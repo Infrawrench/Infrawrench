@@ -12,7 +12,7 @@ import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
-import type { DeployKey } from "../../lib/models";
+import type { DeployKey } from "@infrawrench/git-contract";
 
 function KeyForm({ onDone }: { onDone: () => void }) {
   const repo = useRepoRef();

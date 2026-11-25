@@ -17,7 +17,7 @@ export function CommitsTab() {
   const repo = useRepoRef();
   const pull = usePull();
   const request = { params: { ...repo, number: pull.number } };
-  const commits = usePages<CommitSummary>(["pulls", "commits", request, pull.headOid], (cursor) =>
+  const commits = usePages(["pulls", "commits", request, pull.headOid], (cursor) =>
     api.pulls.commits({ ...request, query: { ...cursorQuery(cursor), limit: 50 } }),
   );
   if (commits.error) return <ErrorState error={commits.error} />;

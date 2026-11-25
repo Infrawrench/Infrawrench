@@ -6,7 +6,7 @@
  */
 import { API_ROUTES } from "../../api/routes.gen";
 import { api, fillPath } from "../../api/client";
-import type { CiJobOutput } from "../../lib/models";
+import type { CiJobOutput } from "@infrawrench/git-contract";
 import type { RepoRef } from "../../lib/paths";
 
 export interface SseFrame {

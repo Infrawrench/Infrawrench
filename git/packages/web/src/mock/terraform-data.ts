@@ -17,7 +17,7 @@ import type {
   TerraformRun,
   TerraformStateVersion,
   TerraformWorkspace,
-} from "../lib/models";
+} from "@infrawrench/git-contract";
 import { notFound, type Mutable } from "./define";
 import { APP_URL, gitOf, type RepositoryRecord } from "./db";
 import { flatten } from "./git";
@@ -169,7 +169,7 @@ function versions(
       id: `sv_${top > 50 ? "p" : "s"}_${serial}`,
       serial,
       lineage,
-      md5: Math.abs(hash(`${lineage}${serial}`))
+      sha256: Math.abs(hash(`${lineage}${serial}`))
         .toString(16)
         .padStart(8, "0")
         .repeat(4),

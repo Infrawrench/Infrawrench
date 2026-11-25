@@ -14,7 +14,7 @@ import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { plural } from "../../lib/format";
-import type { ProtectedBranch } from "../../lib/models";
+import type { ProtectedBranch } from "@infrawrench/git-contract";
 
 interface RuleDraft {
   pattern: string;

@@ -5,7 +5,7 @@ import { AppLink } from "../../components/AppLink";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/icons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import type { TerraformRun } from "../../lib/models";
+import type { TerraformRun } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import {
   CostDelta,

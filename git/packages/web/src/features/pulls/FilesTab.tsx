@@ -159,10 +159,7 @@ export function FilesTab() {
   const viewed = useViewed(`${repo.owner}/${repo.repo}#${pull.number}`);
   const whitespace = hideWhitespace ? ("ignore" as const) : ("show" as const);
 
-  const diff = usePages<
-    DiffFile,
-    Awaited<ReturnType<typeof api.pulls.files>> & { items: ReadonlyArray<DiffFile> }
-  >(["pulls", "files", params, pull.headOid, whitespace], async (cursor) => {
+  const diff = usePages(["pulls", "files", params, pull.headOid, whitespace], async (cursor) => {
     const page = await api.pulls.files({
       params,
       query: { ...cursorQuery(cursor), limit: 30, whitespace },

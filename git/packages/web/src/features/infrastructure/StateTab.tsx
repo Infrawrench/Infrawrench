@@ -12,7 +12,7 @@ import { RelativeTime, UserLink } from "../../components/people";
 import { EmptyState, ErrorState, InlineError, Loading, LoadMore } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatBytes } from "../../lib/format";
-import type { TerraformStateVersion } from "../../lib/models";
+import type { TerraformStateVersion } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { useSession } from "../../lib/session";
 import { backendConfiguration } from "./backend-snippet";
@@ -107,10 +107,8 @@ export function StateTab() {
   const repository = useRepository();
   const workspace = useWorkspace();
   const request = { params: { ...repo, workspace: workspace.name } };
-  const versions = usePages<TerraformStateVersion>(
-    ["terraform", "listStateVersions", request],
-    (cursor) =>
-      api.terraform.listStateVersions({ ...request, query: { ...cursorQuery(cursor), limit: 25 } }),
+  const versions = usePages(["terraform", "listStateVersions", request], (cursor) =>
+    api.terraform.listStateVersions({ ...request, query: { ...cursorQuery(cursor), limit: 25 } }),
   );
   const [restoring, setRestoring] = useState<TerraformStateVersion | null>(null);
   const restore = useMutation({

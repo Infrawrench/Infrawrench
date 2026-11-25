@@ -13,10 +13,14 @@ import { RelativeTime } from "../../components/people";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
-import type { TerraformAccount, TerraformRoot, TerraformWorkspace } from "../../lib/models";
+import type {
+  TerraformAccount,
+  TerraformRoot,
+  TerraformWorkspace,
+} from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { AccountsPicker, accountLabel } from "./AccountsPicker";
-import { WORKSPACE_NAME, suggestWorkspaceName } from "./backend-snippet";
+import { WORKSPACE_NAME, WORKSPACE_NAME_RULE, suggestWorkspaceName } from "./backend-snippet";
 import {
   PlanCounts,
   TerraformStatusIcon,
@@ -54,7 +58,7 @@ function AddWorkspaceDialog({
     },
   });
   const problem = !WORKSPACE_NAME.test(name)
-    ? "Letters, digits, dots, dashes and underscores, starting with a letter or digit"
+    ? WORKSPACE_NAME_RULE
     : taken.includes(name)
       ? "A workspace has that name"
       : null;

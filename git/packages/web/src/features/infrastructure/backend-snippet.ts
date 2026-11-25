@@ -25,7 +25,12 @@ export function backendConfiguration(stateUrl: string, username: string): string
 /** `acme/infra` + `environments/staging` suggests `staging`; the root itself suggests `default`. */
 export function suggestWorkspaceName(rootPath: string, taken: ReadonlyArray<string>): string {
   const last = rootPath.split("/").filter(Boolean).pop() ?? "default";
-  const base = last.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "default";
+  const base =
+    last
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^[^a-z0-9]+/, "")
+      .slice(0, 63) || "default";
   if (!taken.includes(base)) return base;
   for (let suffix = 2; ; suffix++) {
     const candidate = `${base}-${suffix}`;
@@ -33,4 +38,8 @@ export function suggestWorkspaceName(rootPath: string, taken: ReadonlyArray<stri
   }
 }
 
-export const WORKSPACE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+/** The contract's rule for a workspace's name. */
+export const WORKSPACE_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
+export const WORKSPACE_NAME_RULE =
+  "Lowercase letters, digits, dashes and underscores, starting with a letter or digit";

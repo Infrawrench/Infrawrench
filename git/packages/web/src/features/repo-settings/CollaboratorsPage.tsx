@@ -14,7 +14,7 @@ import { Picker } from "../../components/Picker";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import type { Collaborator } from "../../lib/models";
+import type { Collaborator } from "@infrawrench/git-contract";
 
 const ROLE_LABEL: Record<CollaboratorRole, string> = {
   read: "Read",

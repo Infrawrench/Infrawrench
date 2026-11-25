@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/stat
 import { useRepoRef } from "../../layout/RepoLayout";
 import { durationBetween, formatDuration } from "../../lib/amounts";
 import { shortOid } from "../../lib/format";
-import type { TerraformRun } from "../../lib/models";
+import type { TerraformRun } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import {
   CostDelta,
@@ -25,7 +25,7 @@ export function RunsTab() {
   const repo = useRepoRef();
   const workspace = useWorkspace();
   const filter = { workspace: workspace.name };
-  const runs = usePages<TerraformRun>(["terraform", "listRuns", repo, filter], (cursor) =>
+  const runs = usePages(["terraform", "listRuns", repo, filter], (cursor) =>
     api.terraform.listRuns({
       params: repo,
       query: { ...filter, ...cursorQuery(cursor), limit: 25 },

@@ -4,7 +4,7 @@
  * the counts the page's buttons show.
  */
 import type { DiffLine, ReviewThread } from "@infrawrench/git-contract";
-import type { DiffSide } from "../../lib/models";
+import type { DiffSide } from "@infrawrench/git-contract";
 
 export interface LineAnchor {
   readonly path: string;

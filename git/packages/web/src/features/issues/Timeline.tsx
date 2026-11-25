@@ -306,7 +306,7 @@ export function Timeline({
 }) {
   const repo = useRepoRef();
   const request = { params: { ...repo, number } };
-  const timeline = usePages<TimelineItem>(["issues", "timeline", request], (cursor) =>
+  const timeline = usePages(["issues", "timeline", request], (cursor) =>
     api.issues.timeline({ ...request, query: { ...cursorQuery(cursor), limit: 100 } }),
   );
   if (timeline.error) return <ErrorState error={timeline.error} />;

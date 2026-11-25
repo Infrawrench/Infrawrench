@@ -66,6 +66,6 @@ describe("suggestWorkspaceName", () => {
       "staging-3",
     );
     expect(suggestWorkspaceName("", [])).toBe("default");
-    expect(suggestWorkspaceName("live/eu west", [])).toBe("eu-west");
+    expect(suggestWorkspaceName("live/EU west.1", [])).toBe("eu-west-1");
   });
 });

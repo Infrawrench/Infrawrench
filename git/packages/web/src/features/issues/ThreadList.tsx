@@ -39,6 +39,12 @@ import { cursorQuery } from "../../lib/cursor";
 type Kind = "issues" | "pulls";
 type Row = IssueSummary | PullRequestSummary;
 
+interface ListPage {
+  readonly items: ReadonlyArray<Row>;
+  readonly nextCursor: string | null;
+  readonly counts: { readonly open: number; readonly closed: number };
+}
+
 const isPull = (row: Row): row is PullRequestSummary => "headRef" in row;
 
 const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
@@ -74,14 +80,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
 
   const listQuery = toListQuery(search, milestones.data?.milestones ?? []);
   const needsMilestones = search.milestone !== null && search.milestone !== "none";
-  const list = usePages<
-    Row,
-    {
-      items: ReadonlyArray<Row>;
-      nextCursor: string | null;
-      counts: { open: number; closed: number };
-    }
-  >(
+  const list = usePages<ListPage>(
     [kind, "list", repo, listQuery],
     (cursor) => {
       if (kind === "pulls") {

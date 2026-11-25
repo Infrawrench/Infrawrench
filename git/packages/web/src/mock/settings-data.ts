@@ -10,7 +10,7 @@ import type {
   OrganizationAccess,
   ProtectedBranch,
   UserKey,
-} from "../lib/models";
+} from "@infrawrench/git-contract";
 import type { Mutable } from "./define";
 import { users, type RepositoryRecord } from "./db";
 

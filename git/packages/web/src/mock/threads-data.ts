@@ -21,7 +21,7 @@ import type {
   TimelineItem,
   UserRef,
 } from "@infrawrench/git-contract";
-import type { ReviewDecision } from "../lib/models";
+import type { ReviewDecision } from "@infrawrench/git-contract";
 import { notFound, type Mutable } from "./define";
 import { accessTo, currentUser, gitOf, type RepositoryRecord } from "./db";
 import { aheadBehind, ancestors, diffCommits, mergeBase, statsOf, type GitFixture } from "./git";

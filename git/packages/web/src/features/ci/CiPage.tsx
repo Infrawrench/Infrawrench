@@ -38,7 +38,7 @@ export function CiPage({
     ...(branch === undefined ? {} : { ref: branch }),
     ...(wanted === undefined ? {} : { status: wanted }),
   };
-  const runs = usePages<CiRun>(["ci", "listRuns", repo, filter], (cursor) =>
+  const runs = usePages(["ci", "listRuns", repo, filter], (cursor) =>
     api.ci.listRuns({ params: repo, query: { ...filter, ...cursorQuery(cursor), limit: 25 } }),
   );
 

@@ -1,7 +1,7 @@
 import { buttonClass } from "../../components/Button";
 import { Icon } from "../../components/icons";
 import { Picker } from "../../components/Picker";
-import type { TerraformAccount } from "../../lib/models";
+import type { TerraformAccount } from "@infrawrench/git-contract";
 import { useSession } from "../../lib/session";
 
 export const accountLabel = (account: TerraformAccount): string =>

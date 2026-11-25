@@ -10,7 +10,7 @@ import { Panel } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
-import type { UserKey } from "../../lib/models";
+import type { UserKey } from "@infrawrench/git-contract";
 import { commentOfKey } from "./keys";
 
 function KeyForm({ onDone }: { onDone: () => void }) {

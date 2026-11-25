@@ -7,7 +7,7 @@ import { Icon } from "../../components/icons";
 import { Popover } from "../../components/Menu";
 import { InlineError } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
-import type { ReviewEvent } from "../../lib/models";
+import type { ReviewEvent } from "@infrawrench/git-contract";
 import { plural } from "../../lib/format";
 import { refreshPull, usePull } from "./PullLayout";
 

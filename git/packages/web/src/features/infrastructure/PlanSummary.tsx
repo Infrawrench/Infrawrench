@@ -13,7 +13,7 @@ import type {
   TerraformPlanSummary,
   TerraformRun,
   TerraformRunStatus,
-} from "../../lib/models";
+} from "@infrawrench/git-contract";
 
 const STATUS: Record<TerraformRunStatus, { label: string; glyph: CiGlyphStatus; tone: BadgeTone }> =
   {
@@ -94,6 +94,7 @@ const ACTION: Record<TerraformAction, { label: string; mark: string; tone: strin
   replace: { label: "Replace", mark: "-/+", tone: "text-danger" },
   read: { label: "Read", mark: "<=", tone: "text-on-surface-muted" },
   "no-op": { label: "No change", mark: "", tone: "text-on-surface-muted" },
+  forget: { label: "Forget", mark: ".", tone: "text-on-surface-muted" },
 };
 
 export function ActionLabel({ action }: { action: TerraformAction }) {

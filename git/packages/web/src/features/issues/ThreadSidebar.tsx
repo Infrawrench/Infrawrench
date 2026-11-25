@@ -17,7 +17,7 @@ import { Avatar, UserLink } from "../../components/people";
 import { Picker, type PickerOption } from "../../components/Picker";
 import { InlineError } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
-import type { MilestoneRef } from "../../lib/models";
+import type { MilestoneRef } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { threadSearchHref } from "./ThreadList";
 

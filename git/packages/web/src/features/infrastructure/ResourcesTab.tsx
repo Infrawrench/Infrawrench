@@ -9,7 +9,7 @@ import { Panel, Table, Td, Th, Tr } from "../../components/Panel";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
-import type { TerraformManagedResource } from "../../lib/models";
+import type { TerraformManagedResource } from "@infrawrench/git-contract";
 import { useWorkspace } from "./WorkspaceLayout";
 import { cursorQuery } from "../../lib/cursor";
 
@@ -31,13 +31,11 @@ export function ResourcesTab() {
     ...(matched === "all" ? {} : { matched }),
   };
   const request = { params: { ...repo, workspace: workspace.name } };
-  const resources = usePages<TerraformManagedResource>(
-    ["terraform", "listResources", request, filter],
-    (cursor) =>
-      api.terraform.listResources({
-        ...request,
-        query: { ...filter, ...cursorQuery(cursor), limit: 50 },
-      }),
+  const resources = usePages(["terraform", "listResources", request, filter], (cursor) =>
+    api.terraform.listResources({
+      ...request,
+      query: { ...filter, ...cursorQuery(cursor), limit: 50 },
+    }),
   );
 
   return (

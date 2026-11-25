@@ -20,7 +20,7 @@ import {
 
 const origin = (): string => window.location.origin;
 
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+const NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 function accountsFor(ids: ReadonlyArray<string>) {
   return ids.map((id) => {
@@ -31,7 +31,7 @@ function accountsFor(ids: ReadonlyArray<string>) {
 }
 
 function checkName(repo: RepositoryRecord, name: string, except?: WorkspaceRecord): void {
-  if (!NAME.test(name)) throw badRequest("Use letters, digits, dots, dashes and underscores");
+  if (!NAME.test(name)) throw badRequest("Use lowercase letters, digits, dashes and underscores");
   const clash = terraformOf(repo).workspaces.some(
     (item) => item !== except && item.name.toLowerCase() === name.toLowerCase(),
   );
@@ -155,7 +155,7 @@ export default defineMockHandlers({
         const version = {
           ...(item.versions[0] ?? {
             lineage: "00000000-0000-4000-8000-000000000000",
-            md5: "0".repeat(32),
+            sha256: "0".repeat(32),
             sizeBytes: 2048,
             resourceCount: item.resources.length,
             terraformVersion: "1.10.3",
